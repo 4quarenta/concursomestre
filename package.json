@@ -1,0 +1,37 @@
+{
+  "name": "concursomestre-ai",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@google/genai": "^1.38.0",
+    "@mercadopago/sdk-react": "^1.0.7",
+    "@types/react-google-recaptcha": "^2.1.9",
+    "@types/styled-components": "^5.1.36",
+    "axios": "^1.13.4",
+    "canvas-confetti": "^1.9.4",
+    "framer-motion": "^12.34.2",
+    "lucide-react": "^0.563.0",
+    "pdfjs-dist": "4.10.38",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-google-recaptcha": "^3.1.0",
+    "react-is": "^19.2.4",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.13.0",
+    "recharts": "^3.7.0",
+    "styled-components": "^6.3.8"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

@@ -1,0 +1,388 @@
+
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Subject, SimulationSession, SimulationConfig, Difficulty, Question } from '../types';
+import {
+   PlayCircle, Clock, ChevronRight, BrainCircuit, Filter, Target,
+   RotateCcw, LayoutGrid, ArrowRight, X, Search, ChevronDown, CheckCircle2, History, Timer, BarChart3, ChevronLeft, Flag, Zap, ArrowLeft
+} from 'lucide-react';
+import QuestionCard from '../components/QuestionCard';
+import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
+import AuthModal from '../components/AuthModal';
+import UpgradeModal from '../components/UpgradeModal';
+
+const SearchableMultiSelect: React.FC<{
+   label: string;
+   options: string[];
+   selected: string[];
+   onChange: (values: string[]) => void;
+   placeholder?: string;
+   icon: any;
+}> = ({ label, options, selected, onChange, placeholder, icon: Icon }) => {
+   const [isOpen, setIsOpen] = useState(false);
+   const [search, setSearch] = useState('');
+   const containerRef = useRef<HTMLDivElement>(null);
+   const filteredOptions = options.filter(opt => opt.toLowerCase().includes(search.toLowerCase()) && !selected.includes(opt));
+   const toggleOption = (opt: string) => { onChange(selected.includes(opt) ? selected.filter(i => i !== opt) : [...selected, opt]); };
+
+   useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => { if (containerRef.current && !containerRef.current.contains(event.target as Node)) setIsOpen(false); };
+      document.addEventListener('mousedown', handleClickOutside); return () => document.removeEventListener('mousedown', handleClickOutside);
+   }, []);
+
+   return (
+      <div className="space-y-1.5 flex-1" ref={containerRef}>
+         <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 transition-colors"><Icon size={12} className="text-indigo-500 dark:text-indigo-400" /> {label}</label>
+         <div className="relative">
+            <div onClick={() => setIsOpen(!isOpen)} className="min-h-[44px] w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-1.5 flex flex-wrap gap-2 items-center cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500 transition-all shadow-sm">
+               {selected.length === 0 ? <span className="text-slate-400 dark:text-slate-500 text-xs font-medium transition-colors">{placeholder || 'Selecionar...'}</span> : selected.map(item => (
+                  <span key={item} className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 border border-indigo-100 dark:border-indigo-800/30 animate-scale-in transition-colors">
+                     {item} <X size={10} className="hover:text-indigo-900 dark:hover:text-indigo-200" onClick={(e) => { e.stopPropagation(); toggleOption(item); }} />
+                  </span>
+               ))}
+               <ChevronDown size={14} className={`ml-auto text-slate-300 dark:text-slate-600 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </div>
+            {isOpen && (
+               <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-4 space-y-3 animate-slide-down transition-colors">
+                  <div className="relative">
+                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600" size={14} />
+                     <input autoFocus type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar..." className="w-full h-9 pl-9 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 font-medium text-slate-900 dark:text-slate-100 transition-colors" />
+                  </div>
+                  <div className="max-h-40 overflow-y-auto no-scrollbar space-y-1">
+                     {filteredOptions.length > 0 ? filteredOptions.map(opt => (
+                        <button key={opt} onClick={() => { toggleOption(opt); setSearch(''); }} className="w-full text-left px-3 py-2 text-[11px] font-bold text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-colors">{opt}</button>
+                     )) : <p className="text-[10px] text-slate-400 dark:text-slate-600 text-center py-2 transition-colors">Nenhum resultado</p>}
+                  </div>
+               </div>
+            )}
+         </div>
+      </div>
+   );
+};
+
+const Simulation: React.FC = () => {
+   const { currentUser, addSimulation } = useAuth();
+   const { questions, submitAnswer } = useData();
+   const [activeSession, setActiveSession] = useState<SimulationSession | null>(null);
+   const [step, setStep] = useState<'config' | 'active' | 'result' | 'review'>('config');
+   const [currentIdx, setCurrentIdx] = useState(0);
+   const [timeLeft, setTimeLeft] = useState(0);
+   const [showPalette, setShowPalette] = useState(false);
+   const [reviewIdx, setReviewIdx] = useState(0);
+   const [showAuthModal, setShowAuthModal] = useState(false);
+   const [authModalConfig, setAuthModalConfig] = useState({ title: '', description: '' });
+   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+   const allAgencies = useMemo(() => Array.from(new Set(questions.map(q => q.agency).filter(Boolean))).sort() as string[], [questions]);
+
+   const [config, setConfig] = useState<SimulationConfig>({
+      id: '', name: 'Treino de Performance', questionCount: 10, subjects: [], difficulty: 'All',
+      timerEnabled: true, timerMinutes: 20, feedbackMode: 'after_all', filters: { agencies: [], years: [] }
+   });
+
+   useEffect(() => {
+      let timer: any;
+      if (step === 'active' && timeLeft > 0) timer = setInterval(() => setTimeLeft(p => p - 1), 1000);
+      if (timeLeft === 0 && step === 'active') handleFinish();
+      return () => clearInterval(timer);
+   }, [step, timeLeft]);
+
+   // Verificar se o usuário pode criar sim personalizado (apenas Pro ou Elite)
+   const canCreateCustomSim = currentUser && (currentUser as any).plan && (currentUser as any).plan !== 'Gratuito' && (currentUser as any).plan !== 'Essencial';
+
+   const handleCreate = () => {
+      let filtered = questions.filter(q => (config.subjects.length === 0 || config.subjects.includes(q.subject)) && (config.filters.agencies.length === 0 || (q.agency && config.filters.agencies.includes(q.agency))));
+      if (filtered.length === 0) return alert("Nenhuma questão encontrada com esses filtros.");
+      const finalQs = filtered.sort(() => Math.random() - 0.5).slice(0, config.questionCount);
+      setActiveSession({ id: `sim-${Date.now()}`, config, questions: finalQs, answers: {}, startTime: Date.now(), status: 'in_progress' });
+      setTimeLeft(config.timerMinutes * 60); setCurrentIdx(0); setStep('active');
+   };
+
+   const handleFinish = () => {
+      if (!activeSession) return;
+      const score = activeSession.questions.reduce((acc, q) => acc + (activeSession.answers[q.id] === q.correctOptionIndex ? 1 : 0), 0);
+      const completed = { ...activeSession, status: 'completed' as const, endTime: Date.now(), score };
+      setActiveSession(completed); addSimulation(completed); setStep('result');
+   };
+
+   // if (!currentUser) return null; // Removed to allow guest access
+
+   if (step === 'config') {
+      return (
+         <div className="w-full space-y-8 animate-fade-in py-6">
+            <header className="text-center space-y-2">
+               <div className="flex items-center justify-center gap-2 mb-2">
+                  <div className="p-2 bg-indigo-600 dark:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 dark:shadow-none transition-colors"><Timer size={20} /></div>
+                  <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Novo Simulado</h1>
+               </div>
+               <p className="text-slate-400 dark:text-slate-500 text-sm font-medium max-w-sm mx-auto transition-colors">Configure seu ambiente de treino e teste seus conhecimentos.</p>
+            </header>
+
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-8 max-w-4xl mx-auto transition-colors">
+               <div className="grid grid-cols-1 gap-6">
+                  <SearchableMultiSelect label="Matérias" icon={Target} options={Object.values(Subject)} selected={config.subjects} onChange={v => setConfig({ ...config, subjects: v as Subject[] })} placeholder="Todas as matérias disponíveis..." />
+                  <SearchableMultiSelect label="Bancas" icon={Filter} options={allAgencies} selected={config.filters.agencies} onChange={v => setConfig({ ...config, filters: { ...config.filters, agencies: v } })} placeholder="Qualquer banca examinadora..." />
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-6 border-t border-slate-50 dark:border-slate-800 transition-colors">
+                  <div className="space-y-1.5">
+                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">Questões</label>
+                     <select value={config.questionCount} onChange={e => setConfig({ ...config, questionCount: Number(e.target.value) })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all cursor-pointer">
+                        {[10, 20, 30, 60, 90].map(v => <option key={v} value={v}>{v} Itens</option>)}
+                     </select>
+                  </div>
+                  <div className="space-y-1.5">
+                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">Tempo (Minutos)</label>
+                     <input type="number" min="1" max="300" value={config.timerMinutes} onChange={e => setConfig({ ...config, timerMinutes: Number(e.target.value) })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all transition-colors" />
+                  </div>
+                  <div className="space-y-1.5">
+                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">Modo de Resposta</label>
+                     <select value={config.feedbackMode} onChange={e => setConfig({ ...config, feedbackMode: e.target.value as any })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all cursor-pointer transition-colors">
+                        <option value="after_all">Resultado no Final</option>
+                        <option value="instant">Feedback Instantâneo</option>
+                     </select>
+                  </div>
+               </div>
+
+               <button onClick={() => {
+                  if (!currentUser) {
+                     setAuthModalConfig({
+                        title: "Inicie seu Treino",
+                        description: "Para criar simulados personalizados e acompanhar sua evolução, acesse sua conta."
+                     });
+                     setShowAuthModal(true);
+                     return;
+                  }
+
+                  // Feature Gating para simulados personalizados
+                  const hasCustomFilters = config.subjects.length > 0 || config.filters.agencies.length > 0 || config.filters.years.length > 0;
+                  if (hasCustomFilters && !canCreateCustomSim) {
+                     setShowUpgradeModal(true);
+                     return;
+                  }
+
+                  handleCreate();
+               }} className="w-full py-4 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest text-[11px] rounded-2xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all shadow-xl shadow-slate-200 dark:shadow-none flex items-center justify-center gap-3 group transition-all">
+                  Começar Agora <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+               </button>
+            </div>
+         </div>
+      );
+   }
+
+   if (step === 'active' && activeSession) {
+      const q = activeSession.questions[currentIdx];
+      return (
+         <div className="w-full pb-32 animate-fade-in">
+            <div className="sticky top-4 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-8 flex justify-between items-center shadow-lg transition-colors">
+               <div className="flex items-center gap-4">
+                  <button onClick={() => setShowPalette(!showPalette)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${showPalette ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors'}`}>
+                     <LayoutGrid size={18} />
+                  </button>
+                  <div>
+                     <h2 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Simulado</h2>
+                     <p className="text-xs font-bold text-slate-800 dark:text-slate-200 transition-colors">{currentIdx + 1} / {activeSession.questions.length}</p>
+                  </div>
+               </div>
+               <div className="flex items-center gap-4">
+                  <div className={`px-5 py-2 rounded-xl font-mono font-black text-lg shadow-inner flex items-center gap-2 transition-colors ${timeLeft < 300 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 animate-pulse' : 'bg-slate-900 dark:bg-slate-800 text-white dark:text-slate-100'}`}>
+                     <Clock size={16} className={timeLeft < 300 ? 'text-red-500 dark:text-red-400' : 'text-indigo-400 dark:text-indigo-500'} />
+                     {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                  </div>
+                  <button onClick={() => { if (confirm("Deseja finalizar o simulado agora?")) handleFinish(); }} className="px-5 py-2 bg-indigo-600 dark:bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-emerald-600 dark:hover:bg-emerald-500 shadow-md transition-all">Finalizar</button>
+               </div>
+            </div>
+
+            {showPalette && (
+               <div className="fixed inset-0 z-50 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowPalette(false)}>
+                  <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-2xl p-8 w-full max-w-md animate-scale-in transition-colors" onClick={e => e.stopPropagation()}>
+                     <div className="flex justify-between items-center mb-6">
+                        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Navegação da Prova</h4>
+                        <button onClick={() => setShowPalette(false)} className="text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"><X size={20} /></button>
+                     </div>
+                     <div className="grid grid-cols-5 gap-2 max-h-[300px] overflow-y-auto no-scrollbar p-1">
+                        {activeSession.questions.map((_, i) => (
+                           <button
+                              key={i}
+                              onClick={() => { setCurrentIdx(i); setShowPalette(false); }}
+                              className={`w-full aspect-square rounded-lg text-xs font-black transition-all border-2 transition-colors ${currentIdx === i ? 'bg-indigo-600 border-indigo-600 text-white shadow-md dark:shadow-none' : activeSession.answers[activeSession.questions[i].id] !== undefined ? 'bg-slate-900 dark:bg-slate-800 border-slate-900 dark:border-slate-700 text-white' : 'bg-white dark:bg-slate-850 border-slate-100 dark:border-slate-800 text-slate-300 dark:text-slate-600 hover:border-indigo-200 dark:hover:border-indigo-900'}`}
+                           >
+                              {i + 1}
+                           </button>
+                        ))}
+                     </div>
+                  </div>
+               </div>
+            )}
+
+            <div className="animate-slide-up w-full">
+               <QuestionCard
+                  question={q}
+                  indexDisplay={currentIdx + 1}
+                  mode="simulation"
+                  hideFeedback={config.feedbackMode === 'after_all'}
+                  onAnswerSubmit={(ans) => {
+                     setActiveSession({ ...activeSession, answers: { ...activeSession.answers, [q.id]: ans.selectedOptionIndex } });
+                     // Persist individual answer if needed, or rely on bulk save at end. 
+                     // User requested "ao responder", so we send it.
+                     submitAnswer({ ...ans, simulationId: activeSession.id });
+                  }}
+                  existingAnswer={activeSession.answers[q.id] !== undefined ? { questionId: q.id, selectedOptionIndex: activeSession.answers[q.id], isCorrect: activeSession.answers[q.id] === q.correctOptionIndex, timestamp: Date.now() } : undefined}
+                  onGuestAction={(action) => {
+                     setAuthModalConfig({ title: "Identifique-se", description: "Faça login para continuar seu simulado." });
+                     setShowAuthModal(true);
+                  }}
+               />
+            </div>
+
+            <div className="flex justify-between mt-8 px-2">
+               <button onClick={() => { setCurrentIdx(Math.max(0, currentIdx - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={currentIdx === 0} className="px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-all flex items-center gap-2 transition-colors">
+                  <ChevronLeft size={16} /> Anterior
+               </button>
+               <button onClick={() => { currentIdx === activeSession.questions.length - 1 ? handleFinish() : setCurrentIdx(currentIdx + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="px-10 py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200 dark:shadow-none hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all flex items-center gap-2">
+                  {currentIdx === activeSession.questions.length - 1 ? 'Entregar Prova' : 'Próxima'} <ChevronRight size={16} />
+               </button>
+            </div>
+         </div>
+      );
+   }
+
+   if (step === 'result' && activeSession) {
+      const accuracy = Math.round((activeSession.score! / activeSession.questions.length) * 100);
+      return (
+         <div className="w-full space-y-8 animate-fade-in py-6">
+            <header className="flex justify-between items-end">
+               <div>
+                  <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Resultado Final</h1>
+                  <p className="text-slate-400 dark:text-slate-500 text-xs font-medium transition-colors">Confira seu desempenho detalhado neste simulado.</p>
+               </div>
+               <button onClick={() => setStep('config')} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all">
+                  <RotateCcw size={14} /> Novo Treino
+               </button>
+            </header>
+
+            <div className="bg-white dark:bg-slate-900 p-10 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-10 transition-colors">
+               <div className={`w-32 h-32 rounded-full border-[8px] flex flex-col items-center justify-center relative transition-colors ${accuracy >= 70 ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-amber-500 text-amber-600 dark:text-amber-400'}`}>
+                  <div className="absolute inset-0 bg-current opacity-5 rounded-full" />
+                  <span className="text-3xl font-black">{accuracy}%</span>
+                  <span className="text-[8px] font-black uppercase tracking-widest opacity-60">Acertos</span>
+               </div>
+               <div className="flex-1 grid grid-cols-2 gap-8">
+                  <div className="space-y-1">
+                     <p className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest transition-colors">Geral</p>
+                     <p className="text-2xl font-black text-slate-800 dark:text-slate-100 transition-colors">{activeSession.score} / {activeSession.questions.length}</p>
+                  </div>
+                  <div className="space-y-1">
+                     <p className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest transition-colors">Tempo Total</p>
+                     <p className="text-2xl font-black text-slate-800 dark:text-slate-100 transition-colors">{Math.floor((activeSession.config.timerMinutes * 60 - timeLeft) / 60)}m {((activeSession.config.timerMinutes * 60 - timeLeft) % 60)}s</p>
+                  </div>
+                  <div className="col-span-2 p-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center gap-3 transition-colors">
+                     <div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm transition-colors"><Zap size={18} /></div>
+                     <p className="text-xs font-medium text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
+                        {accuracy >= 70
+                           ? "Excelente performance! Você está acima da média para este certame."
+                           : "Bom treino! Foque em revisar as questões que errou para consolidar o aprendizado."}
+                     </p>
+                  </div>
+               </div>
+            </div>
+
+            <div className="space-y-4">
+               <div className="flex justify-between items-center px-1">
+                  <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Revisão de Questões</h3>
+                  <span className="text-[9px] font-bold text-slate-300 dark:text-slate-600 transition-colors">Clique em um item para ver detalhes</span>
+               </div>
+               <div className="space-y-3">
+                  {activeSession.questions.map((q, i) => {
+                     const isCorrect = activeSession.answers[q.id] === q.correctOptionIndex;
+                     return (
+                        <button
+                           key={q.id}
+                           onClick={() => { setReviewIdx(i); setStep('review'); }}
+                           className="w-full bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between group hover:border-indigo-300 dark:hover:border-indigo-600 transition-all text-left shadow-sm transition-colors"
+                        >
+                           <div className="flex items-center gap-4">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs transition-colors ${isCorrect ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>{i + 1}</div>
+                              <div className="flex-1">
+                                 <p className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{q.text}</p>
+                                 <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium transition-colors">{q.subject} • {q.topic || 'Geral'}</p>
+                              </div>
+                           </div>
+                           <div className="flex items-center gap-3">
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded transition-colors ${isCorrect ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>{isCorrect ? 'Acerto' : 'Erro'}</span>
+                              <ChevronRight size={14} className="text-slate-300 dark:text-slate-600 group-hover:text-indigo-400 dark:group-hover:text-indigo-500 transition-colors" />
+                           </div>
+                        </button>
+                     );
+                  })}
+               </div>
+            </div>
+         </div>
+      );
+   }
+
+   if (step === 'review' && activeSession) {
+      const q = activeSession.questions[reviewIdx];
+      return (
+         <div className="w-full pb-32 animate-fade-in">
+            <div className="sticky top-4 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-8 flex justify-between items-center shadow-lg transition-colors">
+               <button onClick={() => setStep('result')} className="flex items-center gap-2 px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-[10px] font-black uppercase transition-all">
+                  <ArrowLeft size={16} /> Voltar ao Resumo
+               </button>
+               <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest transition-colors">Revisão</span>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 transition-colors">{reviewIdx + 1} / {activeSession.questions.length}</span>
+               </div>
+               <div className="flex gap-2">
+                  <button onClick={() => setReviewIdx(Math.max(0, reviewIdx - 1))} disabled={reviewIdx === 0} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-colors"><ChevronLeft size={18} /></button>
+                  <button onClick={() => setReviewIdx(Math.min(activeSession.questions.length - 1, reviewIdx + 1))} disabled={reviewIdx === activeSession.questions.length - 1} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-colors"><ChevronRight size={18} /></button>
+               </div>
+            </div>
+
+            <div className="animate-slide-up w-full">
+               <QuestionCard
+                  question={q}
+                  indexDisplay={reviewIdx + 1}
+                  mode="simulation"
+                  hideFeedback={false}
+                  onAnswerSubmit={() => { }}
+                  existingAnswer={{
+                     questionId: q.id,
+                     selectedOptionIndex: activeSession.answers[q.id],
+                     isCorrect: activeSession.answers[q.id] === q.correctOptionIndex,
+                     timestamp: Date.now()
+                  }}
+                  userPlan={currentUser?.billing?.plan || 'Gratuito'}
+               />
+            </div>
+
+            <div className="mt-8 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 rounded-3xl p-8 flex items-center gap-6 transition-colors">
+               <div className="w-14 h-14 bg-white dark:bg-slate-900 rounded-2xl shadow-sm flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0 transition-colors"><Zap size={28} /></div>
+               <div>
+                  <h4 className="text-sm font-black text-indigo-900 dark:text-indigo-100 uppercase mb-1 transition-colors">Dica de Estudo</h4>
+                  <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed font-medium transition-colors">Use o botão <strong>Mentor IA</strong> acima para entender as minúcias desta questão e consolidar o aprendizado deste tópico.</p>
+               </div>
+            </div>
+         </div>
+      );
+   }
+
+   return (
+      <>
+         <AuthModal
+            isOpen={showAuthModal}
+            onClose={() => setShowAuthModal(false)}
+            title={authModalConfig.title}
+            description={authModalConfig.description}
+         />
+         <UpgradeModal
+            isOpen={showUpgradeModal}
+            onClose={() => setShowUpgradeModal(false)}
+            requiredPlan="Pro"
+            featureName="Simulados Personalizados"
+         />
+      </>
+   );
+};
+
+export default Simulation;
