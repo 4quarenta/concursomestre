@@ -5,6 +5,7 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
 import { logger } from '../debug/DebugLogger';
+import { clearStoredSession, getStoredToken } from '../auth/session';
 
 // Base URL from environment variable
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost/questao-pro-backend/api/';
@@ -22,7 +23,23 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
         // Get token from localStorage
-        const token = localStorage.getItem('token');
+        const rawToken = localStorage.getItem('token');
+        const token = getStoredToken();
+
+        if (rawToken && !token) {
+            const jaEstaNoAuth = window.location.hash.includes('/auth') ||
+                window.location.pathname.includes('/auth');
+
+            clearStoredSession();
+
+            if (!jaEstaNoAuth) {
+                window.dispatchEvent(new CustomEvent('auth:session-expired', {
+                    detail: { message: 'Sessao expirada. Faca login novamente.' }
+                }));
+            }
+
+            return Promise.reject(new AxiosError('Session expired locally', '401', config));
+        }
 
         if (token && config.headers) {
             config.headers.Authorization = `Bearer ${token}`;
@@ -96,8 +113,7 @@ apiClient.interceptors.response.use(
 
                     if (hadToken && !jaEstaNoAuth) {
                         // Limpa credenciais e despacha evento — App.tsx redireciona sem reload
-                        localStorage.removeItem('token');
-                        localStorage.removeItem('user');
+                        clearStoredSession();
                         window.dispatchEvent(new CustomEvent('auth:session-expired', { 
                             detail: { message: data.message || 'Sessão expirada' } 
                         }));
@@ -148,7 +164,7 @@ apiClient.interceptors.response.use(
  * O backend valida o token e estampa os dados do usuário no arquivo.
  */
 export const buildDownloadUrl = (materialId: string): string => {
-    const token = localStorage.getItem('token') || '';
+    const token = getStoredToken() || '';
     const backendRoot = API_BASE_URL.replace(/\/api\/$/, '');
     return `${backendRoot}/api/materials/download.php?material_id=${encodeURIComponent(materialId)}&token=${encodeURIComponent(token)}`;
 };
