@@ -154,12 +154,13 @@ export const planService = {
     /**
      * Cancel subscription
      */
-    async cancelSubscription(userId: string, reason?: string, details?: string): Promise<any> {
+    async cancelSubscription(userId: string, reason?: string, details?: string, captchaToken?: string): Promise<any> {
         try {
             const response = await apiClient.post<ApiResponse>('/subscriptions/cancel.php', {
                 user_id: userId,
                 reason,
-                details
+                details,
+                captchaToken
             });
             return response;
         } catch (error) {

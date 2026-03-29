@@ -2,6 +2,7 @@ import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { UserProfile, SimulationSession, Address } from '../types';
 import { apiClient, ENDPOINTS } from '@core/api';
 import { useToast } from './ToastContext';
+import { clearStoredSession, getStoredToken } from '../src/core/auth/session';
 
 // --- CONSTANTS ---
 const XP_PER_LEVEL = 1000;
@@ -137,7 +138,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Restaura sessão no mount verificando token salvo
   React.useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = getStoredToken();
     if (token) {
       apiClient.get(ENDPOINTS.auth.user)
         .then((res: any) => {
@@ -146,14 +147,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // Renova o token imediatamente ao restaurar sessão
             renovarToken();
           } else {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+            clearStoredSession();
             dispatch({ type: 'FINISH_LOADING' });
           }
         })
         .catch(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
+          clearStoredSession();
           dispatch({ type: 'FINISH_LOADING' });
         });
     } else {
@@ -189,8 +188,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearStoredSession();
     dispatch({ type: 'LOGOUT' });
   };
 
@@ -315,7 +313,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const refreshUser = async () => {
-    const token = localStorage.getItem('token');
+    const token = getStoredToken();
     if (token) {
       try {
         const res: any = await apiClient.get(ENDPOINTS.auth.user);
