@@ -12,6 +12,12 @@ import AdBanner from './AdBanner';
 import { useToast } from '../context/ToastContext';
 import { apiClient } from '../src/core/api/client';
 import { ENDPOINTS } from '../src/core/api/endpoints';
+import {
+  getEffectivePlanDisplayName,
+  getEffectivePlanTier,
+  hasActivePlanAccess,
+  hasPlanBenefit,
+} from '../src/features/subscriptions/utils/planAccess';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -109,27 +115,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // Only consider the plan active if there is a valid subscription status (active or trialing)
   // Otherwise, fallback to 'Gratuito'. This mirrors the logic in Profile.tsx
-  const hasActiveSub = user?.subscription?.status === 'active' || user?.subscription?.status === 'trialing';
-  const currentPlan = hasActiveSub ? (user?.subscription?.plan?.name || user?.plan || 'Gratuito') : 'Gratuito';  // Use useMemo to prevent tier from being lost on re-renders
-  const currentTier = React.useMemo(() => {
-    // 0. Admins sempre têm tier máximo
-    if (user?.isAdmin) return 4;
-
-    if (!hasActiveSub) return 1;
-    
-    // 1. Tenta pegar o tier direto do objeto de assinatura
-    let tier = user?.subscription?.plan?.tier;
-    
-    // 2. Fallback baseado no nome do plano se o tier estiver ausente
-    if (!tier) {
-      const planName = (user?.subscription?.plan?.name || user?.plan || '').toLowerCase();
-      if (planName.includes('elite')) tier = 4;
-      else if (planName.includes('pro')) tier = 3;
-      else if (planName.includes('essencial')) tier = 2;
-    }
-    
-    return tier || 1;
-  }, [hasActiveSub, user?.subscription?.plan?.tier, user?.plan, user?.isAdmin]);
+  const hasActiveSub = hasActivePlanAccess(user);
+  const currentPlan = hasActiveSub ? getEffectivePlanDisplayName(user) : 'Gratuito';
+  const currentTier = React.useMemo(() => getEffectivePlanTier(user), [user]);
+  const hasXRayAccess = hasPlanBenefit(user, 'xray_banca', systemSettings.planEntitlements);
 
   const userName = user?.name || 'Visitante';
   const userInitials = userName.charAt(0);
@@ -352,7 +341,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
                 // Logic to lock/unlock features based on plan
                 // Raio-X Banca is exclusive to Tier 4 (Elite)
-                const isLocked = item.label === 'Raio-X Banca' && currentTier < 4;
+                const isLocked = item.label === 'Raio-X Banca' && !hasXRayAccess;
                 const isGloballyDisabled = item.enabled === false;
 
                 return (

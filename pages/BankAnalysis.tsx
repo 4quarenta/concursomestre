@@ -15,6 +15,7 @@ import { CHART_COLORS } from '../constants';
 import AuthModal from '../components/AuthModal';
 import UpgradeModal from '../components/UpgradeModal';
 import { apiClient, ENDPOINTS } from '@core/api';
+import { getBenefitRequiredPlan, hasPlanBenefit } from '../src/features/subscriptions/utils/planAccess';
 
 const BankAnalysis: React.FC = () => {
    const { currentUser } = useAuth();
@@ -36,7 +37,8 @@ const BankAnalysis: React.FC = () => {
    const [bankScrapedInfo, setBankScrapedInfo] = useState<{ emAndamento: any[], realizados: any[] } | null>(null);
    const [isLoadingBankInfo, setIsLoadingBankInfo] = useState(false);
 
-   const isElite = (currentUser?.subscription?.plan?.tier || 0) >= 4 || (currentUser?.plan || '').toLowerCase().includes('elite') || currentUser?.isAdmin;
+   const hasXRayAccess = hasPlanBenefit(currentUser, 'xray_banca', systemSettings.planEntitlements);
+   const xrayRequiredPlan = getBenefitRequiredPlan('xray_banca', systemSettings.planEntitlements);
 
    const agencies = useMemo(() => {
       const dbAgencies = systemSettings?.taxonomies?.agencies?.map(a => a.name) || [];
@@ -55,7 +57,7 @@ const BankAnalysis: React.FC = () => {
 
    // Efeito para buscar os dados reais no backend
    useEffect(() => {
-      if (selectedAgency && isElite) {
+      if (selectedAgency && hasXRayAccess) {
          setIsAnalyzing(true);
          setProgress(0);
          setLoadingText('Conectando à base neural...');
@@ -122,11 +124,11 @@ const BankAnalysis: React.FC = () => {
          setBankDetails(null);
          setBankScrapedInfo(null);
       }
-   }, [selectedAgency, selectedRole, selectedYear, isElite, systemSettings]);
+   }, [selectedAgency, selectedRole, selectedYear, hasXRayAccess, systemSettings]);
 
    // if (!currentUser) return null; // Removed to allow guest access
 
-   if (!isElite) {
+   if (!hasXRayAccess) {
       return (
          <div className="max-w-4xl mx-auto space-y-8 animate-fade-in pb-20">
             <header>
@@ -138,7 +140,7 @@ const BankAnalysis: React.FC = () => {
             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden relative min-h-[350px] flex items-center justify-center p-8 transition-colors">
                <div className="relative z-20 text-center max-w-md space-y-5">
                   <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200/50 transition-colors"><Lock size={32} /></div>
-                  <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight transition-colors">Recurso Exclusivo Elite</h2>
+                  <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight transition-colors">Recurso Exclusivo {xrayRequiredPlan}</h2>
                   <p className="text-slate-500 dark:text-slate-400 text-xs font-medium leading-relaxed transition-colors">O Raio-X da Banca utiliza IA para analisar milhares de questões e te entregar o mapa da mina: o que cai, como cai e onde focar.</p>
                   <button
                      onClick={() => {
@@ -147,7 +149,7 @@ const BankAnalysis: React.FC = () => {
                      }}
                      className="w-full py-3 bg-amber-500 dark:bg-amber-600 text-white font-black uppercase tracking-widest text-xs rounded-xl hover:bg-amber-600 dark:hover:bg-amber-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-100 dark:shadow-none transition-all"
                   >
-                     <Crown size={16} /> Quero ser Elite
+                     <Crown size={16} /> Quero ser {xrayRequiredPlan}
                   </button>
                </div>
                <div className="absolute inset-0 bg-slate-50 dark:bg-slate-950 opacity-40 transition-colors" />
@@ -158,10 +160,10 @@ const BankAnalysis: React.FC = () => {
                title="Desbloqueie o Raio-X"
                description="Acesse análises estratégicas e saia na frente da concorrência com o plano Elite."
             />
-            <UpgradeModal
+             <UpgradeModal
                isOpen={showUpgradeModal}
                onClose={() => setShowUpgradeModal(false)}
-               requiredPlan="Elite"
+               requiredPlan={xrayRequiredPlan}
                featureName="Raio-X da Banca"
             />
          </div>
@@ -174,7 +176,7 @@ const BankAnalysis: React.FC = () => {
             <div>
                <div className="flex items-center gap-2 mb-1">
                   <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors"><Zap className="text-amber-500 dark:text-amber-400" size={24} /> Raio-X da Banca</h1>
-                  <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[9px] font-black uppercase tracking-widest rounded-md border border-amber-200 dark:border-amber-800/50 transition-colors">Elite</span>
+                  <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[9px] font-black uppercase tracking-widest rounded-md border border-amber-200 dark:border-amber-800/50 transition-colors">{xrayRequiredPlan}</span>
                </div>
                <p className="text-slate-500 dark:text-slate-400 text-sm font-medium transition-colors">Inteligência de dados aplicada para hackear a sua aprovação.</p>
             </div>

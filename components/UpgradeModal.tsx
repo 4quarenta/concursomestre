@@ -3,11 +3,14 @@ import { createPortal } from 'react-dom';
 import { Crown, CheckCircle2, X, Sparkles, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
+import { CanonicalPlanName, getEffectivePlanDisplayName } from '../src/features/subscriptions/utils/planAccess';
+import { getBenefitDefinition, getEnabledBenefitKeysForPlan, getIncrementalBenefitKeysForPlan } from '../src/features/subscriptions/config/planEntitlements';
 
 interface UpgradeModalProps {
     isOpen: boolean;
     onClose: () => void;
-    requiredPlan: 'Pro' | 'Elite';
+    requiredPlan: CanonicalPlanName;
     featureName: string;
 }
 
@@ -19,12 +22,17 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 }) => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
+    const { systemSettings } = useData();
 
     if (!isOpen) return null;
 
-    const benefits = requiredPlan === 'Elite'
-        ? ['Acesso ilimitado ao Raio-X da Banca', 'Mentoria Mensal com Aprovados', 'Simulados 100% Personalizados', 'Ranking com projeção de nota']
-        : ['Resolução ilimitada de questões', 'Sem propagandas', 'Comentários de professores', 'Estatísticas básicas'];
+    const benefitKeys = (
+        getIncrementalBenefitKeysForPlan(requiredPlan, systemSettings.planEntitlements).length > 0
+            ? getIncrementalBenefitKeysForPlan(requiredPlan, systemSettings.planEntitlements)
+            : getEnabledBenefitKeysForPlan(requiredPlan, systemSettings.planEntitlements)
+    ).slice(0, 4);
+
+    const benefits = benefitKeys.map((benefitKey) => getBenefitDefinition(benefitKey).label);
 
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
@@ -61,7 +69,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                             Desbloqueie {featureName}
                         </h3>
                         <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
-                            {currentUser ? `Você está no plano ${(currentUser.subscription?.status === 'active' || currentUser.subscription?.status === 'trialing') ? ((currentUser as any).subscription?.plan?.name || (currentUser as any).plan) : 'Gratuito'}. ` : ''}
+                            {currentUser ? `Você está no plano ${getEffectivePlanDisplayName(currentUser)}. ` : ''}
                             Faça o upgrade para acessar essa e outras ferramentas exclusivas.
                         </p>
                     </div>

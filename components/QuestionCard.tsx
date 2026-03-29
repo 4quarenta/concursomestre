@@ -26,6 +26,7 @@ import { createPortal } from 'react-dom';
 import { useMarketplace } from '../context/MarketplaceContext';
 import { Link, useNavigate } from 'react-router-dom';
 import AdBanner from './AdBanner';
+import { getBenefitPlanLabel, getBenefitRequiredPlan, hasPlanBenefit } from '../src/features/subscriptions/utils/planAccess';
 
 interface QuestionCardProps {
   question: Question;
@@ -174,15 +175,16 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     : 0;
 
   // Normaliza o plano para comparação (podem vir em minúsculas do backend)
-  const planNormalized = (userPlan || 'Gratuito').toLowerCase();
   // Hierarquia e regras de acesso de plano
-  const isElite = planNormalized.includes('elite') || currentUser?.isAdmin;
-  const isPro = planNormalized.includes('pro') || planNormalized.includes('premium') || currentUser?.isAdmin;
+  const teacherRequiredPlan = getBenefitRequiredPlan('teacher_comments', systemSettings.planEntitlements);
+  const detailedRequiredPlan = getBenefitRequiredPlan('detailed_analysis', systemSettings.planEntitlements);
+  const teacherPlanLabel = getBenefitPlanLabel('teacher_comments', systemSettings.planEntitlements);
+  const detailedPlanLabel = getBenefitPlanLabel('detailed_analysis', systemSettings.planEntitlements);
 
   // Gabarito Comentado: Pro ou Elite
-  const canSeeTeacher = isPro || isElite;
+  const canSeeTeacher = hasPlanBenefit(currentUser, 'teacher_comments', systemSettings.planEntitlements);
   // Análise Detalhada: apenas Elite
-  const canSeeDetailed = isElite;
+  const canSeeDetailed = hasPlanBenefit(currentUser, 'detailed_analysis', systemSettings.planEntitlements);
 
   useEffect(() => {
     // Reset session state ONLY when question changes
@@ -657,11 +659,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="px-6 py-4 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 items-center justify-between transition-colors duration-300">
           <div className="flex gap-2 items-center flex-wrap">
             {/* Gabarito Comentado - sempre visível, bloqueado por plano */}
-            {question.teacherComment && (
+            {(question.hasTeacherComment || question.teacherComment) && (
               <button
                 onClick={() => {
                   if (!canSeeTeacher) {
-                    setPlanUpgradeModal({ featureName: 'Gabarito Comentado', requiredPlan: 'Pro', planLabel: 'Plano Pro ou superior' });
+                    setPlanUpgradeModal({ featureName: 'Gabarito Comentado', requiredPlan: teacherRequiredPlan, planLabel: teacherPlanLabel });
                     return;
                   }
                   setShowTeacherComment(!showTeacherComment);
@@ -675,11 +677,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             )}
 
             {/* Análise Detalhada - sempre visível, bloqueado por plano */}
-            {question.detailedComment && (
+            {(question.hasDetailedComment || question.detailedComment) && (
               <button
                 onClick={() => {
                   if (!canSeeDetailed) {
-                    setPlanUpgradeModal({ featureName: 'Análise Detalhada', requiredPlan: 'Elite', planLabel: 'Plano Elite' });
+                    setPlanUpgradeModal({ featureName: 'Análise Detalhada', requiredPlan: detailedRequiredPlan, planLabel: detailedPlanLabel });
                     return;
                   }
                   setShowDetailedComment(!showDetailedComment);

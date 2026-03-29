@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { hasPlanBenefit } from '../src/features/subscriptions/utils/planAccess';
 
 declare global {
     interface Window {
@@ -15,17 +16,13 @@ interface AdBannerProps {
 
 const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
     const { currentUser } = useAuth();
-    const plan = (currentUser?.subscription?.plan?.name || currentUser?.plan || 'Gratuito').toLowerCase();
-
-    // Ocultar anúncios para usuários dos planos Pro e Elite
-    const isElite = plan.includes('elite') || plan.includes('pro') || (currentUser?.subscription?.plan?.tier || 0) >= 3;
-
     const bannerRef = useRef<HTMLDivElement>(null);
     const { systemSettings } = useData();
+    const hidesAds = hasPlanBenefit(currentUser, 'no_ads', systemSettings.planEntitlements);
 
     // Efeito para carregar o script global do AdSense se necessário
     useEffect(() => {
-        if (!systemSettings.adsEnabled || isElite) return;
+        if (!systemSettings.adsEnabled || hidesAds) return;
 
         const scriptId = 'adsense-script-loader';
         const officialTestId = 'ca-pub-3940256099942544';
@@ -41,11 +38,11 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
             script.crossOrigin = "anonymous";
             document.head.appendChild(script);
         }
-    }, [systemSettings.adsEnabled, systemSettings.adsenseClientId, isElite]);
+    }, [systemSettings.adsEnabled, systemSettings.adsenseClientId, hidesAds]);
 
     // Efeito principal de renderização/injeção de anúncios
     useEffect(() => {
-        if (!systemSettings.adsEnabled || isElite || !bannerRef.current) return;
+        if (!systemSettings.adsEnabled || hidesAds || !bannerRef.current) return;
 
         const contentMap: any = {
             top: systemSettings.adBannerTop,
@@ -124,9 +121,9 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
         } catch (e) {
             console.debug('[AdBanner] Push attempted during render/HMR');
         }
-    }, [type, systemSettings.adsEnabled, systemSettings.adsenseClientId, systemSettings.adBannerTop, systemSettings.adBannerSidebar, systemSettings.adBannerBottom, isElite]);
+    }, [type, systemSettings.adsEnabled, systemSettings.adsenseClientId, systemSettings.adBannerTop, systemSettings.adBannerSidebar, systemSettings.adBannerBottom, hidesAds]);
 
-    if (!systemSettings.adsEnabled || isElite) return null;
+    if (!systemSettings.adsEnabled || hidesAds) return null;
 
     return (
         <div

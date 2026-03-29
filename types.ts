@@ -172,6 +172,8 @@ export interface Question {
 
   teacherComment?: string;
   detailedComment?: string;
+  hasTeacherComment?: boolean;
+  hasDetailedComment?: boolean;
   comentarios?: {
     ia: boolean;
     professor: boolean;
@@ -404,6 +406,36 @@ export interface PlanFeature {
   included: boolean;
 }
 
+export type PlanBenefitKey =
+  | 'unlimited_questions'
+  | 'basic_statistics'
+  | 'community_comments'
+  | 'no_ads'
+  | 'teacher_comments'
+  | 'detailed_analysis'
+  | 'ai_explanations'
+  | 'error_notebook'
+  | 'exclusive_simulations'
+  | 'xray_banca'
+  | 'mentor_chat'
+  | 'priority_support'
+  | 'early_access';
+
+export interface PlanBenefitDefinition {
+  key: PlanBenefitKey;
+  label: string;
+  description: string;
+}
+
+export type PlanBenefitMatrix = Record<PlanBenefitKey, boolean>;
+
+export interface PlanEntitlements {
+  Gratuito: PlanBenefitMatrix;
+  Essencial: PlanBenefitMatrix;
+  Pro: PlanBenefitMatrix;
+  Elite: PlanBenefitMatrix;
+}
+
 export interface PlanConfig {
   color: string;
   popular?: boolean;
@@ -450,6 +482,7 @@ export interface SystemSettings {
     Pro: PlanConfig;
     Elite: PlanConfig;
   };
+  planEntitlements?: PlanEntitlements;
   activePromotion: Promotion;
   coupons: DiscountCode[];
   features: {

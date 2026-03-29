@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import AuthModal from '../components/AuthModal';
 import AdBanner from '../components/AdBanner';
+import { getEffectivePlanName } from '../src/features/subscriptions/utils/planAccess';
 
 const PAGE_SIZE = 10;
 
@@ -80,8 +81,8 @@ const Practice: React.FC = () => {
       const matchKeyword = !filters.keyword || (q.enunciado_clean || q.enunciado || '').toLowerCase().includes(filters.keyword.toLowerCase());
       const matchSaved = !filters.onlySaved || currentUser?.savedQuestionIds.includes(String(q.id));
 
-      const matchTeacher = !filters.hasTeacherComment || !!q.teacherComment;
-      const matchDetailed = !filters.hasDetailedComment || !!q.detailedComment;
+      const matchTeacher = !filters.hasTeacherComment || !!q.hasTeacherComment || !!q.teacherComment;
+      const matchDetailed = !filters.hasDetailedComment || !!q.hasDetailedComment || !!q.detailedComment;
 
       const matchCanceled = !(q.anulada || q.isCanceled) || !filters.excludeCanceled;
       const matchOutdated = !(q.desatualizada || q.isOutdated) || !filters.excludeOutdated;
@@ -522,7 +523,7 @@ const Practice: React.FC = () => {
                   indexDisplay={currentQuestionIndex + 1}
                   existingAnswer={userAnswers.find(a => a.questionId === filteredQuestions[currentQuestionIndex].id)}
                   isAlreadyReported={reports.some(r => r.questionId === filteredQuestions[currentQuestionIndex].id && r.status === 'pending')}
-                  userPlan={currentUser?.subscription?.plan?.name || currentUser?.plan || currentUser?.billing?.plan || 'Gratuito'}
+                    userPlan={getEffectivePlanName(currentUser)}
                   existingNote={userNotes.find(n => String(n.questionId) === String(filteredQuestions[currentQuestionIndex].id))}
                   onSaveNote={(qId, text) => saveNote(Number(qId), text)}
                   onToggleSave={(id) => {
@@ -643,7 +644,7 @@ const Practice: React.FC = () => {
                 existingAnswer={userAnswers.find(a => a.questionId === q.id)}
                 existingNote={userNotes.find(n => String(n.questionId) === String(q.id))}
                 isAlreadyReported={reports.some(r => r.questionId === q.id && r.status === 'pending')}
-                userPlan={currentUser?.subscription?.plan?.name || currentUser?.plan || currentUser?.billing?.plan || 'Gratuito'}
+                    userPlan={getEffectivePlanName(currentUser)}
                 currentUserId={currentUser?.id || ''}
                 currentUserName={currentUser?.name || 'Visitante'}
               />

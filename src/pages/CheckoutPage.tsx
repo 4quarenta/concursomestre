@@ -14,6 +14,7 @@ import { getInstallments, getIssuers, getPaymentMethods, initMercadoPago } from 
 import { apiClient, ENDPOINTS } from '../core/api';
 import ReCAPTCHA from 'react-google-recaptcha';
 import StripeCardElementForm from '../features/payments/components/StripeCardElementForm';
+import { loadStripe } from '@stripe/stripe-js';
 
 type CheckoutStep = 'identification' | 'payment' | 'success';
 type AuthMode = 'login' | 'register';
@@ -101,6 +102,9 @@ const CheckoutPage: React.FC = () => {
     const [stripeCards, setStripeCards] = useState<any[]>([]);
     const [isLoadingStripeCards, setIsLoadingStripeCards] = useState(false);
     const requiresSavedCard = isRecurring || (autoRenew && !isUsingSavedCard);
+    const [selectedStripeCardId, setSelectedStripeCardId] = useState<string | null>(null);
+    const [pendingStripeSubscriptionId, setPendingStripeSubscriptionId] = useState<string | null>(null);
+    const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
     const savedCardMpRef = useRef<any>(null);
     const savedCardSecurityFieldRef = useRef<any>(null);
 
@@ -137,6 +141,20 @@ const CheckoutPage: React.FC = () => {
         if (!import.meta.env.DEV) return;
         console.info(`[MercadoPago] ${label}`, payload);
     };
+
+    const selectedStripeCard = useMemo(() => {
+        return stripeCards.find((card: any) => card.id === selectedStripeCardId) || null;
+    }, [stripeCards, selectedStripeCardId]);
+
+    const isUsingStripeSavedCard = isStripeProvider && Boolean(selectedStripeCard);
+    const stripeRequiresSavedCard = isStripeProvider && autoRenew && !isUsingStripeSavedCard;
+    const stripePromise = useMemo(() => {
+        if (!STRIPE_PUBLISHABLE_KEY) {
+            return null;
+        }
+
+        return loadStripe(STRIPE_PUBLISHABLE_KEY);
+    }, [STRIPE_PUBLISHABLE_KEY]);
 
     useEffect(() => {
         if (!planId) {
@@ -258,7 +276,9 @@ const CheckoutPage: React.FC = () => {
             setIsRecurring(false);
             setIsUsingSavedCard(false);
             setSelectedCard(null);
-            setSaveCard(false);
+            setSelectedStripeCardId(null);
+            setPendingStripeSubscriptionId(null);
+            setPendingStripePaymentMethodId(null);
             setIssuerId(null);
         }
     }, [isStripeProvider]);
@@ -502,27 +522,40 @@ const CheckoutPage: React.FC = () => {
 
     const loadSavedCards = async () => {
         if (isStripeProvider) {
+            if (!currentUser) {
+                setStripeCards([]);
+                setSelectedStripeCardId(null);
+                return;
+            }
             setSavedCards([]);
             setSelectedCard(null);
             setIsUsingSavedCard(false);
             setIssuerId(null);
-            if (cardVaultProvider === 'stripe') {
-                setIsLoadingStripeCards(true);
-                try {
-                    const res: any = await apiClient.post('users/list_cards.php', { user_id: currentUser?.id });
-                    if (res.success) {
-                        setStripeCards(res.cards || []);
-                    } else {
-                        setStripeCards([]);
-                    }
-                } catch (error) {
-                    console.error('Error fetching Stripe cards:', error);
-                    setStripeCards([]);
-                } finally {
-                    setIsLoadingStripeCards(false);
+            setIsLoadingStripeCards(true);
+            try {
+                const stripeCardRequestPayload = currentUser?.id ? { user_id: currentUser.id } : {};
+                const res: any = await apiClient.post('users/list_cards.php', stripeCardRequestPayload);
+                const nextCards = res.success ? (res.cards || []) : [];
+                setStripeCards(nextCards);
+
+                if (nextCards.length === 0) {
+                    setSelectedStripeCardId(null);
+                    return;
                 }
-            } else {
+
+                setSelectedStripeCardId((currentSelected) => {
+                    if (currentSelected && nextCards.some((card: any) => card.id === currentSelected)) {
+                        return currentSelected;
+                    }
+
+                    return nextCards.find((card: any) => Number(card.is_default) === 1)?.id || nextCards[0]?.id || null;
+                });
+            } catch (error) {
+                console.error('Error fetching Stripe cards:', error);
                 setStripeCards([]);
+                setSelectedStripeCardId(null);
+            } finally {
+                setIsLoadingStripeCards(false);
             }
             return;
         }
@@ -591,7 +624,6 @@ const CheckoutPage: React.FC = () => {
         if (currentUser) {
             setStep('payment');
             setPaymentData(prev => ({ ...prev, payerName: currentUser.name, cpf: currentUser.cpf || '' }));
-            loadSavedCards();
         } else {
             setStep('identification');
         }
@@ -925,6 +957,7 @@ const CheckoutPage: React.FC = () => {
                 auto_renew: autoRenew,
                 coupon_code: appliedCoupon?.code || undefined,
                 payment_method_id: paymentMethodId,
+                save_card: saveCard || stripeRequiresSavedCard,
             });
 
             if (!response?.success) {
@@ -932,10 +965,16 @@ const CheckoutPage: React.FC = () => {
             }
 
             const payload = response?.data || response;
+            setPendingStripeSubscriptionId(payload?.subscription_id || null);
+            setPendingStripePaymentMethodId(paymentMethodId);
+
             return {
                 clientSecret: payload?.client_secret,
                 status: payload?.payment_intent_status,
                 confirmationType: payload?.confirmation_type || 'payment',
+                subscriptionId: payload?.subscription_id || null,
+                paymentMethodId,
+                saveCard: payload?.save_card ?? (saveCard || stripeRequiresSavedCard),
             };
         } catch (error: any) {
             console.error('Stripe internal checkout error:', error);
@@ -947,10 +986,111 @@ const CheckoutPage: React.FC = () => {
         }
     };
 
-    const finalizeStripeInternalCheckout = async () => {
+    const finalizeStripeInternalCheckout = async (options?: {
+        subscriptionId?: string | null;
+        paymentMethodId?: string | null;
+        savedCardId?: string | null;
+        saveCard?: boolean;
+    }) => {
+        if (!plan) return;
+
+        const subscriptionId = options?.subscriptionId || pendingStripeSubscriptionId;
+        if (!subscriptionId) {
+            throw new Error('A assinatura Stripe nao retornou um identificador para a confirmacao final.');
+        }
+
+        const resolvedSaveCard = options?.saveCard ?? (saveCard || stripeRequiresSavedCard);
+
+        const response = await planService.finalizeStripeSubscription({
+            subscription_id: subscriptionId,
+            plan_id: plan.id,
+            auto_renew: autoRenew,
+            payment_method_id: options?.paymentMethodId || pendingStripePaymentMethodId || undefined,
+            saved_card_id: options?.savedCardId || undefined,
+            save_card: resolvedSaveCard,
+        });
+
+        if (!response?.success) {
+            throw new Error(response?.message || 'Nao foi possivel finalizar a assinatura Stripe.');
+        }
+
+        const payload = response?.data || response;
         await refreshUser();
         await loadSavedCards();
+
+        setPendingStripeSubscriptionId(null);
+        setPendingStripePaymentMethodId(null);
+
+        if (payload?.card_saved && !options?.savedCardId) {
+            addToast('Cartao salvo com sucesso para compras futuras.', 'success');
+        }
+
+        if (payload?.card_save_warning) {
+            addToast(payload.card_save_warning, 'warning');
+        }
+
+        if (payload?.access_granted === false) {
+            addToast('Pagamento confirmado. Estamos concluindo a sincronizacao final da assinatura com a Stripe.', 'info');
+        }
+
         setStep('success');
+    };
+
+    const handleStripeSavedCardPayment = async () => {
+        if (!plan || !currentUser || !selectedStripeCard) {
+            addToast('Selecione um cartao salvo para continuar.', 'warning');
+            return;
+        }
+
+        if (!stripePromise) {
+            addToast('Stripe Publishable Key nao configurada.', 'error');
+            return;
+        }
+
+        setProcessing(true);
+        try {
+            const response = await planService.createStripeSubscription({
+                plan_id: plan.id,
+                auto_renew: autoRenew,
+                coupon_code: appliedCoupon?.code || undefined,
+                saved_card_id: selectedStripeCard.id,
+                save_card: true,
+            });
+
+            if (!response?.success) {
+                throw new Error(response?.message || 'Nao foi possivel iniciar a cobranca com o cartao salvo.');
+            }
+
+            const payload = response?.data || response;
+            const stripe = await stripePromise;
+            if (!stripe) {
+                throw new Error('Nao foi possivel carregar o Stripe para confirmar o pagamento.');
+            }
+
+            if (payload?.client_secret) {
+                const confirmation =
+                    payload?.confirmation_type === 'setup'
+                        ? await stripe.confirmCardSetup(payload.client_secret)
+                        : await stripe.confirmCardPayment(payload.client_secret);
+
+                if (confirmation.error) {
+                    throw new Error(confirmation.error.message || 'Nao foi possivel confirmar o cartao salvo.');
+                }
+            }
+
+            await finalizeStripeInternalCheckout({
+                subscriptionId: payload?.subscription_id || null,
+                paymentMethodId: selectedStripeCard.stripe_payment_method_id || null,
+                savedCardId: selectedStripeCard.id,
+                saveCard: true,
+            });
+        } catch (error: any) {
+            console.error('Stripe saved card checkout error:', error);
+            const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar o cartao salvo.';
+            addToast(errorMsg, 'error');
+        } finally {
+            setProcessing(false);
+        }
     };
 
     const displayName = useMemo(() => {
@@ -1232,42 +1372,159 @@ const CheckoutPage: React.FC = () => {
                                         <div className="bg-slate-100 dark:bg-[#0f1020] p-6 md:p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800">
                                             {isStripeProvider ? (
                                                 <div className="space-y-5">
-                                                    {cardVaultProvider === 'stripe' && stripeCards.length > 0 && (
-                                                        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-4">
-                                                            <div className="flex items-center justify-between gap-3">
+                                                    {isLoadingStripeCards ? (
+                                                        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-4 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                                                            Carregando cartões salvos...
+                                                        </div>
+                                                    ) : stripeCards.length > 0 ? (
+                                                        <div className="space-y-3">
+                                                            <div className="flex items-center justify-between">
                                                                 <div>
-                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Cartão salvo para renovações</p>
-                                                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">
-                                                                        {String(stripeCards.find((card: any) => card.is_default == 1)?.brand || stripeCards[0]?.brand || 'card').toUpperCase()} •••• {stripeCards.find((card: any) => card.is_default == 1)?.last_four_digits || stripeCards[0]?.last_four_digits}
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Cartões salvos</p>
+                                                                    <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
+                                                                        Escolha um cartão salvo ou use um cartão novo nesta compra.
                                                                     </p>
                                                                 </div>
                                                                 <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                                                                     {stripeCards.length} salvo(s)
                                                                 </span>
                                                             </div>
+
+                                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                                {stripeCards.map((card: any) => {
+                                                                    const isSelected = selectedStripeCardId === card.id;
+                                                                    return (
+                                                                        <button
+                                                                            key={card.id}
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                setSelectedStripeCardId(card.id);
+                                                                                setSaveCard(false);
+                                                                            }}
+                                                                            className={`rounded-2xl border p-4 text-left transition-all ${
+                                                                                isSelected
+                                                                                    ? 'border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-500/10'
+                                                                                    : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#121528]'
+                                                                            }`}
+                                                                        >
+                                                                            <div className="flex items-center justify-between gap-3">
+                                                                                <div>
+                                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">{String(card.brand || 'card').toUpperCase()}</p>
+                                                                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">•••• {card.last_four_digits}</p>
+                                                                                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">Expira em {String(card.exp_month).padStart(2, '0')}/{String(card.exp_year).slice(-2)}</p>
+                                                                                </div>
+                                                                                <div className="flex flex-col items-end gap-2">
+                                                                                    {Number(card.is_default) === 1 && (
+                                                                                        <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                                                                            Padrão
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {isSelected && <CheckCircle2 size={18} className="text-indigo-600 dark:text-indigo-400" />}
+                                                                                </div>
+                                                                            </div>
+                                                                        </button>
+                                                                    );
+                                                                })}
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setSelectedStripeCardId(null)}
+                                                                    className={`rounded-2xl border border-dashed p-4 text-left transition-all ${
+                                                                        !isUsingStripeSavedCard
+                                                                            ? 'border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-500/10'
+                                                                            : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#121528]'
+                                                                    }`}
+                                                                >
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Novo cartão</p>
+                                                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">Informar novos dados</p>
+                                                                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">Use outro cartão e escolha se quer salvá-lo no seu perfil.</p>
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                    )}
+                                                    ) : null}
 
                                                     {isStripeInternalCheckout ? (
-                                                        <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6 space-y-5">
-                                                            <StripeCardElementForm
-                                                                publishableKey={STRIPE_PUBLISHABLE_KEY}
-                                                                billingName={currentUser.name}
-                                                                billingEmail={currentUser.email}
-                                                                submitLabel={processing ? 'Processando pagamento...' : 'Pagar com cartão'}
-                                                                onPaymentMethodCreated={handleStripeInternalPayment}
-                                                                onPaymentFinalized={finalizeStripeInternalCheckout}
-                                                            />
-                                                        </div>
+                                                        isUsingStripeSavedCard ? (
+                                                            <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6 space-y-5">
+                                                                <div className="space-y-2">
+                                                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cartão selecionado</p>
+                                                                    <p className="text-base font-black text-slate-900 dark:text-white">
+                                                                        {String(selectedStripeCard?.brand || 'card').toUpperCase()} •••• {selectedStripeCard?.last_four_digits}
+                                                                    </p>
+                                                                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                                                                        O pagamento será confirmado com este cartão salvo. Se a Stripe solicitar autenticação adicional, você verá a confirmação segura logo em seguida.
+                                                                    </p>
+                                                                </div>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handleStripeSavedCardPayment}
+                                                                    disabled={processing}
+                                                                    className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                >
+                                                                    {processing ? 'Processando pagamento...' : 'Pagar com cartão salvo'}
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6 space-y-5">
+                                                                <StripeCardElementForm
+                                                                    publishableKey={STRIPE_PUBLISHABLE_KEY}
+                                                                    billingName={currentUser.name}
+                                                                    billingEmail={currentUser.email}
+                                                                    submitLabel={processing ? 'Processando pagamento...' : 'Pagar com cartão'}
+                                                                    onPaymentMethodCreated={handleStripeInternalPayment}
+                                                                onPaymentFinalized={(step) => finalizeStripeInternalCheckout({
+                                                                    subscriptionId: step?.subscriptionId || null,
+                                                                    paymentMethodId: step?.paymentMethodId || null,
+                                                                    saveCard: step?.saveCard,
+                                                                })}
+                                                                />
+                                                            </div>
+                                                        )
                                                     ) : (
                                                         <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6">
                                                             <p className="text-sm font-bold text-slate-900 dark:text-white">Você será levado para a tela segura da Stripe para informar o cartão e concluir a compra.</p>
                                                         </div>
                                                     )}
 
+                                                    {!isUsingStripeSavedCard && (
                                                     <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-xl cursor-pointer transition-all group">
                                                         <div className="relative">
-                                                            <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} className="sr-only peer" />
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={saveCard || stripeRequiresSavedCard}
+                                                                disabled={stripeRequiresSavedCard}
+                                                                onChange={(e) => setSaveCard(e.target.checked)}
+                                                                className="sr-only peer"
+                                                            />
+                                                            <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-indigo-700 dark:group-hover:text-white transition-colors">
+                                                                Salvar este cartão para compras futuras
+                                                                {stripeRequiresSavedCard && <span className="ml-1 font-extrabold text-indigo-600 dark:text-indigo-400">(Necessário para renovação automática)</span>}
+                                                            </span>
+                                                            <span className="text-[10px] text-slate-500">
+                                                                Ele aparecerá em Dados Pessoais para reutilização rápida nas próximas compras.
+                                                            </span>
+                                                        </div>
+                                                    </label>
+                                                    )}
+
+                                                    <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-xl cursor-pointer transition-all group">
+                                                        <div className="relative">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={autoRenew}
+                                                                onChange={(e) => {
+                                                                    const enabled = e.target.checked;
+                                                                    setAutoRenew(enabled);
+                                                                    if (enabled && !isUsingStripeSavedCard) {
+                                                                        setSaveCard(true);
+                                                                    }
+                                                                }}
+                                                                className="sr-only peer"
+                                                            />
                                                             <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
                                                         </div>
                                                         <div className="flex flex-col">

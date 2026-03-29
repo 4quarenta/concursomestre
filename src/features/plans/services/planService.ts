@@ -86,13 +86,32 @@ export const planService = {
         plan_id: number;
         auto_renew?: boolean;
         coupon_code?: string;
-        payment_method_id: string;
+        payment_method_id?: string;
+        saved_card_id?: string;
+        save_card?: boolean;
     }): Promise<any> {
         try {
             const response = await apiClient.post<ApiResponse<any>>('/subscriptions/create_stripe_subscription.php', payload);
             return response;
         } catch (error) {
             console.error('Error creating Stripe inline subscription:', error);
+            throw error;
+        }
+    },
+
+    async finalizeStripeSubscription(payload: {
+        subscription_id: string;
+        plan_id?: number;
+        auto_renew?: boolean;
+        payment_method_id?: string;
+        saved_card_id?: string;
+        save_card?: boolean;
+    }): Promise<any> {
+        try {
+            const response = await apiClient.post<ApiResponse<any>>('/subscriptions/finalize_stripe_subscription.php', payload);
+            return response;
+        } catch (error) {
+            console.error('Error finalizing Stripe subscription:', error);
             throw error;
         }
     },

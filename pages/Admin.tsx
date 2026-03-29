@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams, useLocation, Link } from 'react-router-dom';
-import { Difficulty, Subject, Question, ErrorReport, Material, UserProfile, SystemSettings, DiscountCode, AppPromotionTheme, GlobalTaxonomies } from '../types';
+import { Difficulty, Subject, Question, ErrorReport, Material, UserProfile, SystemSettings, DiscountCode, AppPromotionTheme, GlobalTaxonomies, PlanBenefitKey } from '../types';
 import {
   Search, Trash2, Plus, Edit3, X, XCircle, Flag, AlertTriangle, CheckCircle2, ShoppingBag, LayoutDashboard,
   DollarSign, Users, TrendingUp, Filter, Image as ImageIcon, FileCheck, Ban, MessageSquare, Clock, Eye,
@@ -26,6 +26,7 @@ import Footer from '../src/components/layout/Footer';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { DEFAULT_PLAN_ENTITLEMENTS, PLAN_BENEFIT_DEFINITIONS, PLAN_ORDER, normalizePlanEntitlements } from '../src/features/subscriptions/config/planEntitlements';
 
 const api = apiClient;
 
@@ -2521,6 +2522,24 @@ const AdminFinance = ({ systemSettings, updateSystemSettings, allTransactions, a
     updateSystemSettings({ ...systemSettings, planDetails: updatedPlanDetails });
   };
 
+  const handleTogglePlanEntitlement = (plan: typeof PLAN_ORDER[number], benefitKey: PlanBenefitKey) => {
+    const updatedEntitlements = normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS);
+    const planIndex = PLAN_ORDER.indexOf(plan);
+    const nextValue = !updatedEntitlements[plan][benefitKey];
+
+    PLAN_ORDER.forEach((planName, index) => {
+      if (nextValue && index >= planIndex) {
+        updatedEntitlements[planName][benefitKey] = true;
+      }
+
+      if (!nextValue && index <= planIndex) {
+        updatedEntitlements[planName][benefitKey] = false;
+      }
+    });
+
+    updateSystemSettings({ ...systemSettings, planEntitlements: updatedEntitlements });
+  };
+
   // --- REEMBOLSOS ---
   const { resolveRefund } = useMarketplace();
   const handleResolveRefund = (transactionId: string, resolution: 'approved' | 'rejected') => {
@@ -3230,6 +3249,70 @@ const AdminFinance = ({ systemSettings, updateSystemSettings, allTransactions, a
                 </div>
               </div>
             ))}
+          </div>
+
+          <div className="mt-8 rounded-[2rem] border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+              <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <ShieldCheck size={18} className="text-indigo-600 dark:text-indigo-400" />
+                Controle de Acesso por Plano
+              </h4>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                Esta matriz define os beneficios reais liberados para cada plano. A interface e os endpoints premium passam a confiar nela para evitar vazamento de recursos de planos superiores.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-left">
+                <thead className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+                  <tr>
+                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Beneficio</th>
+                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descricao</th>
+                    {PLAN_ORDER.map((planName) => (
+                      <th key={planName} className="p-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                        {planName}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {PLAN_BENEFIT_DEFINITIONS.map((benefit) => {
+                    const resolvedEntitlements = normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS);
+
+                    return (
+                      <tr key={benefit.key} className="bg-white dark:bg-slate-900/40">
+                        <td className="p-4 align-top">
+                          <div className="text-sm font-black text-slate-900 dark:text-slate-100">{benefit.label}</div>
+                          <div className="mt-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">{benefit.key}</div>
+                        </td>
+                        <td className="p-4 align-top text-xs font-medium text-slate-500 dark:text-slate-400">
+                          {benefit.description}
+                        </td>
+                        {PLAN_ORDER.map((planName) => {
+                          const enabled = resolvedEntitlements[planName][benefit.key];
+
+                          return (
+                            <td key={`${benefit.key}-${planName}`} className="p-4 text-center align-top">
+                              <button
+                                onClick={() => handleTogglePlanEntitlement(planName, benefit.key)}
+                                className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border transition-all ${
+                                  enabled
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-400'
+                                    : 'border-slate-200 bg-slate-50 text-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500'
+                                }`}
+                                title={`${enabled ? 'Remover' : 'Liberar'} ${benefit.label} para o plano ${planName}`}
+                              >
+                                {enabled ? <Check size={14} /> : <X size={14} />}
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

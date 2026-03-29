@@ -18,26 +18,36 @@ interface AuthProps {
 }
 
 /** Monta UserProfile com valores padrão a partir do objeto retornado pela API */
-const buildUserProfile = (user: any): UserProfile => ({
-  ...user,
-  id: user.id,
-  name: user.name,
-  email: user.email,
-  role: user.role,
-  level: Number(user.level || 1),
-  xp: Number(user.xp || 0),
-  savedQuestionIds: user.savedQuestionIds || [],
-  simulations: user.simulations || [],
-  purchasedMaterialIds: user.purchasedMaterialIds || [],
-  preferences: user.preferences
-    ? (typeof user.preferences === 'string' ? JSON.parse(user.preferences) : user.preferences)
-    : { shareData: true, notifications: true },
-  billing: { plan: user.plan || 'Gratuito', billingCycle: user.billing_cycle || 'monthly' },
-  reputation: Number(user.reputation || 100),
-  status: user.status,
-  isAdmin: user.role === 'admin',
-  isPartner: user.role === 'partner' || user.role === 'admin',
-});
+const buildUserProfile = (user: any): UserProfile => {
+  const resolvedBilling = user.billing && typeof user.billing === 'object' ? user.billing : {};
+
+  return {
+    ...user,
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    level: Number(user.level || 1),
+    xp: Number(user.xp || 0),
+    savedQuestionIds: user.savedQuestionIds || [],
+    simulations: user.simulations || [],
+    purchasedMaterialIds: user.purchasedMaterialIds || [],
+    preferences: user.preferences
+      ? (typeof user.preferences === 'string' ? JSON.parse(user.preferences) : user.preferences)
+      : { shareData: true, notifications: true },
+    billing: {
+      plan: resolvedBilling.plan || user.plan || 'Gratuito',
+      billingCycle: resolvedBilling.billingCycle || user.billing_cycle || 'monthly',
+      nextBilling: resolvedBilling.nextBilling || undefined,
+      cardLast4: resolvedBilling.cardLast4 || undefined,
+      paymentDay: resolvedBilling.paymentDay || undefined,
+    },
+    reputation: Number(user.reputation || 100),
+    status: user.status,
+    isAdmin: user.role === 'admin',
+    isPartner: user.role === 'partner' || user.role === 'admin',
+  };
+};
 
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [searchParams] = useSearchParams();

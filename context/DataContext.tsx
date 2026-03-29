@@ -11,6 +11,7 @@ import { notificationService } from '@features/notifications';
 import { reputationService } from '@features/auth';
 import { commentService } from '@features/comments';
 import { questionService } from '@features/questions';
+import { DEFAULT_PLAN_ENTITLEMENTS } from '../src/features/subscriptions/config/planEntitlements';
 
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
@@ -30,6 +31,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     Elite: { ...PRICING.Elite, quarterlyDiscountPercent: 10, annualDiscountPercent: 30 },
   },
   planDetails: PLAN_DETAILS,
+  planEntitlements: DEFAULT_PLAN_ENTITLEMENTS,
   activePromotion: {
     isActive: false,
     name: 'Black Friday',

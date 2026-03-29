@@ -24,6 +24,7 @@ import AuthModal from '../components/AuthModal';
 import { apiClient, ENDPOINTS, buildDownloadUrl } from '../src/core/api';
 import { planService } from '../src/features/plans/services/planService';
 import StripeSetupCardForm from '../src/features/payments/components/StripeSetupCardForm';
+import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from '../src/features/subscriptions/utils/planAccess';
 
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
 type ProfileTab = 'evolution' | 'notebook' | 'materials' | 'personal' | 'billing' | 'billing-history' | 'security' | 'referral';
@@ -39,8 +40,11 @@ const Profile: React.FC = () => {
     const billingProviderLabel = isStripeBilling ? 'Stripe' : 'Mercado Pago';
     const paymentCheckoutMode = (systemSettings?.paymentCheckoutMode || 'internal') as 'internal' | 'redirect';
     const cardVaultProvider = (systemSettings?.cardVaultProvider || 'local') as 'local' | 'mercado_pago' | 'stripe';
-    const usesInternalStripeVault = isStripeBilling && paymentCheckoutMode === 'internal' && cardVaultProvider === 'stripe';
+    const usesInternalStripeVault = isStripeBilling;
     const stripePublishableKey = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
+    const hasActiveSubscription = hasActivePlanAccess(currentUser);
+    const effectivePlanDisplayName = getEffectivePlanDisplayName(currentUser);
+    const isElitePlan = isPlanAtLeast(currentUser, 'Elite');
 
     const [activeTab, setActiveTab] = useState<ProfileTab>('evolution');
     const [selectedCycle, setSelectedCycle] = useState<BillingCycle>('monthly');
@@ -75,10 +79,10 @@ const Profile: React.FC = () => {
 
     // Handlers de API para Gerenciamento de Dados
     const fetchUserCards = async () => {
-        if (!currentUser?.id) return;
+        if (!currentUser) return;
         setIsLoadingCards(true);
         try {
-            const res: any = await apiClient.post('users/list_cards.php', { user_id: currentUser.id });
+            const res: any = await apiClient.post('users/list_cards.php', currentUser.id ? { user_id: currentUser.id } : {});
             if (res.success) setUserCards(res.cards || []);
         } catch (err) {
             console.error('Failed to fetch cards', err);
@@ -88,10 +92,6 @@ const Profile: React.FC = () => {
     };
 
     const handleRemoveCard = async (cardId: string) => {
-        if (isStripeBilling && !usesInternalStripeVault) {
-            addToast('Os métodos de pagamento do Stripe são gerenciados no Billing Portal.', 'info');
-            return;
-        }
         const card = userCards.find(c => c.id === cardId);
         if (card?.locked_by_recurring === 1) {
             return addToast('Este cartão não pode ser removido pois está vinculado a uma assinatura ativa.', 'warning');
@@ -99,7 +99,7 @@ const Profile: React.FC = () => {
 
         if (!window.confirm('Tem certeza que deseja remover este cartão?')) return;
         try {
-            const res: any = await apiClient.post('users/remove_card.php', { user_id: currentUser.id, card_id: cardId });
+            const res: any = await apiClient.post('users/remove_card.php', { ...(currentUser?.id ? { user_id: currentUser.id } : {}), card_id: cardId });
             if (res.success) {
                 addToast('Cartão removido com sucesso!', 'success');
                 fetchUserCards();
@@ -112,12 +112,8 @@ const Profile: React.FC = () => {
     };
 
     const handleSetDefaultCard = async (cardId: string) => {
-        if (isStripeBilling && !usesInternalStripeVault) {
-            addToast('Defina o método padrão diretamente no Billing Portal da Stripe.', 'info');
-            return;
-        }
         try {
-            const res: any = await apiClient.post('users/set_default_card.php', { user_id: currentUser.id, card_id: cardId });
+            const res: any = await apiClient.post('users/set_default_card.php', { ...(currentUser?.id ? { user_id: currentUser.id } : {}), card_id: cardId });
             if (res.success) {
                 addToast('Cartão padrão atualizado!', 'success');
                 fetchUserCards();
@@ -192,6 +188,14 @@ const Profile: React.FC = () => {
         }
     };
 
+    const openSavedCardsManager = () => {
+        setActiveTab('personal');
+        navigate('/profile?tab=personal');
+        window.setTimeout(() => {
+            document.getElementById('saved-cards-personal-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 120);
+    };
+
     const handleOpenStripePortal = async () => {
         if (!currentUser?.id) return;
 
@@ -241,12 +245,10 @@ const Profile: React.FC = () => {
         
         const newValue = !currentUser.subscription.auto_renew;
         
-        if (!isStripeBilling && newValue && userCards.length === 0) {
+        if (newValue && userCards.length === 0) {
             addToast('Você precisa de um cartão salvo para ativar a renovação automática.', 'warning');
             setIsAddingCard(true);
-            setTimeout(() => {
-                document.getElementById('save-card-section')?.scrollIntoView({ behavior: 'smooth' });
-            }, 100);
+            openSavedCardsManager();
             return;
         }
 
@@ -277,6 +279,58 @@ const Profile: React.FC = () => {
         }
     };
 
+    const formatTransactionAmount = (amount: number | string) => {
+        const numericAmount = typeof amount === 'number' ? amount : Number(amount || 0);
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+        }).format(numericAmount || 0);
+    };
+
+    const getTransactionStatusMeta = (status?: string) => {
+        const normalized = String(status || '').toLowerCase();
+
+        if (normalized === 'approved' || normalized === 'completed') {
+            return {
+                label: 'Aprovado',
+                className: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
+            };
+        }
+
+        if (normalized === 'refund_requested') {
+            return {
+                label: 'Reembolso em analise',
+                className: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
+            };
+        }
+
+        if (normalized === 'refunded') {
+            return {
+                label: 'Reembolsado',
+                className: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400',
+            };
+        }
+
+        if (normalized === 'pending' || normalized === 'pre-approved') {
+            return {
+                label: 'Pendente',
+                className: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
+            };
+        }
+
+        if (normalized === 'rejected') {
+            return {
+                label: 'Recusado',
+                className: 'bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400',
+            };
+        }
+
+        return {
+            label: 'Cancelado',
+            className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+        };
+    };
+
     const fetchUserMaterials = async () => {
         if (!currentUser?.id) return;
         try {
@@ -298,7 +352,7 @@ const Profile: React.FC = () => {
 
     // Atualizar dados quando a aba mudar
     React.useEffect(() => {
-        if (activeTab === 'billing') fetchUserCards();
+        if (activeTab === 'billing' || activeTab === 'personal') fetchUserCards();
         if (activeTab === 'billing-history') fetchUserTransactions();
         if (activeTab === 'materials') fetchUserMaterials();
         if (activeTab === 'referral') fetchReferralStats();
@@ -505,8 +559,8 @@ const Profile: React.FC = () => {
                             <p className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate max-w-[180px] transition-colors">{currentUser.email}</p>
                         </div>
                         <div className="w-full pt-3 border-t border-slate-50 dark:border-slate-800 flex justify-center transition-colors">
-                            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded border transition-colors ${(currentUser.plan && currentUser.plan.includes('Elite')) || (currentUser.subscription?.plan?.name && currentUser.subscription.plan.name.includes('Elite')) ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-800/30' : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-700'}`}>
-                                Plano {currentUser.subscription?.plan?.name || currentUser.plan || 'Gratuito'}
+                            <span className={`text-[10px] font-black uppercase px-2 py-1 rounded border transition-colors ${isElitePlan ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-800/30' : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-700'}`}>
+                                Plano {effectivePlanDisplayName}
                             </span>
                         </div>
                     </div>
@@ -944,10 +998,202 @@ const Profile: React.FC = () => {
                                ) : (
                                    <ShieldCheck size={16} />
                                )}
-                               {isUpdatingProfile ? 'Sincronizando...' : 'Sincronizar Perfil'}
+                                {isUpdatingProfile ? 'Sincronizando...' : 'Sincronizar Perfil'}
                             </button>
                          </div>
                      </form>
+
+                     <div id="saved-cards-personal-section" className="mt-12 border-t border-slate-100 pt-8 dark:border-slate-800">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                            <div>
+                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Cartões Salvos</h3>
+                                <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                    Seus cartões ficam disponíveis aqui para compras futuras e para renovação automática.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsAddingCard(!isAddingCard);
+                                    if (!isAddingCard) {
+                                        setStripeSetupClientSecret(null);
+                                    }
+                                }}
+                                className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                                    isAddingCard
+                                        ? 'border-rose-200 bg-rose-50 text-rose-600'
+                                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                                }`}
+                            >
+                                {isAddingCard ? <X size={14} /> : <CreditCard size={14} />}
+                                {isAddingCard ? 'Cancelar' : 'Adicionar cartão'}
+                            </button>
+                        </div>
+
+                        <div className="mt-6 space-y-4">
+                            {isStripeBilling ? (
+                                <>
+                                    {isAddingCard && (
+                                        <div className="rounded-2xl border border-indigo-100 bg-slate-50 p-5 dark:border-indigo-900/40 dark:bg-slate-800/30">
+                                            {!stripeSetupClientSecret ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={handlePrepareStripeCard}
+                                                    disabled={isSavingCard}
+                                                    className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-indigo-700 disabled:opacity-60"
+                                                >
+                                                    {isSavingCard ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
+                                                    {isSavingCard ? 'Preparando formulário...' : 'Novo cartão Stripe'}
+                                                </button>
+                                            ) : (
+                                                <StripeSetupCardForm
+                                                    publishableKey={stripePublishableKey}
+                                                    clientSecret={stripeSetupClientSecret}
+                                                    billingName={currentUser?.name}
+                                                    billingEmail={currentUser?.email}
+                                                    onSaved={handleStripeCardSaved}
+                                                />
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {isLoadingCards ? (
+                                        <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-8 dark:border-slate-800 dark:bg-slate-800/20">
+                                            <Loader2 className="animate-spin text-indigo-500" />
+                                        </div>
+                                    ) : userCards.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {userCards.map((card: any) => (
+                                                <div key={card.id} className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition-all dark:border-slate-800 dark:bg-slate-800/20 md:flex-row md:items-center md:justify-between">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${Number(card.is_default) === 1 ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}`}>
+                                                            <CreditCard size={20} />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <p className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
+                                                                    {String(card.brand || 'card').toUpperCase()} •••• {card.last_four_digits}
+                                                                </p>
+                                                                {Number(card.is_default) === 1 && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">Padrão</span>}
+                                                                {Number(card.locked_by_recurring) === 1 && <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-white">Assinatura ativa</span>}
+                                                            </div>
+                                                            <p className="mt-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                                                                Expira em {String(card.exp_month).padStart(2, '0')}/{card.exp_year}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {Number(card.is_default) !== 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSetDefaultCard(card.id)}
+                                                                className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700 transition-all hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                                                            >
+                                                                Definir padrão
+                                                            </button>
+                                                        )}
+                                                        {Number(card.locked_by_recurring) !== 1 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveCard(card.id)}
+                                                                className="rounded-xl bg-rose-50 p-2 text-rose-500 transition-all hover:bg-rose-100 dark:bg-rose-900/20 dark:hover:bg-rose-900/30"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
+                                            <CreditCard size={28} className="mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+                                            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Nenhum cartão salvo ainda.</p>
+                                            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Adicione um cartão para acelerar compras futuras e renovações.</p>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    {isAddingCard && (
+                                        <form onSubmit={handleSaveCard} className="rounded-2xl border border-indigo-100 bg-slate-50 p-5 dark:border-indigo-900/40 dark:bg-slate-800/30">
+                                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Número do Cartão</label>
+                                                    <input name="cardNumber" type="text" placeholder="0000 0000 0000 0000" required className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none dark:border-slate-700 dark:bg-slate-900" />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Nome no Cartão</label>
+                                                    <input name="cardName" type="text" placeholder="COMO ESTÁ IMPRESSO" required className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none dark:border-slate-700 dark:bg-slate-900" />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Validade</label>
+                                                    <input name="expiry" type="text" placeholder="12/30" required className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none dark:border-slate-700 dark:bg-slate-900" />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Bandeira</label>
+                                                    <select name="brand" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none dark:border-slate-700 dark:bg-slate-900">
+                                                        <option value="visa">Visa</option>
+                                                        <option value="mastercard">Mastercard</option>
+                                                        <option value="elo">Elo</option>
+                                                        <option value="amex">Amex</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <button disabled={isSavingCard} type="submit" className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-indigo-700 disabled:opacity-60">
+                                                {isSavingCard ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                                                {isSavingCard ? 'Salvando...' : 'Salvar cartão com segurança'}
+                                            </button>
+                                        </form>
+                                    )}
+
+                                    {isLoadingCards ? (
+                                        <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 p-8 dark:border-slate-800 dark:bg-slate-800/20">
+                                            <Loader2 className="animate-spin text-indigo-500" />
+                                        </div>
+                                    ) : userCards.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {userCards.map((card: any) => (
+                                                <div key={card.id} className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition-all dark:border-slate-800 dark:bg-slate-800/20 md:flex-row md:items-center md:justify-between">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300">
+                                                            <CreditCard size={20} />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <p className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">•••• {card.last_four_digits || card.last4 || '****'}</p>
+                                                                {Number(card.is_default) === 1 && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">Padrão</span>}
+                                                            </div>
+                                                            <p className="mt-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                                                                Vence em {String(card.exp_month).padStart(2, '0')}/{card.exp_year}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {Number(card.is_default) !== 1 && (
+                                                            <button type="button" onClick={() => handleSetDefaultCard(card.id)} className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700 transition-all hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+                                                                Definir padrão
+                                                            </button>
+                                                        )}
+                                                        {Number(card.locked_by_recurring) !== 1 && (
+                                                            <button type="button" onClick={() => handleRemoveCard(card.id)} className="rounded-xl bg-rose-50 p-2 text-rose-500 transition-all hover:bg-rose-100 dark:bg-rose-900/20 dark:hover:bg-rose-900/30">
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
+                                            <CreditCard size={28} className="mx-auto mb-3 text-slate-300 dark:text-slate-600" />
+                                            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Nenhum cartão salvo ainda.</p>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                     </div>
                   </div>
                )}
 
@@ -967,16 +1213,11 @@ const Profile: React.FC = () => {
                            </div>
                             <button 
                                onClick={() => {
-                                  if (isStripeBilling && !usesInternalStripeVault) {
-                                      handleOpenStripePortal();
-                                      return;
-                                  }
-                                  const el = document.getElementById('save-card-section');
-                                  el?.scrollIntoView({ behavior: 'smooth' });
+                                  openSavedCardsManager();
                                }}
                                className="px-4 py-2 bg-slate-900 dark:bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:shadow-lg transition-all"
                             >
-                               {isStripeBilling && !usesInternalStripeVault ? 'Abrir Stripe' : 'Resolver'}
+                               Resolver
                             </button>
                         </div>
                      )}
@@ -991,14 +1232,14 @@ const Profile: React.FC = () => {
                             <div className="space-y-2">
                                 <div className="flex items-center gap-2">
                                     <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Assinatura Ativa</h4>
-                                    {currentUser.subscription?.status === 'active' && <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                                    {hasActiveSubscription && <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />}
                                     <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                         {billingProviderLabel}
                                     </span>
                                 </div>
                                 <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 tracking-tight">
-                                    Plano {currentUser.subscription?.plan?.name || currentUser.plan || 'Gratuito'}
-                                    {((currentUser.plan && currentUser.plan.includes('Elite')) || (currentUser.subscription?.plan?.name && currentUser.subscription.plan.name.includes('Elite'))) && <Crown className="text-amber-500" size={20} />}
+                                    Plano {effectivePlanDisplayName}
+                                    {isElitePlan && <Crown className="text-amber-500" size={20} />}
                                 </h3>
                                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-tight">
                                     {currentUser.subscription?.current_period_end 
@@ -1018,7 +1259,7 @@ const Profile: React.FC = () => {
                                         })()}
                                     </div>
                                     
-                                    {currentUser.subscription?.status === 'active' && (
+                                    {hasActiveSubscription && (
                                         <div className="flex flex-col items-end gap-2 mt-2">
                                             {userTransactions.some((t:any) => t.status === 'refund_requested') ? (
                                                 <div className="flex flex-col items-end gap-1">
@@ -1078,7 +1319,7 @@ const Profile: React.FC = () => {
                         </div>
 
                         {/* Toggle de Renovação Automática */}
-                        {currentUser.subscription && currentUser.subscription.status === 'active' && (
+                        {currentUser.subscription && hasActiveSubscription && (
                             <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between animate-in fade-in slide-in-from-bottom-2 duration-500">
                                 <div className="flex items-center gap-4">
                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${currentUser.subscription?.auto_renew ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600' : 'bg-slate-50 dark:bg-slate-800 text-slate-400'}`}>
@@ -1104,7 +1345,7 @@ const Profile: React.FC = () => {
                      </div>
 
                      {/* CTA Ver Planos (Atrativo) */}
-                     {(!currentUser.subscription || currentUser.plan === 'Free' || (currentUser.subscription?.plan?.name && !currentUser.subscription.plan.name.includes('Elite'))) && (
+                     {(!hasActiveSubscription || !isElitePlan) && (
                         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-200 dark:shadow-none animate-in fade-in zoom-in duration-700 transition-all hover:scale-[1.01]">
                              <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
                                  <Zap size={140} className="fill-current" />

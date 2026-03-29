@@ -14,6 +14,9 @@ type StripePaymentStep = {
   clientSecret?: string | null;
   status?: string | null;
   confirmationType?: 'payment' | 'setup' | 'none';
+  subscriptionId?: string | null;
+  paymentMethodId?: string | null;
+  saveCard?: boolean;
 };
 
 interface StripeCardElementFormProps {
@@ -22,7 +25,7 @@ interface StripeCardElementFormProps {
   billingEmail?: string;
   submitLabel?: string;
   onPaymentMethodCreated: (paymentMethodId: string) => Promise<StripePaymentStep | undefined>;
-  onPaymentFinalized?: () => Promise<void> | void;
+  onPaymentFinalized?: (step?: StripePaymentStep) => Promise<void> | void;
 }
 
 const elementOptions = {
@@ -139,7 +142,10 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
         }
       }
 
-      await onPaymentFinalized?.();
+      await onPaymentFinalized?.({
+        ...nextStep,
+        paymentMethodId: nextStep.paymentMethodId || paymentMethodResult.paymentMethod.id,
+      });
     } catch (submitError: any) {
       setError(submitError?.message || 'Falha ao processar o pagamento com cartao.');
     } finally {
