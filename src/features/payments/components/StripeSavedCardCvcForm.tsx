@@ -46,8 +46,6 @@ const fieldShellClassName =
   'min-h-[56px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 transition-all focus-within:border-indigo-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 dark:border-slate-700 dark:bg-[#0f1020] dark:focus-within:border-indigo-400 dark:focus-within:bg-[#111428] dark:focus-within:ring-indigo-500/10';
 
 const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'publishableKey'>> = ({
-  cardBrand,
-  last4,
   submitLabel = 'Pagar com cartao salvo',
   onConfirm,
 }) => {
@@ -91,17 +89,9 @@ const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'p
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      <div className="space-y-2">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Cartao selecionado
-        </p>
-        <p className="text-base font-black text-slate-900 dark:text-white">
-          {String(cardBrand || 'card').toUpperCase()} •••• {last4 || '****'}
-        </p>
-        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-          Para sua seguranca, confirme o codigo de seguranca deste cartao salvo antes de concluir a compra.
-        </p>
-      </div>
+      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+        Para sua seguranca, confirme o codigo de seguranca deste cartao salvo antes de concluir a compra.
+      </p>
 
       <div className="space-y-2">
         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">

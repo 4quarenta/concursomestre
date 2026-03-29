@@ -510,6 +510,7 @@ export interface SystemSettings {
   adBannerSidebar?: string;
   adBannerBottom?: string;
   geminiApiKey?: string;
+  recaptchaEnabled?: boolean;
   recaptchaSiteKey?: string;
   recaptchaSecretKey?: string;
 

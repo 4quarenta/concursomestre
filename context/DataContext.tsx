@@ -65,6 +65,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     partnerRegistrationEnabled: true
   },
   geminiApiKey: '',
+  recaptchaEnabled: false,
   recaptchaSiteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI', // Chave de teste pública do Google
   recaptchaSecretKey: ''
 };
@@ -514,7 +515,7 @@ interface DataContextType extends DataState {
 export const DataContext = createContext<DataContextType>({} as DataContextType);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { currentUser, updateUser, isLoading: isAuthLoading } = useAuth();
+  const { currentUser, updateUser } = useAuth();
   const { addToast } = useToast();
   const lastCommentTime = useRef<number>(0);
   const dataInitRef = useRef<string | null>(null);
@@ -622,8 +623,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [currentUser?.id, state.isUserProgressLoaded]);
 
   const fetchInitialData = useCallback(async () => {
-    if (isAuthLoading) return;
-
     const userId = currentUser?.id || 'guest';
     if (dataInitRef.current === userId) return;
     dataInitRef.current = userId;
@@ -653,16 +652,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       })
       .catch(err => console.error("Failed to load initial questions:", err));
-  }, [currentUser?.id, isAuthLoading]);
+  }, [currentUser?.id]);
 
   useEffect(() => {
-    if (isAuthLoading) return;
     fetchInitialData();
-  }, [fetchInitialData, isAuthLoading]);
+  }, [fetchInitialData]);
 
   // 3. Fetch Notifications with Adaptive Polling
   useEffect(() => {
-    if (isAuthLoading) return;
     if (!currentUser?.id) return;
 
     // Initial fetch
@@ -721,7 +718,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [currentUser?.id, isAuthLoading]);
+  }, [currentUser?.id]);
 
   // 3. Cleanup on mount
   useEffect(() => {

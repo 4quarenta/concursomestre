@@ -9,7 +9,6 @@ import { useData } from '../context/DataContext';
 import { apiClient, ENDPOINTS } from '../src/core/api';
 import { useToast } from '../context/ToastContext';
 import { useTheme } from '../context/ThemeContext';
-import { setStoredSession, setStoredToken } from '@core/auth/session';
 
 /** Modo de visualização da tela de autenticação */
 type AuthMode = 'login' | 'signup' | 'forgot' | 'forgot-success' | 'two-factor';
@@ -68,6 +67,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const isDevMode = systemSettings?.appMode !== 'production';
+  const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
 
   // Cambia para o modo correto se o query param mudar
   useEffect(() => {
@@ -115,7 +115,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     }
     setIsLoading(true);
     try {
-      if (!captchaToken && !isDevMode) {
+      if (recaptchaEnabled && !captchaToken) {
         addToast('Por favor, complete o desafio de segurança.', 'error');
         return;
       }
@@ -132,9 +132,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           return;
         }
         const { user, token } = result.data;
-        const builtUser = buildUserProfile(user);
-        setStoredSession(token, builtUser);
-        onLogin(builtUser);
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(user));
+        onLogin(buildUserProfile(user));
       } else {
         setError(result.message || 'E-mail ou senha incorretos.');
       }
@@ -155,7 +155,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     setIsLoading(true);
     try {
-      if (!captchaToken && !isDevMode) {
+      if (recaptchaEnabled && !captchaToken) {
         addToast('Por favor, complete o desafio de segurança.', 'error');
         return;
       }
@@ -171,10 +171,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       });
       if (result.success && result.data) {
         const { user, token } = result.data;
-        const builtUser = buildUserProfile(user);
-        setStoredSession(token, builtUser);
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(user));
         // Auto-login imediato após o cadastro
-        onLogin(builtUser);
+        onLogin(buildUserProfile(user));
       } else {
         setError(result.message || 'Erro ao criar conta.');
       }
@@ -190,7 +190,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     if (!formData.forgotEmail.trim()) { setError('Informe seu e-mail.'); return; }
     setIsLoading(true);
     try {
-      const res: any = await apiClient.post(ENDPOINTS.auth.forgotPassword, { email: formData.forgotEmail.trim() });
+      if (recaptchaEnabled && !captchaToken) {
+        addToast('Por favor, complete o desafio de seguranÃ§a.', 'error');
+        return;
+      }
+
+      const res: any = await apiClient.post(ENDPOINTS.auth.forgotPassword, {
+        email: formData.forgotEmail.trim(),
+        captchaToken
+      });
       if (res.success) {
         setMode('forgot-success');
       }
@@ -213,16 +221,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         code: twoFactorCode
       });
       if (result.success && result.data) {
-        const { token } = result.data;
-        setStoredToken(token);
+        const { token, role } = result.data;
+        localStorage.setItem('token', token);
         
         // Fetch full profile since verify_2fa returns minimal data
         const profileRes: any = await apiClient.get('users/profile.php');
         if (profileRes.success && profileRes.data) {
            const userData = profileRes.data.user || profileRes.data;
-           const builtUser = buildUserProfile(userData);
-           setStoredSession(token, builtUser);
-           onLogin(builtUser);
+           localStorage.setItem('user', JSON.stringify(userData));
+           onLogin(buildUserProfile(userData));
         }
       } else {
         setError(result.message || 'Código inválido.');
@@ -248,6 +255,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setShowPassword(false);
     setShowConfirmPassword(false);
   };
+
+  useEffect(() => {
+    setCaptchaToken(null);
+    recaptchaRef.current?.reset();
+  }, [mode]);
 
   // ------- TELA DE SUCESSO DE RECUPERAÇÃO -------
   if (mode === 'forgot-success') {
@@ -514,8 +526,19 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   </label>
                 )}
 
-                {/* Google reCAPTCHA — apenas no login e cadastro (desabilitado no DEV) */}
-                {!isForgot && !isDevMode && (
+                {/* Google reCAPTCHA */}
+                {!isForgot && recaptchaEnabled && (
+                  <div className="flex justify-center py-2">
+                    <ReCAPTCHA
+                      ref={recaptchaRef}
+                      sitekey={systemSettings.recaptchaSiteKey || "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"}
+                      onChange={(token) => setCaptchaToken(token)}
+                      theme={theme === 'dark' ? 'dark' : 'light'}
+                    />
+                  </div>
+                )}
+
+                {isForgot && recaptchaEnabled && (
                   <div className="flex justify-center py-2">
                     <ReCAPTCHA
                       ref={recaptchaRef}
@@ -635,9 +658,9 @@ export const DevQuickLogin: React.FC<{ onLogin: (user: any) => void }> = ({ onLo
       const result: any = await apiClient.post(ENDPOINTS.auth.login, { email, password: '123456' });
       if (result.success && result.data) {
         const { user, token } = result.data;
-        const builtUser = buildUserProfile(user);
-        setStoredSession(token, builtUser);
-        onLogin(builtUser);
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(user));
+        onLogin(buildUserProfile(user));
       }
     } catch (e) {
       console.error('[DEV] Quick login failed:', e);

@@ -1,277 +1,189 @@
 /**
  * API Client Configuration
- * Centralized Axios instance with a single auth/session flow.
+ * Centralized Axios instance with interceptors
  */
 
-import axios, {
-  AxiosError,
-  AxiosHeaders,
-  AxiosResponse,
-  InternalAxiosRequestConfig,
-} from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
 import { logger } from '../debug/DebugLogger';
-import {
-  clearStoredSession,
-  getRawStoredToken,
-  setStoredToken,
-} from '../auth/session';
 
+// Base URL from environment variable
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost/questao-pro-backend/api/';
-const REFRESH_ENDPOINT = 'auth/refresh.php';
-const SESSION_EXPIRED_EVENT = 'auth:session-expired';
 
-type RetriableRequestConfig = InternalAxiosRequestConfig & {
-  _retry?: boolean;
-};
-
-const refreshClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 15000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
+// Create axios instance
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+    baseURL: API_BASE_URL,
+    timeout: 30000,
+    headers: {
+        'Content-Type': 'application/json',
+    },
 });
 
-let refreshPromise: Promise<string | null> | null = null;
-
-const normalizeUrl = (url?: string): string => (url || '').replace(/^\/+/, '');
-
-const isSessionExemptRequest = (url?: string): boolean => {
-  const normalized = normalizeUrl(url);
-
-  return [
-    'auth/login.php',
-    'auth/register.php',
-    'auth/forgot-password.php',
-    'auth/resend-confirmation.php',
-    'auth/verify_2fa.php',
-    REFRESH_ENDPOINT,
-  ].some((segment) => normalized.includes(segment));
-};
-
-const getHeaderValue = (headers: unknown, key: string): string | null => {
-  if (!headers) return null;
-
-  if (headers instanceof AxiosHeaders) {
-    const value = headers.get(key);
-    return typeof value === 'string' ? value : null;
-  }
-
-  const record = headers as Record<string, unknown>;
-  const value = record[key] ?? record[key.toLowerCase()];
-  return typeof value === 'string' ? value : null;
-};
-
-const extractBearerToken = (headers: unknown): string | null => {
-  const authorization = getHeaderValue(headers, 'Authorization');
-  if (authorization?.startsWith('Bearer ')) {
-    return authorization.replace(/^Bearer\s+/i, '').trim();
-  }
-
-  return getHeaderValue(headers, 'X-Auth-Token');
-};
-
-const applyAuthHeaders = (config: InternalAxiosRequestConfig, token: string): InternalAxiosRequestConfig => {
-  const headers = config.headers instanceof AxiosHeaders ? config.headers : new AxiosHeaders(config.headers);
-  headers.set('Authorization', `Bearer ${token}`);
-  headers.set('X-Auth-Token', token);
-  config.headers = headers;
-
-  return config;
-};
-
-const notifySessionExpired = (message: string, failedToken?: string | null) => {
-  const currentToken = getRawStoredToken();
-
-  if (failedToken && currentToken && currentToken !== failedToken) {
-    return;
-  }
-
-  clearStoredSession();
-  window.dispatchEvent(
-    new CustomEvent(SESSION_EXPIRED_EVENT, {
-      detail: { message },
-    }),
-  );
-};
-
-const requestSessionRefresh = async (token: string): Promise<string | null> => {
-  if (!token) return null;
-
-  if (!refreshPromise) {
-    refreshPromise = (async () => {
-      try {
-        const response = await refreshClient.get(REFRESH_ENDPOINT, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'X-Auth-Token': token,
-          },
-          validateStatus: (status) => (status >= 200 && status < 300) || status === 401,
-        });
-
-        if (response.status !== 200) {
-          return null;
-        }
-
-        const refreshedToken = response.data?.data?.token || response.data?.token || null;
-        if (typeof refreshedToken === 'string' && refreshedToken.trim()) {
-          setStoredToken(refreshedToken);
-          return refreshedToken.trim();
-        }
-
-        return null;
-      } catch {
-        return null;
-      } finally {
-        refreshPromise = null;
-      }
-    })();
-  }
-
-  return refreshPromise;
-};
-
+// Request interceptor - Add auth token
 apiClient.interceptors.request.use(
-  async (config: InternalAxiosRequestConfig) => {
-    const token = getRawStoredToken();
+    (config: InternalAxiosRequestConfig) => {
+        // Get token from localStorage
+        const token = localStorage.getItem('token');
 
-    if (token) {
-      applyAuthHeaders(config, token);
+        if (token && config.headers) {
+            config.headers.Authorization = `Bearer ${token}`;
+            // Add custom header to bypass Apache stripping
+            config.headers['X-Auth-Token'] = token;
+            if (import.meta.env.DEV) {
+                console.log('🔹 Attaching Token:', token.substring(0, 10) + '...');
+                console.log('🔹 Request URL:', config.url);
+                console.log('🔹 Headers:', JSON.stringify({
+                    Authorization: config.headers.Authorization?.substring(0, 20) + '...',
+                    'X-Auth-Token': config.headers['X-Auth-Token']?.substring(0, 10) + '...'
+                }));
+            }
+        } else {
+            // Requisições públicas não precisam de token — sem aviso
+        }
+
+        // Handle FormData - let browser set Content-Type with boundary
+        if (config.data instanceof FormData) {
+            // Remove Content-Type header to let browser set it automatically with boundary
+            delete config.headers['Content-Type'];
+            if (import.meta.env.DEV) {
+                console.log('📤 FormData detected - letting browser set Content-Type');
+            }
+        }
+
+        // Log request in development
+        if (import.meta.env.DEV) {
+            console.log('🚀 API Request:', config.method?.toUpperCase(), config.url);
+            logger.addLog('request', `${config.method?.toUpperCase()} ${config.url}`, config.data);
+        }
+
+        return config;
+    },
+    (error: AxiosError) => {
+        console.error('❌ Request Error:', error);
+        return Promise.reject(error);
     }
-
-    if (config.data instanceof FormData && config.headers) {
-      if (config.headers instanceof AxiosHeaders) {
-        config.headers.delete('Content-Type');
-      } else {
-        delete (config.headers as Record<string, unknown>)['Content-Type'];
-      }
-    }
-
-    if (import.meta.env.DEV) {
-      logger.addLog('request', `${config.method?.toUpperCase()} ${config.url}`, config.data);
-    }
-
-    return config;
-  },
-  (error: AxiosError) => Promise.reject(error),
 );
 
+// Response interceptor - Handle errors globally
 apiClient.interceptors.response.use(
-  (response: AxiosResponse) => {
-    if (import.meta.env.DEV) {
-      logger.addLog('response', `SUCCESS: ${response.config.url}`, response.data);
-    }
-
-    return response.data;
-  },
-  async (error: AxiosError) => {
-    const responseStatus = error.response?.status;
-    const responseData = error.response?.data as any;
-    const requestConfig = error.config as RetriableRequestConfig | undefined;
-    const requestUrl = requestConfig?.url;
-    const failedToken = extractBearerToken(requestConfig?.headers);
-
-    if (import.meta.env.DEV) {
-      logger.addLog(
-        'api-error',
-        `ERROR ${responseStatus ?? 'unknown'}: ${requestUrl ?? 'unknown request'}`,
-        responseData ?? error.message,
-      );
-    }
-
-    if (
-      responseStatus === 401 &&
-      requestConfig &&
-      !requestConfig._retry &&
-      !isSessionExemptRequest(requestUrl)
-    ) {
-      requestConfig._retry = true;
-
-      const latestToken = getRawStoredToken();
-
-      if (!failedToken && latestToken) {
-        applyAuthHeaders(requestConfig, latestToken);
-        return apiClient.request(requestConfig);
-      }
-
-      const tokenToRefresh = failedToken || latestToken;
-      if (tokenToRefresh) {
-        const refreshedToken = await requestSessionRefresh(tokenToRefresh);
-        const newestStoredToken = getRawStoredToken();
-
-        if (refreshedToken) {
-          applyAuthHeaders(requestConfig, refreshedToken);
-          return apiClient.request(requestConfig);
+    (response: AxiosResponse) => {
+        // Log response in development
+        if (import.meta.env.DEV) {
+            console.log('✅ API Response:', response.config.url, response.data);
+            logger.addLog('response', `SUCCESS: ${response.config.url}`, response.data);
         }
 
-        if (newestStoredToken && newestStoredToken !== tokenToRefresh) {
-          applyAuthHeaders(requestConfig, newestStoredToken);
-          return apiClient.request(requestConfig);
+        return response.data;
+    },
+    (error: AxiosError) => {
+        // Handle different error types
+        if (error.response) {
+            const status = error.response.status;
+            const data = error.response.data as any;
+
+            // Log error in development
+            if (import.meta.env.DEV) {
+                console.error('❌ API Error:', status, error.config?.url, data);
+                logger.addLog('api-error', `ERROR ${status}: ${error.config?.url}`, data);
+            }
+
+            // Handle specific status codes
+            switch (status) {
+                case 401: {
+                    // Só age se havia token salvo (sessão expirada)
+                    const hadToken = !!localStorage.getItem('token');
+                    const jaEstaNoAuth = window.location.hash.includes('/auth') ||
+                        window.location.pathname.includes('/auth');
+
+                    if (hadToken && !jaEstaNoAuth) {
+                        // Limpa credenciais e despacha evento — App.tsx redireciona sem reload
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('user');
+                        window.dispatchEvent(new CustomEvent('auth:session-expired', { 
+                            detail: { message: data.message || 'Sessão expirada' } 
+                        }));
+                    }
+                    break;
+                }
+
+                case 403:
+                    // Forbidden
+                    console.error('Access forbidden:', data.message);
+                    break;
+
+                case 404:
+                    // Not found
+                    console.error('Resource not found:', error.config?.url);
+                    break;
+
+                case 429:
+                    // Too many requests
+                    console.error('Rate limit exceeded. Please try again later.');
+                    break;
+
+                case 500:
+                    // Server error
+                    console.error('Server error:', data.message);
+                    break;
+
+                default:
+                    console.error('API Error:', data.message || 'Unknown error');
+            }
+        } else if (error.request) {
+            // Request made but no response received
+            console.error('❌ Network Error: No response from server');
+        } else {
+            // Error in request setup
+            console.error('❌ Request Setup Error:', error.message);
+            if (import.meta.env.DEV) {
+                logger.addLog('error', `Setup Error: ${error.message}`);
+            }
         }
 
-        notifySessionExpired(responseData?.message || 'Sessao expirada. Faca login novamente.', tokenToRefresh);
-      }
+        return Promise.reject(error);
     }
-
-    if (responseStatus && responseStatus !== 401) {
-      switch (responseStatus) {
-        case 403:
-          console.error('Access forbidden:', responseData?.message);
-          break;
-        case 404:
-          console.error('Resource not found:', requestUrl);
-          break;
-        case 429:
-          console.error('Rate limit exceeded. Please try again later.');
-          break;
-        case 500:
-          console.error('Server error:', responseData?.message);
-          break;
-        default:
-          console.error('API Error:', responseData?.message || 'Unknown error');
-      }
-    } else if (!error.response && error.request) {
-      console.error('Network error: no response from server');
-    }
-
-    return Promise.reject(error);
-  },
 );
 
+/**
+ * Constrói a URL autenticada para download de PDF com marca d'água.
+ * O backend valida o token e estampa os dados do usuário no arquivo.
+ */
 export const buildDownloadUrl = (materialId: string): string => {
-  const token = getRawStoredToken() || '';
-  const backendRoot = API_BASE_URL.replace(/\/api\/$/, '');
-
-  return `${backendRoot}/api/materials/download.php?material_id=${encodeURIComponent(materialId)}&token=${encodeURIComponent(token)}`;
+    const token = localStorage.getItem('token') || '';
+    const backendRoot = API_BASE_URL.replace(/\/api\/$/, '');
+    return `${backendRoot}/api/materials/download.php?material_id=${encodeURIComponent(materialId)}&token=${encodeURIComponent(token)}`;
 };
 
 export const getAssetUrl = (path: string) => {
-  if (!path) return '';
-  if (path.startsWith('http')) return path;
+    if (!path) return '';
+    if (path.startsWith('http')) return path;
 
-  let backendRoot = API_BASE_URL.replace(/\/api\/$/, '');
+    // API_BASE_URL usually ends with '/api/'
+    // We want to go to the root of the backend
+    let backendRoot = API_BASE_URL.replace(/\/api\/$/, '');
 
-  if (!backendRoot.startsWith('http')) {
-    const origin = window.location.origin;
-    const backendOrigin = origin.replace(':3000', '');
-    backendRoot = `${backendOrigin}${backendRoot.startsWith('/') ? '' : '/'}${backendRoot}`;
-  }
+    // If backendRoot is relative (e.g. starts with /), make it absolute using current window.location
+    // but ONLY if we are in production or if the backend is on the same server. 
+    // In development (localhost:3000), we usually want to point to localhost (80)
+    if (!backendRoot.startsWith('http')) {
+        const origin = window.location.origin; // e.g. http://localhost:3000
+        // If we are on port 3000, we probably want port 80 for the backend unless configured otherwise
+        const backendOrigin = origin.replace(':3000', ''); 
+        backendRoot = `${backendOrigin}${backendRoot.startsWith('/') ? '' : '/'}${backendRoot}`;
+    }
 
-  const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    // Standardize path
+    const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    
+    // If the path already contains the backend folder name (e.g. questao-pro-backend), 
+    // and backendRoot also has it, we need to be careful not to double it.
+    // However, the safest way is to just append relative to the domain if it starts with the folder.
+    
+    if (cleanPath.startsWith('uploads/')) {
+        // Correctly append to the folder root
+        return `${backendRoot}/${cleanPath}`;
+    }
 
-  if (cleanPath.startsWith('uploads/')) {
     return `${backendRoot}/${cleanPath}`;
-  }
-
-  return `${backendRoot}/${cleanPath}`;
 };
 
 export default apiClient;

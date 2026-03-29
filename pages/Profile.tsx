@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
+import ReCAPTCHA from 'react-google-recaptcha';
 import {
    User, Mail, Star, Book, Settings, Shield,
    CreditCard, StickyNote, Zap, TrendingUp,
@@ -65,8 +66,13 @@ const Profile: React.FC = () => {
     const [isSavingCard, setIsSavingCard] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
+    const [cancelDetails, setCancelDetails] = useState('');
+    const [cancelCaptchaToken, setCancelCaptchaToken] = useState<string | null>(null);
+    const [isUpdatingRenewal, setIsUpdatingRenewal] = useState(false);
+    const [optimisticAutoRenew, setOptimisticAutoRenew] = useState<boolean | null>(null);
     const [isOpeningBillingPortal, setIsOpeningBillingPortal] = useState(false);
     const [stripeSetupClientSecret, setStripeSetupClientSecret] = useState<string | null>(null);
+    const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
 
     // Sincronizar aba com parâmetro da URL (?tab=)
     React.useEffect(() => {
@@ -218,6 +224,10 @@ const Profile: React.FC = () => {
 
     const handleCancelSubscription = async () => {
         if (!currentUser?.id || !currentUser.subscription) return;
+        if (recaptchaEnabled && !cancelCaptchaToken) {
+            addToast('Confirme o reCAPTCHA antes de cancelar a assinatura.', 'warning');
+            return;
+        }
         
         const start = new Date(currentUser.subscription.current_period_start).getTime();
         const now = new Date().getTime();
@@ -226,12 +236,18 @@ const Profile: React.FC = () => {
         try {
             const res = await planService.cancelSubscription(
                 currentUser.id, 
-                isRefundable ? 'arrependimento' : (cancelReason || 'user_request')
+                cancelReason || (isRefundable ? 'arrependimento' : 'user_request'),
+                cancelDetails || undefined,
+                cancelCaptchaToken
             );
             if (res.success) {
                 addToast(isRefundable ? 'Assinatura cancelada e reembolso solicitado!' : 'Assinatura cancelada com sucesso.', 'success');
                 setShowCancelModal(false);
+                setCancelReason('');
+                setCancelDetails('');
+                setCancelCaptchaToken(null);
                 await refreshUser();
+                setOptimisticAutoRenew(null);
             } else {
                 addToast(res.message || 'Erro ao cancelar assinatura.', 'error');
             }
@@ -241,7 +257,7 @@ const Profile: React.FC = () => {
     };
 
     const handleToggleAutoRenew = async () => {
-        if (!currentUser?.id || !currentUser.subscription) return;
+        if (!currentUser?.id || !currentUser.subscription || isUpdatingRenewal) return;
         
         const newValue = !currentUser.subscription.auto_renew;
         
@@ -251,6 +267,9 @@ const Profile: React.FC = () => {
             openSavedCardsManager();
             return;
         }
+
+        setOptimisticAutoRenew(newValue);
+        setIsUpdatingRenewal(true);
 
         try {
             const res: any = await planService.updateRenewal(newValue);
@@ -262,6 +281,38 @@ const Profile: React.FC = () => {
             }
         } catch (err: any) {
             addToast(err.response?.data?.message || 'Erro ao processar solicitação.', 'error');
+        }
+    };
+
+    const handleOptimisticAutoRenewToggle = async () => {
+        if (!currentUser?.id || !activeSubscription || isUpdatingRenewal) return;
+
+        const newValue = !resolvedAutoRenew;
+
+        if (newValue && userCards.length === 0) {
+            addToast('Voce precisa de um cartao salvo para ativar a renovacao automatica.', 'warning');
+            setIsAddingCard(true);
+            openSavedCardsManager();
+            return;
+        }
+
+        setOptimisticAutoRenew(newValue);
+        setIsUpdatingRenewal(true);
+
+        try {
+            const res: any = await planService.updateRenewal(newValue);
+            if (res.success) {
+                addToast(newValue ? 'Renovacao automatica ativada!' : 'Renovacao automatica desativada.', 'success');
+                await refreshUser();
+            } else {
+                addToast(res.message || 'Erro ao atualizar renovacao.', 'error');
+                setOptimisticAutoRenew(null);
+            }
+        } catch (err: any) {
+            addToast(err.response?.data?.message || 'Erro ao processar solicitacao.', 'error');
+            setOptimisticAutoRenew(null);
+        } finally {
+            setIsUpdatingRenewal(false);
         }
     };
 
@@ -313,7 +364,7 @@ const Profile: React.FC = () => {
 
         if (normalized === 'pending' || normalized === 'pre-approved') {
             return {
-                label: 'Pendente',
+                label: normalized === 'pre-approved' ? 'Pre-aprovada' : 'Pendente',
                 className: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
             };
         }
@@ -330,6 +381,67 @@ const Profile: React.FC = () => {
             className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
         };
     };
+
+    const formatDateBR = (value?: string | number | null) => {
+        if (!value) return 'Indeterminado';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return 'Indeterminado';
+        return date.toLocaleDateString('pt-BR');
+    };
+
+    const formatDateTimeBR = (value?: string | number | null) => {
+        if (!value) return 'Data nao informada';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return 'Data nao informada';
+        return date.toLocaleString('pt-BR');
+    };
+
+    const stripPlanCycleSuffix = (value?: string | null) =>
+        String(value || '')
+            .replace(/\s*-\s*Mensal$/i, '')
+            .replace(/\s*-\s*Trimestral$/i, '')
+            .replace(/\s*-\s*Anual$/i, '')
+            .trim();
+
+    const activeSubscription = currentUser?.subscription || null;
+    const resolvedAutoRenew = optimisticAutoRenew ?? Boolean(activeSubscription?.auto_renew);
+    const subscriptionPlanName = stripPlanCycleSuffix(currentUser?.planDisplayName || activeSubscription?.plan?.name || effectivePlanDisplayName) || 'Plano Gratuito';
+    const subscriptionCycleLabel = activeSubscription?.plan?.interval_unit === 'year'
+        ? 'Anual'
+        : activeSubscription?.plan?.interval_count === 3
+            ? 'Trimestral'
+            : 'Mensal';
+    const showFreeInactiveSubscriptionState = !hasActiveSubscription && subscriptionPlanName.toLowerCase().includes('gratuito');
+    const subscriptionStartDate = activeSubscription?.current_period_start ? new Date(activeSubscription.current_period_start) : null;
+    const subscriptionEndDate = activeSubscription?.current_period_end ? new Date(activeSubscription.current_period_end) : null;
+    const subscriptionTotalCycleDays = subscriptionStartDate && subscriptionEndDate
+        ? Math.max(1, Math.round((subscriptionEndDate.getTime() - subscriptionStartDate.getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+    const subscriptionRemainingDays = subscriptionEndDate
+        ? Math.max(0, Math.ceil((subscriptionEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+        : 0;
+    const subscriptionUsedDays = Math.max(0, subscriptionTotalCycleDays - subscriptionRemainingDays);
+    const subscriptionCycleProgress = subscriptionTotalCycleDays > 0
+        ? Math.min(100, Math.max(0, Math.round((subscriptionUsedDays / subscriptionTotalCycleDays) * 100)))
+        : 0;
+    const hasPendingRefundRequest = userTransactions.some((transaction: any) => String(transaction.status || '').toLowerCase() === 'refund_requested');
+    const isWithinRefundWindow = activeSubscription?.current_period_start
+        ? (Date.now() - new Date(activeSubscription.current_period_start).getTime()) < (7 * 24 * 60 * 60 * 1000)
+        : false;
+    const installmentCount = Math.max(1, Number(activeSubscription?.total_installments || 1));
+    const paidInstallments = Math.max(0, Number(activeSubscription?.paid_installments || 0));
+    const recurringAmount = Number(activeSubscription?.recurring_amount || 0);
+    const subscriptionChargeAmount = recurringAmount > 0 ? recurringAmount : Number(activeSubscription?.plan?.price || 0);
+    const subscriptionValueDescription = showFreeInactiveSubscriptionState
+        ? 'Plano gratuito ativo.'
+        : installmentCount > 1
+            ? `Cobranca ${paidInstallments > 0 ? `da parcela ${Math.min(paidInstallments, installmentCount)} de ${installmentCount}` : 'mensal do termo contratado'}.`
+            : `Cobranca ${subscriptionCycleLabel.toLowerCase()}.`;
+    const subscriptionHeadline = hasActiveSubscription
+        ? (resolvedAutoRenew
+            ? `A renovacao automatica esta ligada e a proxima cobranca esta prevista para ${formatDateBR(activeSubscription?.current_period_end)}.`
+            : `A renovacao automatica esta desligada. Seu acesso fica ativo ate ${formatDateBR(activeSubscription?.current_period_end)}.`)
+        : 'Sua assinatura nao esta ativa no momento.';
 
     const fetchUserMaterials = async () => {
         if (!currentUser?.id) return;
@@ -350,10 +462,544 @@ const Profile: React.FC = () => {
         }
     };
 
+    const handleCancelRefundRequest = async () => {
+        if (!currentUser?.id) return;
+        if (!window.confirm('Deseja realmente cancelar sua solicitacao de reembolso?')) return;
+
+        try {
+            const res: any = await apiClient.post('subscriptions/cancel_refund.php', { user_id: currentUser.id });
+            if (res.success) {
+                addToast(res.message, 'success');
+                await refreshUser();
+                await fetchUserTransactions();
+            } else {
+                addToast(res.message || 'Erro ao cancelar solicitacao.', 'error');
+            }
+        } catch (err) {
+            addToast('Erro ao cancelar solicitacao.', 'error');
+        }
+    };
+
+    const renderBillingTab = () => (
+        <div className="space-y-6 animate-fade-in">
+            {currentUser?.paymentIssue && (
+                <div className="rounded-[1.75rem] border border-rose-200 bg-rose-50 px-5 py-4 dark:border-rose-500/20 dark:bg-rose-500/10">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-start gap-3">
+                            <div className="mt-0.5 rounded-2xl bg-rose-500 p-2.5 text-white shadow-lg shadow-rose-500/20">
+                                <ShieldAlert size={16} />
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-600 dark:text-rose-300">Atencao no pagamento</p>
+                                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                                    {currentUser.paymentIssue.message || 'Atualize sua forma de pagamento para evitar interrupcoes no acesso.'}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={openSavedCardsManager}
+                            className="h-10 rounded-xl bg-slate-900 px-4 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-slate-800 dark:bg-rose-500 dark:text-slate-950"
+                        >
+                            Resolver
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <section className="overflow-hidden rounded-[2.25rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div className="border-b border-slate-100 px-6 py-7 dark:border-slate-800 md:px-8 md:py-8">
+                    <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+                        <div className="max-w-2xl space-y-3">
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Assinatura</p>
+                            <h2 className="text-[2.25rem] font-black leading-[0.95] text-slate-900 dark:text-slate-100">
+                                {showFreeInactiveSubscriptionState ? 'Plano Gratuito' : subscriptionPlanName}
+                            </h2>
+                            <p className="max-w-2xl text-lg font-medium leading-[1.45] text-slate-500 dark:text-slate-400">
+                                {subscriptionHeadline}
+                            </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 md:max-w-[320px] md:justify-end">
+                            <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:border-slate-700 dark:text-slate-300">
+                                <span className={`h-2 w-2 rounded-full ${hasActiveSubscription ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                                {hasActiveSubscription ? 'Assinatura ativa' : 'Assinatura'}
+                            </span>
+                            <span className={`inline-flex items-center rounded-full border px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${hasActiveSubscription ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300' : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
+                                {hasActiveSubscription ? 'Ativa' : 'Inativa'}
+                            </span>
+                            {hasActiveSubscription && (
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                    {subscriptionCycleLabel}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-5 px-6 py-6 md:px-8 md:py-8">
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <div className="rounded-[1.6rem] border border-slate-200 bg-slate-50 px-5 py-5 dark:border-slate-800 dark:bg-slate-800/40">
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Status</p>
+                            <p className="mt-3 text-[1.2rem] font-black leading-[1.05] text-slate-900 dark:text-slate-100">
+                                {hasPendingRefundRequest ? 'Reembolso em analise' : hasActiveSubscription ? 'Acesso liberado' : 'Assinatura inativa'}
+                            </p>
+                            <p className="mt-2 text-sm font-medium leading-[1.55] text-slate-500 dark:text-slate-400">
+                                {hasPendingRefundRequest
+                                    ? 'Sua solicitacao esta em andamento e atualizaremos o historico assim que houver retorno do gateway.'
+                                    : hasActiveSubscription
+                                        ? 'Seu acesso premium esta liberado e o ciclo atual segue normalmente.'
+                                        : 'Sua assinatura nao esta ativa no momento.'}
+                            </p>
+                        </div>
+
+                        <div className="rounded-[1.6rem] border border-slate-200 bg-slate-50 px-5 py-5 dark:border-slate-800 dark:bg-slate-800/40">
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Fim do ciclo</p>
+                            <p className="mt-3 text-[1.2rem] font-black leading-[1.05] text-slate-900 dark:text-slate-100">
+                                {hasActiveSubscription ? formatDateBR(activeSubscription?.current_period_end) : 'Indeterminado'}
+                            </p>
+                            <p className="mt-2 text-sm font-medium leading-[1.55] text-slate-500 dark:text-slate-400">
+                                {hasActiveSubscription ? 'Periodo atual da assinatura.' : 'Sem ciclo de cobranca em andamento.'}
+                            </p>
+                        </div>
+
+                        <div className="rounded-[1.6rem] border border-slate-200 bg-slate-50 px-5 py-5 dark:border-slate-800 dark:bg-slate-800/40">
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Valor</p>
+                            <p className="mt-3 text-[1.2rem] font-black leading-[1.05] text-slate-900 dark:text-slate-100">
+                                {showFreeInactiveSubscriptionState ? '0,00' : formatTransactionAmount(subscriptionChargeAmount)}
+                            </p>
+                            <p className="mt-2 text-sm font-medium leading-[1.55] text-slate-500 dark:text-slate-400">
+                                {subscriptionValueDescription}
+                            </p>
+                        </div>
+                    </div>
+
+                    {!showFreeInactiveSubscriptionState && activeSubscription && (
+                        <div className="rounded-[1.8rem] border border-slate-200 bg-slate-50 px-5 py-5 dark:border-slate-800 dark:bg-slate-800/40 md:px-6 md:py-6">
+                            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                <div className="space-y-2">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Progresso do ciclo</p>
+                                    <p className="text-[1.15rem] font-black leading-[1.05] text-slate-900 dark:text-slate-100">
+                                        {subscriptionUsedDays} de {subscriptionTotalCycleDays || 30} dias utilizados
+                                    </p>
+                                    <p className="text-sm font-medium leading-[1.55] text-slate-500 dark:text-slate-400">
+                                        Um resumo rapido do ciclo atual.
+                                    </p>
+                                </div>
+
+                                <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
+                                    {subscriptionRemainingDays} dias restantes
+                                </span>
+                            </div>
+
+                            <div className="mt-6 space-y-3">
+                                <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                                    <span>{subscriptionUsedDays} dias usados</span>
+                                    <span>{subscriptionRemainingDays} dias restantes</span>
+                                </div>
+                                <div className="h-3 rounded-full bg-slate-200 dark:bg-slate-800">
+                                    <div
+                                        className="h-3 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all"
+                                        style={{ width: `${subscriptionCycleProgress}%` }}
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between text-sm font-medium text-slate-500 dark:text-slate-400">
+                                    <span>Inicio: {formatDateBR(activeSubscription?.current_period_start)}</span>
+                                    <span>Fim: {formatDateBR(activeSubscription?.current_period_end)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </section>
+
+            <div className="grid gap-5 md:grid-cols-2">
+                <div className="rounded-[2rem] border border-slate-200 bg-white px-6 py-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-3">
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Renovacao</p>
+                            <h3 className="text-[1.15rem] font-black leading-[1.05] text-slate-900 dark:text-slate-100">Renovacao automatica</h3>
+                            <p className="text-sm font-medium leading-[1.6] text-slate-500 dark:text-slate-400">
+                                {hasActiveSubscription
+                                    ? (resolvedAutoRenew
+                                        ? 'Sua assinatura segue protegida para renovar automaticamente no fim deste ciclo.'
+                                        : 'A renovacao esta desligada e o acesso termina no fim deste ciclo.')
+                                    : 'Ative um plano pago para controlar a renovacao automatica por aqui.'}
+                            </p>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={handleOptimisticAutoRenewToggle}
+                            disabled={!hasActiveSubscription || isUpdatingRenewal}
+                            className={`relative inline-flex h-8 w-14 items-center rounded-full border transition-all ${resolvedAutoRenew ? 'border-emerald-500 bg-emerald-500/90' : 'border-slate-200 bg-slate-200 dark:border-slate-700 dark:bg-slate-800'} ${(!hasActiveSubscription || isUpdatingRenewal) ? 'cursor-not-allowed opacity-60' : ''}`}
+                        >
+                            <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform ${resolvedAutoRenew ? 'translate-x-7' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="rounded-[2rem] border border-slate-200 bg-white px-6 py-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className="space-y-4">
+                        <div className="space-y-3">
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Cancelamento</p>
+                            <h3 className="text-[1.15rem] font-black leading-[1.05] text-slate-900 dark:text-slate-100">
+                                {isWithinRefundWindow ? 'Janela de reembolso aberta' : 'Gerenciar cancelamento'}
+                            </h3>
+                            <p className="text-sm font-medium leading-[1.6] text-slate-500 dark:text-slate-400">
+                                {isWithinRefundWindow
+                                    ? 'Voce ainda esta dentro dos 7 dias para cancelar a assinatura com reembolso.'
+                                    : 'Se decidir encerrar a assinatura, o acesso segue ate o fim do ciclo atual.'}
+                            </p>
+                        </div>
+
+                        {hasPendingRefundRequest ? (
+                            <div className="flex flex-wrap items-center gap-3">
+                                <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                                    Reembolso em analise
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleCancelRefundRequest}
+                                    className="h-11 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                >
+                                    Cancelar solicitacao
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setShowCancelModal(true)}
+                                disabled={!hasActiveSubscription}
+                                className="h-12 rounded-2xl bg-rose-600 px-5 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Cancelar assinatura
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="rounded-[2rem] border border-slate-200 bg-white px-6 py-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-3">
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Pagamento</p>
+                            <h3 className="text-[1.15rem] font-black leading-[1.05] text-slate-900 dark:text-slate-100">Cartoes e cobranca</h3>
+                            <p className="text-sm font-medium leading-[1.6] text-slate-500 dark:text-slate-400">
+                                Os cartoes salvos ficam em Dados pessoais para compras futuras e renovacoes.
+                            </p>
+                            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                                Provedor atual: {billingProviderLabel}
+                            </p>
+                        </div>
+
+                        <div className="rounded-[1.35rem] bg-slate-50 px-5 py-3 text-right dark:bg-slate-800">
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Cartoes</p>
+                            <p className="mt-2 text-[1.5rem] font-black leading-none text-slate-900 dark:text-slate-100">{userCards.length}</p>
+                        </div>
+                    </div>
+
+                    <div className="mt-5">
+                        <button
+                            type="button"
+                            onClick={openSavedCardsManager}
+                            className="inline-flex h-12 items-center justify-center gap-3 rounded-2xl bg-slate-900 px-5 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900"
+                        >
+                            <CreditCard size={15} />
+                            Gerenciar cartoes
+                        </button>
+                    </div>
+                </div>
+
+                <div className="rounded-[2rem] border border-indigo-200 bg-gradient-to-r from-indigo-600 via-indigo-600 to-violet-600 px-6 py-6 text-white shadow-xl shadow-indigo-200 dark:border-indigo-500/20 dark:shadow-none">
+                    <div className="space-y-4">
+                        <div className="space-y-3">
+                            <p className="text-[11px] font-black uppercase tracking-[0.24em] text-indigo-100">Upgrade</p>
+                            <h3 className="text-[1.25rem] font-black leading-[1.05]">
+                                {isElitePlan ? 'Seu plano ja esta no nivel maximo' : 'Veja outros planos'}
+                            </h3>
+                            <p className="text-sm font-medium leading-[1.6] text-indigo-100/90">
+                                {isElitePlan
+                                    ? 'Compare beneficios e avalie se quer manter seu plano atual ou revisar outros ciclos.'
+                                    : 'Compare ciclos e beneficios antes de trocar o seu plano atual.'}
+                            </p>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => navigate('/plans')}
+                            className="inline-flex h-12 items-center justify-center gap-3 rounded-2xl bg-white px-5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 transition-all hover:bg-slate-100"
+                        >
+                            Ver planos
+                            <ChevronRight size={15} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+
+    const renderBillingHistoryTab = () => (
+        <div className="space-y-6 animate-fade-in">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div className="space-y-1">
+                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Historico</p>
+                    <h2 className="text-2xl font-black leading-none text-slate-900 dark:text-slate-100">Transacoes</h2>
+                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                        Acompanhe cobrancas aprovadas, parcelas futuras pre-aprovadas e faturas emitidas pelo gateway.
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={fetchUserTransactions}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                    <RotateCcw size={14} />
+                    Atualizar
+                </button>
+            </div>
+
+            <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                {isLoadingTransactions ? (
+                    <div className="flex items-center justify-center px-6 py-20">
+                        <Loader2 size={28} className="animate-spin text-indigo-500" />
+                    </div>
+                ) : userTransactions.length > 0 ? (
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full text-left">
+                            <thead>
+                                <tr className="border-b border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
+                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">ID do gateway</th>
+                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Plano</th>
+                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Data / hora</th>
+                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Status</th>
+                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 text-right">Valor</th>
+                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 text-center">Fatura</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {userTransactions.map((tx: any) => {
+                                    const statusMeta = getTransactionStatusMeta(tx.status);
+                                    const referenceId = tx.providerTransactionId || tx.referenceId || tx.id;
+                                    const referenceLabel = tx.providerTransactionLabel || (tx.paymentProvider === 'stripe' ? 'ID Stripe' : 'ID MP');
+                                    const invoiceUrl = tx.invoicePdfUrl || tx.hostedInvoiceUrl || null;
+                                    const installmentLabel = tx.installmentCount > 1 ? `Parcela ${tx.installmentNumber || 1}/${tx.installmentCount}` : null;
+
+                                    return (
+                                        <tr key={tx.id} className="align-top transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                                            <td className="px-5 py-4">
+                                                <div className="space-y-2">
+                                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{referenceLabel}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <code className="max-w-[180px] truncate text-xs font-black text-slate-900 dark:text-slate-100">{referenceId || '-'}</code>
+                                                        {referenceId && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    navigator.clipboard.writeText(String(referenceId));
+                                                                    addToast('ID copiado.', 'success');
+                                                                }}
+                                                                className="rounded-lg border border-slate-200 px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-500 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                                                            >
+                                                                Copiar
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="space-y-2">
+                                                    <p className="text-sm font-black leading-[1.2] text-slate-900 dark:text-slate-100">
+                                                        {tx.planName || tx.transactionName || tx.description || 'Assinatura'}
+                                                    </p>
+                                                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                                                        <span>{tx.paymentProvider === 'stripe' ? 'Stripe' : 'Mercado Pago'}</span>
+                                                        <span>•</span>
+                                                        <span>{tx.paymentMethodLabel || 'Cartao'}</span>
+                                                        {installmentLabel && (
+                                                            <>
+                                                                <span>•</span>
+                                                                <span>{installmentLabel}</span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="space-y-1">
+                                                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                                                        {tx.dateTimeFormatted || formatDateTimeBR(tx.createdAt || tx.dueDate || tx.timestamp)}
+                                                    </p>
+                                                    {tx.scheduleLabel && (
+                                                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                            {tx.scheduleLabel}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="space-y-2">
+                                                    <span className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusMeta.className}`}>
+                                                        {statusMeta.label}
+                                                    </span>
+                                                    {tx.providerRefundId && (
+                                                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                            Refund: {tx.providerRefundId}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4 text-right">
+                                                <p className="text-sm font-black text-slate-900 dark:text-slate-100">
+                                                    {formatTransactionAmount(tx.amount)}
+                                                </p>
+                                            </td>
+                                            <td className="px-5 py-4 text-center">
+                                                {invoiceUrl ? (
+                                                    <a
+                                                        href={invoiceUrl}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                                    >
+                                                        <Download size={14} />
+                                                        PDF
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">-</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    <div className="px-6 py-20 text-center">
+                        <BarChart3 size={32} className="mx-auto mb-4 text-slate-300 dark:text-slate-700" />
+                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Nenhuma transacao registrada ainda.</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
+    const renderCancelSubscriptionModal = () => {
+        if (!showCancelModal || !activeSubscription) return null;
+
+        return createPortal(
+            <AnimatePresence>
+                <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => {
+                            setShowCancelModal(false);
+                            setCancelCaptchaToken(null);
+                        }}
+                        className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm"
+                    />
+
+                    <motion.div
+                        initial={{ opacity: 0, y: 18, scale: 0.96 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 18, scale: 0.96 }}
+                        className="relative z-10 w-full max-w-xl rounded-[2rem] border border-slate-200 bg-white p-7 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+                    >
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-2">
+                                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Cancelamento</p>
+                                <h3 className="text-2xl font-black leading-none text-slate-900 dark:text-slate-100">Cancelar assinatura</h3>
+                                <p className="text-sm font-medium leading-[1.6] text-slate-500 dark:text-slate-400">
+                                    {isWithinRefundWindow
+                                        ? 'Voce ainda esta dentro do prazo de 7 dias para solicitar o cancelamento com reembolso.'
+                                        : 'Ao cancelar, a renovacao automatica sera interrompida e o acesso segue ate o fim do ciclo atual.'}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowCancelModal(false);
+                                    setCancelCaptchaToken(null);
+                                }}
+                                className="rounded-xl p-2 text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="mt-6 space-y-4">
+                            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Motivo (opcional)</p>
+                                <input
+                                    type="text"
+                                    value={cancelReason}
+                                    onChange={(event) => setCancelReason(event.target.value)}
+                                    placeholder="Ex.: custo, pausa nos estudos, conteudo..."
+                                    className="mt-3 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                />
+                            </div>
+
+                            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Detalhes adicionais (opcional)</p>
+                                <textarea
+                                    value={cancelDetails}
+                                    onChange={(event) => setCancelDetails(event.target.value)}
+                                    rows={4}
+                                    placeholder="Se quiser, conte rapidamente o que motivou o cancelamento."
+                                    className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                />
+                            </div>
+
+                            {recaptchaEnabled ? (
+                                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+                                    <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Confirmacao de seguranca</p>
+                                    <div className="flex justify-center">
+                                        <ReCAPTCHA
+                                            sitekey={systemSettings?.recaptchaSiteKey || ''}
+                                            onChange={setCancelCaptchaToken}
+                                            theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'}
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-medium leading-[1.6] text-slate-500 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-400">
+                                    A confirmacao por reCAPTCHA esta desativada nas configuracoes da plataforma.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowCancelModal(false);
+                                    setCancelCaptchaToken(null);
+                                }}
+                                className="h-12 rounded-2xl border border-slate-200 px-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                            >
+                                Voltar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCancelSubscription}
+                                className="h-12 rounded-2xl bg-rose-600 px-5 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-rose-700"
+                            >
+                                Confirmar cancelamento
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            </AnimatePresence>,
+            document.body
+        );
+    };
+
     // Atualizar dados quando a aba mudar
     React.useEffect(() => {
         if (activeTab === 'billing' || activeTab === 'personal') fetchUserCards();
-        if (activeTab === 'billing-history') fetchUserTransactions();
+        if (activeTab === 'billing' || activeTab === 'billing-history') fetchUserTransactions();
         if (activeTab === 'materials') fetchUserMaterials();
         if (activeTab === 'referral') fetchReferralStats();
     }, [activeTab, isStripeBilling]);
@@ -1197,7 +1843,9 @@ const Profile: React.FC = () => {
                   </div>
                )}
 
-               {activeTab === 'billing' && (
+               {activeTab === 'billing' && renderBillingTab()}
+
+               {false && activeTab === 'billing' && (
                   <div className="space-y-6 animate-fade-in">
                      {/* Alerta de Problema de Pagamento */}
                      {currentUser.paymentIssue && (
@@ -1656,7 +2304,9 @@ const Profile: React.FC = () => {
                   </div>
                )}
 
-               {activeTab === 'billing-history' && (
+               {activeTab === 'billing-history' && renderBillingHistoryTab()}
+
+               {false && activeTab === 'billing-history' && (
                   <div className="space-y-6 animate-fade-in">
                       <div className="flex justify-between items-center">
                           <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Histórico de Transações</h2>
@@ -1933,8 +2583,10 @@ const Profile: React.FC = () => {
             </div>
          )}
 
+         {renderCancelSubscriptionModal()}
+
          {/* Modal de Cancelamento de Assinatura (Portal) */}
-         {createPortal(
+         {false && createPortal(
             <AnimatePresence>
                {showCancelModal && currentUser.subscription && (
                   <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">

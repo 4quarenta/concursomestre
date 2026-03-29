@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { getInstallments, getIssuers, getPaymentMethods, initMercadoPago } from '@mercadopago/sdk-react';
 import { apiClient, ENDPOINTS } from '../core/api';
-import { setStoredSession } from '@core/auth/session';
 import ReCAPTCHA from 'react-google-recaptcha';
 import StripeCardElementForm from '../features/payments/components/StripeCardElementForm';
 import StripeSavedCardCvcForm from '../features/payments/components/StripeSavedCardCvcForm';
@@ -29,7 +28,7 @@ declare global {
 
 const CheckoutPage: React.FC = () => {
     const { planId } = useParams<{ planId: string }>();
-    const { currentUser, login, refreshUser } = useAuth();
+    const { currentUser, login, refreshUser, updateUser } = useAuth();
     const { addToast } = useToast();
     const navigate = useNavigate();
     const location = useLocation();
@@ -67,8 +66,24 @@ const CheckoutPage: React.FC = () => {
     const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
     const [discountAmount, setDiscountAmount] = useState(0);
     const recaptchaRef = React.useRef<ReCAPTCHA>(null);
+    const [stripeBillingMode, setStripeBillingMode] = useState<'single_installment' | 'term_recurring'>('single_installment');
+    const [showCheckoutRequirementsModal, setShowCheckoutRequirementsModal] = useState(false);
+    const [isSavingCheckoutRequirements, setIsSavingCheckoutRequirements] = useState(false);
+    const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
+    const [checkoutRequirementData, setCheckoutRequirementData] = useState({
+        name: '',
+        cpf: '',
+        zipCode: '',
+        street: '',
+        number: '',
+        complement: '',
+        neighborhood: '',
+        city: '',
+        state: '',
+    });
 
     const isDevMode = systemSettings?.appMode !== 'production';
+    const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
     const activePaymentProvider = (systemSettings?.paymentProvider || 'mercado_pago') as 'mercado_pago' | 'stripe';
     const isStripeProvider = activePaymentProvider === 'stripe';
     const stripeCheckoutMode = (systemSettings?.paymentCheckoutMode || 'internal') as 'internal' | 'redirect';
@@ -646,7 +661,7 @@ const CheckoutPage: React.FC = () => {
                     return;
                 }
 
-                if (!captchaToken && !isDevMode) {
+                if (recaptchaEnabled && !captchaToken) {
                     addToast('Por favor, complete o desafio de segurança.', 'error');
                     setAuthLoading(false);
                     return;
@@ -665,8 +680,9 @@ const CheckoutPage: React.FC = () => {
 
                 if (result.success && result.data) {
                     const { user, token } = result.data;
-                    setStoredSession(token, user);
-                    login(user as UserProfile);
+                    localStorage.setItem('token', token);
+                    localStorage.setItem('user', JSON.stringify(user));
+                    login(user);
                     addToast('Conta criada com sucesso e login realizado!', 'success');
                 } else {
                     addToast(result.message || 'Erro ao criar conta.', 'error');
@@ -675,7 +691,7 @@ const CheckoutPage: React.FC = () => {
                 }
 
             } else {
-                if (!captchaToken && !isDevMode) {
+                if (recaptchaEnabled && !captchaToken) {
                     addToast('Por favor, complete o desafio de segurança.', 'error');
                     setAuthLoading(false);
                     return;
@@ -689,8 +705,9 @@ const CheckoutPage: React.FC = () => {
 
                 if (result.success && result.data) {
                     const { user, token } = result.data;
-                    setStoredSession(token, user);
-                    login(user as UserProfile);
+                    localStorage.setItem('token', token);
+                    localStorage.setItem('user', JSON.stringify(user));
+                    login(user);
                     addToast('Login realizado com sucesso!', 'success');
                 } else {
                     addToast(result.message || 'Credenciais inválidas.', 'error');
@@ -734,8 +751,85 @@ const CheckoutPage: React.FC = () => {
         }
     };
 
+    const handleCheckoutRequirementFieldChange = (field: keyof typeof checkoutRequirementData, value: string) => {
+        setCheckoutRequirementData((prev) => ({
+            ...prev,
+            [field]: value,
+        }));
+    };
+
+    const handleSaveCheckoutRequirements = async () => {
+        if (!currentUser) return;
+
+        const requiredFields = [
+            ['name', checkoutRequirementData.name],
+            ['cpf', checkoutRequirementData.cpf],
+            ['zipCode', checkoutRequirementData.zipCode],
+            ['street', checkoutRequirementData.street],
+            ['number', checkoutRequirementData.number],
+            ['neighborhood', checkoutRequirementData.neighborhood],
+            ['city', checkoutRequirementData.city],
+            ['state', checkoutRequirementData.state],
+        ] as const;
+
+        const missing = requiredFields.find(([, value]) => !String(value || '').trim());
+        if (missing) {
+            addToast('Preencha todos os dados obrigatorios para concluir a compra.', 'warning');
+            return;
+        }
+
+        setIsSavingCheckoutRequirements(true);
+        try {
+            await updateUser({
+                name: checkoutRequirementData.name.trim(),
+                cpf: checkoutRequirementData.cpf.replace(/\D/g, ''),
+                address: {
+                    zipCode: checkoutRequirementData.zipCode.replace(/\D/g, ''),
+                    street: checkoutRequirementData.street.trim(),
+                    number: checkoutRequirementData.number.trim(),
+                    complement: checkoutRequirementData.complement.trim(),
+                    neighborhood: checkoutRequirementData.neighborhood.trim(),
+                    city: checkoutRequirementData.city.trim(),
+                    state: checkoutRequirementData.state.trim().toUpperCase(),
+                },
+            });
+
+            await refreshUser();
+            addToast('Perfil atualizado. Agora voce ja pode concluir a compra.', 'success');
+        } catch (error) {
+            console.error('Failed to update checkout requirements', error);
+        } finally {
+            setIsSavingCheckoutRequirements(false);
+        }
+    };
+
+    const handleResendConfirmation = async () => {
+        if (!currentUser?.email) return;
+
+        setIsResendingConfirmation(true);
+        try {
+            const response: any = await apiClient.post(ENDPOINTS.auth.resendConfirmation, {
+                email: currentUser.email,
+            });
+
+            if (!response?.success) {
+                throw new Error(response?.message || 'Nao foi possivel reenviar o e-mail de confirmacao.');
+            }
+
+            addToast(response.message || 'E-mail de confirmacao reenviado com sucesso.', 'success');
+        } catch (error: any) {
+            addToast(error.response?.data?.message || error.message || 'Erro ao reenviar o e-mail de confirmacao.', 'error');
+        } finally {
+            setIsResendingConfirmation(false);
+        }
+    };
+
     const handlePayment = async () => {
         if (!plan || !currentUser) return;
+
+        if (!ensureCheckoutRequirements()) {
+            return;
+        }
 
         if (isStripeProvider) {
             if (selectedMethod !== 'credit_card') {
@@ -754,6 +848,7 @@ const CheckoutPage: React.FC = () => {
                     plan_id: plan.id,
                     auto_renew: autoRenew,
                     coupon_code: appliedCoupon?.code || undefined,
+                    billing_mode: stripeBillingMode,
                 });
 
                 const redirectUrl = response?.data?.url || response?.url || response?.data?.redirect_url;
@@ -957,6 +1052,7 @@ const CheckoutPage: React.FC = () => {
 
     const handleStripeInternalPayment = async (paymentMethodId: string) => {
         if (!plan || !currentUser) return;
+        if (!ensureCheckoutRequirements()) return;
 
         setProcessing(true);
         try {
@@ -966,6 +1062,7 @@ const CheckoutPage: React.FC = () => {
                 coupon_code: appliedCoupon?.code || undefined,
                 payment_method_id: paymentMethodId,
                 save_card: saveCard || stripeRequiresSavedCard,
+                billing_mode: stripeBillingMode,
             });
 
             if (!response?.success) {
@@ -1048,6 +1145,9 @@ const CheckoutPage: React.FC = () => {
         if (!plan || !currentUser || !selectedStripeCard) {
             throw new Error('Selecione um cartao salvo para continuar.');
         }
+        if (!ensureCheckoutRequirements()) {
+            throw new Error('Complete seu perfil e confirme o e-mail antes de concluir a compra.');
+        }
 
         setProcessing(true);
         try {
@@ -1057,6 +1157,7 @@ const CheckoutPage: React.FC = () => {
                 coupon_code: appliedCoupon?.code || undefined,
                 saved_card_id: selectedStripeCard.id,
                 save_card: true,
+                billing_mode: stripeBillingMode,
             });
 
             if (!response?.success) {
@@ -1142,9 +1243,84 @@ const CheckoutPage: React.FC = () => {
         return 1;
     }, [plan]);
 
+    const supportsStripeBillingChoices = isStripeProvider && maxInstallments > 1;
+
+    useEffect(() => {
+        if (supportsStripeBillingChoices) {
+            setStripeBillingMode('term_recurring');
+            return;
+        }
+
+        setStripeBillingMode('single_installment');
+    }, [supportsStripeBillingChoices, plan?.id]);
+
+    useEffect(() => {
+        if (!currentUser) return;
+
+        setCheckoutRequirementData({
+            name: currentUser.name || '',
+            cpf: currentUser.cpf || '',
+            zipCode: currentUser.address?.zipCode || '',
+            street: currentUser.address?.street || '',
+            number: currentUser.address?.number || '',
+            complement: currentUser.address?.complement || '',
+            neighborhood: currentUser.address?.neighborhood || '',
+            city: currentUser.address?.city || '',
+            state: currentUser.address?.state || '',
+        });
+    }, [currentUser?.id, currentUser?.name, currentUser?.cpf, currentUser?.address]);
+
+    const getMissingCheckoutRequirements = () => {
+        if (!currentUser) return ['login'];
+
+        const missing: string[] = [];
+        const data = {
+            name: currentUser.name,
+            cpf: currentUser.cpf,
+            zipCode: currentUser.address?.zipCode,
+            street: currentUser.address?.street,
+            number: currentUser.address?.number,
+            neighborhood: currentUser.address?.neighborhood,
+            city: currentUser.address?.city,
+            state: currentUser.address?.state,
+        };
+
+        Object.entries(data).forEach(([key, value]) => {
+            if (!String(value || '').trim()) {
+                missing.push(key);
+            }
+        });
+
+        if (!currentUser.emailVerified) {
+            missing.push('emailVerified');
+        }
+
+        return missing;
+    };
+
+    const ensureCheckoutRequirements = () => {
+        const missing = getMissingCheckoutRequirements();
+        if (missing.length === 0) {
+            return true;
+        }
+
+        setShowCheckoutRequirementsModal(true);
+        addToast('Antes de concluir a compra, complete seu perfil e confirme o e-mail.', 'warning');
+        return false;
+    };
+
     const selectedInstallment = useMemo(() => {
         if (!plan) return { installments: 1, installment_amount: 0, total_amount: 0 };
         if (isStripeProvider) {
+            if (supportsStripeBillingChoices && stripeBillingMode === 'term_recurring') {
+                const amount = Number((Number(plan.price) / maxInstallments).toFixed(2));
+                return {
+                    installments: maxInstallments,
+                    installment_amount: amount,
+                    total_amount: Number(plan.price),
+                };
+            }
+
             return { installments: 1, installment_amount: Number(plan.price), total_amount: Number(plan.price) };
         }
         const installmentsNumber = Number(paymentData.installments) || 1;
@@ -1176,7 +1352,7 @@ const CheckoutPage: React.FC = () => {
             installment_amount: amount,
             total_amount: amount * installmentsNumber,
         };
-    }, [plan, installmentOptions, paymentData.installments, isRecurring, isStripeProvider, maxInstallments]);
+    }, [plan, installmentOptions, paymentData.installments, isRecurring, isStripeProvider, maxInstallments, supportsStripeBillingChoices, stripeBillingMode]);
 
     const monetaryTotals = useMemo(() => {
         if (!plan) return { firstCharge: 0, totalDue: 0 };
@@ -1185,14 +1361,16 @@ const CheckoutPage: React.FC = () => {
         // Se for recorrente, baseamos no valor da parcela
         // Caso contrário, usamos o total_amount do parcelamento selecionado (que já inclui juros se houver)
         const baseAmount = isStripeProvider
-            ? Number(plan.price)
+            ? (supportsStripeBillingChoices && stripeBillingMode === 'term_recurring'
+                ? selectedInstallment.installment_amount
+                : Number(plan.price))
             : isRecurring 
             ? (plan.price / maxInstallments) 
             : selectedInstallment.total_amount;
 
         const totalDue = Math.max(0, baseAmount - proRatedCredit - discount);
         return { firstCharge: baseAmount, totalDue };
-    }, [plan, isRecurring, isStripeProvider, maxInstallments, proRatedCredit, appliedCoupon, discountAmount, selectedInstallment.total_amount]);
+    }, [plan, isRecurring, isStripeProvider, maxInstallments, proRatedCredit, appliedCoupon, discountAmount, selectedInstallment.installment_amount, selectedInstallment.total_amount, supportsStripeBillingChoices, stripeBillingMode]);
 
     const paymentProviderLabel = isStripeProvider ? 'Stripe' : 'Mercado Pago';
     const selectedMethodLabel = selectedMethod === 'credit_card' ? 'Cartao' : selectedMethod === 'pix' ? 'Pix' : 'Boleto';
@@ -1205,6 +1383,62 @@ const CheckoutPage: React.FC = () => {
     const processingLabel = isStripeProvider
         ? (isStripeInternalCheckout ? 'Processando assinatura Stripe...' : 'Abrindo checkout Stripe...')
         : 'Processando Segurança...';
+
+    const checkoutBillingLabel = isStripeProvider
+        ? (supportsStripeBillingChoices && stripeBillingMode === 'term_recurring'
+            ? `${maxInstallments}x de R$ ${selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+            : `1x de R$ ${Number(plan?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)
+        : (!isRecurring && selectedInstallment.installments > 1
+            ? `${selectedInstallment.installments}x de R$ ${selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+            : `1x de R$ ${Number(monetaryTotals.firstCharge || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+
+    const renderSuccessStep = () => (
+        <div className="overflow-hidden rounded-[2.25rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#1a1c2e]">
+            <div className="px-8 pb-6 pt-10 text-center md:px-12">
+                <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-emerald-500 text-white shadow-2xl shadow-emerald-500/30">
+                    <CheckCircle2 size={46} />
+                </div>
+                <div className="mt-6 space-y-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600 dark:text-emerald-400">Pagamento aprovado</p>
+                    <h2 className="text-3xl font-black leading-none text-slate-900 dark:text-white">Pagamento aprovado!</h2>
+                    <p className="mx-auto max-w-xl text-base font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                        Sua assinatura do plano <span className="font-black text-slate-900 dark:text-white">{displayName}</span> foi confirmada com sucesso e o acesso ja esta pronto para uso.
+                    </p>
+                </div>
+            </div>
+
+            <div className="grid gap-4 border-y border-slate-100 bg-slate-50 px-8 py-6 dark:border-slate-800 dark:bg-[#121528] md:grid-cols-3 md:px-12">
+                <div className="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5 dark:border-slate-800 dark:bg-[#1a1c2e]">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Plano</p>
+                    <p className="mt-3 text-lg font-black leading-none text-slate-900 dark:text-white">{displayName}</p>
+                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">{billingCycle}</p>
+                </div>
+                <div className="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5 dark:border-slate-800 dark:bg-[#1a1c2e]">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Cobranca confirmada</p>
+                    <p className="mt-3 text-lg font-black leading-none text-slate-900 dark:text-white">R$ {monetaryTotals.totalDue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">{checkoutBillingLabel}</p>
+                </div>
+                <div className="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5 dark:border-slate-800 dark:bg-[#1a1c2e]">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Proximo passo</p>
+                    <p className="mt-3 text-lg font-black leading-none text-slate-900 dark:text-white">Ir para a assinatura</p>
+                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">Veja o status do plano, transacoes e renovacao automatica.</p>
+                </div>
+            </div>
+
+            <div className="px-8 py-8 text-center md:px-12">
+                <button
+                    onClick={() => navigate('/profile?tab=billing')}
+                    className="inline-flex h-14 items-center justify-center gap-3 rounded-2xl bg-indigo-600 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-indigo-700"
+                >
+                    Ir para minha assinatura
+                    <ArrowRight size={16} />
+                </button>
+                <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                    Redirecionamento automatico em {countdown} segundos
+                </p>
+            </div>
+        </div>
+    );
 
     if (loading) return (
         <div className="min-h-screen bg-slate-50 dark:bg-[#0f1020] flex items-center justify-center">
@@ -1317,7 +1551,7 @@ const CheckoutPage: React.FC = () => {
                                                 <input type="password" required value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="••••••••" />
                                             </div>
                                         </div>
-                                        {!isDevMode && <div className="flex justify-center py-2"><ReCAPTCHA ref={recaptchaRef} sitekey={systemSettings?.recaptchaSiteKey || ''} onChange={setCaptchaToken} theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'} /></div>}
+                                        {recaptchaEnabled && <div className="flex justify-center py-2"><ReCAPTCHA ref={recaptchaRef} sitekey={systemSettings?.recaptchaSiteKey || ''} onChange={setCaptchaToken} theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'} /></div>}
                                         <button type="submit" disabled={authLoading} className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] rounded-2xl text-white font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-70">
                                             {authLoading ? <span className="animate-pulse">Aguarde...</span> : <>{authMode === 'register' ? 'Criar Minha Conta' : 'Acessar Minha Conta'} <ArrowRight size={18} /></>}
                                         </button>
@@ -1455,6 +1689,28 @@ const CheckoutPage: React.FC = () => {
                                                             </div>
                                                         </div>
                                                     ) : null}
+
+                                                    <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#121528]">
+                                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                                                                Parcelamento:
+                                                            </label>
+                                                            <select
+                                                                value={stripeBillingMode}
+                                                                onChange={(event) => setStripeBillingMode(event.target.value as 'single_installment' | 'term_recurring')}
+                                                                className="h-11 min-w-[220px] rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
+                                                            >
+                                                                <option value="single_installment">
+                                                                    1x de R$ {Number(plan.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                </option>
+                                                                {supportsStripeBillingChoices && (
+                                                                    <option value="term_recurring">
+                                                                        {maxInstallments}x de R$ {selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                    </option>
+                                                                )}
+                                                            </select>
+                                                        </div>
+                                                    </div>
 
                                                     {isStripeInternalCheckout ? (
                                                         isUsingStripeSavedCard ? (
@@ -1834,6 +2090,26 @@ const CheckoutPage: React.FC = () => {
                                             )}
                                         </div>
 
+                                        {currentUser && getMissingCheckoutRequirements().length > 0 && (
+                                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+                                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700 dark:text-amber-300">Compra bloqueada</p>
+                                                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                                                            Complete seu perfil e confirme o e-mail antes de concluir o pagamento.
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowCheckoutRequirementsModal(true)}
+                                                        className="h-11 rounded-xl bg-slate-900 px-4 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-slate-800 dark:bg-amber-500 dark:text-slate-900"
+                                                    >
+                                                        Resolver agora
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* Final Action */}
                                         <div className="pt-6 border-t border-slate-200 dark:border-slate-800 space-y-4">
                                             {!isStripeInternalCheckout && (
@@ -1860,7 +2136,9 @@ const CheckoutPage: React.FC = () => {
                             </div>
                         )}
 
-                        {step === 'success' && (
+                        {step === 'success' && renderSuccessStep()}
+
+                        {false && step === 'success' && (
                             <div className="bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-[2rem] p-12 shadow-2xl animate-in zoom-in-95 duration-700 text-center space-y-8">
                                 <div className="relative mx-auto w-32 h-32">
                                     <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping"></div>
@@ -1905,6 +2183,10 @@ const CheckoutPage: React.FC = () => {
                                         <span className="text-slate-900 dark:text-white font-black">{selectedMethodLabel}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
+                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Cobranca</span>
+                                        <span className="text-right text-slate-900 dark:text-white font-black">{checkoutBillingLabel}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
                                         <span className="text-slate-500 uppercase font-bold tracking-widest">Renovação</span>
                                         <span className="text-slate-900 dark:text-white font-black">{renewalLabel}</span>
                                     </div>
@@ -1913,7 +2195,7 @@ const CheckoutPage: React.FC = () => {
                                     
                                     <div className="flex justify-between items-center"><span className="text-slate-500 font-medium">Subtotal</span><span className="text-slate-900 dark:text-white font-bold">R$ {plan.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
                                     
-                                    {!isRecurring && selectedInstallment.installments > 1 && (
+                                    {!isStripeProvider && !isRecurring && selectedInstallment.installments > 1 && (
                                         <div className="flex justify-between items-center text-slate-500 italic">
                                             <span>Parcelamento ({selectedInstallment.installments}x)</span>
                                             <span>R$ {selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês</span>
@@ -1930,8 +2212,12 @@ const CheckoutPage: React.FC = () => {
                                     <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800 space-y-3">
                                         <div className="flex justify-between items-end">
                                             <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total a Pagar</span>
-                                                <span className="text-[9px] text-slate-400 italic">Preço final com taxas inclusas</span>
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isStripeProvider && supportsStripeBillingChoices && stripeBillingMode === 'term_recurring' ? 'Primeira cobranca' : 'Total a pagar'}</span>
+                                                <span className="text-[9px] text-slate-400 italic">
+                                                    {isStripeProvider && supportsStripeBillingChoices && stripeBillingMode === 'term_recurring'
+                                                        ? `Cobranca ${maxInstallments}x mensal do termo contratado`
+                                                        : 'Valor final desta cobranca'}
+                                                </span>
                                             </div>
                                             <div className="flex flex-col items-end">
                                                 <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tighter">R$ {monetaryTotals.totalDue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
@@ -1953,6 +2239,172 @@ const CheckoutPage: React.FC = () => {
                         <h3 className="text-xl font-black text-white uppercase tracking-tight">Aviso de Downgrade</h3>
                         <p className="text-sm text-slate-400 leading-relaxed">Você está mudando para um plano inferior. Benefícios exclusivos do seu plano atual (<span className="text-indigo-400 font-bold">{currentUser?.subscription?.plan?.name}</span>) serão perdidos na próxima renovação.</p>
                         <button onClick={() => setShowDowngradeModal(false)} className="w-full py-4 bg-white text-slate-900 rounded-xl font-black uppercase tracking-widest">Entendi e quero continuar</button>
+                    </div>
+                </div>
+            )}
+
+            {showCheckoutRequirementsModal && currentUser && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+                    <div
+                        className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+                        onClick={() => setShowCheckoutRequirementsModal(false)}
+                    />
+                    <div className="relative z-10 w-full max-w-3xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-[#1a1c2e] md:p-8">
+                        <div className="flex flex-col gap-3 border-b border-slate-100 pb-5 dark:border-slate-800 md:flex-row md:items-start md:justify-between">
+                            <div className="space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Checkout seguro</p>
+                                <h3 className="text-2xl font-black text-slate-900 dark:text-white">Complete seu cadastro para pagar</h3>
+                                <p className="max-w-2xl text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                                    Antes de concluir a compra, precisamos dos seus dados de cobranca e de uma conta com e-mail confirmado.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowCheckoutRequirementsModal(false)}
+                                className="self-start rounded-xl p-2 text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                            >
+                                <XCircle size={18} />
+                            </button>
+                        </div>
+
+                        <div className="mt-6 space-y-6">
+                            <div className={`rounded-[1.5rem] border px-5 py-4 ${currentUser.emailVerified ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10' : 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10'}`}>
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                    <div className="space-y-1">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Confirmacao de e-mail</p>
+                                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                                            {currentUser.emailVerified ? 'Seu e-mail ja esta confirmado.' : 'Confirme seu e-mail para liberar o pagamento.'}
+                                        </p>
+                                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{currentUser.email}</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-3">
+                                        {!currentUser.emailVerified && (
+                                            <button
+                                                type="button"
+                                                onClick={handleResendConfirmation}
+                                                disabled={isResendingConfirmation}
+                                                className="h-11 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                            >
+                                                {isResendingConfirmation ? 'Enviando...' : 'Reenviar e-mail'}
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                await refreshUser();
+                                            }}
+                                            className="h-11 rounded-xl bg-slate-900 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-slate-800 dark:bg-indigo-600"
+                                        >
+                                            Ja confirmei
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Nome completo</label>
+                                    <input
+                                        type="text"
+                                        value={checkoutRequirementData.name}
+                                        onChange={(event) => handleCheckoutRequirementFieldChange('name', event.target.value)}
+                                        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">CPF</label>
+                                    <input
+                                        type="text"
+                                        value={checkoutRequirementData.cpf}
+                                        onChange={(event) => handleCheckoutRequirementFieldChange('cpf', event.target.value)}
+                                        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">CEP</label>
+                                    <input
+                                        type="text"
+                                        value={checkoutRequirementData.zipCode}
+                                        onChange={(event) => handleCheckoutRequirementFieldChange('zipCode', event.target.value)}
+                                        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Logradouro</label>
+                                    <input
+                                        type="text"
+                                        value={checkoutRequirementData.street}
+                                        onChange={(event) => handleCheckoutRequirementFieldChange('street', event.target.value)}
+                                        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Numero</label>
+                                    <input
+                                        type="text"
+                                        value={checkoutRequirementData.number}
+                                        onChange={(event) => handleCheckoutRequirementFieldChange('number', event.target.value)}
+                                        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Complemento</label>
+                                    <input
+                                        type="text"
+                                        value={checkoutRequirementData.complement}
+                                        onChange={(event) => handleCheckoutRequirementFieldChange('complement', event.target.value)}
+                                        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Bairro</label>
+                                    <input
+                                        type="text"
+                                        value={checkoutRequirementData.neighborhood}
+                                        onChange={(event) => handleCheckoutRequirementFieldChange('neighborhood', event.target.value)}
+                                        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cidade</label>
+                                    <input
+                                        type="text"
+                                        value={checkoutRequirementData.city}
+                                        onChange={(event) => handleCheckoutRequirementFieldChange('city', event.target.value)}
+                                        className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">UF</label>
+                                <input
+                                    type="text"
+                                    maxLength={2}
+                                    value={checkoutRequirementData.state}
+                                    onChange={(event) => handleCheckoutRequirementFieldChange('state', event.target.value.toUpperCase())}
+                                    className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold uppercase text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setShowCheckoutRequirementsModal(false)}
+                                className="h-12 rounded-2xl border border-slate-200 px-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                            >
+                                Fechar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveCheckoutRequirements}
+                                disabled={isSavingCheckoutRequirements}
+                                className="h-12 rounded-2xl bg-indigo-600 px-5 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-indigo-700 disabled:opacity-60"
+                            >
+                                {isSavingCheckoutRequirements ? 'Salvando...' : 'Salvar e continuar'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

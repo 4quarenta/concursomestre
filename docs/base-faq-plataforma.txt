@@ -1,0 +1,112 @@
+BASE FAQ DA PLATAFORMA
+======================
+
+Este arquivo serve como base interna para futuras entradas de FAQ, centralizando funcionalidades que ja existem no app.
+
+SECAO 1. PAGAMENTOS E ASSINATURAS
+---------------------------------
+
+1. Gateway configuravel pelo admin
+- O admin pode escolher o gateway principal de pagamento entre Mercado Pago e Stripe.
+- O admin tambem controla o modo do checkout e o cofre de cartoes.
+
+2. Checkout interno
+- A plataforma suporta checkout interno sem tirar o usuario da aplicacao.
+- No Stripe, o checkout interno permite pagar com cartao novo ou cartao salvo.
+- No Mercado Pago, o checkout suporta cartao, Pix e boleto conforme a configuracao ativa.
+
+3. Requisitos antes do pagamento
+- Antes de pagar, o usuario precisa estar logado.
+- O checkout exige perfil completo com dados de cobranca.
+- O checkout tambem exige conta com e-mail confirmado.
+- Se faltar algo, um modal permite completar os dados sem sair do checkout.
+
+4. Cartoes salvos
+- Cartoes salvos aparecem na area de Dados Pessoais do perfil.
+- O checkout permite usar cartao salvo ou informar um cartao novo.
+- Ao usar cartao salvo, o usuario precisa informar o codigo de seguranca novamente.
+- O CVV nao fica salvo na plataforma.
+
+5. Renovacao automatica
+- A renovacao automatica pode ser ativada ou desativada na aba Assinatura.
+- O toggle responde de forma otimista na interface para evitar cliques repetidos.
+- Quando necessario, o sistema exige cartao salvo para manter a renovacao automatica.
+
+6. Assinaturas por termo no Stripe
+- Planos trimestrais e anuais podem ser contratados em duas modalidades:
+  - pagamento unico do ciclo
+  - cobranca mensal controlada do termo contratado
+- Exemplo de anual:
+  - 1x de R$ 118,80
+  - ou 12x de R$ 9,90
+- Exemplo de trimestral:
+  - 1x do valor total do ciclo
+  - ou 3x mensais do termo contratado
+
+7. Historico de transacoes
+- A aba Transacoes no perfil mostra cobrancas reais e parcelas futuras pre-aprovadas.
+- Cada linha pode exibir:
+  - ID do gateway
+  - nome do plano
+  - data e hora
+  - status
+  - valor
+  - fatura para download quando existir no Stripe
+- Para contratos por termo, as parcelas futuras aparecem como pre-aprovadas com data estimada.
+
+8. Reembolso e cancelamento
+- O cancelamento pode incluir motivo opcional e detalhes livres.
+- Quando o reCAPTCHA estiver ativo, ele tambem e exigido no cancelamento.
+- Reembolsos Stripe usam o SDK oficial do gateway.
+- O usuario recebe e-mail com os dados de cancelamento e de reembolso, incluindo referencias retornadas pela Stripe quando disponiveis.
+
+SECAO 2. SEGURANCA
+------------------
+
+1. reCAPTCHA global
+- O admin pode ativar ou desativar o reCAPTCHA em areas sensiveis.
+- Quando ativo, ele pode ser exigido em:
+  - login
+  - cadastro
+  - recuperacao de senha
+  - checkout
+  - cancelamento de assinatura
+  - outras acoes protegidas da plataforma
+
+2. Confirmacao de e-mail
+- O sistema pode bloquear a conclusao do checkout enquanto o e-mail nao estiver confirmado.
+
+SECAO 3. PERFIL DO USUARIO
+--------------------------
+
+1. Aba Assinatura
+- A aba Assinatura mostra:
+  - resumo do plano atual
+  - status da assinatura
+  - fim do ciclo
+  - valor contratado
+  - progresso do ciclo
+  - renovacao automatica
+  - cancelamento
+  - cartoes e cobranca
+  - upgrade
+
+2. Estado do plano gratuito
+- Quando o usuario estiver sem assinatura ativa e no plano gratuito, a interface mostra o estado inativo de forma simplificada.
+
+3. Cartoes em Dados Pessoais
+- Os cartoes salvos ficam na aba Dados Pessoais e podem ser usados em compras futuras e renovacoes.
+
+SECAO 4. OBSERVACOES OPERACIONAIS
+---------------------------------
+
+1. Stripe
+- O sistema usa o ecossistema Stripe para assinatura, cobranca, fatura, webhooks e reembolso.
+- O historico pode exibir dados reais da invoice do Stripe quando ela existir.
+
+2. Mercado Pago
+- O sistema tambem suporta checkout com Mercado Pago, incluindo meios locais como Pix e boleto quando habilitados.
+
+3. FAQ futuro
+- Este arquivo deve continuar recebendo novas funcionalidades aprovadas da plataforma.
+- O objetivo e servir como base para um FAQ completo no futuro.

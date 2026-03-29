@@ -1027,6 +1027,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
   const [localMercadoPagoPublicKey, setLocalMercadoPagoPublicKey] = useState(systemSettings.mercadoPagoKey || '');
   const [localMercadoPagoAccessToken, setLocalMercadoPagoAccessToken] = useState('');
   const [localMercadoPagoWebhookSecret, setLocalMercadoPagoWebhookSecret] = useState('');
+  const [localRecaptchaEnabled, setLocalRecaptchaEnabled] = useState(!!systemSettings.recaptchaEnabled);
   const [localRecaptchaSiteKey, setLocalRecaptchaSiteKey] = useState(systemSettings.recaptchaSiteKey || '');
   const [localRecaptchaSecretKey, setLocalRecaptchaSecretKey] = useState(systemSettings.recaptchaSecretKey || '');
   const [localFirebaseKey, setLocalFirebaseKey] = useState(systemSettings.firebaseConfig?.apiKey || '');
@@ -1160,6 +1161,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
     setLocalMercadoPagoPublicKey(systemSettings.mercadoPagoKey || '');
     setLocalMercadoPagoAccessToken('');
     setLocalMercadoPagoWebhookSecret('');
+    setLocalRecaptchaEnabled(!!systemSettings.recaptchaEnabled);
     setLocalRecaptchaSiteKey(systemSettings.recaptchaSiteKey || '');
     setLocalRecaptchaSecretKey(systemSettings.recaptchaSecretKey || '');
     setLocalFirebaseKey(systemSettings.firebaseConfig?.apiKey || '');
@@ -1198,6 +1200,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
       pixKey: localPixKey,
       appMode: localAppMode,
       geminiApiKey: localApiKey,
+      recaptchaEnabled: localRecaptchaEnabled,
       recaptchaSiteKey: localRecaptchaSiteKey,
       recaptchaSecretKey: localRecaptchaSecretKey,
       stripeKey: localStripePublishableKey,
@@ -1753,7 +1756,24 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
               </div>
 
               {/* reCAPTCHA */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="p-5 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Exigir reCAPTCHA em areas sensiveis</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Quando ativado, o desafio aparece em login, cadastro, recuperacao de senha, checkout, cancelamento de assinatura e outras acoes protegidas.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocalRecaptchaEnabled(prev => !prev)}
+                    className={`relative inline-flex h-9 w-16 items-center rounded-full border transition-all ${localRecaptchaEnabled ? 'border-emerald-500 bg-emerald-500/90' : 'border-slate-200 bg-slate-200 dark:border-slate-700 dark:bg-slate-800'}`}
+                  >
+                    <span
+                      className={`inline-block h-7 w-7 transform rounded-full bg-white shadow transition-transform ${localRecaptchaEnabled ? 'translate-x-8' : 'translate-x-1'}`}
+                    />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Google reCAPTCHA Site Key (Frontend)</label>
                   <input type="text" value={localRecaptchaSiteKey} onChange={e => setLocalRecaptchaSiteKey(e.target.value)} placeholder="6LeI..."
@@ -1764,6 +1784,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
                   <input type="password" value={localRecaptchaSecretKey} onChange={e => setLocalRecaptchaSecretKey(e.target.value)} placeholder="6LeI..."
                     className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-indigo-500/20" />
                 </div>
+              </div>
               </div>
 
               {/* Pagamentos */}

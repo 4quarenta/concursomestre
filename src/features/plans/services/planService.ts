@@ -72,6 +72,7 @@ export const planService = {
         plan_id: number;
         auto_renew?: boolean;
         coupon_code?: string;
+        billing_mode?: 'single_installment' | 'term_recurring';
     }): Promise<any> {
         try {
             const response = await apiClient.post<ApiResponse<any>>('/subscriptions/create_stripe_checkout.php', payload);
@@ -89,6 +90,7 @@ export const planService = {
         payment_method_id?: string;
         saved_card_id?: string;
         save_card?: boolean;
+        billing_mode?: 'single_installment' | 'term_recurring';
     }): Promise<any> {
         try {
             const response = await apiClient.post<ApiResponse<any>>('/subscriptions/create_stripe_subscription.php', payload);
@@ -106,6 +108,7 @@ export const planService = {
         payment_method_id?: string;
         saved_card_id?: string;
         save_card?: boolean;
+        billing_mode?: 'single_installment' | 'term_recurring';
     }): Promise<any> {
         try {
             const response = await apiClient.post<ApiResponse<any>>('/subscriptions/finalize_stripe_subscription.php', payload);
@@ -154,12 +157,13 @@ export const planService = {
     /**
      * Cancel subscription
      */
-    async cancelSubscription(userId: string, reason?: string, details?: string): Promise<any> {
+    async cancelSubscription(userId: string, reason?: string, details?: string, captchaToken?: string | null): Promise<any> {
         try {
             const response = await apiClient.post<ApiResponse>('/subscriptions/cancel.php', {
                 user_id: userId,
                 reason,
-                details
+                details,
+                captchaToken,
             });
             return response;
         } catch (error) {
