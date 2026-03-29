@@ -20,6 +20,9 @@ import { apiClient, ENDPOINTS, ApiResponse } from '@core/api';
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   activeTheme: 'default',
+  paymentProvider: 'mercado_pago',
+  paymentCheckoutMode: 'internal',
+  cardVaultProvider: 'local',
   pricing: {
     Gratuito: { ...PRICING.Gratuito, quarterlyDiscountPercent: 0, annualDiscountPercent: 0 },
     Essencial: { ...PRICING.Essencial, quarterlyDiscountPercent: 10, annualDiscountPercent: 30 },

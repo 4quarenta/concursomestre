@@ -23,6 +23,7 @@ import { Subject } from '../types';
 import AuthModal from '../components/AuthModal';
 import { apiClient, ENDPOINTS, buildDownloadUrl } from '../src/core/api';
 import { planService } from '../src/features/plans/services/planService';
+import StripeSetupCardForm from '../src/features/payments/components/StripeSetupCardForm';
 
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
 type ProfileTab = 'evolution' | 'notebook' | 'materials' | 'personal' | 'billing' | 'billing-history' | 'security' | 'referral';
@@ -36,6 +37,10 @@ const Profile: React.FC = () => {
     const activeBillingProvider = (currentUser?.subscription?.payment_provider || systemSettings?.paymentProvider || 'mercado_pago') as 'mercado_pago' | 'stripe';
     const isStripeBilling = activeBillingProvider === 'stripe';
     const billingProviderLabel = isStripeBilling ? 'Stripe' : 'Mercado Pago';
+    const paymentCheckoutMode = (systemSettings?.paymentCheckoutMode || 'internal') as 'internal' | 'redirect';
+    const cardVaultProvider = (systemSettings?.cardVaultProvider || 'local') as 'local' | 'mercado_pago' | 'stripe';
+    const usesInternalStripeVault = isStripeBilling && paymentCheckoutMode === 'internal' && cardVaultProvider === 'stripe';
+    const stripePublishableKey = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
 
     const [activeTab, setActiveTab] = useState<ProfileTab>('evolution');
     const [selectedCycle, setSelectedCycle] = useState<BillingCycle>('monthly');
@@ -57,6 +62,7 @@ const Profile: React.FC = () => {
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
     const [isOpeningBillingPortal, setIsOpeningBillingPortal] = useState(false);
+    const [stripeSetupClientSecret, setStripeSetupClientSecret] = useState<string | null>(null);
 
     // Sincronizar aba com parâmetro da URL (?tab=)
     React.useEffect(() => {
@@ -70,10 +76,6 @@ const Profile: React.FC = () => {
     // Handlers de API para Gerenciamento de Dados
     const fetchUserCards = async () => {
         if (!currentUser?.id) return;
-        if (isStripeBilling) {
-            setUserCards([]);
-            return;
-        }
         setIsLoadingCards(true);
         try {
             const res: any = await apiClient.post('users/list_cards.php', { user_id: currentUser.id });
@@ -86,7 +88,7 @@ const Profile: React.FC = () => {
     };
 
     const handleRemoveCard = async (cardId: string) => {
-        if (isStripeBilling) {
+        if (isStripeBilling && !usesInternalStripeVault) {
             addToast('Os métodos de pagamento do Stripe são gerenciados no Billing Portal.', 'info');
             return;
         }
@@ -110,7 +112,7 @@ const Profile: React.FC = () => {
     };
 
     const handleSetDefaultCard = async (cardId: string) => {
-        if (isStripeBilling) {
+        if (isStripeBilling && !usesInternalStripeVault) {
             addToast('Defina o método padrão diretamente no Billing Portal da Stripe.', 'info');
             return;
         }
@@ -129,7 +131,7 @@ const Profile: React.FC = () => {
         e.preventDefault();
         if (!currentUser?.id) return;
         if (isStripeBilling) {
-            addToast('Novos cartões Stripe são adicionados pelo checkout hospedado ou pelo Billing Portal.', 'info');
+            addToast('Use o cofre Stripe interno abaixo para salvar um novo cartão.', 'info');
             return;
         }
         
@@ -156,6 +158,37 @@ const Profile: React.FC = () => {
             addToast(err.response?.data?.message || 'Erro de rede ao salvar cartão.', 'error');
         } finally {
             setIsSavingCard(false);
+        }
+    };
+
+    const handlePrepareStripeCard = async () => {
+        setIsSavingCard(true);
+        try {
+            const res: any = await planService.createStripeSetupIntent();
+            const clientSecret = res?.data?.client_secret || res?.client_secret;
+            if (!res?.success || !clientSecret) {
+                throw new Error(res?.message || 'Nao foi possivel preparar o formulario Stripe.');
+            }
+            setStripeSetupClientSecret(clientSecret);
+        } catch (err: any) {
+            addToast(err.response?.data?.message || err.message || 'Erro ao preparar o formulario Stripe.', 'error');
+        } finally {
+            setIsSavingCard(false);
+        }
+    };
+
+    const handleStripeCardSaved = async (paymentMethodId: string) => {
+        try {
+            const res: any = await planService.syncStripeCard(paymentMethodId);
+            if (!res?.success) {
+                throw new Error(res?.message || 'Nao foi possivel sincronizar o cartao Stripe.');
+            }
+            addToast('Cartao salvo com sucesso na Stripe!', 'success');
+            setStripeSetupClientSecret(null);
+            setIsAddingCard(false);
+            await fetchUserCards();
+        } catch (err: any) {
+            addToast(err.response?.data?.message || err.message || 'Erro ao salvar o cartao Stripe.', 'error');
         }
     };
 
@@ -934,7 +967,7 @@ const Profile: React.FC = () => {
                            </div>
                             <button 
                                onClick={() => {
-                                  if (isStripeBilling) {
+                                  if (isStripeBilling && !usesInternalStripeVault) {
                                       handleOpenStripePortal();
                                       return;
                                   }
@@ -943,7 +976,7 @@ const Profile: React.FC = () => {
                                }}
                                className="px-4 py-2 bg-slate-900 dark:bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:shadow-lg transition-all"
                             >
-                               {isStripeBilling ? 'Abrir Stripe' : 'Resolver'}
+                               {isStripeBilling && !usesInternalStripeVault ? 'Abrir Stripe' : 'Resolver'}
                             </button>
                         </div>
                      )}
@@ -1097,7 +1130,7 @@ const Profile: React.FC = () => {
 
                      {/* Métodos de Pagamento */}
                      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors overflow-hidden">
-                        {isStripeBilling ? (
+                        {isStripeBilling && !usesInternalStripeVault ? (
                             <>
                                 <header className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
                                     <div>
@@ -1153,6 +1186,104 @@ const Profile: React.FC = () => {
                                     <Info size={14} className="text-slate-400 shrink-0" />
                                     <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide leading-relaxed">
                                         SEUS DADOS DE COBRANCA SAO PROCESSADOS COM SEGURANCA PELA STRIPE. CARTOES, FATURAS E TENTATIVAS DE PAGAMENTO SAO GERENCIADOS NO BILLING PORTAL.
+                                    </p>
+                                </footer>
+                            </>
+                        ) : isStripeBilling && usesInternalStripeVault ? (
+                            <>
+                                <header className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
+                                    <div>
+                                        <h3 id="save-card-section" className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Cofre Stripe</h3>
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">Cartões, padrão de renovação e cofre externo da Stripe geridos dentro da sua plataforma.</p>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setIsAddingCard(!isAddingCard);
+                                            if (!isAddingCard) {
+                                                setStripeSetupClientSecret(null);
+                                            }
+                                        }}
+                                        className={`px-4 py-2 border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isAddingCard ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                                    >
+                                        {isAddingCard ? <X size={14} /> : <CreditCard size={14} />} {isAddingCard ? 'Cancelar' : 'Novo Cartão'}
+                                    </button>
+                                </header>
+
+                                <div className="p-6 space-y-4">
+                                    <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/30 bg-indigo-50 dark:bg-indigo-950/20 p-5">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">Provider ativo</p>
+                                        <h4 className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{billingProviderLabel}</h4>
+                                        <p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                                            O cartão continua tokenizado e guardado na Stripe, mas a gestão de cartão padrão, adição e remoção acontece nesta tela.
+                                        </p>
+                                    </div>
+
+                                    {isAddingCard && (
+                                        <div className="mb-8 p-6 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 animate-in slide-in-from-top-4 duration-300 space-y-4">
+                                            {!stripeSetupClientSecret ? (
+                                                <button
+                                                    onClick={handlePrepareStripeCard}
+                                                    disabled={isSavingCard}
+                                                    className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    {isSavingCard ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
+                                                    {isSavingCard ? 'Preparando formulário...' : 'Adicionar cartão Stripe'}
+                                                </button>
+                                            ) : (
+                                                <StripeSetupCardForm
+                                                    publishableKey={stripePublishableKey}
+                                                    clientSecret={stripeSetupClientSecret}
+                                                    billingName={currentUser?.name}
+                                                    billingEmail={currentUser?.email}
+                                                    onSaved={handleStripeCardSaved}
+                                                />
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {isLoadingCards ? (
+                                        <div className="text-sm text-slate-500">Carregando cartões...</div>
+                                    ) : userCards.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {userCards.map((card: any) => (
+                                                <div key={card.id} className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-700 transition-all bg-slate-50 dark:bg-slate-800/20">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${card.is_default == 1 ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}>
+                                                            <CreditCard size={20} />
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <p className="font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest text-xs">{card.brand} •••• {card.last_four_digits}</p>
+                                                                {card.is_default == 1 && <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest">Padrão</span>}
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Expira em {String(card.exp_month).padStart(2, '0')}/{card.exp_year}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mt-4 md:mt-0">
+                                                        {card.is_default != 1 && (
+                                                            <button onClick={() => handleSetDefaultCard(card.id)} className="px-3 py-2 bg-slate-100 dark:bg-slate-800 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all">
+                                                                Definir padrão
+                                                            </button>
+                                                        )}
+                                                        <button onClick={() => handleRemoveCard(card.id)} className="p-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-all">
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-10 text-slate-400">
+                                            <CreditCard size={32} className="mx-auto mb-3 opacity-50" />
+                                            <p className="text-sm font-medium">Nenhum cartão Stripe salvo ainda.</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <footer className="px-6 py-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-50 dark:border-slate-800 flex items-center gap-3">
+                                    <Info size={14} className="text-slate-400 shrink-0" />
+                                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide leading-relaxed">
+                                        O DADO SENSÍVEL CONTINUA NO COFRE DA STRIPE. A PLATAFORMA EXIBE E GERENCIA APENAS O ESPELHO OPERACIONAL PARA O ALUNO.
                                     </p>
                                 </footer>
                             </>

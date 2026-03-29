@@ -436,6 +436,8 @@ export interface GlobalTaxonomies {
 export interface SystemSettings {
   activeTheme: AppPromotionTheme;
   paymentProvider?: 'mercado_pago' | 'stripe';
+  paymentCheckoutMode?: 'internal' | 'redirect';
+  cardVaultProvider?: 'local' | 'mercado_pago' | 'stripe';
   pricing: {
     Gratuito: PlanPricing;
     Essencial: PlanPricing;
@@ -570,6 +572,8 @@ export interface UserSubscription {
   status: 'active' | 'past_due' | 'canceled' | 'incomplete' | 'trialing';
   auto_renew?: boolean;
   payment_provider?: 'mercado_pago' | 'stripe';
+  payment_checkout_mode?: 'internal' | 'redirect';
+  card_vault_provider?: 'local' | 'mercado_pago' | 'stripe';
   provider_subscription_id?: string | null;
   provider_customer_id?: string | null;
   cancel_at_period_end?: boolean;

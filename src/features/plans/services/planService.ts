@@ -82,6 +82,43 @@ export const planService = {
         }
     },
 
+    async createStripeSubscription(payload: {
+        plan_id: number;
+        auto_renew?: boolean;
+        coupon_code?: string;
+        payment_method_id: string;
+    }): Promise<any> {
+        try {
+            const response = await apiClient.post<ApiResponse<any>>('/subscriptions/create_stripe_subscription.php', payload);
+            return response;
+        } catch (error) {
+            console.error('Error creating Stripe inline subscription:', error);
+            throw error;
+        }
+    },
+
+    async createStripeSetupIntent(): Promise<any> {
+        try {
+            const response = await apiClient.post<ApiResponse<any>>('/users/create_stripe_setup_intent.php', {});
+            return response;
+        } catch (error) {
+            console.error('Error creating Stripe setup intent:', error);
+            throw error;
+        }
+    },
+
+    async syncStripeCard(paymentMethodId: string): Promise<any> {
+        try {
+            const response = await apiClient.post<ApiResponse<any>>('/users/sync_stripe_card.php', {
+                payment_method_id: paymentMethodId,
+            });
+            return response;
+        } catch (error) {
+            console.error('Error syncing Stripe card:', error);
+            throw error;
+        }
+    },
+
     /**
      * Open the Stripe Billing Portal for the authenticated user.
      */

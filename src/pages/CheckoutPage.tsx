@@ -13,6 +13,7 @@ import {
 import { getInstallments, getIssuers, getPaymentMethods, initMercadoPago } from '@mercadopago/sdk-react';
 import { apiClient, ENDPOINTS } from '../core/api';
 import ReCAPTCHA from 'react-google-recaptcha';
+import StripeCardElementForm from '../features/payments/components/StripeCardElementForm';
 
 type CheckoutStep = 'identification' | 'payment' | 'success';
 type AuthMode = 'login' | 'register';
@@ -68,7 +69,11 @@ const CheckoutPage: React.FC = () => {
     const isDevMode = systemSettings?.appMode !== 'production';
     const activePaymentProvider = (systemSettings?.paymentProvider || 'mercado_pago') as 'mercado_pago' | 'stripe';
     const isStripeProvider = activePaymentProvider === 'stripe';
+    const stripeCheckoutMode = (systemSettings?.paymentCheckoutMode || 'internal') as 'internal' | 'redirect';
+    const cardVaultProvider = (systemSettings?.cardVaultProvider || 'local') as 'local' | 'mercado_pago' | 'stripe';
+    const isStripeInternalCheckout = isStripeProvider && stripeCheckoutMode === 'internal';
     const MP_PUBLIC_KEY = systemSettings?.mercadoPagoKey || 'TEST-1e38d560-c2b8-4a5c-8b12-bad17bb8a9ba';
+    const STRIPE_PUBLISHABLE_KEY = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
     const savedCardCheckoutSupported = !/^TEST-/i.test(MP_PUBLIC_KEY || '');
     const savedCardCheckoutBlockedMessage = 'O Mercado Pago so aceita pagamento com cartao salvo neste fluxo usando credenciais de producao e, em homologacao, usuarios de teste. Com a chave TEST atual, use um cartao novo no checkout.';
     
@@ -93,6 +98,8 @@ const CheckoutPage: React.FC = () => {
     const [selectedCard, setSelectedCard] = useState<any>(null);
     const [savedCardSecurityReady, setSavedCardSecurityReady] = useState(false);
     const [savedCardSecurityError, setSavedCardSecurityError] = useState<string | null>(null);
+    const [stripeCards, setStripeCards] = useState<any[]>([]);
+    const [isLoadingStripeCards, setIsLoadingStripeCards] = useState(false);
     const requiresSavedCard = isRecurring || (autoRenew && !isUsingSavedCard);
     const savedCardMpRef = useRef<any>(null);
     const savedCardSecurityFieldRef = useRef<any>(null);
@@ -499,6 +506,24 @@ const CheckoutPage: React.FC = () => {
             setSelectedCard(null);
             setIsUsingSavedCard(false);
             setIssuerId(null);
+            if (cardVaultProvider === 'stripe') {
+                setIsLoadingStripeCards(true);
+                try {
+                    const res: any = await apiClient.post('users/list_cards.php', { user_id: currentUser?.id });
+                    if (res.success) {
+                        setStripeCards(res.cards || []);
+                    } else {
+                        setStripeCards([]);
+                    }
+                } catch (error) {
+                    console.error('Error fetching Stripe cards:', error);
+                    setStripeCards([]);
+                } finally {
+                    setIsLoadingStripeCards(false);
+                }
+            } else {
+                setStripeCards([]);
+            }
             return;
         }
 
@@ -542,7 +567,7 @@ const CheckoutPage: React.FC = () => {
         if (currentUser) {
             loadSavedCards();
         }
-    }, [currentUser, isStripeProvider]);
+    }, [currentUser, isStripeProvider, cardVaultProvider]);
 
     useEffect(() => {
         if (step === 'success') {
@@ -680,6 +705,11 @@ const CheckoutPage: React.FC = () => {
         if (isStripeProvider) {
             if (selectedMethod !== 'credit_card') {
                 addToast('O checkout Stripe desta plataforma aceita assinaturas apenas por cartao.', 'warning');
+                return;
+            }
+
+            if (isStripeInternalCheckout) {
+                addToast('Use o formulario de cartao abaixo para concluir a assinatura sem sair da plataforma.', 'info');
                 return;
             }
 
@@ -885,6 +915,44 @@ const CheckoutPage: React.FC = () => {
         }
     };
 
+    const handleStripeInternalPayment = async (paymentMethodId: string) => {
+        if (!plan || !currentUser) return;
+
+        setProcessing(true);
+        try {
+            const response = await planService.createStripeSubscription({
+                plan_id: plan.id,
+                auto_renew: autoRenew,
+                coupon_code: appliedCoupon?.code || undefined,
+                payment_method_id: paymentMethodId,
+            });
+
+            if (!response?.success) {
+                throw new Error(response?.message || 'Nao foi possivel iniciar a assinatura Stripe.');
+            }
+
+            const payload = response?.data || response;
+            return {
+                clientSecret: payload?.client_secret,
+                status: payload?.payment_intent_status,
+                confirmationType: payload?.confirmation_type || 'payment',
+            };
+        } catch (error: any) {
+            console.error('Stripe internal checkout error:', error);
+            const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar assinatura Stripe.';
+            addToast(errorMsg, 'error');
+            return undefined;
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    const finalizeStripeInternalCheckout = async () => {
+        await refreshUser();
+        await loadSavedCards();
+        setStep('success');
+    };
+
     const displayName = useMemo(() => {
         if (!plan) return '';
         return plan.name
@@ -974,12 +1042,16 @@ const CheckoutPage: React.FC = () => {
     }, [plan, isRecurring, isStripeProvider, maxInstallments, proRatedCredit, appliedCoupon, discountAmount, selectedInstallment.total_amount]);
 
     const paymentProviderLabel = isStripeProvider ? 'Stripe' : 'Mercado Pago';
+    const selectedMethodLabel = selectedMethod === 'credit_card' ? 'Cartao' : selectedMethod === 'pix' ? 'Pix' : 'Boleto';
+    const renewalLabel = autoRenew ? 'Automatica' : 'Manual';
     const paymentActionLabel = isStripeProvider
-        ? 'Continuar para o checkout Stripe'
+        ? (isStripeInternalCheckout ? 'Finalize no formulario Stripe abaixo' : 'Continuar para pagamento')
         : isRecurring
-            ? 'Ativar Assinatura Recorrente'
-            : 'Finalizar Pagamento Seguro';
-    const processingLabel = isStripeProvider ? 'Abrindo checkout Stripe...' : 'Processando Segurança...';
+            ? 'Ativar assinatura'
+            : 'Pagar agora';
+    const processingLabel = isStripeProvider
+        ? (isStripeInternalCheckout ? 'Processando assinatura Stripe...' : 'Abrindo checkout Stripe...')
+        : 'Processando Segurança...';
 
     if (loading) return (
         <div className="min-h-screen bg-slate-50 dark:bg-[#0f1020] flex items-center justify-center">
@@ -1030,7 +1102,7 @@ const CheckoutPage: React.FC = () => {
                 <div className="flex items-center justify-center mb-12 gap-3 max-w-2xl mx-auto">
                     {[
                         { id: 'identification' as CheckoutStep, label: 'Identificação' },
-                        { id: 'payment' as CheckoutStep, label: 'Pagamento & Oferta' },
+                        { id: 'payment' as CheckoutStep, label: 'Pagamento' },
                         { id: 'success' as CheckoutStep, label: 'Confirmação' }
                     ].map((s, idx, arr) => {
                         const stepsOrder: CheckoutStep[] = ['identification', 'payment', 'success'];
@@ -1108,30 +1180,34 @@ const CheckoutPage: React.FC = () => {
                                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                             <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3 uppercase tracking-tight">
                                                 <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400"><CreditCard size={20} /></div>
-                                                Pagamento & Oferta
+                                                Finalizar compra
                                             </h2>
                                             <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-full">
                                                 <ShieldCheck size={14} className="text-emerald-500" />
-                                                <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Pague com Segurança</span>
+                                                <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Checkout seguro</span>
                                             </div>
                                         </div>
 
+                                        {!isStripeProvider && (
+                                            <div className="space-y-2">
+                                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Forma de pagamento</p>
+                                            </div>
+                                        )}
+
                                         {isStripeProvider ? (
-                                            <div className="rounded-[2rem] border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/80 dark:bg-indigo-950/30 px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/20">
+                                            <div className="grid grid-cols-1 gap-4">
+                                                <button className="p-5 rounded-2xl border-2 bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg flex items-center justify-between">
+                                                    <div className="flex items-center gap-4">
                                                         <CreditCard size={24} />
+                                                        <div className="text-left">
+                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Cartao</p>
+                                                            <p className="text-[11px] font-medium mt-1">
+                                                                {isStripeInternalCheckout ? 'Pagamento direto nesta página' : 'Pagamento seguro com redirecionamento'}
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                    <div className="space-y-1">
-                                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Checkout hospedado</p>
-                                                        <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Cartao via Stripe</h3>
-                                                        <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300">A coleta do cartao e do metodo padrao acontece na pagina segura da Stripe.</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-700 dark:text-indigo-300">
-                                                    <ShieldCheck size={14} />
-                                                    PCI + Billing Portal
-                                                </div>
+                                                    <ShieldCheck size={16} />
+                                                </button>
                                             </div>
                                         ) : (
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1150,82 +1226,57 @@ const CheckoutPage: React.FC = () => {
                                             </div>
                                         )}
 
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Dados do pagamento</p>
+                                        </div>
                                         <div className="bg-slate-100 dark:bg-[#0f1020] p-6 md:p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800">
                                             {isStripeProvider ? (
-                                                <div className="space-y-6">
-                                                    <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6 space-y-5">
-                                                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                                                            <div className="space-y-2">
-                                                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Fluxo Stripe</p>
-                                                                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">Checkout externo com assinatura nativa</h3>
-                                                                <p className="text-[12px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
-                                                                    O aluno segue para a pagina segura da Stripe para cadastrar o cartao, concluir a assinatura e definir o metodo que sera usado nas proximas renovacoes.
-                                                                </p>
-                                                            </div>
-                                                            <div className="px-4 py-3 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20">
-                                                                <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-widest">Provider ativo</p>
-                                                                <p className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-1">{paymentProviderLabel}</p>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-4">
-                                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Primeira cobranca</p>
-                                                                <p className="mt-2 text-lg font-black text-slate-900 dark:text-white">R$ {monetaryTotals.totalDue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                                                                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium">Credito de migracao e cupom entram somente na primeira fatura.</p>
-                                                            </div>
-                                                            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-4">
-                                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Renovacoes futuras</p>
-                                                                <p className="mt-2 text-lg font-black text-slate-900 dark:text-white">R$ {plan.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                                                                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium">A Stripe renova usando o valor original do ciclo do plano selecionado.</p>
-                                                            </div>
-                                                            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-4">
-                                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ciclo e gestao</p>
-                                                                <p className="mt-2 text-lg font-black text-slate-900 dark:text-white">{billingCycle}</p>
-                                                                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                                                                    {autoRenew ? 'O plano continua renovando ate que o aluno cancele.' : 'A assinatura sera criada e ja marcada para encerrar no fim do ciclo atual.'}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="rounded-[2rem] border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-950/20 p-6 space-y-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <ShieldCheck size={18} className="text-indigo-600 dark:text-indigo-300" />
-                                                            <h4 className="text-[11px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">O que o aluno vai fazer agora</h4>
-                                                        </div>
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
-                                                            <div className="rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-indigo-100 dark:border-indigo-900/30 p-4">
-                                                                1. Informar o cartao direto no checkout hospedado da Stripe, com PCI e 3DS quando necessario.
-                                                            </div>
-                                                            <div className="rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-indigo-100 dark:border-indigo-900/30 p-4">
-                                                                2. A plataforma sincroniza assinatura, renovacao, falha de pagamento e reembolso via webhook no backend.
-                                                            </div>
-                                                            <div className="rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-indigo-100 dark:border-indigo-900/30 p-4">
-                                                                3. Depois da compra, o aluno gerencia troca de cartao e cobrancas futuras pelo Billing Portal.
-                                                            </div>
-                                                            <div className="rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-indigo-100 dark:border-indigo-900/30 p-4">
-                                                                4. Se a renovacao automatica estiver desligada, a assinatura termina ao final do periodo pago sem nova cobranca.
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="pt-2">
-                                                        <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-xl cursor-pointer transition-all group">
-                                                            <div className="relative">
-                                                                <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} className="sr-only peer" />
-                                                                <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                                                            </div>
-                                                            <div className="flex flex-col">
-                                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-emerald-700 dark:group-hover:text-white transition-colors">Renovacao automatica</span>
-                                                                <span className="text-[10px] text-slate-500">
-                                                                    {autoRenew
-                                                                        ? 'A Stripe mantera a assinatura ativa com cobrancas automaticas no mesmo ciclo do plano.'
-                                                                        : 'Vamos criar a assinatura e marcar cancel_at_period_end para encerrar no fim do ciclo pago.'}
+                                                <div className="space-y-5">
+                                                    {cardVaultProvider === 'stripe' && stripeCards.length > 0 && (
+                                                        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-4">
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Cartão salvo para renovações</p>
+                                                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">
+                                                                        {String(stripeCards.find((card: any) => card.is_default == 1)?.brand || stripeCards[0]?.brand || 'card').toUpperCase()} •••• {stripeCards.find((card: any) => card.is_default == 1)?.last_four_digits || stripeCards[0]?.last_four_digits}
+                                                                    </p>
+                                                                </div>
+                                                                <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                                                                    {stripeCards.length} salvo(s)
                                                                 </span>
                                                             </div>
-                                                        </label>
-                                                    </div>
+                                                        </div>
+                                                    )}
+
+                                                    {isStripeInternalCheckout ? (
+                                                        <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6 space-y-5">
+                                                            <StripeCardElementForm
+                                                                publishableKey={STRIPE_PUBLISHABLE_KEY}
+                                                                billingName={currentUser.name}
+                                                                billingEmail={currentUser.email}
+                                                                submitLabel={processing ? 'Processando pagamento...' : 'Pagar com cartão'}
+                                                                onPaymentMethodCreated={handleStripeInternalPayment}
+                                                                onPaymentFinalized={finalizeStripeInternalCheckout}
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6">
+                                                            <p className="text-sm font-bold text-slate-900 dark:text-white">Você será levado para a tela segura da Stripe para informar o cartão e concluir a compra.</p>
+                                                        </div>
+                                                    )}
+
+                                                    <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-xl cursor-pointer transition-all group">
+                                                        <div className="relative">
+                                                            <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} className="sr-only peer" />
+                                                            <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-emerald-700 dark:group-hover:text-white transition-colors">Renovação automática</span>
+                                                            <span className="text-[10px] text-slate-500">
+                                                                {autoRenew ? 'Sua assinatura continuará ativa e a cobrança será renovada automaticamente.' : 'Sua assinatura será encerrada no fim do ciclo atual.'}
+                                                            </span>
+                                                        </div>
+                                                    </label>
                                                 </div>
                                             ) : (
                                                 <>
@@ -1489,7 +1540,7 @@ const CheckoutPage: React.FC = () => {
                                         {/* Coupon Integration */}
                                         <div className="pt-2">
                                             <div className="flex flex-col md:flex-row gap-3">
-                                                <input type="text" value={couponCode} onChange={e => setCouponCode(e.target.value.toUpperCase())} placeholder="TEM UM CUPOM?" className="flex-1 h-12 px-5 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-black text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" />
+                                                <input type="text" value={couponCode} onChange={e => setCouponCode(e.target.value.toUpperCase())} placeholder="Cupom de desconto" className="flex-1 h-12 px-5 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-black text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" />
                                                 <button onClick={handleApplyCoupon} disabled={isApplyingCoupon || !couponCode} className="h-12 px-6 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-300 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all">
                                                     {isApplyingCoupon ? 'Aplicando...' : 'Aplicar'}
                                                 </button>
@@ -1507,47 +1558,27 @@ const CheckoutPage: React.FC = () => {
 
                                         {/* Final Action */}
                                         <div className="pt-6 border-t border-slate-200 dark:border-slate-800 space-y-4">
-                                            <button onClick={handlePayment} disabled={processing} className="w-full h-16 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] rounded-2xl text-white font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-3">
-                                                {processing ? (
-                                                    <span className="flex items-center gap-2 animate-pulse">{processingLabel}</span>
-                                                ) : (
-                                                    <>
-                                                        {paymentActionLabel}
-                                                        <ArrowRight size={20} />
-                                                    </>
-                                                )}
-                                            </button>
-                                            
-                                            <div className="flex flex-wrap items-center justify-center gap-6 opacity-60 grayscale hover:grayscale-0 transition-all">
-                                                <div className="flex items-center gap-1.5"><Shield size={14} /><span className="text-[8px] font-bold uppercase tracking-widest">SSL Secure</span></div>
-                                                <div className="flex items-center gap-1.5"><Lock size={14} /><span className="text-[8px] font-bold uppercase tracking-widest">PCI Compliant</span></div>
-                                                <div className="flex items-center gap-1.5"><Zap size={14} /><span className="text-[8px] font-bold uppercase tracking-widest">Instant Access</span></div>
+                                            {!isStripeInternalCheckout && (
+                                                <button onClick={handlePayment} disabled={processing} className="w-full h-16 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] rounded-2xl text-white font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-3">
+                                                    {processing ? (
+                                                        <span className="flex items-center gap-2 animate-pulse">{processingLabel}</span>
+                                                    ) : (
+                                                        <>
+                                                            {paymentActionLabel}
+                                                            <ArrowRight size={20} />
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+
+                                            <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                                                <Shield size={14} />
+                                                <span>Pagamento protegido e acesso liberado assim que aprovado.</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Conversion Triggers & Social Proof */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="bg-white dark:bg-[#1a1c2e] p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 flex items-start gap-4 transition-all hover:border-indigo-300 dark:hover:border-indigo-500/30">
-                                        <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
-                                            <Award size={24} />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <h4 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-widest">Garantia Incondicional</h4>
-                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">Não gostou? Solicite reembolso em até 7 dias sem perguntas.</p>
-                                        </div>
-                                    </div>
-                                    <div className="bg-white dark:bg-[#1a1c2e] p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 flex items-start gap-4 transition-all hover:border-indigo-300 dark:hover:border-indigo-500/30">
-                                        <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-                                            <Globe size={24} />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <h4 className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-widest">Comunidade VIP</h4>
-                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">Junte-se a +10.000 alunos e acelere sua aprovação hoje.</p>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         )}
 
@@ -1591,6 +1622,14 @@ const CheckoutPage: React.FC = () => {
                                         <span className="text-slate-500 uppercase font-bold tracking-widest">Ciclo</span>
                                         <span className="px-3 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg font-black uppercase tracking-tighter">{billingCycle}</span>
                                     </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Pagamento</span>
+                                        <span className="text-slate-900 dark:text-white font-black">{selectedMethodLabel}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Renovação</span>
+                                        <span className="text-slate-900 dark:text-white font-black">{renewalLabel}</span>
+                                    </div>
                                     
                                     <div className="h-px bg-slate-100 dark:bg-slate-800 my-2"></div>
                                     
@@ -1622,29 +1661,8 @@ const CheckoutPage: React.FC = () => {
                                         </div>
                                     </div>
                                 </div>
-
-                                <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex flex-col items-center gap-4">
-                                    <div className="flex items-center gap-3 opacity-40 grayscale">
-                                        {isStripeProvider ? (
-                                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">Stripe</span>
-                                        ) : (
-                                            <img src="https://logopng.com.br/logos/mercadopago-22.svg" alt="MercadoPago" className="h-4" />
-                                        )}
-                                        <div className="w-px h-3 bg-slate-300"></div>
-                                        <ShieldCheck size={14} />
-                                    </div>
-                                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] text-center">Checkout transparente e seguro</p>
-                                </div>
                             </div>
 
-                            {/* Sticky Guarantee Callout */}
-                            <div className="bg-indigo-600 rounded-[1.5rem] p-6 text-white shadow-xl shadow-indigo-600/20 space-y-3">
-                                <div className="flex items-center gap-3">
-                                    <Award size={20} className="text-indigo-200" />
-                                    <span className="font-black text-xs uppercase tracking-widest">Compra Sem Risco</span>
-                                </div>
-                                <p className="text-[10px] text-indigo-100 leading-relaxed font-medium">Sua satisfação é nossa prioridade. Se não ficar satisfeito em 7 dias, devolvemos 100% do seu dinheiro.</p>
-                            </div>
                         </div>
                     )}
                 </div>

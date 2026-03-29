@@ -1018,6 +1018,8 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
   // API Keys
   const [localApiKey, setLocalApiKey] = useState(systemSettings.geminiApiKey || '');
   const [localPaymentProvider, setLocalPaymentProvider] = useState<'mercado_pago' | 'stripe'>(systemSettings.paymentProvider || 'mercado_pago');
+  const [localPaymentCheckoutMode, setLocalPaymentCheckoutMode] = useState<'internal' | 'redirect'>(systemSettings.paymentCheckoutMode || 'internal');
+  const [localCardVaultProvider, setLocalCardVaultProvider] = useState<'local' | 'mercado_pago' | 'stripe'>(systemSettings.cardVaultProvider || 'local');
   const [localStripePublishableKey, setLocalStripePublishableKey] = useState(systemSettings.stripePublishableKey || systemSettings.stripeKey || '');
   const [localStripeSecretKey, setLocalStripeSecretKey] = useState('');
   const [localStripeWebhookSecret, setLocalStripeWebhookSecret] = useState('');
@@ -1149,6 +1151,8 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
   useEffect(() => {
     setLocalApiKey(systemSettings.geminiApiKey || '');
     setLocalPaymentProvider(systemSettings.paymentProvider || 'mercado_pago');
+    setLocalPaymentCheckoutMode(systemSettings.paymentCheckoutMode || 'internal');
+    setLocalCardVaultProvider(systemSettings.cardVaultProvider || 'local');
     setLocalStripePublishableKey(systemSettings.stripePublishableKey || systemSettings.stripeKey || '');
     setLocalStripeSecretKey('');
     setLocalStripeWebhookSecret('');
@@ -1185,6 +1189,8 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
     updateSystemSettings({
       ...systemSettings,
       paymentProvider: localPaymentProvider,
+      paymentCheckoutMode: localPaymentCheckoutMode,
+      cardVaultProvider: localCardVaultProvider,
       siteName: localSiteName,
       supportPhone: localPhone,
       platformFeePercent: Number(localPlatformFee),
@@ -1684,6 +1690,51 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
                       {localPaymentProvider === 'stripe' && <CheckCircle2 size={18} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
                     </div>
                   </button>
+                </div>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  <div className="p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 space-y-4">
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Experiência de Checkout</h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Define se o aluno conclui a compra dentro da plataforma ou por redirecionamento externo.</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3">
+                      <button
+                        onClick={() => setLocalPaymentCheckoutMode('internal')}
+                        className={`p-4 rounded-2xl border text-left transition-all ${localPaymentCheckoutMode === 'internal' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/20'}`}
+                      >
+                        <p className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Interno</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Mantém o aluno no checkout da plataforma. Stripe usa formulário interno; Mercado Pago segue transparente.</p>
+                      </button>
+                      <button
+                        onClick={() => setLocalPaymentCheckoutMode('redirect')}
+                        className={`p-4 rounded-2xl border text-left transition-all ${localPaymentCheckoutMode === 'redirect' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/20'}`}
+                      >
+                        <p className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Redirecionamento</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Usa a tela externa do provedor quando disponível. Útil para operação rápida e troubleshooting.</p>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 space-y-4">
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Cofre de Cartão</h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Controla onde a plataforma trata os cartões salvos e qual integração abastece a área de cobrança.</p>
+                    </div>
+                    <select
+                      value={localCardVaultProvider}
+                      onChange={e => setLocalCardVaultProvider(e.target.value as 'local' | 'mercado_pago' | 'stripe')}
+                      className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    >
+                      <option value="local">Local</option>
+                      <option value="mercado_pago">Mercado Pago</option>
+                      <option value="stripe">Stripe</option>
+                    </select>
+                    <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700 p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Leitura prática</p>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-2 leading-relaxed">
+                        Local mantém o espelho de cartões e a gestão dentro da plataforma. Stripe e Mercado Pago usam o cofre do provedor, mas continuam aparecendo e sendo gerenciados na interface interna quando o fluxo suportar isso.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
               {/* IA e Dados */}
