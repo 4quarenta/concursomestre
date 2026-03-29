@@ -14,7 +14,7 @@ import { getInstallments, getIssuers, getPaymentMethods, initMercadoPago } from 
 import { apiClient, ENDPOINTS } from '../core/api';
 import ReCAPTCHA from 'react-google-recaptcha';
 import StripeCardElementForm from '../features/payments/components/StripeCardElementForm';
-import { loadStripe } from '@stripe/stripe-js';
+import StripeSavedCardCvcForm from '../features/payments/components/StripeSavedCardCvcForm';
 
 type CheckoutStep = 'identification' | 'payment' | 'success';
 type AuthMode = 'login' | 'register';
@@ -98,6 +98,7 @@ const CheckoutPage: React.FC = () => {
     const [isUsingSavedCard, setIsUsingSavedCard] = useState(false);
     const [selectedCard, setSelectedCard] = useState<any>(null);
     const [savedCardSecurityReady, setSavedCardSecurityReady] = useState(false);
+    const [savedCardSecurityComplete, setSavedCardSecurityComplete] = useState(false);
     const [savedCardSecurityError, setSavedCardSecurityError] = useState<string | null>(null);
     const [stripeCards, setStripeCards] = useState<any[]>([]);
     const [isLoadingStripeCards, setIsLoadingStripeCards] = useState(false);
@@ -107,6 +108,7 @@ const CheckoutPage: React.FC = () => {
     const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
     const savedCardMpRef = useRef<any>(null);
     const savedCardSecurityFieldRef = useRef<any>(null);
+    const savedCardSecurityTouchedRef = useRef(false);
 
     const normalizePaymentMethodId = (value?: string | null): string => {
         if (!value) return '';
@@ -148,13 +150,6 @@ const CheckoutPage: React.FC = () => {
 
     const isUsingStripeSavedCard = isStripeProvider && Boolean(selectedStripeCard);
     const stripeRequiresSavedCard = isStripeProvider && autoRenew && !isUsingStripeSavedCard;
-    const stripePromise = useMemo(() => {
-        if (!STRIPE_PUBLISHABLE_KEY) {
-            return null;
-        }
-
-        return loadStripe(STRIPE_PUBLISHABLE_KEY);
-    }, [STRIPE_PUBLISHABLE_KEY]);
 
     useEffect(() => {
         if (!planId) {
@@ -183,7 +178,9 @@ const CheckoutPage: React.FC = () => {
             Boolean(selectedCard?.mp_card_id);
 
         setSavedCardSecurityReady(false);
+        setSavedCardSecurityComplete(false);
         setSavedCardSecurityError(null);
+        savedCardSecurityTouchedRef.current = false;
 
         if (savedCardSecurityFieldRef.current) {
             try {
@@ -224,6 +221,8 @@ const CheckoutPage: React.FC = () => {
         securityCodeField.on('ready', () => {
             setSavedCardSecurityError(null);
             setSavedCardSecurityReady(true);
+            setSavedCardSecurityComplete(false);
+            savedCardSecurityTouchedRef.current = false;
             window.setTimeout(() => {
                 try {
                     securityCodeField.focus();
@@ -233,14 +232,19 @@ const CheckoutPage: React.FC = () => {
             }, 120);
         });
 
+        securityCodeField.on('change', () => {
+            savedCardSecurityTouchedRef.current = true;
+        });
+
         securityCodeField.on('validityChange', ({ errorMessages }: any) => {
             const nextError = errorMessages?.[0]?.message || null;
             setSavedCardSecurityError(nextError);
-            setSavedCardSecurityReady(!nextError);
+            setSavedCardSecurityComplete(savedCardSecurityTouchedRef.current && !nextError);
         });
 
         securityCodeField.on('error', ({ error }: any) => {
             setSavedCardSecurityReady(false);
+            setSavedCardSecurityComplete(false);
             setSavedCardSecurityError(error || 'Não foi possível carregar o campo seguro do cartão salvo.');
         });
 
@@ -794,6 +798,11 @@ const CheckoutPage: React.FC = () => {
             }
         }
 
+        if (selectedMethod === 'credit_card' && isUsingSavedCard && savedCardSecurityReady && !savedCardSecurityComplete) {
+            addToast(savedCardSecurityError || 'Digite o codigo de seguranca do cartao salvo para continuar.', 'warning');
+            return;
+        }
+
         setProcessing(true);
         try {
             if (selectedMethod === 'credit_card') {
@@ -1036,15 +1045,9 @@ const CheckoutPage: React.FC = () => {
         setStep('success');
     };
 
-    const handleStripeSavedCardPayment = async () => {
+    const handleStripeSavedCardPayment = async ({ stripe, cvcElement }: { stripe: any; cvcElement: any }) => {
         if (!plan || !currentUser || !selectedStripeCard) {
-            addToast('Selecione um cartao salvo para continuar.', 'warning');
-            return;
-        }
-
-        if (!stripePromise) {
-            addToast('Stripe Publishable Key nao configurada.', 'error');
-            return;
+            throw new Error('Selecione um cartao salvo para continuar.');
         }
 
         setProcessing(true);
@@ -1062,25 +1065,35 @@ const CheckoutPage: React.FC = () => {
             }
 
             const payload = response?.data || response;
-            const stripe = await stripePromise;
-            if (!stripe) {
-                throw new Error('Nao foi possivel carregar o Stripe para confirmar o pagamento.');
-            }
+            const savedPaymentMethodId = selectedStripeCard.stripe_payment_method_id || null;
 
             if (payload?.client_secret) {
+                if (!savedPaymentMethodId) {
+                    throw new Error('O cartao salvo selecionado nao possui um metodo de pagamento Stripe valido.');
+                }
+
                 const confirmation =
                     payload?.confirmation_type === 'setup'
-                        ? await stripe.confirmCardSetup(payload.client_secret)
-                        : await stripe.confirmCardPayment(payload.client_secret);
+                        ? await stripe.confirmCardSetup(payload.client_secret, {
+                            payment_method: savedPaymentMethodId,
+                        })
+                        : await stripe.confirmCardPayment(payload.client_secret, {
+                            payment_method: savedPaymentMethodId,
+                            payment_method_options: {
+                                card: {
+                                    cvc: cvcElement,
+                                },
+                            },
+                        });
 
                 if (confirmation.error) {
-                    throw new Error(confirmation.error.message || 'Nao foi possivel confirmar o cartao salvo.');
+                    throw new Error(confirmation.error.message || 'Nao foi possivel confirmar o codigo de seguranca do cartao salvo.');
                 }
             }
 
             await finalizeStripeInternalCheckout({
                 subscriptionId: payload?.subscription_id || null,
-                paymentMethodId: selectedStripeCard.stripe_payment_method_id || null,
+                paymentMethodId: savedPaymentMethodId,
                 savedCardId: selectedStripeCard.id,
                 saveCard: true,
             });
@@ -1088,6 +1101,7 @@ const CheckoutPage: React.FC = () => {
             console.error('Stripe saved card checkout error:', error);
             const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar o cartao salvo.';
             addToast(errorMsg, 'error');
+            throw error;
         } finally {
             setProcessing(false);
         }
@@ -1456,11 +1470,18 @@ const CheckoutPage: React.FC = () => {
                                                                     </p>
                                                                 </div>
 
+                                                                <StripeSavedCardCvcForm
+                                                                    publishableKey={STRIPE_PUBLISHABLE_KEY}
+                                                                    cardBrand={selectedStripeCard?.brand}
+                                                                    last4={selectedStripeCard?.last_four_digits}
+                                                                    submitLabel={processing ? 'Confirmando cartao salvo...' : 'Pagar com cartao salvo'}
+                                                                    onConfirm={handleStripeSavedCardPayment}
+                                                                />
                                                                 <button
                                                                     type="button"
-                                                                    onClick={handleStripeSavedCardPayment}
-                                                                    disabled={processing}
-                                                                    className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    onClick={() => undefined}
+                                                                    disabled
+                                                                    className="hidden"
                                                                 >
                                                                     {processing ? 'Processando pagamento...' : 'Pagar com cartão salvo'}
                                                                 </button>
@@ -1695,6 +1716,7 @@ const CheckoutPage: React.FC = () => {
                                                                     />
                                                                 </div>
                                                                 {savedCardSecurityError && <p className="text-[10px] text-rose-500 font-bold leading-tight">{savedCardSecurityError}</p>}
+                                                                {!savedCardSecurityError && <p className="text-[10px] text-slate-500 font-bold leading-tight">Digite o CVV do cartao salvo para confirmar esta compra.</p>}
                                                             </div>
                                                         </div>
                                                     )}
