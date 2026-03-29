@@ -44,8 +44,6 @@ let refreshPromise: Promise<string | null> | null = null;
 
 const normalizeUrl = (url?: string): string => (url || '').replace(/^\/+/, '');
 
-const isRefreshRequest = (url?: string): boolean => normalizeUrl(url).includes(REFRESH_ENDPOINT);
-
 const isSessionExemptRequest = (url?: string): boolean => {
   const normalized = normalizeUrl(url);
 
@@ -83,7 +81,6 @@ const extractBearerToken = (headers: unknown): string | null => {
 
 const applyAuthHeaders = (config: InternalAxiosRequestConfig, token: string): InternalAxiosRequestConfig => {
   const headers = config.headers instanceof AxiosHeaders ? config.headers : new AxiosHeaders(config.headers);
-
   headers.set('Authorization', `Bearer ${token}`);
   headers.set('X-Auth-Token', token);
   config.headers = headers;
