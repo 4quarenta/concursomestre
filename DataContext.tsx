@@ -20,6 +20,7 @@ import { apiClient, ENDPOINTS, ApiResponse } from '@core/api';
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   activeTheme: 'default',
+  paymentProvider: 'mercado_pago',
   pricing: {
     Gratuito: { ...PRICING.Gratuito, quarterlyDiscountPercent: 0, annualDiscountPercent: 0 },
     Essencial: { ...PRICING.Essencial, quarterlyDiscountPercent: 10, annualDiscountPercent: 30 },
@@ -57,9 +58,12 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     landingPagePromoEnabled: true,
     xRayEnabled: true,
     loginRequired: true,
-    partnerRegistrationEnabled: true
+    partnerRegistrationEnabled: true,
+    recurringEnabled: true
   },
   geminiApiKey: '',
+  stripePublishableKey: '',
+  mercadoPagoKey: '',
   recaptchaSiteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI', // Chave de teste pública do Google
   recaptchaSecretKey: ''
 };

@@ -66,6 +66,36 @@ export const planService = {
     },
 
     /**
+     * Create a Stripe-hosted checkout session for subscriptions.
+     */
+    async createStripeCheckoutSession(payload: {
+        plan_id: number;
+        auto_renew?: boolean;
+        coupon_code?: string;
+    }): Promise<any> {
+        try {
+            const response = await apiClient.post<ApiResponse<any>>('/subscriptions/create_stripe_checkout.php', payload);
+            return response;
+        } catch (error) {
+            console.error('Error creating Stripe checkout session:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Open the Stripe Billing Portal for the authenticated user.
+     */
+    async createStripePortalSession(): Promise<any> {
+        try {
+            const response = await apiClient.post<ApiResponse<any>>('/subscriptions/create_stripe_portal.php', {});
+            return response;
+        } catch (error) {
+            console.error('Error creating Stripe portal session:', error);
+            throw error;
+        }
+    },
+
+    /**
      * Cancel subscription
      */
     async cancelSubscription(userId: string, reason?: string, details?: string): Promise<any> {

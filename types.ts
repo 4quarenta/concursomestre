@@ -320,6 +320,10 @@ export interface UserProfile {
   facebookId?: string;
   isDeletionPending?: boolean;
   deletionRequestedAt?: string;
+  paymentIssue?: {
+    message?: string;
+    code?: string;
+  };
   billing: {
     plan: 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
     billingCycle: 'monthly' | 'quarterly' | 'annual';
@@ -431,6 +435,7 @@ export interface GlobalTaxonomies {
 
 export interface SystemSettings {
   activeTheme: AppPromotionTheme;
+  paymentProvider?: 'mercado_pago' | 'stripe';
   pricing: {
     Gratuito: PlanPricing;
     Essencial: PlanPricing;
@@ -488,7 +493,15 @@ export interface SystemSettings {
   mailFromAddress?: string;
   mailFromName?: string;
   stripeKey?: string;
+  stripePublishableKey?: string;
+  stripeSecretKey?: string;
+  stripeWebhookSecret?: string;
+  hasStripeSecretConfigured?: boolean;
+  hasStripeWebhookConfigured?: boolean;
   mercadoPagoKey?: string;
+  mercadoPagoAccessToken?: string;
+  mercadoPagoWebhookSecret?: string;
+  hasMercadoPagoAccessTokenConfigured?: boolean;
   firebaseConfig?: any;
   taxonomies?: GlobalTaxonomies;
 }
@@ -534,6 +547,7 @@ export interface Transaction {
   status: 'completed' | 'approved' | 'refund_requested' | 'refunded' | 'cancelled';
   refundReason?: string;
   type?: 'material' | 'plan';
+  paymentProvider?: 'mercado_pago' | 'stripe';
   timestamp: number;
 }
 
@@ -555,6 +569,10 @@ export interface UserSubscription {
   plan_id: number;
   status: 'active' | 'past_due' | 'canceled' | 'incomplete' | 'trialing';
   auto_renew?: boolean;
+  payment_provider?: 'mercado_pago' | 'stripe';
+  provider_subscription_id?: string | null;
+  provider_customer_id?: string | null;
+  cancel_at_period_end?: boolean;
   current_period_start: string;
   current_period_end: string;
   plan?: Plan;

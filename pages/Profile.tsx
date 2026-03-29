@@ -33,6 +33,9 @@ const Profile: React.FC = () => {
     const { addToast } = useToast();
     const location = useLocation();
     const navigate = useNavigate();
+    const activeBillingProvider = (currentUser?.subscription?.payment_provider || systemSettings?.paymentProvider || 'mercado_pago') as 'mercado_pago' | 'stripe';
+    const isStripeBilling = activeBillingProvider === 'stripe';
+    const billingProviderLabel = isStripeBilling ? 'Stripe' : 'Mercado Pago';
 
     const [activeTab, setActiveTab] = useState<ProfileTab>('evolution');
     const [selectedCycle, setSelectedCycle] = useState<BillingCycle>('monthly');
@@ -53,6 +56,7 @@ const Profile: React.FC = () => {
     const [isSavingCard, setIsSavingCard] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
+    const [isOpeningBillingPortal, setIsOpeningBillingPortal] = useState(false);
 
     // Sincronizar aba com parâmetro da URL (?tab=)
     React.useEffect(() => {
@@ -66,6 +70,10 @@ const Profile: React.FC = () => {
     // Handlers de API para Gerenciamento de Dados
     const fetchUserCards = async () => {
         if (!currentUser?.id) return;
+        if (isStripeBilling) {
+            setUserCards([]);
+            return;
+        }
         setIsLoadingCards(true);
         try {
             const res: any = await apiClient.post('users/list_cards.php', { user_id: currentUser.id });
@@ -78,6 +86,10 @@ const Profile: React.FC = () => {
     };
 
     const handleRemoveCard = async (cardId: string) => {
+        if (isStripeBilling) {
+            addToast('Os métodos de pagamento do Stripe são gerenciados no Billing Portal.', 'info');
+            return;
+        }
         const card = userCards.find(c => c.id === cardId);
         if (card?.locked_by_recurring === 1) {
             return addToast('Este cartão não pode ser removido pois está vinculado a uma assinatura ativa.', 'warning');
@@ -98,6 +110,10 @@ const Profile: React.FC = () => {
     };
 
     const handleSetDefaultCard = async (cardId: string) => {
+        if (isStripeBilling) {
+            addToast('Defina o método padrão diretamente no Billing Portal da Stripe.', 'info');
+            return;
+        }
         try {
             const res: any = await apiClient.post('users/set_default_card.php', { user_id: currentUser.id, card_id: cardId });
             if (res.success) {
@@ -112,6 +128,10 @@ const Profile: React.FC = () => {
     const handleSaveCard = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!currentUser?.id) return;
+        if (isStripeBilling) {
+            addToast('Novos cartões Stripe são adicionados pelo checkout hospedado ou pelo Billing Portal.', 'info');
+            return;
+        }
         
         setIsSavingCard(true);
         const formData = new FormData(e.currentTarget);
@@ -136,6 +156,26 @@ const Profile: React.FC = () => {
             addToast(err.response?.data?.message || 'Erro de rede ao salvar cartão.', 'error');
         } finally {
             setIsSavingCard(false);
+        }
+    };
+
+    const handleOpenStripePortal = async () => {
+        if (!currentUser?.id) return;
+
+        setIsOpeningBillingPortal(true);
+        try {
+            const res: any = await planService.createStripePortalSession();
+            const redirectUrl = res?.data?.url || res?.url;
+
+            if (!res?.success || !redirectUrl) {
+                throw new Error(res?.message || 'NÃ£o foi possÃ­vel abrir o portal da Stripe.');
+            }
+
+            window.location.href = redirectUrl;
+        } catch (err: any) {
+            addToast(err.response?.data?.message || err.message || 'Erro ao abrir o portal da Stripe.', 'error');
+        } finally {
+            setIsOpeningBillingPortal(false);
         }
     };
 
@@ -168,7 +208,7 @@ const Profile: React.FC = () => {
         
         const newValue = !currentUser.subscription.auto_renew;
         
-        if (newValue && userCards.length === 0) {
+        if (!isStripeBilling && newValue && userCards.length === 0) {
             addToast('Você precisa de um cartão salvo para ativar a renovação automática.', 'warning');
             setIsAddingCard(true);
             setTimeout(() => {
@@ -229,7 +269,7 @@ const Profile: React.FC = () => {
         if (activeTab === 'billing-history') fetchUserTransactions();
         if (activeTab === 'materials') fetchUserMaterials();
         if (activeTab === 'referral') fetchReferralStats();
-    }, [activeTab]);
+    }, [activeTab, isStripeBilling]);
 
    const EXAM_AREAS = [
       { group: 'Carreiras', areas: ['Policial', 'Fiscal', 'Tribunais', 'Jurídico', 'Educação', 'Militar', 'Saúde', 'TI', 'Diplomata'] },
@@ -892,15 +932,19 @@ const Profile: React.FC = () => {
                                  {currentUser.paymentIssue.message || 'Atualize seus dados para evitar o bloqueio total da sua conta.'}
                               </p>
                            </div>
-                           <button 
-                              onClick={() => {
-                                 const el = document.getElementById('save-card-section');
-                                 el?.scrollIntoView({ behavior: 'smooth' });
-                              }}
-                              className="px-4 py-2 bg-slate-900 dark:bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:shadow-lg transition-all"
-                           >
-                              Resolver
-                           </button>
+                            <button 
+                               onClick={() => {
+                                  if (isStripeBilling) {
+                                      handleOpenStripePortal();
+                                      return;
+                                  }
+                                  const el = document.getElementById('save-card-section');
+                                  el?.scrollIntoView({ behavior: 'smooth' });
+                               }}
+                               className="px-4 py-2 bg-slate-900 dark:bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:shadow-lg transition-all"
+                            >
+                               {isStripeBilling ? 'Abrir Stripe' : 'Resolver'}
+                            </button>
                         </div>
                      )}
 
@@ -915,6 +959,9 @@ const Profile: React.FC = () => {
                                 <div className="flex items-center gap-2">
                                     <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">Assinatura Ativa</h4>
                                     {currentUser.subscription?.status === 'active' && <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                                    <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[9px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                        {billingProviderLabel}
+                                    </span>
                                 </div>
                                 <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 tracking-tight">
                                     Plano {currentUser.subscription?.plan?.name || currentUser.plan || 'Gratuito'}
@@ -950,7 +997,7 @@ const Profile: React.FC = () => {
                                                                     const res: any = await apiClient.post('subscriptions/cancel_refund.php', { user_id: currentUser.id });
                                                                     if (res.success) {
                                                                         addToast(res.message, 'success');
-                                                                        mutateUser();
+                                                                        refreshUser();
                                                                         fetchUserTransactions();
                                                                     }
                                                                 } catch (err: any) {
@@ -1050,6 +1097,67 @@ const Profile: React.FC = () => {
 
                      {/* Métodos de Pagamento */}
                      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors overflow-hidden">
+                        {isStripeBilling ? (
+                            <>
+                                <header className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
+                                    <div>
+                                        <h3 id="save-card-section" className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Billing Portal</h3>
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">Cartões, cobranças futuras e faturas ficam centralizados na Stripe.</p>
+                                    </div>
+                                    <button
+                                        onClick={handleOpenStripePortal}
+                                        disabled={isOpeningBillingPortal}
+                                        className="px-4 py-2 border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-60"
+                                    >
+                                        {isOpeningBillingPortal ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+                                        {isOpeningBillingPortal ? 'Abrindo...' : 'Abrir Portal'}
+                                    </button>
+                                </header>
+
+                                <div className="p-6 space-y-4">
+                                    <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/30 bg-indigo-50 dark:bg-indigo-950/20 p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">Provider ativo</p>
+                                            <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">{billingProviderLabel}</h4>
+                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                                                Use o portal para trocar o cartao, acompanhar faturas, corrigir falhas de pagamento e manter a assinatura pronta para as renovacoes automaticas.
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={handleOpenStripePortal}
+                                            disabled={isOpeningBillingPortal}
+                                            className="px-5 py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 dark:hover:bg-indigo-500 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                                        >
+                                            {isOpeningBillingPortal ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+                                            {isOpeningBillingPortal ? 'Abrindo Portal...' : 'Gerenciar na Stripe'}
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Metodos de pagamento</p>
+                                            <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                                                O cartao padrao fica salvo no cliente Stripe e pode ser atualizado a qualquer momento sem passar por armazenamento local na plataforma.
+                                            </p>
+                                        </div>
+                                        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Falhas e cobrancas</p>
+                                            <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                                                Quando uma renovacao falhar, o aluno atualiza o metodo no portal e o backend sincroniza o estado da assinatura via webhook.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <footer className="px-6 py-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-50 dark:border-slate-800 flex items-center gap-3">
+                                    <Info size={14} className="text-slate-400 shrink-0" />
+                                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide leading-relaxed">
+                                        SEUS DADOS DE COBRANCA SAO PROCESSADOS COM SEGURANCA PELA STRIPE. CARTOES, FATURAS E TENTATIVAS DE PAGAMENTO SAO GERENCIADOS NO BILLING PORTAL.
+                                    </p>
+                                </footer>
+                            </>
+                        ) : (
+                            <>
                         <header className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
                             <div>
                                 <h3 id="save-card-section" className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Formas de Pagamento</h3>
@@ -1170,6 +1278,8 @@ const Profile: React.FC = () => {
                                 SEUS DADOS DE PAGAMENTO SÃO PROCESSADOS COM SEGURANÇA PELO MERCADO PAGO E NÃO FICAM ARMAZENADOS INTEGRALMENTE EM NOSSOS SERVIDORES.
                             </p>
                         </footer>
+                            </>
+                        )}
                      </div>
                   </div>
                )}

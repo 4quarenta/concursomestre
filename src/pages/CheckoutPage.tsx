@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -10,7 +10,7 @@ import {
     Lock, User, Mail, UserPlus, LogIn, ChevronRight, QrCode, FileText, Calendar, ToggleRight, ToggleLeft, AlertTriangle, XCircle,
     Award, Zap, Globe, Shield, Plus, History, Fingerprint
 } from 'lucide-react';
-import { SecurityCode, createCardToken as createSecureCardToken, getInstallments, getIssuers, getPaymentMethods, initMercadoPago } from '@mercadopago/sdk-react';
+import { getInstallments, getIssuers, getPaymentMethods, initMercadoPago } from '@mercadopago/sdk-react';
 import { apiClient, ENDPOINTS } from '../core/api';
 import ReCAPTCHA from 'react-google-recaptcha';
 
@@ -21,11 +21,6 @@ type PaymentMethod = 'credit_card' | 'pix' | 'boleto';
 declare global {
     interface Window {
         MercadoPago: any;
-        securityCodeInstance?: {
-            focus?: () => void;
-            blur?: () => void;
-            unmount?: () => void;
-        };
     }
 }
 
@@ -71,7 +66,11 @@ const CheckoutPage: React.FC = () => {
     const recaptchaRef = React.useRef<ReCAPTCHA>(null);
 
     const isDevMode = systemSettings?.appMode !== 'production';
+    const activePaymentProvider = (systemSettings?.paymentProvider || 'mercado_pago') as 'mercado_pago' | 'stripe';
+    const isStripeProvider = activePaymentProvider === 'stripe';
     const MP_PUBLIC_KEY = systemSettings?.mercadoPagoKey || 'TEST-1e38d560-c2b8-4a5c-8b12-bad17bb8a9ba';
+    const savedCardCheckoutSupported = !/^TEST-/i.test(MP_PUBLIC_KEY || '');
+    const savedCardCheckoutBlockedMessage = 'O Mercado Pago so aceita pagamento com cartao salvo neste fluxo usando credenciais de producao e, em homologacao, usuarios de teste. Com a chave TEST atual, use um cartao novo no checkout.';
     
     const [paymentData, setPaymentData] = useState({
         cardNumber: '',
@@ -95,6 +94,8 @@ const CheckoutPage: React.FC = () => {
     const [savedCardSecurityReady, setSavedCardSecurityReady] = useState(false);
     const [savedCardSecurityError, setSavedCardSecurityError] = useState<string | null>(null);
     const requiresSavedCard = isRecurring || (autoRenew && !isUsingSavedCard);
+    const savedCardMpRef = useRef<any>(null);
+    const savedCardSecurityFieldRef = useRef<any>(null);
 
     const normalizePaymentMethodId = (value?: string | null): string => {
         if (!value) return '';
@@ -130,42 +131,6 @@ const CheckoutPage: React.FC = () => {
         console.info(`[MercadoPago] ${label}`, payload);
     };
 
-    const handleSavedCardSecurityValidity = useCallback((errorMessages?: Array<{ message?: string }>) => {
-        const nextError = errorMessages?.[0]?.message || null;
-        setSavedCardSecurityError(nextError);
-        setSavedCardSecurityReady(!nextError);
-    }, []);
-
-    const handleSavedCardSecurityReady = useCallback(() => {
-        setSavedCardSecurityError(null);
-        setSavedCardSecurityReady(false);
-        window.setTimeout(() => {
-            window.securityCodeInstance?.focus?.();
-        }, 150);
-    }, []);
-
-    const handleSavedCardSecurityError = useCallback((error: any) => {
-        setSavedCardSecurityReady(false);
-        setSavedCardSecurityError(error?.message || error?.error || 'Não foi possível carregar o campo seguro do cartão.');
-    }, []);
-
-    const handleSavedCardSecurityChange = useCallback(({ errorMessages }: any) => {
-        handleSavedCardSecurityValidity(errorMessages);
-    }, [handleSavedCardSecurityValidity]);
-
-    const savedCardSecurityStyle = useMemo(() => ({
-        fontSize: '18px',
-        fontWeight: '700',
-        color: '#0f172a',
-        padding: '0',
-        height: '100%',
-        width: '100%',
-    }), []);
-
-    const focusSavedCardSecurityCode = useCallback(() => {
-        window.securityCodeInstance?.focus?.();
-    }, []);
-
     useEffect(() => {
         if (!planId) {
             navigate('/plans');
@@ -175,25 +140,121 @@ const CheckoutPage: React.FC = () => {
     }, [planId]);
 
     useEffect(() => {
-        if (MP_PUBLIC_KEY) {
+        if (!isStripeProvider && MP_PUBLIC_KEY) {
             initMercadoPago(MP_PUBLIC_KEY, {
                 locale: 'pt-BR',
                 trackingDisabled: true,
                 advancedFraudPrevention: true,
             });
         }
-    }, [MP_PUBLIC_KEY]);
+    }, [MP_PUBLIC_KEY, isStripeProvider]);
 
     useEffect(() => {
+        const shouldMountSavedCardField =
+            !isStripeProvider &&
+            Boolean(MP_PUBLIC_KEY) &&
+            selectedMethod === 'credit_card' &&
+            isUsingSavedCard &&
+            Boolean(selectedCard?.mp_card_id);
+
         setSavedCardSecurityReady(false);
         setSavedCardSecurityError(null);
-    }, [isUsingSavedCard, selectedCard?.id]);
+
+        if (savedCardSecurityFieldRef.current) {
+            try {
+                savedCardSecurityFieldRef.current.unmount();
+            } catch (error) {
+                console.warn('Failed to unmount saved card security field', error);
+            }
+            savedCardSecurityFieldRef.current = null;
+        }
+
+        if (!shouldMountSavedCardField) {
+            return;
+        }
+
+        if (!window.MercadoPago) {
+            setSavedCardSecurityError('O SDK do Mercado Pago ainda não carregou. Atualize a página e tente novamente.');
+            return;
+        }
+
+        const mpInstance = new window.MercadoPago(MP_PUBLIC_KEY, {
+            locale: 'pt-BR',
+        });
+        savedCardMpRef.current = mpInstance;
+
+        const securityCodeField = mpInstance.fields.create('securityCode', {
+            placeholder: '123',
+            mode: 'mandatory',
+            style: {
+                color: '#0f172a',
+                fontSize: '16px',
+                fontWeight: '700',
+                fontFamily: 'Inter, sans-serif',
+                padding: '0',
+                width: '100%',
+            },
+        });
+
+        securityCodeField.on('ready', () => {
+            setSavedCardSecurityError(null);
+            setSavedCardSecurityReady(true);
+            window.setTimeout(() => {
+                try {
+                    securityCodeField.focus();
+                } catch (error) {
+                    console.warn('Failed to focus saved card security field', error);
+                }
+            }, 120);
+        });
+
+        securityCodeField.on('validityChange', ({ errorMessages }: any) => {
+            const nextError = errorMessages?.[0]?.message || null;
+            setSavedCardSecurityError(nextError);
+            setSavedCardSecurityReady(!nextError);
+        });
+
+        securityCodeField.on('error', ({ error }: any) => {
+            setSavedCardSecurityReady(false);
+            setSavedCardSecurityError(error || 'Não foi possível carregar o campo seguro do cartão salvo.');
+        });
+
+        securityCodeField.mount('saved-card-security-code-container');
+        savedCardSecurityFieldRef.current = securityCodeField;
+
+        return () => {
+            try {
+                securityCodeField.unmount();
+            } catch (error) {
+                console.warn('Failed to cleanup saved card security field', error);
+            }
+            if (savedCardSecurityFieldRef.current === securityCodeField) {
+                savedCardSecurityFieldRef.current = null;
+            }
+        };
+    }, [MP_PUBLIC_KEY, isStripeProvider, isUsingSavedCard, selectedCard?.id, selectedCard?.mp_card_id, selectedMethod]);
 
     useEffect(() => {
         if (selectedMethod !== 'credit_card' && isRecurring) {
             setIsRecurring(false);
         }
     }, [selectedMethod, isRecurring]);
+
+    useEffect(() => {
+        if (isStripeProvider && selectedMethod !== 'credit_card') {
+            setSelectedMethod('credit_card');
+        }
+    }, [isStripeProvider, selectedMethod]);
+
+    useEffect(() => {
+        if (isStripeProvider) {
+            setIsRecurring(false);
+            setIsUsingSavedCard(false);
+            setSelectedCard(null);
+            setSaveCard(false);
+            setIssuerId(null);
+        }
+    }, [isStripeProvider]);
 
     // Watch card number for BIN detection
     useEffect(() => {
@@ -433,12 +494,24 @@ const CheckoutPage: React.FC = () => {
     };
 
     const loadSavedCards = async () => {
+        if (isStripeProvider) {
+            setSavedCards([]);
+            setSelectedCard(null);
+            setIsUsingSavedCard(false);
+            setIssuerId(null);
+            return;
+        }
+
         if (!currentUser) return;
         try {
             if (import.meta.env.DEV) console.log('💳 Fetching saved cards for user:', currentUser.id);
             const res = await apiClient.post('users/list_cards.php', { user_id: currentUser.id }) as any;
             
             if (import.meta.env.DEV) console.log('💳 Cards API Response:', res);
+
+            if (res.removed_stale_cards > 0) {
+                addToast('Removemos cartão(ões) salvos vinculados a um ambiente antigo do Mercado Pago. Salve novamente o cartão para reutilizá-lo.', 'warning');
+            }
 
             if (res.success && res.cards && res.cards.length > 0) {
                 setSavedCards(res.cards);
@@ -455,6 +528,10 @@ const CheckoutPage: React.FC = () => {
                 }
             } else {
                 if (import.meta.env.DEV) console.warn('💳 No saved cards found or error in response:', res);
+                setSavedCards([]);
+                setSelectedCard(null);
+                setIsUsingSavedCard(false);
+                setIssuerId(null);
             }
         } catch (e) {
             console.error('Error fetching cards:', e);
@@ -465,7 +542,7 @@ const CheckoutPage: React.FC = () => {
         if (currentUser) {
             loadSavedCards();
         }
-    }, [currentUser]);
+    }, [currentUser, isStripeProvider]);
 
     useEffect(() => {
         if (step === 'success') {
@@ -600,8 +677,42 @@ const CheckoutPage: React.FC = () => {
     const handlePayment = async () => {
         if (!plan || !currentUser) return;
 
+        if (isStripeProvider) {
+            if (selectedMethod !== 'credit_card') {
+                addToast('O checkout Stripe desta plataforma aceita assinaturas apenas por cartao.', 'warning');
+                return;
+            }
+
+            setProcessing(true);
+            try {
+                const response = await planService.createStripeCheckoutSession({
+                    plan_id: plan.id,
+                    auto_renew: autoRenew,
+                    coupon_code: appliedCoupon?.code || undefined,
+                });
+
+                const redirectUrl = response?.data?.url || response?.url || response?.data?.redirect_url;
+                if (!response?.success || !redirectUrl) {
+                    throw new Error(response?.message || 'Nao foi possivel iniciar o checkout Stripe.');
+                }
+
+                window.location.href = redirectUrl;
+                return;
+            } catch (error: any) {
+                console.error('Stripe checkout error:', error);
+                const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao iniciar o checkout Stripe.';
+                addToast(errorMsg, 'error');
+                setProcessing(false);
+                return;
+            }
+        }
+
         if (selectedMethod === 'credit_card') {
             if (isUsingSavedCard) {
+                if (!savedCardCheckoutSupported) {
+                    addToast(savedCardCheckoutBlockedMessage, 'warning');
+                    return;
+                }
                 if (!selectedCard) {
                     addToast('Selecione um cartão para continuar.', 'warning');
                     return;
@@ -632,7 +743,8 @@ const CheckoutPage: React.FC = () => {
                     const mp = new window.MercadoPago(MP_PUBLIC_KEY);
                     
                     if (isUsingSavedCard && selectedCard) {
-                        const cardTokenRes = await createSecureCardToken({
+                        const savedCardMp = savedCardMpRef.current || mp;
+                        const cardTokenRes = await savedCardMp.fields.createCardToken({
                             cardId: selectedCard.mp_card_id,
                         });
                         
@@ -711,12 +823,15 @@ const CheckoutPage: React.FC = () => {
                     cardLastFour,
                     payer: {
                         email: currentUser.email,
-                        identification: {
-                            type: 'CPF',
-                            number: paymentData.cpf.replace(/\D/g, '')
-                        }
-                    }
+                    } as Record<string, any>
                 };
+
+                if (!isUsingSavedCard) {
+                    paymentPayload.payer.identification = {
+                        type: 'CPF',
+                        number: paymentData.cpf.replace(/\D/g, '')
+                    };
+                }
 
                 logMercadoPagoDebug('payload', {
                     token: maskToken(paymentPayload.token),
@@ -808,6 +923,9 @@ const CheckoutPage: React.FC = () => {
 
     const selectedInstallment = useMemo(() => {
         if (!plan) return { installments: 1, installment_amount: 0, total_amount: 0 };
+        if (isStripeProvider) {
+            return { installments: 1, installment_amount: Number(plan.price), total_amount: Number(plan.price) };
+        }
         const installmentsNumber = Number(paymentData.installments) || 1;
 
         if (isRecurring) {
@@ -837,7 +955,7 @@ const CheckoutPage: React.FC = () => {
             installment_amount: amount,
             total_amount: amount * installmentsNumber,
         };
-    }, [plan, installmentOptions, paymentData.installments, isRecurring, maxInstallments]);
+    }, [plan, installmentOptions, paymentData.installments, isRecurring, isStripeProvider, maxInstallments]);
 
     const monetaryTotals = useMemo(() => {
         if (!plan) return { firstCharge: 0, totalDue: 0 };
@@ -845,13 +963,23 @@ const CheckoutPage: React.FC = () => {
         
         // Se for recorrente, baseamos no valor da parcela
         // Caso contrário, usamos o total_amount do parcelamento selecionado (que já inclui juros se houver)
-        const baseAmount = isRecurring 
+        const baseAmount = isStripeProvider
+            ? Number(plan.price)
+            : isRecurring 
             ? (plan.price / maxInstallments) 
             : selectedInstallment.total_amount;
 
         const totalDue = Math.max(0, baseAmount - proRatedCredit - discount);
         return { firstCharge: baseAmount, totalDue };
-    }, [plan, isRecurring, maxInstallments, proRatedCredit, appliedCoupon, discountAmount, selectedInstallment.total_amount]);
+    }, [plan, isRecurring, isStripeProvider, maxInstallments, proRatedCredit, appliedCoupon, discountAmount, selectedInstallment.total_amount]);
+
+    const paymentProviderLabel = isStripeProvider ? 'Stripe' : 'Mercado Pago';
+    const paymentActionLabel = isStripeProvider
+        ? 'Continuar para o checkout Stripe'
+        : isRecurring
+            ? 'Ativar Assinatura Recorrente'
+            : 'Finalizar Pagamento Seguro';
+    const processingLabel = isStripeProvider ? 'Abrindo checkout Stripe...' : 'Processando Segurança...';
 
     if (loading) return (
         <div className="min-h-screen bg-slate-50 dark:bg-[#0f1020] flex items-center justify-center">
@@ -988,22 +1116,119 @@ const CheckoutPage: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <button onClick={() => setSelectedMethod('credit_card')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'credit_card' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'}`}>
-                                                <CreditCard size={28} />
-                                                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Cartão</span>
-                                            </button>
-                                            <button disabled={isRecurring} onClick={() => setSelectedMethod('pix')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'pix' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'} ${isRecurring ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                                                <QrCode size={28} />
-                                                <span className="text-[10px] font-black uppercase tracking-[0.2em]">PIX</span>
-                                            </button>
-                                            <button disabled={isRecurring} onClick={() => setSelectedMethod('boleto')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'boleto' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'} ${isRecurring ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                                                <FileText size={28} />
-                                                <span className="text-[10px] font-black uppercase tracking-[0.2em]">Boleto</span>
-                                            </button>
-                                        </div>
+                                        {isStripeProvider ? (
+                                            <div className="rounded-[2rem] border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/80 dark:bg-indigo-950/30 px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/20">
+                                                        <CreditCard size={24} />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Checkout hospedado</p>
+                                                        <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Cartao via Stripe</h3>
+                                                        <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300">A coleta do cartao e do metodo padrao acontece na pagina segura da Stripe.</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-700 dark:text-indigo-300">
+                                                    <ShieldCheck size={14} />
+                                                    PCI + Billing Portal
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <button onClick={() => setSelectedMethod('credit_card')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'credit_card' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'}`}>
+                                                    <CreditCard size={28} />
+                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Cartão</span>
+                                                </button>
+                                                <button disabled={isRecurring || isStripeProvider} onClick={() => setSelectedMethod('pix')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'pix' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'} ${(isRecurring || isStripeProvider) ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                                                    <QrCode size={28} />
+                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">PIX</span>
+                                                </button>
+                                                <button disabled={isRecurring || isStripeProvider} onClick={() => setSelectedMethod('boleto')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'boleto' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'} ${(isRecurring || isStripeProvider) ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                                                    <FileText size={28} />
+                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Boleto</span>
+                                                </button>
+                                            </div>
+                                        )}
 
                                         <div className="bg-slate-100 dark:bg-[#0f1020] p-6 md:p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800">
+                                            {isStripeProvider ? (
+                                                <div className="space-y-6">
+                                                    <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6 space-y-5">
+                                                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                                                            <div className="space-y-2">
+                                                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Fluxo Stripe</p>
+                                                                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">Checkout externo com assinatura nativa</h3>
+                                                                <p className="text-[12px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                                                                    O aluno segue para a pagina segura da Stripe para cadastrar o cartao, concluir a assinatura e definir o metodo que sera usado nas proximas renovacoes.
+                                                                </p>
+                                                            </div>
+                                                            <div className="px-4 py-3 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20">
+                                                                <p className="text-[10px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-widest">Provider ativo</p>
+                                                                <p className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-1">{paymentProviderLabel}</p>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-4">
+                                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Primeira cobranca</p>
+                                                                <p className="mt-2 text-lg font-black text-slate-900 dark:text-white">R$ {monetaryTotals.totalDue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium">Credito de migracao e cupom entram somente na primeira fatura.</p>
+                                                            </div>
+                                                            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-4">
+                                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Renovacoes futuras</p>
+                                                                <p className="mt-2 text-lg font-black text-slate-900 dark:text-white">R$ {plan.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium">A Stripe renova usando o valor original do ciclo do plano selecionado.</p>
+                                                            </div>
+                                                            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-4">
+                                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ciclo e gestao</p>
+                                                                <p className="mt-2 text-lg font-black text-slate-900 dark:text-white">{billingCycle}</p>
+                                                                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                                                                    {autoRenew ? 'O plano continua renovando ate que o aluno cancele.' : 'A assinatura sera criada e ja marcada para encerrar no fim do ciclo atual.'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="rounded-[2rem] border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-950/20 p-6 space-y-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <ShieldCheck size={18} className="text-indigo-600 dark:text-indigo-300" />
+                                                            <h4 className="text-[11px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">O que o aluno vai fazer agora</h4>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
+                                                            <div className="rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-indigo-100 dark:border-indigo-900/30 p-4">
+                                                                1. Informar o cartao direto no checkout hospedado da Stripe, com PCI e 3DS quando necessario.
+                                                            </div>
+                                                            <div className="rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-indigo-100 dark:border-indigo-900/30 p-4">
+                                                                2. A plataforma sincroniza assinatura, renovacao, falha de pagamento e reembolso via webhook no backend.
+                                                            </div>
+                                                            <div className="rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-indigo-100 dark:border-indigo-900/30 p-4">
+                                                                3. Depois da compra, o aluno gerencia troca de cartao e cobrancas futuras pelo Billing Portal.
+                                                            </div>
+                                                            <div className="rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-indigo-100 dark:border-indigo-900/30 p-4">
+                                                                4. Se a renovacao automatica estiver desligada, a assinatura termina ao final do periodo pago sem nova cobranca.
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="pt-2">
+                                                        <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-xl cursor-pointer transition-all group">
+                                                            <div className="relative">
+                                                                <input type="checkbox" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} className="sr-only peer" />
+                                                                <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-emerald-700 dark:group-hover:text-white transition-colors">Renovacao automatica</span>
+                                                                <span className="text-[10px] text-slate-500">
+                                                                    {autoRenew
+                                                                        ? 'A Stripe mantera a assinatura ativa com cobrancas automaticas no mesmo ciclo do plano.'
+                                                                        : 'Vamos criar a assinatura e marcar cancel_at_period_end para encerrar no fim do ciclo pago.'}
+                                                                </span>
+                                                            </div>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
                                             {selectedMethod === 'credit_card' && (
                                                 <div className="space-y-6">
                                                     {/* Premium Saved Cards Carousel */}
@@ -1012,6 +1237,10 @@ const CheckoutPage: React.FC = () => {
                                                             <div className="flex items-center justify-between px-1">
                                                                 <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none">Cartões Salvos</h3>
 	                                                                <button onClick={() => {
+	                                                                    if (!savedCardCheckoutSupported && !isUsingSavedCard) {
+	                                                                        addToast(savedCardCheckoutBlockedMessage, 'info');
+	                                                                        return;
+	                                                                    }
 	                                                                    setIsUsingSavedCard(!isUsingSavedCard);
 	                                                                    if (isUsingSavedCard) {
 	                                                                        setSelectedCard(null);
@@ -1022,17 +1251,27 @@ const CheckoutPage: React.FC = () => {
                                                                     {isUsingSavedCard ? '+ Novo Cartão' : ' Meus Cartões'}
                                                                 </button>
                                                             </div>
-                                                            
+
+                                                            {!savedCardCheckoutSupported && (
+                                                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-semibold leading-relaxed text-amber-800">
+                                                                    O checkout com cartao salvo do Mercado Pago exige credenciais de producao. Enquanto sua integracao estiver com chave <span className="font-black">TEST</span>, voce ainda pode salvar o cartao com seguranca, mas a reutilizacao dele no checkout ficara indisponivel.
+                                                                </div>
+                                                            )}
+
                                                             <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-1 px-1">
                                                                 {savedCards.map((card) => (
 	                                                                    <button key={card.id || card.mp_card_id} onClick={() => {
+	                                                                        if (!savedCardCheckoutSupported) {
+	                                                                            addToast(savedCardCheckoutBlockedMessage, 'info');
+	                                                                            return;
+	                                                                        }
 	                                                                        setSelectedCard(card);
 	                                                                        setIsUsingSavedCard(true);
 	                                                                        setPaymentMethodId(normalizePaymentMethodId(card.payment_method_id || card.brand));
 	                                                                        setIssuerId(card.issuer_id ? String(card.issuer_id) : null);
 	                                                                        setPaymentData((prev) => ({ ...prev, cardCvv: '' }));
 	                                                                        updateInstallments(card.first_six_digits || card.bin, card.payment_method_id || card.brand);
-	                                                                    }} className={`flex-shrink-0 w-64 p-5 rounded-[2rem] border-2 transition-all duration-300 relative overflow-hidden group ${selectedCard?.id === card.id && isUsingSavedCard ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-400'}`}>
+	                                                                    }} disabled={!savedCardCheckoutSupported} className={`flex-shrink-0 w-64 p-5 rounded-[2rem] border-2 transition-all duration-300 relative overflow-hidden group ${selectedCard?.id === card.id && isUsingSavedCard ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-400'} ${!savedCardCheckoutSupported ? 'opacity-60 cursor-not-allowed' : ''}`}>
                                                                         {selectedCard?.id === card.id && isUsingSavedCard && <div className="absolute top-4 right-4"><CheckCircle2 size={18} className="text-white" /></div>}
                                                                         
                                                                         <div className="flex items-center gap-3 mb-6">
@@ -1141,23 +1380,18 @@ const CheckoutPage: React.FC = () => {
                                                                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Código CVV</label>
                                                                 <div className="relative h-14 bg-white dark:bg-[#0f1020] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden">
                                                                     <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10 pointer-events-none" size={18} />
-                                                                    <div className="h-full w-full pl-12 pr-4 flex items-center cursor-text" onClick={focusSavedCardSecurityCode}>
-                                                                        <SecurityCode
-                                                                            key={selectedCard?.id || selectedCard?.mp_card_id}
-                                                                            placeholder="123"
-                                                                            mode="mandatory"
-                                                                            style={savedCardSecurityStyle}
-                                                                            onReady={handleSavedCardSecurityReady}
-                                                                            onError={handleSavedCardSecurityError}
-                                                                            onValidityChange={handleSavedCardSecurityChange}
-                                                                        />
-                                                                    </div>
+                                                                    <div
+                                                                        id="saved-card-security-code-container"
+                                                                        onClick={() => savedCardSecurityFieldRef.current?.focus?.()}
+                                                                        className="h-full w-full pl-12 pr-4 flex items-center cursor-text"
+                                                                    />
                                                                 </div>
                                                                 {savedCardSecurityError && <p className="text-[10px] text-rose-500 font-bold leading-tight">{savedCardSecurityError}</p>}
                                                             </div>
                                                         </div>
                                                     )}
 
+                                                    {!isUsingSavedCard && (
                                                     <div className="pt-2">
                                                         <label className="flex items-center gap-3 p-4 bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-slate-700 rounded-xl cursor-pointer transition-all group">
                                                             <div className="relative">
@@ -1170,6 +1404,7 @@ const CheckoutPage: React.FC = () => {
                                                             </div>
                                                         </label>
                                                     </div>
+                                                    )}
 
                                                     <div className="pt-2">
                                                         <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-xl cursor-pointer transition-all group">
@@ -1247,6 +1482,8 @@ const CheckoutPage: React.FC = () => {
                                                     </div>
                                                 </div>
                                             )}
+                                                </>
+                                            )}
                                         </div>
 
                                         {/* Coupon Integration */}
@@ -1272,10 +1509,10 @@ const CheckoutPage: React.FC = () => {
                                         <div className="pt-6 border-t border-slate-200 dark:border-slate-800 space-y-4">
                                             <button onClick={handlePayment} disabled={processing} className="w-full h-16 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] rounded-2xl text-white font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-3">
                                                 {processing ? (
-                                                    <span className="flex items-center gap-2 animate-pulse">Processando Segurança...</span>
+                                                    <span className="flex items-center gap-2 animate-pulse">{processingLabel}</span>
                                                 ) : (
                                                     <>
-                                                        {isRecurring ? 'Ativar Assinatura Recorrente' : 'Finalizar Pagamento Seguro'} 
+                                                        {paymentActionLabel}
                                                         <ArrowRight size={20} />
                                                     </>
                                                 )}
@@ -1368,6 +1605,10 @@ const CheckoutPage: React.FC = () => {
                                     
                                     {proRatedCredit > 0 && <div className="flex justify-between items-center text-emerald-600 font-bold"><span>Crédito Migração</span><span>- R$ {proRatedCredit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>}
                                     {discountAmount > 0 && <div className="flex justify-between items-center text-emerald-600 font-bold"><span>Desconto Aplicado</span><span>- R$ {discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>}
+                                    <div className="flex justify-between items-center text-slate-500">
+                                        <span>Gateway</span>
+                                        <span className="font-bold text-slate-900 dark:text-white">{paymentProviderLabel}</span>
+                                    </div>
                                     
                                     <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800 space-y-3">
                                         <div className="flex justify-between items-end">
@@ -1384,7 +1625,11 @@ const CheckoutPage: React.FC = () => {
 
                                 <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex flex-col items-center gap-4">
                                     <div className="flex items-center gap-3 opacity-40 grayscale">
-                                        <img src="https://logopng.com.br/logos/mercadopago-22.svg" alt="MercadoPago" className="h-4" />
+                                        {isStripeProvider ? (
+                                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">Stripe</span>
+                                        ) : (
+                                            <img src="https://logopng.com.br/logos/mercadopago-22.svg" alt="MercadoPago" className="h-4" />
+                                        )}
                                         <div className="w-px h-3 bg-slate-300"></div>
                                         <ShieldCheck size={14} />
                                     </div>

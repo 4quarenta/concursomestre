@@ -1017,8 +1017,13 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
 
   // API Keys
   const [localApiKey, setLocalApiKey] = useState(systemSettings.geminiApiKey || '');
-  const [localStripeKey, setLocalStripeKey] = useState(systemSettings.stripeKey || '');
-  const [localMercadoPagoKey, setLocalMercadoPagoKey] = useState(systemSettings.mercadoPagoKey || '');
+  const [localPaymentProvider, setLocalPaymentProvider] = useState<'mercado_pago' | 'stripe'>(systemSettings.paymentProvider || 'mercado_pago');
+  const [localStripePublishableKey, setLocalStripePublishableKey] = useState(systemSettings.stripePublishableKey || systemSettings.stripeKey || '');
+  const [localStripeSecretKey, setLocalStripeSecretKey] = useState('');
+  const [localStripeWebhookSecret, setLocalStripeWebhookSecret] = useState('');
+  const [localMercadoPagoPublicKey, setLocalMercadoPagoPublicKey] = useState(systemSettings.mercadoPagoKey || '');
+  const [localMercadoPagoAccessToken, setLocalMercadoPagoAccessToken] = useState('');
+  const [localMercadoPagoWebhookSecret, setLocalMercadoPagoWebhookSecret] = useState('');
   const [localRecaptchaSiteKey, setLocalRecaptchaSiteKey] = useState(systemSettings.recaptchaSiteKey || '');
   const [localRecaptchaSecretKey, setLocalRecaptchaSecretKey] = useState(systemSettings.recaptchaSecretKey || '');
   const [localFirebaseKey, setLocalFirebaseKey] = useState(systemSettings.firebaseConfig?.apiKey || '');
@@ -1143,8 +1148,13 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
 
   useEffect(() => {
     setLocalApiKey(systemSettings.geminiApiKey || '');
-    setLocalStripeKey(systemSettings.stripeKey || '');
-    setLocalMercadoPagoKey(systemSettings.mercadoPagoKey || '');
+    setLocalPaymentProvider(systemSettings.paymentProvider || 'mercado_pago');
+    setLocalStripePublishableKey(systemSettings.stripePublishableKey || systemSettings.stripeKey || '');
+    setLocalStripeSecretKey('');
+    setLocalStripeWebhookSecret('');
+    setLocalMercadoPagoPublicKey(systemSettings.mercadoPagoKey || '');
+    setLocalMercadoPagoAccessToken('');
+    setLocalMercadoPagoWebhookSecret('');
     setLocalRecaptchaSiteKey(systemSettings.recaptchaSiteKey || '');
     setLocalRecaptchaSecretKey(systemSettings.recaptchaSecretKey || '');
     setLocalFirebaseKey(systemSettings.firebaseConfig?.apiKey || '');
@@ -1174,6 +1184,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
   const handleSaveSettings = () => {
     updateSystemSettings({
       ...systemSettings,
+      paymentProvider: localPaymentProvider,
       siteName: localSiteName,
       supportPhone: localPhone,
       platformFeePercent: Number(localPlatformFee),
@@ -1182,8 +1193,13 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
       geminiApiKey: localApiKey,
       recaptchaSiteKey: localRecaptchaSiteKey,
       recaptchaSecretKey: localRecaptchaSecretKey,
-      stripeKey: localStripeKey,
-      mercadoPagoKey: localMercadoPagoKey,
+      stripeKey: localStripePublishableKey,
+      stripePublishableKey: localStripePublishableKey,
+      stripeSecretKey: localStripeSecretKey,
+      stripeWebhookSecret: localStripeWebhookSecret,
+      mercadoPagoKey: localMercadoPagoPublicKey,
+      mercadoPagoAccessToken: localMercadoPagoAccessToken,
+      mercadoPagoWebhookSecret: localMercadoPagoWebhookSecret,
       firebaseConfig: { ...systemSettings.firebaseConfig, apiKey: localFirebaseKey },
       googleAnalyticsId: localGaId,
       metaPixelId: localPixelId,
@@ -1205,6 +1221,10 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
     });
     addToast('Configurações salvas com sucesso!', 'success');
   };
+
+  const apiBaseUrl = String((api as any).defaults.baseURL || '').replace(/\/+$/, '');
+  const stripeWebhookUrl = `${apiBaseUrl}/subscriptions/stripe_webhook.php`;
+  const mercadoPagoWebhookUrl = `${apiBaseUrl}/subscriptions/webhook_mp.php`;
 
   const settingTabs = [
     { id: 'general', label: 'Geral', icon: Settings },
@@ -1620,6 +1640,52 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
               Integrações e Chaves de API
             </h3>
             <div className="space-y-8">
+              <div className="p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-5">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Gateway principal de pagamento</h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">O checkout e a Ã¡rea de assinatura passam a seguir o provedor escolhido aqui.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${systemSettings.hasStripeSecretConfigured ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>
+                      Stripe Secret {systemSettings.hasStripeSecretConfigured ? 'configurado' : 'pendente'}
+                    </span>
+                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${systemSettings.hasStripeWebhookConfigured ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>
+                      Stripe Webhook {systemSettings.hasStripeWebhookConfigured ? 'configurado' : 'pendente'}
+                    </span>
+                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${systemSettings.hasMercadoPagoAccessTokenConfigured ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>
+                      MP Access Token {systemSettings.hasMercadoPagoAccessTokenConfigured ? 'configurado' : 'pendente'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setLocalPaymentProvider('mercado_pago')}
+                    className={`p-5 rounded-3xl border text-left transition-all ${localPaymentProvider === 'mercado_pago' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg shadow-blue-500/10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 hover:border-blue-300'}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Mercado Pago</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Checkout customizado com Pix, boleto, cartÃµes salvos e fluxo existente.</p>
+                      </div>
+                      {localPaymentProvider === 'mercado_pago' && <CheckCircle2 size={18} className="text-blue-600 dark:text-blue-400 shrink-0" />}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setLocalPaymentProvider('stripe')}
+                    className={`p-5 rounded-3xl border text-left transition-all ${localPaymentProvider === 'stripe' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-lg shadow-indigo-500/10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 hover:border-indigo-300'}`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Stripe</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Checkout hospedado, Billing Portal, recorrÃªncia nativa e reembolsos por webhook.</p>
+                      </div>
+                      {localPaymentProvider === 'stripe' && <CheckCircle2 size={18} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
+                    </div>
+                  </button>
+                </div>
+              </div>
               {/* IA e Dados */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1.5">
@@ -1649,16 +1715,56 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: any) 
               </div>
 
               {/* Pagamentos */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Stripe Secret Key</label>
-                  <input type="password" value={localStripeKey} onChange={e => setLocalStripeKey(e.target.value)} placeholder="sk_live_..."
-                    className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div className="p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Stripe</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Indicado para assinatura recorrente com Checkout Session e Billing Portal.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Publishable Key (frontend)</label>
+                    <input type="text" value={localStripePublishableKey} onChange={e => setLocalStripePublishableKey(e.target.value)} placeholder="pk_live_..."
+                      className="w-full bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Secret Key (backend)</label>
+                    <input type="password" value={localStripeSecretKey} onChange={e => setLocalStripeSecretKey(e.target.value)} placeholder="sk_live_..."
+                      className="w-full bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Webhook Secret (backend)</label>
+                    <input type="password" value={localStripeWebhookSecret} onChange={e => setLocalStripeWebhookSecret(e.target.value)} placeholder="whsec_..."
+                      className="w-full bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                  </div>
+                  <div className="rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 px-4 py-3">
+                    <p className="text-[10px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">Webhook Stripe</p>
+                    <p className="text-[10px] font-mono text-indigo-700/80 dark:text-indigo-300/80 mt-1 break-all">{stripeWebhookUrl}</p>
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Mercado Pago Access Token</label>
-                  <input type="password" value={localMercadoPagoKey} onChange={e => setLocalMercadoPagoKey(e.target.value)} placeholder="APP_USR-..."
-                    className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                <div className="p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Mercado Pago</h4>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">MantÃ©m o checkout transparente com Pix, boleto e cartÃµes salvos locais.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Public Key (frontend)</label>
+                    <input type="text" value={localMercadoPagoPublicKey} onChange={e => setLocalMercadoPagoPublicKey(e.target.value)} placeholder="APP_USR-..."
+                      className="w-full bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Access Token (backend)</label>
+                    <input type="password" value={localMercadoPagoAccessToken} onChange={e => setLocalMercadoPagoAccessToken(e.target.value)} placeholder="APP_USR-..."
+                      className="w-full bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Webhook Secret (backend)</label>
+                    <input type="password" value={localMercadoPagoWebhookSecret} onChange={e => setLocalMercadoPagoWebhookSecret(e.target.value)} placeholder="Webhook secret"
+                      className="w-full bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-blue-500/20" />
+                  </div>
+                  <div className="rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 px-4 py-3">
+                    <p className="text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Webhook Mercado Pago</p>
+                    <p className="text-[10px] font-mono text-blue-700/80 dark:text-blue-300/80 mt-1 break-all">{mercadoPagoWebhookUrl}</p>
+                  </div>
                 </div>
               </div>
 

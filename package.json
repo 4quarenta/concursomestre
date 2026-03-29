@@ -11,6 +11,8 @@
   "dependencies": {
     "@google/genai": "^1.38.0",
     "@mercadopago/sdk-react": "^1.0.7",
+    "@stripe/react-stripe-js": "^6.0.0",
+    "@stripe/stripe-js": "^9.0.0",
     "@types/react-google-recaptcha": "^2.1.9",
     "@types/styled-components": "^5.1.36",
     "axios": "^1.13.4",
