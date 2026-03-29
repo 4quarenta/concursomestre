@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { getInstallments, getIssuers, getPaymentMethods, initMercadoPago } from '@mercadopago/sdk-react';
 import { apiClient, ENDPOINTS } from '../core/api';
+import { setStoredSession } from '@core/auth/session';
 import ReCAPTCHA from 'react-google-recaptcha';
 import StripeCardElementForm from '../features/payments/components/StripeCardElementForm';
 import StripeSavedCardCvcForm from '../features/payments/components/StripeSavedCardCvcForm';
@@ -664,9 +665,8 @@ const CheckoutPage: React.FC = () => {
 
                 if (result.success && result.data) {
                     const { user, token } = result.data;
-                    localStorage.setItem('token', token);
-                    localStorage.setItem('user', JSON.stringify(user));
-                    login(user);
+                    setStoredSession(token, user);
+                    login(user as UserProfile);
                     addToast('Conta criada com sucesso e login realizado!', 'success');
                 } else {
                     addToast(result.message || 'Erro ao criar conta.', 'error');
@@ -689,9 +689,8 @@ const CheckoutPage: React.FC = () => {
 
                 if (result.success && result.data) {
                     const { user, token } = result.data;
-                    localStorage.setItem('token', token);
-                    localStorage.setItem('user', JSON.stringify(user));
-                    login(user);
+                    setStoredSession(token, user);
+                    login(user as UserProfile);
                     addToast('Login realizado com sucesso!', 'success');
                 } else {
                     addToast(result.message || 'Credenciais inválidas.', 'error');
