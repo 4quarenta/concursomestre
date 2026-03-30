@@ -132,7 +132,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           return;
         }
         const { user, token } = result.data;
-        localStorage.setItem('token', token);
+        localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
         localStorage.setItem('user', JSON.stringify(user));
         onLogin(buildUserProfile(user));
       } else {
@@ -171,7 +171,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       });
       if (result.success && result.data) {
         const { user, token } = result.data;
-        localStorage.setItem('token', token);
+        localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
         localStorage.setItem('user', JSON.stringify(user));
         // Auto-login imediato após o cadastro
         onLogin(buildUserProfile(user));
@@ -222,7 +222,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       });
       if (result.success && result.data) {
         const { token, role } = result.data;
-        localStorage.setItem('token', token);
+        localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
         
         // Fetch full profile since verify_2fa returns minimal data
         const profileRes: any = await apiClient.get('users/profile.php');
@@ -658,7 +658,7 @@ export const DevQuickLogin: React.FC<{ onLogin: (user: any) => void }> = ({ onLo
       const result: any = await apiClient.post(ENDPOINTS.auth.login, { email, password: '123456' });
       if (result.success && result.data) {
         const { user, token } = result.data;
-        localStorage.setItem('token', token);
+        localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
         localStorage.setItem('user', JSON.stringify(user));
         onLogin(buildUserProfile(user));
       }

@@ -828,6 +828,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   let isFetchingNotifications = false;
 
   const fetchNotifications = useCallback(async (userId: string) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return;
+    }
+
     // Prevent concurrent requests
     if (isFetchingNotifications) {
       console.log('[DataContext] Skipping fetchNotifications - already in progress');

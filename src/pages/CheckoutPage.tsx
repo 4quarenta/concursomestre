@@ -680,7 +680,7 @@ const CheckoutPage: React.FC = () => {
 
                 if (result.success && result.data) {
                     const { user, token } = result.data;
-                    localStorage.setItem('token', token);
+                    localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
                     localStorage.setItem('user', JSON.stringify(user));
                     login(user);
                     addToast('Conta criada com sucesso e login realizado!', 'success');
@@ -705,7 +705,7 @@ const CheckoutPage: React.FC = () => {
 
                 if (result.success && result.data) {
                     const { user, token } = result.data;
-                    localStorage.setItem('token', token);
+                    localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
                     localStorage.setItem('user', JSON.stringify(user));
                     login(user);
                     addToast('Login realizado com sucesso!', 'success');

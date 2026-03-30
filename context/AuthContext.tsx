@@ -16,6 +16,31 @@ const initialState: AuthState = {
   isLoading: true
 };
 
+const normalizeStoredToken = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+
+  let normalized = value.trim();
+  if (!normalized) return null;
+
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+
+  if (!normalized || normalized === 'undefined' || normalized === 'null') {
+    return null;
+  }
+
+  return normalized;
+};
+
+const clearStoredSession = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+};
+
 // --- ACTIONS ---
 
 type AuthAction =
@@ -134,26 +159,42 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
   const { addToast } = useToast();
+  const restoreTokenRef = React.useRef<string | null>(null);
 
   // Restaura sessão no mount verificando token salvo
   React.useEffect(() => {
-    const token = localStorage.getItem('token');
+    const rawToken = localStorage.getItem('token');
+    const token = normalizeStoredToken(rawToken);
+
+    if (rawToken && !token) {
+      clearStoredSession();
+      dispatch({ type: 'FINISH_LOADING' });
+      return;
+    }
     if (token) {
+      restoreTokenRef.current = token;
       apiClient.get(ENDPOINTS.auth.user)
         .then((res: any) => {
+          const latestToken = normalizeStoredToken(localStorage.getItem('token'));
+          if (latestToken !== restoreTokenRef.current) {
+            dispatch({ type: 'FINISH_LOADING' });
+            return;
+          }
+
           if (res.success && res.data && res.data.user) {
             dispatch({ type: 'LOGIN', payload: res.data.user });
             // Renova o token imediatamente ao restaurar sessão
             renovarToken();
           } else {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+            clearStoredSession();
             dispatch({ type: 'FINISH_LOADING' });
           }
         })
         .catch(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
+          const latestToken = normalizeStoredToken(localStorage.getItem('token'));
+          if (latestToken === restoreTokenRef.current) {
+            clearStoredSession();
+          }
           dispatch({ type: 'FINISH_LOADING' });
         });
     } else {
@@ -164,9 +205,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Função auxiliar para renovar o token silenciosamente
   const renovarToken = async () => {
     try {
+      const requestToken = normalizeStoredToken(localStorage.getItem('token'));
+      if (!requestToken) return;
+
       const res: any = await apiClient.get(ENDPOINTS.auth.refresh);
-      if (res?.data?.token) {
-        localStorage.setItem('token', res.data.token);
+      const renewedToken = normalizeStoredToken(res?.data?.token ?? null);
+      const currentToken = normalizeStoredToken(localStorage.getItem('token'));
+
+      if (renewedToken && currentToken === requestToken) {
+        localStorage.setItem('token', renewedToken);
       }
     } catch {
       // Falha silenciosa — o token existente ainda pode ser válido
@@ -189,8 +236,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearStoredSession();
     dispatch({ type: 'LOGOUT' });
   };
 
@@ -315,7 +361,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const refreshUser = async () => {
-    const token = localStorage.getItem('token');
+    const token = normalizeStoredToken(localStorage.getItem('token'));
     if (token) {
       try {
         const res: any = await apiClient.get(ENDPOINTS.auth.user);

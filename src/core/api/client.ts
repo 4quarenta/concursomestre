@@ -3,7 +3,7 @@
  * Centralized Axios instance with interceptors
  */
 
-import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { logger } from '../debug/DebugLogger';
 
 // Base URL from environment variable
@@ -18,11 +18,47 @@ export const apiClient = axios.create({
     },
 });
 
+interface AuthAwareRequestConfig extends InternalAxiosRequestConfig {
+    _authTokenUsed?: string | null;
+}
+
+const normalizeStoredToken = (value: string | null | undefined): string | null => {
+    if (!value) return null;
+
+    let normalized = value.trim();
+    if (!normalized) return null;
+
+    if (
+        (normalized.startsWith('"') && normalized.endsWith('"')) ||
+        (normalized.startsWith("'") && normalized.endsWith("'"))
+    ) {
+        normalized = normalized.slice(1, -1).trim();
+    }
+
+    if (!normalized || normalized === 'undefined' || normalized === 'null') {
+        return null;
+    }
+
+    return normalized;
+};
+
+const clearStoredSession = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+};
+
 // Request interceptor - Add auth token
 apiClient.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
         // Get token from localStorage
-        const token = localStorage.getItem('token');
+        const rawToken = localStorage.getItem('token');
+        const token = normalizeStoredToken(rawToken);
+
+        if (rawToken && !token) {
+            clearStoredSession();
+        }
+
+        (config as AuthAwareRequestConfig)._authTokenUsed = token;
 
         if (token && config.headers) {
             config.headers.Authorization = `Bearer ${token}`;
@@ -79,6 +115,7 @@ apiClient.interceptors.response.use(
         if (error.response) {
             const status = error.response.status;
             const data = error.response.data as any;
+            const requestConfig = error.config as AuthAwareRequestConfig | undefined;
 
             // Log error in development
             if (import.meta.env.DEV) {
@@ -90,14 +127,16 @@ apiClient.interceptors.response.use(
             switch (status) {
                 case 401: {
                     // Só age se havia token salvo (sessão expirada)
-                    const hadToken = !!localStorage.getItem('token');
+                    const currentToken = normalizeStoredToken(localStorage.getItem('token'));
+                    const requestToken = requestConfig?._authTokenUsed || null;
+                    const hadToken = !!currentToken;
                     const jaEstaNoAuth = window.location.hash.includes('/auth') ||
                         window.location.pathname.includes('/auth');
+                    const isSameSession = !requestToken || requestToken === currentToken;
 
-                    if (hadToken && !jaEstaNoAuth) {
+                    if (hadToken && isSameSession && !jaEstaNoAuth) {
                         // Limpa credenciais e despacha evento — App.tsx redireciona sem reload
-                        localStorage.removeItem('token');
-                        localStorage.removeItem('user');
+                        clearStoredSession();
                         window.dispatchEvent(new CustomEvent('auth:session-expired', { 
                             detail: { message: data.message || 'Sessão expirada' } 
                         }));
