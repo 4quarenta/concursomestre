@@ -14,7 +14,7 @@ import { useTheme } from '../context/ThemeContext';
 type AuthMode = 'login' | 'signup' | 'forgot' | 'forgot-success' | 'two-factor';
 
 interface AuthProps {
-  onLogin: (user: UserProfile) => void;
+  onLogin: (user: UserProfile | null, token?: string | null) => Promise<void>;
 }
 
 /** Monta UserProfile com valores padrão a partir do objeto retornado pela API */
@@ -132,9 +132,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           return;
         }
         const { user, token } = result.data;
-        localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
-        localStorage.setItem('user', JSON.stringify(user));
-        onLogin(buildUserProfile(user));
+        await onLogin(buildUserProfile(user), token);
       } else {
         setError(result.message || 'E-mail ou senha incorretos.');
       }
@@ -171,10 +169,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       });
       if (result.success && result.data) {
         const { user, token } = result.data;
-        localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
-        localStorage.setItem('user', JSON.stringify(user));
         // Auto-login imediato após o cadastro
-        onLogin(buildUserProfile(user));
+        await onLogin(buildUserProfile(user), token);
       } else {
         setError(result.message || 'Erro ao criar conta.');
       }
@@ -221,16 +217,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         code: twoFactorCode
       });
       if (result.success && result.data) {
-        const { token, role } = result.data;
-        localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
-        
-        // Fetch full profile since verify_2fa returns minimal data
-        const profileRes: any = await apiClient.get('users/profile.php');
-        if (profileRes.success && profileRes.data) {
-           const userData = profileRes.data.user || profileRes.data;
-           localStorage.setItem('user', JSON.stringify(userData));
-           onLogin(buildUserProfile(userData));
-        }
+        const { token } = result.data;
+        await onLogin(null, token);
       } else {
         setError(result.message || 'Código inválido.');
       }
@@ -640,7 +628,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
  * Painel de login rápido para contas de desenvolvimento.
  * Visível apenas quando appMode !== 'production'.
  */
-export const DevQuickLogin: React.FC<{ onLogin: (user: any) => void }> = ({ onLogin }) => {
+export const DevQuickLogin: React.FC<{ onLogin: (user: any, token?: string | null) => Promise<void> }> = ({ onLogin }) => {
   const { systemSettings } = useData();
   const [loading, setLoading] = useState<string | null>(null);
 
@@ -658,9 +646,7 @@ export const DevQuickLogin: React.FC<{ onLogin: (user: any) => void }> = ({ onLo
       const result: any = await apiClient.post(ENDPOINTS.auth.login, { email, password: '123456' });
       if (result.success && result.data) {
         const { user, token } = result.data;
-        localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
-        localStorage.setItem('user', JSON.stringify(user));
-        onLogin(buildUserProfile(user));
+        await onLogin(buildUserProfile(user), token);
       }
     } catch (e) {
       console.error('[DEV] Quick login failed:', e);

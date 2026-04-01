@@ -29,10 +29,9 @@ import ResetPassword from './pages/ResetPassword';
 import ConfirmEmail from './pages/ConfirmEmail';
 import DebugBanner from './components/debug/DebugBanner';
 
-
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext';
-import { ToastProvider, useToast } from './context/ToastContext';
+import { ToastProvider } from './context/ToastContext';
 import { ModalProvider } from './context/ModalContext';
 import { MarketplaceProvider } from './context/MarketplaceContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -40,29 +39,12 @@ import { Hammer, ShieldAlert, LogOut, Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { currentUser, login, logout, isLoading } = useAuth();
-  const { addToast } = useToast();
   const { systemSettings } = useData();
   const [showLoginBypass, setShowLoginBypass] = React.useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    // Quando o token expirar, o interceptor do Axios dispara este evento.
-    // Usamos navigate() em vez de window.location.href para não forçar
-    // um reload completo que quebra o AuthProvider.
-    const handleSessionExpired = (e: any) => {
-      const message = e.detail?.message || 'Sessão expirada. Por favor, faça login novamente.';
-      addToast(message, 'warning');
-      logout(); // Garante a limpeza do estado global
-      navigate('/auth', { replace: true });
-    };
-    window.addEventListener('auth:session-expired', handleSessionExpired);
-    return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
-  }, [navigate, logout, addToast]);
-
-  React.useEffect(() => {
-    // Quando o usuário tentar acessar uma rota protegida e for redirecionado, 
-    // salvar a origem no sessionStorage SE não for erro ou login/cadastro
     if (!isLoading && !currentUser && location.pathname !== '/auth' && location.pathname !== '/' && location.pathname !== '/plans') {
       sessionStorage.setItem('redirectAfterLogin', location.pathname + location.search + location.hash);
     }
@@ -80,7 +62,6 @@ const AppContent: React.FC = () => {
   const isMaintenance = systemSettings?.features?.maintenanceMode || false;
   const loginRequired = systemSettings?.features?.loginRequired || false;
 
-  // Maintenance Check (Bypass for Admins)
   if (isMaintenance && !currentUser?.isAdmin && !showLoginBypass) {
     return (
       <div className="min-h-screen bg-white dark:bg-slate-950 flex items-center justify-center p-6 text-center transition-colors">
@@ -91,7 +72,7 @@ const AppContent: React.FC = () => {
           <div className="space-y-3">
             <h1 className="text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Manutenção</h1>
             <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
-              Estamos realizando melhorias técnicas para garantir a melhor experiê ncia. Voltaremos em alguns instantes!
+              Estamos realizando melhorias técnicas para garantir a melhor experiência. Voltaremos em alguns instantes!
             </p>
           </div>
           <div className="flex flex-col gap-3">
@@ -118,7 +99,6 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // Payment Issue Block (Redirects to Profile)
   const isPastDueSubscription = currentUser?.subscription?.status === 'past_due';
   const isPaymentIssue = (currentUser?.paymentIssue || isPastDueSubscription) && !currentUser?.isAdmin;
   const isFixingPayment = location.pathname === '/profile' || location.pathname === '/plans' || location.pathname.startsWith('/checkout');
@@ -162,7 +142,6 @@ const AppContent: React.FC = () => {
       <GlobalLoader />
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
-          {/* PUBLIC ROUTES */}
           <Route path="/reset-password" element={<PageTransition><ResetPassword /></PageTransition>} />
           <Route path="/confirm-email" element={<PageTransition><ConfirmEmail /></PageTransition>} />
           <Route path="/terms" element={<PageTransition><TermsOfUse /></PageTransition>} />
@@ -179,12 +158,10 @@ const AppContent: React.FC = () => {
           <Route path="/changelog" element={<PageTransition><Changelog /></PageTransition>} />
           <Route path="/faq" element={<Layout><PageTransition><FAQPage /></PageTransition></Layout>} />
 
-          {/* CONDITIONAL HOME */}
           <Route path="/" element={
             currentUser ? <Layout><PageTransition><Dashboard /></PageTransition></Layout> : <PageTransition><LandingPage /></PageTransition>
           } />
 
-          {/* GUEST-FRIENDLY ROUTES (Check loginRequired) */}
           <Route path="/practice" element={
             (currentUser || !loginRequired) ? <Layout><PageTransition><Practice /></PageTransition></Layout> : <Navigate to="/auth" replace />
           } />
@@ -204,7 +181,6 @@ const AppContent: React.FC = () => {
             <Layout><PageTransition><PromoLanding /></PageTransition></Layout>
           } />
 
-          {/* PRIVATE ROUTES (Auth Required) */}
           <Route path="/profile" element={
             currentUser ? <Layout><PageTransition><Profile /></PageTransition></Layout> : <Navigate to="/auth" replace />
           } />
@@ -218,7 +194,6 @@ const AppContent: React.FC = () => {
             currentUser ? <Layout><PageTransition><Support /></PageTransition></Layout> : <Navigate to="/auth" replace />
           } />
 
-          {/* SUBSCRIPTION ROUTES */}
           <Route path="/plans" element={
             <Layout><PageTransition><PlansPage /></PageTransition></Layout>
           } />
@@ -236,13 +211,11 @@ const AppContent: React.FC = () => {
             currentUser ? <PageTransition><ReaderPage /></PageTransition> : <Navigate to="/auth" replace />
           } />
 
-          {/* ADMIN ROUTES */}
           <Route
             path="/admin"
             element={currentUser?.isAdmin ? <PageTransition><Admin /></PageTransition> : <Navigate to="/" replace />}
           />
 
-          {/* CHECKOUT ROUTE (Public, handles auth internally) */}
           <Route path="/checkout/:planId" element={<PageTransition><CheckoutPage /></PageTransition>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />

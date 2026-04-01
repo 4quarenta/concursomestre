@@ -73,6 +73,7 @@ export const planService = {
         auto_renew?: boolean;
         coupon_code?: string;
         billing_mode?: 'single_installment' | 'term_recurring';
+        installment_count?: number;
     }): Promise<any> {
         try {
             const response = await apiClient.post<ApiResponse<any>>('/subscriptions/create_stripe_checkout.php', payload);
@@ -91,6 +92,7 @@ export const planService = {
         saved_card_id?: string;
         save_card?: boolean;
         billing_mode?: 'single_installment' | 'term_recurring';
+        installment_count?: number;
     }): Promise<any> {
         try {
             const response = await apiClient.post<ApiResponse<any>>('/subscriptions/create_stripe_subscription.php', payload);
@@ -106,6 +108,7 @@ export const planService = {
         plan_id?: number;
         auto_renew?: boolean;
         payment_method_id?: string;
+        payment_intent_id?: string;
         saved_card_id?: string;
         save_card?: boolean;
         billing_mode?: 'single_installment' | 'term_recurring';

@@ -17,7 +17,7 @@ export const notificationService = {
                 ENDPOINTS.notifications.list
             ) as any;
             // apiClient interceptor já unwrappa response.data, então response = {success, data, count}
-            return response.data || [];
+            return response.data?.data || response.data || [];
         } catch (error) {
             console.error('Error fetching notifications:', error);
             return [];
@@ -27,14 +27,13 @@ export const notificationService = {
     /**
      * Get notifications for specific user (admin/system use)
      */
-    async getUserNotifications(userId: string): Promise<Notification[]> {
+    async getUserNotifications(_userId: string): Promise<Notification[]> {
         try {
             const response = await apiClient.get(
-                ENDPOINTS.notifications.list,
-                { params: { user_id: userId } }
+                ENDPOINTS.notifications.list
             ) as any;
             // apiClient interceptor já unwrappa response.data, então response = {success, data, count}
-            return response.data || [];
+            return response.data?.data || response.data || [];
         } catch (error) {
             console.error('Error fetching user notifications:', error);
             return [];

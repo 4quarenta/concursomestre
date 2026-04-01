@@ -55,7 +55,7 @@ const ConfirmEmail: React.FC = () => {
                     addToast('🎉 Conta ativada! Você ganhou +50 XP de bônus!', 'success');
 
                     // Atualiza o usuário no AuthContext para sumir o banner
-                    if (localStorage.getItem('token')) {
+                    if (currentUser) {
                         await refreshUser();
                     }
 

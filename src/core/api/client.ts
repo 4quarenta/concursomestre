@@ -1,178 +1,276 @@
-/**
- * API Client Configuration
- * Centralized Axios instance with interceptors
- */
-
 import axios, { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { logger } from '../debug/DebugLogger';
+import {
+    getAccessToken,
+    isAccessTokenExpired,
+    refreshAuthSession,
+} from '../auth/session';
 
-// Base URL from environment variable
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost/questao-pro-backend/api/';
 
-// Create axios instance
 export const apiClient = axios.create({
     baseURL: API_BASE_URL,
     timeout: 30000,
+    withCredentials: true,
     headers: {
         'Content-Type': 'application/json',
     },
 });
 
 interface AuthAwareRequestConfig extends InternalAxiosRequestConfig {
+    _retry?: boolean;
     _authTokenUsed?: string | null;
+    _skipRefreshHandling?: boolean;
 }
 
-const normalizeStoredToken = (value: string | null | undefined): string | null => {
-    if (!value) return null;
-
-    let normalized = value.trim();
-    if (!normalized) return null;
-
-    if (
-        (normalized.startsWith('"') && normalized.endsWith('"')) ||
-        (normalized.startsWith("'") && normalized.endsWith("'"))
-    ) {
-        normalized = normalized.slice(1, -1).trim();
+const parseJsonLikePayload = <T>(payload: T): T => {
+    if (typeof payload !== 'string') {
+        return payload;
     }
 
-    if (!normalized || normalized === 'undefined' || normalized === 'null') {
-        return null;
+    const normalized = payload.replace(/^\uFEFF+/, '').trim();
+    if (!normalized) {
+        return payload;
     }
 
-    return normalized;
+    try {
+        return JSON.parse(normalized) as T;
+    } catch {
+        return payload;
+    }
 };
 
-const clearStoredSession = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+const resolveApiBaseUrl = (): string => {
+    let baseUrl = API_BASE_URL;
+
+    if (!/^https?:\/\//i.test(baseUrl)) {
+        const frontendOrigin = window.location.origin;
+        const backendOrigin = frontendOrigin.replace(':3000', '');
+        baseUrl = `${backendOrigin}${baseUrl.startsWith('/') ? '' : '/'}${baseUrl}`;
+    }
+
+    return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 };
 
-// Request interceptor - Add auth token
+const resolveBackendRoot = (): string => resolveApiBaseUrl().replace(/\/api\/?$/, '');
+
+const resolveApiResourceUrl = (resource: string): string => {
+    if (/^https?:\/\//i.test(resource)) {
+        return resource;
+    }
+
+    const normalizedResource = resource.replace(/^\/+/, '');
+
+    if (normalizedResource.startsWith('api/')) {
+        return `${resolveBackendRoot()}/${normalizedResource}`;
+    }
+
+    return `${resolveApiBaseUrl()}${normalizedResource}`;
+};
+
+const ensureAuthenticatedAccessToken = async (): Promise<string> => {
+    const currentToken = getAccessToken();
+    if (currentToken && !isAccessTokenExpired(currentToken, 10)) {
+        return currentToken;
+    }
+
+    const refreshedSession = await refreshAuthSession({
+        reason: 'manual',
+        force: true,
+    });
+
+    const refreshedToken = refreshedSession?.accessToken ?? getAccessToken();
+    if (!refreshedToken) {
+        throw new Error('Sessao expirada. Faca login novamente.');
+    }
+
+    return refreshedToken;
+};
+
+const readFailedResponseMessage = async (response: Response): Promise<string> => {
+    const contentType = response.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+        try {
+            const payload = await response.json();
+            return payload?.message || payload?.error || `Falha ao acessar o arquivo (${response.status}).`;
+        } catch {
+            return `Falha ao acessar o arquivo (${response.status}).`;
+        }
+    }
+
+    try {
+        const text = (await response.text()).trim();
+        return text || `Falha ao acessar o arquivo (${response.status}).`;
+    } catch {
+        return `Falha ao acessar o arquivo (${response.status}).`;
+    }
+};
+
+const fetchAuthenticatedResource = async (
+    resource: string,
+    init: RequestInit = {},
+    hasRetried = false
+): Promise<Response> => {
+    const token = await ensureAuthenticatedAccessToken();
+    const url = resolveApiResourceUrl(resource);
+    const headers = new Headers(init.headers || {});
+
+    headers.set('Authorization', `Bearer ${token}`);
+    headers.set('X-Auth-Token', token);
+
+    const response = await fetch(url, {
+        ...init,
+        headers,
+        credentials: 'include',
+    });
+
+    if (response.status === 401 && !hasRetried) {
+        await refreshAuthSession({
+            reason: 'http-401',
+            force: true,
+        });
+
+        return fetchAuthenticatedResource(resource, init, true);
+    }
+
+    if (!response.ok) {
+        throw new Error(await readFailedResponseMessage(response));
+    }
+
+    return response;
+};
+
+const getFilenameFromDisposition = (contentDisposition: string | null, fallbackName = 'arquivo.pdf'): string => {
+    if (!contentDisposition) {
+        return fallbackName;
+    }
+
+    const utf8Match = contentDisposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+        return decodeURIComponent(utf8Match[1]).replace(/[/\\?%*:|"<>]/g, '_');
+    }
+
+    const simpleMatch = contentDisposition.match(/filename\s*=\s*"?([^"]+)"?/i);
+    if (simpleMatch?.[1]) {
+        return simpleMatch[1].replace(/[/\\?%*:|"<>]/g, '_');
+    }
+
+    return fallbackName;
+};
+
+const isAuthEndpoint = (url?: string | null): boolean => {
+    if (!url) return false;
+
+    const normalizedUrl = url.toLowerCase();
+    return normalizedUrl.includes('auth/login.php')
+        || normalizedUrl.includes('auth/register.php')
+        || normalizedUrl.includes('auth/refresh.php')
+        || normalizedUrl.includes('auth/logout.php')
+        || normalizedUrl.includes('auth/forgot-password.php')
+        || normalizedUrl.includes('auth/verify_2fa.php');
+};
+
 apiClient.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
-        // Get token from localStorage
-        const rawToken = localStorage.getItem('token');
-        const token = normalizeStoredToken(rawToken);
-
-        if (rawToken && !token) {
-            clearStoredSession();
-        }
+        const token = getAccessToken();
 
         (config as AuthAwareRequestConfig)._authTokenUsed = token;
 
         if (token && config.headers) {
             config.headers.Authorization = `Bearer ${token}`;
-            // Add custom header to bypass Apache stripping
             config.headers['X-Auth-Token'] = token;
-            if (import.meta.env.DEV) {
-                console.log('🔹 Attaching Token:', token.substring(0, 10) + '...');
-                console.log('🔹 Request URL:', config.url);
-                console.log('🔹 Headers:', JSON.stringify({
-                    Authorization: config.headers.Authorization?.substring(0, 20) + '...',
-                    'X-Auth-Token': config.headers['X-Auth-Token']?.substring(0, 10) + '...'
-                }));
-            }
-        } else {
-            // Requisições públicas não precisam de token — sem aviso
         }
 
-        // Handle FormData - let browser set Content-Type with boundary
         if (config.data instanceof FormData) {
-            // Remove Content-Type header to let browser set it automatically with boundary
             delete config.headers['Content-Type'];
-            if (import.meta.env.DEV) {
-                console.log('📤 FormData detected - letting browser set Content-Type');
-            }
         }
 
-        // Log request in development
         if (import.meta.env.DEV) {
-            console.log('🚀 API Request:', config.method?.toUpperCase(), config.url);
             logger.addLog('request', `${config.method?.toUpperCase()} ${config.url}`, config.data);
         }
 
         return config;
     },
-    (error: AxiosError) => {
-        console.error('❌ Request Error:', error);
-        return Promise.reject(error);
-    }
+    (error: AxiosError) => Promise.reject(error)
 );
 
-// Response interceptor - Handle errors globally
 apiClient.interceptors.response.use(
     (response: AxiosResponse) => {
-        // Log response in development
+        const data = parseJsonLikePayload(response.data);
+
         if (import.meta.env.DEV) {
-            console.log('✅ API Response:', response.config.url, response.data);
-            logger.addLog('response', `SUCCESS: ${response.config.url}`, response.data);
+            logger.addLog('response', `SUCCESS: ${response.config.url}`, data);
         }
 
-        return response.data;
+        return data;
     },
-    (error: AxiosError) => {
-        // Handle different error types
+    async (error: AxiosError) => {
+        const requestConfig = (error.config || {}) as AuthAwareRequestConfig;
+
         if (error.response) {
             const status = error.response.status;
-            const data = error.response.data as any;
-            const requestConfig = error.config as AuthAwareRequestConfig | undefined;
+            const data = parseJsonLikePayload(error.response.data as any);
+            error.response.data = data;
 
-            // Log error in development
             if (import.meta.env.DEV) {
-                console.error('❌ API Error:', status, error.config?.url, data);
                 logger.addLog('api-error', `ERROR ${status}: ${error.config?.url}`, data);
             }
 
-            // Handle specific status codes
-            switch (status) {
-                case 401: {
-                    // Só age se havia token salvo (sessão expirada)
-                    const currentToken = normalizeStoredToken(localStorage.getItem('token'));
-                    const requestToken = requestConfig?._authTokenUsed || null;
-                    const hadToken = !!currentToken;
-                    const jaEstaNoAuth = window.location.hash.includes('/auth') ||
-                        window.location.pathname.includes('/auth');
-                    const isSameSession = !requestToken || requestToken === currentToken;
+            const shouldAttemptRefresh =
+                status === 401 &&
+                !requestConfig._retry &&
+                !requestConfig._skipRefreshHandling &&
+                !isAuthEndpoint(error.config?.url);
 
-                    if (hadToken && isSameSession && !jaEstaNoAuth) {
-                        // Limpa credenciais e despacha evento — App.tsx redireciona sem reload
-                        clearStoredSession();
-                        window.dispatchEvent(new CustomEvent('auth:session-expired', { 
-                            detail: { message: data.message || 'Sessão expirada' } 
-                        }));
+            if (shouldAttemptRefresh) {
+                try {
+                    requestConfig._retry = true;
+                    await refreshAuthSession({
+                        reason: 'http-401',
+                        force: true,
+                    });
+
+                    const nextToken = getAccessToken();
+                    if (nextToken && requestConfig.headers) {
+                        requestConfig.headers.Authorization = `Bearer ${nextToken}`;
+                        requestConfig.headers['X-Auth-Token'] = nextToken;
                     }
-                    break;
+
+                    return apiClient(requestConfig);
+                } catch (refreshError) {
+                    if (import.meta.env.DEV) {
+                        logger.addLog('auth-refresh-failed', `401 without recovery: ${error.config?.url}`, {
+                            originalError: data,
+                            refreshError,
+                        });
+                    }
                 }
+            }
 
-                case 403:
-                    // Forbidden
-                    console.error('Access forbidden:', data.message);
+            switch (status) {
+                case 401:
+                    console.error('Unauthorized request:', error.config?.url, data?.message);
                     break;
-
+                case 403:
+                    console.error('Access forbidden:', data?.message);
+                    break;
                 case 404:
-                    // Not found
                     console.error('Resource not found:', error.config?.url);
                     break;
-
                 case 429:
-                    // Too many requests
                     console.error('Rate limit exceeded. Please try again later.');
                     break;
-
                 case 500:
-                    // Server error
-                    console.error('Server error:', data.message);
+                    console.error('Server error:', data?.message);
                     break;
-
                 default:
-                    console.error('API Error:', data.message || 'Unknown error');
+                    console.error('API Error:', data?.message || 'Unknown error');
             }
         } else if (error.request) {
-            // Request made but no response received
-            console.error('❌ Network Error: No response from server');
+            console.error('Network Error: No response from server');
         } else {
-            // Error in request setup
-            console.error('❌ Request Setup Error:', error.message);
+            console.error('Request Setup Error:', error.message);
             if (import.meta.env.DEV) {
                 logger.addLog('error', `Setup Error: ${error.message}`);
             }
@@ -182,43 +280,64 @@ apiClient.interceptors.response.use(
     }
 );
 
-/**
- * Constrói a URL autenticada para download de PDF com marca d'água.
- * O backend valida o token e estampa os dados do usuário no arquivo.
- */
-export const buildDownloadUrl = (materialId: string): string => {
-    const token = localStorage.getItem('token') || '';
-    const backendRoot = API_BASE_URL.replace(/\/api\/$/, '');
-    return `${backendRoot}/api/materials/download.php?material_id=${encodeURIComponent(materialId)}&token=${encodeURIComponent(token)}`;
+export const buildMaterialDownloadEndpoint = (materialId: string): string =>
+    `materials/download.php?material_id=${encodeURIComponent(materialId)}`;
+
+export const buildMaterialAccessEndpoint = (materialId: string): string =>
+    `materials/access.php?id=${encodeURIComponent(materialId)}`;
+
+export const buildDownloadUrl = (materialId: string): string =>
+    resolveApiResourceUrl(buildMaterialDownloadEndpoint(materialId));
+
+export const downloadAuthenticatedFile = async (resource: string, fallbackFileName?: string): Promise<void> => {
+    const response = await fetchAuthenticatedResource(resource);
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const fileName = getFilenameFromDisposition(
+        response.headers.get('content-disposition'),
+        fallbackFileName || 'arquivo.pdf'
+    );
+
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = fileName;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+};
+
+export const openAuthenticatedFile = async (resource: string): Promise<void> => {
+    const previewWindow = window.open('about:blank', '_blank');
+    if (!previewWindow) {
+        throw new Error('Permita a abertura de novas abas para visualizar este arquivo.');
+    }
+
+    try {
+        previewWindow.document.title = 'Carregando arquivo...';
+
+        const response = await fetchAuthenticatedResource(resource);
+        const blob = await response.blob();
+        const fileUrl = URL.createObjectURL(blob);
+
+        previewWindow.location.replace(fileUrl);
+        window.setTimeout(() => URL.revokeObjectURL(fileUrl), 60_000);
+    } catch (error) {
+        previewWindow.close();
+        throw error;
+    }
 };
 
 export const getAssetUrl = (path: string) => {
     if (!path) return '';
     if (path.startsWith('http')) return path;
 
-    // API_BASE_URL usually ends with '/api/'
-    // We want to go to the root of the backend
-    let backendRoot = API_BASE_URL.replace(/\/api\/$/, '');
-
-    // If backendRoot is relative (e.g. starts with /), make it absolute using current window.location
-    // but ONLY if we are in production or if the backend is on the same server. 
-    // In development (localhost:3000), we usually want to point to localhost (80)
-    if (!backendRoot.startsWith('http')) {
-        const origin = window.location.origin; // e.g. http://localhost:3000
-        // If we are on port 3000, we probably want port 80 for the backend unless configured otherwise
-        const backendOrigin = origin.replace(':3000', ''); 
-        backendRoot = `${backendOrigin}${backendRoot.startsWith('/') ? '' : '/'}${backendRoot}`;
-    }
-
-    // Standardize path
+    const backendRoot = resolveBackendRoot();
     const cleanPath = path.startsWith('/') ? path.substring(1) : path;
-    
-    // If the path already contains the backend folder name (e.g. questao-pro-backend), 
-    // and backendRoot also has it, we need to be careful not to double it.
-    // However, the safest way is to just append relative to the domain if it starts with the folder.
-    
+
     if (cleanPath.startsWith('uploads/')) {
-        // Correctly append to the folder root
         return `${backendRoot}/${cleanPath}`;
     }
 

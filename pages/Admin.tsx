@@ -19,7 +19,12 @@ import { useToast } from '../context/ToastContext';
 import { useMarketplace } from '../context/MarketplaceContext';
 import { reputationService } from '@features/auth';
 import { themeConfig } from '../ui/temas';
-import { apiClient, ENDPOINTS } from '@core/api';
+import {
+  apiClient,
+  ENDPOINTS,
+  buildMaterialAccessEndpoint,
+  openAuthenticatedFile,
+} from '@core/api';
 import { AdminFeedback } from '../src/features/admin/components/AdminFeedback';
 import { DashboardSidebar } from '../src/components/layout/DashboardSidebar';
 import Footer from '../src/components/layout/Footer';
@@ -4505,14 +4510,17 @@ const AdminDatabaseManager = ({
                     <div className="flex items-center justify-center gap-2">
                       <button onClick={() => { setEditingMaterial(m); setModerationReason(m.rejectionReason || ''); }} className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg transition-colors flex items-center gap-1 font-bold text-[9px] uppercase"><Edit3 size={14} /> Moderar</button>
                       {m.fileUrl && (
-                        <a
-                          href={`${ENDPOINTS.materials.list.replace('list.php', 'access.php')}?id=${m.id}&token=${localStorage.getItem('token')}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void openAuthenticatedFile(buildMaterialAccessEndpoint(m.id)).catch((error: any) => {
+                              addToast(error?.message || 'Nao foi possivel abrir a visualizacao do material.', 'error');
+                            });
+                          }}
                           className="p-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-lg transition-colors"
                         >
                           <Download size={14} />
-                        </a>
+                        </button>
                       )}
                       <button onClick={() => onDeleteMaterial(m.id)} className="p-2 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 rounded-lg transition-colors"><Trash2 size={14} /></button>
                     </div>

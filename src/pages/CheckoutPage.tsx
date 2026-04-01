@@ -680,9 +680,7 @@ const CheckoutPage: React.FC = () => {
 
                 if (result.success && result.data) {
                     const { user, token } = result.data;
-                    localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
-                    localStorage.setItem('user', JSON.stringify(user));
-                    login(user);
+                    await login(user, token);
                     addToast('Conta criada com sucesso e login realizado!', 'success');
                 } else {
                     addToast(result.message || 'Erro ao criar conta.', 'error');
@@ -705,9 +703,7 @@ const CheckoutPage: React.FC = () => {
 
                 if (result.success && result.data) {
                     const { user, token } = result.data;
-                    localStorage.setItem('token', typeof token === 'string' ? token.trim() : String(token ?? ''));
-                    localStorage.setItem('user', JSON.stringify(user));
-                    login(user);
+                    await login(user, token);
                     addToast('Login realizado com sucesso!', 'success');
                 } else {
                     addToast(result.message || 'Credenciais inválidas.', 'error');
@@ -849,6 +845,7 @@ const CheckoutPage: React.FC = () => {
                     auto_renew: autoRenew,
                     coupon_code: appliedCoupon?.code || undefined,
                     billing_mode: stripeBillingMode,
+                    installment_count: selectedStripeInstallmentCount,
                 });
 
                 const redirectUrl = response?.data?.url || response?.url || response?.data?.redirect_url;
@@ -1063,6 +1060,7 @@ const CheckoutPage: React.FC = () => {
                 payment_method_id: paymentMethodId,
                 save_card: saveCard || stripeRequiresSavedCard,
                 billing_mode: stripeBillingMode,
+                installment_count: selectedStripeInstallmentCount,
             });
 
             if (!response?.success) {
@@ -1079,6 +1077,7 @@ const CheckoutPage: React.FC = () => {
                 confirmationType: payload?.confirmation_type || 'payment',
                 subscriptionId: payload?.subscription_id || null,
                 paymentMethodId,
+                paymentIntentId: payload?.payment_intent_id || null,
                 saveCard: payload?.save_card ?? (saveCard || stripeRequiresSavedCard),
             };
         } catch (error: any) {
@@ -1094,6 +1093,7 @@ const CheckoutPage: React.FC = () => {
     const finalizeStripeInternalCheckout = async (options?: {
         subscriptionId?: string | null;
         paymentMethodId?: string | null;
+        paymentIntentId?: string | null;
         savedCardId?: string | null;
         saveCard?: boolean;
     }) => {
@@ -1111,6 +1111,7 @@ const CheckoutPage: React.FC = () => {
             plan_id: plan.id,
             auto_renew: autoRenew,
             payment_method_id: options?.paymentMethodId || pendingStripePaymentMethodId || undefined,
+            payment_intent_id: options?.paymentIntentId || undefined,
             saved_card_id: options?.savedCardId || undefined,
             save_card: resolvedSaveCard,
         });
@@ -1134,8 +1135,14 @@ const CheckoutPage: React.FC = () => {
             addToast(payload.card_save_warning, 'warning');
         }
 
+        if (payload?.approved === false) {
+            addToast('O pagamento foi bloqueado pela validacao antifraude da Stripe.', 'error');
+            return;
+        }
+
         if (payload?.access_granted === false) {
             addToast('Pagamento confirmado. Estamos concluindo a sincronizacao final da assinatura com a Stripe.', 'info');
+            return;
         }
 
         setStep('success');
@@ -1158,6 +1165,7 @@ const CheckoutPage: React.FC = () => {
                 saved_card_id: selectedStripeCard.id,
                 save_card: true,
                 billing_mode: stripeBillingMode,
+                installment_count: selectedStripeInstallmentCount,
             });
 
             if (!response?.success) {
@@ -1189,14 +1197,22 @@ const CheckoutPage: React.FC = () => {
                 if (confirmation.error) {
                     throw new Error(confirmation.error.message || 'Nao foi possivel confirmar o codigo de seguranca do cartao salvo.');
                 }
-            }
 
-            await finalizeStripeInternalCheckout({
-                subscriptionId: payload?.subscription_id || null,
-                paymentMethodId: savedPaymentMethodId,
-                savedCardId: selectedStripeCard.id,
-                saveCard: true,
-            });
+                await finalizeStripeInternalCheckout({
+                    subscriptionId: payload?.subscription_id || null,
+                    paymentMethodId: savedPaymentMethodId,
+                    paymentIntentId: confirmation.paymentIntent?.id || null,
+                    savedCardId: selectedStripeCard.id,
+                    saveCard: true,
+                });
+            } else {
+                await finalizeStripeInternalCheckout({
+                    subscriptionId: payload?.subscription_id || null,
+                    paymentMethodId: savedPaymentMethodId,
+                    savedCardId: selectedStripeCard.id,
+                    saveCard: true,
+                });
+            }
         } catch (error: any) {
             console.error('Stripe saved card checkout error:', error);
             const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar o cartao salvo.';
@@ -1244,15 +1260,19 @@ const CheckoutPage: React.FC = () => {
     }, [plan]);
 
     const supportsStripeBillingChoices = isStripeProvider && maxInstallments > 1;
-
-    useEffect(() => {
-        if (supportsStripeBillingChoices) {
-            setStripeBillingMode('term_recurring');
-            return;
+    const selectedStripeInstallmentCount = useMemo(() => {
+        if (!supportsStripeBillingChoices) return 1;
+        const parsedInstallments = Number.parseInt(paymentData.installments, 10);
+        if (!Number.isFinite(parsedInstallments) || parsedInstallments <= 1) {
+            return 1;
         }
 
-        setStripeBillingMode('single_installment');
-    }, [supportsStripeBillingChoices, plan?.id]);
+        return Math.min(maxInstallments, parsedInstallments);
+    }, [supportsStripeBillingChoices, paymentData.installments, maxInstallments]);
+
+    useEffect(() => {
+        setStripeBillingMode(selectedStripeInstallmentCount > 1 ? 'term_recurring' : 'single_installment');
+    }, [selectedStripeInstallmentCount]);
 
     useEffect(() => {
         if (!currentUser) return;
@@ -1312,10 +1332,10 @@ const CheckoutPage: React.FC = () => {
     const selectedInstallment = useMemo(() => {
         if (!plan) return { installments: 1, installment_amount: 0, total_amount: 0 };
         if (isStripeProvider) {
-            if (supportsStripeBillingChoices && stripeBillingMode === 'term_recurring') {
-                const amount = Number((Number(plan.price) / maxInstallments).toFixed(2));
+            if (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1) {
+                const amount = Number((Number(plan.price) / selectedStripeInstallmentCount).toFixed(2));
                 return {
-                    installments: maxInstallments,
+                    installments: selectedStripeInstallmentCount,
                     installment_amount: amount,
                     total_amount: Number(plan.price),
                 };
@@ -1352,7 +1372,7 @@ const CheckoutPage: React.FC = () => {
             installment_amount: amount,
             total_amount: amount * installmentsNumber,
         };
-    }, [plan, installmentOptions, paymentData.installments, isRecurring, isStripeProvider, maxInstallments, supportsStripeBillingChoices, stripeBillingMode]);
+    }, [plan, installmentOptions, paymentData.installments, isRecurring, isStripeProvider, maxInstallments, supportsStripeBillingChoices, selectedStripeInstallmentCount]);
 
     const monetaryTotals = useMemo(() => {
         if (!plan) return { firstCharge: 0, totalDue: 0 };
@@ -1361,7 +1381,7 @@ const CheckoutPage: React.FC = () => {
         // Se for recorrente, baseamos no valor da parcela
         // Caso contrário, usamos o total_amount do parcelamento selecionado (que já inclui juros se houver)
         const baseAmount = isStripeProvider
-            ? (supportsStripeBillingChoices && stripeBillingMode === 'term_recurring'
+            ? (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
                 ? selectedInstallment.installment_amount
                 : Number(plan.price))
             : isRecurring 
@@ -1370,7 +1390,7 @@ const CheckoutPage: React.FC = () => {
 
         const totalDue = Math.max(0, baseAmount - proRatedCredit - discount);
         return { firstCharge: baseAmount, totalDue };
-    }, [plan, isRecurring, isStripeProvider, maxInstallments, proRatedCredit, appliedCoupon, discountAmount, selectedInstallment.installment_amount, selectedInstallment.total_amount, supportsStripeBillingChoices, stripeBillingMode]);
+    }, [plan, isRecurring, isStripeProvider, maxInstallments, proRatedCredit, appliedCoupon, discountAmount, selectedInstallment.installment_amount, selectedInstallment.total_amount, supportsStripeBillingChoices, selectedStripeInstallmentCount]);
 
     const paymentProviderLabel = isStripeProvider ? 'Stripe' : 'Mercado Pago';
     const selectedMethodLabel = selectedMethod === 'credit_card' ? 'Cartao' : selectedMethod === 'pix' ? 'Pix' : 'Boleto';
@@ -1385,8 +1405,8 @@ const CheckoutPage: React.FC = () => {
         : 'Processando Segurança...';
 
     const checkoutBillingLabel = isStripeProvider
-        ? (supportsStripeBillingChoices && stripeBillingMode === 'term_recurring'
-            ? `${maxInstallments}x de R$ ${selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+        ? (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
+            ? `${selectedStripeInstallmentCount}x de R$ ${selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
             : `1x de R$ ${Number(plan?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)
         : (!isRecurring && selectedInstallment.installments > 1
             ? `${selectedInstallment.installments}x de R$ ${selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
@@ -1696,18 +1716,22 @@ const CheckoutPage: React.FC = () => {
                                                                 Parcelamento:
                                                             </label>
                                                             <select
-                                                                value={stripeBillingMode}
-                                                                onChange={(event) => setStripeBillingMode(event.target.value as 'single_installment' | 'term_recurring')}
+                                                                value={String(selectedStripeInstallmentCount)}
+                                                                onChange={(event) => setPaymentData(prev => ({ ...prev, installments: event.target.value }))}
                                                                 className="h-11 min-w-[220px] rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
                                                             >
-                                                                <option value="single_installment">
+                                                                <option value="1">
                                                                     1x de R$ {Number(plan.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                                 </option>
-                                                                {supportsStripeBillingChoices && (
-                                                                    <option value="term_recurring">
-                                                                        {maxInstallments}x de R$ {selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                                    </option>
-                                                                )}
+                                                                {supportsStripeBillingChoices && Array.from({ length: maxInstallments - 1 }, (_, index) => {
+                                                                    const installments = index + 2;
+                                                                    const installmentAmount = Number((Number(plan.price || 0) / installments).toFixed(2));
+                                                                    return (
+                                                                        <option key={installments} value={String(installments)}>
+                                                                            {installments}x de R$ {installmentAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                        </option>
+                                                                    );
+                                                                })}
                                                             </select>
                                                         </div>
                                                     </div>
@@ -1747,11 +1771,13 @@ const CheckoutPage: React.FC = () => {
                                                                     publishableKey={STRIPE_PUBLISHABLE_KEY}
                                                                     billingName={currentUser.name}
                                                                     billingEmail={currentUser.email}
+                                                                    billingAddress={currentUser.address}
                                                                     submitLabel={processing ? 'Processando pagamento...' : 'Pagar com cartão'}
                                                                     onPaymentMethodCreated={handleStripeInternalPayment}
                                                                 onPaymentFinalized={(step) => finalizeStripeInternalCheckout({
                                                                     subscriptionId: step?.subscriptionId || null,
                                                                     paymentMethodId: step?.paymentMethodId || null,
+                                                                    paymentIntentId: step?.paymentIntentId || null,
                                                                     saveCard: step?.saveCard,
                                                                 })}
                                                                 />
@@ -2212,10 +2238,10 @@ const CheckoutPage: React.FC = () => {
                                     <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800 space-y-3">
                                         <div className="flex justify-between items-end">
                                             <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isStripeProvider && supportsStripeBillingChoices && stripeBillingMode === 'term_recurring' ? 'Primeira cobranca' : 'Total a pagar'}</span>
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isStripeProvider && supportsStripeBillingChoices && selectedStripeInstallmentCount > 1 ? 'Primeira cobranca' : 'Total a pagar'}</span>
                                                 <span className="text-[9px] text-slate-400 italic">
-                                                    {isStripeProvider && supportsStripeBillingChoices && stripeBillingMode === 'term_recurring'
-                                                        ? `Cobranca ${maxInstallments}x mensal do termo contratado`
+                                                    {isStripeProvider && supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
+                                                        ? `Cobranca ${selectedStripeInstallmentCount}x do plano contratado`
                                                         : 'Valor final desta cobranca'}
                                                 </span>
                                             </div>

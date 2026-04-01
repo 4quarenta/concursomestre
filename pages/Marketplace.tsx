@@ -15,7 +15,13 @@ import AdBanner from '../components/AdBanner';
 import { PaymentModal } from '../components/PaymentModal';
 import { SuccessModal } from '../components/SuccessModal';
 import axios from 'axios';
-import { apiClient, ENDPOINTS, getAssetUrl, buildDownloadUrl } from '../src/core/api';
+import {
+    apiClient,
+    ENDPOINTS,
+    getAssetUrl,
+    buildMaterialDownloadEndpoint,
+    downloadAuthenticatedFile,
+} from '../src/core/api';
 import { AdPlaceholder } from '../src/components/ads/AdPlaceholder';
 
 interface MaterialDetailModalProps {
@@ -708,7 +714,9 @@ const Marketplace: React.FC = () => {
         if (type === 'download') {
             if (canDownload) {
                 // Abre o endpoint de download que estampa os dados do usuário no PDF
-                window.open(buildDownloadUrl(material.id), '_blank');
+                void downloadAuthenticatedFile(buildMaterialDownloadEndpoint(material.id)).catch((error: any) => {
+                    addToast(error?.message || 'Nao foi possivel baixar o material agora.', 'error');
+                });
             } else {
                 addToast(`O download será liberado em ${Math.ceil(7 - daysSincePurchase)} dia(s) para garantir a conformidade com as políticas de reembolso.`, 'info');
             }

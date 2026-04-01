@@ -76,6 +76,25 @@ SECAO 2. SEGURANCA
 2. Confirmacao de e-mail
 - O sistema pode bloquear a conclusao do checkout enquanto o e-mail nao estiver confirmado.
 
+3. Sessao autenticada e renovacao de token
+- O login so passa a ser considerado valido depois que o token e confirmado no endpoint auth/me.
+- O access token fica apenas em memoria no frontend.
+- O refresh token fica apenas em cookie HttpOnly.
+- A sessao usa refresh token rotation com invalidacao do token anterior a cada renovacao.
+- O refresh exige cookie valido e cabecalho CSRF, evitando uso indevido do cookie isoladamente.
+- A plataforma nao usa mais token sensivel em localStorage.
+- O sistema nao renova mais o token imediatamente apos login ou restauracao da sessao.
+- A renovacao acontece perto do vencimento real do JWT, de forma agendada e coordenada.
+- Em requests simultaneas, apenas uma renovacao e feita por vez; as demais aguardam o resultado.
+- Em multiplas abas, a renovacao e coordenada para evitar race condition e logout aleatorio.
+- Isso evita corridas de autenticacao como:
+  - login aprovado
+  - sessao validada no auth/me
+  - refresh disparado cedo demais
+  - refresh concorrente em varias abas
+  - logout indevido por resposta antiga ou token aparentemente expirado
+- Em caso de expiracao real, logout e limpeza da sessao passam pelo mesmo fluxo centralizado.
+
 SECAO 3. PERFIL DO USUARIO
 --------------------------
 

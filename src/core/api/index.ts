@@ -1,7 +1,15 @@
 // Core API Exports
 
 // Client
-export { apiClient, getAssetUrl, buildDownloadUrl } from './client';
+export {
+    apiClient,
+    getAssetUrl,
+    buildDownloadUrl,
+    buildMaterialAccessEndpoint,
+    buildMaterialDownloadEndpoint,
+    downloadAuthenticatedFile,
+    openAuthenticatedFile,
+} from './client';
 export { default as default } from './client';
 
 // Endpoints

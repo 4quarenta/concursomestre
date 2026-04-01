@@ -9,6 +9,7 @@ import {
 } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import { CreditCard, Loader2, Lock } from 'lucide-react';
+import type { Address } from '../../../../types';
 
 type StripePaymentStep = {
   clientSecret?: string | null;
@@ -16,6 +17,7 @@ type StripePaymentStep = {
   confirmationType?: 'payment' | 'setup' | 'none';
   subscriptionId?: string | null;
   paymentMethodId?: string | null;
+  paymentIntentId?: string | null;
   saveCard?: boolean;
 };
 
@@ -23,6 +25,7 @@ interface StripeCardElementFormProps {
   publishableKey: string;
   billingName?: string;
   billingEmail?: string;
+  billingAddress?: Address;
   submitLabel?: string;
   onPaymentMethodCreated: (paymentMethodId: string) => Promise<StripePaymentStep | undefined>;
   onPaymentFinalized?: (step?: StripePaymentStep) => Promise<void> | void;
@@ -53,6 +56,7 @@ const fieldShellClassName =
 const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'publishableKey'>> = ({
   billingName,
   billingEmail,
+  billingAddress,
   submitLabel = 'Pagar com cartao',
   onPaymentMethodCreated,
   onPaymentFinalized,
@@ -115,6 +119,14 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
         billing_details: {
           name: cardholderName.trim(),
           email: billingEmail,
+          address: billingAddress ? {
+            line1: [billingAddress.street, billingAddress.number].filter(Boolean).join(', '),
+            line2: billingAddress.complement || undefined,
+            city: billingAddress.city || undefined,
+            state: billingAddress.state || undefined,
+            postal_code: billingAddress.zipCode?.replace(/\D/g, '') || undefined,
+            country: 'BR',
+          } : undefined,
         },
       });
 
@@ -127,8 +139,9 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
         return;
       }
 
+      let confirmation: any = null;
       if (nextStep.clientSecret) {
-        const confirmation =
+        confirmation =
           nextStep.confirmationType === 'setup'
             ? await stripe.confirmCardSetup(nextStep.clientSecret, {
                 payment_method: paymentMethodResult.paymentMethod.id,
@@ -145,6 +158,11 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
       await onPaymentFinalized?.({
         ...nextStep,
         paymentMethodId: nextStep.paymentMethodId || paymentMethodResult.paymentMethod.id,
+        paymentIntentId:
+          nextStep.paymentIntentId ||
+          (nextStep.confirmationType === 'payment'
+            ? ((confirmation as any)?.paymentIntent?.id || null)
+            : null),
       });
     } catch (submitError: any) {
       setError(submitError?.message || 'Falha ao processar o pagamento com cartao.');

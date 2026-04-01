@@ -30,6 +30,10 @@ export default defineConfig(({ mode }) => {
         '@services': path.resolve(__dirname, './services'),
         '@types': path.resolve(__dirname, './types.ts'),
       }
+    },
+    test: {
+      environment: 'node',
+      globals: true,
     }
   };
 });

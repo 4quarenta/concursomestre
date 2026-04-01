@@ -515,10 +515,11 @@ interface DataContextType extends DataState {
 export const DataContext = createContext<DataContextType>({} as DataContextType);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { currentUser, updateUser } = useAuth();
+  const { currentUser, updateUser, isLoading: authIsLoading } = useAuth();
   const { addToast } = useToast();
   const lastCommentTime = useRef<number>(0);
   const dataInitRef = useRef<string | null>(null);
+  const isFetchingNotificationsRef = useRef(false);
   const [state, dispatch] = useReducer(dataReducer, initialState);
 
   // --- LAZY LOADING FUNCTIONS ---
@@ -658,9 +659,32 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     fetchInitialData();
   }, [fetchInitialData]);
 
+  const fetchNotifications = useCallback(async (userId: string) => {
+    if (!currentUser?.id) {
+      return;
+    }
+
+    if (isFetchingNotificationsRef.current) {
+      console.log('[DataContext] Skipping fetchNotifications - already in progress');
+      return;
+    }
+
+    try {
+      isFetchingNotificationsRef.current = true;
+      console.log('[DataContext] Fetching notifications for:', userId);
+      const notifs = await notificationService.getUserNotifications(userId);
+      dispatch({ type: 'SET_NOTIFICATIONS', payload: notifs });
+      console.log('[DataContext] Notifications fetched:', notifs.length);
+    } catch (error) {
+      console.error('[DataContext] Error fetching notifications:', error);
+    } finally {
+      isFetchingNotificationsRef.current = false;
+    }
+  }, [currentUser?.id]);
+
   // 3. Fetch Notifications with Adaptive Polling
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (authIsLoading || !currentUser?.id) return;
 
     // Initial fetch
     fetchNotifications(currentUser.id);
@@ -718,7 +742,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [currentUser?.id]);
+  }, [authIsLoading, currentUser?.id, fetchNotifications]);
 
   // 3. Cleanup on mount
   useEffect(() => {
@@ -823,34 +847,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     dispatch({ type: 'SAVE_NOTE', payload: { questionId, text } });
     addToast('Nota salva!', 'success');
   }, [addToast]);
-
-  // Notification Facades
-  let isFetchingNotifications = false;
-
-  const fetchNotifications = useCallback(async (userId: string) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      return;
-    }
-
-    // Prevent concurrent requests
-    if (isFetchingNotifications) {
-      console.log('[DataContext] Skipping fetchNotifications - already in progress');
-      return;
-    }
-
-    try {
-      isFetchingNotifications = true;
-      console.log('[DataContext] Fetching notifications for:', userId);
-      const notifs = await notificationService.getUserNotifications(userId);
-      dispatch({ type: 'SET_NOTIFICATIONS', payload: notifs });
-      console.log('[DataContext] Notifications fetched:', notifs.length);
-    } catch (error) {
-      console.error('[DataContext] Error fetching notifications:', error);
-    } finally {
-      isFetchingNotifications = false;
-    }
-  }, []);
 
   const markNotificationAsRead = useCallback(async (id: string) => {
     await notificationService.markAsRead(id);
