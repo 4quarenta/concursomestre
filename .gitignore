@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Artefatos locais de recuperação e diagnóstico
+pages/*.recovered
+pages/*.recovered.tsx
+pages/*.corrupted
+stripe-listener*.log
+tmp_*.json

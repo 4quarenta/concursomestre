@@ -18,32 +18,21 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
+    "resolveJsonModule": true,
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@features/*": [
-        "src/features/*"
-      ],
-      "@shared/*": [
-        "src/shared/*"
-      ],
-      "@core/*": [
-        "src/core/*"
-      ],
-      "@pages/*": [
-        "pages/*"
-      ],
-      "@components/*": [
-        "components/*"
-      ],
-      "@context/*": [
-        "context/*"
-      ],
       "@services/*": [
-        "services/*"
+        "src/services/*"
+      ],
+      "@providers/*": [
+        "src/providers/*"
+      ],
+      "@constants/*": [
+        "src/constants/*"
       ],
       "@types": [
-        "types.ts"
+        "src/types/index.ts"
       ]
     },
     "allowImportingTsExtensions": true,

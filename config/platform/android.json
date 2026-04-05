@@ -1,0 +1,10 @@
+{
+  "channel": "android",
+  "android": {
+    "applicationId": "br.com.concursomestre.app",
+    "packageName": "br.com.concursomestre",
+    "displayName": "ConcursoMestre",
+    "deepLinkScheme": "concursomestre",
+    "playStoreStatus": "planned"
+  }
+}
