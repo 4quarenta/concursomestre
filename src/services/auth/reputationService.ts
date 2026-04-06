@@ -24,12 +24,12 @@ export interface ReputationData {
 }
 
 /**
- * Fachada oficial de reputacao e XP.
+ * Fachada oficial de reputação e XP.
  * Mantem consultas e calculos locais fora da zona legada `src/features`.
  */
 export const reputationService = {
     /**
-     * Carrega o resumo de reputacao do usuario.
+     * Carrega o resumo de reputação do usuário.
      */
     async getUserReputation(userId: number): Promise<ReputationData | null> {
         try {
@@ -45,14 +45,14 @@ export const reputationService = {
     },
 
     /**
-     * Calcula o XP minimo exigido para um determinado nivel.
+     * Calcula o XP mínimo exigido para um determinado nivel.
      */
     calculateXPForLevel(level: number): number {
         return Math.floor(100 * Math.pow(1.5, level - 1));
     },
 
     /**
-     * Resolve o nivel do usuario a partir do XP acumulado.
+     * Resolve o nivel do usuário a partir do XP acumulado.
      */
     calculateLevelFromXP(xp: number): number {
         let level = 1;
@@ -90,7 +90,7 @@ export const reputationService = {
     },
 
     /**
-     * Calcula impacto reputacional local de uma acao de moderacao.
+     * Calcula impacto reputacional local de uma ação de moderação.
      */
     calculateImpact(action: 'resolved' | 'ignored', targetRole: 'reporter' | 'author'): number {
         if (targetRole === 'author') {
@@ -109,7 +109,7 @@ export const reputationService = {
     },
 
     /**
-     * Traduz score de reputacao em estado de conta local.
+     * Traduz score de reputação em estado de conta local.
      */
     checkAccountStatus(score: number): 'active' | 'suspended' | 'banned' {
         if (score <= 10) return 'banned';

@@ -23,8 +23,8 @@ const PromoLanding: React.FC = () => {
     if (!promo.isActive) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center animate-fade-in">
-                <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200 transition-colors">Nenhuma promoÃ§Ã£o ativa no momento.</h1>
-                <button onClick={() => navigate('/')} className="mt-4 text-indigo-600 dark:text-indigo-400 hover:underline transition-colors font-bold">Voltar ao inÃ­cio</button>
+                <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200 transition-colors">Nenhuma promoção ativa no momento.</h1>
+                <button onClick={() => navigate('/')} className="mt-4 text-indigo-600 dark:text-indigo-400 hover:underline transition-colors font-bold">Voltar ao início</button>
             </div>
         );
     }
@@ -60,7 +60,7 @@ const PromoLanding: React.FC = () => {
                                 {idx === 0 ? <Zap size={32} /> : idx === 1 ? <ShieldCheck size={32} /> : <Star size={32} />}
                             </div>
                             <h3 className="text-2xl font-black text-slate-900 dark:text-slate-100 mb-3 transition-colors">{feat}</h3>
-                            <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medum transition-colors">Aproveite todos os recursos premium para acelerar sua aprovaÃ§Ã£o com a melhor tecnologia do mercado.</p>
+                            <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medum transition-colors">Aproveite todos os recursos premium para acelerar sua aprovação com a melhor tecnologia do mercado.</p>
                             <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-indigo-50 dark:bg-indigo-900/10 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-colors"></div>
                         </div>
                     ))}
@@ -79,7 +79,7 @@ const PromoLanding: React.FC = () => {
                                 <span className="text-6xl md:text-8xl font-black">R$ {(systemSettings.pricing.Elite.annual * (1 - promo.discountPercentage / 100)).toFixed(2).replace('.', ',')}</span>
                             </div>
                         </div>
-                        <p className="text-indigo-100 font-medium mb-12 text-lg max-w-xl opacity-90">Sua jornada rumo Ã  estabilidade comeÃ§a com a melhor decisÃ£o do seu ano.</p>
+                        <p className="text-indigo-100 font-medium mb-12 text-lg max-w-xl opacity-90">Sua jornada rumo à estabilidade começa com a melhor decisão do seu ano.</p>
                         <button onClick={() => navigate('/profile')} className="w-full md:w-auto px-16 py-6 bg-white text-indigo-700 font-black uppercase tracking-widest text-sm rounded-2xl shadow-xl hover:bg-slate-50 hover:scale-105 active:scale-95 transition-all">
                             Assinar com Desconto
                         </button>

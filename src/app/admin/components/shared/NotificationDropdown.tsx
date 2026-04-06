@@ -32,8 +32,8 @@ interface NotificationDropdownProps {
 }
 
 /**
- * Dropdown enxuto de notificaÃ§Ãµes do admin.
- * MantÃ©m a mesma UX jÃ¡ aprovada, mas fora do arquivo principal do painel.
+ * Dropdown enxuto de notificações do admin.
+ * Mantém a mesma UX já aprovada, mas fora do arquivo principal do painel.
  */
 export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   notifications,
@@ -47,7 +47,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   return (
     <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in text-left">
       <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
-        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">NotificaÃ§Ãµes</h3>
+        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
         {unreadCount > 0 && (
           <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">
             {unreadCount} novas
@@ -57,7 +57,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
 
       <div className="max-h-80 overflow-y-auto no-scrollbar">
         {visibleNotifications.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificaÃ§Ã£o.</div>
+          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificação.</div>
         ) : (
           visibleNotifications.slice(0, 5).map((notification) => (
             <div

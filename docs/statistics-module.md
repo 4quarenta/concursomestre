@@ -9,34 +9,34 @@ Centralizar o dominio de estatisticas da banca na arquitetura oficial do backend
 ### Rotas oficiais
 
 - `handleStatisticsXrayRoute(PDO $db)`
-  - valida sessao autenticada
+  - valida sessão autenticada
   - valida entitlement `xray_banca`
   - normaliza filtros de banca, cargo e ano
   - responde o envelope oficial do raio-x
   - aplica cache usando `cache_settings`
 
 - `handleStatisticsBancaInfoRoute(PDO $db)`
-  - valida sessao autenticada
+  - valida sessão autenticada
   - valida entitlement `xray_banca`
   - normaliza a URL da banca
   - responde o scraping com cache de uma hora
   - preserva o contrato legado de falha graciosa do scraper
 
 - `handleStatisticsUserRoute(PDO $db)`
-  - valida sessao autenticada
+  - valida sessão autenticada
   - resolve o `user_id` por query ou segmento de URL legado
-  - permite consultar outro usuario apenas em contexto admin
+  - permite consultar outro usuário apenas em contexto admin
 
 - `handleStatisticsQuestionRoute(PDO $db)`
   - resolve `question_id` por query ou segmento legado
-  - entrega o agregado publico da questao
+  - entrega o agregado público da questão
 
 - `handleStatisticsPlatformRoute(PDO $db)`
-  - exige sessao admin
-  - entrega indicadores globais de usuarios, questoes e performance
+  - exige sessão admin
+  - entrega indicadores globais de usuários, questões e performance
 
 - `handleStatisticsInstallRoute(PDO $db)`
-  - exige sessao admin
+  - exige sessão admin
   - garante as tabelas e colunas do slice de estatisticas
 
 ### Controller
@@ -45,15 +45,15 @@ Centralizar o dominio de estatisticas da banca na arquitetura oficial do backend
   - delega o fluxo do raio-x para a service
 
 - `StatisticsController::getBancaInfo(...)`
-  - delega o fluxo de inteligencia publica da banca para a service
+  - delega o fluxo de inteligencia pública da banca para a service
 
 ### Service
 
 - `StatisticsService::getXrayStats(...)`
   - valida filtros
-  - confirma acesso ao beneficio do plano
+  - confirma acesso ao benefício do plano
   - resolve ids dos filtros no banco
-  - busca questoes que combinam com banca, cargo e ano
+  - busca questões que combinam com banca, cargo e ano
   - calcula estilo textual medio, contextualizacao e distribuicao de dificuldade
   - monta materias, assuntos e ranking detalhado
   - lista provas ligadas a banca
@@ -66,12 +66,12 @@ Centralizar o dominio de estatisticas da banca na arquitetura oficial do backend
 
 - `StatisticsService::getUserStatistics(...)`
   - valida o `user_id`
-  - garante escopo seguro do usuario autenticado
-  - cria baseline em `user_statistics` quando nao houver linha ainda
+  - garante escopo seguro do usuário autenticado
+  - cria baseline em `user_statistics` quando não houver linha ainda
   - agrega o detalhamento por materia
 
 - `StatisticsService::getQuestionStatistics(...)`
-  - devolve o agregado publico de `question_stats`
+  - devolve o agregado público de `question_stats`
   - calcula `accuracyRate`
   - normaliza `optionDistribution`
 
@@ -81,7 +81,7 @@ Centralizar o dominio de estatisticas da banca na arquitetura oficial do backend
 
 - `StatisticsService::installStatistics(...)`
   - exige contexto admin
-  - garante o schema minimo de estatisticas do slice
+  - garante o schema mínimo de estatisticas do slice
 
 - `StatisticsService::buildRecommendation(...)`
   - usa os assuntos mais incidentes para montar um prompt curto
@@ -97,7 +97,7 @@ Centralizar o dominio de estatisticas da banca na arquitetura oficial do backend
 ### Repository
 
 - `getCacheSettings()`
-  - le a configuracao global de cache do sistema
+  - le a configuração global de cache do sistema
 
 - `findFilterIdByTypeAndName(...)`
   - resolve ids de filtros exibidos no app
@@ -106,7 +106,7 @@ Centralizar o dominio de estatisticas da banca na arquitetura oficial do backend
   - concentra a SQL principal do raio-x da banca
 
 - `listSubjectFiltersForQuestions(...)`
-  - carrega os assuntos vinculados ao conjunto de questoes
+  - carrega os assuntos vinculados ao conjunto de questões
 
 - `listFilterNamesByIds(...)`
   - resolve nomes de filtros-pai para reconstruir a hierarquia
@@ -115,19 +115,19 @@ Centralizar o dominio de estatisticas da banca na arquitetura oficial do backend
   - lista provas registradas da banca
 
 - `getSystemSettingValue(...)`
-  - busca configuracoes usadas pelo modulo, como chave Gemini
+  - busca configurações usadas pelo modulo, como chave Gemini
 
 - `findUserStatisticsByUserId(...)`
-  - le o agregado principal do usuario
+  - le o agregado principal do usuário
 
 - `createUserStatistics(...)`
-  - cria o baseline do agregado do usuario
+  - cria o baseline do agregado do usuário
 
 - `listSubjectStatisticsByUserId(...)`
-  - le o detalhamento por materia do usuario
+  - le o detalhamento por materia do usuário
 
 - `findQuestionStatisticsByQuestionId(...)`
-  - le o agregado publico da questao
+  - le o agregado público da questão
 
 - `countTotalUsers()`, `countActiveUsersLast30Days()`, `countTotalQuestions()`, `sumTotalAnswers()`, `getAverageAccuracy()`
   - compoem os indicadores globais da plataforma
@@ -157,7 +157,7 @@ Centralizar o dominio de estatisticas da banca na arquitetura oficial do backend
   - exige `question_id` numerico positivo
 
 - `resolveScopedUserId(...)`
-  - impede que um usuario comum consulte outro usuario
+  - impede que um usuário comum consulte outro usuário
 
 - `assertAdminContext(...)`
   - protege indicadores globais e instalacao
@@ -170,7 +170,7 @@ Centralizar o dominio de estatisticas da banca na arquitetura oficial do backend
   - parou de usar `apiClient` e `ENDPOINTS.statistics.*` direto
   - agora consome `bankAnalysisService.getBankIntel(...)`
   - agora consome `bankAnalysisService.getXrayStats(...)`
-  - ganhou protecao de ciclo de vida para nao atualizar estado apos desmontagem
+  - ganhou protecao de ciclo de vida para não atualizar estado apos desmontagem
   - passou a importar `ReactMarkdown` explicitamente
 
 ### Service
@@ -189,11 +189,11 @@ Centralizar o dominio de estatisticas da banca na arquitetura oficial do backend
 - `api/statistics/install.php`
 
 Agora esses arquivos apenas:
-- carregam CORS e conexao
+- carregam CORS e conexão
 - importam `modules/statistics/routes.php`
 - delegam para o handler oficial
 
-## Validacao desta rodada
+## Validação desta rodada
 
 - `php -l` nos arquivos do modulo e nos bridges
 - `StatisticsModuleWiringTest.php`

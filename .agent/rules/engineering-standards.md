@@ -4,7 +4,7 @@ trigger: always_on
 
 # Regras permanentes de engenharia
 
-## Comentarios obrigatorios
+## Comentários obrigatorios
 
 - Todo arquivo `ts`, `tsx`, `js`, `jsx`, `php` novo ou alterado deve trazer comentarios em **pt-BR** nas funcoes, componentes, hooks, services, controllers, repositories e scripts.
 - Todo arquivo ativo de codigo em `ts`, `tsx`, `js`, `jsx`, `php` deve iniciar com o cabecalho autoral oficial abaixo. Em linguagens que nao aceitam `/* */`, usar o equivalente nativo preservando o mesmo conteudo.
@@ -52,7 +52,9 @@ trigger: always_on
 - `scripts/*`: checks, migracoes, seeds, tarefas e ferramentas operacionais.
 - `api/*`: somente bridges finos e excecoes publicas congeladas por testes.
 
-## Padrao de codigo
+## Padrao de código
+
+- Arquivos ativos devem permanecer em UTF-8 e sem mojibake, sem trocar acentos por `?`, `Ã`, `Â` ou variantes corrompidas.
 
 - `page.tsx` deve ser enxuto e agir como ponto de composicao, nunca como deposito de regra de negocio.
 - Regras de interface e orquestracao devem ficar em hooks/controller da propria feature.

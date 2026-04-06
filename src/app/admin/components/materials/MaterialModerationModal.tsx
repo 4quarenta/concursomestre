@@ -60,7 +60,7 @@ const MaterialModerationModal = ({
         <header className="flex justify-between items-start">
           <div>
             <span className="mb-2 block w-fit rounded-md bg-indigo-50 px-2 py-1 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
-              Moderacao
+              Moderação
             </span>
             <h3 className="text-xl font-black text-slate-900 dark:text-slate-100">{material.title}</h3>
             <div className="flex items-center gap-2">
@@ -82,7 +82,7 @@ const MaterialModerationModal = ({
         {selectedReport && (
           <div className="space-y-2 rounded-2xl border border-red-100 bg-red-50 p-4">
             <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-red-700">
-              <AlertTriangle size={14} /> Denuncia: {selectedReport.reason}
+              <AlertTriangle size={14} /> Denúncia: {selectedReport.reason}
             </div>
             <p className="text-xs italic leading-relaxed text-red-600/80">"{selectedReport.details}"</p>
             <div className="mt-2 flex items-center gap-2 border-t border-red-100/50 pt-2 text-[10px] font-bold text-red-500">
@@ -96,15 +96,15 @@ const MaterialModerationModal = ({
                   <Eye size={8} /> Ver Perfil
                 </button>
               </div>
-              <span>â€¢</span>
+              <span>?</span>
               <span>{new Date(selectedReport.timestamp).toLocaleDateString()}</span>
             </div>
             {selectedReport.evidenceUrl && (
               <div className="mt-2 border-t border-red-100/50 pt-2">
                 <p className="mb-1 flex items-center gap-1 text-[9px] font-black uppercase text-red-400">
-                  <ImageIcon size={10} /> Prova do Usuario:
+                  <ImageIcon size={10} /> Prova do Usuário:
                 </p>
-                <img src={selectedReport.evidenceUrl} alt="Prova do Usuario" className="max-h-32 rounded-xl border border-red-200 bg-white object-contain" />
+                <img src={selectedReport.evidenceUrl} alt="Prova do Usuário" className="max-h-32 rounded-xl border border-red-200 bg-white object-contain" />
               </div>
             )}
           </div>
@@ -140,7 +140,7 @@ const MaterialModerationModal = ({
                   </div>
                   <div className="space-y-1">
                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Assunto</p>
-                    <p className="text-[11px] font-bold uppercase text-slate-700 dark:text-slate-300">{material.topic || 'Nao especificado'}</p>
+                    <p className="text-[11px] font-bold uppercase text-slate-700 dark:text-slate-300">{material.topic || 'Não especificado'}</p>
                   </div>
                 </div>
 
@@ -168,7 +168,7 @@ const MaterialModerationModal = ({
               </div>
 
               <div className="space-y-2">
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Descricao</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Descrição</p>
                 <p className="text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-400">{material.description}</p>
               </div>
             </div>
@@ -192,7 +192,7 @@ const MaterialModerationModal = ({
                 )}
                 {selectedReport && (
                   <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                    A justificativa enviada aqui tambem sera disparada por e-mail automatico para o usuario que abriu a denuncia.
+                    A justificativa enviada aqui também sera disparada por e-mail automático para o usuário que abriu a denúncia.
                   </p>
                 )}
                 <textarea
@@ -228,7 +228,7 @@ const MaterialModerationModal = ({
             {selectedReport && (
               <div className="space-y-4 rounded-[2rem] border border-red-100 bg-red-50 p-6 dark:border-red-900/20 dark:bg-red-900/10">
                 <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-red-700 dark:text-red-400">
-                  <AlertTriangle size={16} /> Denuncia Ativa
+                  <AlertTriangle size={16} /> Denúncia Ativa
                 </div>
                 <div className="space-y-2 rounded-xl bg-white p-4 shadow-sm dark:bg-slate-900">
                   <p className="text-xs font-black uppercase tracking-tight text-slate-900 dark:text-white">{selectedReport.reason}</p>
@@ -253,7 +253,7 @@ const MaterialModerationModal = ({
 
             <div className="mt-auto space-y-4 rounded-[2.5rem] border border-slate-200 bg-slate-100 p-6 dark:border-slate-800 dark:bg-slate-900">
               <p className="px-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                Escolha a acao definitiva para este conteudo
+                Escolha a ação definitiva para este conteúdo
               </p>
 
               <button

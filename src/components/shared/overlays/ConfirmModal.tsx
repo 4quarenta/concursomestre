@@ -28,8 +28,8 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
     isOpen,
     onConfirm,
     onCancel,
-    title = "Confirmar AÃ§Ã£o",
-    description = "VocÃª tem certeza que deseja prosseguir?",
+    title = "Confirmar Ação",
+    description = "Você tem certeza que deseja prosseguir?",
     confirmText = "Confirmar",
     cancelText = "Cancelar",
     type = 'info'

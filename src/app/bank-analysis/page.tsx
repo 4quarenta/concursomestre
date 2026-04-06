@@ -40,7 +40,7 @@ const BankAnalysis: React.FC = () => {
    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
    const [stats, setStats] = useState<any>(null);
 
-   // Estados para animaÃ§Ã£o de anÃ¡lise
+   // Estados para animação de análise
    const [isAnalyzing, setIsAnalyzing] = useState(false);
    const [loadingText, setLoadingText] = useState('');
    const [progress, setProgress] = useState(0);
@@ -73,7 +73,7 @@ const BankAnalysis: React.FC = () => {
          let isActive = true;
          setIsAnalyzing(true);
          setProgress(0);
-         setLoadingText('Conectando Ã  base neural...');
+         setLoadingText('Conectando à base neural...');
          setStats(null);
 
          const agencyData = systemSettings?.taxonomies?.agencies?.find(a => a.name === selectedAgency);
@@ -96,10 +96,10 @@ const BankAnalysis: React.FC = () => {
          }
 
          const steps = [
-            { pct: 20, text: 'Varrendo banco de questÃµes...' },
-            { pct: 45, text: 'Identificando padrÃµes da banca...' },
-            { pct: 70, text: 'Calculando incidÃªncia por tÃ³pico...' },
-            { pct: 90, text: 'Gerando insights estratÃ©gicos...' }
+            { pct: 20, text: 'Varrendo banco de questões...' },
+            { pct: 45, text: 'Identificando padrões da banca...' },
+            { pct: 70, text: 'Calculando incidência por tópico...' },
+            { pct: 90, text: 'Gerando insights estratégicos...' }
          ];
 
          let currentStep = 0;
@@ -120,7 +120,7 @@ const BankAnalysis: React.FC = () => {
             if (!isActive) return;
             clearInterval(interval);
             setProgress(100);
-            setLoadingText('ConcluÃ­do!');
+            setLoadingText('Concluído!');
             setTimeout(() => {
                if (!isActive) return;
                setStats(data);
@@ -130,7 +130,7 @@ const BankAnalysis: React.FC = () => {
             if (!isActive) return;
             console.error("Failed to fetch xray stats", err);
             clearInterval(interval);
-            setLoadingText('Erro na anÃ¡lise.');
+            setLoadingText('Erro na análise.');
             setTimeout(() => setIsAnalyzing(false), 1000);
          });
 
@@ -159,7 +159,7 @@ const BankAnalysis: React.FC = () => {
                <div className="relative z-20 text-center max-w-md space-y-5">
                   <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200/50 transition-colors"><Lock size={32} /></div>
                   <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight transition-colors">Recurso Exclusivo {xrayRequiredPlan}</h2>
-                  <p className="text-slate-500 dark:text-slate-400 text-xs font-medium leading-relaxed transition-colors">O Raio-X da Banca utiliza IA para analisar milhares de questÃµes e te entregar o mapa da mina: o que cai, como cai e onde focar.</p>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs font-medium leading-relaxed transition-colors">O Raio-X da Banca utiliza IA para analisar milhares de questões e te entregar o mapa da mina: o que cai, como cai e onde focar.</p>
                   <button
                      onClick={() => {
                         if (!currentUser) setShowAuthModal(true);
@@ -176,7 +176,7 @@ const BankAnalysis: React.FC = () => {
                isOpen={showAuthModal}
                onClose={() => setShowAuthModal(false)}
                title="Desbloqueie o Raio-X"
-               description="Acesse anÃ¡lises estratÃ©gicas e saia na frente da concorrÃªncia com o plano Elite."
+               description="Acesse análises estratégicas e saia na frente da concorrência com o plano Elite."
             />
              <UpgradeModal
                isOpen={showUpgradeModal}
@@ -196,7 +196,7 @@ const BankAnalysis: React.FC = () => {
                   <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors"><Zap className="text-amber-500 dark:text-amber-400" size={24} /> Raio-X da Banca</h1>
                   <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[9px] font-black uppercase tracking-widest rounded-md border border-amber-200 dark:border-amber-800/50 transition-colors">{xrayRequiredPlan}</span>
                </div>
-               <p className="text-slate-500 dark:text-slate-400 text-sm font-medium transition-colors">InteligÃªncia de dados aplicada para hackear a sua aprovaÃ§Ã£o.</p>
+               <p className="text-slate-500 dark:text-slate-400 text-sm font-medium transition-colors">Inteligência de dados aplicada para hackear a sua aprovação.</p>
             </div>
          </header>
 
@@ -216,9 +216,9 @@ const BankAnalysis: React.FC = () => {
                </select>
             </div>
             <div className="md:col-span-1 space-y-1.5">
-               <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 transition-colors"><Calendar size={12} /> PerÃ­odo</label>
+               <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 transition-colors"><Calendar size={12} /> Período</label>
                <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)} disabled={!selectedAgency} className="w-full h-11 px-3 text-sm font-bold text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/50 disabled:opacity-50 cursor-pointer transition-all">
-                  <option value="All">Todo o PerÃ­odo</option>
+                  <option value="All">Todo o Período</option>
                   {years.map(y => <option key={y} value={y}>{y}</option>)}
                </select>
             </div>
@@ -251,7 +251,7 @@ const BankAnalysis: React.FC = () => {
                stats && (
                   <div className="space-y-6 animate-slide-up">
 
-                     {/* InformaÃ§Ãµes da Banca */}
+                     {/* Informações da Banca */}
                      {(bankDetails?.description || bankDetails?.website || bankScrapedInfo) && (
                         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
                            <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
@@ -283,7 +283,7 @@ const BankAnalysis: React.FC = () => {
                                  <div className="space-y-4">
                                     <div className="flex items-center justify-between">
                                        <h4 className="flex items-center gap-2 text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.15em] transition-colors">
-                                          <FileText size={14} /> HistÃ³rico de Provas Identificadas
+                                          <FileText size={14} /> Histórico de Provas Identificadas
                                        </h4>
                                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{stats.examList.length} Provas no Banco</span>
                                     </div>
@@ -312,7 +312,7 @@ const BankAnalysis: React.FC = () => {
                                        </h4>
                                        {isLoadingBankInfo ? (
                                           <div className="p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl flex items-center justify-center gap-2 text-slate-400 transition-colors">
-                                             <Loader2 size={16} className="animate-spin" /> <span className="text-xs font-bold">Buscando inteligÃªncia...</span>
+                                             <Loader2 size={16} className="animate-spin" /> <span className="text-xs font-bold">Buscando inteligência...</span>
                                           </div>
                                        ) : bankScrapedInfo?.emAndamento?.length ? (
                                           <div className="space-y-2">
@@ -336,7 +336,7 @@ const BankAnalysis: React.FC = () => {
                                        </h4>
                                        {isLoadingBankInfo ? (
                                           <div className="p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl flex items-center justify-center gap-2 text-slate-400 transition-colors">
-                                             <Loader2 size={16} className="animate-spin" /> <span className="text-xs font-bold">Buscando inteligÃªncia...</span>
+                                             <Loader2 size={16} className="animate-spin" /> <span className="text-xs font-bold">Buscando inteligência...</span>
                                           </div>
                                        ) : bankScrapedInfo?.realizados?.length ? (
                                           <div className="space-y-2">
@@ -367,7 +367,7 @@ const BankAnalysis: React.FC = () => {
                         </div>
                         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between h-full hover:border-emerald-200 dark:hover:border-emerald-600 transition-all">
                            <div>
-                              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] uppercase mb-2"><Building2 size={14} /> ContextualizaÃ§Ã£o</div>
+                              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] uppercase mb-2"><Building2 size={14} /> Contextualização</div>
                               <h3 className="text-3xl font-black text-slate-900 dark:text-slate-100 transition-colors">{stats.contextUsage}%</h3>
                            </div>
                         </div>
@@ -381,11 +381,11 @@ const BankAnalysis: React.FC = () => {
 
                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm min-h-[300px] transition-colors">
-                           <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase tracking-wide transition-colors"><PieIcon size={16} className="text-slate-400 dark:text-slate-500" /> DistribuiÃ§Ã£o Geral</h3>
+                           <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase tracking-wide transition-colors"><PieIcon size={16} className="text-slate-400 dark:text-slate-500" /> Distribuição Geral</h3>
                            <div className="h-64"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={stats.subjectData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>{stats.subjectData.map((entry, index) => (<Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />))}</Pie><Tooltip contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: 'rgba(15, 23, 42, 0.9)', color: '#fff', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.3)', fontSize: '12px' }} /></PieChart></ResponsiveContainer></div>
                         </div>
                         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm min-h-[300px] transition-colors">
-                           <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase tracking-wide transition-colors"><BarChart3 size={16} className="text-slate-400 dark:text-slate-500" /> NÃ­vel de Dificuldade</h3>
+                           <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase tracking-wide transition-colors"><BarChart3 size={16} className="text-slate-400 dark:text-slate-500" /> Nível de Dificuldade</h3>
                            <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={stats.difficultyData}><XAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 'bold', fill: '#94a3b8' }} axisLine={false} tickLine={false} /><YAxis hide /><Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: 'rgba(15, 23, 42, 0.9)', color: '#fff', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.3)', fontSize: '12px' }} /><Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={40} /></BarChart></ResponsiveContainer></div>
                         </div>
                      </div>
@@ -393,9 +393,9 @@ const BankAnalysis: React.FC = () => {
                      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
                         <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex items-center justify-between transition-colors">
                            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 uppercase tracking-wide transition-colors">
-                              <Target size={16} className="text-red-500 dark:text-red-400" /> Raio-X TemÃ¡tico: O que mais cai?
+                              <Target size={16} className="text-red-500 dark:text-red-400" /> Raio-X Temático: O que mais cai?
                            </h3>
-                           <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">DistribuiÃ§Ã£o por MatÃ©ria e Assunto</span>
+                           <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Distribuição por Matéria e Assunto</span>
                         </div>
                         <div className="divide-y divide-slate-100 dark:divide-slate-800">
                            {stats.detailedBreakdown.map((item: any, index: number) => (
@@ -408,7 +408,7 @@ const BankAnalysis: React.FC = () => {
                                        </h4>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                       <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded transition-colors">{item.total} QuestÃµes</span>
+                                       <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded transition-colors">{item.total} Questões</span>
                                        <span className="text-xs font-black text-indigo-600 dark:text-indigo-400">{item.percent}%</span>
                                     </div>
                                  </div>
@@ -433,7 +433,7 @@ const BankAnalysis: React.FC = () => {
                         </div>
                      </div>
 
-                     {/* RecomendaÃ§Ã£o IA (Elite) */}
+                     {/* Recomendação IA (Elite) */}
                      {stats.recommendation && (
                         <div className="bg-gradient-to-br from-indigo-600 to-purple-700 dark:from-indigo-900 dark:to-purple-950 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-indigo-200 dark:shadow-none animate-slide-up">
                            <div className="flex flex-col md:flex-row gap-8 items-center md:items-start text-center md:text-left">
@@ -443,7 +443,7 @@ const BankAnalysis: React.FC = () => {
                               <div className="flex-1 space-y-4">
                                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                                     <h3 className="text-xl font-black uppercase tracking-tight flex items-center justify-center md:justify-start gap-2">
-                                       ðŸŽ¯ RecomendaÃ§Ã£o EstratÃ©gica
+                                       🎯 Recomendação Estratégica
                                     </h3>
                                     <span className="px-3 py-1 bg-amber-400 text-amber-900 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-300 w-fit mx-auto md:mx-0">
                                        Elite Intel
@@ -457,7 +457,7 @@ const BankAnalysis: React.FC = () => {
                                        <History size={14} /> Dados Atualizados
                                     </div>
                                     <div className="flex items-center gap-2 text-[10px] font-black opacity-60 uppercase tracking-widest">
-                                       <Zap size={14} /> AnÃ¡lise IA
+                                       <Zap size={14} /> Análise IA
                                     </div>
                                  </div>
                               </div>
@@ -472,8 +472,8 @@ const BankAnalysis: React.FC = () => {
                <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-3xl flex items-center justify-center mx-auto mb-6 transition-colors">
                   <Search className="text-slate-300 dark:text-slate-600" size={40} />
                </div>
-               <h3 className="text-lg font-black text-slate-800 dark:text-slate-200 transition-colors">Aguardando SeleÃ§Ã£o</h3>
-               <p className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-2 transition-colors">Selecione uma banca examinadora acima para iniciar a anÃ¡lise.</p>
+               <h3 className="text-lg font-black text-slate-800 dark:text-slate-200 transition-colors">Aguardando Seleção</h3>
+               <p className="text-xs text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-2 transition-colors">Selecione uma banca examinadora acima para iniciar a análise.</p>
             </div>
          )}
       </div>

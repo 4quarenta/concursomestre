@@ -4,7 +4,7 @@
 
 Esta rodada absorveu a sincronização legada de planos recorrentes do Mercado Pago:
 
-- `C:\xampp\htdocs\questao-pro-backend\api\subscriptions\sync_plans_mp.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\subscriptions\sync_plans_mp.php`
 
 O endpoint legado deixou de conter SQL e integração direta com a SDK do Mercado Pago.
 
@@ -12,7 +12,7 @@ O endpoint legado deixou de conter SQL e integração direta com a SDK do Mercad
 
 ### Controller
 
-- [SubscriptionsPlanSyncController.php](/C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/controllers/SubscriptionsPlanSyncController.php)
+- [SubscriptionsPlanSyncController.php](/C:/xampp/htdocs/questão-pro-backend/modules/subscriptions/controllers/SubscriptionsPlanSyncController.php)
 
 Responsabilidade:
 
@@ -20,7 +20,7 @@ Responsabilidade:
 
 ### Service
 
-- [SubscriptionsMercadoPagoPlanSyncService.php](/C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsMercadoPagoPlanSyncService.php)
+- [SubscriptionsMercadoPagoPlanSyncService.php](/C:/xampp/htdocs/questão-pro-backend/modules/subscriptions/services/SubscriptionsMercadoPagoPlanSyncService.php)
 
 Responsabilidades:
 
@@ -32,7 +32,7 @@ Responsabilidades:
 
 ### Repository
 
-- [SubscriptionsRepository.php](/C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/repositories/SubscriptionsRepository.php)
+- [SubscriptionsRepository.php](/C:/xampp/htdocs/questão-pro-backend/modules/subscriptions/repositories/SubscriptionsRepository.php)
 
 Novas operações:
 
@@ -41,7 +41,7 @@ Novas operações:
 
 ### Route
 
-- [routes.php](/C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/routes.php)
+- [routes.php](/C:/xampp/htdocs/questão-pro-backend/modules/subscriptions/routes.php)
 
 Handler novo:
 
@@ -57,7 +57,7 @@ Regras aplicadas:
 
 O bridge legado continua existindo em:
 
-- [sync_plans_mp.php](/C:/xampp/htdocs/questao-pro-backend/api/subscriptions/sync_plans_mp.php)
+- [sync_plans_mp.php](/C:/xampp/htdocs/questão-pro-backend/api/subscriptions/sync_plans_mp.php)
 
 Agora ele apenas inicializa infraestrutura mínima e delega para o módulo oficial.
 
@@ -65,7 +65,7 @@ Agora ele apenas inicializa infraestrutura mínima e delega para o módulo ofici
 
 Também foi criada a entrada operacional:
 
-- [sync_mercadopago_preapproval_plans.php](/C:/xampp/htdocs/questao-pro-backend/scripts/tasks/sync_mercadopago_preapproval_plans.php)
+- [sync_mercadopago_preapproval_plans.php](/C:/xampp/htdocs/questão-pro-backend/scripts/tasks/sync_mercadopago_preapproval_plans.php)
 
 Objetivo:
 
@@ -76,6 +76,6 @@ Objetivo:
 Esta rodada foi validada com:
 
 - `php -l` nos arquivos alterados
-- [SubscriptionsPlanSyncWiringTest.php](/C:/xampp/htdocs/questao-pro-backend/tests/SubscriptionsPlanSyncWiringTest.php)
-- smoke `401` sem sessão em [sync_plans_mp.php](/C:/xampp/htdocs/questao-pro-backend/api/subscriptions/sync_plans_mp.php)
+- [SubscriptionsPlanSyncWiringTest.php](/C:/xampp/htdocs/questão-pro-backend/tests/SubscriptionsPlanSyncWiringTest.php)
+- smoke `401` sem sessão em [sync_plans_mp.php](/C:/xampp/htdocs/questão-pro-backend/api/subscriptions/sync_plans_mp.php)
 - home `200` em [http://localhost:3000/#/](http://localhost:3000/#/)

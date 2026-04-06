@@ -15,7 +15,7 @@ Ambos deixaram de conter regra procedural e passaram a delegar para `modules/sub
 
 O fluxo interno de checkout Mercado Pago agora é orquestrado por:
 
-- `C:\xampp\htdocs\questao-pro-backend\modules\subscriptions\services\SubscriptionsMercadoPagoCheckoutService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\subscriptions\services\SubscriptionsMercadoPagoCheckoutService.php`
 
 Esse service concentra:
 
@@ -32,7 +32,7 @@ Esse service concentra:
 
 O material operacional mostrado ao admin agora é gerado por:
 
-- `C:\xampp\htdocs\questao-pro-backend\modules\subscriptions\services\SubscriptionsAutomationService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\subscriptions\services\SubscriptionsAutomationService.php`
 
 Esse service:
 
@@ -65,15 +65,15 @@ Com isso:
 
 Os endpoints legados continuam existindo, mas agora são bridges finos:
 
-- `C:\xampp\htdocs\questao-pro-backend\api\subscriptions\process_payment.php`
-- `C:\xampp\htdocs\questao-pro-backend\api\subscriptions\automation_helper.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\subscriptions\process_payment.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\subscriptions\automation_helper.php`
 
 ## Validação
 
 Esta rodada foi validada com:
 
 - `php -l` nos arquivos alterados
-- `C:\xampp\htdocs\questao-pro-backend\tests\SubscriptionsCheckoutWiringTest.php`
+- `C:\xampp\htdocs\questão-pro-backend\tests\SubscriptionsCheckoutWiringTest.php`
 - `npx vitest run src/services/subscriptions/__tests__/subscriptionsService.test.ts`
 - `npm run build`
 - `npm run test:auth`

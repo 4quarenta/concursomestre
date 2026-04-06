@@ -11,25 +11,25 @@
 
 
 export enum Difficulty {
-  VERY_EASY = 'Muito FÃ¡cil',
-  EASY = 'FÃ¡cil',
-  MEDIUM = 'MÃ©dio',
-  HARD = 'DifÃ­cil',
-  VERY_HARD = 'Muito DifÃ­cil'
+  VERY_EASY = 'Muito Fácil',
+  EASY = 'Fácil',
+  MEDIUM = 'Médio',
+  HARD = 'Difícil',
+  VERY_HARD = 'Muito Difícil'
 }
 
 // Keep old Subject only if needed for simulation config, otherwise refactor everything later
 export enum Subject {
-  PORTUGUESE = 'PortuguÃªs',
-  MATH = 'MatemÃ¡tica',
+  PORTUGUESE = 'Português',
+  MATH = 'Matemática',
   LAW = 'Direito',
-  HISTORY = 'HistÃ³ria',
-  INFORMATICS = 'InformÃ¡tica',
+  HISTORY = 'História',
+  INFORMATICS = 'Informática',
   ENEM_GENERAL = 'ENEM Gerais',
   GEOGRAPHY = 'Geografia',
   BIOLOGY = 'Biologia',
-  PHYSICS = 'FÃ­sica',
-  CHEMISTRY = 'QuÃ­mica'
+  PHYSICS = 'Física',
+  CHEMISTRY = 'Química'
 }
 
 export interface Banca {
@@ -37,7 +37,7 @@ export interface Banca {
   sigla: string;
   nome: string;
   slug: string;
-  descricao?: string;
+  descrição?: string;
   oab?: boolean;
 }
 
@@ -53,7 +53,7 @@ export interface Orgao {
 export interface Cargo {
   id: number;
   slug: string;
-  descricao: string;
+  descrição: string;
 }
 
 export interface Assunto {
@@ -112,7 +112,7 @@ export interface ErrorReport {
   details: string;
   status: 'pending' | 'resolved' | 'ignored';
   timestamp: number;
-  evidenceUrl?: string; // EvidÃªncia enviada pelo usuÃ¡rio na denÃºncia
+  evidenceUrl?: string; // Evidência enviada pelo usuário na denúncia
   resolvedAt?: number;
 }
 
@@ -135,7 +135,7 @@ export interface GrupoQuestao {
   enunciado_clean: string;
   rotulo: string | null;
   texto: string | null;
-  descricao: string;
+  descrição: string;
   ordem: number;
   image_url?: string;
 }
@@ -171,7 +171,7 @@ export interface Question {
 
   tipo: string; // Ex: "multipla escolha", "certo ou errado"
   dificuldade: number; // 1, 2, 3
-  difficulty?: string; // For frontend compatibility (FÃ¡cil, MÃ©dio, DifÃ­cil)
+  difficulty?: string; // For frontend compatibility (Fácil, Médio, Difícil)
   topic?: string; // For frontend compatibility
   rotulo?: number;
 
@@ -186,7 +186,7 @@ export interface Question {
   detailedComment?: string;
   hasTeacherComment?: boolean;
   hasDetailedComment?: boolean;
-  comentarios?: {
+  comentários?: {
     ia: boolean;
     professor: boolean;
     professorVideo: boolean;
@@ -296,7 +296,7 @@ export interface Notification {
   isRead: boolean;
   timestamp: number;
   link?: string;
-  evidenceUrl?: string; // Novo: URL de imagem/prova da decisÃ£o
+  evidenceUrl?: string; // Novo: URL de imagem/prova da decisão
   deletedAt?: number;
 }
 
@@ -332,6 +332,11 @@ export interface UserProfile {
   referralCode?: string;
   googleId?: string;
   facebookId?: string;
+  studyStreak?: {
+    current: number;
+    best: number;
+    lastVisitDate: string;
+  };
   isDeletionPending?: boolean;
   deletionRequestedAt?: string;
   paymentIssue?: {
@@ -531,6 +536,7 @@ export interface SystemSettings {
   supportPhone?: string;
   pixKey?: string;
   siteName?: string;
+  dailyMotivationMarkdown?: string;
   platformFeePercent?: number;
   appMode?: 'development' | 'production';
   smtpHost?: string;

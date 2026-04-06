@@ -38,7 +38,7 @@ type RefundMutationResponse = {
  */
 export const transactionsService = {
   /**
-   * Lista transacoes com filtros de usuario, escopo e periodo.
+   * Lista transações com filtros de usuário, escopo e período.
    * Essa consulta alimenta marketplace, perfil, financeiro e modais do admin.
    * @since 1.0.0
    */
@@ -63,7 +63,7 @@ export const transactionsService = {
   },
 
   /**
-   * Cria a transacao local de compra de material no backend oficial.
+   * Cria a transação local de compra de material no backend oficial.
    * @since 1.0.0
    */
   async createMaterialPurchase(materialId: string | number): Promise<Transaction> {
@@ -71,13 +71,13 @@ export const transactionsService = {
       material_id: materialId,
     }) as any;
 
-    const raw = assertApiSuccess(response, 'Nao foi possivel registrar a compra.').raw;
+    const raw = assertApiSuccess(response, 'Não foi possível registrar a compra.').raw;
     const payload = readApiData<PurchaseTransactionResponse>(raw, { transaction: {} as Transaction });
     return payload.transaction;
   },
 
   /**
-   * Solicita estorno de uma transacao existente.
+   * Solicita estorno de uma transação existente.
    * @since 1.0.0
    */
   async requestRefund(transactionId: string, reason: string): Promise<RefundMutationResponse> {
@@ -86,7 +86,7 @@ export const transactionsService = {
       reason,
     }) as any;
 
-    const raw = assertApiSuccess(response, 'Nao foi possivel solicitar o reembolso.').raw;
+    const raw = assertApiSuccess(response, 'Não foi possível solicitar o reembolso.').raw;
     return {
       message: raw?.message || raw?.data?.message,
     };
@@ -103,7 +103,7 @@ export const transactionsService = {
       },
     }) as any;
 
-    const raw = assertApiSuccess(response, 'Nao foi possivel cancelar a solicitacao de reembolso.').raw;
+    const raw = assertApiSuccess(response, 'Não foi possível cancelar a solicitacao de reembolso.').raw;
     return {
       message: raw?.message || raw?.data?.message,
     };
@@ -127,7 +127,7 @@ export const transactionsService = {
       reason,
     }) as any;
 
-    const raw = assertApiSuccess(response, 'Nao foi possivel atualizar o estorno.').raw;
+    const raw = assertApiSuccess(response, 'Não foi possível atualizar o estorno.').raw;
     return {
       message: raw?.message || raw?.data?.message,
     };

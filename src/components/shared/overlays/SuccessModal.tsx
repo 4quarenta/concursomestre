@@ -70,7 +70,7 @@ export const SuccessModal: React.FC<SuccessModalProps> = ({ material, onClose, o
                         Compra Realizada!
                     </h2>
                     <p className="text-slate-500 dark:text-slate-300 mb-8 leading-relaxed">
-                        VocÃª jÃ¡ tem acesso total ao material <br />
+                        Você já tem acesso total ao material <br />
                         <span className="font-bold text-slate-800 dark:text-slate-100">"{material.title}"</span>
                     </p>
 

@@ -117,7 +117,7 @@ describe('adminService', () => {
   it('saves system settings through the official admin settings endpoint', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
-      message: 'Configuracoes salvas com sucesso!',
+      message: 'Configurações salvas com sucesso!',
     });
 
     await expect(adminService.saveSystemSettings({
@@ -150,7 +150,7 @@ describe('adminService', () => {
     mockGet.mockResolvedValueOnce({
       success: true,
       data: {
-        rows: [{ id: 'q-1', statement: 'Questao teste' }],
+        rows: [{ id: 'q-1', statement: 'Questão teste' }],
         total: 12,
         perPage: 20,
         pages: 1,
@@ -270,12 +270,12 @@ describe('adminService', () => {
     mockGet.mockResolvedValueOnce({
       success: true,
       data: {
-        profile: { id: 'user-1', name: 'UsuÃ¡rio Teste' },
+        profile: { id: 'user-1', name: 'Usuário Teste' },
         subscriptions: [{ id: 'sub-1' }],
         transactions: [{ id: 'txn-1' }],
         materials: [{ id: 'mat-1' }],
         stats: { comments_count: 3 },
-        last_comments: [{ id: 1, comment: 'Ã“tima questÃ£o' }],
+        last_comments: [{ id: 1, comment: 'Ótima questão' }],
       },
     });
 
@@ -296,7 +296,7 @@ describe('adminService', () => {
     await expect(adminService.performUserAction({
       user_id: 'user-1',
       action: 'update_profile',
-      name: 'Usuario Teste',
+      name: 'Usuário Teste',
       email: 'teste@example.com',
       role: 'partner',
     })).resolves.toBeUndefined();
@@ -304,7 +304,7 @@ describe('adminService', () => {
     expect(mockPost).toHaveBeenCalledWith('admin/user_actions.php', {
       user_id: 'user-1',
       action: 'update_profile',
-      name: 'Usuario Teste',
+      name: 'Usuário Teste',
       email: 'teste@example.com',
       role: 'partner',
     });
@@ -419,12 +419,11 @@ describe('adminService', () => {
       message: 'Resposta enviada com sucesso.',
     });
 
-    await expect(adminService.replyToFeedback(10, 'Vamos seguir com a analise.')).resolves.toBeUndefined();
+    await expect(adminService.replyToFeedback(10, 'Vamos seguir com a análise.')).resolves.toBeUndefined();
 
     expect(mockPost).toHaveBeenCalledWith('admin/feedback.php', {
       parent_id: 10,
-      details: 'Vamos seguir com a analise.',
+      details: 'Vamos seguir com a análise.',
     });
   });
 });
-

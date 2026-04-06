@@ -178,7 +178,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   // Options: Interactive until `sessionAnswer`.
   // Feedback (Colors): Visible if `sessionAnswer`.
 
-  // What about "box com historico"?
+  // What about "box com histórico"?
 
   const showHistoryTag = !!existingAnswer;
 
@@ -186,7 +186,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     ? Math.round((question.stats.correctCount / question.stats.totalAttempts) * 100)
     : 0;
 
-  // Normaliza o plano para comparaÃ§Ã£o (podem vir em minÃºsculas do backend)
+  // Normaliza o plano para comparação (podem vir em minúsculas do backend)
   // Hierarquia e regras de acesso de plano
   const teacherRequiredPlan = getBenefitRequiredPlan('teacher_comments', systemSettings.planEntitlements);
   const detailedRequiredPlan = getBenefitRequiredPlan('detailed_analysis', systemSettings.planEntitlements);
@@ -195,7 +195,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   // Gabarito Comentado: Pro ou Elite
   const canSeeTeacher = hasPlanBenefit(currentUser, 'teacher_comments', systemSettings.planEntitlements);
-  // AnÃ¡lise Detalhada: apenas Elite
+  // Análise Detalhada: apenas Elite
   const canSeeDetailed = hasPlanBenefit(currentUser, 'detailed_analysis', systemSettings.planEntitlements);
 
   useEffect(() => {
@@ -336,14 +336,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       return;
     }
     if (!reportDetails.details.trim()) {
-      alert("Por favor, detalhe o problema encontrado. A justificativa Ã© obrigatÃ³ria.");
+      alert("Por favor, detalhe o problema encontrado. A justificativa é obrigatória.");
       return;
     }
     if (onReportError) {
       (onReportError as any)({
         targetType: 'question',
         questionId: Number(question.id),
-        userName: currentUserName || 'UsuÃ¡rio',
+        userName: currentUserName || 'Usuário',
         userId: currentUserId,
         reason: reportDetails.reason,
         details: reportDetails.details
@@ -357,7 +357,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     const baseUrl = window.location.origin + window.location.pathname;
     const questionUrl = `${baseUrl}?questionId=${question.id}`;
 
-    const textToShare = `Confira esta questÃ£o no ConcursoMestre! ðŸ“š\n\n${question.enunciado_clean ? question.enunciado_clean.substring(0, 150) + '...' : ''}\n\nAcesse o link abaixo para testar seus conhecimentos e ver o gabarito.`;
+    const textToShare = `Confira esta questão no ConcursoMestre! 📚\n\n${question.enunciado_clean ? question.enunciado_clean.substring(0, 150) + '...' : ''}\n\nAcesse o link abaixo para testar seus conhecimentos e ver o gabarito.`;
 
     if (navigator.share) {
       navigator.share({
@@ -367,7 +367,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       }).catch(console.error);
     } else {
       navigator.clipboard.writeText(`${textToShare}\n\nLink: ${questionUrl}`);
-      alert("Link e texto copiados para a Ã¡rea de transferÃªncia!");
+      alert("Link e texto copiados para a área de transferência!");
     }
   };
 
@@ -397,7 +397,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             <span className="text-[10px] font-bold text-slate-300 dark:text-slate-600">Q{question.id}</span>
             <div className="flex gap-1.5">
               <span className="inline-flex items-center justify-center px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 text-[8px] font-bold rounded uppercase tracking-wide">{(question.assuntos && question.assuntos.length > 0) ? question.assuntos[0].nome : 'Geral'}</span>
-              <span className="inline-flex items-center justify-center px-2 py-0.5 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-[8px] font-bold rounded border border-slate-200 dark:border-slate-600 uppercase">{['', 'Muito FÃ¡cil', 'FÃ¡cil', 'MÃ©dio', 'DifÃ­cil', 'Muito DifÃ­cil'][Number(question.dificuldade)] || 'Dificuldade ' + question.dificuldade}</span>
+              <span className="inline-flex items-center justify-center px-2 py-0.5 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-[8px] font-bold rounded border border-slate-200 dark:border-slate-600 uppercase">{['', 'Muito Fácil', 'Fácil', 'Médio', 'Difícil', 'Muito Difícil'][Number(question.dificuldade)] || 'Dificuldade ' + question.dificuldade}</span>
               {!!question.anulada && <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Anulada</span>}
               {!!question.desatualizada && <span className="bg-amber-500 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Desatualizada</span>}
               {!!question.desatualizada && <span className="bg-amber-500 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Desatualizada</span>}
@@ -441,7 +441,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all ${showFilters ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
           >
             {showFilters ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            Filtros da QuestÃ£o
+            Filtros da Questão
           </button>
 
           {mode === 'practice' && (
@@ -463,12 +463,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><Calendar size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.anos?.join(', ') || '---'}</div>
             </div>
             <div className="space-y-0.5">
-              <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">OrgÃ£o</span>
+              <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Orgão</span>
               <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Layers size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.orgaos?.map(o => o.sigla || o.nome).join(' / ') || '---'}</div>
             </div>
             <div className="space-y-0.5">
               <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Cargo</span>
-              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Briefcase size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.cargos?.map(c => c.descricao).join(', ') || 'Geral'}</div>
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Briefcase size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.cargos?.map(c => c.descrição).join(', ') || 'Geral'}</div>
             </div>
             <div className="space-y-0.5">
               <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Assunto</span>
@@ -481,7 +481,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       <div className="p-6 space-y-6">
         {isReporting && (
           <div className="bg-red-50/50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 p-5 rounded-2xl animate-slide-down space-y-4 shadow-inner">
-            <h4 className="text-[10px] font-black text-red-700 dark:text-red-400 uppercase flex items-center gap-2"><AlertTriangle size={14} /> Reportar Problema na QuestÃ£o</h4>
+            <h4 className="text-[10px] font-black text-red-700 dark:text-red-400 uppercase flex items-center gap-2"><AlertTriangle size={14} /> Reportar Problema na Questão</h4>
 
             <div className="grid grid-cols-1 gap-4">
               <div className="space-y-1">
@@ -492,8 +492,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   className="w-full h-11 px-4 bg-white dark:bg-slate-800 border border-red-100 dark:border-red-900/30 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-red-200"
                 >
                   <option>Gabarito Errado</option>
-                  <option>Erro de DigitaÃ§Ã£o</option>
-                  <option>MatÃ©ria Incorreta</option>
+                  <option>Erro de Digitação</option>
+                  <option>Matéria Incorreta</option>
                   <option>Desatualizada / Anulada</option>
                   <option>Imagem com Erro</option>
                   <option>Outro</option>
@@ -502,10 +502,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
               <div className="space-y-1">
                 <div className="flex justify-between items-center px-1">
-                  <label className="text-[9px] font-black text-red-400 dark:text-red-500 uppercase">Explique o Problema {reportDetails.details.trim() === '' && <span className="text-[8px] italic">(OBRIGATÃ“RIO)</span>}</label>
+                  <label className="text-[9px] font-black text-red-400 dark:text-red-500 uppercase">Explique o Problema {reportDetails.details.trim() === '' && <span className="text-[8px] italic">(OBRIGATÓRIO)</span>}</label>
                 </div>
                 <textarea
-                  placeholder="Descreva detalhadamente o erro que vocÃª encontrou para que possamos corrigir..."
+                  placeholder="Descreva detalhadamente o erro que você encontrou para que possamos corrigir..."
                   value={reportDetails.details}
                   onChange={e => setReportDetails({ ...reportDetails, details: e.target.value })}
                   className={`w-full p-4 bg-white dark:bg-slate-800 border ${reportDetails.details.trim() === '' ? 'border-red-200 dark:border-red-800' : 'border-red-100 dark:border-red-900/30'} rounded-xl text-xs text-slate-700 dark:text-slate-300 outline-none min-h-[100px] font-medium resize-none focus:ring-2 focus:ring-red-200`}
@@ -520,7 +520,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 disabled={!reportDetails.details.trim()}
                 className="bg-red-600 text-white text-[10px] font-black uppercase px-6 py-2.5 rounded-xl shadow-lg shadow-red-200 dark:shadow-none hover:bg-red-700 transition-all disabled:opacity-50"
               >
-                Enviar DenÃºncia
+                Enviar Denúncia
               </button>
             </div>
           </div>
@@ -663,7 +663,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
         <div className="px-6 py-4 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 items-center justify-between transition-colors duration-300">
           <div className="flex gap-2 items-center flex-wrap">
-            {/* Gabarito Comentado - sempre visÃ­vel, bloqueado por plano */}
+            {/* Gabarito Comentado - sempre visível, bloqueado por plano */}
             {(question.hasTeacherComment || question.teacherComment) && (
               <button
                 onClick={() => {
@@ -681,12 +681,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               </button>
             )}
 
-            {/* AnÃ¡lise Detalhada - sempre visÃ­vel, bloqueado por plano */}
+            {/* Análise Detalhada - sempre visível, bloqueado por plano */}
             {(question.hasDetailedComment || question.detailedComment) && (
               <button
                 onClick={() => {
                   if (!canSeeDetailed) {
-                    setPlanUpgradeModal({ featureName: 'AnÃ¡lise Detalhada', requiredPlan: detailedRequiredPlan, planLabel: detailedPlanLabel });
+                    setPlanUpgradeModal({ featureName: 'Análise Detalhada', requiredPlan: detailedRequiredPlan, planLabel: detailedPlanLabel });
                     return;
                   }
                   setShowDetailedComment(!showDetailedComment);
@@ -695,18 +695,18 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showDetailedComment ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeDetailed ? 'text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-700 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
               >
                 {canSeeDetailed ? <BookOpen size={14} /> : <Lock size={12} />}
-                AnÃ¡lise Detalhada
+                Análise Detalhada
               </button>
             )}
 
             {systemSettings.features.communityEnabled && (
               <button onClick={() => { setShowComments(!showComments); setShowMaterials(false); setShowStats(false); setShowTeacherComment(false); setShowDetailedComment(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showComments ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'}`}>
-                <MessageSquare size={14} /> {question.commentsCount || 0} ComentÃ¡rios
+                <MessageSquare size={14} /> {question.commentsCount || 0} Comentários
               </button>
             )}
 
             <button onClick={() => { handleToggleStats(); setShowMaterials(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showStats ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'}`}>
-              <BarChart3 size={14} /> EstatÃ­sticas
+              <BarChart3 size={14} /> Estatísticas
             </button>
 
             {systemSettings.features.marketplaceEnabled && hasRelatedMaterials && (
@@ -716,12 +716,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             )}
 
             <button onClick={() => setIsNoteModalOpen(true)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${noteText ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-900/50' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/10'}`}>
-              <StickyNote size={14} /> {noteText ? 'AnotaÃ§Ã£o âœ…' : 'Anotar'}
+              <StickyNote size={14} /> {noteText ? 'Anotação ✅' : 'Anotar'}
             </button>
 
             {isSubmitted && (
               <button onClick={() => setIsHistoryModalOpen(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 transition-all">
-                <History size={14} /> HistÃ³rico
+                <History size={14} /> Histórico
               </button>
             )}
           </div>
@@ -737,18 +737,18 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           ) : null}
         </div>
 
-        {/* Ãreas Expandidas */}
+        {/* Áreas Expandidas */}
         {(showComments || showTeacherComment || showDetailedComment || showStats || showMaterials) && (
           <div className="bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 animate-fade-in divide-y divide-slate-100 dark:divide-slate-800">
 
             {showStats && (
               <div className="p-6 bg-slate-50 dark:bg-slate-800/50 animate-slide-down">
                 <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-400 font-bold text-[9px] uppercase tracking-widest mb-4">
-                  <BarChart3 size={14} /> EstatÃ­sticas da QuestÃ£o
+                  <BarChart3 size={14} /> Estatísticas da Questão
                 </div>
 
                 {loadingStats ? (
-                  <div className="flex justify-center py-8"><span className="animate-spin text-2xl">â³</span></div>
+                  <div className="flex justify-center py-8"><span className="animate-spin text-2xl">⏳</span></div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center gap-2">
@@ -831,7 +831,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             {showTeacherComment && (
               <div className="p-6 bg-amber-50/30 dark:bg-amber-900/10 animate-slide-down">
                 <div className="flex items-center gap-2 text-amber-800 dark:text-amber-400 font-bold text-[9px] uppercase tracking-widest mb-3">
-                  <GraduationCap size={14} /> ComentÃ¡rio do Professor
+                  <GraduationCap size={14} /> Comentário do Professor
                 </div>
                 {question.teacherComment ? (
                   <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-amber-100/50 dark:border-amber-900/30 shadow-sm text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic">
@@ -840,7 +840,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 ) : (
                   <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-dashed border-amber-200 dark:border-amber-900/30 text-center">
                     <GraduationCap size={24} className="text-amber-300 dark:text-amber-700 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">ComentÃ¡rio do professor ainda nÃ£o disponÃ­vel para esta questÃ£o.</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Comentário do professor ainda não disponível para esta questão.</p>
                   </div>
                 )}
               </div>
@@ -849,7 +849,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             {showDetailedComment && (
               <div className="p-6 bg-indigo-50/30 dark:bg-indigo-900/10 animate-slide-down">
                 <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-400 font-bold text-[9px] uppercase tracking-widest mb-3">
-                  <BookOpen size={14} /> AnÃ¡lise Detalhada
+                  <BookOpen size={14} /> Análise Detalhada
                 </div>
                 {question.detailedComment ? (
                   <div className="prose prose-indigo prose-sm max-w-none text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/30 shadow-sm">
@@ -858,7 +858,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 ) : (
                   <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/30 text-center">
                     <BookOpen size={24} className="text-indigo-300 dark:text-indigo-700 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">AnÃ¡lise detalhada ainda nÃ£o disponÃ­vel para esta questÃ£o.</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Análise detalhada ainda não disponível para esta questão.</p>
                   </div>
                 )}
               </div>
@@ -870,7 +870,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 comments={question.comments || []}
                 onAddComment={(text, parentId) => onAddComment?.(String(question.id), text, parentId)}
                 onLikeComment={(commentId) => onLikeComment?.(String(question.id), commentId)}
-                onReportComment={(commentId) => reportComment(commentId, 'Abuso', 'Reportado via interface de comentÃ¡rios')}
+                onReportComment={(commentId) => reportComment(commentId, 'Abuso', 'Reportado via interface de comentários')}
                 onDeleteComment={(commentId) => deleteComment(Number(question.id), commentId)}
               />
             )}
@@ -882,12 +882,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
         )}
 
-        {/* Modal de AnotaÃ§Ãµes Simplificado */}
+        {/* Modal de Anotações Simplificado */}
         {isNoteModalOpen && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
             <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-xl animate-scale-in overflow-hidden flex flex-col transition-colors">
               <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-yellow-50/50 dark:bg-yellow-900/20">
-                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-xs uppercase tracking-widest flex items-center gap-2"><StickyNote size={16} /> Minha AnotaÃ§Ã£o</h3>
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-xs uppercase tracking-widest flex items-center gap-2"><StickyNote size={16} /> Minha Anotação</h3>
                 <button onClick={() => setIsNoteModalOpen(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"><XCircle size={20} /></button>
               </div>
               <div className="p-6">
@@ -907,19 +907,19 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           document.body
         )}
 
-        {/* Modal de HistÃ³rico */}
+        {/* Modal de Histórico */}
         {isHistoryModalOpen && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
             <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-xl animate-scale-in overflow-hidden flex flex-col transition-colors">
               <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
-                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-xs uppercase tracking-widest flex items-center gap-2"><History size={16} /> HistÃ³rico de ResoluÃ§Ãµes</h3>
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 text-xs uppercase tracking-widest flex items-center gap-2"><History size={16} /> Histórico de Resoluções</h3>
                 <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"><XCircle size={20} /></button>
               </div>
               <div className="p-6 max-h-[60vh] overflow-y-auto">
                 {isLoadingHistory ? (
                   <div className="text-center py-8 text-slate-400 text-xs">Carregando...</div>
                 ) : history.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 text-xs">Nenhum histÃ³rico encontrado.</div>
+                  <div className="text-center py-8 text-slate-400 text-xs">Nenhum histórico encontrado.</div>
                 ) : (
                   <div className="space-y-3">
                     {history.map((h, i) => (
@@ -965,9 +965,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 mb-1">{planUpgradeModal.featureName}</h3>
         <p className="text-xs font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest mb-4">{planUpgradeModal.planLabel}</p>
         <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
-          Este recurso estÃ¡ disponÃ­vel apenas para assinantes do{' '}
+          Este recurso está disponível apenas para assinantes do{' '}
           <strong className="text-slate-700 dark:text-slate-200">{planUpgradeModal.planLabel}</strong>.
-          FaÃ§a upgrade para desbloquear todos os recursos premium.
+          Faça upgrade para desbloquear todos os recursos premium.
         </p>
         <div className="flex gap-3">
           <button
@@ -1006,17 +1006,17 @@ const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
 
     console.log('[QuestionCard] Filtering related materials. Total available:', materials.length);
 
-    // Ajuste: materiais podem vir do painel de compras e nÃ£o ter o status 'approved', 
-    // entÃ£o removemos a trava de status caso o material pertenÃ§a ao sistema ou ao usuÃ¡rio.
+    // Ajuste: materiais podem vir do painel de compras e não ter o status 'approved', 
+    // então removemos a trava de status caso o material pertença ao sistema ou ao usuário.
     const availableMaterials = materials;
 
     console.log('[QuestionCard] Available materials for match:', availableMaterials.length);
 
-    // CritÃ©rios de combinaÃ§Ã£o - Removemos itens vazios para evitar matches coringa (includes(""))
+    // Critérios de combinação - Removemos itens vazios para evitar matches coringa (includes(""))
     const questionSubjects = question.assuntos?.map((a: any) => a.nome?.trim().toLowerCase()).filter(Boolean) || [];
     const questionTopics = question.assuntos?.map((a: any) => a.topico?.trim().toLowerCase()).filter(Boolean) || [];
 
-    // Tentar encontrar matches fortes (Assunto/Materia ou TÃ³pico)
+    // Tentar encontrar matches fortes (Assunto/Materia ou Tópico)
     let matches = availableMaterials.filter(m => {
       const matSubjectInfo = typeof m.subject === 'string' ? m.subject : ((m.subject as any)?.name || m.subjectText || '');
       const matSubject = matSubjectInfo?.trim().toLowerCase();
@@ -1025,11 +1025,11 @@ const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
       const hasSubjectMatch = matSubject && questionSubjects.some((qs: string) => qs.includes(matSubject) || matSubject.includes(qs));
       const hasTopicMatch = matTopic && (questionTopics.some((qt: string) => qt.includes(matTopic) || matTopic.includes(qt)) || questionSubjects.some((qs: string) => qs.includes(matTopic) || matTopic.includes(qs)));
 
-      // Retorna match se a matÃ©ria OU o tÃ³pico baterem com as tags da questÃ£o
+      // Retorna match se a matéria OU o tópico baterem com as tags da questão
       return hasSubjectMatch || hasTopicMatch;
     });
 
-    // Se poucos, tentar matches mais fracos (Nome do material contÃ©m a matÃ©ria)
+    // Se poucos, tentar matches mais fracos (Nome do material contém a matéria)
     if (matches.length < 3 && questionSubjects.length > 0) {
       const moreMatches = availableMaterials.filter(m => !matches.find(x => x.id === m.id)).filter(m => {
         const titleLower = (m.title || '').toLowerCase();
@@ -1039,7 +1039,7 @@ const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
     }
 
     // Se AINDA tiver pouco, tentar preencher com materiais relevantes aprovados gerais,
-    // que o usuÃ¡rio ainda nÃ£o possui, para incentivar a compra
+    // que o usuário ainda não possui, para incentivar a compra
     if (matches.length < 3) {
       const fallback = availableMaterials
         .filter(m => m.status === 'approved')
@@ -1048,7 +1048,7 @@ const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
       matches = [...matches, ...fallback];
     }
 
-    // Retorna os 3 primeiros (ou aleatÃ³rios se houver muitos)
+    // Retorna os 3 primeiros (ou aleatórios se houver muitos)
     return matches.slice(0, 3);
   }, [materials, question]);
 
@@ -1056,7 +1056,7 @@ const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
     return (
       <div className="p-6 bg-slate-50 dark:bg-slate-800/50 animate-slide-down flex flex-col items-center justify-center text-center">
         <BookOpen size={32} className="text-slate-300 dark:text-slate-600 mb-3" />
-        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">NÃ£o encontramos materiais perfeitamente relacionados no momento.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Não encontramos materiais perfeitamente relacionados no momento.</p>
         <button onClick={() => navigate('/marketplace')} className="mt-4 px-4 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors">Ver todos os materiais na Loja</button>
       </div>
     );
@@ -1109,7 +1109,7 @@ const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
                 {!showAsOwned ? (
                   <div className="flex flex-col items-start sm:items-end bg-slate-50 dark:bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700">
                     <span className="text-[8px] text-slate-400 dark:text-slate-500 font-bold uppercase">Valor</span>
-                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-300">R$ {m.price > 0 ? m.price.toFixed(2).replace('.', ',') : 'GrÃ¡tis'}</span>
+                    <span className="text-[11px] font-black text-slate-700 dark:text-slate-300">R$ {m.price > 0 ? m.price.toFixed(2).replace('.', ',') : 'Grátis'}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5 text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase">

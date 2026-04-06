@@ -43,10 +43,10 @@ const AdminQuestionsSection = ({
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
             <tr>
-              {renderSortableHeader('Questao', 'enunciado_clean')}
+              {renderSortableHeader('Questão', 'enunciado_clean')}
               <th className="p-4">Status</th>
               {renderSortableHeader('Banca/Materia', 'banca')}
-              <th className="p-4 text-center">Acoes</th>
+              <th className="p-4 text-center">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -70,7 +70,7 @@ const AdminQuestionsSection = ({
                     {question.detailedComment && (
                       <span
                         className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded text-[8px] font-black uppercase"
-                        title="Possui Analise Detalhada"
+                        title="Possui Análise Detalhada"
                       >
                         IA
                       </span>

@@ -105,7 +105,7 @@ const CheckoutPage: React.FC = () => {
     const MP_PUBLIC_KEY = systemSettings?.mercadoPagoKey || 'TEST-1e38d560-c2b8-4a5c-8b12-bad17bb8a9ba';
     const STRIPE_PUBLISHABLE_KEY = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
     const savedCardCheckoutSupported = !/^TEST-/i.test(MP_PUBLIC_KEY || '');
-    const savedCardCheckoutBlockedMessage = 'O Mercado Pago so aceita pagamento com cartao salvo neste fluxo usando credenciais de producao e, em homologacao, usuarios de teste. Com a chave TEST atual, use um cartao novo no checkout.';
+    const savedCardCheckoutBlockedMessage = 'O Mercado Pago so aceita pagamento com cartão salvo neste fluxo usando credenciais de produção e, em homologação, usuários de teste. Com a chave TEST atual, use um cartão novo no checkout.';
     
     const [paymentData, setPaymentData] = useState({
         cardNumber: '',
@@ -225,7 +225,7 @@ const CheckoutPage: React.FC = () => {
         }
 
         if (!window.MercadoPago) {
-            setSavedCardSecurityError('O SDK do Mercado Pago ainda nÃ£o carregou. Atualize a pÃ¡gina e tente novamente.');
+            setSavedCardSecurityError('O SDK do Mercado Pago ainda não carregou. Atualize a página e tente novamente.');
             return;
         }
 
@@ -274,7 +274,7 @@ const CheckoutPage: React.FC = () => {
         securityCodeField.on('error', ({ error }: any) => {
             setSavedCardSecurityReady(false);
             setSavedCardSecurityComplete(false);
-            setSavedCardSecurityError(error || 'NÃ£o foi possÃ­vel carregar o campo seguro do cartÃ£o salvo.');
+            setSavedCardSecurityError(error || 'Não foi possível carregar o campo seguro do cartão salvo.');
         });
 
         securityCodeField.mount('saved-card-security-code-container');
@@ -490,7 +490,7 @@ const CheckoutPage: React.FC = () => {
 
                     if (currentUser.subscription?.status === 'active') {
                         if (targetPlanTier <= currentPlanTier && targetPlanTimeScore <= currentTimeScore) {
-                            addToast(`VocÃª jÃ¡ possui o plano ${currentUser.subscription.plan?.name || 'Premium'}. NÃ£o Ã© possÃ­vel assinar um plano inferior ou igual enquanto o atual estiver ativo.`, 'warning');
+                            addToast(`Você já possui o plano ${currentUser.subscription.plan?.name || 'Premium'}. Não é possível assinar um plano inferior ou igual enquanto o atual estiver ativo.`, 'warning');
                             navigate('/profile');
                             return;
                         }
@@ -514,7 +514,7 @@ const CheckoutPage: React.FC = () => {
                     }
                 }
             } else {
-                addToast('Plano nÃ£o encontrado', 'error');
+                addToast('Plano não encontrado', 'error');
                 navigate('/plans');
             }
         } catch (error) {
@@ -590,13 +590,13 @@ const CheckoutPage: React.FC = () => {
 
         if (!currentUser) return;
         try {
-            if (import.meta.env.DEV) console.log('ðŸ’³ Fetching saved cards for user:', currentUser.id);
+            if (import.meta.env.DEV) console.log('💳 Fetching saved cards for user:', currentUser.id);
             const res = await cardsService.listSavedCards(currentUser.id);
             
-            if (import.meta.env.DEV) console.log('ðŸ’³ Cards API Response:', res);
+            if (import.meta.env.DEV) console.log('💳 Cards API Response:', res);
 
             if (res.removed_stale_cards > 0) {
-                addToast('Removemos cartÃ£o(Ãµes) salvos vinculados a um ambiente antigo do Mercado Pago. Salve novamente o cartÃ£o para reutilizÃ¡-lo.', 'warning');
+                addToast('Removemos cartão(ões) salvos vinculados a um ambiente antigo do Mercado Pago. Salve novamente o cartão para reutilizá-lo.', 'warning');
             }
 
             if (res.success && res.cards && res.cards.length > 0) {
@@ -613,7 +613,7 @@ const CheckoutPage: React.FC = () => {
                     );
                 }
             } else {
-                if (import.meta.env.DEV) console.warn('ðŸ’³ No saved cards found or error in response:', res);
+                if (import.meta.env.DEV) console.warn('💳 No saved cards found or error in response:', res);
                 setSavedCards([]);
                 setSelectedCard(null);
                 setIsUsingSavedCard(false);
@@ -664,13 +664,13 @@ const CheckoutPage: React.FC = () => {
         try {
             if (authMode === 'register') {
                 if (formData.password !== formData.confirmPassword) {
-                    addToast('As senhas nÃ£o coincidem.', 'error');
+                    addToast('As senhas não coincidem.', 'error');
                     setAuthLoading(false);
                     return;
                 }
 
                 if (recaptchaEnabled && !captchaToken) {
-                    addToast('Por favor, complete o desafio de seguranÃ§a.', 'error');
+                    addToast('Por favor, complete o desafio de segurança.', 'error');
                     setAuthLoading(false);
                     return;
                 }
@@ -698,7 +698,7 @@ const CheckoutPage: React.FC = () => {
 
             } else {
                 if (recaptchaEnabled && !captchaToken) {
-                    addToast('Por favor, complete o desafio de seguranÃ§a.', 'error');
+                    addToast('Por favor, complete o desafio de segurança.', 'error');
                     setAuthLoading(false);
                     return;
                 }
@@ -710,21 +710,21 @@ const CheckoutPage: React.FC = () => {
                 });
 
                 if (result.require2FA) {
-                    addToast('Esta conta exige 2FA. Entre pela tela de autenticacao para concluir o login.', 'warning');
+                    addToast('Esta conta exige 2FA. Entre pela tela de autenticação para concluir o login.', 'warning');
                     navigate('/auth?mode=login');
                 } else if (result.user) {
                     const { user, token } = result;
                     await login(user, token);
                     addToast('Login realizado com sucesso!', 'success');
                 } else {
-                    addToast('Credenciais invÃ¡lidas.', 'error');
+                    addToast('Credenciais inválidas.', 'error');
                     if (recaptchaRef.current) recaptchaRef.current.reset();
                     setCaptchaToken(null);
                 }
             }
         } catch (error) {
             console.error(error);
-            addToast('Erro ao realizar autenticaÃ§Ã£o.', 'error');
+            addToast('Erro ao realizar autenticação.', 'error');
             if (recaptchaRef.current) recaptchaRef.current.reset();
             setCaptchaToken(null);
         } finally {
@@ -747,7 +747,7 @@ const CheckoutPage: React.FC = () => {
                 setDiscountAmount(Number(response.coupon.discount_amount || 0));
                 addToast('Cupom aplicado com sucesso!', 'success');
             } else {
-                addToast(response.message || 'Cupom invÃ¡lido ou expirado.', 'error');
+                addToast(response.message || 'Cupom inválido ou expirado.', 'error');
                 setAppliedCoupon(null);
                 setDiscountAmount(0);
             }
@@ -802,7 +802,7 @@ const CheckoutPage: React.FC = () => {
             });
 
             await refreshUser();
-            addToast('Perfil atualizado. Agora voce ja pode concluir a compra.', 'success');
+            addToast('Perfil atualizado. Agora você já pode concluir a compra.', 'success');
         } catch (error) {
             console.error('Failed to update checkout requirements', error);
         } finally {
@@ -833,12 +833,12 @@ const CheckoutPage: React.FC = () => {
 
         if (isStripeProvider) {
             if (selectedMethod !== 'credit_card') {
-                addToast('O checkout Stripe desta plataforma aceita assinaturas apenas por cartao.', 'warning');
+                addToast('O checkout Stripe desta plataforma aceita assinaturas apenas por cartão.', 'warning');
                 return;
             }
 
             if (isStripeInternalCheckout) {
-                addToast('Use o formulario de cartao abaixo para concluir a assinatura sem sair da plataforma.', 'info');
+                addToast('Use o formulário de cartão abaixo para concluir a assinatura sem sair da plataforma.', 'info');
                 return;
             }
 
@@ -854,7 +854,7 @@ const CheckoutPage: React.FC = () => {
 
                 const redirectUrl = response?.data?.url || response?.url || response?.data?.redirect_url;
                 if (!response?.success || !redirectUrl) {
-                    throw new Error(response?.message || 'Nao foi possivel iniciar o checkout Stripe.');
+                    throw new Error(response?.message || 'Não foi possível iniciar o checkout Stripe.');
                 }
 
                 window.location.href = redirectUrl;
@@ -875,15 +875,15 @@ const CheckoutPage: React.FC = () => {
                     return;
                 }
                 if (!selectedCard) {
-                    addToast('Selecione um cartÃ£o para continuar.', 'warning');
+                    addToast('Selecione um cartão para continuar.', 'warning');
                     return;
                 }
                 if (!savedCardSecurityReady) {
-                    addToast(savedCardSecurityError || 'Preencha o cÃ³digo de seguranÃ§a do cartÃ£o salvo.', 'warning');
+                    addToast(savedCardSecurityError || 'Preencha o código de segurança do cartão salvo.', 'warning');
                     return;
                 }
             } else if (!paymentData.cardNumber || !paymentData.cardHolder || !paymentData.cardExpiry || !paymentData.cardCvv || !paymentData.cpf) {
-                addToast('Preencha todos os dados do cartÃ£o.', 'error');
+                addToast('Preencha todos os dados do cartão.', 'error');
                 return;
             }
         } else {
@@ -894,7 +894,7 @@ const CheckoutPage: React.FC = () => {
         }
 
         if (selectedMethod === 'credit_card' && isUsingSavedCard && savedCardSecurityReady && !savedCardSecurityComplete) {
-            addToast(savedCardSecurityError || 'Digite o codigo de seguranca do cartao salvo para continuar.', 'warning');
+            addToast(savedCardSecurityError || 'Digite o código de segurança do cartão salvo para continuar.', 'warning');
             return;
         }
 
@@ -915,7 +915,7 @@ const CheckoutPage: React.FC = () => {
                         });
                         
                         if (!cardTokenRes || !cardTokenRes.id) {
-                            throw new Error('Erro ao validar o cartÃ£o salvo com o Mercado Pago. Verifique o cÃ³digo de seguranÃ§a.');
+                            throw new Error('Erro ao validar o cartão salvo com o Mercado Pago. Verifique o código de segurança.');
                         }
                         
                         cardToken = cardTokenRes.id;
@@ -937,7 +937,7 @@ const CheckoutPage: React.FC = () => {
                         });
 
                         if (!cardTokenRes || !cardTokenRes.id) {
-                            throw new Error('Erro ao gerar token de seguranÃ§a do cartÃ£o. Verifique os dados.');
+                            throw new Error('Erro ao gerar token de segurança do cartão. Verifique os dados.');
                         }
 
                         cardToken    = cardTokenRes.id;
@@ -946,7 +946,7 @@ const CheckoutPage: React.FC = () => {
                     }
                 } catch (tkErr: any) {
                     console.error('Tokenization error:', tkErr);
-                    throw new Error(tkErr.message || 'Falha na comunicaÃ§Ã£o segura com o Mercado Pago.');
+                    throw new Error(tkErr.message || 'Falha na comunicação segura com o Mercado Pago.');
                 }
 
                 const installments = isRecurring ? 1 : parseInt(paymentData.installments, 10);
@@ -957,15 +957,15 @@ const CheckoutPage: React.FC = () => {
                 });
 
                 if (!cardToken) {
-                    throw new Error('Token do cartÃƒÂ£o ausente. A tokenizaÃƒÂ§ÃƒÂ£o nÃƒÂ£o foi concluÃƒÂ­da.');
+                    throw new Error('Token do cartão ausente. A tokenização não foi concluída.');
                 }
 
                 if (!resolvedPayment.paymentMethodId) {
-                    throw new Error('NÃƒÂ£o foi possÃƒÂ­vel identificar o payment_method_id do cartÃƒÂ£o.');
+                    throw new Error('Não foi possível identificar o payment_method_id do cartão.');
                 }
 
                 if (!Number.isFinite(installments) || installments < 1) {
-                    throw new Error('NÃƒÂºmero de parcelas invÃƒÂ¡lido para o pagamento.');
+                    throw new Error('Número de parcelas inválido para o pagamento.');
                 }
 
                 const paymentPayload = {
@@ -1028,14 +1028,14 @@ const CheckoutPage: React.FC = () => {
                     if (response.card_save_warning) {
                         addToast(response.card_save_warning, 'warning');
                     } else if (response.card_saved && !isUsingSavedCard) {
-                        addToast('CartÃ£o salvo com sucesso para compras futuras.', 'success');
+                        addToast('Cartão salvo com sucesso para compras futuras.', 'success');
                     }
                 } else {
                     addToast(response.error || 'Pagamento recusado ou erro no processamento.', 'error');
                     setProcessing(false);
                 }
             } else {
-                addToast('Processamento via PIX/Boleto em breve. Use cartÃ£o de crÃ©dito.', 'info');
+                addToast('Processamento via PIX/Boleto em breve. Use cartão de crédito.', 'info');
                 setProcessing(false);
             }
         } catch (error: any) {
@@ -1068,7 +1068,7 @@ const CheckoutPage: React.FC = () => {
             });
 
             if (!response?.success) {
-                throw new Error(response?.message || 'Nao foi possivel iniciar a assinatura Stripe.');
+                throw new Error(response?.message || 'Não foi possível iniciar a assinatura Stripe.');
             }
 
             const payload = response?.data || response;
@@ -1105,7 +1105,7 @@ const CheckoutPage: React.FC = () => {
 
         const subscriptionId = options?.subscriptionId || pendingStripeSubscriptionId;
         if (!subscriptionId) {
-            throw new Error('A assinatura Stripe nao retornou um identificador para a confirmacao final.');
+            throw new Error('A assinatura Stripe não retornou um identificador para a confirmacao final.');
         }
 
         const resolvedSaveCard = options?.saveCard ?? (saveCard || stripeRequiresSavedCard);
@@ -1121,7 +1121,7 @@ const CheckoutPage: React.FC = () => {
         });
 
         if (!response?.success) {
-            throw new Error(response?.message || 'Nao foi possivel finalizar a assinatura Stripe.');
+            throw new Error(response?.message || 'Não foi possível finalizar a assinatura Stripe.');
         }
 
         const payload = response?.data || response;
@@ -1132,7 +1132,7 @@ const CheckoutPage: React.FC = () => {
         setPendingStripePaymentMethodId(null);
 
         if (payload?.card_saved && !options?.savedCardId) {
-            addToast('Cartao salvo com sucesso para compras futuras.', 'success');
+            addToast('Cartão salvo com sucesso para compras futuras.', 'success');
         }
 
         if (payload?.card_save_warning) {
@@ -1140,7 +1140,7 @@ const CheckoutPage: React.FC = () => {
         }
 
         if (payload?.approved === false) {
-            addToast('O pagamento foi bloqueado pela validacao antifraude da Stripe.', 'error');
+            addToast('O pagamento foi bloqueado pela validação antifraude da Stripe.', 'error');
             return;
         }
 
@@ -1154,7 +1154,7 @@ const CheckoutPage: React.FC = () => {
 
     const handleStripeSavedCardPayment = async ({ stripe, cvcElement }: { stripe: any; cvcElement: any }) => {
         if (!plan || !currentUser || !selectedStripeCard) {
-            throw new Error('Selecione um cartao salvo para continuar.');
+            throw new Error('Selecione um cartão salvo para continuar.');
         }
         if (!ensureCheckoutRequirements()) {
             throw new Error('Complete seu perfil e confirme o e-mail antes de concluir a compra.');
@@ -1173,7 +1173,7 @@ const CheckoutPage: React.FC = () => {
             });
 
             if (!response?.success) {
-                throw new Error(response?.message || 'Nao foi possivel iniciar a cobranca com o cartao salvo.');
+                throw new Error(response?.message || 'Não foi possível iniciar a cobrança com o cartão salvo.');
             }
 
             const payload = response?.data || response;
@@ -1181,7 +1181,7 @@ const CheckoutPage: React.FC = () => {
 
             if (payload?.client_secret) {
                 if (!savedPaymentMethodId) {
-                    throw new Error('O cartao salvo selecionado nao possui um metodo de pagamento Stripe valido.');
+                    throw new Error('O cartão salvo selecionado não possui um metodo de pagamento Stripe valido.');
                 }
 
                 const confirmation =
@@ -1199,7 +1199,7 @@ const CheckoutPage: React.FC = () => {
                         });
 
                 if (confirmation.error) {
-                    throw new Error(confirmation.error.message || 'Nao foi possivel confirmar o codigo de seguranca do cartao salvo.');
+                    throw new Error(confirmation.error.message || 'Não foi possível confirmar o código de segurança do cartão salvo.');
                 }
 
                 await finalizeStripeInternalCheckout({
@@ -1219,7 +1219,7 @@ const CheckoutPage: React.FC = () => {
             }
         } catch (error: any) {
             console.error('Stripe saved card checkout error:', error);
-            const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar o cartao salvo.';
+            const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar o cartão salvo.';
             addToast(errorMsg, 'error');
             throw error;
         } finally {
@@ -1383,7 +1383,7 @@ const CheckoutPage: React.FC = () => {
         const discount = appliedCoupon ? discountAmount : 0;
         
         // Se for recorrente, baseamos no valor da parcela
-        // Caso contrÃ¡rio, usamos o total_amount do parcelamento selecionado (que jÃ¡ inclui juros se houver)
+        // Caso contrário, usamos o total_amount do parcelamento selecionado (que já inclui juros se houver)
         const baseAmount = isStripeProvider
             ? (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
                 ? selectedInstallment.installment_amount
@@ -1397,16 +1397,16 @@ const CheckoutPage: React.FC = () => {
     }, [plan, isRecurring, isStripeProvider, maxInstallments, proRatedCredit, appliedCoupon, discountAmount, selectedInstallment.installment_amount, selectedInstallment.total_amount, supportsStripeBillingChoices, selectedStripeInstallmentCount]);
 
     const paymentProviderLabel = isStripeProvider ? 'Stripe' : 'Mercado Pago';
-    const selectedMethodLabel = selectedMethod === 'credit_card' ? 'Cartao' : selectedMethod === 'pix' ? 'Pix' : 'Boleto';
-    const renewalLabel = autoRenew ? 'Automatica' : 'Manual';
+    const selectedMethodLabel = selectedMethod === 'credit_card' ? 'Cartão' : selectedMethod === 'pix' ? 'Pix' : 'Boleto';
+    const renewalLabel = autoRenew ? 'Automática' : 'Manual';
     const paymentActionLabel = isStripeProvider
-        ? (isStripeInternalCheckout ? 'Finalize no formulario Stripe abaixo' : 'Continuar para pagamento')
+        ? (isStripeInternalCheckout ? 'Finalize no formulário Stripe abaixo' : 'Continuar para pagamento')
         : isRecurring
             ? 'Ativar assinatura'
             : 'Pagar agora';
     const processingLabel = isStripeProvider
         ? (isStripeInternalCheckout ? 'Processando assinatura Stripe...' : 'Abrindo checkout Stripe...')
-        : 'Processando SeguranÃ§a...';
+        : 'Processando Segurança...';
 
     const checkoutBillingLabel = isStripeProvider
         ? (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
@@ -1426,7 +1426,7 @@ const CheckoutPage: React.FC = () => {
                     <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600 dark:text-emerald-400">Pagamento aprovado</p>
                     <h2 className="text-3xl font-black leading-none text-slate-900 dark:text-white">Pagamento aprovado!</h2>
                     <p className="mx-auto max-w-xl text-base font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                        Sua assinatura do plano <span className="font-black text-slate-900 dark:text-white">{displayName}</span> foi confirmada com sucesso e o acesso ja esta pronto para uso.
+                        Sua assinatura do plano <span className="font-black text-slate-900 dark:text-white">{displayName}</span> foi confirmada com sucesso e o acesso já esta pronto para uso.
                     </p>
                 </div>
             </div>
@@ -1438,14 +1438,14 @@ const CheckoutPage: React.FC = () => {
                     <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">{billingCycle}</p>
                 </div>
                 <div className="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5 dark:border-slate-800 dark:bg-[#1a1c2e]">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Cobranca confirmada</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Cobrança confirmada</p>
                     <p className="mt-3 text-lg font-black leading-none text-slate-900 dark:text-white">R$ {monetaryTotals.totalDue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                     <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">{checkoutBillingLabel}</p>
                 </div>
                 <div className="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5 dark:border-slate-800 dark:bg-[#1a1c2e]">
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Proximo passo</p>
                     <p className="mt-3 text-lg font-black leading-none text-slate-900 dark:text-white">Ir para a assinatura</p>
-                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">Veja o status do plano, transacoes e renovacao automatica.</p>
+                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">Veja o status do plano, transações e renovação automática.</p>
                 </div>
             </div>
 
@@ -1458,7 +1458,7 @@ const CheckoutPage: React.FC = () => {
                     <ArrowRight size={16} />
                 </button>
                 <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-                    Redirecionamento automatico em {countdown} segundos
+                    Redirecionamento automático em {countdown} segundos
                 </p>
             </div>
         </div>
@@ -1512,9 +1512,9 @@ const CheckoutPage: React.FC = () => {
                 {/* Progress Indicator */}
                 <div className="flex items-center justify-center mb-12 gap-3 max-w-2xl mx-auto">
                     {[
-                        { id: 'identification' as CheckoutStep, label: 'IdentificaÃ§Ã£o' },
+                        { id: 'identification' as CheckoutStep, label: 'Identificação' },
                         { id: 'payment' as CheckoutStep, label: 'Pagamento' },
-                        { id: 'success' as CheckoutStep, label: 'ConfirmaÃ§Ã£o' }
+                        { id: 'success' as CheckoutStep, label: 'Confirmação' }
                     ].map((s, idx, arr) => {
                         const stepsOrder: CheckoutStep[] = ['identification', 'payment', 'success'];
                         const currentIdx = stepsOrder.indexOf(step);
@@ -1542,13 +1542,13 @@ const CheckoutPage: React.FC = () => {
                                 <div className="max-w-md mx-auto space-y-8">
                                     <div className="text-center space-y-2">
                                         <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center mx-auto text-indigo-600 dark:text-indigo-400 mb-4"><User size={32} /></div>
-                                        <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">IdentificaÃ§Ã£o</h2>
+                                        <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Identificação</h2>
                                         <p className="text-sm text-slate-500">Acesse sua conta ou crie uma nova para continuar.</p>
                                     </div>
 
                                     <div className="flex bg-slate-100 dark:bg-[#0f1020] p-1.5 rounded-2xl">
                                         <button onClick={() => setAuthMode('register')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'register' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Criar Conta</button>
-                                        <button onClick={() => setAuthMode('login')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'login' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>JÃ¡ tenho conta</button>
+                                        <button onClick={() => setAuthMode('login')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'login' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Já tenho conta</button>
                                     </div>
 
                                     <form onSubmit={handleAuth} className="space-y-4">
@@ -1572,7 +1572,7 @@ const CheckoutPage: React.FC = () => {
                                             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Senha</label>
                                             <div className="relative">
                                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                                <input type="password" required value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
+                                                <input type="password" required value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="••••••••" />
                                             </div>
                                         </div>
                                         {recaptchaEnabled && <div className="flex justify-center py-2"><ReCAPTCHA ref={recaptchaRef} sitekey={systemSettings?.recaptchaSiteKey || ''} onChange={setCaptchaToken} theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'} /></div>}
@@ -1611,9 +1611,9 @@ const CheckoutPage: React.FC = () => {
                                                     <div className="flex items-center gap-4">
                                                         <CreditCard size={24} />
                                                         <div className="text-left">
-                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Cartao</p>
+                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Cartão</p>
                                                             <p className="text-[11px] font-medium mt-1">
-                                                                {isStripeInternalCheckout ? 'Pagamento direto nesta pÃ¡gina' : 'Pagamento seguro com redirecionamento'}
+                                                                {isStripeInternalCheckout ? 'Pagamento direto nesta página' : 'Pagamento seguro com redirecionamento'}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -1624,7 +1624,7 @@ const CheckoutPage: React.FC = () => {
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                 <button onClick={() => setSelectedMethod('credit_card')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'credit_card' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'}`}>
                                                     <CreditCard size={28} />
-                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">CartÃ£o</span>
+                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Cartão</span>
                                                 </button>
                                                 <button disabled={isRecurring || isStripeProvider} onClick={() => setSelectedMethod('pix')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'pix' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'} ${(isRecurring || isStripeProvider) ? 'opacity-40 cursor-not-allowed' : ''}`}>
                                                     <QrCode size={28} />
@@ -1645,15 +1645,15 @@ const CheckoutPage: React.FC = () => {
                                                 <div className="space-y-5">
                                                     {isLoadingStripeCards ? (
                                                         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-4 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                                                            Carregando cartÃµes salvos...
+                                                            Carregando cartões salvos...
                                                         </div>
                                                     ) : stripeCards.length > 0 ? (
                                                         <div className="space-y-3">
                                                             <div className="flex items-center justify-between">
                                                                 <div>
-                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">CartÃµes salvos</p>
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Cartões salvos</p>
                                                                     <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                                                                        Escolha um cartÃ£o salvo ou use um cartÃ£o novo nesta compra.
+                                                                        Escolha um cartão salvo ou use um cartão novo nesta compra.
                                                                     </p>
                                                                 </div>
                                                                 <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
@@ -1681,13 +1681,13 @@ const CheckoutPage: React.FC = () => {
                                                                             <div className="flex items-center justify-between gap-3">
                                                                                 <div>
                                                                                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">{String(card.brand || 'card').toUpperCase()}</p>
-                                                                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">â€¢â€¢â€¢â€¢ {card.last_four_digits}</p>
+                                                                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">•••• {card.last_four_digits}</p>
                                                                                     <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">Expira em {String(card.exp_month).padStart(2, '0')}/{String(card.exp_year).slice(-2)}</p>
                                                                                 </div>
                                                                                 <div className="flex flex-col items-end gap-2">
                                                                                     {Number(card.is_default) === 1 && (
                                                                                         <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                                                                                            PadrÃ£o
+                                                                                            Padrão
                                                                                         </span>
                                                                                     )}
                                                                                     {isSelected && <CheckCircle2 size={18} className="text-indigo-600 dark:text-indigo-400" />}
@@ -1706,9 +1706,9 @@ const CheckoutPage: React.FC = () => {
                                                                             : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#121528]'
                                                                     }`}
                                                                 >
-                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Novo cartÃ£o</p>
+                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Novo cartão</p>
                                                                     <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">Informar novos dados</p>
-                                                                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">Use outro cartÃ£o e escolha se quer salvÃ¡-lo no seu perfil.</p>
+                                                                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">Use outro cartão e escolha se quer salvá-lo no seu perfil.</p>
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -1744,12 +1744,12 @@ const CheckoutPage: React.FC = () => {
                                                         isUsingStripeSavedCard ? (
                                                             <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6 space-y-5">
                                                                 <div className="space-y-2">
-                                                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">CartÃ£o selecionado</p>
+                                                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cartão selecionado</p>
                                                                     <p className="text-base font-black text-slate-900 dark:text-white">
-                                                                        {String(selectedStripeCard?.brand || 'card').toUpperCase()} â€¢â€¢â€¢â€¢ {selectedStripeCard?.last_four_digits}
+                                                                        {String(selectedStripeCard?.brand || 'card').toUpperCase()} •••• {selectedStripeCard?.last_four_digits}
                                                                     </p>
                                                                     <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                                                                        O pagamento serÃ¡ confirmado com este cartÃ£o salvo. Se a Stripe solicitar autenticaÃ§Ã£o adicional, vocÃª verÃ¡ a confirmaÃ§Ã£o segura logo em seguida.
+                                                                        O pagamento será confirmado com este cartão salvo. Se a Stripe solicitar autenticação adicional, você verá a confirmação segura logo em seguida.
                                                                     </p>
                                                                 </div>
 
@@ -1757,7 +1757,7 @@ const CheckoutPage: React.FC = () => {
                                                                     publishableKey={STRIPE_PUBLISHABLE_KEY}
                                                                     cardBrand={selectedStripeCard?.brand}
                                                                     last4={selectedStripeCard?.last_four_digits}
-                                                                    submitLabel={processing ? 'Confirmando cartao salvo...' : 'Pagar com cartao salvo'}
+                                                                    submitLabel={processing ? 'Confirmando cartão salvo...' : 'Pagar com cartão salvo'}
                                                                     onConfirm={handleStripeSavedCardPayment}
                                                                 />
                                                                 <button
@@ -1766,7 +1766,7 @@ const CheckoutPage: React.FC = () => {
                                                                     disabled
                                                                     className="hidden"
                                                                 >
-                                                                    {processing ? 'Processando pagamento...' : 'Pagar com cartÃ£o salvo'}
+                                                                    {processing ? 'Processando pagamento...' : 'Pagar com cartão salvo'}
                                                                 </button>
                                                             </div>
                                                         ) : (
@@ -1776,7 +1776,7 @@ const CheckoutPage: React.FC = () => {
                                                                     billingName={currentUser.name}
                                                                     billingEmail={currentUser.email}
                                                                     billingAddress={currentUser.address}
-                                                                    submitLabel={processing ? 'Processando pagamento...' : 'Pagar com cartÃ£o'}
+                                                                    submitLabel={processing ? 'Processando pagamento...' : 'Pagar com cartão'}
                                                                     onPaymentMethodCreated={handleStripeInternalPayment}
                                                                 onPaymentFinalized={(step) => finalizeStripeInternalCheckout({
                                                                     subscriptionId: step?.subscriptionId || null,
@@ -1789,7 +1789,7 @@ const CheckoutPage: React.FC = () => {
                                                         )
                                                     ) : (
                                                         <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6">
-                                                            <p className="text-sm font-bold text-slate-900 dark:text-white">VocÃª serÃ¡ levado para a tela segura da Stripe para informar o cartÃ£o e concluir a compra.</p>
+                                                            <p className="text-sm font-bold text-slate-900 dark:text-white">Você será levado para a tela segura da Stripe para informar o cartão e concluir a compra.</p>
                                                         </div>
                                                     )}
 
@@ -1807,11 +1807,11 @@ const CheckoutPage: React.FC = () => {
                                                         </div>
                                                         <div className="flex flex-col">
                                                             <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-indigo-700 dark:group-hover:text-white transition-colors">
-                                                                Salvar este cartÃ£o para compras futuras
-                                                                {stripeRequiresSavedCard && <span className="ml-1 font-extrabold text-indigo-600 dark:text-indigo-400">(NecessÃ¡rio para renovaÃ§Ã£o automÃ¡tica)</span>}
+                                                                Salvar este cartão para compras futuras
+                                                                {stripeRequiresSavedCard && <span className="ml-1 font-extrabold text-indigo-600 dark:text-indigo-400">(Necessário para renovação automática)</span>}
                                                             </span>
                                                             <span className="text-[10px] text-slate-500">
-                                                                Ele aparecerÃ¡ em Dados Pessoais para reutilizaÃ§Ã£o rÃ¡pida nas prÃ³ximas compras.
+                                                                Ele aparecerá em Dados Pessoais para reutilização rápida nas próximas compras.
                                                             </span>
                                                         </div>
                                                     </label>
@@ -1834,9 +1834,9 @@ const CheckoutPage: React.FC = () => {
                                                             <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
                                                         </div>
                                                         <div className="flex flex-col">
-                                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-emerald-700 dark:group-hover:text-white transition-colors">RenovaÃ§Ã£o automÃ¡tica</span>
+                                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-emerald-700 dark:group-hover:text-white transition-colors">Renovação automática</span>
                                                             <span className="text-[10px] text-slate-500">
-                                                                {autoRenew ? 'Sua assinatura continuarÃ¡ ativa e a cobranÃ§a serÃ¡ renovada automaticamente.' : 'Sua assinatura serÃ¡ encerrada no fim do ciclo atual.'}
+                                                                {autoRenew ? 'Sua assinatura continuará ativa e a cobrança será renovada automaticamente.' : 'Sua assinatura será encerrada no fim do ciclo atual.'}
                                                             </span>
                                                         </div>
                                                     </label>
@@ -1849,7 +1849,7 @@ const CheckoutPage: React.FC = () => {
                                                     {savedCards.length > 0 && (
                                                         <div className="space-y-4">
                                                             <div className="flex items-center justify-between px-1">
-                                                                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none">CartÃµes Salvos</h3>
+                                                                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none">Cartões Salvos</h3>
 	                                                                <button onClick={() => {
 	                                                                    if (!savedCardCheckoutSupported && !isUsingSavedCard) {
 	                                                                        addToast(savedCardCheckoutBlockedMessage, 'info');
@@ -1862,13 +1862,13 @@ const CheckoutPage: React.FC = () => {
 	                                                                        setPaymentData((prev) => ({ ...prev, cardCvv: '' }));
 	                                                                    }
 	                                                                }} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline transition-all">
-                                                                    {isUsingSavedCard ? '+ Novo CartÃ£o' : ' Meus CartÃµes'}
+                                                                    {isUsingSavedCard ? '+ Novo Cartão' : ' Meus Cartões'}
                                                                 </button>
                                                             </div>
 
                                                             {!savedCardCheckoutSupported && (
                                                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-semibold leading-relaxed text-amber-800">
-                                                                    O checkout com cartao salvo do Mercado Pago exige credenciais de producao. Enquanto sua integracao estiver com chave <span className="font-black">TEST</span>, voce ainda pode salvar o cartao com seguranca, mas a reutilizacao dele no checkout ficara indisponivel.
+                                                                    O checkout com cartão salvo do Mercado Pago exige credenciais de produção. Enquanto sua integração estiver com chave <span className="font-black">TEST</span>, você ainda pode salvar o cartão com segurança, mas a reutilizacao dele no checkout ficara indisponivel.
                                                                 </div>
                                                             )}
 
@@ -1900,7 +1900,7 @@ const CheckoutPage: React.FC = () => {
                                                                         </div>
 
                                                                         <div className="space-y-1">
-                                                                            <div className="text-sm font-black tracking-widest">â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ â€¢â€¢â€¢â€¢ {card.last_four_digits}</div>
+                                                                            <div className="text-sm font-black tracking-widest">•••• •••• •••• {card.last_four_digits}</div>
                                                                             <div className="text-[9px] font-bold uppercase opacity-60">Expira em {String(card.exp_month).padStart(2, '0')}/{String(card.exp_year).slice(-2)}</div>
                                                                         </div>
                                                                     </button>
@@ -1921,15 +1921,15 @@ const CheckoutPage: React.FC = () => {
                                                     {!isUsingSavedCard ? (
                                                         <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
                                                             <div className="space-y-2">
-                                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome no CartÃ£o</label>
+                                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome no Cartão</label>
                                                                 <div className="relative">
                                                                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                                                    <input type="text" placeholder="COMO ESTÃ IMPRESSO" value={paymentData.cardHolder} onChange={e => setPaymentData({ ...paymentData, cardHolder: e.target.value.toUpperCase() })} className="w-full h-14 pl-12 pr-4 bg-white dark:bg-[#0f1020] border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400 uppercase tracking-widest text-xs" />
+                                                                    <input type="text" placeholder="COMO ESTÁ IMPRESSO" value={paymentData.cardHolder} onChange={e => setPaymentData({ ...paymentData, cardHolder: e.target.value.toUpperCase() })} className="w-full h-14 pl-12 pr-4 bg-white dark:bg-[#0f1020] border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400 uppercase tracking-widest text-xs" />
                                                                 </div>
                                                             </div>
                                                             
                                                             <div className="space-y-2">
-                                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Dados do CartÃ£o</label>
+                                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Dados do Cartão</label>
                                                                 <div className="relative">
                                                                     <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
                                                                         {getBrandIcon(paymentMethodId) ? (
@@ -1987,11 +1987,11 @@ const CheckoutPage: React.FC = () => {
                                                                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-[#1a1c2e]"></div>
                                                             </div>
                                                             <div>
-                                                                <div className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.2em] mb-2">ConfirmaÃ§Ã£o de SeguranÃ§a</div>
-                                                                <p className="text-[10px] text-slate-500 uppercase font-bold leading-relaxed max-w-[240px]">Para sua proteÃ§Ã£o, insira o CVV do cartÃ£o final <span className="text-indigo-600 font-black">{selectedCard?.last_four_digits}</span> para autorizar o pagamento.</p>
+                                                                <div className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.2em] mb-2">Confirmação de Segurança</div>
+                                                                <p className="text-[10px] text-slate-500 uppercase font-bold leading-relaxed max-w-[240px]">Para sua proteção, insira o CVV do cartão final <span className="text-indigo-600 font-black">{selectedCard?.last_four_digits}</span> para autorizar o pagamento.</p>
                                                             </div>
                                                             <div className="w-40 space-y-2">
-                                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">CÃ³digo CVV</label>
+                                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Código CVV</label>
                                                                 <div className="relative h-14 bg-white dark:bg-[#0f1020] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden">
                                                                     <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10 pointer-events-none" size={18} />
                                                                     <div
@@ -2001,7 +2001,7 @@ const CheckoutPage: React.FC = () => {
                                                                     />
                                                                 </div>
                                                                 {savedCardSecurityError && <p className="text-[10px] text-rose-500 font-bold leading-tight">{savedCardSecurityError}</p>}
-                                                                {!savedCardSecurityError && <p className="text-[10px] text-slate-500 font-bold leading-tight">Digite o CVV do cartao salvo para confirmar esta compra.</p>}
+                                                                {!savedCardSecurityError && <p className="text-[10px] text-slate-500 font-bold leading-tight">Digite o CVV do cartão salvo para confirmar esta compra.</p>}
                                                             </div>
                                                         </div>
                                                     )}
@@ -2014,8 +2014,8 @@ const CheckoutPage: React.FC = () => {
                                                                 <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                                                             </div>
                                                             <div className="flex flex-col">
-                                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-indigo-700 dark:group-hover:text-white transition-colors">Salvar este cartÃ£o para compras futuras {isRecurring && <span className="text-indigo-600 dark:text-indigo-400 font-extrabold ml-1">(Ativo na RecorrÃªncia)</span>}{!isRecurring && autoRenew && !isUsingSavedCard && <span className="text-indigo-600 dark:text-indigo-400 font-extrabold ml-1">(NecessÃ¡rio para renovaÃ§Ã£o automÃ¡tica)</span>}</span>
-                                                                <span className="text-[10px] text-slate-500">Seus dados serÃ£o criptografados de ponta a ponta.</span>
+                                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-indigo-700 dark:group-hover:text-white transition-colors">Salvar este cartão para compras futuras {isRecurring && <span className="text-indigo-600 dark:text-indigo-400 font-extrabold ml-1">(Ativo na Recorrência)</span>}{!isRecurring && autoRenew && !isUsingSavedCard && <span className="text-indigo-600 dark:text-indigo-400 font-extrabold ml-1">(Necessário para renovação automática)</span>}</span>
+                                                                <span className="text-[10px] text-slate-500">Seus dados serão criptografados de ponta a ponta.</span>
                                                             </div>
                                                         </label>
                                                     </div>
@@ -2034,11 +2034,11 @@ const CheckoutPage: React.FC = () => {
                                                                 <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
                                                             </div>
                                                             <div className="flex flex-col">
-                                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-emerald-700 dark:group-hover:text-white transition-colors">RenovaÃ§Ã£o automÃ¡tica</span>
+                                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-emerald-700 dark:group-hover:text-white transition-colors">Renovação automática</span>
                                                                 <span className="text-[10px] text-slate-500">
                                                                     {autoRenew
-                                                                        ? 'Quando sua assinatura vencer, tentaremos renovar usando o cartÃ£o salvo de forma segura.'
-                                                                        : 'Sua assinatura ficarÃ¡ com renovaÃ§Ã£o manual. VocÃª poderÃ¡ contratar novamente depois.'}
+                                                                        ? 'Quando sua assinatura vencer, tentaremos renovar usando o cartão salvo de forma segura.'
+                                                                        : 'Sua assinatura ficará com renovação manual. Você poderá contratar novamente depois.'}
                                                                 </span>
                                                             </div>
                                                         </label>
@@ -2054,10 +2054,10 @@ const CheckoutPage: React.FC = () => {
                                                                     </div>
                                                                     <div className="flex-1 space-y-1">
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">Ativar Modo RecorrÃªncia</span>
+                                                                            <span className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">Ativar Modo Recorrência</span>
                                                                             <span className="px-2 py-0.5 bg-indigo-600 text-white text-[8px] font-black uppercase rounded-full">Recomendado</span>
                                                                         </div>
-                                                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Pague apenas R$ {(plan.price / maxInstallments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} mensais sem comprometer o limite total do cartÃ£o.</p>
+                                                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Pague apenas R$ {(plan.price / maxInstallments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} mensais sem comprometer o limite total do cartão.</p>
                                                                     </div>
                                                                 </label>
                                                             </div>
@@ -2065,7 +2065,7 @@ const CheckoutPage: React.FC = () => {
                                                     )}
 
                                                     <div className="space-y-1">
-                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{isRecurring ? 'OpÃ§Ãµes de Parcelamento (1x na RecorrÃªncia)' : 'OpÃ§Ãµes de Parcelamento'}</label>
+                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{isRecurring ? 'Opções de Parcelamento (1x na Recorrência)' : 'Opções de Parcelamento'}</label>
                                                         <select disabled={isRecurring} value={paymentData.installments} onChange={e => setPaymentData({ ...paymentData, installments: e.target.value })} className={`w-full h-12 px-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all ${isRecurring ? 'opacity-50' : ''}`}>
                                                             {isRecurring ? (
                                                                 <option value="1">1x de R$ {(plan.price / maxInstallments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} s/ juros (Assinatura)</option>
@@ -2092,7 +2092,7 @@ const CheckoutPage: React.FC = () => {
                                                             {selectedMethod === 'pix' ? <QrCode size={20} /> : <FileText size={20} />}
                                                         </div>
                                                         <p className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 leading-tight">
-                                                            {selectedMethod === 'pix' ? 'Pagamento instantÃ¢neo. A confirmaÃ§Ã£o ocorre em poucos segundos via QR Code ou Copia e Cola.' : 'Boleto bancÃ¡rio. A compensaÃ§Ã£o pode levar atÃ© 48h Ãºteis.'}
+                                                            {selectedMethod === 'pix' ? 'Pagamento instantâneo. A confirmação ocorre em poucos segundos via QR Code ou Copia e Cola.' : 'Boleto bancário. A compensação pode levar até 48h úteis.'}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -2178,10 +2178,10 @@ const CheckoutPage: React.FC = () => {
                                 </div>
                                 <div className="space-y-3">
                                     <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Pagamento Aprovado!</h2>
-                                    <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto font-medium">ParabÃ©ns! Sua assinatura do plano <span className="text-indigo-600 dark:text-indigo-400 font-black">{displayName}</span> foi ativada com sucesso.</p>
+                                    <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto font-medium">Parabéns! Sua assinatura do plano <span className="text-indigo-600 dark:text-indigo-400 font-black">{displayName}</span> foi ativada com sucesso.</p>
                                 </div>
                                 <div className="pt-4 flex flex-col items-center gap-4">
-                                    <button onClick={() => navigate('/profile?tab=billing')} className="px-12 py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-[0.2em] text-[10px] rounded-2xl shadow-xl shadow-indigo-500/20 transition-all hover:-translate-y-1">ComeÃ§ar Agora</button>
+                                    <button onClick={() => navigate('/profile?tab=billing')} className="px-12 py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-[0.2em] text-[10px] rounded-2xl shadow-xl shadow-indigo-500/20 transition-all hover:-translate-y-1">Começar Agora</button>
                                     <div className="text-[10px] text-slate-400 uppercase tracking-widest font-black flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div>
                                         Redirecionando automaticamente em {countdown} segundos...
@@ -2213,11 +2213,11 @@ const CheckoutPage: React.FC = () => {
                                         <span className="text-slate-900 dark:text-white font-black">{selectedMethodLabel}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Cobranca</span>
+                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Cobrança</span>
                                         <span className="text-right text-slate-900 dark:text-white font-black">{checkoutBillingLabel}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span className="text-slate-500 uppercase font-bold tracking-widest">RenovaÃ§Ã£o</span>
+                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Renovação</span>
                                         <span className="text-slate-900 dark:text-white font-black">{renewalLabel}</span>
                                     </div>
                                     
@@ -2228,11 +2228,11 @@ const CheckoutPage: React.FC = () => {
                                     {!isStripeProvider && !isRecurring && selectedInstallment.installments > 1 && (
                                         <div className="flex justify-between items-center text-slate-500 italic">
                                             <span>Parcelamento ({selectedInstallment.installments}x)</span>
-                                            <span>R$ {selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mÃªs</span>
+                                            <span>R$ {selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês</span>
                                         </div>
                                     )}
                                     
-                                    {proRatedCredit > 0 && <div className="flex justify-between items-center text-emerald-600 font-bold"><span>CrÃ©dito MigraÃ§Ã£o</span><span>- R$ {proRatedCredit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>}
+                                    {proRatedCredit > 0 && <div className="flex justify-between items-center text-emerald-600 font-bold"><span>Crédito Migração</span><span>- R$ {proRatedCredit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>}
                                     {discountAmount > 0 && <div className="flex justify-between items-center text-emerald-600 font-bold"><span>Desconto Aplicado</span><span>- R$ {discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>}
                                     <div className="flex justify-between items-center text-slate-500">
                                         <span>Gateway</span>
@@ -2242,11 +2242,11 @@ const CheckoutPage: React.FC = () => {
                                     <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800 space-y-3">
                                         <div className="flex justify-between items-end">
                                             <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isStripeProvider && supportsStripeBillingChoices && selectedStripeInstallmentCount > 1 ? 'Primeira cobranca' : 'Total a pagar'}</span>
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isStripeProvider && supportsStripeBillingChoices && selectedStripeInstallmentCount > 1 ? 'Primeira cobrança' : 'Total a pagar'}</span>
                                                 <span className="text-[9px] text-slate-400 italic">
                                                     {isStripeProvider && supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
-                                                        ? `Cobranca ${selectedStripeInstallmentCount}x do plano contratado`
-                                                        : 'Valor final desta cobranca'}
+                                                        ? `Cobrança ${selectedStripeInstallmentCount}x do plano contratado`
+                                                        : 'Valor final desta cobrança'}
                                                 </span>
                                             </div>
                                             <div className="flex flex-col items-end">
@@ -2267,25 +2267,25 @@ const CheckoutPage: React.FC = () => {
                     <div className="bg-slate-900 w-full max-w-lg rounded-3xl p-8 border border-slate-800 text-center space-y-6">
                         <div className="w-20 h-20 bg-amber-500/10 rounded-2xl flex items-center justify-center mx-auto"><AlertTriangle size={40} className="text-amber-500" /></div>
                         <h3 className="text-xl font-black text-white uppercase tracking-tight">Aviso de Downgrade</h3>
-                        <p className="text-sm text-slate-400 leading-relaxed">VocÃª estÃ¡ mudando para um plano inferior. BenefÃ­cios exclusivos do seu plano atual (<span className="text-indigo-400 font-bold">{currentUser?.subscription?.plan?.name}</span>) serÃ£o perdidos na prÃ³xima renovaÃ§Ã£o.</p>
+                        <p className="text-sm text-slate-400 leading-relaxed">Você está mudando para um plano inferior. Benefícios exclusivos do seu plano atual (<span className="text-indigo-400 font-bold">{currentUser?.subscription?.plan?.name}</span>) serão perdidos na próxima renovação.</p>
                         <button onClick={() => setShowDowngradeModal(false)} className="w-full py-4 bg-white text-slate-900 rounded-xl font-black uppercase tracking-widest">Entendi e quero continuar</button>
                     </div>
                 </div>
             )}
 
             {showCheckoutRequirementsModal && currentUser && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto p-4 md:items-center">
                     <div
                         className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
                         onClick={() => setShowCheckoutRequirementsModal(false)}
                     />
-                    <div className="relative z-10 w-full max-w-3xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-[#1a1c2e] md:p-8">
-                        <div className="flex flex-col gap-3 border-b border-slate-100 pb-5 dark:border-slate-800 md:flex-row md:items-start md:justify-between">
+                    <div className="relative z-10 my-auto flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-[#1a1c2e] md:p-8">
+                        <div className="flex flex-none flex-col gap-3 border-b border-slate-100 pb-5 dark:border-slate-800 md:flex-row md:items-start md:justify-between">
                             <div className="space-y-2">
                                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Checkout seguro</p>
                                 <h3 className="text-2xl font-black text-slate-900 dark:text-white">Complete seu cadastro para pagar</h3>
                                 <p className="max-w-2xl text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                                    Antes de concluir a compra, precisamos dos seus dados de cobranca e de uma conta com e-mail confirmado.
+                                    Antes de concluir a compra, precisamos dos seus dados de cobrança e de uma conta com e-mail confirmado.
                                 </p>
                             </div>
                             <button
@@ -2297,13 +2297,13 @@ const CheckoutPage: React.FC = () => {
                             </button>
                         </div>
 
-                        <div className="mt-6 space-y-6">
+                        <div className="mt-6 flex-1 space-y-6 overflow-y-auto pr-1">
                             <div className={`rounded-[1.5rem] border px-5 py-4 ${currentUser.emailVerified ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10' : 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10'}`}>
                                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                     <div className="space-y-1">
                                         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Confirmacao de e-mail</p>
                                         <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                                            {currentUser.emailVerified ? 'Seu e-mail ja esta confirmado.' : 'Confirme seu e-mail para liberar o pagamento.'}
+                                            {currentUser.emailVerified ? 'Seu e-mail já esta confirmado.' : 'Confirme seu e-mail para liberar o pagamento.'}
                                         </p>
                                         <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{currentUser.email}</p>
                                     </div>
@@ -2325,7 +2325,7 @@ const CheckoutPage: React.FC = () => {
                                             }}
                                             className="h-11 rounded-xl bg-slate-900 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-slate-800 dark:bg-indigo-600"
                                         >
-                                            Ja confirmei
+                                            Já confirmei
                                         </button>
                                     </div>
                                 </div>
@@ -2418,7 +2418,7 @@ const CheckoutPage: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                        <div className="mt-6 flex flex-none flex-col gap-3 border-t border-slate-100 pt-6 dark:border-slate-800 sm:flex-row sm:justify-end">
                             <button
                                 type="button"
                                 onClick={() => setShowCheckoutRequirementsModal(false)}

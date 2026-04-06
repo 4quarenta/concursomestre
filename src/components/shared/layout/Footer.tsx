@@ -33,7 +33,7 @@ const Footer: React.FC = () => {
                         <span>ConcursoMestre</span>
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-xs text-center md:text-left">
-                        A plataforma completa para sua aprovaÃ§Ã£o. Estude com inteligÃªncia e conquiste sua vaga.
+                        A plataforma completa para sua aprovação. Estude com inteligência e conquiste sua vaga.
                     </p>
                 </div>
 
@@ -53,7 +53,7 @@ const Footer: React.FC = () => {
 
             <div className="mt-12 flex flex-col md:flex-row justify-between items-center gap-4 pt-8 border-t border-slate-100 dark:border-slate-900">
                 <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                    Â© {currentYear} ConcursoMestre. Todos os direitos reservados.
+                    © {currentYear} ConcursoMestre. Todos os direitos reservados.
                 </p>
                 <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                     Desenvolvido com <Heart size={10} className="text-rose-500 animate-pulse" /> para concurseiros

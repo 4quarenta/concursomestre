@@ -105,7 +105,7 @@ describe('supportService', () => {
     expect(mockPost).toHaveBeenCalledWith('feedback/create.php', {
       parent_id: 12,
       type: 'bug',
-      reason: 'Resposta do usuario',
+      reason: 'Resposta do usuário',
       details: 'Tenho mais contexto para esse caso.',
     });
   });

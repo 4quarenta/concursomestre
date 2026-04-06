@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Reduzir a raiz de `api/` para runtime real e bridges HTTP, removendo scripts auxiliares, seeds e utilitarios de debug que nao pertencem a endpoints publicos.
+Reduzir a raiz de `api/` para runtime real e bridges HTTP, removendo scripts auxiliares, seeds e utilitarios de debug que não pertencem a endpoints publicos.
 
 ## Reclassificacao desta rodada
 
@@ -56,7 +56,7 @@ Reduzir a raiz de `api/` para runtime real e bridges HTTP, removendo scripts aux
 
 - `api/` fica mais proximo do papel oficial: endpoints e bridges.
 - Scripts operacionais saem do caminho do runtime HTTP.
-- O backend deixa de expor seed e utilitarios de banco como se fossem API publica.
+- O backend deixa de expor seed e utilitarios de banco como se fossem API pública.
 
 ## Estado apos a limpeza
 
@@ -68,5 +68,5 @@ A raiz direta de `api/` ficou reduzida a:
 
 Os dois arquivos PHP restantes continuam existindo apenas por compatibilidade de rota:
 
-- `settings.php` como bridge/entry point legado oficial de configuracoes
+- `settings.php` como bridge/entry point legado oficial de configurações
 - `upload.php` como bridge fino do upload agora centralizado em `modules/materials`

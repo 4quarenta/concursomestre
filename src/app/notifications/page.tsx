@@ -140,7 +140,7 @@ const Page: React.FC = () => {
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
-            <Bell className="text-indigo-600 dark:text-indigo-400" /> Notificacoes
+            <Bell className="text-indigo-600 dark:text-indigo-400" /> Notificações
           </h1>
           <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1 transition-colors">
             Acompanhe suas novidades e alertas do sistema.
@@ -158,7 +158,7 @@ const Page: React.FC = () => {
           {activeTab !== 'trash' && (
             <button
               onClick={() => {
-                if (confirm('Tem certeza que deseja mover todas as notificacoes para a lixeira?')) {
+                if (confirm('Tem certeza que deseja mover todas as notificações para a lixeira?')) {
                   clearNotifications(currentUser.id);
                 }
               }}
@@ -176,7 +176,7 @@ const Page: React.FC = () => {
         <TabButton id="system" label="Sistema" icon={Info} />
         <TabButton id="social" label="Social" icon={MessageSquare} />
         <TabButton id="marketplace" label="Loja" icon={ShoppingBag} />
-        <TabButton id="report" label="Relatorios" icon={Shield} />
+        <TabButton id="report" label="Relatórios" icon={Shield} />
         <TabButton id="trash" label="Lixeira" icon={Trash2} />
       </div>
 
@@ -224,7 +224,7 @@ const Page: React.FC = () => {
                   </p>
                   {notification.link && (
                     <span className="flex items-center gap-1 text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
-                      Ver conteudo <ArrowRight size={10} />
+                      Ver conteúdo <ArrowRight size={10} />
                     </span>
                   )}
                   <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase transition-colors">
@@ -289,7 +289,7 @@ const Page: React.FC = () => {
             <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-full transition-colors">
               <Inbox size={48} className="opacity-50" />
             </div>
-            <p className="text-sm font-medium transition-colors">Nenhuma notificacao nesta categoria.</p>
+            <p className="text-sm font-medium transition-colors">Nenhuma notificação nesta categoria.</p>
           </div>
         )}
       </div>

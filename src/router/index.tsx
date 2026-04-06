@@ -21,10 +21,11 @@ import { AdminRoutes } from './adminRoutes';
 import { PrivateRoutes } from './privateRoutes';
 import { PublicRoutes } from './publicRoutes';
 import RouteSuspenseFallback from './RouteSuspenseFallback';
+import { useRoutePersistence } from './useRoutePersistence';
 
 /**
  * Casca interna do roteamento oficial da plataforma.
- * Ela conecta autenticacao, configuracoes globais, guardas de manutencao/pagamento e os grupos de rotas que montam o site.
+ * Ela conecta autenticação, configurações globais, guardas de manutencao/pagamento e os grupos de rotas que montam o site.
  */
 const RoutedAppRouter: React.FC = () => {
   const { currentUser, login, logout, isLoading } = useAuth();
@@ -32,9 +33,10 @@ const RoutedAppRouter: React.FC = () => {
   const [showLoginBypass, setShowLoginBypass] = React.useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  useRoutePersistence(location, navigate, isLoading);
 
   /**
-   * Guarda a rota desejada antes do login para que o usuario volte ao fluxo correto depois de autenticar.
+   * Guarda a rota desejada antes do login para que o usuário volte ao fluxo correto depois de autenticar.
    */
   React.useEffect(() => {
     if (!isLoading && !currentUser && location.pathname !== '/auth' && location.pathname !== '/' && location.pathname !== '/plans') {
@@ -106,8 +108,8 @@ const RoutedAppRouter: React.FC = () => {
             <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Problema no Pagamento</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
               {isPastDueSubscription
-                ? 'A renovacao da sua assinatura falhou e seu acesso ficou pendente. Atualize ou troque o cartao salvo para regularizar a cobranca.'
-                : 'Detectamos um problema com o metodo de pagamento da sua assinatura ativa (cartao vencido ou ausente). Atualize seus dados para continuar acessando a plataforma.'}
+                ? 'A renovação da sua assinatura falhou e seu acesso ficou pendente. Atualize ou troque o cartão salvo para regularizar a cobrança.'
+                : 'Detectamos um problema com o metodo de pagamento da sua assinatura ativa (cartão vencido ou ausente). Atualize seus dados para continuar acessando a plataforma.'}
             </p>
           </div>
           <div className="flex flex-col gap-3">
@@ -115,7 +117,7 @@ const RoutedAppRouter: React.FC = () => {
               onClick={() => navigate('/profile')}
               className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20"
             >
-              Atualizar Cartao Agora
+              Atualizar Cartão Agora
             </button>
             <button
               onClick={logout}
@@ -148,8 +150,8 @@ const RoutedAppRouter: React.FC = () => {
 };
 
 /**
- * Entrada oficial do roteador da aplicacao.
- * Todo o site passa por aqui antes de chegar nas rotas publicas, privadas e administrativas.
+ * Entrada oficial do roteador da aplicação.
+ * Todo o site passa por aqui antes de chegar nas rotas públicas, privadas e administrativas.
  */
 export const AppRouter: React.FC = () => {
   return (

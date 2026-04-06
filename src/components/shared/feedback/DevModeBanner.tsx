@@ -20,15 +20,15 @@ import { useData } from '@providers/DataProvider';
 /**
  * DevModeBanner
  * Exibido globalmente quando appMode === 'development'.
- * Mostra o modo atual e informaÃ§Ãµes de debug Ãºteis para desenvolvimento.
- * Totalmente oculto em produÃ§Ã£o.
+ * Mostra o modo atual e informações de debug úteis para desenvolvimento.
+ * Totalmente oculto em produção.
  */
 const DevModeBanner: React.FC = () => {
     const { systemSettings } = useData();
     const [expanded, setExpanded] = useState(false);
     const [dismissed, setDismissed] = useState(false);
 
-    // Oculta em produÃ§Ã£o ou se dispensado
+    // Oculta em produção ou se dispensado
     if (systemSettings?.appMode === 'production' || dismissed) return null;
 
     const smtpConfigured = !!(systemSettings?.smtpHost && systemSettings?.smtpUser);
@@ -48,7 +48,7 @@ const DevModeBanner: React.FC = () => {
                                     e-mails: apenas log
                                 </span>
                                 <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${smtpConfigured ? 'bg-emerald-200/60' : 'bg-red-200/60'}`}>
-                                    SMTP: {smtpConfigured ? 'configurado' : 'nÃ£o configurado'}
+                                    SMTP: {smtpConfigured ? 'configurado' : 'não configurado'}
                                 </span>
                                 <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${apiKeySet ? 'bg-emerald-200/60' : 'bg-red-200/60'}`}>
                                     Gemini AI: {apiKeySet ? 'ativo' : 'sem chave'}
@@ -66,7 +66,7 @@ const DevModeBanner: React.FC = () => {
                             <button
                                 onClick={() => setDismissed(true)}
                                 className="p-1 hover:opacity-70 transition-opacity"
-                                title="Dispensar (sessÃ£o atual)"
+                                title="Dispensar (sessão atual)"
                             >
                                 <X size={14} />
                             </button>
@@ -83,11 +83,11 @@ const DevModeBanner: React.FC = () => {
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <Mail size={12} />
-                                    <span>SMTP: {smtpConfigured ? systemSettings?.smtpHost : 'â€”'}</span>
+                                    <span>SMTP: {smtpConfigured ? systemSettings?.smtpHost : '?'}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <Database size={12} />
-                                    <span>PIX: {systemSettings?.pixKey ? 'configurado' : 'â€”'}</span>
+                                    <span>PIX: {systemSettings?.pixKey ? 'configurado' : '?'}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     <Zap size={12} />
@@ -96,7 +96,7 @@ const DevModeBanner: React.FC = () => {
                             </div>
 
                             <div className="mt-3 border-t border-amber-400/40 pt-3">
-                                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mb-2">Logins rÃ¡pidos (dev only)</p>
+                                <p className="text-[10px] font-bold opacity-70 uppercase tracking-widest mb-2">Logins rápidos (dev only)</p>
                                 <div className="flex flex-wrap gap-2">
                                     <QuickLoginButton role="Aluno" email="aluno@email.com" icon={<User size={11} />} />
                                     <QuickLoginButton role="Admin" email="admin@concursomestre.com" icon={<Shield size={11} />} />
@@ -111,10 +111,10 @@ const DevModeBanner: React.FC = () => {
     );
 };
 
-/** BotÃ£o de login rÃ¡pido que redireciona para /auth com parÃ¢metro de preenchimento */
+/** Botão de login rápido que redireciona para /auth com parâmetro de preenchimento */
 const QuickLoginButton: React.FC<{ role: string; email: string; icon: React.ReactNode }> = ({ role, email, icon }) => {
     const handleClick = () => {
-        // Salva credenciais de dev no sessionStorage para prÃ©-preencher o formulÃ¡rio
+        // Salva credenciais de dev no sessionStorage para pré-preencher o formulário
         sessionStorage.setItem('dev_prefill_email', email);
         sessionStorage.setItem('dev_prefill_password', '123456');
         window.location.hash = '/auth?mode=login&dev=1';

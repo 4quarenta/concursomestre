@@ -10,7 +10,7 @@
 */
 
 /**
- * Fachada oficial dos servicos de questoes e extracao por IA.
+ * Fachada oficial dos serviços de questões e extracao por IA.
  */
 export type { PageExtractionResult } from './aiService';
 export { aiService } from './aiService';

@@ -51,9 +51,9 @@ type AuthAction =
   | { type: 'FINISH_LOADING' };
 
 /**
- * Reducer central da sessao autenticada.
- * Ele consolida mutacoes de usuario que abastecem todo o site, incluindo perfil, XP, simulados e materiais comprados.
- * @since v1.0.0
+ * Reducer central da sessão autenticada.
+ * Ele consolida mutacoes de usuário que abastecem todo o site, incluindo perfil, XP, simulados e materiais comprados.
+ * @since 1.0.0
  */
 function authReducer(state: AuthState, action: AuthAction): AuthState {
   if (!state.currentUser && action.type !== 'LOGIN' && action.type !== 'FINISH_LOADING' && action.type !== 'LOGOUT') {
@@ -163,14 +163,19 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
- * Provider oficial de autenticacao da plataforma.
- * Ele monta a sessao consumida por rotas, layout, checkout, rankings, simulados e painel administrativo.
- * @since v1.0.0
+ * Provider oficial de autenticação da plataforma.
+ * Ele monta a sessão consumida por rotas, layout, checkout, rankings, simulados e painel administrativo.
+ * @since 1.0.0
  */
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
   const { addToast } = useToast();
   
+  /**
+   * Escuta o estado global da sessão e executa o bootstrap inicial ao subir o app.
+   * Essa ponte liga o provider visual ao mecanismo central de sessão em `services/auth/session`.
+   * @since 1.0.0
+   */
   React.useEffect(() => {
     const unsubscribe = subscribeToAuthSession((snapshot) => {
       if (!snapshot.isBootstrapped) {
@@ -192,14 +197,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return unsubscribe;
   }, []);
 
+  /**
+   * Conclui o login no provider a partir do token e do usuário recebidos pelo fluxo de auth.
+   * @since 1.0.0
+   */
   const login = React.useCallback(async (payload: UserProfile | null, token?: string | null) => {
     await establishAuthenticatedSession(token, payload ?? undefined);
   }, []);
 
+  /**
+   * Inicia o logout remoto e local do usuário atual.
+   * @since 1.0.0
+   */
   const logout = React.useCallback(() => {
     void logoutAuthSession();
   }, []);
 
+  /**
+   * Atualiza o perfil em modo otimista e persiste a mudanca no backend.
+   * Esse fluxo abastece pagina de perfil, onboarding e ajustes de conta.
+   * @since 1.0.0
+   */
   const updateUser = React.useCallback((payload: Partial<UserProfile>): Promise<void> => {
     return new Promise((resolve, reject) => {
       dispatch({ type: 'UPDATE_USER', payload });
@@ -227,12 +245,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [addToast, state.currentUser]);
 
   const LEVEL_MILESTONES: Record<number, string> = {
-    5: 'Impressionante! Voce atingiu o Nivel 5.',
-    10: 'Nivel 10 alcancado! Voce esta entre os mais dedicados da plataforma.',
+    5: 'Impressionante! Você atingiu o Nivel 5.',
+    10: 'Nivel 10 alcancado! Você esta entre os mais dedicados da plataforma.',
     25: 'Nivel 25! Uma conquista rara.',
-    50: 'Nivel 50! Voce virou lenda no ConcursoMestre.',
+    50: 'Nivel 50! Você virou lenda no ConcursoMestre.',
   };
 
+  /**
+   * Soma XP localmente e dispara notificações de recompensa e level up.
+   * Essa funcao conecta pratica, simulados e evolução do usuário no site.
+   * @since 1.0.0
+   */
   const addXp = React.useCallback((payload: number) => {
     const user = state.currentUser;
     if (!user) return;
@@ -248,16 +271,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       notificationService.sendNotification(
         user.id,
         `+${payload} XP Recebido!`,
-        `Voce ganhou ${payload} pontos de experiencia. Continue assim!`,
+        `Você ganhou ${payload} pontos de experiencia. Continue assim!`,
         'info',
         'system',
-      ).catch(err => console.warn('Falha ao criar notificacao de XP:', err));
+      ).catch(err => console.warn('Falha ao criar notificação de XP:', err));
     }
 
     if (newLevel > previousLevel) {
       const milestoneMsg = LEVEL_MILESTONES[newLevel];
       const title = `Subiu para o Nivel ${newLevel}!`;
-      const message = milestoneMsg || `Parabens! Voce alcancou o Nivel ${newLevel}.`;
+      const message = milestoneMsg || `Parabens! Você alcancou o Nivel ${newLevel}.`;
 
       notificationService.sendNotification(
         user.id,
@@ -266,10 +289,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         'success',
         'system',
         '/profile?tab=evolution',
-      ).catch(err => console.warn('Falha ao criar notificacao de level up:', err));
+      ).catch(err => console.warn('Falha ao criar notificação de level up:', err));
     }
   }, [state.currentUser]);
 
+  /**
+   * Alterna o estado de salvar questão para a sessão atual.
+   * Mantem o app responsivo enquanto sincroniza o favorito no backend.
+   * @since 1.0.0
+   */
   const toggleSavedQuestion = React.useCallback((payload: string) => {
     dispatch({ type: 'TOGGLE_SAVED', payload });
 
@@ -280,6 +308,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [state.currentUser]);
 
+  /**
+   * Registra um simulado no estado local e o envia para persistencia oficial.
+   * @since 1.0.0
+   */
   const addSimulation = React.useCallback((payload: SimulationSession) => {
     dispatch({ type: 'ADD_SIMULATION', payload });
 
@@ -291,14 +323,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .catch(e => console.error('Failed to save sim', e));
   }, [state.currentUser?.id]);
 
+  /**
+   * Libera localmente o acesso a um material comprado.
+   * Essa mutação e consumida logo apos transações bem-sucedidas do marketplace.
+   * @since 1.0.0
+   */
   const purchaseMaterial = React.useCallback((payload: string) => {
     dispatch({ type: 'PURCHASE_MATERIAL', payload });
   }, []);
 
+  /**
+   * Revoga localmente o acesso a um material quando um estorno e aprovado.
+   * @since 1.0.0
+   */
   const removeMaterialAccess = React.useCallback((payload: string) => {
     dispatch({ type: 'REMOVE_MATERIAL', payload });
   }, []);
 
+  /**
+   * Promove o usuário atual para parceiro usando o fluxo oficial de conta.
+   * @since 1.0.0
+   */
   const becomePartner = React.useCallback(() => {
     return new Promise<boolean>((resolve) => {
       if (!state.currentUser) {
@@ -319,6 +364,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, [state.currentUser]);
 
+  /**
+   * Recarrega o usuário autenticado a partir do token atual em memoria.
+   * Usado quando alguma tela precisa refletir dados novos sem reiniciar a sessão.
+   * @since 1.0.0
+   */
   const refreshUser = React.useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
@@ -351,9 +401,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 };
 
 /**
- * Hook publico para ler a sessao autenticada em qualquer ponto do frontend.
+ * Hook público para ler a sessão autenticada em qualquer ponto do frontend.
  * Ele e consumido por rotas protegidas, components compartilhados e features de dominio.
- * @since v1.0.0
+ * @since 1.0.0
  */
 export const useAuth = () => {
   const context = useContext(AuthContext);

@@ -1,4 +1,4 @@
-﻿# Arquitetura Oficial Revisada — Plataforma de Questões
+# Arquitetura Oficial Revisada — Plataforma de Questões
 
 ## Objetivo
 

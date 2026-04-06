@@ -1,4 +1,4 @@
-# Architecture Status
+﻿# Architecture Status
 
 ## Current snapshot
 - Date base: `2026-04-05`
@@ -21,6 +21,10 @@
 ## Overall progress
 - Progresso geral estimado: 100%
 - Frentes ainda abertas: 0
+- Padronizacao/comentarios/cabecalhos: 100%
+- Falta estimada desta etapa: 0%
+- Ultima passada cobriu payments, questions, reports, statistics e users
+- Proxima passada: manter a regra em novos arquivos e novas funcoes
 - Checklist tecnico unificado: `npm run test:transition`
 - Finalizador operacional: `npm run finalize:transition`
 
@@ -85,6 +89,7 @@
 ### Frontend guardrails
 - Admin architecture is frozen by [C:\dev\concursomestre\src\services\admin\__tests__\adminArchitecture.test.ts](C:\dev\concursomestre\src\services\admin\__tests__\adminArchitecture.test.ts)
 - Route suspense fallback now lives in [C:\dev\concursomestre\src\router\RouteSuspenseFallback.tsx](C:\dev\concursomestre\src\router\RouteSuspenseFallback.tsx)
+- Route reload persistence now lives in [C:\dev\concursomestre\src\router\useRoutePersistence.ts](C:\dev\concursomestre\src\router\useRoutePersistence.ts)
 - Route transition skeletons now distinguish real platform shells:
   - marketing
   - app layout
@@ -107,22 +112,23 @@
   - shell budgets for `useAdminPageController`, `AdminShellLayout`, `AdminPageContent` and `AdminTopBar`
   - absence of the old `Carregando rota` fallback text
   - local suspense for layout routes so the sidebar does not disappear during transitions
+  - extraction of route persistence out of the router shell
   - absence of `src/pages_pending_delete` as an intermediate residual state
 - Unified transition readiness check lives in [C:\dev\concursomestre\scripts\checks\transition-readiness.ps1](C:\dev\concursomestre\scripts\checks\transition-readiness.ps1)
 
 ## Backend status
 
 ### Canonical backend root
-- [C:\xampp\htdocs\questao-pro-backend\api](C:\xampp\htdocs\questao-pro-backend\api)
-- [C:\xampp\htdocs\questao-pro-backend\config](C:\xampp\htdocs\questao-pro-backend\config)
-- [C:\xampp\htdocs\questao-pro-backend\database](C:\xampp\htdocs\questao-pro-backend\database)
-- [C:\xampp\htdocs\questao-pro-backend\modules](C:\xampp\htdocs\questao-pro-backend\modules)
-- [C:\xampp\htdocs\questao-pro-backend\scripts](C:\xampp\htdocs\questao-pro-backend\scripts)
-- [C:\xampp\htdocs\questao-pro-backend\shared](C:\xampp\htdocs\questao-pro-backend\shared)
-- [C:\xampp\htdocs\questao-pro-backend\storage](C:\xampp\htdocs\questao-pro-backend\storage)
-- [C:\xampp\htdocs\questao-pro-backend\tests](C:\xampp\htdocs\questao-pro-backend\tests)
-- [C:\xampp\htdocs\questao-pro-backend\uploads](C:\xampp\htdocs\questao-pro-backend\uploads)
-- [C:\xampp\htdocs\questao-pro-backend\vendor](C:\xampp\htdocs\questao-pro-backend\vendor)
+- [C:\\xampp\\htdocs\\questao-pro-backend\api](C:\\xampp\\htdocs\\questao-pro-backend\api)
+- [C:\\xampp\\htdocs\\questao-pro-backend\config](C:\\xampp\\htdocs\\questao-pro-backend\config)
+- [C:\\xampp\\htdocs\\questao-pro-backend\database](C:\\xampp\\htdocs\\questao-pro-backend\database)
+- [C:\\xampp\\htdocs\\questao-pro-backend\modules](C:\\xampp\\htdocs\\questao-pro-backend\modules)
+- [C:\\xampp\\htdocs\\questao-pro-backend\scripts](C:\\xampp\\htdocs\\questao-pro-backend\scripts)
+- [C:\\xampp\\htdocs\\questao-pro-backend\shared](C:\\xampp\\htdocs\\questao-pro-backend\shared)
+- [C:\\xampp\\htdocs\\questao-pro-backend\storage](C:\\xampp\\htdocs\\questao-pro-backend\storage)
+- [C:\\xampp\\htdocs\\questao-pro-backend\tests](C:\\xampp\\htdocs\\questao-pro-backend\tests)
+- [C:\\xampp\\htdocs\\questao-pro-backend\uploads](C:\\xampp\\htdocs\\questao-pro-backend\uploads)
+- [C:\\xampp\\htdocs\\questao-pro-backend\vendor](C:\\xampp\\htdocs\\questao-pro-backend\vendor)
 
 ### Official backend modules
 - `admin`
@@ -147,18 +153,18 @@
 - `users`
 
 ### Backend residual exceptions
-- Public residual surface in [C:\xampp\htdocs\questao-pro-backend\api](C:\xampp\htdocs\questao-pro-backend\api):
+- Public residual surface in [C:\\xampp\\htdocs\\questao-pro-backend\api](C:\\xampp\\htdocs\\questao-pro-backend\api):
   - `settings.php`
   - `upload.php`
   - minimal legacy bridges in domain folders
   - minimal legacy bridges in `cache`, `system`, `tasks` and `utils`
 - Operational checks, ad-hoc migrations and seed artifacts no longer belong under public `api/`
-- Residual backend public surface is frozen by [C:\xampp\htdocs\questao-pro-backend\tests\ApiResidualSurfaceWiringTest.php](C:\xampp\htdocs\questao-pro-backend\tests\ApiResidualSurfaceWiringTest.php)
-- Accepted public API inventory is frozen by [C:\xampp\htdocs\questao-pro-backend\tests\ApiBridgeInventoryWiringTest.php](C:\xampp\htdocs\questao-pro-backend\tests\ApiBridgeInventoryWiringTest.php)
-- Thin bridge semantics are frozen by [C:\xampp\htdocs\questao-pro-backend\tests\ApiThinBridgesWiringTest.php](C:\xampp\htdocs\questao-pro-backend\tests\ApiThinBridgesWiringTest.php)
-- Exceptional public bridges are frozen by [C:\xampp\htdocs\questao-pro-backend\tests\ApiExceptionalBridgesWiringTest.php](C:\xampp\htdocs\questao-pro-backend\tests\ApiExceptionalBridgesWiringTest.php)
-- Accepted exception classes are frozen by [C:\xampp\htdocs\questao-pro-backend\tests\ApiAcceptedExceptionsWiringTest.php](C:\xampp\htdocs\questao-pro-backend\tests\ApiAcceptedExceptionsWiringTest.php)
-- Public settings module wiring is frozen by [C:\xampp\htdocs\questao-pro-backend\tests\SettingsModuleWiringTest.php](C:\xampp\htdocs\questao-pro-backend\tests\SettingsModuleWiringTest.php)
+- Residual backend public surface is frozen by [C:\\xampp\\htdocs\\questao-pro-backend\tests\ApiResidualSurfaceWiringTest.php](C:\\xampp\\htdocs\\questao-pro-backend\tests\ApiResidualSurfaceWiringTest.php)
+- Accepted public API inventory is frozen by [C:\\xampp\\htdocs\\questao-pro-backend\tests\ApiBridgeInventoryWiringTest.php](C:\\xampp\\htdocs\\questao-pro-backend\tests\ApiBridgeInventoryWiringTest.php)
+- Thin bridge semantics are frozen by [C:\\xampp\\htdocs\\questao-pro-backend\tests\ApiThinBridgesWiringTest.php](C:\\xampp\\htdocs\\questao-pro-backend\tests\ApiThinBridgesWiringTest.php)
+- Exceptional public bridges are frozen by [C:\\xampp\\htdocs\\questao-pro-backend\tests\ApiExceptionalBridgesWiringTest.php](C:\\xampp\\htdocs\\questao-pro-backend\tests\ApiExceptionalBridgesWiringTest.php)
+- Accepted exception classes are frozen by [C:\\xampp\\htdocs\\questao-pro-backend\tests\ApiAcceptedExceptionsWiringTest.php](C:\\xampp\\htdocs\\questao-pro-backend\tests\ApiAcceptedExceptionsWiringTest.php)
+- Public settings module wiring is frozen by [C:\\xampp\\htdocs\\questao-pro-backend\tests\SettingsModuleWiringTest.php](C:\\xampp\\htdocs\\questao-pro-backend\tests\SettingsModuleWiringTest.php)
 
 ## Closure criteria
 
@@ -184,9 +190,147 @@
 - Use `npm run test:transition` for ongoing regression checks and `npm run finalize:transition` if the final closure path needs to be revalidated
 
 ## Post-transition standardization
+- Latest backend documentation sweep expanded `@since 1.0.0` coverage in `users`, `payments` and `statistics`
+- Ultima validacao confirmou cabecalho padrao, ASCII limpo e `@since 1.0.0` nos modulos finais `payments`, `questions`, `reports`, `statistics` e `users`
+- Current high-value backend files covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\repositories\UsersRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\repositories\UsersRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\services\UsersService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\services\UsersService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\repositories\PaymentsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\repositories\PaymentsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\services\PaymentsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\services\PaymentsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\repositories\StatisticsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\repositories\StatisticsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\services\StatisticsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\services\StatisticsService.php)
 - Baseline version: `1.0.0`
 - Standard file header applied and verified on active code files via `npm run test:headers`
 - Permanent engineering rule frozen in [C:\dev\concursomestre\.agent\rules\engineering-standards.md](C:\dev\concursomestre\.agent\rules\engineering-standards.md)
 - Current focus: comment all functions in pt-BR with `@since 1.0.0` to improve future debugging
-- Current progress estimate for this stage: `49%`
-- Next highest-value sweep: remaining frontend services/providers, then backend `modules/*`, `shared/*` and `scripts/*`
+- Current progress estimate for this stage: `100%`
+- Remaining items in this stage: `0`
+- Backend core already covered in this phase:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\shared\auth\AuthSession.php](C:\\xampp\\htdocs\\questao-pro-backend\shared\auth\AuthSession.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\shared\auth\request_auth.php](C:\\xampp\\htdocs\\questao-pro-backend\shared\auth\request_auth.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\shared\responses\Response.php](C:\\xampp\\htdocs\\questao-pro-backend\shared\responses\Response.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\shared\security\AdminSecurity.php](C:\\xampp\\htdocs\\questao-pro-backend\shared\security\AdminSecurity.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\auth\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\auth\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\settings\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\settings\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\services\QuestionsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\services\QuestionsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\services\ReportsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\services\ReportsService.php)
+- Additional backend subscriptions services covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\subscriptions\services\SubscriptionsBillingSupport.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\subscriptions\services\SubscriptionsBillingSupport.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\subscriptions\services\SubscriptionsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\subscriptions\services\SubscriptionsService.php)
+- Additional backend notifications modules covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\notifications\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\notifications\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\notifications\controllers\NotificationsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\notifications\controllers\NotificationsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\notifications\services\NotificationsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\notifications\services\NotificationsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\notifications\repositories\NotificationsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\notifications\repositories\NotificationsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\notifications\validators\NotificationsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\notifications\validators\NotificationsValidator.php)
+- Additional backend feedback modules covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\feedback\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\feedback\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\feedback\controllers\FeedbackController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\feedback\controllers\FeedbackController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\feedback\services\FeedbackService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\feedback\services\FeedbackService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\feedback\repositories\FeedbackRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\feedback\repositories\FeedbackRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\feedback\validators\FeedbackValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\feedback\validators\FeedbackValidator.php)
+- Additional backend comments modules covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\comments\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\comments\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\comments\controllers\CommentsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\comments\controllers\CommentsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\comments\services\CommentsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\comments\services\CommentsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\comments\repositories\CommentsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\comments\repositories\CommentsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\comments\validators\CommentsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\comments\validators\CommentsValidator.php)
+- Additional backend AI modules covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\ai\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\ai\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\ai\controllers\AiController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\ai\controllers\AiController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\ai\services\AiService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\ai\services\AiService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\ai\repositories\AiRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\ai\repositories\AiRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\ai\validators\AiValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\ai\validators\AiValidator.php)
+- Additional backend changelog modules covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\changelog\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\changelog\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\changelog\controllers\ChangelogController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\changelog\controllers\ChangelogController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\changelog\services\ChangelogService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\changelog\services\ChangelogService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\changelog\repositories\ChangelogRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\changelog\repositories\ChangelogRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\changelog\validators\ChangelogValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\changelog\validators\ChangelogValidator.php)
+- Additional backend filters modules covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\filters\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\filters\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\filters\controllers\FiltersController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\filters\controllers\FiltersController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\filters\services\FiltersService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\filters\services\FiltersService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\filters\repositories\FiltersRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\filters\repositories\FiltersRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\filters\validators\FiltersValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\filters\validators\FiltersValidator.php)
+- Additional backend plans modules covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\plans\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\plans\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\plans\controllers\PlansController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\plans\controllers\PlansController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\plans\services\PlansService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\plans\services\PlansService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\plans\repositories\PlansRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\plans\repositories\PlansRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\plans\validators\PlansValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\plans\validators\PlansValidator.php)
+- Additional backend rankings modules covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\rankings\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\rankings\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\rankings\controllers\RankingsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\rankings\controllers\RankingsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\rankings\services\RankingsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\rankings\services\RankingsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\rankings\repositories\RankingsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\rankings\repositories\RankingsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\rankings\validators\RankingsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\rankings\validators\RankingsValidator.php)
+- Additional backend validators/controllers covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\validators\UsersValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\validators\UsersValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\controllers\UsersController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\controllers\UsersController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\validators\PaymentsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\validators\PaymentsValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\controllers\PaymentsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\controllers\PaymentsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\validators\StatisticsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\validators\StatisticsValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\controllers\StatisticsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\controllers\StatisticsController.php)
+- Additional backend route/middleware entrypoints covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\shared\middleware\AuthMiddleware.php](C:\\xampp\\htdocs\\questao-pro-backend\shared\middleware\AuthMiddleware.php)
+- Additional backend transversal middleware covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\shared\middleware\SecurityMiddleware.php](C:\\xampp\\htdocs\\questao-pro-backend\shared\middleware\SecurityMiddleware.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\shared\middleware\RateLimiter.php](C:\\xampp\\htdocs\\questao-pro-backend\shared\middleware\RateLimiter.php)
+- Additional backend modules covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\simulations\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\simulations\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\simulations\controllers\SimulationsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\simulations\controllers\SimulationsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\simulations\services\SimulationsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\simulations\services\SimulationsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\simulations\repositories\SimulationsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\simulations\repositories\SimulationsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\simulations\validators\SimulationsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\simulations\validators\SimulationsValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\materials\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\materials\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\materials\controllers\MaterialsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\materials\controllers\MaterialsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\materials\services\MaterialsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\materials\services\MaterialsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\materials\repositories\MaterialsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\materials\repositories\MaterialsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\materials\validators\MaterialsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\materials\validators\MaterialsValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\auth\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\auth\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\auth\services\AuthService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\auth\services\AuthService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\auth\repositories\AuthRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\auth\repositories\AuthRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\auth\validators\AuthValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\auth\validators\AuthValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\admin\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\admin\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\settings\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\settings\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\subscriptions\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\subscriptions\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\subscriptions\controllers\SubscriptionsPlanSyncController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\subscriptions\controllers\SubscriptionsPlanSyncController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\transactions\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\transactions\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\transactions\controllers\TransactionsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\transactions\controllers\TransactionsController.php)
+- Additional backend final modules covered in this wave:
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\controllers\PaymentsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\controllers\PaymentsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\services\PaymentsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\services\PaymentsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\repositories\PaymentsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\repositories\PaymentsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\validators\PaymentsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\validators\PaymentsValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\payments\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\controllers\QuestionsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\controllers\QuestionsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\services\QuestionsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\services\QuestionsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\repositories\QuestionsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\repositories\QuestionsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\validators\QuestionsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\validators\QuestionsValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\questions\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\controllers\ReportsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\controllers\ReportsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\services\ReportsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\services\ReportsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\repositories\ReportsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\repositories\ReportsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\validators\ReportsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\validators\ReportsValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\reports\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\controllers\StatisticsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\controllers\StatisticsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\services\StatisticsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\services\StatisticsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\repositories\StatisticsRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\repositories\StatisticsRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\validators\StatisticsValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\validators\StatisticsValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\statistics\routes.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\controllers\UsersController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\controllers\UsersController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\controllers\UsersCardsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\controllers\UsersCardsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\controllers\UsersRewardsController.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\controllers\UsersRewardsController.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\services\UsersService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\services\UsersService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\services\UsersCardsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\services\UsersCardsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\services\UsersCardsStripeSupport.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\services\UsersCardsStripeSupport.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\services\UsersReferralRewardsService.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\services\UsersReferralRewardsService.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\repositories\UsersRepository.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\repositories\UsersRepository.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\validators\UsersValidator.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\validators\UsersValidator.php)
+  - [C:\\xampp\\htdocs\\questao-pro-backend\modules\users\routes.php](C:\\xampp\\htdocs\\questao-pro-backend\modules\users\routes.php)
+- Next highest-value sweep: manutencao continua em novos arquivos alterados
+

@@ -52,11 +52,11 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     name: 'Black Friday',
     slug: 'black-friday',
     discountPercentage: 30,
-    bannerText: 'ðŸ”¥ 30% OFF em todos os planos anuais!',
+    bannerText: '🔥 30% OFF em todos os planos anuais!',
     themeColor: '#000000',
-    landingPageTitle: 'AprovaÃ§Ã£o Garantida',
-    landingPageHeadline: 'PromoÃ§Ã£o Exclusiva',
-    landingPageSubheadline: 'Descontos imperdÃ­veis nos planos Pro e Elite.',
+    landingPageTitle: 'Aprovação Garantida',
+    landingPageHeadline: 'Promoção Exclusiva',
+    landingPageSubheadline: 'Descontos imperdíveis nos planos Pro e Elite.',
     featuresHighlight: ['IA Ilimitada', 'Raio-X da Banca', 'Simulados']
   },
   coupons: [
@@ -81,7 +81,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   },
   geminiApiKey: '',
   recaptchaEnabled: false,
-  recaptchaSiteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI', // Chave de teste pÃºblica do Google
+  recaptchaSiteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI', // Chave de teste pública do Google
   recaptchaSecretKey: ''
 };
 
@@ -179,7 +179,7 @@ type DataAction =
 
 /**
  * Reducer central dos dados de dominio carregados no frontend.
- * Ele sincroniza questoes, comentarios, rankings, reports, usuarios e configuracoes que abastecem o site.
+ * Ele sincroniza questões, comentários, rankings, reports, usuários e configurações que abastecem o site.
  * @since v1.0.0
  */
 function dataReducer(state: DataState, action: DataAction): DataState {
@@ -195,11 +195,11 @@ function dataReducer(state: DataState, action: DataAction): DataState {
           const accuracy = correct / total;
 
           let dificuldade = q.dificuldade;
-          if (accuracy > 0.85) dificuldade = 1; // Muito FÃ¡cil
-          else if (accuracy > 0.65) dificuldade = 2; // FÃ¡cil
-          else if (accuracy > 0.45) dificuldade = 3; // MÃ©dia
-          else if (accuracy > 0.25) dificuldade = 4; // DifÃ­cil
-          else dificuldade = 5; // Muito DifÃ­cil
+          if (accuracy > 0.85) dificuldade = 1; // Muito Fácil
+          else if (accuracy > 0.65) dificuldade = 2; // Fácil
+          else if (accuracy > 0.45) dificuldade = 3; // Média
+          else if (accuracy > 0.25) dificuldade = 4; // Difícil
+          else dificuldade = 5; // Muito Difícil
 
           return { ...q, dificuldade, stats: { totalAttempts: total, correctCount: correct, wrongCount: wrong } };
         }
@@ -437,7 +437,7 @@ function dataReducer(state: DataState, action: DataAction): DataState {
         )
       };
 
-    // Limpeza automÃ¡tica de relatÃ³rios antigos
+    // Limpeza automática de relatórios antigos
     case 'CLEANUP_OLD_REPORTS': {
       const now = Date.now();
       return {
@@ -458,7 +458,7 @@ function dataReducer(state: DataState, action: DataAction): DataState {
 
     case 'SET_USERS': return { ...state, users: action.payload };
     case 'SET_REPORTS': return { ...state, reports: action.payload };
-    case 'SET_RANKINGS': return { ...state, rankings: action.payload };
+    case 'SET_RANKINGS': return { ...state, rankings: sanitizeRankingsCollection(action.payload) };
 
     case 'SET_TAXONOMIES':
       return {
@@ -536,9 +536,18 @@ interface DataContextType extends DataState {
 export const DataContext = createContext<DataContextType>({} as DataContextType);
 
 /**
+ * Garante que a colecao de rankings mantenha sempre o contrato em array.
+ * Isso protege reducer e telas contra payloads legados ou envelopes inesperados.
+ * @since 1.0.0
+ */
+const sanitizeRankingsCollection = (payload: unknown): Ranking[] => {
+  return Array.isArray(payload) ? payload as Ranking[] : [];
+};
+
+/**
  * Provider oficial de dados compartilhados da plataforma.
  * Ele faz o bootstrap dos dominios globais que alimentam home, pratica, rankings, admin e fluxos de suporte.
- * @since v1.0.0
+ * @since 1.0.0
  */
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { currentUser, updateUser, isLoading: authIsLoading } = useAuth();
@@ -552,6 +561,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const isSavingSystemSettingsRef = useRef(false);
   const [state, dispatch] = useReducer(dataReducer, initialState);
 
+  /**
+   * Persiste configurações do sistema em fila, garantindo serializacao de writes.
+   * Esse fluxo sustenta autosave administrativo sem corrida entre cliques e debounce.
+   * @since 1.0.0
+   */
   const flushSystemSettingsSave = useCallback(async () => {
     if (isSavingSystemSettingsRef.current) return;
 
@@ -571,7 +585,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: lastSavedSystemSettingsRef.current });
       }
 
-      addToast('Erro ao salvar configuracoes. As alteracoes nao foram persistidas.', 'error');
+      addToast('Erro ao salvar configurações. As alteracoes não foram persistidas.', 'error');
     } finally {
       isSavingSystemSettingsRef.current = false;
 
@@ -581,6 +595,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [addToast]);
 
+  /**
+   * Limpa o timer pendente de autosave quando o provider desmonta.
+   * @since 1.0.0
+   */
   useEffect(() => {
     return () => {
       if (settingsSaveTimerRef.current) {
@@ -591,6 +609,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // --- LAZY LOADING FUNCTIONS ---
 
+  /**
+   * Carrega a lista administrativa de usuários sob demanda.
+   * @since 1.0.0
+   */
   const ensureUsersLoaded = useCallback(async (force = false) => {
     if (state.isUsersLoaded && !force) return;
     try {
@@ -602,6 +624,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [state.isUsersLoaded]);
 
+  /**
+   * Carrega denúncias administrativas apenas quando alguma tela precisa delas.
+   * @since 1.0.0
+   */
   const ensureReportsLoaded = useCallback(async (force = false) => {
     if (state.isReportsLoaded && !force) return;
     try {
@@ -613,17 +639,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [state.isReportsLoaded]);
 
+  /**
+   * Carrega rankings oficialmente publicados para o frontend.
+   * @since 1.0.0
+   */
   const ensureRankingsLoaded = useCallback(async (force = false) => {
     if (state.isRankingsLoaded && !force) return;
     try {
       const rankings = await rankingsService.list();
-      dispatch({ type: 'SET_RANKINGS', payload: rankings });
+      dispatch({ type: 'SET_RANKINGS', payload: sanitizeRankingsCollection(rankings) });
       dispatch({ type: 'MARK_LOADED', payload: 'isRankingsLoaded' });
     } catch (err) {
       console.error("Failed to load rankings:", err);
     }
   }, [state.isRankingsLoaded]);
 
+  /**
+   * Carrega taxonomias globais usadas em filtros, admin e importador.
+   * @since 1.0.0
+   */
   const ensureTaxonomiesLoaded = useCallback(async (force = false) => {
     if (state.isTaxonomiesLoaded && !force) return;
     try {
@@ -637,6 +671,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [state.isTaxonomiesLoaded]);
 
+  /**
+   * Carrega progresso do usuário autenticado em paralelo.
+   * Essa funcao une respostas, comentários e notas para abastecer perfil e pratica.
+   * @since 1.0.0
+   */
   const ensureUserProgressLoaded = useCallback(async (force = false) => {
     if (!currentUser?.id || (state.isUserProgressLoaded && !force)) return;
     try {
@@ -661,6 +700,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [currentUser?.id, state.isUserProgressLoaded]);
 
+  /**
+   * Busca os dados minimos para o bootstrap do app: settings e primeiras questões.
+   * @since 1.0.0
+   */
   const fetchInitialData = useCallback(async () => {
     const userId = currentUser?.id || 'guest';
     if (dataInitRef.current === userId) return;
@@ -691,10 +734,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       .catch(err => console.error("Failed to load initial questions:", err));
   }, [currentUser?.id]);
 
+  /**
+   * Dispara o bootstrap inicial sempre que a identidade-base do usuário muda.
+   * @since 1.0.0
+   */
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
 
+  /**
+   * Busca notificações do usuário atual com protecao contra chamadas concorrentes.
+   * @since 1.0.0
+   */
   const fetchNotifications = useCallback(async (userId: string) => {
     if (!currentUser?.id) {
       return;
@@ -719,6 +770,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [currentUser?.id]);
 
   // 3. Fetch Notifications with Adaptive Polling
+  /**
+   * Mantem polling adaptativo de notificações conforme atividade e visibilidade da aba.
+   * @since 1.0.0
+   */
   useEffect(() => {
     if (authIsLoading || !currentUser?.id) return;
 
@@ -730,6 +785,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     let isUserActive = true;
     let activityTimeout: NodeJS.Timeout;
 
+    /**
+     * Reativa o polling agressivo quando o usuário volta a interagir com o site.
+     * @since 1.0.0
+     */
     const resetActivity = () => {
       isUserActive = true;
       pollInterval = 30000; // 30 seconds when active
@@ -747,6 +806,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     // Page visibility optimization
+    /**
+     * Reduz o polling quando a aba fica em background e sincroniza ao voltar.
+     * @since 1.0.0
+     */
     const handleVisibilityChange = () => {
       if (document.hidden) {
         pollInterval = 300000; // 5 minutes when tab is hidden
@@ -759,6 +822,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Use recursive setTimeout with proper cleanup to support dynamic intervals
     let pollTimeoutId: NodeJS.Timeout;
+    /**
+     * Agenda a proxima rodada de notificações respeitando o intervalo dinamico atual.
+     * @since 1.0.0
+     */
     const poll = () => {
       if (!document.hidden || isUserActive) {
         fetchNotifications(currentUser.id);
@@ -781,11 +848,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [authIsLoading, currentUser?.id, fetchNotifications]);
 
   // 3. Cleanup on mount
+  /**
+   * Executa limpeza inicial de denúncias antigas ao montar o provider.
+   * @since 1.0.0
+   */
   useEffect(() => {
     dispatch({ type: 'CLEANUP_OLD_REPORTS' });
   }, []);
 
-  // Facade de dispatch para conveniÃªncia
+  // Facade de dispatch para conveniência
+  /**
+   * Registra a resposta do usuário, atualiza o estado local e persiste no backend.
+   * @since 1.0.0
+   */
   const submitAnswer = useCallback((payload: UserAnswer) => {
     dispatch({ type: 'SUBMIT_ANSWER', payload });
 
@@ -803,117 +878,169 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [currentUser?.id, addToast]);
 
+  /**
+   * Cria uma unica questão pelo fluxo administrativo/manual.
+   * @since 1.0.0
+   */
   const addQuestion = useCallback(async (payload: Question): Promise<any> => {
     try {
       const res = await questionService.createQuestions([payload]);
       const createdQ = res.created && res.created.length > 0 ? res.created[0] : payload;
       dispatch({ type: 'ADD_QUESTION', payload: createdQ });
-      addToast('QuestÃ£o adicionada!', 'success');
+      addToast('Questão adicionada!', 'success');
       return res;
     } catch (error) {
       console.error("Failed to save question:", error);
-      addToast('Erro ao salvar questÃ£o no servidor.', 'error');
+      addToast('Erro ao salvar questão no servidor.', 'error');
       throw error;
     }
   }, [addToast]);
 
+  /**
+   * Importa um lote de questões e atualiza o estado global.
+   * @since 1.0.0
+   */
   const addQuestions = useCallback(async (payload: Question[]): Promise<any> => {
     try {
       const res = await questionService.createQuestions(payload);
       dispatch({ type: 'ADD_QUESTIONS', payload });
-      addToast(`${payload.length} questÃµes importadas!`, 'success');
+      addToast(`${payload.length} questões importadas!`, 'success');
       return res;
     } catch (error) {
       console.error("Failed to save questions:", error);
-      addToast('Erro ao importar questÃµes.', 'error');
+      addToast('Erro ao importar questões.', 'error');
       throw error;
     }
   }, [addToast]);
 
+  /**
+   * Atualiza uma questão existente pela operação administrativa.
+   * @since 1.0.0
+   */
   const updateQuestion = useCallback(async (payload: Question): Promise<any> => {
     try {
       const res = await questionService.updateQuestion(String(payload.id), payload);
       if (!res.success) {
-        throw new Error('Falha ao atualizar a questao.');
+        throw new Error('Falha ao atualizar a questão.');
       }
       dispatch({ type: 'UPDATE_QUESTION', payload });
-      addToast('QuestÃ£o atualizada!', 'success');
+      addToast('Questão atualizada!', 'success');
       return res;
     } catch (error) {
       console.error("Failed to update question:", error);
-      addToast('Erro ao atualizar questÃ£o.', 'error');
+      addToast('Erro ao atualizar questão.', 'error');
       throw error;
     }
   }, [addToast]);
 
+  /**
+   * Exclui uma questão da base oficial e do estado local.
+   * @since 1.0.0
+   */
   const deleteQuestion = useCallback(async (payload: number) => {
     try {
       const result = await questionService.deleteQuestion(payload);
       if (!result.success) {
-        throw new Error(result.message || 'Falha ao remover a questao.');
+        throw new Error(result.message || 'Falha ao remover a questão.');
       }
       dispatch({ type: 'DELETE_QUESTION', payload });
-      addToast('QuestÃ£o removida.', 'info');
+      addToast('Questão removida.', 'info');
     } catch (error) {
       console.error("Failed to delete question:", error);
-      addToast('Erro ao remover questÃ£o do servidor.', 'error');
+      addToast('Erro ao remover questão do servidor.', 'error');
     }
   }, [addToast]);
 
 
 
+  /**
+   * Alterna o salvar/remover questão do caderno do usuário atual.
+   * @since 1.0.0
+   */
   const toggleSaveQuestion = useCallback((questionId: number) => {
     dispatch({ type: 'SAVE_QUESTION', payload: questionId });
 
     if (currentUser) {
       questionService.toggleSavedQuestion(currentUser.id, questionId).catch(err => {
         console.error("Failed to toggle save", err);
-        addToast('Erro ao salvar/remover questÃ£o.', 'error');
+        addToast('Erro ao salvar/remover questão.', 'error');
       });
     } else {
-      addToast('FaÃ§a login para salvar questÃµes.', 'warning');
+      addToast('Faça login para salvar questões.', 'warning');
     }
   }, [currentUser?.id, addToast]);
 
+  /**
+   * Salva uma nota local de questão no estado compartilhado.
+   * @since 1.0.0
+   */
   const saveNote = useCallback((questionId: number, text: string) => {
     dispatch({ type: 'SAVE_NOTE', payload: { questionId, text } });
     addToast('Nota salva!', 'success');
   }, [addToast]);
 
+  /**
+   * Marca uma notificação individual como lida.
+   * @since 1.0.0
+   */
   const markNotificationAsRead = useCallback(async (id: string) => {
     await notificationService.markAsRead(id);
     dispatch({ type: 'MARK_NOTIFICATION_READ', payload: id });
   }, []);
 
+  /**
+   * Marca todas as notificações visiveis do usuário atual como lidas.
+   * @since 1.0.0
+   */
   const markAllNotificationsAsRead = useCallback(async (_userId: string) => {
     await notificationService.markAllAsRead();
     dispatch({ type: 'MARK_ALL_NOTIFICATIONS_READ' });
   }, []);
 
+  /**
+   * Move uma notificação para a lixeira logica do app.
+   * @since 1.0.0
+   */
   const deleteNotification = useCallback(async (id: string) => {
     // Soft Delete
     dispatch({ type: 'DELETE_NOTIFICATION', payload: id });
   }, []);
 
+  /**
+   * Restaura uma notificação previamente enviada para a lixeira.
+   * @since 1.0.0
+   */
   const restoreNotification = useCallback(async (id: string) => {
     dispatch({ type: 'RESTORE_NOTIFICATION', payload: id });
   }, []);
 
+  /**
+   * Remove de vez uma notificação do estado local.
+   * @since 1.0.0
+   */
   const permanentDeleteNotification = useCallback(async (id: string) => {
     dispatch({ type: 'PERMANENT_DELETE_NOTIFICATION', payload: id });
   }, []);
 
+  /**
+   * Limpa todas as notificações do usuário atual.
+   * @since 1.0.0
+   */
   const clearNotifications = useCallback(async (_userId: string) => {
     await notificationService.clearAll();
     dispatch({ type: 'CLEAR_NOTIFICATIONS' });
   }, []);
 
+  /**
+   * Envia notificações sistemicas e também espelha localmente quando o alvo e o usuário atual.
+   * @since 1.0.0
+   */
   const sendNotification = useCallback(async (userId: string, title: string, message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info', category: 'system' | 'social' | 'marketplace' | 'report' = 'system', link?: string, evidenceUrl?: string) => {
     // Map 'report' category to 'moderation' as expected by the service
     const serviceCategory = category === 'report' ? 'moderation' : category;
     await notificationService.sendNotification(userId, title, message, type, serviceCategory, link, evidenceUrl);
 
-    // Adiciona ao estado apenas se for para o usuÃ¡rio atual ou 'admin' (se current for admin)
+    // Adiciona ao estado apenas se for para o usuário atual ou 'admin' (se current for admin)
     if (currentUser && (userId === currentUser.id || userId === 'all' || (currentUser.isAdmin && userId === 'admin'))) {
       const notif: Notification = {
         id: `notif-${Date.now()}`,
@@ -931,6 +1058,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [currentUser]);
 
+  /**
+   * Registra uma denúncia de questão, material ou comentário.
+   * @since 1.0.0
+   */
   const reportError = useCallback((report: Omit<ErrorReport, 'id' | 'status' | 'timestamp'>) => {
     const duplicate = state.reports.find(r =>
       r.userName === report.userName &&
@@ -943,12 +1074,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     );
 
     if (duplicate) {
-      addToast('JÃ¡ existe uma denÃºncia pendente para este item.', 'warning');
+      addToast('Já existe uma denúncia pendente para este item.', 'warning');
       return;
     }
 
     if (!currentUser?.id) {
-      addToast('FaÃ§a login para enviar uma denÃºncia.', 'warning');
+      addToast('Faça login para enviar uma denúncia.', 'warning');
       return;
     }
 
@@ -961,7 +1092,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             : report.commentId;
 
         if (!targetId) {
-          throw new Error('Alvo da denÃºncia invÃ¡lido.');
+          throw new Error('Alvo da denúncia inválido.');
         }
 
         const result = await reportsService.createReport({
@@ -975,7 +1106,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         if (result.duplicate) {
           void ensureReportsLoaded(true);
-          addToast(result.message || 'JÃ¡ existe uma denÃºncia pendente para este item.', 'warning');
+          addToast(result.message || 'Já existe uma denúncia pendente para este item.', 'warning');
           return;
         }
 
@@ -991,47 +1122,55 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         dispatch({ type: 'REPORT_ERROR', payload: reportWithUser });
 
         const targetLabel = report.targetType === 'question'
-          ? 'questao'
+          ? 'questão'
           : report.targetType === 'material'
             ? 'material'
-            : 'comentario';
+            : 'comentário';
 
         sendNotification(
           'admin',
-          'Nova DenÃºncia',
-          `O usuÃ¡rio ${report.userName} reportou um problema em ${targetLabel}.`,
+          'Nova Denúncia',
+          `O usuário ${report.userName} reportou um problema em ${targetLabel}.`,
           'warning',
           'report',
           `/admin?section=database&tab=reports#${reportId}`
         );
 
-        addToast(result.message || 'DenÃºncia enviada com sucesso!', 'success');
+        addToast(result.message || 'Denúncia enviada com sucesso!', 'success');
       } catch (error) {
         console.error('Failed to create report:', error);
-        addToast((error as Error).message || 'Erro ao enviar denÃºncia.', 'error');
+        addToast((error as Error).message || 'Erro ao enviar denúncia.', 'error');
       }
     })();
   }, [state.reports, currentUser?.id, addToast, sendNotification, ensureReportsLoaded]);
 
+  /**
+   * Resolve ou ignora uma denúncia pelo fluxo administrativo.
+   * @since 1.0.0
+   */
   const resolveReport = useCallback(async (id: string, action: 'resolved' | 'ignored', adminReason: string, evidenceUrl?: string) => {
     const report = state.reports.find(r => r.id === id);
     if (!report) return;
 
     if (!adminReason || adminReason.trim() === '') {
-      addToast('A justificativa da decisÃ£o Ã© obrigatÃ³ria.', 'warning');
+      addToast('A justificativa da decisão é obrigatória.', 'warning');
       return;
     }
 
     try {
       await adminService.moderateReport(id, action, adminReason, evidenceUrl);
       dispatch({ type: 'RESOLVE_REPORT', payload: { id, action } });
-      addToast(`DenÃºncia ${action === 'resolved' ? 'resolvida' : 'ignorada'}.`, 'success');
+      addToast(`Denúncia ${action === 'resolved' ? 'resolvida' : 'ignorada'}.`, 'success');
     } catch (error) {
       console.error('Failed to resolve report:', error);
-      addToast('Erro ao atualizar a denÃºncia.', 'error');
+      addToast('Erro ao atualizar a denúncia.', 'error');
     }
   }, [state.reports, addToast]);
 
+  /**
+   * Limpa as respostas persistidas do usuário atual.
+   * @since 1.0.0
+   */
   const resetAnswers = useCallback(async () => {
     if (!currentUser) return;
     try {
@@ -1047,6 +1186,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [currentUser?.id, addToast]);
 
+  /**
+   * Busca os comentários do usuário para perfil e dashboards.
+   * @since 1.0.0
+   */
   const fetchUserComments = useCallback(async (userId: string) => {
     try {
       const comments = await commentService.getUserComments(userId);
@@ -1058,6 +1201,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
+  /**
+   * Adiciona um comentário em questão com anti-spam local e persistencia oficial.
+   * @since 1.0.0
+   */
   const addComment = useCallback((questionId: number, comment: QuestaoComentario, parentId?: string) => {
     // Anti-Spam Check
     const now = Date.now();
@@ -1084,10 +1231,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
     }).catch(err => {
       console.error("Failed to save comment", err);
-      addToast(err.message || 'Erro de conexÃ£o ao salvar comentÃ¡rio.', 'error');
+      addToast(err.message || 'Erro de conexão ao salvar comentário.', 'error');
     });
   }, [addToast, currentUser?.id, currentUser?.name, fetchUserComments]);
 
+  /**
+   * Registra a curtida local e sincroniza a ação com o backend.
+   * @since 1.0.0
+   */
   const likeComment = useCallback((questionId: number, commentId: string) => {
     dispatch({ type: 'LIKE_COMMENT', payload: { questionId, commentId } });
 
@@ -1095,10 +1246,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (currentUser) {
       commentService.likeComment(commentId, currentUser.id).catch(err => {
         console.error("Failed to save like", err);
-        addToast(err.message || 'Erro de conexÃ£o ao curtir comentÃ¡rio.', 'error');
+        addToast(err.message || 'Erro de conexão ao curtir comentário.', 'error');
       });
     } else {
-      addToast('FaÃ§a login para curtir.', 'warning');
+      addToast('Faça login para curtir.', 'warning');
     }
   }, [currentUser?.id, addToast]);
 
@@ -1106,6 +1257,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 
 
+  /**
+   * Atualiza status administrativo e reputação de um usuário.
+   * @since 1.0.0
+   */
   const updateUserStatus = useCallback(async (userId: string, updates: Partial<UserProfile>) => {
     try {
       await adminService.performUserAction({
@@ -1123,6 +1278,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [addToast]);
 
 
+  /**
+   * Atualiza as configurações em memoria e agenda o autosave administrativo.
+   * @since 1.0.0
+   */
   const updateSystemSettings = useCallback((payload: SystemSettings) => {
     dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload });
     pendingSystemSettingsRef.current = payload;
@@ -1136,6 +1295,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, 450);
   }, [flushSystemSettingsSave]);
 
+  /**
+   * Forca a persistencia imediata das configurações quando a tela exige save explicito.
+   * @since 1.0.0
+   */
   const saveSystemSettingsNow = useCallback(async (payload?: SystemSettings) => {
     const nextSettings = payload ?? pendingSystemSettingsRef.current ?? state.systemSettings;
     if (!nextSettings) return;
@@ -1161,7 +1324,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (error) {
       console.error('Failed to persist system settings immediately:', error);
       dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: lastSavedSystemSettingsRef.current });
-      addToast('Erro ao salvar configuracoes. As alteracoes nao foram persistidas.', 'error');
+      addToast('Erro ao salvar configurações. As alteracoes não foram persistidas.', 'error');
       throw error;
     } finally {
       isSavingSystemSettingsRef.current = false;
@@ -1175,17 +1338,33 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 
 
+  /**
+   * Adiciona um cupom ao estado administrativo atual.
+   * @since 1.0.0
+   */
   const addCoupon = useCallback((payload: DiscountCode) => {
     const nextCoupons = [...state.systemSettings.coupons, payload];
     updateSystemSettings({ ...state.systemSettings, coupons: nextCoupons });
   }, [state.systemSettings, updateSystemSettings]);
+  /**
+   * Remove um cupom das configurações do sistema.
+   * @since 1.0.0
+   */
   const deleteCoupon = useCallback((payload: string) => {
     const nextCoupons = state.systemSettings.coupons.filter(coupon => coupon.code !== payload);
     updateSystemSettings({ ...state.systemSettings, coupons: nextCoupons });
   }, [state.systemSettings, updateSystemSettings]);
+  /**
+   * Limpa o progresso local carregado no provider.
+   * @since 1.0.0
+   */
   const resetProgress = useCallback(() => dispatch({ type: 'RESET_PROGRESS' }), []);
 
 
+  /**
+   * Cria um ranking com update otimista e rollback simples em caso de falha.
+   * @since 1.0.0
+   */
   const addRanking = useCallback((payload: Ranking) => {
     // 1. Optimistic Update
     dispatch({ type: 'ADD_RANKING', payload });
@@ -1203,6 +1382,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
   }, [addToast]);
 
+  /**
+   * Atualiza um ranking existente no admin.
+   * @since 1.0.0
+   */
   const updateRanking = useCallback(async (payload: Ranking) => {
     try {
       await adminService.updateRanking(payload);
@@ -1214,11 +1397,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       throw error;
     }
   }, [addToast]);
+  /**
+   * Exclui um ranking pelo fluxo administrativo oficial.
+   * @since 1.0.0
+   */
   const deleteRanking = useCallback(async (payload: string) => {
     try {
       await adminService.deleteRanking(payload);
       dispatch({ type: 'DELETE_RANKING', payload });
-      addToast('Ranking excluÃ­do com sucesso!', 'success');
+      addToast('Ranking excluído com sucesso!', 'success');
     } catch (error) {
       console.error('Failed to delete ranking:', error);
       addToast('Erro ao excluir ranking.', 'error');
@@ -1226,6 +1413,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [addToast]);
 
+  /**
+   * Submete a participacao do usuário em um ranking.
+   * @since 1.0.0
+   */
   const submitRankingEntry = useCallback((rankingId: string, entry: RankingEntry) => {
     dispatch({ type: 'SUBMIT_RANKING_ENTRY', payload: { rankingId, entry } });
 
@@ -1234,11 +1425,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         addToast("Gabarito enviado!", "success");
       }).catch(err => {
         console.error(err);
-        addToast("Falha de conexÃ£o ao enviar gabarito.", "error");
+        addToast("Falha de conexão ao enviar gabarito.", "error");
       });
     }
   }, [currentUser?.id, addToast]);
 
+  /**
+   * Modera um ranking na camada administrativa.
+   * @since 1.0.0
+   */
   const moderateRanking = useCallback(async (rankingId: string, status: 'approved' | 'rejected') => {
     try {
       await rankingsService.moderate(rankingId, status);
@@ -1252,33 +1447,45 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [addToast]);
 
 
+  /**
+   * Registra denúncia de comentário no fluxo da comunidade.
+   * @since 1.0.0
+   */
   const reportComment = useCallback(async (commentId: string, reason: string, details: string) => {
     if (!currentUser) {
-      addToast("VocÃª precisa estar logado para reportar.", "warning");
+      addToast("Você precisa estar logado para reportar.", "warning");
       return false;
     }
 
     try {
       await commentService.reportComment(commentId, reason, details, currentUser.id);
-      addToast("DenÃºncia enviada com sucesso. Obrigado por ajudar a manter a comunidade limpa!", "success");
+      addToast("Denúncia enviada com sucesso. Obrigado por ajudar a manter a comunidade limpa!", "success");
       return true;
     } catch (e) {
       console.error("Failed to report comment", e);
-      addToast((e as Error).message || "Erro de conexÃ£o.", "error");
+      addToast((e as Error).message || "Erro de conexão.", "error");
       return false;
     }
   }, [currentUser?.id, addToast]);
 
+  /**
+   * Carrega a arvore de comentários de uma questão especifica.
+   * @since 1.0.0
+   */
   const fetchComments = useCallback(async (questionId: number) => {
     try {
       const comments = await commentService.getComments(String(questionId), currentUser?.id);
       dispatch({ type: 'SET_COMMENTS', payload: { questionId, comments } });
     } catch (e) {
       console.error(`[DataContext] Failed to fetch comments for ${questionId}`, e);
-      addToast("Erro ao carregar comentÃ¡rios.", "error");
+      addToast("Erro ao carregar comentários.", "error");
     }
   }, [currentUser?.id, addToast]);
 
+  /**
+   * Busca paginas adicionais de questões para scroll/paginacao progressiva.
+   * @since 1.0.0
+   */
   const fetchMoreQuestions = useCallback(async (page: number) => {
     const params = {
         user_id: currentUser?.id,
@@ -1299,16 +1506,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [currentUser?.id]);
 
+  /**
+   * Remove um comentário de questão e recompõe o estado se o backend falhar.
+   * @since 1.0.0
+   */
   const deleteComment = useCallback((questionId: number, commentId: string) => {
     if (!currentUser) return;
 
     dispatch({ type: 'DELETE_COMMENT', payload: { questionId, commentId } });
 
     commentService.deleteComment(commentId, currentUser.id).then(() => {
-        addToast("ComentÃ¡rio excluÃ­do com sucesso.", "success");
+        addToast("Comentário excluído com sucesso.", "success");
     }).catch(err => {
       console.error("Failed to delete comment", err);
-      addToast(err.message || "Erro de conexÃ£o ao excluir comentÃ¡rio.", "error");
+      addToast(err.message || "Erro de conexão ao excluir comentário.", "error");
       fetchComments(questionId);
     });
   }, [currentUser?.id, addToast, fetchComments]);
@@ -1368,13 +1579,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 };
 
 /**
- * Hook publico para consumir o contexto global de dados do frontend.
- * Ele conecta features como questoes, rankings, admin, notificacoes e configuracoes ao mesmo estado oficial.
- * @since v1.0.0
+ * Hook público para consumir o contexto global de dados do frontend.
+ * Ele conecta features como questões, rankings, admin, notificações e configurações ao mesmo estado oficial.
+ * @since 1.0.0
  */
 export const useData = () => {
   const context = useContext(DataContext);
   if (!context) throw new Error('useData must be used within DataProvider');
   return context;
 };
-

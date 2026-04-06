@@ -50,7 +50,7 @@ export const PlansPage: React.FC = () => {
     const handleSubscribe = async (plan: Plan) => {
         if (plan.price === 0) {
             if (!currentUser) {
-                addToast('FaÃ§a login para ativar o plano gratuito', 'info');
+                addToast('Faça login para ativar o plano gratuito', 'info');
                 navigate('/auth');
                 return;
             }
@@ -214,18 +214,18 @@ export const PlansPage: React.FC = () => {
                             <div className="space-y-4">
                                 <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Aviso de Downgrade</h3>
                                 <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                                    Ao mudar para o plano <span className="text-slate-900 dark:text-white font-bold">{pendingDowngradePlan.name}</span>, vocÃª manterÃ¡ sua assinatura por um perÃ­odo maior, mas perderÃ¡ acesso aos benefÃ­cios exclusivos do seu plano atual (<span className="text-indigo-600 dark:text-indigo-400 font-bold">{currentUser?.subscription?.plan?.name}</span>) assim que a migraÃ§Ã£o for concluÃ­da.
+                                    Ao mudar para o plano <span className="text-slate-900 dark:text-white font-bold">{pendingDowngradePlan.name}</span>, você manterá sua assinatura por um período maior, mas perderá acesso aos benefícios exclusivos do seu plano atual (<span className="text-indigo-600 dark:text-indigo-400 font-bold">{currentUser?.subscription?.plan?.name}</span>) assim que a migração for concluída.
                                 </p>
                                 <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/50 text-left">
                                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">O que muda:</p>
                                     <ul className="text-xs text-slate-600 dark:text-slate-300 space-y-2">
                                         <li className="flex items-start gap-2">
                                             <XCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
-                                            <span>ReduÃ§Ã£o no nÃ­vel de funcionalidades premium.</span>
+                                            <span>Redução no nível de funcionalidades premium.</span>
                                         </li>
                                         <li className="flex items-start gap-2">
                                             <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                                            <span>Seu crÃ©dito proporcional serÃ¡ aplicado no novo valor.</span>
+                                            <span>Seu crédito proporcional será aplicado no novo valor.</span>
                                         </li>
                                     </ul>
                                 </div>

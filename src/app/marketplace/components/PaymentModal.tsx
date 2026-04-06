@@ -91,7 +91,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             // 1. Get the MP instance (Ensure it exists)
             // @ts-ignore
             if (typeof window.MercadoPago === 'undefined') {
-                throw new Error('O sistema de pagamento ainda estÃ¡ carregando. Por favor, aguarde um instante e tente novamente.');
+                throw new Error('O sistema de pagamento ainda está carregando. Por favor, aguarde um instante e tente novamente.');
             }
 
             // @ts-ignore
@@ -112,7 +112,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             });
 
             if (!tokenResponse || !tokenResponse.id) {
-                throw new Error('Falha ao gerar token do cartÃ£o. Verifique os dados.');
+                throw new Error('Falha ao gerar token do cartão. Verifique os dados.');
             }
 
             // 4. Send to backend
@@ -140,7 +140,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             }
         } catch (err: any) {
             console.error('Payment error:', err);
-            setError(err.message || 'Erro de conexao com o servidor.');
+            setError(err.message || 'Erro de conexão com o servidor.');
         } finally {
             setIsLoading(false);
         }
@@ -192,9 +192,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
                     {/* Payment Method Selector */}
                     <div className="space-y-4">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Selecione o mÃ©todo</label>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Selecione o método</label>
                         <div className="flex gap-3">
-                            {renderMethodButton('card', <CreditCard size={14} />, 'CartÃ£o')}
+                            {renderMethodButton('card', <CreditCard size={14} />, 'Cartão')}
                             {renderMethodButton('pix', <QrCode size={14} />, 'Pix')}
                             {renderMethodButton('boleto', <Barcode size={14} />, 'Boleto')}
                         </div>
@@ -206,7 +206,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                             <div className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">NÃºmero do CartÃ£o</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número do Cartão</label>
                                         <div className="relative">
                                             <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                             <input
@@ -219,7 +219,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                                         </div>
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome no CartÃ£o</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome no Cartão</label>
                                         <input
                                             type="text"
                                             value={cardData.name}
@@ -278,7 +278,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                                 </div>
                                 <div>
                                     <h4 className="font-black text-slate-900 dark:text-slate-100">Pagamento via Pix</h4>
-                                    <p className="text-sm text-slate-500 max-w-xs mt-2">O acesso serÃ¡ liberado instantaneamente apÃ³s a confirmaÃ§Ã£o do pagamento.</p>
+                                    <p className="text-sm text-slate-500 max-w-xs mt-2">O acesso será liberado instantaneamente após a confirmação do pagamento.</p>
                                 </div>
                             </div>
                         )}
@@ -290,7 +290,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                                 </div>
                                 <div>
                                     <h4 className="font-black text-slate-900 dark:text-slate-100">Pagamento via Boleto</h4>
-                                    <p className="text-sm text-slate-500 max-w-xs mt-2">O acesso serÃ¡ liberado em atÃ© 3 dias Ãºteis apÃ³s o pagamento.</p>
+                                    <p className="text-sm text-slate-500 max-w-xs mt-2">O acesso será liberado em até 3 dias úteis após o pagamento.</p>
                                 </div>
                             </div>
                         )}

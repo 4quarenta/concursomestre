@@ -108,22 +108,22 @@ describe('notificationService', () => {
 
     const result = await notificationService.sendNotification(
       'user-1',
-      'Titulo',
+      'Título',
       'Mensagem',
       'info',
       'system',
       '/destino',
-      'https://evidencia.local',
+      'https://evidência.local',
     );
 
     expect(mockPost).toHaveBeenCalledWith('notificationsSend', {
       user_id: 'user-1',
-      title: 'Titulo',
+      title: 'Título',
       message: 'Mensagem',
       type: 'info',
       category: 'system',
       action_url: '/destino',
-      evidence_url: 'https://evidencia.local',
+      evidence_url: 'https://evidência.local',
     });
     expect(result.success).toBe(true);
   });

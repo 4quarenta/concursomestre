@@ -46,9 +46,9 @@ const AdminReportsSection = ({
             {renderSortableHeader('Alvo', 'targetType')}
             {renderSortableHeader('Motivo', 'lastReport.reason')}
             <th className="p-4">Detalhes</th>
-            {renderSortableHeader('UsuÃ¡rio', 'lastReport.userName')}
+            {renderSortableHeader('Usuário', 'lastReport.userName')}
             <th className="p-4">Prova</th>
-            <th className="p-4 text-center">AÃ§Ãµes</th>
+            <th className="p-4 text-center">Ações</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -62,7 +62,7 @@ const AdminReportsSection = ({
                   <span className="text-[10px] font-bold text-slate-500">ID: {group.targetId}</span>
                   {group.reports.length > 1 && (
                     <span className="text-[9px] font-black text-rose-500 uppercase flex items-center gap-1">
-                      <AlertTriangle size={10} /> {group.reports.length} DenÃºncias
+                      <AlertTriangle size={10} /> {group.reports.length} Denúncias
                     </span>
                   )}
                 </div>
@@ -70,7 +70,7 @@ const AdminReportsSection = ({
               <td className="p-4">
                 <div className="flex flex-col">
                   <span className="font-bold text-slate-800 dark:text-slate-200">{group.lastReport.reason}</span>
-                  {group.reports.length > 1 && <span className="text-[10px] text-slate-400">Ãšltima: {new Date(group.lastReport.timestamp).toLocaleDateString()}</span>}
+                  {group.reports.length > 1 && <span className="text-[10px] text-slate-400">Última: {new Date(group.lastReport.timestamp).toLocaleDateString()}</span>}
                 </div>
               </td>
               <td className="p-4 text-slate-600 dark:text-slate-400 max-w-xs truncate">{group.lastReport.details}</td>
@@ -111,7 +111,7 @@ const AdminReportsSection = ({
           ))}
           {reports.length === 0 && (
             <tr>
-              <td colSpan={6} className="p-8 text-center text-slate-400 dark:text-slate-600 italic">Nenhuma denÃºncia pendente.</td>
+              <td colSpan={6} className="p-8 text-center text-slate-400 dark:text-slate-600 italic">Nenhuma denúncia pendente.</td>
             </tr>
           )}
         </tbody>

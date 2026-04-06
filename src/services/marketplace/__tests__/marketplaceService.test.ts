@@ -191,7 +191,7 @@ describe('marketplaceService', () => {
       },
     });
 
-    const file = new File(['conteudo'], 'arquivo.pdf', { type: 'application/pdf' });
+    const file = new File(['conteúdo'], 'arquivo.pdf', { type: 'application/pdf' });
     const result = await marketplaceService.uploadFile(file, { password: '1234' });
 
     expect(mockPost).toHaveBeenCalledWith('upload.php', expect.any(FormData), expect.objectContaining({

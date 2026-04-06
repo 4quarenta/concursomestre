@@ -67,7 +67,7 @@ export const useAdminUserProfileWorkflow = ({
       })
       .catch((error) => {
         console.error(error);
-        addToast(readApiErrorMessage(error, 'Erro ao carregar detalhes do usuario.'), 'error');
+        addToast(readApiErrorMessage(error, 'Erro ao carregar detalhes do usuário.'), 'error');
         setDetailedUser(null);
       })
       .finally(() => setIsLoadingDetail(false));
@@ -95,14 +95,14 @@ export const useAdminUserProfileWorkflow = ({
 
     if (!payload.user_id && action !== 'refund_transaction') {
       console.error('Cannot perform action: user_id is missing', detailedUser);
-      addToast('Erro: ID do usuario faltando para esta acao.', 'error');
+      addToast('Erro: ID do usuário faltando para esta ação.', 'error');
       setActionLoading(false);
       return;
     }
 
     try {
       await adminService.performUserAction(payload);
-      addToast('Acao realizada com sucesso!', 'success');
+      addToast('Ação realizada com sucesso!', 'success');
 
       if (action === 'update_profile') {
         setIsEditingUser(false);
@@ -112,7 +112,7 @@ export const useAdminUserProfileWorkflow = ({
       setDetailedUser(refreshedUser);
     } catch (error) {
       console.error(error);
-      addToast(readApiErrorMessage(error, 'Erro ao realizar a acao.'), 'error');
+      addToast(readApiErrorMessage(error, 'Erro ao realizar a ação.'), 'error');
     } finally {
       setActionLoading(false);
     }

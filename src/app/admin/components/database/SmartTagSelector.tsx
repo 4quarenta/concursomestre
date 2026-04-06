@@ -22,8 +22,8 @@ interface SmartTagSelectorProps {
 }
 
 /**
- * Seletor inteligente de tags usado no cadastro/ediÃ§Ã£o de questÃµes.
- * Foi isolado do Admin.tsx e limpo de estados e hooks que nÃ£o participavam
+ * Seletor inteligente de tags usado no cadastro/edição de questões.
+ * Foi isolado do Admin.tsx e limpo de estados e hooks que não participavam
  * do comportamento real do componente.
  */
 export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({

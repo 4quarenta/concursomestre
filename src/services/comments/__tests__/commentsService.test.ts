@@ -71,7 +71,7 @@ describe('commentService', () => {
     mockGet.mockResolvedValueOnce({
       success: true,
       data: [
-        { id: 'com-1', text: 'Comentario', replies: [] },
+        { id: 'com-1', text: 'Comentário', replies: [] },
       ],
     });
 
@@ -90,7 +90,7 @@ describe('commentService', () => {
     mockGet.mockResolvedValueOnce({
       success: true,
       data: [
-        { id: 'com-2', questionId: 7, text: 'Meu comentario', replies: [] },
+        { id: 'com-2', questionId: 7, text: 'Meu comentário', replies: [] },
       ],
     });
 
@@ -112,7 +112,7 @@ describe('commentService', () => {
 
     const comment = await commentService.addComment({
       questionId: '88',
-      content: 'Novo comentario',
+      content: 'Novo comentário',
       userId: 'user-1',
       userName: 'Teste',
       targetType: 'question',
@@ -123,7 +123,7 @@ describe('commentService', () => {
       question_id: '88',
       user_id: 'user-1',
       user_name: 'Teste',
-      content: 'Novo comentario',
+      content: 'Novo comentário',
       parent_id: undefined,
       targetType: 'question',
     });
@@ -163,19 +163,19 @@ describe('commentService', () => {
   it('reports a comment through the reports endpoint', async () => {
     mockCreateReport.mockResolvedValueOnce({
       id: 'rep-1',
-      message: 'Denuncia registrada',
+      message: 'Denúncia registrada',
     });
 
-    const result = await commentService.reportComment('com-12', 'spam', 'Conteudo suspeito', 'user-3');
+    const result = await commentService.reportComment('com-12', 'spam', 'Conteúdo suspeito', 'user-3');
 
     expect(mockCreateReport).toHaveBeenCalledWith({
       reporterId: 'user-3',
       targetType: 'comment',
       targetId: 'com-12',
       reason: 'spam',
-      details: 'Conteudo suspeito',
+      details: 'Conteúdo suspeito',
     });
     expect(result.success).toBe(true);
-    expect(result.message).toBe('Denuncia registrada');
+    expect(result.message).toBe('Denúncia registrada');
   });
 });

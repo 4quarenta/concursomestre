@@ -18,7 +18,7 @@ interface AuthPageProps {
 }
 
 /**
- * Entry point oficial da autenticacao.
+ * Entry point oficial da autenticação.
  */
 const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   return <Auth onLogin={onLogin} />;

@@ -31,7 +31,9 @@ import {
   Percent,
   QrCode,
   RefreshCcw,
+  Search,
   Save,
+  ShieldAlert,
   ShoppingBag,
   Tag,
   Terminal,
@@ -42,6 +44,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useData } from '@providers/DataProvider';
+import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useToast } from '@providers/ToastProvider';
 import type { AppPromotionTheme, PlanBenefitKey, SystemSettings, UserProfile } from '@types';
 import { adminService } from '@services/admin/adminService';
@@ -67,9 +70,9 @@ interface AdminFinanceProps {
 }
 
 /**
- * SubmÃ³dulo financeiro e de marketing do painel administrativo.
- * MantÃ©m o domÃ­nio comercial isolado do arquivo principal do admin,
- * preservando filtros, pricing, automaÃ§Ã£o e operaÃ§Ã£o financeira.
+ * Submódulo financeiro e de marketing do painel administrativo.
+ * Mantém o domínio comercial isolado do arquivo principal do admin,
+ * preservando filtros, pricing, automação e operação financeira.
  */
 const AdminMarketing = ({ systemSettings, updateSystemSettings, addCoupon, deleteCoupon }: Pick<AdminFinanceProps, 'systemSettings' | 'updateSystemSettings' | 'addCoupon' | 'deleteCoupon'>) => {
   const { addToast } = useToast();
@@ -77,14 +80,14 @@ const AdminMarketing = ({ systemSettings, updateSystemSettings, addCoupon, delet
   const [newCoupon, setNewCoupon] = useState({ code: '', discountPercentage: 10, maxUses: 100 });
 
   const themes: { value: AppPromotionTheme; label: string }[] = [
-    { value: 'default', label: 'PadrÃ£o (Azul/Slate)' },
+    { value: 'default', label: 'Padrão (Azul/Slate)' },
     { value: 'black-friday', label: 'Black Friday (Preto/Roxo)' },
     { value: 'black-november', label: 'Black November' },
     { value: 'estudante', label: 'Dia do Estudante' },
-    { value: 'sao-joao', label: 'SÃ£o JoÃ£o' },
+    { value: 'sao-joao', label: 'São João' },
     { value: 'carnaval', label: 'Carnaval' },
     { value: 'ano-novo', label: 'Ano Novo' },
-    { value: 'pascoa', label: 'PÃ¡scoa' },
+    { value: 'pascoa', label: 'Páscoa' },
     { value: 'consumidor', label: 'Semana do Consumidor' },
   ];
 
@@ -114,14 +117,14 @@ const AdminMarketing = ({ systemSettings, updateSystemSettings, addCoupon, delet
       {activeSection === 'coupons' && (
         <div className="space-y-4">
           <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-end gap-4 transition-colors">
-            <div className="flex-1 space-y-1"><label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">CÃ³digo</label><input type="text" value={newCoupon.code} onChange={e => setNewCoupon({ ...newCoupon, code: e.target.value.toUpperCase() })} className="w-full h-10 px-3 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-black uppercase bg-white dark:bg-slate-800 outline-none focus:border-indigo-500 transition-colors" placeholder="EX: APROVADO20" /></div>
+            <div className="flex-1 space-y-1"><label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Código</label><input type="text" value={newCoupon.code} onChange={e => setNewCoupon({ ...newCoupon, code: e.target.value.toUpperCase() })} className="w-full h-10 px-3 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-black uppercase bg-white dark:bg-slate-800 outline-none focus:border-indigo-500 transition-colors" placeholder="EX: APROVADO20" /></div>
             <div className="w-32 space-y-1"><label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Desconto (%)</label><input type="number" value={newCoupon.discountPercentage} onChange={e => setNewCoupon({ ...newCoupon, discountPercentage: Number(e.target.value) })} className="w-full h-10 px-3 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 outline-none focus:border-indigo-500 transition-colors" /></div>
             <button onClick={() => { addCoupon(newCoupon); setNewCoupon({ code: '', discountPercentage: 10, maxUses: 100 }); }} className="h-10 px-6 bg-slate-900 dark:bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase hover:bg-slate-800 dark:hover:bg-indigo-700 transition-all">Criar Cupom</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {systemSettings.coupons.map((coupon: any) => (
               <div key={coupon.code} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex justify-between items-center transition-colors">
-                <div><h4 className="font-black text-slate-900 dark:text-slate-100">{coupon.code}</h4><p className="text-xs text-slate-500 dark:text-slate-400">{coupon.discountPercentage}% OFF â€¢ {coupon.uses} usos</p></div>
+                <div><h4 className="font-black text-slate-900 dark:text-slate-100">{coupon.code}</h4><p className="text-xs text-slate-500 dark:text-slate-400">{coupon.discountPercentage}% OFF ? {coupon.uses} usos</p></div>
                 <button onClick={() => deleteCoupon(coupon.code)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
               </div>
             ))}
@@ -179,17 +182,17 @@ const AdminMarketing = ({ systemSettings, updateSystemSettings, addCoupon, delet
 
             <div className="p-6 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-3xl space-y-4">
               <h4 className="text-xs font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                <Zap size={14} /> Preview da NotificaÃ§Ã£o
+                <Zap size={14} /> Preview da Notificação
               </h4>
               <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-indigo-100 dark:border-indigo-900/40">
                 <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{systemSettings.activePromotion.name}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{systemSettings.activePromotion.bannerText}</p>
               </div>
               <button
-                onClick={() => addToast("`NotificaÃ§Ã£o enviada!", "error")}
+                onClick={() => addToast("`Notificação enviada!", "error")}
                 className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all"
               >
-                Disparar para todos os usuÃ¡rios
+                Disparar para todos os usuários
               </button>
             </div>
           </div>
@@ -224,7 +227,7 @@ const AdminMarketing = ({ systemSettings, updateSystemSettings, addCoupon, delet
                 </div>
                 <div className="text-center">
                   <h4 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">
-                    {id === 'default' ? 'PadrÃ£o (Modern)' : id === 'black-friday' ? 'Black Friday' : id === 'black-november' ? 'Black November' : id === 'estudante' ? 'Dia do Estudante' : id === 'sao-joao' ? 'SÃ£o JoÃ£o' : id === 'carnaval' ? 'Carnaval' : id === 'ano-novo' ? 'Ano Novo' : id === 'pascoa' ? 'PÃ¡scoa' : 'Semana do Consumidor'}
+                    {id === 'default' ? 'Padrão (Modern)' : id === 'black-friday' ? 'Black Friday' : id === 'black-november' ? 'Black November' : id === 'estudante' ? 'Dia do Estudante' : id === 'sao-joao' ? 'São João' : id === 'carnaval' ? 'Carnaval' : id === 'ano-novo' ? 'Ano Novo' : id === 'pascoa' ? 'Páscoa' : 'Semana do Consumidor'}
                   </h4>
                   <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">{id}</p>
                 </div>
@@ -244,7 +247,7 @@ const AdminMarketing = ({ systemSettings, updateSystemSettings, addCoupon, delet
             <div className="flex-1">
               <h4 className="text-sm font-black text-amber-800 dark:text-amber-400 uppercase">Impacto Visual Global</h4>
               <p className="text-xs text-amber-700 dark:text-amber-500/80 font-medium leading-relaxed mt-1">
-                A alteraÃ§Ã£o do tema impacta imediatamente a Landing Page e elementos decorativos em toda a plataforma (banners, badges e destaques). O sistema de cores light/dark continua funcionando de forma complementar ao tema selecionado.
+                A alteração do tema impacta imediatamente a Landing Page e elementos decorativos em toda a plataforma (banners, badges e destaques). O sistema de cores light/dark continua funcionando de forma complementar ao tema selecionado.
               </p>
             </div>
           </div>
@@ -293,7 +296,7 @@ const AdminFinance = ({
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
     const now = Date.now();
 
-    // 1. Identificar todos os vendedores que tÃªm transaÃ§Ãµes
+    // 1. Identificar todos os vendedores que têm transações
     allTransactions.forEach((t: any) => {
       if (!metricsBySeller[t.sellerId]) {
         const seller = allUsers.find((u: any) => u.id === t.sellerId);
@@ -301,7 +304,7 @@ const AdminFinance = ({
           id: t.sellerId,
           name: seller?.name || 'Desconhecido',
           email: seller?.email || '-',
-          paymentDay: seller?.billing?.paymentDay || Math.floor(Math.random() * 28) + 1, // Mock se nÃ£o existir
+          paymentDay: seller?.billing?.paymentDay || Math.floor(Math.random() * 28) + 1, // Mock se não existir
           totalSales: 0,
           heldBalance: 0,
           availablePayout: 0,
@@ -341,7 +344,7 @@ const AdminFinance = ({
       })
       .catch(() => {
         if (!cancelled) {
-          addToast('Nao foi possivel carregar as instrucoes oficiais de automacao.', 'error');
+          addToast('Não foi possível carregar as instrucoes oficiais de automacao.', 'error');
         }
       })
       .finally(() => {
@@ -379,10 +382,10 @@ const AdminFinance = ({
     switch (status) {
       case 'completed':
       case 'approved':
-        return 'ConcluÃ­do';
+        return 'Concluído';
       case 'pre-approved':
       case 'scheduled':
-        return 'PrÃ©-aprovado';
+        return 'Pré-aprovado';
       case 'refund_requested':
         return 'Em disputa';
       case 'refunded':
@@ -494,7 +497,7 @@ const AdminFinance = ({
       id: transaction.id,
       data: transaction.dateTimeFormatted || new Date(transaction.timestamp || Date.now()).toLocaleString(),
       tipo: transaction.type === 'plan' ? 'Assinatura' : 'Material',
-      descricao: transaction.transactionName || transaction.materialTitle || transaction.planName || 'Plano de Assinatura',
+      descrição: transaction.transactionName || transaction.materialTitle || transaction.planName || 'Plano de Assinatura',
       comprador: transaction.buyerName || '',
       vendedor: transaction.sellerName || 'Plataforma',
       provedor: transaction.paymentProvider || '',
@@ -508,7 +511,7 @@ const AdminFinance = ({
     }));
 
     const header = Object.keys(rows[0] || {
-      id: '', data: '', tipo: '', descricao: '', comprador: '', vendedor: '', provedor: '', metodo: '', referencia: '', valor: '', taxa: '', liquido: '', status: '', invoice: '',
+      id: '', data: '', tipo: '', descrição: '', comprador: '', vendedor: '', provedor: '', metodo: '', referencia: '', valor: '', taxa: '', liquido: '', status: '', invoice: '',
     });
     const csv = [
       header.join(';'),
@@ -519,11 +522,11 @@ const AdminFinance = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `transacoes-admin-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `transações-admin-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
 
-    addToast('ExportaÃ§Ã£o CSV gerada com sucesso.', 'success');
+    addToast('Exportação CSV gerada com sucesso.', 'success');
   };
 
   const handleSavePricing = async () => {
@@ -535,7 +538,7 @@ const AdminFinance = ({
       addToast('Planos e regras de acesso salvos com sucesso.', 'success');
     } catch (error) {
       console.error('Error saving pricing settings:', error);
-      addToast('Nao foi possivel salvar as configuracoes dos planos.', 'error');
+      addToast('Não foi possível salvar as configurações dos planos.', 'error');
     } finally {
       setIsSavingPricing(false);
     }
@@ -740,13 +743,13 @@ const AdminFinance = ({
           onClick={() => setActiveSection('transactions')}
           className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSection === 'transactions' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
         >
-          <div className="flex items-center gap-2"><FileText size={14} /> TransaÃ§Ãµes</div>
+          <div className="flex items-center gap-2"><FileText size={14} /> Transações</div>
         </button>
         <button
           onClick={() => setActiveSection('prices')}
           className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSection === 'prices' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
         >
-          <div className="flex items-center gap-2"><Tag size={14} /> PreÃ§os & Planos</div>
+          <div className="flex items-center gap-2"><Tag size={14} /> Preços & Planos</div>
         </button>
         <button
           onClick={() => setActiveSection('marketing')}
@@ -758,7 +761,7 @@ const AdminFinance = ({
           onClick={() => setActiveSection('automation')}
           className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSection === 'automation' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
         >
-          <div className="flex items-center gap-2"><Terminal size={14} /> AutomaÃ§Ã£o</div>
+          <div className="flex items-center gap-2"><Terminal size={14} /> Automação</div>
         </button>
       </div>
 
@@ -779,7 +782,7 @@ const AdminFinance = ({
                 >
                   <option value="available_desc">Maior Valor a Repassar</option>
                   <option value="available_asc">Menor Valor a Repassar</option>
-                  <option value="date_asc">Data PrÃ³xima</option>
+                  <option value="date_asc">Data Próxima</option>
                   <option value="date_desc">Data Distante</option>
                 </select>
               </div>
@@ -790,9 +793,9 @@ const AdminFinance = ({
                   <tr>
                     <th className="p-6 pl-8">Vendedor</th>
                     <th className="p-6 text-right">Saldo Preso</th>
-                    <th className="p-6 text-right">DisponÃ­vel</th>
+                    <th className="p-6 text-right">Disponível</th>
                     <th className="p-6 text-center">Dia Pagamento</th>
-                    <th className="p-6 text-center">AÃ§Ãµes</th>
+                    <th className="p-6 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
@@ -848,7 +851,7 @@ const AdminFinance = ({
             </div>
             <div className="p-8 grid grid-cols-3 gap-4 border-b border-slate-100 dark:border-slate-800">
               <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
-                <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase mb-1">DisponÃ­vel para Saque</p>
+                <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase mb-1">Disponível para Saque</p>
                 <p className="text-xl font-black text-emerald-700 dark:text-emerald-300">R$ {selectedSeller.availablePayout.toFixed(2)}</p>
               </div>
               <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl border border-amber-100 dark:border-amber-900/30">
@@ -856,7 +859,7 @@ const AdminFinance = ({
                 <p className="text-xl font-black text-amber-700 dark:text-amber-300">R$ {selectedSeller.heldBalance.toFixed(2)}</p>
               </div>
               <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700">
-                <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">PrÃ³ximo Pagamento</p>
+                <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">Próximo Pagamento</p>
                 <p className="text-xl font-black text-slate-700 dark:text-slate-200">Dia {selectedSeller.paymentDay}</p>
               </div>
             </div>
@@ -921,7 +924,7 @@ const AdminFinance = ({
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
               <h3 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <ShieldAlert size={18} className="text-red-500" /> SolicitaÃ§Ãµes Pendentes
+                <ShieldAlert size={18} className="text-red-500" /> Solicitações Pendentes
               </h3>
             </div>
             <table className="w-full text-left text-xs">
@@ -931,12 +934,12 @@ const AdminFinance = ({
                   <th className="p-6">Material / Produto</th>
                   <th className="p-6">Motivo</th>
                   <th className="p-6 text-right">Valor</th>
-                  <th className="p-6 text-center">AÃ§Ãµes</th>
+                  <th className="p-6 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                 {refundRequests.length === 0 ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Nenhuma solicitaÃ§Ã£o de reembolso pendente.</td></tr>
+                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Nenhuma solicitação de reembolso pendente.</td></tr>
                 ) : (
                   refundRequests.map((t: any) => (
                     <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
@@ -947,7 +950,7 @@ const AdminFinance = ({
                       </td>
                       <td className="p-6">
                         <span className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-1 rounded text-[10px] font-bold">
-                          {t.refundReason || 'NÃ£o informado'}
+                          {t.refundReason || 'Não informado'}
                         </span>
                       </td>
                       <td className="p-6 text-right font-black">R$ {t.amount.toFixed(2)}</td>
@@ -956,7 +959,7 @@ const AdminFinance = ({
                           <button
                             onClick={() => handleResolveRefund(t.id, 'approved')}
                             className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-lg transition-colors"
-                            title="Aprovar DevoluÃ§Ã£o"
+                            title="Aprovar Devolução"
                           >
                             <Check size={16} strokeWidth={3} />
                           </button>
@@ -986,7 +989,7 @@ const AdminFinance = ({
               <p className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">
                 R$ {financeStats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{filteredTransactions.length} transaÃ§Ãµes no recorte atual.</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{filteredTransactions.length} transações no recorte atual.</p>
             </div>
             <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Taxa da plataforma</p>
@@ -996,7 +999,7 @@ const AdminFinance = ({
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Usa o valor real retornado pelo backend.</p>
             </div>
             <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">LÃ­quido consolidado</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Líquido consolidado</p>
               <p className="mt-3 text-2xl font-black text-indigo-600 dark:text-indigo-400">
                 R$ {financeStats.netRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
@@ -1043,10 +1046,10 @@ const AdminFinance = ({
                   }}
                   className="py-2.5 pl-3 pr-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                 >
-                  <option value="all">Todo o perÃ­odo</option>
+                  <option value="all">Todo o período</option>
                   <option value="today">Hoje</option>
-                  <option value="week">Ãšltimos 7 dias</option>
-                  <option value="month">Ãšltimos 30 dias</option>
+                  <option value="week">Últimos 7 dias</option>
+                  <option value="month">Últimos 30 dias</option>
                 </select>
               </div>
 
@@ -1068,7 +1071,7 @@ const AdminFinance = ({
                     <ChevronLeft size={15} />
                   </button>
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                    PÃ¡gina {currentPage} de {totalPages}
+                    Página {currentPage} de {totalPages}
                   </span>
                   <button
                     onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
@@ -1085,16 +1088,16 @@ const AdminFinance = ({
               <table className="w-full min-w-[1260px] text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
                   <tr>
-                    <th className="p-4">TransaÃ§Ã£o</th>
+                    <th className="p-4">Transação</th>
                     <th className="p-4">Data</th>
                     <th className="p-4">Tipo</th>
                     <th className="p-4">Pagamento</th>
-                    <th className="p-4">DescriÃ§Ã£o</th>
+                    <th className="p-4">Descrição</th>
                     <th className="p-4">Comprador</th>
                     <th className="p-4">Vendedor</th>
                     <th className="p-4 text-right">Bruto</th>
                     <th className="p-4 text-right">Taxa</th>
-                    <th className="p-4 text-right">LÃ­quido</th>
+                    <th className="p-4 text-right">Líquido</th>
                     <th className="p-4 text-center">Status</th>
                     <th className="p-4 text-center">Fatura</th>
                   </tr>
@@ -1103,7 +1106,7 @@ const AdminFinance = ({
                   {currentTransactions.length === 0 ? (
                     <tr>
                       <td colSpan={12} className="p-12 text-center italic text-slate-400 dark:text-slate-600">
-                        Nenhuma transaÃ§Ã£o encontrada para os filtros atuais.
+                        Nenhuma transação encontrada para os filtros atuais.
                       </td>
                     </tr>
                   ) : currentTransactions.map((transaction: any) => {
@@ -1167,7 +1170,7 @@ const AdminFinance = ({
                             )}
                             <div>
                               <div className="font-bold text-slate-700 dark:text-slate-200">
-                                {transaction.paymentMethodLabel || transaction.paymentMethod || 'CartÃ£o'}
+                                {transaction.paymentMethodLabel || transaction.paymentMethod || 'Cartão'}
                               </div>
                               <div className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500">
                                 {String(transaction.paymentProvider || '').replace('_', ' ')}
@@ -1179,7 +1182,7 @@ const AdminFinance = ({
                           <div className="max-w-[220px]">
                             <div className="font-bold text-slate-800 dark:text-slate-200">{description}</div>
                             <div className="mt-1 text-[10px] text-slate-400 dark:text-slate-500 break-words">
-                              {transaction.description || transaction.planName || transaction.materialTitle || 'Sem descriÃ§Ã£o adicional'}
+                              {transaction.description || transaction.planName || transaction.materialTitle || 'Sem descrição adicional'}
                             </div>
                           </div>
                         </td>
@@ -1252,7 +1255,7 @@ const AdminFinance = ({
                               PDF
                             </button>
                           ) : (
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-300 dark:text-slate-600">IndisponÃ­vel</span>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-300 dark:text-slate-600">Indisponível</span>
                           )}
                         </td>
                       </tr>
@@ -1296,7 +1299,7 @@ const AdminFinance = ({
                   disabled={currentPage === totalPages}
                   className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-xs font-bold transition-all hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
                 >
-                  PrÃ³xima
+                  Próxima
                 </button>
               </div>
             </div>
@@ -1305,7 +1308,7 @@ const AdminFinance = ({
       )}
 
       {activeSection === 'transactions-legacy' && (() => {
-        // --- LOGICA DE FILTRO E PAGINAÃ‡ÃƒO LOCAL PARA TRANSAÃ‡Ã•ES ---
+        // --- LOGICA DE FILTRO E PAGINAÇÃO LOCAL PARA TRANSAÇÕES ---
         const getFilteredTransactions = () => {
           if (!allTransactions) return [];
           return allTransactions.filter((t: any) => {
@@ -1377,7 +1380,7 @@ const AdminFinance = ({
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="Buscar transaÃ§Ã£o..."
+                      placeholder="Buscar transação..."
                       value={financeFilters.search}
                       onChange={e => { setFinanceFilters({ ...financeFilters, search: e.target.value }); setCurrentPage(1); }}
                       className="pl-9 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold w-64 outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -1391,7 +1394,7 @@ const AdminFinance = ({
                     <option value="all">Todos os Status</option>
                     {statusOptions.map((status: any) => (
                       <option key={status} value={status}>
-                        {status === 'completed' ? 'ConcluÃ­do' :
+                        {status === 'completed' ? 'Concluído' :
                          status === 'refunded' ? 'Reembolsado' :
                          status === 'scheduled' ? 'pre-aprovado' :
                          status === 'pending' ? 'Pendente' :
@@ -1404,15 +1407,15 @@ const AdminFinance = ({
                     onChange={e => { setFinanceFilters({ ...financeFilters, dateRange: e.target.value }); setCurrentPage(1); }}
                     className="py-2 pl-3 pr-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                   >
-                    <option value="all">Todo o PerÃ­odo</option>
+                    <option value="all">Todo o Período</option>
                     <option value="today">Hoje</option>
-                    <option value="week">Ãšltimos 7 dias</option>
-                    <option value="month">Ãšltimo MÃªs</option>
+                    <option value="week">Últimos 7 dias</option>
+                    <option value="month">Último Mês</option>
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1} className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700"><ChevronLeft size={16} /></button>
-                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400">PÃ¡g {currentPage} de {totalPages || 1}</span>
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Pág {currentPage} de {totalPages || 1}</span>
                   <button onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages || totalPages === 0} className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700"><ChevronRight size={16} /></button>
                 </div>
               </div>
@@ -1425,19 +1428,19 @@ const AdminFinance = ({
                       <th className="p-4">Data</th>
                       <th className="p-4">Tipo</th>
                       <th className="p-4">Ref. Externa</th>
-                      <th className="p-4">MÃ©todo</th>
+                      <th className="p-4">Método</th>
                       <th className="p-4">Material / Plano</th>
                       <th className="p-4">Comprador</th>
                       <th className="p-4">Vendedor</th>
                       <th className="p-4 text-right">Valor</th>
                       <th className="p-4 text-right">Taxa (Admin)</th>
-                      <th className="p-4 text-right">LÃ­quido</th>
+                      <th className="p-4 text-right">Líquido</th>
                       <th className="p-4 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="text-slate-700 dark:text-slate-300 divide-y divide-slate-50 dark:divide-slate-800">
                     {currentTransactions.length === 0 ? (
-                      <tr><td colSpan={12} className="p-12 text-center text-slate-400 dark:text-slate-600 italic">Nenhuma transaÃ§Ã£o encontrada.</td></tr>
+                      <tr><td colSpan={12} className="p-12 text-center text-slate-400 dark:text-slate-600 italic">Nenhuma transação encontrada.</td></tr>
                     ) : (
                       currentTransactions.map((t: any) => {
                         const isHeld = (Date.now() - t.timestamp) < (7 * 24 * 60 * 60 * 1000);
@@ -1460,12 +1463,12 @@ const AdminFinance = ({
                               {t.externalId || '-'}
                             </td>
                             <td className="p-4">
-                              <div className="flex items-center gap-1.5" title={t.paymentMethod || 'NÃ£o informado'}>
+                              <div className="flex items-center gap-1.5" title={t.paymentMethod || 'Não informado'}>
                                 {(!t.paymentMethod || t.paymentMethod === 'credit_card') && <CreditCard size={14} className="text-indigo-500" />}
                                 {t.paymentMethod === 'pix' && <QrCode size={14} className="text-emerald-500" />}
                                 {t.paymentMethod === 'boleto' && <FileText size={14} className="text-amber-500" />}
                                 <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">
-                                  {t.paymentMethod === 'credit_card' ? 'CartÃ£o' : t.paymentMethod === 'pix' ? 'Pix' : t.paymentMethod === 'boleto' ? 'Boleto' : 'CartÃ£o'}
+                                  {t.paymentMethod === 'credit_card' ? 'Cartão' : t.paymentMethod === 'pix' ? 'Pix' : t.paymentMethod === 'boleto' ? 'Boleto' : 'Cartão'}
                                 </span>
                               </div>
                             </td>
@@ -1486,7 +1489,7 @@ const AdminFinance = ({
                             <td className="p-4 text-right text-blue-600 dark:text-blue-400 font-bold">R$ {netAmount.toFixed(2)}</td>
                             <td className="p-4 text-center">
                                {t.status === 'completed' || t.status === 'approved' ? (
-                                 <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-2 py-1 rounded text-[10px] font-black uppercase">ConcluÃ­do</span>
+                                 <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-2 py-1 rounded text-[10px] font-black uppercase">Concluído</span>
                                ) : t.status === 'scheduled' ? (
                                  <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 px-2 py-1 rounded text-[10px] font-black uppercase border border-indigo-200 dark:border-indigo-800">pre-aprovado</span>
                                ) : t.status === 'refunded' ? (
@@ -1533,7 +1536,7 @@ const AdminFinance = ({
                       <td colSpan={8} className="p-4 text-right uppercase tracking-widest text-slate-500 dark:text-slate-400 font-black border-r border-slate-200 dark:border-slate-800">
                         <div className="flex items-center justify-end gap-2">
                           <TrendingUp size={16} className="text-indigo-500" />
-                          Totais da VisualizaÃ§Ã£o:
+                          Totais da Visualização:
                         </div>
                       </td>
                       <td className="p-4 text-right bg-indigo-50/50 dark:bg-indigo-900/10 border-r border-slate-200 dark:border-slate-800">
@@ -1550,7 +1553,7 @@ const AdminFinance = ({
                       </td>
                       <td className="p-4 text-right bg-blue-50/50 dark:bg-blue-900/10 border-r border-slate-200 dark:border-slate-800">
                         <div className="flex flex-col items-end">
-                          <span className="text-[10px] text-blue-600/70 font-medium uppercase">LÃ­quido</span>
+                          <span className="text-[10px] text-blue-600/70 font-medium uppercase">Líquido</span>
                           <span className="text-blue-600 dark:text-blue-400 font-black text-sm">R$ {financeStats.netRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
                       </td>
@@ -1566,7 +1569,7 @@ const AdminFinance = ({
                 </span>
                 <div className="flex gap-2">
                   <button onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1} className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700">Anterior</button>
-                  <button onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages || totalPages === 0} className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700">PrÃ³ximo</button>
+                  <button onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages || totalPages === 0} className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold disabled:opacity-50 hover:bg-slate-50 dark:hover:bg-slate-700">Próximo</button>
                 </div>
               </div>
             </div>
@@ -1577,8 +1580,8 @@ const AdminFinance = ({
       {activeSection === 'prices' && (
         <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-all duration-300">
           <div className="mb-8 border-b border-slate-100 dark:border-slate-800/50 pb-6">
-            <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">ConfiguraÃ§Ã£o de Planos</h3>
-            <p className="text-sm text-slate-500 font-medium">Defina preÃ§os, descontos e benefÃ­cios liberados para cada nÃ­vel de assinatura.</p>
+            <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">Configuração de Planos</h3>
+            <p className="text-sm text-slate-500 font-medium">Defina preços, descontos e benefícios liberados para cada nível de assinatura.</p>
           </div>
           <div className="flex justify-end mb-6">
             <button
@@ -1601,12 +1604,12 @@ const AdminFinance = ({
 
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">DescriÃ§Ã£o Comercial</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Descrição Comercial</label>
                     <input
                       type="text"
                       value={config.description || ''}
                       onChange={e => handleDescriptionChange(plan, e.target.value)}
-                      placeholder="DescriÃ§Ã£o breve do plano para atrair usuÃ¡rios..."
+                      placeholder="Descrição breve do plano para atrair usuários..."
                       className="w-full h-11 px-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500 transition-all text-xs"
                     />
                   </div>
@@ -1655,13 +1658,13 @@ const AdminFinance = ({
                     <div className="p-4 bg-white dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-1">
                       <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Total Trimestral</p>
                       <p className="text-sm font-black text-slate-700 dark:text-slate-300">R$ {config.quarterly.toFixed(2)}</p>
-                      <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold">â‰ˆ R$ {(config.quarterly / 3).toFixed(2)}/mÃªs</p>
+                      <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold">≈ R$ {(config.quarterly / 3).toFixed(2)}/mês</p>
                       <p className="text-[9px] text-emerald-500 font-bold">Economia de R$ {(config.monthly * 3 - config.quarterly).toFixed(2)}</p>
                     </div>
                     <div className="p-4 bg-white dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-1">
                       <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Total Anual</p>
                       <p className="text-sm font-black text-slate-700 dark:text-slate-300">R$ {config.annual.toFixed(2)}</p>
-                      <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold">â‰ˆ R$ {(config.annual / 12).toFixed(2)}/mÃªs</p>
+                      <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold">≈ R$ {(config.annual / 12).toFixed(2)}/mês</p>
                       <p className="text-[9px] text-indigo-500 font-bold">Economia de R$ {(config.monthly * 12 - config.annual).toFixed(2)}</p>
                     </div>
                   </div>
@@ -1725,7 +1728,7 @@ const AdminFinance = ({
                 Controle de Acesso por Plano
               </h4>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                Esta matriz define os beneficios reais liberados para cada plano. A interface e os endpoints premium passam a confiar nela para evitar vazamento de recursos de planos superiores.
+                Esta matriz define os benefícios reais liberados para cada plano. A interface e os endpoints premium passam a confiar nela para evitar vazamento de recursos de planos superiores.
               </p>
             </div>
 
@@ -1733,8 +1736,8 @@ const AdminFinance = ({
               <table className="w-full min-w-[860px] text-left">
                 <thead className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
                   <tr>
-                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Beneficio</th>
-                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descricao</th>
+                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Benefício</th>
+                    <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descrição</th>
                     {PLAN_ORDER.map((planName) => (
                       <th key={planName} className="p-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
                         {planName}
@@ -1800,10 +1803,10 @@ const AdminFinance = ({
               <div>
                 <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
                   <Terminal size={20} className="text-indigo-600 dark:text-indigo-400" />
-                  AutomaÃ§Ã£o de cobranÃ§a
+                  Automação de cobrança
                 </h3>
                 <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-                  A automaÃ§Ã£o segue o gateway principal configurado no painel e centraliza conciliaÃ§Ã£o, renovaÃ§Ã£o e diagnÃ³stico operacional.
+                  A automação segue o gateway principal configurado no painel e centraliza conciliação, renovação e diagnóstico operacional.
                 </p>
               </div>
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
@@ -1818,19 +1821,19 @@ const AdminFinance = ({
               <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-5 space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Provedor</p>
                 <p className="text-lg font-black text-slate-900 dark:text-slate-100">
-                  {paymentProvider === 'stripe' ? 'Stripe Billing + ReconciliaÃ§Ã£o' : 'Mercado Pago Subscription API'}
+                  {paymentProvider === 'stripe' ? 'Stripe Billing + Reconciliação' : 'Mercado Pago Subscription API'}
                 </p>
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
                   {paymentProvider === 'stripe'
-                    ? 'O cron revisa assinaturas, parcelas, invoices e divergÃªncias entre gateway e base local.'
-                    : 'O cron executa a rotina de cobranÃ§as recorrentes e retentativas automÃ¡ticas do provedor.'}
+                    ? 'O cron revisa assinaturas, parcelas, invoices e divergências entre gateway e base local.'
+                    : 'O cron executa a rotina de cobranças recorrentes e retentativas automáticas do provedor.'}
                 </p>
               </div>
               <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-5 space-y-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">FrequÃªncia recomendada</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Frequência recomendada</p>
                 <p className="text-lg font-black text-slate-900 dark:text-slate-100">1 vez por hora</p>
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Essa cadÃªncia reduz divergÃªncias de renovaÃ§Ã£o, conciliaÃ§Ã£o e feedback operacional no financeiro.
+                  Essa cadência reduz divergências de renovação, conciliação e feedback operacional no financeiro.
                 </p>
               </div>
               <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-5 space-y-2">
@@ -1857,12 +1860,12 @@ const AdminFinance = ({
                 <ul className="list-decimal space-y-2 pl-4 text-xs font-bold uppercase tracking-tight text-slate-600 dark:text-slate-400">
                   <li>Baixe o script auxiliar do cron.</li>
                   <li>Cadastre a tarefa no Agendador do Windows.</li>
-                  <li>Programe a execuÃ§Ã£o horÃ¡ria para manter a conciliaÃ§Ã£o atualizada.</li>
+                  <li>Programe a execução horária para manter a conciliação atualizada.</li>
                 </ul>
                 <button
                   onClick={() => {
                     if (!automationDownloadUrl) {
-                      addToast('A URL oficial do helper ainda nao foi carregada.', 'error');
+                      addToast('A URL oficial do helper ainda não foi carregada.', 'error');
                       return;
                     }
 
@@ -1892,7 +1895,7 @@ const AdminFinance = ({
                 <button
                   onClick={() => {
                     if (!automationCronCommand) {
-                      addToast('O comando oficial ainda nao foi carregado.', 'error');
+                      addToast('O comando oficial ainda não foi carregado.', 'error');
                       return;
                     }
 
@@ -1915,20 +1918,20 @@ const AdminFinance = ({
                   <h4 className="text-xs font-black uppercase tracking-widest text-indigo-900 dark:text-indigo-400">Fluxo operacional ativo</h4>
                   <p className="mt-1 text-xs font-medium leading-relaxed text-indigo-800/70 dark:text-indigo-400/80">
                     {paymentProvider === 'stripe'
-                      ? 'A reconciliaÃ§Ã£o Stripe revisa invoices, pagamentos, renovaÃ§Ã£o, parcelas e divergÃªncias entre o gateway e a base local antes de manter a assinatura ativa.'
-                      : 'A automaÃ§Ã£o do Mercado Pago mantÃ©m a cobranÃ§a recorrente, as retentativas e a atualizaÃ§Ã£o dos perÃ­odos de acesso dos alunos apÃ³s cada pagamento aprovado.'}
+                      ? 'A reconciliação Stripe revisa invoices, pagamentos, renovação, parcelas e divergências entre o gateway e a base local antes de manter a assinatura ativa.'
+                      : 'A automação do Mercado Pago mantém a cobrança recorrente, as retentativas e a atualização dos períodos de acesso dos alunos após cada pagamento aprovado.'}
                   </p>
                 </div>
               </div>
             </div>
 
             <div className="flex flex-col items-center gap-4 border-t border-slate-100 dark:border-slate-800 py-8">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">ExecuÃ§Ã£o manual para diagnÃ³stico</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Execução manual para diagnóstico</p>
               <button
                 type="button"
                 onClick={() => {
                   if (!automationCronUrl) {
-                    addToast('A URL oficial do cron ainda nao foi carregada.', 'error');
+                    addToast('A URL oficial do cron ainda não foi carregada.', 'error');
                     return;
                   }
 
@@ -1949,14 +1952,14 @@ const AdminFinance = ({
         <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in transition-colors duration-300">
           <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20">
             <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Terminal size={20} className="text-indigo-600 dark:text-indigo-400" /> AutomaÃ§Ã£o de CobranÃ§a (Subscription API)
+              <Terminal size={20} className="text-indigo-600 dark:text-indigo-400" /> Automação de Cobrança (Subscription API)
             </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">O sistema utiliza a <strong>Mercado Pago Subscription API</strong> (Nativa) para gerenciar cobranÃ§as recorrentes automaticamente.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">O sistema utiliza a <strong>Mercado Pago Subscription API</strong> (Nativa) para gerenciar cobranças recorrentes automaticamente.</p>
           </div>
           
           <div className="p-8 space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* OpÃ§Ã£o Windows */}
+              {/* Opção Windows */}
               <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-700/50 space-y-4">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="p-2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-xl">
@@ -1965,14 +1968,14 @@ const AdminFinance = ({
                   <h4 className="font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">Windows (XAMPP)</h4>
                 </div>
                 <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-2 list-decimal pl-4 font-bold uppercase tracking-tight">
-                  <li>Baixe o script .bat de automaÃ§Ã£o.</li>
+                  <li>Baixe o script .bat de automação.</li>
                   <li>Abra o "Agendador de Tarefas" do Windows.</li>
                   <li>Crie uma tarefa para rodar este arquivo .bat diariamente.</li>
                 </ul>
                 <button 
                   onClick={() => {
                     if (!automationDownloadUrl) {
-                      addToast('A URL oficial do helper ainda nao foi carregada.', 'error');
+                      addToast('A URL oficial do helper ainda não foi carregada.', 'error');
                       return;
                     }
 
@@ -1985,7 +1988,7 @@ const AdminFinance = ({
                 </button>
               </div>
 
-              {/* OpÃ§Ã£o Linux */}
+              {/* Opção Linux */}
               <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-700/50 space-y-4">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="p-2 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
@@ -2002,7 +2005,7 @@ const AdminFinance = ({
                 <button 
                   onClick={() => {
                     if (!automationCronCommand) {
-                      addToast('O comando oficial ainda nao foi carregado.', 'error');
+                      addToast('O comando oficial ainda não foi carregado.', 'error');
                       return;
                     }
 
@@ -2021,9 +2024,9 @@ const AdminFinance = ({
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="text-indigo-500 mt-1" size={18} />
                 <div>
-                  <h4 className="text-xs font-black text-indigo-900 dark:text-indigo-400 uppercase tracking-widest">IntegraÃ§Ã£o Nativa Ativa</h4>
+                  <h4 className="text-xs font-black text-indigo-900 dark:text-indigo-400 uppercase tracking-widest">Integração Nativa Ativa</h4>
                   <p className="text-xs text-indigo-800/70 dark:text-indigo-400/70 font-medium leading-relaxed mt-1">
-                    As cobranÃ§as agendadas e retentativas de pagamento sÃ£o gerenciadas diretamente pelos servidores do Mercado Pago. Os Webhooks integrados garantem que os perÃ­odos de acesso dos alunos sejam renovados automaticamente apÃ³s cada pagamento aprovado.
+                    As cobranças agendadas e retentativas de pagamento são gerenciadas diretamente pelos servidores do Mercado Pago. Os Webhooks integrados garantem que os períodos de acesso dos alunos sejam renovados automaticamente após cada pagamento aprovado.
                   </p>
                 </div>
               </div>
@@ -2035,7 +2038,7 @@ const AdminFinance = ({
                  type="button"
                  onClick={() => {
                    if (!automationCronUrl) {
-                     addToast('A URL oficial do cron ainda nao foi carregada.', 'error');
+                     addToast('A URL oficial do cron ainda não foi carregada.', 'error');
                      return;
                    }
 
@@ -2068,4 +2071,3 @@ const slugify = (text: string) => {
 };
 
 export default AdminFinance;
-

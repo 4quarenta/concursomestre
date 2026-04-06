@@ -56,7 +56,7 @@ if (typeof document !== 'undefined') {
     document.head.appendChild(styleEl);
 }
 
-// Configurar worker do pdfjs â€” o Vite resolve o ?url para o caminho correto em node_modules
+// Configurar worker do pdfjs ? o Vite resolve o ?url para o caminho correto em node_modules
 // @ts-ignore
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -117,14 +117,14 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pageNum, scale }) => {
         const render = async () => {
             if (!canvasRef.current) return;
 
-            // Cancelar render anterior e aguardar conclusÃ£o do cancelamento
+            // Cancelar render anterior e aguardar conclusão do cancelamento
             if (renderTaskRef.current) {
                 try {
                     renderTaskRef.current.cancel();
                     // Aguardar a promise do cancelamento para garantir que o canvas foi liberado
                     await renderTaskRef.current.promise;
                 } catch (error) {
-                    // RenderingCancelledException Ã© esperado, ignorar
+                    // RenderingCancelledException é esperado, ignorar
                 }
                 renderTaskRef.current = null;
             }
@@ -132,7 +132,7 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pageNum, scale }) => {
             // Checar se o componente foi desmontado durante o cancelamento
             if (isCancelled) return;
 
-            // Limpar text layer antes de nova renderizaÃ§Ã£o para evitar spans acumulados
+            // Limpar text layer antes de nova renderização para evitar spans acumulados
             if (textLayerRef.current) {
                 textLayerRef.current.innerHTML = '';
             }
@@ -141,7 +141,7 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pageNum, scale }) => {
                 const page = await pdfDoc.getPage(pageNum);
                 if (isCancelled) return;
 
-                // Respeitar rotaÃ§Ã£o embutida no PDF (page.rotate pode ser 0, 90, 180, 270)
+                // Respeitar rotação embutida no PDF (page.rotate pode ser 0, 90, 180, 270)
                 const viewport = page.getViewport({ scale: scale * window.devicePixelRatio, rotation: page.rotate });
                 const canvas = canvasRef.current;
                 if (!canvas) return;
@@ -149,7 +149,7 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pageNum, scale }) => {
 
                 if (!context) return;
 
-                // Ajustar dimensÃµes do canvas para device pixel ratio
+                // Ajustar dimensões do canvas para device pixel ratio
                 canvas.height = viewport.height;
                 canvas.width = viewport.width;
                 canvas.style.height = `${viewport.height / window.devicePixelRatio}px`;
@@ -177,12 +177,12 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pageNum, scale }) => {
                             await pdfjsAny.renderTextLayer({
                                 textContentSource: textContent,
                                 container: textLayerRef.current,
-                                // Usar mesma rotaÃ§Ã£o no text layer para alinhamento correto
+                                // Usar mesma rotação no text layer para alinhamento correto
                                 viewport: page.getViewport({ scale: scale, rotation: page.rotate }),
                                 textDivs: []
                             }).promise;
                         } else {
-                            // Fallback manual â€” usar mesma rotaÃ§Ã£o do canvas para alinhamento correto
+                            // Fallback manual — usar mesma rotação do canvas para alinhamento correto
                             textContent.items.forEach((item: any) => {
                                 const tx = pdfjs.Util.transform(
                                     pdfjs.Util.transform(
@@ -250,7 +250,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
     const material = materials.find(m => m.id === materialId);
     const materialSubject = material?.subjectText || (typeof material?.subject === 'string' ? material.subject : (material?.subject as any)?.name || '');
 
-    // Estado local para comentÃ¡rios do material â€” carregado ao abrir o viewer
+    // Estado local para comentários do material — carregado ao abrir o viewer
     const [localComments, setLocalComments] = useState<any[]>([]);
     const [loadingComments, setLoadingComments] = useState(false);
     const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
@@ -266,7 +266,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
 
     useEffect(() => {
         if (isOpen && url) {
-            // Resetar estado antes de carregar novo conteÃºdo
+            // Resetar estado antes de carregar novo conteúdo
             setNoteText('');
             setOriginalNoteText('');
             setBookmarks([]);
@@ -285,12 +285,12 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
         }
     }, [isOpen, url, materialId, currentUser, password]);
 
-    // Busca comentÃ¡rios do material no backend ao abrir o viewer
+    // Busca comentários do material no backend ao abrir o viewer
     const fetchComments = async () => {
         if (!materialId || !currentUser) return;
         setLoadingComments(true);
         try {
-            // apiClient interceptor jÃ¡ retorna response.data, entÃ£o res = { success, data: [...] }
+            // apiClient interceptor já retorna response.data, então res = { success, data: [...] }
             const res = await apiClient.get<any>(ENDPOINTS.comments.list, {
                 params: { target_id: materialId, user_id: currentUser.id }
             });
@@ -298,13 +298,13 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                 setLocalComments(res.data);
             }
         } catch (err) {
-            console.error('Falha ao carregar comentÃ¡rios:', err);
+            console.error('Falha ao carregar comentários:', err);
         } finally {
             setLoadingComments(false);
         }
     };
 
-    // Recarregar comentÃ¡rios sempre que o sidebar de comentÃ¡rios for aberto
+    // Recarregar comentários sempre que o sidebar de comentários for aberto
     useEffect(() => {
         if (showComments && materialId && currentUser) {
             fetchComments();
@@ -328,7 +328,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
             setLoading(false);
         } catch (err) {
             console.error("Error loading PDF:", err);
-            setError("NÃ£o foi possÃ­vel carregar o documento PDF.");
+            setError("Não foi possível carregar o documento PDF.");
             setLoading(false);
         }
     };
@@ -380,7 +380,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
 
     const saveBookmark = async () => {
         if (!materialId || !currentUser) return;
-        const label = newBookmarkLabel.trim() || `PÃ¡gina ${pageNum}`;
+        const label = newBookmarkLabel.trim() || `Página ${pageNum}`;
         try {
             const bookmark = await readerService.saveBookmark(materialId, pageNum, label, currentUser.id);
             setBookmarks(prev => [...prev, bookmark].sort((a, b) => a.page_num - b.page_num));
@@ -408,11 +408,11 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
         try {
             const note = await readerService.saveNote(materialId, noteText, currentUser.id);
             setOriginalNoteText(note.note_text || noteText);
-            addToast("AnotaÃ§Ã£o salva com sucesso!", "success");
+            addToast("Anotação salva com sucesso!", "success");
             setIsNoteModalOpen(false);
         } catch (err) {
             console.error("Failed to save note:", err);
-            addToast("Erro ao salvar anotaÃ§Ã£o.", "error");
+            addToast("Erro ao salvar anotação.", "error");
         } finally {
             setSavingNote(false);
         }
@@ -457,7 +457,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                         <button
                             onClick={() => setDisplayMode('page')}
                             className={`p-1.5 rounded-md transition-all ${displayMode === 'page' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
-                            title="Modo PÃ¡gina"
+                            title="Modo Página"
                         >
                             <Layout size={18} />
                         </button>
@@ -481,34 +481,34 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                                 window.open(`/#/practice?subject=${subjectParam}${topicParam}`, '_blank');
                             }}
                             className="p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold uppercase bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
-                            title="Resolver QuestÃµes"
+                            title="Resolver Questões"
                         >
                             <GraduationCap size={18} />
-                            <span className="hidden md:inline">Resolver QuestÃµes</span>
+                            <span className="hidden md:inline">Resolver Questões</span>
                         </button>
                     )}
                     {/* Comments Button */}
                     <button
                         onClick={() => setShowComments(!showComments)}
                         className={`p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold uppercase ${showComments ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}
-                        title="ComentÃ¡rios"
+                        title="Comentários"
                     >
                         <div className="relative">
                             <MessageSquare size={18} />
-                            {/* Contar todos os comentÃ¡rios e respostas a partir do estado local */}
+                            {/* Contar todos os comentários e respostas a partir do estado local */}
                             {(localComments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0) + (c.replies?.reduce((subAcc: number, subC: any) => subAcc + (subC.replies?.length || 0), 0) || 0), 0) || 0) > 0 && (
                                 <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                                     {localComments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0) + (c.replies?.reduce((subAcc: number, subC: any) => subAcc + (subC.replies?.length || 0), 0) || 0), 0)}
                                 </span>
                             )}
                         </div>
-                        <span className="hidden md:inline">ComentÃ¡rios</span>
+                        <span className="hidden md:inline">Comentários</span>
                     </button>
                     {/* Notes Button */}
                     <button
                         onClick={() => setIsNoteModalOpen(true)}
                         className={`p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold uppercase ${noteText ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}
-                        title="Minhas AnotaÃ§Ãµes"
+                        title="Minhas Anotações"
                     >
                         <StickyNote size={18} />
                         <span className="hidden md:inline">{noteText ? 'Ver Nota' : 'Anotar'}</span>
@@ -588,7 +588,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                     </button>
 
                     <span className="font-bold text-xs text-slate-600 dark:text-slate-400">
-                        PÃ¡gina {pageNum} de {pdfDoc.numPages}
+                        Página {pageNum} de {pdfDoc.numPages}
                     </span>
 
                     <button
@@ -607,7 +607,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                     <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-scale-in border border-slate-200 dark:border-slate-800">
                         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-yellow-50 dark:bg-yellow-900/20">
                             <h3 className="font-bold text-slate-800 dark:text-slate-100 text-xs uppercase tracking-widest flex items-center gap-2">
-                                <StickyNote size={16} className="text-yellow-600 dark:text-yellow-400" /> Minhas AnotaÃ§Ãµes
+                                <StickyNote size={16} className="text-yellow-600 dark:text-yellow-400" /> Minhas Anotações
                             </h3>
                             <button onClick={() => setIsNoteModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
                                 <X size={20} />
@@ -618,7 +618,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                                 value={noteText}
                                 onChange={e => setNoteText(e.target.value)}
                                 className="w-full h-48 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400/50 text-sm text-slate-700 dark:text-slate-300 resize-none transition-all placeholder-slate-400"
-                                placeholder="Digite suas anotaÃ§Ãµes sobre este material aqui..."
+                                placeholder="Digite suas anotações sobre este material aqui..."
                                 autoFocus
                             />
                         </div>
@@ -650,7 +650,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                 <div className="absolute right-0 top-0 bottom-0 w-full md:w-96 bg-white dark:bg-slate-900 shadow-2xl border-l border-slate-200 dark:border-slate-800 z-40 flex flex-col animate-slide-in-right">
                     <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
                         <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                            <List size={18} className="text-indigo-600 dark:text-indigo-400" /> ComentÃ¡rios
+                            <List size={18} className="text-indigo-600 dark:text-indigo-400" /> Comentários
                         </h3>
                         <button onClick={() => setShowComments(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
                             <X size={20} className="text-slate-400" />
@@ -662,13 +662,13 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                             comments={localComments}
                             onAddComment={async (text, parentId) => {
                                 if (!materialId) return;
-                                // Salvar no backend e receber o comentÃ¡rio criado
+                                // Salvar no backend e receber o comentário criado
                                 const newComment = await addMaterialComment(materialId, text, parentId);
                                 if (newComment) {
-                                    // AtualizaÃ§Ã£o otimista: adicionar ao estado local imediatamente
+                                    // Atualização otimista: adicionar ao estado local imediatamente
                                     setLocalComments(prev => {
                                         if (parentId) {
-                                            // Aninhar resposta no comentÃ¡rio pai correto
+                                            // Aninhar resposta no comentário pai correto
                                             const addReply = (list: any[]): any[] => list.map(c => {
                                                 if (c.id === parentId) {
                                                     return { ...c, replies: [newComment, ...(c.replies || [])] };
@@ -688,7 +688,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                             }}
                             onLikeComment={async (commentId) => {
                                 if (!materialId) return;
-                                // AtualizaÃ§Ã£o otimista: toggle isLiked e likes count em localComments
+                                // Atualização otimista: toggle isLiked e likes count em localComments
                                 const toggleLike = (list: any[]): any[] => list.map(c => {
                                     if (c.id === commentId) {
                                         return {
@@ -709,7 +709,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                             onReportComment={() => addToast("Reportado com sucesso.", "success")}
                             onDeleteComment={async (commentId) => {
                                 if (!materialId) return;
-                                // Filtro recursivo para remover comentÃ¡rio ou resposta aninhada
+                                // Filtro recursivo para remover comentário ou resposta aninhada
                                 const deepFilter = (list: any[]): any[] =>
                                     list
                                         .filter(c => c.id !== commentId)
@@ -762,7 +762,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                             <div className="flex flex-col items-center justify-center h-48 text-center p-4 text-slate-400 dark:text-slate-600 space-y-2">
                                 <BookmarkIcon size={32} className="opacity-20" />
                                 <p className="text-sm font-medium">Nenhum marcador ainda</p>
-                                <p className="text-xs">Navegue atÃ© uma pÃ¡gina interessante e use o campo acima para salvÃ¡-la.</p>
+                                <p className="text-xs">Navegue até uma página interessante e use o campo acima para salvá-la.</p>
                             </div>
                         )}
                         {bookmarks.map(b => (

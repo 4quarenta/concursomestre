@@ -10,7 +10,6 @@
 */
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import styled from 'styled-components';
 import { createPortal } from 'react-dom';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -28,46 +27,23 @@ interface ToastContextType {
 
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
-const ToastContainer = styled.div`
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  z-index: 999999;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-`;
-
-const ToastItem = styled.div<{ $type: ToastType }>`
-  background: ${({ $type }) =>
-    $type === 'error' ? '#ff4d4f' :
-    $type === 'success' ? '#52c41a' :
-    $type === 'warning' ? '#faad14' : '#1890ff'};
-  color: white;
-  padding: 0.75rem 1.5rem;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  animation: slideIn 0.3s ease;
-  min-width: 250px;
-  max-width: 400px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-
-  @keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+/**
+ * Resolve as classes visuais do toast sem depender de CSS-in-JS global.
+ * Isso evita estilos stale em HMR e garante que o portal nao sobreponha a tela quando estiver vazio.
+ * @since 1.0.0
+ */
+const getToastToneClassName = (type: ToastType) => {
+  switch (type) {
+    case 'error':
+      return 'bg-rose-600';
+    case 'success':
+      return 'bg-emerald-600';
+    case 'warning':
+      return 'bg-amber-500 text-slate-950';
+    default:
+      return 'bg-sky-600';
   }
-`;
-
-const CloseButton = styled.button`
-  background: none;
-  border: none;
-  color: white;
-  margin-left: 1rem;
-  cursor: pointer;
-  font-weight: bold;
-`;
+};
 
 /**
  * Provider oficial de toasts da arquitetura congelada.
@@ -89,15 +65,28 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   return (
     <ToastContext.Provider value={{ addToast, removeToast }}>
       {children}
-      {createPortal(
-        <ToastContainer>
+      {toasts.length > 0 && createPortal(
+        <div className="pointer-events-none fixed bottom-8 right-8 z-[999999] flex max-w-[calc(100vw-2rem)] flex-col gap-2">
           {toasts.map((toast) => (
-            <ToastItem key={toast.id} $type={toast.type}>
-              {toast.message}
-              <CloseButton onClick={() => removeToast(toast.id)}>x</CloseButton>
-            </ToastItem>
+            <div
+              key={toast.id}
+              className={[
+                'pointer-events-auto flex min-w-[250px] max-w-[400px] items-center justify-between gap-4 rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-xl',
+                'animate-in slide-in-from-right-4 fade-in duration-300',
+                getToastToneClassName(toast.type),
+              ].join(' ')}
+            >
+              <span className="leading-relaxed">{toast.message}</span>
+              <button
+                type="button"
+                onClick={() => removeToast(toast.id)}
+                className="shrink-0 rounded-md px-2 py-1 text-xs font-black uppercase tracking-widest text-current/90 transition hover:bg-black/10 hover:text-current"
+              >
+                Fechar
+              </button>
+            </div>
           ))}
-        </ToastContainer>,
+        </div>,
         document.body,
       )}
     </ToastContext.Provider>

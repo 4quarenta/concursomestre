@@ -18,13 +18,13 @@ type StripeBillingMode = 'single_installment' | 'term_recurring';
 
 /**
  * Fachada oficial do dominio de planos.
- * Mantem catalogo, validacao comercial e delegacao para assinaturas/billing
+ * Mantem catalogo, validação comercial e delegacao para assinaturas/billing
  * fora dos entry points do frontend.
  * @since 1.0.0
  */
 export const planService = {
     /**
-     * Lista todos os planos disponiveis no catalogo.
+     * Lista todos os planos disponíveis no catálogo.
      * @since 1.0.0
      */
     async getPlans(): Promise<Plan[]> {
@@ -126,7 +126,7 @@ export const planService = {
     },
 
     /**
-     * Prepara o setup intent usado para salvar um cartao Stripe.
+     * Prepara o setup intent usado para salvar um cartão Stripe.
      * @since 1.0.0
      */
     async createStripeSetupIntent(): Promise<any> {
@@ -134,7 +134,7 @@ export const planService = {
     },
 
     /**
-     * Sincroniza o cartao Stripe salvo com o cofre local.
+     * Sincroniza o cartão Stripe salvo com o cofre local.
      * @since 1.0.0
      */
     async syncStripeCard(paymentMethodId: string): Promise<any> {
@@ -183,7 +183,7 @@ export const planService = {
     },
 
     /**
-     * Atualiza a preferencia de renovacao automatica.
+     * Atualiza a preferencia de renovação automática.
      * @since 1.0.0
      */
     async updateRenewal(autoRenew: boolean): Promise<any> {

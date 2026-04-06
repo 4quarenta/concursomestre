@@ -74,7 +74,7 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => ({
   })) || [],
   roles: data.cargos?.map((c: any) => ({
     id: c.id,
-    name: c.descricao || c.name,
+    name: c.descrição || c.name,
     slug: c.slug,
     description: c.description,
     website: c.website,
@@ -91,7 +91,7 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => ({
     type: 'career',
   })) || [],
   years: data.anos?.map(String) || [],
-  modalities: ['MÃºltipla Escolha', 'Certo/Errado'],
+  modalities: ['Múltipla Escolha', 'Certo/Errado'],
 });
 
 export const filtersService = {

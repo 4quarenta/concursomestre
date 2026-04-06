@@ -13,18 +13,44 @@ import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/a
 import type { Ranking, RankingEntry } from '@types';
 
 /**
+ * Normaliza cargas de rankings enquanto o backend ainda pode devolver
+ * array puro, `{ rankings }`, `{ items }` ou um objeto unico por legado.
+ * Isso evita que a UI quebre quando o contrato HTTP vem envelopado.
+ * @since 1.0.0
+ */
+const normalizeRankingsList = (payload: unknown): Ranking[] => {
+  if (Array.isArray(payload)) {
+    return payload as Ranking[];
+  }
+
+  if (payload && typeof payload === 'object') {
+    const objectPayload = payload as Record<string, unknown>;
+
+    if (Array.isArray(objectPayload.rankings)) {
+      return objectPayload.rankings as Ranking[];
+    }
+
+    if (Array.isArray(objectPayload.items)) {
+      return objectPayload.items as Ranking[];
+    }
+  }
+
+  return [];
+};
+
+/**
  * Fachada oficial do dominio de rankings.
  * Ela conecta a pagina de rankings, o contexto global e o backend oficial sem espalhar detalhes HTTP pela UI.
  * @since v1.0.0
  */
 export const rankingsService = {
   /**
-   * Lista os rankings disponiveis para exibicao na pagina publica e em contextos administrativos.
+   * Lista os rankings disponíveis para exibição na página pública e em contextos administrativos.
    * @since v1.0.0
    */
   async list(): Promise<Ranking[]> {
     const response = await apiClient.get<any>(ENDPOINTS.rankings.list) as any;
-    return readApiData(response, []);
+    return normalizeRankingsList(readApiData(response, []));
   },
 
   /**
@@ -41,7 +67,7 @@ export const rankingsService = {
 
   /**
    * Envia a participacao de um candidato em um ranking especifico.
-   * Esse metodo liga o formulario da pagina publica ao contrato oficial de submissao do backend.
+   * Esse metodo liga o formulário da pagina pública ao contrato oficial de submissao do backend.
    * @since v1.0.0
    */
   async join(rankingId: string, userId: string, entry: RankingEntry): Promise<string> {
@@ -57,7 +83,7 @@ export const rankingsService = {
   },
 
   /**
-   * Aprova ou rejeita um ranking no fluxo de moderacao administrativa.
+   * Aprova ou rejeita um ranking no fluxo de moderação administrativa.
    * @since v1.0.0
    */
   async moderate(rankingId: string, status: 'approved' | 'rejected'): Promise<void> {

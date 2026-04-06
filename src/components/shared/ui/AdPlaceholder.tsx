@@ -31,10 +31,10 @@ export const AdPlaceholder: React.FC<AdPlaceholderProps> = ({ className = '', ty
             <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="flex flex-col items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 dark:text-slate-700 group-hover:text-indigo-400 transition-colors">
-                    EspaÃ§o para AnÃºncio
+                    Espaço para Anúncio
                 </span>
                 <div className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-[9px] font-bold text-slate-400 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/40 group-hover:text-indigo-600 transition-all">
-                    ANÃšNCIO
+                    ANÚNCIO
                 </div>
             </div>
         </div>

@@ -10,7 +10,7 @@
 */
 
 /**
- * Fachada oficial do changelog publico.
+ * Fachada oficial do changelog público.
  */
 export { changelogService } from './changelogService';
 export type { ChangelogCategory, ChangelogVersion } from './changelogService';

@@ -97,7 +97,7 @@ const AdminDatabaseNavigation = ({
                 onClick={onCreateQuestion}
                 className="flex h-10 items-center gap-2 rounded-lg bg-indigo-600 px-4 text-xs font-bold uppercase text-white shadow-md transition-all active:scale-95 hover:bg-indigo-700"
               >
-                <Plus size={16} /> Nova Questao
+                <Plus size={16} /> Nova Questão
               </button>
             </div>
           )}

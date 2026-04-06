@@ -36,43 +36,43 @@ const LandingPage: React.FC = () => {
             : '';
 
     const navLinks = [
-        { label: 'InÃ­cio', to: '/', active: true },
+        { label: 'Início', to: '/', active: true },
         { label: 'Concursos', to: '/exams', visible: true },
         { label: 'Aulas', to: '/video-lessons', visible: true },
-        { label: 'QuestÃµes', to: '/practice', visible: systemSettings.features.practiceEnabled },
+        { label: 'Questões', to: '/practice', visible: systemSettings.features.practiceEnabled },
         { label: 'Rankings', to: '/ranking', visible: systemSettings.features.rankingsEnabled },
         { label: 'Materiais', to: '/marketplace', visible: systemSettings.features.marketplaceEnabled },
     ].filter(link => link.visible !== false);
 
     const stats = [
-        { label: 'QuestÃµes Cadastradas', value: '850k+', icon: BookOpen },
+        { label: 'Questões Cadastradas', value: '850k+', icon: BookOpen },
         { label: 'Alunos Aprovados', value: '45k+', icon: Trophy },
         { label: 'Materiais de Estudo', value: '12k+', icon: ShoppingBag },
-        { label: 'ComentÃ¡rios Reais', value: '1.5M+', icon: MessageSquare },
+        { label: 'Comentários Reais', value: '1.5M+', icon: MessageSquare },
     ];
 
     const features = [
         {
-            title: 'Ranking PÃ³s-Prova',
-            description: 'Cadastre suas notas e compare seu desempenho em tempo real com outros candidatos. A ferramenta essencial para prever sua aprovaÃ§Ã£o.',
+            title: 'Ranking Pós-Prova',
+            description: 'Cadastre suas notas e compare seu desempenho em tempo real com outros candidatos. A ferramenta essencial para prever sua aprovação.',
             icon: Trophy,
             color: 'text-rose-600 bg-rose-50 dark:bg-rose-900/20'
         },
         {
             title: 'Materiais de Estudo',
-            description: 'Acesse resumos, mapas mentais e materiais em PDF criados pelos melhores professores e aprovados do paÃ­s.',
+            description: 'Acesse resumos, mapas mentais e materiais em PDF criados pelos melhores professores e aprovados do país.',
             icon: ShoppingBag,
             color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20'
         },
         {
-            title: 'ExplicaÃ§Ãµes Detalhadas',
-            description: 'Nossas questÃµes contam com explicaÃ§Ãµes profissionais passo a passo, garantindo que vocÃª entenda a lÃ³gica por trÃ¡s de cada alternativa.',
+            title: 'Explicações Detalhadas',
+            description: 'Nossas questões contam com explicações profissionais passo a passo, garantindo que você entenda a lógica por trás de cada alternativa.',
             icon: BookOpen,
             color: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
         },
         {
-            title: 'Sistema de QuestÃµes Premium',
-            description: 'Filtros avanÃ§ados por banca, ano, assunto e dificuldade. Sua preparaÃ§Ã£o organizada com foco total no que cai.',
+            title: 'Sistema de Questões Premium',
+            description: 'Filtros avançados por banca, ano, assunto e dificuldade. Sua preparação organizada com foco total no que cai.',
             icon: Target,
             color: 'text-amber-600 bg-amber-50 dark:bg-amber-900/20'
         },
@@ -83,8 +83,8 @@ const LandingPage: React.FC = () => {
             color: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
         },
         {
-            title: 'Comunidade e InteraÃ§Ã£o',
-            description: 'A maior rede de concurseiros do Brasil. Troque experiÃªncias, tire dÃºvidas e colabore na construÃ§Ã£o do conhecimento.',
+            title: 'Comunidade e Interação',
+            description: 'A maior rede de concurseiros do Brasil. Troque experiências, tire dúvidas e colabore na construção do conhecimento.',
             icon: Users,
             color: 'text-cyan-600 bg-cyan-50 dark:bg-cyan-900/20'
         }
@@ -100,15 +100,15 @@ const LandingPage: React.FC = () => {
         return {
             name,
             displayPrice: `R$ ${monthlyEquivalent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            priceDetail: '/mÃªs',
+            priceDetail: '/mês',
             totalPrice: billingCycle !== 'monthly' && rawPrice > 0
                 ? `R$ ${rawPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} no total`
                 : null,
-            description: name === 'Gratuito' ? 'Ideal para quem estÃ¡ comeÃ§ando agora.' :
-                name === 'Essencial' ? 'Tudo o que vocÃª precisa para acelerar.' :
-                    name === 'Pro' ? 'A escolha definitiva dos aprovados.' : 'Foco total em performance de alto nÃ­vel.',
+            description: name === 'Gratuito' ? 'Ideal para quem está começando agora.' :
+                name === 'Essencial' ? 'Tudo o que você precisa para acelerar.' :
+                    name === 'Pro' ? 'A escolha definitiva dos aprovados.' : 'Foco total em performance de alto nível.',
             features: details.features.filter((f: any) => f.included).map((f: any) => f.text),
-            button: name === 'Gratuito' ? 'Escolher GrÃ¡tis' :
+            button: name === 'Gratuito' ? 'Escolher Grátis' :
                 name === 'Pro' ? 'Mais Vendido' :
                     name === 'Elite' ? 'Seja Elite' : 'Assinar Agora',
             highlight: name === 'Pro',
@@ -161,7 +161,7 @@ const LandingPage: React.FC = () => {
             </nav>
 
             {/* Hero Section */}
-            <section className="relative pt-20 pb-32 px-6 overflow-hidden">
+            <section className="relative isolate pt-20 pb-32 px-6 overflow-hidden">
                 <ThemeOrnaments themeId={systemSettings.activeTheme} />
 
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-full -z-10 opacity-10 dark:opacity-20 pointer-events-none">
@@ -169,7 +169,7 @@ const LandingPage: React.FC = () => {
                     <div className={`absolute bottom-20 right-10 w-96 h-96 ${currentTheme.bgOverlay} rounded-full blur-[120px] opacity-60`} />
                 </div>
 
-                <div className="max-w-5xl mx-auto text-center space-y-8 animate-slide-up">
+                <div className="relative z-10 max-w-5xl mx-auto text-center space-y-8 animate-slide-up">
                     <div className={`inline-flex items-center gap-2 px-4 py-1.5 ${currentTheme.accent} rounded-full text-[10px] font-black uppercase tracking-[0.2em] animate-fade-in`}>
                         <CheckCircle2 size={14} /> {currentTheme.heroBadge}
                     </div>
@@ -179,7 +179,7 @@ const LandingPage: React.FC = () => {
                     </h1>
 
                     <p className="text-lg md:text-xl text-slate-500 dark:text-slate-400 font-medium max-w-3xl mx-auto leading-relaxed">
-                        Mais que um banco de questÃµes. Uma plataforma completa que entende suas dificuldades e acelera sua aprovaÃ§Ã£o com estatÃ­sticas precisas.
+                        Mais que um banco de questões. Uma plataforma completa que entende suas dificuldades e acelera sua aprovação com estatísticas precisas.
                     </p>
 
                     {systemSettings.activeTheme !== 'default' && (
@@ -197,7 +197,7 @@ const LandingPage: React.FC = () => {
                             to="/auth?register=true"
                             className={`w-full sm:w-auto px-10 py-5 text-white rounded-[2rem] font-black uppercase text-sm tracking-[0.2em] shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3 ${currentTheme.button}`}
                         >
-                            {systemSettings.activeTheme !== 'default' ? 'Aproveitar PromoÃ§Ã£o Exclusiva' : 'ComeÃ§ar agora - Ã‰ grÃ¡tis'} <ArrowRight size={20} />
+                            {systemSettings.activeTheme !== 'default' ? 'Aproveitar Promoção Exclusiva' : 'Começar agora - É grátis'} <ArrowRight size={20} />
                         </Link>
                         <a
                             href="#recursos"
@@ -211,11 +211,11 @@ const LandingPage: React.FC = () => {
                         <div className="mx-auto max-w-6xl rounded-[2.5rem] border border-white/15 bg-white/10 p-4 shadow-2xl backdrop-blur-md">
                             <img
                                 src={platformIllustration}
-                                alt="Visao geral da plataforma ConcursoMestre com questoes, simulados, ranking, desempenho e materiais."
+                                alt="Visao geral da plataforma ConcursoMestre com questões, simulados, ranking, desempenho e materiais."
                                 className="w-full rounded-[2rem] border border-white/10"
                             />
                             <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-200">
-                                <span className="rounded-full bg-white/10 px-3 py-1.5">Questoes comentadas</span>
+                                <span className="rounded-full bg-white/10 px-3 py-1.5">Questões comentadas</span>
                                 <span className="rounded-full bg-white/10 px-3 py-1.5">Simulados</span>
                                 <span className="rounded-full bg-white/10 px-3 py-1.5">Ranking</span>
                                 <span className="rounded-full bg-white/10 px-3 py-1.5">Materiais em PDF</span>
@@ -246,7 +246,7 @@ const LandingPage: React.FC = () => {
                 <div className="max-w-7xl mx-auto">
                     <div className="text-center mb-20 space-y-4">
                         <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-600 dark:text-indigo-400">Diferenciais ConcursoMestre</h2>
-                        <h3 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white tracking-tight">O que vocÃª encontra na plataforma</h3>
+                        <h3 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white tracking-tight">O que você encontra na plataforma</h3>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -268,7 +268,7 @@ const LandingPage: React.FC = () => {
                 <div className="max-w-7xl mx-auto relative z-10">
                     <div className="text-center mb-16 space-y-4">
                         <h3 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white tracking-tight">Planos que cabem no seu bolso</h3>
-                        <p className="text-slate-500 dark:text-slate-400 font-medium max-w-2xl mx-auto">Escolha o nÃ­vel de acesso que mais combina com seu momento de estudos.</p>
+                        <p className="text-slate-500 dark:text-slate-400 font-medium max-w-2xl mx-auto">Escolha o nível de acesso que mais combina com seu momento de estudos.</p>
 
                         {/* Cycle Toggle */}
                         <div className="flex justify-center pt-8">
@@ -298,7 +298,7 @@ const LandingPage: React.FC = () => {
                                     <Percent size={12} className="inline mr-1" /> Oferta Especial: {currentTheme.heroBadge.split(':')[0]}
                                 </span>
                                 <span className="text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
-                                    PreÃ§os Reduzidos!
+                                    Preços Reduzidos!
                                 </span>
                             </div>
                         )}
@@ -358,7 +358,7 @@ const LandingPage: React.FC = () => {
                             <span>ConcursoMestre</span>
                         </div>
                         <p className={`text-sm leading-relaxed ${currentTheme.forceMode === 'dark' ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                            A plataforma completa para quem busca a aprovaÃ§Ã£o definitiva em concursos pÃºblicos.
+                            A plataforma completa para quem busca a aprovação definitiva em concursos públicos.
                         </p>
                         {systemSettings.activeTheme !== 'default' && (
                             <div className={`inline-block px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest ${currentTheme.accent}`}>
@@ -368,16 +368,16 @@ const LandingPage: React.FC = () => {
                     </div>
 
                     <div>
-                        <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-6">MÃ³dulos</h5>
+                        <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-6">Módulos</h5>
                         <ul className="space-y-4 text-sm font-bold text-slate-600 dark:text-slate-400">
-                            <li><Link to="/practice" className="hover:text-indigo-600 transition-colors">QuestÃµes e Simulados</Link></li>
-                            <li><Link to="/ranking" className="hover:text-indigo-600 transition-colors">Ranking PÃ³s-Prova</Link></li>
+                            <li><Link to="/practice" className="hover:text-indigo-600 transition-colors">Questões e Simulados</Link></li>
+                            <li><Link to="/ranking" className="hover:text-indigo-600 transition-colors">Ranking Pós-Prova</Link></li>
                             <li><Link to="/marketplace" className="hover:text-indigo-600 transition-colors">Materiais de Estudo</Link></li>
                         </ul>
                     </div>
 
                     <div>
-                        <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-6">Links Ãšteis</h5>
+                        <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-6">Links Úteis</h5>
                         <ul className="space-y-4 text-sm font-bold text-slate-600 dark:text-slate-400">
                             <li><Link to="/auth" className="hover:text-indigo-600 transition-colors">Entrar / Cadastrar</Link></li>
                             <li><Link to="/terms" className="hover:text-indigo-600 transition-colors">Termos de Uso</Link></li>
@@ -388,10 +388,10 @@ const LandingPage: React.FC = () => {
                     <div>
                         <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-6">Institucional</h5>
                         <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400 text-sm font-bold">
-                            <Globe size={18} /> PortuguÃªs (Brasil)
+                            <Globe size={18} /> Português (Brasil)
                         </div>
                         <p className="text-[10px] text-slate-400 mt-4 leading-relaxed font-medium">
-                            Â© 2026 ConcursoMestre Tecnologia Ltda.<br />
+                            © 2026 ConcursoMestre Tecnologia Ltda.<br />
                             CNPJ: 00.000.000/0000-00
                         </p>
                     </div>

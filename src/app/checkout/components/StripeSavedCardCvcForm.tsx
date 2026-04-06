@@ -57,7 +57,7 @@ const fieldShellClassName =
   'min-h-[56px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 transition-all focus-within:border-indigo-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 dark:border-slate-700 dark:bg-[#0f1020] dark:focus-within:border-indigo-400 dark:focus-within:bg-[#111428] dark:focus-within:ring-indigo-500/10';
 
 const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'publishableKey'>> = ({
-  submitLabel = 'Pagar com cartao salvo',
+  submitLabel = 'Pagar com cartão salvo',
   onConfirm,
 }) => {
   const stripe = useStripe();
@@ -71,18 +71,18 @@ const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'p
     event.preventDefault();
 
     if (!stripe || !elements) {
-      setError('O formulario seguro da Stripe ainda esta carregando. Tente novamente em alguns segundos.');
+      setError('O formulário seguro da Stripe ainda esta carregando. Tente novamente em alguns segundos.');
       return;
     }
 
     const cvcElement = elements.getElement(CardCvcElement);
     if (!cvcElement) {
-      setError('O campo de codigo de seguranca ainda nao foi carregado.');
+      setError('O campo de código de segurança ainda não foi carregado.');
       return;
     }
 
     if (!isComplete) {
-      setError('Digite o codigo de seguranca do cartao salvo para continuar.');
+      setError('Digite o código de segurança do cartão salvo para continuar.');
       return;
     }
 
@@ -92,7 +92,7 @@ const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'p
     try {
       await onConfirm({ stripe, cvcElement });
     } catch (submitError: any) {
-      setError(submitError?.message || 'Nao foi possivel confirmar o cartao salvo.');
+      setError(submitError?.message || 'Não foi possível confirmar o cartão salvo.');
     } finally {
       setSubmitting(false);
     }
@@ -101,12 +101,12 @@ const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'p
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-        Para sua seguranca, confirme o codigo de seguranca deste cartao salvo antes de concluir a compra.
+        Para sua segurança, confirme o código de segurança deste cartão salvo antes de concluir a compra.
       </p>
 
       <div className="space-y-2">
         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Codigo de seguranca
+          Código de segurança
         </label>
         <div className={fieldShellClassName}>
           <CardCvcElement
@@ -124,7 +124,7 @@ const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'p
           <p className="text-[11px] font-semibold text-rose-500">{fieldError}</p>
         ) : (
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            O CVV nao fica salvo na plataforma e sera usado apenas nesta confirmacao.
+            O CVV não fica salvo na plataforma e sera usado apenas nesta confirmacao.
           </p>
         )}
       </div>
@@ -137,7 +137,7 @@ const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'p
           <div className="space-y-1">
             <p className="text-xs font-bold text-slate-900 dark:text-white">Confirmacao segura</p>
             <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-              A Stripe recolhe o codigo de seguranca novamente para confirmar que o titular esta presente nesta compra.
+              A Stripe recolhe o código de segurança novamente para confirmar que o titular esta presente nesta compra.
             </p>
           </div>
         </div>
@@ -151,7 +151,7 @@ const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'p
         className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
-        {submitting ? 'Confirmando cartao salvo...' : submitLabel}
+        {submitting ? 'Confirmando cartão salvo...' : submitLabel}
       </button>
     </form>
   );
@@ -164,7 +164,7 @@ const StripeSavedCardCvcForm: React.FC<StripeSavedCardCvcFormProps> = ({
   const stripePromise = useMemo(() => loadStripe(publishableKey), [publishableKey]);
 
   if (!publishableKey) {
-    return <p className="text-[11px] font-bold text-rose-500">Stripe Publishable Key nao configurada.</p>;
+    return <p className="text-[11px] font-bold text-rose-500">Stripe Publishable Key não configurada.</p>;
   }
 
   return (

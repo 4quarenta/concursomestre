@@ -22,6 +22,7 @@ const CheckoutPage = React.lazy(() => import('../app/checkout/page'));
 const MarketplacePage = React.lazy(() => import('../app/marketplace/page'));
 const NotificationsPage = React.lazy(() => import('../app/notifications/page'));
 const PartnerDashboardPage = React.lazy(() => import('../app/partner-dashboard/page'));
+const PerformanceSubjectsPage = React.lazy(() => import('../app/performance-subjects/page'));
 const PracticePage = React.lazy(() => import('../app/practice/page'));
 const ProfilePage = React.lazy(() => import('../app/profile/page'));
 const RankingPage = React.lazy(() => import('../app/ranking/page'));
@@ -35,8 +36,8 @@ interface PrivateRoutesProps {
 }
 
 /**
- * Agrupa as rotas autenticadas e da area principal da aplicacao.
- * Esse conjunto conecta pratica, simulados, ranking, perfil e suporte ao shell autenticado e aos guards de sessao.
+ * Agrupa as rotas autenticadas e da area principal da aplicação.
+ * Esse conjunto conecta pratica, simulados, ranking, perfil e suporte ao shell autenticado e aos guards de sessão.
  */
 export const PrivateRoutes: React.FC<PrivateRoutesProps> = ({ currentUser, loginRequired }) => {
   /**
@@ -94,6 +95,7 @@ export const PrivateRoutes: React.FC<PrivateRoutesProps> = ({ currentUser, login
         }
       />
       <Route path="/profile" element={currentUser ? renderLayoutPage(<ProfilePage />) : <Navigate to="/auth" replace />} />
+      <Route path="/performance/subjects" element={currentUser ? renderLayoutPage(<PerformanceSubjectsPage />) : <Navigate to="/auth" replace />} />
       <Route path="/notifications" element={currentUser ? renderLayoutPage(<NotificationsPage />) : <Navigate to="/auth" replace />} />
       <Route path="/partner-dashboard" element={currentUser ? <PageTransition><PartnerDashboardPage /></PageTransition> : <Navigate to="/" replace />} />
       <Route path="/support" element={currentUser ? renderLayoutPage(<SupportPage />) : <Navigate to="/auth" replace />} />

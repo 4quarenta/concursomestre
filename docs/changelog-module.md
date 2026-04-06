@@ -2,17 +2,17 @@
 
 ## Escopo desta rodada
 
-Esta passada absorveu o dominio publico de changelog para a arquitetura oficial:
+Esta passada absorveu o dominio público de changelog para a arquitetura oficial:
 
 - `api/changelog/list.php`
 
 O endpoint agora e um bridge fino para:
 
-- `C:\xampp\htdocs\questao-pro-backend\modules\changelog\controllers\ChangelogController.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\changelog\services\ChangelogService.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\changelog\repositories\ChangelogRepository.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\changelog\validators\ChangelogValidator.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\changelog\routes.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\changelog\controllers\ChangelogController.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\changelog\services\ChangelogService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\changelog\repositories\ChangelogRepository.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\changelog\validators\ChangelogValidator.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\changelog\routes.php`
 
 ## Regras aplicadas
 
@@ -38,6 +38,6 @@ O contrato permanece com:
 - `description`
 - `content_json`
 
-## Beneficio arquitetural
+## Benefício arquitetural
 
 Com isso, o changelog deixa de ser um endpoint procedural isolado e passa a seguir o mesmo desenho dos demais dominios oficiais do backend.

@@ -60,7 +60,7 @@ export const useAdminQuestionsWorkflow = ({
       });
     } catch (error) {
       console.error('Error loading questions:', error);
-      addToast(readApiErrorMessage(error, 'Erro ao carregar questoes administrativas.'), 'error');
+      addToast(readApiErrorMessage(error, 'Erro ao carregar questões administrativas.'), 'error');
     }
   };
 

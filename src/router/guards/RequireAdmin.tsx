@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import type { UserProfile } from '@types';
 
 interface RequireAdminProps {
@@ -20,8 +20,17 @@ interface RequireAdminProps {
 
 /**
  * Guard oficial das rotas administrativas.
+ * Ele preserva a rota pretendida quando o usuario ainda precisa autenticar.
  */
 export const RequireAdmin: React.FC<RequireAdminProps> = ({ currentUser, children }) => {
+  const location = useLocation();
+
+  if (!currentUser) {
+    const requestedRoute = `${location.pathname}${location.search}${location.hash}`;
+    sessionStorage.setItem('redirectAfterLogin', requestedRoute);
+    return <Navigate to="/auth" replace />;
+  }
+
   if (!currentUser?.isAdmin) {
     return <Navigate to="/" replace />;
   }

@@ -64,15 +64,15 @@ const PrivacyPolicy: React.FC = () => {
             <div className="space-y-4 max-w-2xl text-white">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md text-[10px] font-black uppercase tracking-widest shadow-sm">
                 <Shield size={14} className="text-emerald-200" />
-                SeguranÃ§a de Dados
+                Segurança de Dados
               </div>
-              <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-tight">PolÃ­tica de Privacidade</h1>
+              <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-tight">Política de Privacidade</h1>
               <p className="text-emerald-100 text-sm md:text-base font-medium opacity-90 leading-relaxed">
-                Conformidade com a LGPD (Lei 13.709/2018). Nosso compromisso inegociÃ¡vel com a seguranÃ§a, o anonimato e a transparÃªncia em relaÃ§Ã£o aos seus dados.
+                Conformidade com a LGPD (Lei 13.709/2018). Nosso compromisso inegociável com a segurança, o anonimato e a transparência em relação aos seus dados.
               </p>
             </div>
             <div className="bg-white/10 backdrop-blur-lg border border-white/20 px-6 py-4 rounded-3xl text-right">
-              <span className="block text-[10px] uppercase font-black tracking-widest text-emerald-200 mb-1">Ãšltima AtualizaÃ§Ã£o</span>
+              <span className="block text-[10px] uppercase font-black tracking-widest text-emerald-200 mb-1">Última Atualização</span>
               <span className="block text-lg font-bold text-white">24 de Maio de 2024</span>
             </div>
           </div>
@@ -84,11 +84,11 @@ const PrivacyPolicy: React.FC = () => {
           {/* Sidebar Navigation */}
           <div className="lg:sticky lg:top-24 w-full lg:w-72 shrink-0">
             <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm p-4 space-y-1">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-4 ml-2 mt-2">SumÃ¡rio</h3>
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-4 ml-2 mt-2">Sumário</h3>
 
               {[
                 { id: 'coleta', icon: Database, label: '1. Coleta de Dados' },
-                { id: 'seguranca', icon: Lock, label: '2. SeguranÃ§a da InformaÃ§Ã£o' },
+                { id: 'segurança', icon: Lock, label: '2. Segurança da Informação' },
                 { id: 'compartilhamento', icon: Server, label: '3. Compartilhamento' },
                 { id: 'direitos', icon: UserCheck, label: '4. Seus Direitos (LGPD)' },
               ].map(item => (
@@ -121,7 +121,7 @@ const PrivacyPolicy: React.FC = () => {
                 </div>
                 <div className="space-y-6">
                   <p className="text-base md:text-lg text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
-                    A transparÃªncia Ã© a base da nossa relaÃ§Ã£o. Coletamos e processamos Ãºnica e exclusivamente as informaÃ§Ãµes que sÃ£o essenciais para a prestaÃ§Ã£o plena e segura de nossos serviÃ§os educacionais, visando uma jornada de estudo customizada.
+                    A transparência é a base da nossa relação. Coletamos e processamos única e exclusivamente as informações que são essenciais para a prestação plena e segura de nossos serviços educacionais, visando uma jornada de estudo customizada.
                   </p>
 
                   <div className="mt-8 grid grid-cols-1 gap-6">
@@ -132,7 +132,7 @@ const PrivacyPolicy: React.FC = () => {
                       </div>
                       <div className="relative z-10 flex-1">
                         <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 mb-2 tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Dados Cadastrais Relacionais</h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">Coletamos nome completo, e-mail e avatar para identificaÃ§Ã£o e comunicaÃ§Ã£o transacional mÃ­nima. Senhas sÃ£o "hashed" unidirecionalmente com os protocolos mais fortes da indÃºstria.</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">Coletamos nome completo, e-mail e avatar para identificação e comunicação transacional mínima. Senhas são "hashed" unidirecionalmente com os protocolos mais fortes da indústria.</p>
                       </div>
                     </div>
 
@@ -142,8 +142,8 @@ const PrivacyPolicy: React.FC = () => {
                         <Lock size={24} className="text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <div className="relative z-10 flex-1">
-                        <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 mb-2 tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Dados Fiscais SensÃ­veis</h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">CPF e EndereÃ§o sÃ£o requeridos apenas no ato da conversÃ£o para plano pago (Pagar.me/Stripe) ou para credenciamento obrigatÃ³rio "Know Your Customer". <strong className="text-slate-700 dark:text-slate-200">NÃ³s NUNCA guardamos nÃºmeros integrais de seu cartÃ£o.</strong></p>
+                        <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 mb-2 tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Dados Fiscais Sensíveis</h4>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">CPF e Endereço são requeridos apenas no ato da conversão para plano pago (Pagar.me/Stripe) ou para credenciamento obrigatório "Know Your Customer". <strong className="text-slate-700 dark:text-slate-200">Nós NUNCA guardamos números integrais de seu cartão.</strong></p>
                       </div>
                     </div>
 
@@ -154,7 +154,7 @@ const PrivacyPolicy: React.FC = () => {
                       </div>
                       <div className="relative z-10 flex-1">
                         <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 mb-2 tracking-tight group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">Dados Comportamentais</h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">EstatÃ­sticas ativas de acertos, tempo gasto interpretando a questÃ£o e prompts conversacionais com a IA Mestre, estritamente necessÃ¡rios para calibrar a Ã¡rvore de aprendizado do seu Raio-X Preditivo.</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">Estatísticas ativas de acertos, tempo gasto interpretando a questão e prompts conversacionais com a IA Mestre, estritamente necessários para calibrar a árvore de aprendizado do seu Raio-X Preditivo.</p>
                       </div>
                     </div>
                   </div>
@@ -163,15 +163,15 @@ const PrivacyPolicy: React.FC = () => {
 
               <div className="h-px bg-slate-100 dark:bg-slate-800 w-full my-12"></div>
 
-              <section id="seguranca" className="scroll-mt-24 mb-16">
+              <section id="segurança" className="scroll-mt-24 mb-16">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="p-3 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-2xl border border-emerald-500/20 text-emerald-500">
                     <Lock size={24} />
                   </div>
-                  <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 m-0 tracking-tight">2. SeguranÃ§a da InformaÃ§Ã£o</h2>
+                  <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 m-0 tracking-tight">2. Segurança da Informação</h2>
                 </div>
                 <p className="text-base md:text-lg text-slate-600 dark:text-slate-400 font-medium mb-8">
-                  Empregamos medidas tÃ©cnicas e administrativas rigorosas para manter seus dados de refÃ©ns longe de vazamentos acidentais ou acessos nÃ£o autorizados.
+                  Empregamos medidas técnicas e administrativas rigorosas para manter seus dados de reféns longe de vazamentos acidentais ou acessos não autorizados.
                 </p>
 
                 <div className="relative group p-8 md:p-10 bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-[2rem] shadow-sm hover:shadow-lg transition-all duration-500 overflow-hidden">
@@ -182,8 +182,8 @@ const PrivacyPolicy: React.FC = () => {
                         <Shield size={14} className="text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <div>
-                        <h4 className="text-slate-900 dark:text-slate-100 font-bold mb-1">Criptografia em TrÃ¢nsito</h4>
-                        <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">Todo o trÃ¡fego da plataforma Ã© fortificado via TLS (Transport Layer Security) assegurando que endpoints em sua rede nÃ£o espionem o payload de envio.</p>
+                        <h4 className="text-slate-900 dark:text-slate-100 font-bold mb-1">Criptografia em Trânsito</h4>
+                        <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">Todo o tráfego da plataforma é fortificado via TLS (Transport Layer Security) assegurando que endpoints em sua rede não espionem o payload de envio.</p>
                       </div>
                     </li>
                     <li className="flex gap-4 items-start">
@@ -192,7 +192,7 @@ const PrivacyPolicy: React.FC = () => {
                       </div>
                       <div>
                         <h4 className="text-slate-900 dark:text-slate-100 font-bold mb-1">Gateway Blindado</h4>
-                        <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">Dados crÃ­ticos de assinatura e gateway de pagamento sÃ£o processados por tokens indiretos, sem passarem (ou deixarem log) em nosso Back-end.</p>
+                        <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">Dados críticos de assinatura e gateway de pagamento são processados por tokens indiretos, sem passarem (ou deixarem log) em nosso Back-end.</p>
                       </div>
                     </li>
                     <li className="flex gap-4 items-start">
@@ -201,7 +201,7 @@ const PrivacyPolicy: React.FC = () => {
                       </div>
                       <div>
                         <h4 className="text-slate-900 dark:text-slate-100 font-bold mb-1">Monitoramento Constante</h4>
-                        <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">Nossa nuvem roda scan automÃ¡tico por injeÃ§Ãµes de SQL, manipulaÃ§Ãµes de dom (XSS) e checagens excessivas contra robÃ´s (Slowloris/DDoS).</p>
+                        <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">Nossa nuvem roda scan automático por injeções de SQL, manipulações de dom (XSS) e checagens excessivas contra robôs (Slowloris/DDoS).</p>
                       </div>
                     </li>
                   </ul>
@@ -219,13 +219,13 @@ const PrivacyPolicy: React.FC = () => {
                 </div>
                 <div className="space-y-4 text-sm md:text-base text-slate-600 dark:text-slate-400 font-medium leading-relaxed">
                   <p>
-                    A ConcursoMestre orgulha-se de nÃ£o comercializar o ativo mais valioso de nossa geraÃ§Ã£o: <strong className="text-slate-800 dark:text-slate-200">sua privacidade</strong>. A locaÃ§Ã£o ou venda de leads e dados Ã© extritamente proibida e contramedida pelos fundadores.
+                    A ConcursoMestre orgulha-se de não comercializar o ativo mais valioso de nossa geração: <strong className="text-slate-800 dark:text-slate-200">sua privacidade</strong>. A locação ou venda de leads e dados é extritamente proibida e contramedida pelos fundadores.
                   </p>
 
-                  <p>O compartilhamento se reduz aos vetores necessÃ¡rios para funcionamento do escopo legal:</p>
+                  <p>O compartilhamento se reduz aos vetores necessários para funcionamento do escopo legal:</p>
                   <ul className="list-disc pl-5 mt-4 space-y-3">
                     <li>Processadores de pagamento operando como "Data Processor".</li>
-                    <li>IntegraÃ§Ã£o das requisiÃ§Ãµes junto aos provedores de Large Language Models (LLMs como Google Gemini / OpenAI), de forma que os provedores <strong>nÃ£o possam</strong> treinar modelos nos prompts que nÃ£o forem devidamente isolados ou se opuserem por API Opt-out.</li>
+                    <li>Integração das requisições junto aos provedores de Large Language Models (LLMs como Google Gemini / OpenAI), de forma que os provedores <strong>não possam</strong> treinar modelos nos prompts que não forem devidamente isolados ou se opuserem por API Opt-out.</li>
                     <li>Atividades estatais e Ordens Judiciais transitadas e julgadas.</li>
                   </ul>
                 </div>
@@ -241,15 +241,15 @@ const PrivacyPolicy: React.FC = () => {
                   <h2 className="text-3xl font-black text-slate-900 dark:text-slate-100 m-0 tracking-tight">4. Seus Direitos (LGPD)</h2>
                 </div>
                 <p className="text-base md:text-lg text-slate-600 dark:text-slate-400 font-medium mb-8">
-                  Por lei, vocÃª Ã© plenamente dono e reinante sobre suas prÃ³prias informaÃ§Ãµes. VocÃª ostenta os seguintes direitos constitucionais que facilitamos acesso:
+                  Por lei, você é plenamente dono e reinante sobre suas próprias informações. Você ostenta os seguintes direitos constitucionais que facilitamos acesso:
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   {[
-                    { title: "Direito de Esquecimento", desc: "A exclusÃ£o integral da sua conta remove suas notas sistÃªmicas, dados e correlaÃ§Ãµes.", highlight: "text-red-500", borderColor: "hover:border-red-400 dark:hover:border-red-500/50" },
-                    { title: "Direito de CorreÃ§Ã£o", desc: "PainÃ©is de ediÃ§Ã£o transparentes para ajustar nome, avatar e vÃ­nculos de pagamento a qualquer instante.", highlight: "text-emerald-500", borderColor: "hover:border-emerald-400 dark:hover:border-emerald-500/50" },
-                    { title: "Direito de Portabilidade", desc: "Caso requerido, empacotaremos seu histÃ³rico de banco em JSON legÃ­vel formatado.", highlight: "text-indigo-500", borderColor: "hover:border-indigo-400 dark:hover:border-indigo-500/50" },
-                    { title: "RevogaÃ§Ã£o de AnuÃªncia", desc: "Newsletters e E-mails massivos podem ser opostos com simples de-check na Ã¡rea de ConfiguraÃ§Ãµes.", highlight: "text-amber-500", borderColor: "hover:border-amber-400 dark:hover:border-amber-500/50" }
+                    { title: "Direito de Esquecimento", desc: "A exclusão integral da sua conta remove suas notas sistêmicas, dados e correlações.", highlight: "text-red-500", borderColor: "hover:border-red-400 dark:hover:border-red-500/50" },
+                    { title: "Direito de Correção", desc: "Painéis de edição transparentes para ajustar nome, avatar e vínculos de pagamento a qualquer instante.", highlight: "text-emerald-500", borderColor: "hover:border-emerald-400 dark:hover:border-emerald-500/50" },
+                    { title: "Direito de Portabilidade", desc: "Caso requerido, empacotaremos seu histórico de banco em JSON legível formatado.", highlight: "text-indigo-500", borderColor: "hover:border-indigo-400 dark:hover:border-indigo-500/50" },
+                    { title: "Revogação de Anuência", desc: "Newsletters e E-mails massivos podem ser opostos com simples de-check na área de Configurações.", highlight: "text-amber-500", borderColor: "hover:border-amber-400 dark:hover:border-amber-500/50" }
                   ].map((right, idx) => (
                     <div key={idx} className={`p-6 bg-white dark:bg-slate-800/80 rounded-[1.5rem] border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${right.borderColor}`}>
                       <h4 className={`text-sm font-black uppercase tracking-widest mb-3 ${right.highlight}`}>{right.title}</h4>

@@ -24,8 +24,8 @@ import AuthModal from '../../components/shared/overlays/AuthModal';
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 /**
- * Tela publica de rankings pos-prova.
- * Ela conecta listagem, participacao do candidato e moderacao administrativa no fluxo de rankings do site.
+ * Tela pública de rankings pos-prova.
+ * Ela conecta listagem, participacao do candidato e moderação administrativa no fluxo de rankings do site.
  * @since v1.0.0
  */
 const RankingPage: React.FC = () => {
@@ -72,13 +72,22 @@ const RankingPage: React.FC = () => {
 
    const isAdmin = currentUser?.isAdmin;
 
+   /**
+    * Normaliza a colecao de rankings recebida do contexto.
+    * Isso evita crash na tela quando algum payload legado chega envelopado por engano.
+    * @since 1.0.0
+    */
+   const rankingsList = useMemo(() => {
+      return Array.isArray(rankings) ? rankings : [];
+   }, [rankings]);
+
    // Filtro de rankings por nome
    const filteredRankings = useMemo(() => {
-      return rankings.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.institution.toLowerCase().includes(searchTerm.toLowerCase()));
-   }, [rankings, searchTerm]);
+      return rankingsList.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.institution.toLowerCase().includes(searchTerm.toLowerCase()));
+   }, [rankingsList, searchTerm]);
 
    /**
-    * Calcula o gabarito de consenso quando o ranking ainda nao tem gabarito oficial.
+    * Calcula o gabarito de consenso quando o ranking ainda não tem gabarito oficial.
     * Esse fallback sustenta a classificacao colaborativa exibida na propria pagina.
     * @since v1.0.0
     */
@@ -115,8 +124,9 @@ const RankingPage: React.FC = () => {
 
    const processedData = useMemo(() => {
       if (!selectedRanking) return null;
-      const activeKey = selectedRanking.keyStatus === 'official' ? selectedRanking.correctKey : getConsensusKey(selectedRanking.entries, selectedRanking.totalQuestions);
-      const entries = selectedRanking.entries.map(e => ({ ...e, score: calculateScore(activeKey, e.userAnswers) })).sort((a, b) => b.score - a.score);
+      const rankingEntries = Array.isArray(selectedRanking.entries) ? selectedRanking.entries : [];
+      const activeKey = selectedRanking.keyStatus === 'official' ? selectedRanking.correctKey : getConsensusKey(rankingEntries, selectedRanking.totalQuestions);
+      const entries = rankingEntries.map(e => ({ ...e, score: calculateScore(activeKey, e.userAnswers) })).sort((a, b) => b.score - a.score);
       return { entries, activeKey };
    }, [selectedRanking]);
 
@@ -163,7 +173,7 @@ const RankingPage: React.FC = () => {
          const n: Ranking = {
             id: `r-${Date.now()}`, ...rankingForm, reserveLimit: 10, correctKey: '',
             entries: [], createdAt: Date.now(), imageUrl: '',
-            examTypes: rankingForm.examTypes.length > 0 ? rankingForm.examTypes : ['PadrÃ£o'],
+            examTypes: rankingForm.examTypes.length > 0 ? rankingForm.examTypes : ['Padrão'],
             officialKeyPdfUrl: rankingForm.keyStatus === 'official' ? pdfUrl : undefined,
             officialKeyReleaseDate: rankingForm.keyStatus === 'pending' ? rankingForm.officialKeyReleaseDate : undefined
          };
@@ -173,7 +183,7 @@ const RankingPage: React.FC = () => {
    };
 
    /**
-    * Finaliza a participacao do usuario autenticado e envia a tentativa ao contexto global.
+    * Finaliza a participacao do usuário autenticado e envia a tentativa ao contexto global.
     * Esse fechamento e o ponto que persiste a nota e reidrata a lista local do ranking aberto.
     * @since v1.0.0
     */
@@ -181,7 +191,7 @@ const RankingPage: React.FC = () => {
       if (!currentUser) {
          setAuthModalConfig({
             title: "Participe do Ranking",
-            description: "Crie uma conta gratuita para registrar sua nota, ver sua colocaÃ§Ã£o real e simular sua aprovaÃ§Ã£o.",
+            description: "Crie uma conta gratuita para registrar sua nota, ver sua colocação real e simular sua aprovação.",
             actionSource: 'ranking_submit'
          });
          setShowAuthModal(true);
@@ -190,7 +200,7 @@ const RankingPage: React.FC = () => {
       if (!currentUser.emailVerified) {
          setAuthModalConfig({
             title: "Confirme seu E-mail",
-            description: "Para participar dos rankings e simular sua aprovaÃ§Ã£o, vocÃª precisa confirmar seu e-mail.",
+            description: "Para participar dos rankings e simular sua aprovação, você precisa confirmar seu e-mail.",
             actionSource: 'ranking_email_verification'
          });
          setShowAuthModal(true);
@@ -199,14 +209,15 @@ const RankingPage: React.FC = () => {
       if (!selectedRanking) return;
 
       const userAnswers = partForm.answers.join('');
+      const rankingEntries = Array.isArray(selectedRanking.entries) ? selectedRanking.entries : [];
       const activeKey = selectedRanking.keyStatus === 'official'
          ? selectedRanking.correctKey
-         : getConsensusKey(selectedRanking.entries, selectedRanking.totalQuestions);
+         : getConsensusKey(rankingEntries, selectedRanking.totalQuestions);
 
       const score = calculateScore(activeKey, userAnswers);
 
       // Check if user already has an entry to reuse ID or at least update correctly
-      const existingEntry = selectedRanking.entries.find(en => en.userId === currentUser.id);
+      const existingEntry = rankingEntries.find(en => en.userId === currentUser.id);
 
       const e: RankingEntry = {
          id: existingEntry?.id || `u-${Date.now()}`,
@@ -224,9 +235,9 @@ const RankingPage: React.FC = () => {
 
       let newEntries;
       if (existingEntry) {
-         newEntries = selectedRanking.entries.map(en => en.userId === currentUser.id ? e : en);
+         newEntries = rankingEntries.map(en => en.userId === currentUser.id ? e : en);
       } else {
-         newEntries = [...selectedRanking.entries, e];
+         newEntries = [...rankingEntries, e];
       }
 
       const r = { ...selectedRanking, entries: newEntries };
@@ -237,15 +248,15 @@ const RankingPage: React.FC = () => {
    };
 
    /**
-    * Prepara o formulario de participacao para um ranking especifico.
-    * Ela reaproveita respostas anteriores do usuario quando ele retorna para editar a tentativa.
+    * Prepara o formulário de participacao para um ranking especifico.
+    * Ela reaproveita respostas anteriores do usuário quando ele retorna para editar a tentativa.
     * @since v1.0.0
     */
    const participateRanking = (r: Ranking) => {
       if (!currentUser) {
          setAuthModalConfig({
             title: "Participe do Ranking",
-            description: "Crie uma conta gratuita para registrar sua nota, ver sua colocaÃ§Ã£o real e simular sua aprovaÃ§Ã£o.",
+            description: "Crie uma conta gratuita para registrar sua nota, ver sua colocação real e simular sua aprovação.",
             actionSource: 'ranking_submit'
          });
          setShowAuthModal(true);
@@ -253,7 +264,8 @@ const RankingPage: React.FC = () => {
       }
 
       setSelectedRanking(r);
-      const existingEntry = r.entries.find(e => e.userId === currentUser?.id);
+      const rankingEntries = Array.isArray(r.entries) ? r.entries : [];
+      const existingEntry = rankingEntries.find(e => e.userId === currentUser?.id);
       if (existingEntry) {
          let existingAnswers = existingEntry.userAnswers.split('');
          // Pad with empty strings if the current ranking has more questions than the previous entry
@@ -268,7 +280,7 @@ const RankingPage: React.FC = () => {
             category: existingEntry.category,
             discursiveScore: existingEntry.discursiveScore || 0
          });
-         addToast("Suas respostas anteriores foram carregadas para ediÃ§Ã£o.", "info");
+         addToast("Suas respostas anteriores foram carregadas para edição.", "info");
       } else {
          setPartForm({
             ...partForm,
@@ -285,7 +297,7 @@ const RankingPage: React.FC = () => {
    };
 
    /**
-    * Adiciona um tipo de prova ao formulario administrativo do ranking.
+    * Adiciona um tipo de prova ao formulário administrativo do ranking.
     * O valor alimenta o modal de criacao/edicao usado pelos admins nesta tela.
     * @since v1.0.0
     */
@@ -306,7 +318,7 @@ const RankingPage: React.FC = () => {
                         <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors"><Trophy className="text-indigo-600 dark:text-indigo-400" size={24} /> Rankings</h1>
                         <span className="bg-indigo-600 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-md tracking-widest ml-1 shadow-sm">Beta</span>
                      </div>
-                     <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Ranking pÃ³s-prova. ClassificaÃ§Ã£o colaborativa e nota de corte projetada.</p>
+                     <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Ranking pós-prova. Classificação colaborativa e nota de corte projetada.</p>
                   </div>
 
                   <div className="flex gap-2">
@@ -351,9 +363,9 @@ const RankingPage: React.FC = () => {
                      <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
                         <Trophy size={40} className="text-slate-300 dark:text-slate-600" />
                      </div>
-                     <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2">Nenhum ranking disponÃ­vel</h3>
+                     <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2">Nenhum ranking disponível</h3>
                      <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-8 max-w-sm mx-auto">
-                        {searchTerm ? 'NÃ£o encontramos rankings para os critÃ©rios de busca selecionados.' : 'Ainda nÃ£o hÃ¡ rankings cadastrados. Seja o primeiro a criar um!'}
+                        {searchTerm ? 'Não encontramos rankings para os critérios de busca selecionados.' : 'Ainda não há rankings cadastrados. Seja o primeiro a criar um!'}
                      </p>
                      {searchTerm && (
                         <button onClick={() => setSearchTerm('')} className="px-6 py-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-100 transition-all">
@@ -390,7 +402,7 @@ const RankingPage: React.FC = () => {
                   <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
                      <table className="w-full text-left">
                         <thead className="bg-slate-50 dark:bg-slate-800 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-700 transition-colors">
-                           <tr><th className="px-6 py-4">Certame</th><th className="px-6 py-4">Banca</th><th className="px-6 py-4">Inscritos</th><th className="px-6 py-4">Gabarito</th><th className="px-6 py-4 text-right">AÃ§Ã£o</th></tr>
+                           <tr><th className="px-6 py-4">Certame</th><th className="px-6 py-4">Banca</th><th className="px-6 py-4">Inscritos</th><th className="px-6 py-4">Gabarito</th><th className="px-6 py-4 text-right">Ação</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs text-slate-700 dark:text-slate-300">
                            {filteredRankings.map(r => (
@@ -480,7 +492,7 @@ const RankingPage: React.FC = () => {
                            <p className="text-xs text-indigo-600 dark:text-indigo-300 leading-relaxed font-medium">
                               {selectedRanking.keyStatus === 'official'
                                  ? "Notas calculadas com base no gabarito OFICIAL."
-                                 : "Gabarito Presumido via Consenso EstatÃ­stico (alternativa mais marcada)."}
+                                 : "Gabarito Presumido via Consenso Estatístico (alternativa mais marcada)."}
                            </p>
                         </div>
                      )}
@@ -507,7 +519,7 @@ const RankingPage: React.FC = () => {
 
                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
                   <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50 transition-colors">
-                     <h3 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2 transition-colors"><Trophy size={14} className="text-amber-500" /> ClassificaÃ§Ã£o Geral</h3>
+                     <h3 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2 transition-colors"><Trophy size={14} className="text-amber-500" /> Classificação Geral</h3>
                   </div>
                   <div className="overflow-x-auto">
                      <table className="w-full text-left">
@@ -518,7 +530,7 @@ const RankingPage: React.FC = () => {
                               <th className="px-6 py-3 text-center">Nota Obj.</th>
                               {selectedRanking.hasDiscursive && <th className="px-6 py-3 text-center">Nota Disc.</th>}
                               <th className="px-6 py-3 text-center">Caderno</th>
-                              <th className="px-6 py-3 text-right pr-8">SituaÃ§Ã£o</th>
+                              <th className="px-6 py-3 text-right pr-8">Situação</th>
                            </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50 dark:divide-slate-800 text-xs">
@@ -530,7 +542,7 @@ const RankingPage: React.FC = () => {
                                  <tr key={e.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
                                     <td className="px-6 py-4">
                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] mx-auto transition-colors ${idx < 3 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/30' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'}`}>
-                                          {idx + 1}Âº
+                                          {idx + 1}º
                                        </div>
                                     </td>
                                     <td className="px-6 py-4">
@@ -571,14 +583,14 @@ const RankingPage: React.FC = () => {
                      <button onClick={() => { setIsCreating(false); setIsEditing(false); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"><X size={20} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100" /></button>
                   </div>
                   <form onSubmit={handleCreateOrUpdate} className="space-y-5">
-                     <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1 transition-colors">TÃ­tulo do Certame</label><input required type="text" value={rankingForm.name} onChange={e => setRankingForm({ ...rankingForm, name: e.target.value })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="Ex: Analista TRF-1" /></div>
+                     <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1 transition-colors">Título do Certame</label><input required type="text" value={rankingForm.name} onChange={e => setRankingForm({ ...rankingForm, name: e.target.value })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="Ex: Analista TRF-1" /></div>
                      <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1 transition-colors">Banca Examinadora</label><input required type="text" value={rankingForm.institution} onChange={e => setRankingForm({ ...rankingForm, institution: e.target.value })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all" /></div>
 
                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1 transition-colors">Vagas AC</label><input required type="number" min="0" value={rankingForm.vacanciesAc} onChange={e => setRankingForm({ ...rankingForm, vacanciesAc: Number(e.target.value) })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs outline-none transition-colors" /></div>
                         <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1 transition-colors">Vagas Afro</label><input required type="number" min="0" value={rankingForm.vacanciesAfro} onChange={e => setRankingForm({ ...rankingForm, vacanciesAfro: Number(e.target.value) })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs outline-none transition-colors" /></div>
                         <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1 transition-colors">Vagas PCD</label><input required type="number" min="0" value={rankingForm.vacanciesPcd} onChange={e => setRankingForm({ ...rankingForm, vacanciesPcd: Number(e.target.value) })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs outline-none transition-colors" /></div>
-                        <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1 transition-colors">Qtd. QuestÃµes</label><input required type="number" min="1" value={rankingForm.totalQuestions} onChange={e => setRankingForm({ ...rankingForm, totalQuestions: Number(e.target.value) })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs outline-none transition-colors" /></div>
+                        <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1 transition-colors">Qtd. Questões</label><input required type="number" min="1" value={rankingForm.totalQuestions} onChange={e => setRankingForm({ ...rankingForm, totalQuestions: Number(e.target.value) })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs outline-none transition-colors" /></div>
                      </div>
 
                      <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50 space-y-4 transition-colors">
@@ -601,7 +613,7 @@ const RankingPage: React.FC = () => {
                                     {type} <X size={10} className="cursor-pointer" onClick={() => setRankingForm({ ...rankingForm, examTypes: rankingForm.examTypes.filter((_, i) => i !== idx) })} />
                                  </span>
                               ))}
-                              {rankingForm.examTypes.length === 0 && <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic transition-colors">PadrÃ£o: "Geral"</p>}
+                              {rankingForm.examTypes.length === 0 && <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic transition-colors">Padrão: "Geral"</p>}
                            </div>
                         </div>
 
@@ -638,8 +650,8 @@ const RankingPage: React.FC = () => {
                         {rankingForm.keyStatus === 'official' && (
                            <div className="space-y-3 animate-fade-in col-span-2">
                               <div className="flex justify-between items-center mb-1">
-                                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1">Gabarito Oficial (QuestionÃ¡rio)</label>
-                                 <span className="text-[9px] font-bold text-indigo-500 uppercase">{rankingForm.correctKey.replace(/ /g, '').length} / {rankingForm.totalQuestions} questÃµes definidas</span>
+                                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1">Gabarito Oficial (Questionário)</label>
+                                 <span className="text-[9px] font-bold text-indigo-500 uppercase">{rankingForm.correctKey.replace(/ /g, '').length} / {rankingForm.totalQuestions} questões definidas</span>
                               </div>
 
                               <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 max-h-[250px] overflow-y-auto no-scrollbar transition-colors">
@@ -699,7 +711,7 @@ const RankingPage: React.FC = () => {
                         <div className="space-y-6 animate-fade-in">
                            <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-1">
-                                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 transition-colors"><Hash size={12} className="text-indigo-500 dark:text-indigo-400" /> InscriÃ§Ã£o</label>
+                                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 transition-colors"><Hash size={12} className="text-indigo-500 dark:text-indigo-400" /> Inscrição</label>
                                  <input
                                     required type="text"
                                     value={partForm.registration}
@@ -739,14 +751,14 @@ const RankingPage: React.FC = () => {
                            )}
 
                            <button onClick={() => setParticipationStep(2)} disabled={!partForm.registration || (!partForm.examType && selectedRanking.examTypes.length > 0)} className="w-full py-4 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] shadow-xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
-                              PrÃ³ximo <ChevronRight size={16} />
+                              Próximo <ChevronRight size={16} />
                            </button>
                         </div>
                      ) : (
                         <div className="space-y-6 animate-fade-in">
                            <div className="flex justify-between items-center">
-                              <h3 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest transition-colors">CartÃ£o Resposta</h3>
-                              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 transition-colors">{selectedRanking.totalQuestions} QuestÃµes</span>
+                              <h3 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest transition-colors">Cartão Resposta</h3>
+                              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 transition-colors">{selectedRanking.totalQuestions} Questões</span>
                            </div>
 
                            <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700 max-h-[300px] overflow-y-auto no-scrollbar transition-colors">
@@ -780,4 +792,3 @@ const RankingPage: React.FC = () => {
 };
 
 export default RankingPage;
-

@@ -23,7 +23,7 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
     switch (themeId) {
         case 'sao-joao':
             return (
-                <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-0">
+                <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden select-none">
                     <div className="absolute top-0 left-0 w-full flex justify-between px-10 opacity-30 h-10">
                         {[...Array(24)].map((_, i) => (
                             <div
@@ -44,7 +44,7 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
             );
         case 'carnaval':
             return (
-                <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-0">
+                <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden select-none">
                     {[...Array(20)].map((_, i) => (
                         <div
                             key={i}
@@ -65,7 +65,7 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
             );
         case 'black-friday':
             return (
-                <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-0">
+                <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden select-none">
                     <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,rgba(234,179,8,0.1),transparent_70%)]" />
                     {[...Array(15)].map((_, i) => (
                         <div
@@ -84,7 +84,7 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
             );
         case 'black-november':
             return (
-                <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-0">
+                <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden select-none">
                     <div className="absolute top-0 left-0 w-full h-full bg-zinc-950/20" />
                     {[...Array(6)].map((_, i) => (
                         <div
@@ -103,7 +103,7 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
             );
         case 'estudante':
             return (
-                <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-0 text-indigo-500/10">
+                <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden select-none text-indigo-500/10">
                     <div className="absolute top-40 left-[10%] animate-float"><GraduationCap size={180} /></div>
                     <div className="absolute bottom-40 right-[15%] animate-float-delayed"><Book size={150} /></div>
                     <div className="absolute top-1/2 right-[25%] opacity-50"><Pencil size={100} /></div>
@@ -111,7 +111,7 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
             );
         case 'ano-novo':
             return (
-                <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-0">
+                <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden select-none">
                     {[...Array(15)].map((_, i) => (
                         <div
                             key={i}
@@ -132,7 +132,7 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
             );
         case 'pascoa':
             return (
-                <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-0">
+                <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden select-none">
                     {[...Array(8)].map((_, i) => (
                         <div
                             key={i}
@@ -153,7 +153,7 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
             );
         case 'consumidor':
             return (
-                <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-0">
+                <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden select-none">
                     {[...Array(12)].map((_, i) => (
                         <div
                             key={i}

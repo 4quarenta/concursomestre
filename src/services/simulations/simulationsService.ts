@@ -25,13 +25,13 @@ type SaveSimulationResult = {
  */
 export const simulationsService = {
   /**
-   * Persiste uma sessao de simulado do usuario autenticado.
-   * O fluxo e consumido pelo encerramento do simulado para salvar score, respostas e metadados da sessao.
+   * Persiste uma sessão de simulado do usuário autenticado.
+   * O fluxo e consumido pelo encerramento do simulado para salvar score, respostas e metadados da sessão.
    * @since v1.0.0
    */
   async saveSimulation(simulation: SimulationSession): Promise<SaveSimulationResult> {
     const response = await apiClient.post<any>(ENDPOINTS.simulations.create, simulation) as any;
-    const envelope = assertApiSuccess(response, 'Nao foi possivel salvar o simulado.');
+    const envelope = assertApiSuccess(response, 'Não foi possível salvar o simulado.');
 
     return {
       success: true,

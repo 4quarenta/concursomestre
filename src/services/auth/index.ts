@@ -10,8 +10,8 @@
 */
 
 /**
- * Fachada oficial dos servicos de autenticacao e reputacao.
- * Nesta fase ela centraliza auth, conta e reputacao fora da zona legada.
+ * Fachada oficial dos serviços de autenticação e reputação.
+ * Nesta fase ela centraliza auth, conta e reputação fora da zona legada.
  */
 export { accountService } from './accountService';
 export { authFlowService } from './authFlowService';

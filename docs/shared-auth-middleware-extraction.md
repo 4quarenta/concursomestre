@@ -1,8 +1,8 @@
-# Extração da infraestrutura de auth e middleware
+# Extraï¿½ï¿½o da infraestrutura de auth e middleware
 
 ## Objetivo
 
-Tirar o núcleo transversal de autenticação e middleware de `api/` e consolidá-lo em `shared/`.
+Tirar o nï¿½cleo transversal de autenticaï¿½ï¿½o e middleware de `api/` e consolidï¿½-lo em `shared/`.
 
 ## Estrutura oficial adotada
 

@@ -55,13 +55,13 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
     const [currentAvgRating, setCurrentAvgRating] = useState(material.rating || 0);
     const [totalRatings, setTotalRatings] = useState(material.salesCount || 0); // Simplified for UI
 
-    // ComentÃ¡rios States
+    // Comentários States
     const [reviews, setReviews] = useState<any[]>([]);
     const [qaComments, setQaComments] = useState<any[]>([]);
     const [loadingReviews, setLoadingReviews] = useState(false);
     const [loadingQa, setLoadingQa] = useState(false);
 
-    // Buscar rating existente do usuÃ¡rio
+    // Buscar rating existente do usuário
     React.useEffect(() => {
         if (!currentUser || !isPurchased) return;
         const fetchUserRating = async () => {
@@ -80,7 +80,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
         fetchUserRating();
     }, [material.id, currentUser, isPurchased]);
 
-    // Buscar ComentÃ¡rios (Reviews e QA)
+    // Buscar Comentários (Reviews e QA)
     React.useEffect(() => {
         if (!currentUser) return;
 
@@ -99,7 +99,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                     setter(payload.data);
                 }
             } catch (err) {
-                console.error(`Falha ao carregar comentÃ¡rios ${targetId}:`, err);
+                console.error(`Falha ao carregar comentários ${targetId}:`, err);
             } finally {
                 loader(false);
             }
@@ -127,13 +127,13 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                 setUserRating(stars);
                 if (data.newRating) setCurrentAvgRating(data.newRating);
                 if (data.totalRatings) setTotalRatings(data.totalRatings);
-                addToast(`âœ… VocÃª avaliou com ${stars} estrela${stars > 1 ? 's' : ''}! Obrigado pelo feedback.`, 'success');
+                addToast(`✅ Você avaliou com ${stars} estrela${stars > 1 ? 's' : ''}! Obrigado pelo feedback.`, 'success');
             } else {
-                addToast('âš ï¸ ' + data.message, 'warning');
+                addToast('⚠️ ' + data.message, 'warning');
             }
         } catch (error: any) {
             console.error('Rating error:', error);
-            addToast('âŒ Erro ao enviar avaliaÃ§Ã£o: ' + (error.response?.data?.message || 'Tente novamente.'), 'error');
+            addToast('❌ Erro ao enviar avaliação: ' + (error.response?.data?.message || 'Tente novamente.'), 'error');
         } finally {
             setSubmittingRating(false);
         }
@@ -142,7 +142,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
     // Generic Handlers for CommentsSection
     const handleAddComment = async (targetId: string, text: string, parentId?: string) => {
         if (!currentUser) {
-            addToast("VocÃª precisa estar logado para comentar.", "warning");
+            addToast("Você precisa estar logado para comentar.", "warning");
             return;
         }
 
@@ -197,7 +197,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                 throw new Error("Erro na resposta");
             }
         } catch (err) {
-            console.error("Falha ao adicionar comentÃ¡rio:", err);
+            console.error("Falha ao adicionar comentário:", err);
             addToast("Erro ao enviar mensagem.", "error");
             // Remove temp (rollback)
             setter(prev => {
@@ -249,7 +249,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                     const remove = (list: any[]) => list.filter(c => c.id !== commentId).map(c => ({ ...c, replies: c.replies ? remove(c.replies) : [] }));
                     return remove(prev);
                 });
-                addToast("ComentÃ¡rio excluÃ­do", "success");
+                addToast("Comentário excluído", "success");
             }
         } catch (err) {
             addToast("Erro ao excluir", "error");
@@ -281,7 +281,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                             </button>
                         ) : (
                             <button onClick={onBuy} className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition-colors flex items-center gap-2 shadow-lg shadow-emerald-600/20">
-                                <ShoppingBag size={16} /> {material.price === 0 ? 'Obter GrÃ¡tis' : `Comprar R$ ${material.price.toFixed(2)}`}
+                                <ShoppingBag size={16} /> {material.price === 0 ? 'Obter Grátis' : `Comprar R$ ${material.price.toFixed(2)}`}
                             </button>
                         )}
                     </div>
@@ -321,18 +321,18 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                                             <Star className="fill-yellow-400 text-yellow-400" size={20} />
                                             <span className="text-xl font-black text-slate-900 dark:text-slate-100">{currentAvgRating.toFixed(1)}</span>
                                         </div>
-                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{totalRatings} avaliaÃ§Ãµes</span>
+                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{totalRatings} avaliações</span>
                                     </div>
                                     <div className="w-px h-8 bg-slate-200 dark:bg-slate-800"></div>
                                     <div className="flex flex-col">
                                         <span className="text-xl font-black text-slate-900 dark:text-slate-100">{material.pageCount || '-'}</span>
-                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">PÃ¡ginas</span>
+                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Páginas</span>
                                     </div>
                                     {!isPurchased && (
                                         <>
                                             <div className="w-px h-8 bg-slate-200 dark:bg-slate-800"></div>
                                             <div className="flex flex-col">
-                                                <span className="text-xl font-black text-slate-900 dark:text-slate-100">{material.price === 0 ? 'GrÃ¡tis' : `R$ ${material.price.toFixed(2)}`}</span>
+                                                <span className="text-xl font-black text-slate-900 dark:text-slate-100">{material.price === 0 ? 'Grátis' : `R$ ${material.price.toFixed(2)}`}</span>
                                                 <span className="text-xs font-bold text-emerald-500 uppercase tracking-wider">Valor</span>
                                             </div>
                                         </>
@@ -346,11 +346,11 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                     <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 sticky top-0 z-10 px-6">
                         <div className="flex gap-8 overflow-x-auto hide-scrollbar">
                             <button onClick={() => setActiveTab('overview')} className={`py-4 font-black uppercase tracking-widest text-xs whitespace-nowrap transition-colors relative ${activeTab === 'overview' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}>
-                                VisÃ£o Geral
+                                Visão Geral
                                 {activeTab === 'overview' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 dark:bg-indigo-400 rounded-t-full"></div>}
                             </button>
                             <button onClick={() => setActiveTab('reviews')} className={`py-4 font-black uppercase tracking-widest text-xs whitespace-nowrap transition-colors relative ${activeTab === 'reviews' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}>
-                                AvaliaÃ§Ãµes
+                                Avaliações
                                 {activeTab === 'reviews' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 dark:bg-indigo-400 rounded-t-full"></div>}
                             </button>
                         </div>
@@ -395,13 +395,13 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                                                 );
                                             })}
                                         </div>
-                                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest pt-2">{totalRatings} avaliaÃ§Ãµes</p>
+                                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest pt-2">{totalRatings} avaliações</p>
                                     </div>
 
                                     {isPurchased ? (
                                         <div className="bg-indigo-50 dark:bg-indigo-900/20 p-6 rounded-2xl border border-indigo-100 dark:border-indigo-800/30 text-center space-y-4">
                                             <h4 className="text-sm font-black text-indigo-900 dark:text-indigo-100 uppercase tracking-widest">
-                                                {userRating > 0 ? `Sua AvaliaÃ§Ã£o (${userRating.toFixed(1)})` : 'Avaliar Material'}
+                                                {userRating > 0 ? `Sua Avaliação (${userRating.toFixed(1)})` : 'Avaliar Material'}
                                             </h4>
                                             <div
                                                 className="flex justify-center gap-1 cursor-pointer"
@@ -417,7 +417,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                                                             className="relative"
                                                             onMouseMove={(e) => {
                                                                 if (submittingRating) return;
-                                                                // Calcula se o mouse estÃ¡ na metade esquerda ou direita da estrela
+                                                                // Calcula se o mouse está na metade esquerda ou direita da estrela
                                                                 const rect = e.currentTarget.getBoundingClientRect();
                                                                 const isHalf = (e.clientX - rect.left) < (rect.width / 2);
                                                                 setHoverRating(isHalf ? star - 0.5 : star);
@@ -448,27 +448,27 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                                     ) : (
                                         <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl text-center border border-slate-100 dark:border-slate-800">
                                             <Lock size={24} className="mx-auto mb-3 text-slate-400" />
-                                            <p className="text-xs font-bold text-slate-500">Adquira o material para deixar sua avaliaÃ§Ã£o.</p>
+                                            <p className="text-xs font-bold text-slate-500">Adquira o material para deixar sua avaliação.</p>
                                         </div>
                                     )}
                                 </div>
 
-                                {/* DÃºvidas com o Autor (Moved to Reviews tab) */}
+                                {/* Dúvidas com o Autor (Moved to Reviews tab) */}
                                 <div className="lg:col-span-2 space-y-6">
                                     <div className="bg-indigo-50 dark:bg-indigo-900/20 p-6 rounded-2xl border border-indigo-100 dark:border-indigo-800/30 flex gap-4 items-start">
                                         <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-800 flex items-center justify-center shrink-0">
                                             <Store className="text-indigo-600 dark:text-indigo-400" size={20} />
                                         </div>
                                         <div>
-                                            <h3 className="text-sm font-black text-indigo-900 dark:text-indigo-100 uppercase tracking-widest mb-1">DÃºvidas com o Autor</h3>
-                                            <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">FaÃ§a perguntas diretamente para <strong>{material.authorName}</strong>. Outros estudantes tambÃ©m podem responder e interagir.</p>
+                                            <h3 className="text-sm font-black text-indigo-900 dark:text-indigo-100 uppercase tracking-widest mb-1">Dúvidas com o Autor</h3>
+                                            <p className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">Faça perguntas diretamente para <strong>{material.authorName}</strong>. Outros estudantes também podem responder e interagir.</p>
                                         </div>
                                     </div>
 
                                     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
                                         <CommentsSection
                                             targetId={`${material.id}-qa`}
-                                            title="FaÃ§a sua Pergunta"
+                                            title="Faça sua Pergunta"
                                             comments={qaComments}
                                             onAddComment={(text, parentId) => handleAddComment(`${material.id}-qa`, text, parentId)}
                                             onLikeComment={(commentId) => handleLikeComment(`${material.id}-qa`, commentId)}
@@ -521,7 +521,7 @@ const Marketplace: React.FC = () => {
                         if (targetMaterial && !selectedMaterial) {
                             setSelectedMaterial(targetMaterial);
                             if (hasComment) {
-                                setInitialModalTab('reviews'); // DÃºvidas are inside reviews tab now
+                                setInitialModalTab('reviews'); // Dúvidas are inside reviews tab now
                             }
                         }
                     }
@@ -546,7 +546,7 @@ const Marketplace: React.FC = () => {
 
     // Refund/Report States
     const [isReporting, setIsReporting] = useState(false);
-    const [reportDetails, setReportDetails] = useState({ reason: 'PlÃ¡gio', details: '' });
+    const [reportDetails, setReportDetails] = useState({ reason: 'Plágio', details: '' });
     const [reportEvidence, setReportEvidence] = useState<string | null>(null);
     const [refundReason, setRefundReason] = useState('');
     const [refundTxId, setRefundTxId] = useState<string | null>(null);
@@ -556,6 +556,14 @@ const Marketplace: React.FC = () => {
     const [showStripeCheckout, setShowStripeCheckout] = useState(false);
     const [checkoutMaterial, setCheckoutMaterial] = useState<Material | null>(null);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+    /**
+     * Reseta os filtros da loja para o estado inicial.
+     * @since 1.0.0
+     */
+    const resetMaterialFilters = () => {
+        setFilter({ keyword: '', subject: 'All', type: 'All', price: 'All', authorId: null });
+    };
 
     const activeMaterials = useMemo(() => {
         return materials.filter(m => {
@@ -577,6 +585,7 @@ const Marketplace: React.FC = () => {
         currentPage * itemsPerPage
     );
     const totalPages = Math.ceil(activeMaterials.length / itemsPerPage);
+    const hasActiveFilters = !!(filter.keyword || filter.subject !== 'All' || filter.type !== 'All' || filter.price !== 'All' || filter.authorId);
 
 
     const myOrders = useMemo(() => {
@@ -609,7 +618,7 @@ const Marketplace: React.FC = () => {
         if (!currentUser) {
             setAuthModalConfig({
                 title: "Adquira Material",
-                description: "Para comprar ou baixar materiais de alta qualidade, vocÃª precisa acessar sua conta.",
+                description: "Para comprar ou baixar materiais de alta qualidade, você precisa acessar sua conta.",
                 actionSource: 'marketplace_buy'
             });
             setShowAuthModal(true);
@@ -623,7 +632,7 @@ const Marketplace: React.FC = () => {
         }
 
         if (currentUser.purchasedMaterialIds?.includes(material.id)) {
-            addToast('VocÃª jÃ¡ possui este material!', 'info');
+            addToast('Você já possui este material!', 'info');
             return;
         }
 
@@ -642,7 +651,7 @@ const Marketplace: React.FC = () => {
         if (!selectedMaterial) return;
 
         if (!reportDetails.details.trim()) {
-            addToast('Por favor, descreva o problema. A justificativa Ã© obrigatÃ³ria.', 'info');
+            addToast('Por favor, descreva o problema. A justificativa é obrigatória.', 'info');
             return;
         }
 
@@ -655,7 +664,7 @@ const Marketplace: React.FC = () => {
         );
 
         if (alreadyReported) {
-            addToast('VocÃª jÃ¡ enviou uma denÃºncia para este material. Aguarde a anÃ¡lise da moderaÃ§Ã£o.', 'info');
+            addToast('Você já enviou uma denúncia para este material. Aguarde a análise da moderação.', 'info');
             setIsReporting(false);
             return;
         }
@@ -675,7 +684,7 @@ const Marketplace: React.FC = () => {
         });
         setIsReporting(false);
         setReportEvidence(null);
-        setReportDetails({ reason: 'PlÃ¡gio', details: '' });
+        setReportDetails({ reason: 'Plágio', details: '' });
     };
 
     const handleRefundRequest = () => {
@@ -701,13 +710,13 @@ const Marketplace: React.FC = () => {
             await apiClient.delete(ENDPOINTS.transactions.refund, {
                 data: { transaction_id: cancelRefundTxId }
             });
-            addToast('SolicitaÃ§Ã£o cancelada com sucesso.', 'success');
+            addToast('Solicitação cancelada com sucesso.', 'success');
             fetchUserTransactions();
             setShowCancelRefundModal(false);
             setCancelRefundTxId(null);
         } catch (error) {
             console.error('Erro ao cancelar reembolso:', error);
-            addToast('Erro ao cancelar solicitaÃ§Ã£o.', 'error');
+            addToast('Erro ao cancelar solicitação.', 'error');
         }
     };
 
@@ -723,19 +732,19 @@ const Marketplace: React.FC = () => {
 
         if (type === 'download') {
             if (canDownload) {
-                // Abre o endpoint de download que estampa os dados do usuÃ¡rio no PDF
+                // Abre o endpoint de download que estampa os dados do usuário no PDF
                 void downloadAuthenticatedFile(buildMaterialDownloadEndpoint(material.id)).catch((error: any) => {
-                    addToast(error?.message || 'Nao foi possivel baixar o material agora.', 'error');
+                    addToast(error?.message || 'Não foi possível baixar o material agora.', 'error');
                 });
             } else {
-                addToast(`O download serÃ¡ liberado em ${Math.ceil(7 - daysSincePurchase)} dia(s) para garantir a conformidade com as polÃ­ticas de reembolso.`, 'info');
+                addToast(`O download será liberado em ${Math.ceil(7 - daysSincePurchase)} dia(s) para garantir a conformidade com as políticas de reembolso.`, 'info');
             }
         } else {
             // Read Online - Redirect to Full Screen Reader
             if (material.fileUrl) {
                 navigate(`/read/${material.id}`);
             } else {
-                addToast('Erro: Arquivo nÃ£o disponÃ­vel para visualizaÃ§Ã£o.', 'error');
+                addToast('Erro: Arquivo não disponível para visualização.', 'error');
             }
         }
     };
@@ -754,7 +763,7 @@ const Marketplace: React.FC = () => {
                 <Tag size={14} className={price === 0 ? 'text-emerald-500' : 'text-indigo-500'} />
                 <div className="flex flex-col leading-none">
                     <span className="text-[9px] font-bold uppercase opacity-60 tracking-wider">Valor</span>
-                    <span className="text-sm font-black tracking-tight">{price === 0 ? 'GRÃTIS' : `R$ ${price.toFixed(2)}`}</span>
+                    <span className="text-sm font-black tracking-tight">{price === 0 ? 'GRÁTIS' : `R$ ${price.toFixed(2)}`}</span>
                 </div>
             </div>
         );
@@ -780,7 +789,7 @@ const Marketplace: React.FC = () => {
                         <div>
                             <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 transition-colors">Perfil Incompleto</h3>
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 font-medium transition-colors">
-                                Para realizar compras, precisamos do seu <strong>CPF e EndereÃ§o</strong> para emissÃ£o da Nota Fiscal.
+                                Para realizar compras, precisamos do seu <strong>CPF e Endereço</strong> para emissão da Nota Fiscal.
                             </p>
                         </div>
                         <div className="flex flex-col gap-2 pt-2">
@@ -797,7 +806,7 @@ const Marketplace: React.FC = () => {
                     <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
                         <ShoppingBag className="text-indigo-600 dark:text-indigo-400" size={24} /> Materiais
                     </h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium transition-colors">ConteÃºdos premium criados por especialistas.</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm font-medium transition-colors">Conteúdos premium criados por especialistas.</p>
                 </div>
                 <div className="flex gap-3">
                     {(currentUser?.isPartner || systemSettings.features.partnerRegistrationEnabled === true || String(systemSettings.features.partnerRegistrationEnabled) === 'true') && (
@@ -806,7 +815,7 @@ const Marketplace: React.FC = () => {
                                 if (!currentUser) {
                                     setAuthModalConfig({
                                         title: "Torne-se Parceiro",
-                                        description: "Para vender seus prÃ³prios materiais e monetizar seu conhecimento, faÃ§a login primeiro.",
+                                        description: "Para vender seus próprios materiais e monetizar seu conhecimento, faça login primeiro.",
                                         actionSource: 'partner_access'
                                     });
                                     setShowAuthModal(true);
@@ -838,7 +847,7 @@ const Marketplace: React.FC = () => {
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={16} />
                                     <input
                                         type="text"
-                                        placeholder="O que vocÃª procura?"
+                                        placeholder="O que você procura?"
                                         value={filter.keyword}
                                         onChange={e => setFilter({ ...filter, keyword: e.target.value })}
                                         className="w-full h-10 pl-9 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-slate-900 dark:text-slate-100 font-bold text-xs transition-all"
@@ -846,13 +855,13 @@ const Marketplace: React.FC = () => {
                                 </div>
                                 <div className="flex gap-2 w-full md:w-auto">
                                     <select value={itemsPerPage} onChange={e => setItemsPerPage(Number(e.target.value))} className="flex-1 md:flex-none h-10 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl outline-none font-bold text-xs text-slate-600 dark:text-slate-300 cursor-pointer transition-colors">
-                                        <option value={9}>9 por pÃ¡gina</option>
-                                        <option value={18}>18 por pÃ¡gina</option>
-                                        <option value={27}>27 por pÃ¡gina</option>
-                                        <option value={50}>50 por pÃ¡gina</option>
+                                        <option value={9}>9 por página</option>
+                                        <option value={18}>18 por página</option>
+                                        <option value={27}>27 por página</option>
+                                        <option value={50}>50 por página</option>
                                     </select>
                                     <select value={filter.subject} onChange={e => setFilter({ ...filter, subject: e.target.value })} className="flex-1 md:flex-none h-10 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl outline-none font-bold text-xs text-slate-600 dark:text-slate-300 w-full md:w-auto cursor-pointer transition-colors">
-                                        <option value="All">Todas as MatÃ©rias</option>
+                                        <option value="All">Todas as Matérias</option>
                                         {Object.values(Subject).map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
                                 </div>
@@ -878,7 +887,24 @@ const Marketplace: React.FC = () => {
                         </div>
 
                         {/* Grid vs List Rendering */}
-                        <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "space-y-2"}>
+                        {activeMaterials.length === 0 ? (
+                            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-12 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 transition-colors">
+                                <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+                                    <ShoppingBag size={40} className="text-slate-300 dark:text-slate-600" />
+                                </div>
+                                <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2">Nenhum material disponivel</h3>
+                                <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-8 max-w-sm mx-auto">
+                                    {hasActiveFilters ? 'Nao encontramos materiais para os filtros selecionados.' : 'Ainda nao ha materiais cadastrados na loja. Em breve teremos novidades.'}
+                                </p>
+                                {hasActiveFilters && (
+                                    <button onClick={resetMaterialFilters} className="px-6 py-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-indigo-100 transition-all">
+                                        Limpar Filtros
+                                    </button>
+                                )}
+                            </div>
+                        ) : (
+                            <>
+                                <div className={viewMode === 'grid' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "space-y-2"}>
                             {paginatedMaterials.map(item => {
                                 if (viewMode === 'list') {
                                     return (
@@ -935,12 +961,12 @@ const Marketplace: React.FC = () => {
                                                 <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase transition-colors">{item.authorName}</p>
                                                 {(item.topic || item.subjectText) && (
                                                     <span className="text-[10px] text-indigo-500 dark:text-indigo-400 font-bold uppercase">
-                                                        â€¢ {item.topic || item.subjectText}
+                                                        ? {item.topic || item.subjectText}
                                                     </span>
                                                 )}
                                                 {item.year && (
                                                     <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase">
-                                                        â€¢ {item.year}
+                                                        ? {item.year}
                                                     </span>
                                                 )}
                                             </div>
@@ -979,21 +1005,23 @@ const Marketplace: React.FC = () => {
                                         <button key={i} onClick={() => setCurrentPage(i + 1)} className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-black transition-colors ${currentPage === i + 1 ? 'bg-indigo-600 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>{i + 1}</button>
                                     ))}
                                 </div>
-                                <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors">PrÃ³xima</button>
+                                <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors">Próxima</button>
                             </div>
+                        )}
+                            </>
                         )}
                     </>
                 ) : (
                     /* ABA MEUS PEDIDOS */
                     <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors">
                         <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex items-center justify-between transition-colors">
-                            <h3 className="font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors"><History size={18} className="text-indigo-600 dark:text-indigo-400" /> HistÃ³rico de Compras</h3>
+                            <h3 className="font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors"><History size={18} className="text-indigo-600 dark:text-indigo-400" /> Histórico de Compras</h3>
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{myOrders.length} Pedidos</span>
                         </div>
                         {myOrders.length === 0 ? (
                             <div className="p-12 text-center text-slate-400 dark:text-slate-600 transition-colors">
                                 <Package size={40} className="mx-auto mb-3 opacity-50" />
-                                <p className="text-sm font-medium">VocÃª ainda nÃ£o comprou nenhum material.</p>
+                                <p className="text-sm font-medium">Você ainda não comprou nenhum material.</p>
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
@@ -1005,7 +1033,7 @@ const Marketplace: React.FC = () => {
                                             <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Data</th>
                                             <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Valor</th>
                                             <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Status</th>
-                                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 text-right">AÃ§Ãµes</th>
+                                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 text-right">Ações</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1031,7 +1059,7 @@ const Marketplace: React.FC = () => {
                                                             order.status === 'refunded' ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 line-through' :
                                                                 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                                                             }`}>
-                                                            {isSuccess ? 'ConcluÃ­do' : order.status === 'refund_requested' ? (
+                                                            {isSuccess ? 'Concluído' : order.status === 'refund_requested' ? (
                                                                 <>
                                                                     <Clock size={12} /> Reembolso Solicitado
                                                                 </>
@@ -1085,7 +1113,7 @@ const Marketplace: React.FC = () => {
                                                                 <button
                                                                     onClick={() => handleCancelRefundClick(order.id)}
                                                                     className="p-1.5 text-amber-500 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors"
-                                                                    title="Cancelar SolicitaÃ§Ã£o"
+                                                                    title="Cancelar Solicitação"
                                                                 >
                                                                     <XCircle size={16} />
                                                                 </button>
@@ -1108,9 +1136,9 @@ const Marketplace: React.FC = () => {
                                         <AlertTriangle size={24} />
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">Cancelar SolicitaÃ§Ã£o?</h3>
+                                        <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">Cancelar Solicitação?</h3>
                                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 font-medium">
-                                            Ao cancelar, sua compra voltarÃ¡ a ser processada normalmente e vocÃª manterÃ¡ o acesso ao material.
+                                            Ao cancelar, sua compra voltará a ser processada normalmente e você manterá o acesso ao material.
                                         </p>
                                     </div>
                                     <div className="flex gap-2 pt-2">
@@ -1132,7 +1160,7 @@ const Marketplace: React.FC = () => {
                             document.body
                         )}
 
-                        {/* Ãrea de Pedido de Reembolso Modal/Overlay */}
+                        {/* Área de Pedido de Reembolso Modal/Overlay */}
                         {refundTxId && createPortal(
                             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[10000] flex items-center justify-center p-4 animate-in fade-in transition-all">
                                 <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl p-8 animate-scale-in border border-slate-200 dark:border-slate-800">
@@ -1147,8 +1175,8 @@ const Marketplace: React.FC = () => {
 
                                     <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-100 dark:border-red-800/50 mb-6">
                                         <p className="text-xs text-red-700 dark:text-red-400 font-bold leading-relaxed">
-                                            De acordo com a Lei vigente, vocÃª tem atÃ© 7 dias para desistir da compra.
-                                            Ao confirmar, seu acesso serÃ¡ revogado e o valor estornado.
+                                            De acordo com a Lei vigente, você tem até 7 dias para desistir da compra.
+                                            Ao confirmar, seu acesso será revogado e o valor estornado.
                                         </p>
                                     </div>
 

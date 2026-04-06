@@ -10,6 +10,6 @@
 */
 
 /**
- * Fachada oficial dos servicos de estatisticas.
+ * Fachada oficial dos serviços de estatisticas.
  */
 export { statisticsService } from './statisticsService';

@@ -49,7 +49,7 @@ export interface AdminDatabaseManagerControllerProps {
 
 /**
  * Controller central da aba "Base de Dados".
- * Ele orquestra navegacao interna, datasets filtrados, workbenches de questoes/importacao, moderacao, perfil de usuario, ranking e taxonomias.
+ * Ele orquestra navegacao interna, datasets filtrados, workbenches de questões/importacao, moderação, perfil de usuário, ranking e taxonomias.
  */
 export const useAdminDatabaseManagerController = ({
   questions,
@@ -151,7 +151,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Orquestra o perfil administrativo detalhado do usuario, incluindo abas, edicao e acoes operacionais.
+   * Orquestra o perfil administrativo detalhado do usuário, incluindo abas, edicao e ações operacionais.
    */
   const {
     viewingProfileId,
@@ -171,7 +171,7 @@ export const useAdminDatabaseManagerController = ({
   } = useAdminUserProfileWorkflow({ addToast });
 
   /**
-   * Faz a ponte entre configuracoes do importador e o provider global de settings.
+   * Faz a ponte entre configurações do importador e o provider global de settings.
    */
   const {
     handleGeminiApiKeyChange,
@@ -182,7 +182,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Carrega a listagem administrativa de questoes com paginacao e reload da pagina atual.
+   * Carrega a listagem administrativa de questões com paginacao e reload da pagina atual.
    */
   const {
     adminQuestions,
@@ -196,7 +196,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Prepara os datasets derivados usados pelas subabas de usuarios, materiais e reports.
+   * Prepara os datasets derivados usados pelas subabas de usuários, materiais e reports.
    */
   const {
     filteredUsers,
@@ -211,7 +211,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Unifica o fluxo de importacao e de criacao/edicao manual de questoes.
+   * Unifica o fluxo de importacao e de criacao/edicao manual de questões.
    */
   const {
     openManualModal,
@@ -228,7 +228,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Concentra a moderacao cruzada de materiais e reports, incluindo atalhos para questoes e perfis.
+   * Concentra a moderação cruzada de materiais e reports, incluindo atalhos para questões e perfis.
    */
   const {
     editingMaterial,
@@ -264,7 +264,7 @@ export const useAdminDatabaseManagerController = ({
   };
 
   /**
-   * Props das secoes visiveis da aba, incluindo callbacks de acao e datasets ja preparados.
+   * Props das secoes visiveis da aba, incluindo callbacks de ação e datasets já preparados.
    */
   const sectionsProps: React.ComponentProps<typeof AdminDatabaseSections> = {
     activeSubTab,
@@ -303,7 +303,7 @@ export const useAdminDatabaseManagerController = ({
   };
 
   /**
-   * Props de todos os modais operacionais da area: questoes, moderacao, perfil, ranking e taxonomias.
+   * Props de todos os modais operacionais da area: questões, moderação, perfil, ranking e taxonomias.
    */
   const modalsProps: React.ComponentProps<typeof AdminDatabaseModals> = {
     isManualQuestionModalOpen,

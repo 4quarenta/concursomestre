@@ -134,7 +134,7 @@ const TaxonomyModal = ({
           </div>
 
           <div className="space-y-2">
-            <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Nome / Titulo</label>
+            <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Nome / Título</label>
             <input
               type="text"
               autoFocus
@@ -149,7 +149,7 @@ const TaxonomyModal = ({
             <div className="flex items-center justify-between px-1">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Slug (URL amigavel)</label>
               <div className="flex items-center gap-1 text-[9px] font-bold uppercase text-slate-400">
-                <LinkIcon size={10} /> Automatico
+                <LinkIcon size={10} /> Automático
               </div>
             </div>
             <input
@@ -163,11 +163,11 @@ const TaxonomyModal = ({
           {currentType === 'banca' && (
             <>
               <div className="space-y-2">
-                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descricao (Contexto)</label>
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descrição (Contexto)</label>
                 <textarea
                   value={filterDescription}
                   onChange={(event) => onFilterDescriptionChange(event.target.value)}
-                  placeholder="Informacoes adicionais sobre esta banca..."
+                  placeholder="InformaÃ§Ãµes adicionais sobre esta banca..."
                   className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800"
                 />
               </div>

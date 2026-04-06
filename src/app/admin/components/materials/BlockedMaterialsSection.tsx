@@ -33,7 +33,7 @@ const BlockedMaterialsSection = ({
             <th className="p-4">Material</th>
             <th className="p-4">Autor</th>
             <th className="p-4">Motivo do Bloqueio</th>
-            <th className="p-4 text-center">Acoes</th>
+            <th className="p-4 text-center">Ações</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-slate-800">

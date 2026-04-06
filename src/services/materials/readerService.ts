@@ -35,10 +35,15 @@ export type MaterialNote = {
 
 /**
  * Fachada oficial do estado de leitura de materiais em PDF.
- * Centraliza notas, marcadores e destaques para o leitor nao depender de
+ * Centraliza notas, marcadores e destaques para o leitor não depender de
  * endpoints crus espalhados no componente.
+ * @since 1.0.0
  */
 export const readerService = {
+  /**
+   * Lista os marcadores salvos para um material.
+   * @since 1.0.0
+   */
   async getBookmarks(materialId: string, userId?: string): Promise<MaterialBookmark[]> {
     const response = await apiClient.get<any>(ENDPOINTS.materials.getBookmarks, {
       params: {
@@ -56,6 +61,10 @@ export const readerService = {
         : [];
   },
 
+  /**
+   * Cria um novo marcador no reader oficial.
+   * @since 1.0.0
+   */
   async saveBookmark(materialId: string, pageNum: number, label: string, userId?: string): Promise<MaterialBookmark> {
     const response = await apiClient.post<any>(ENDPOINTS.materials.saveBookmark, {
       user_id: userId,
@@ -74,6 +83,10 @@ export const readerService = {
     };
   },
 
+  /**
+   * Remove um marcador existente.
+   * @since 1.0.0
+   */
   async deleteBookmark(bookmarkId: number): Promise<void> {
     const response = await apiClient.delete<any>(ENDPOINTS.materials.deleteBookmark, {
       params: { id: bookmarkId },
@@ -82,6 +95,10 @@ export const readerService = {
     assertApiSuccess(response, 'Erro ao remover o marcador.');
   },
 
+  /**
+   * Lista destaques salvos do material aberto no reader.
+   * @since 1.0.0
+   */
   async getHighlights(materialId: string, userId?: string): Promise<MaterialHighlight[]> {
     const response = await apiClient.get<any>(ENDPOINTS.materials.getHighlights, {
       params: {
@@ -99,6 +116,10 @@ export const readerService = {
         : [];
   },
 
+  /**
+   * Persiste um novo destaque visual do PDF.
+   * @since 1.0.0
+   */
   async saveHighlight(
     materialId: string,
     data: Pick<MaterialHighlight, 'page_num' | 'color' | 'rects' | 'text' | 'type'>,
@@ -119,6 +140,10 @@ export const readerService = {
     return payload?.highlight ?? raw?.highlight;
   },
 
+  /**
+   * Remove um destaque salvo.
+   * @since 1.0.0
+   */
   async deleteHighlight(highlightId: number): Promise<void> {
     const response = await apiClient.delete<any>(ENDPOINTS.materials.deleteHighlight, {
       params: { id: highlightId },
@@ -127,6 +152,10 @@ export const readerService = {
     assertApiSuccess(response, 'Erro ao remover o destaque.');
   },
 
+  /**
+   * Busca a anotacao textual do usuário para o material atual.
+   * @since 1.0.0
+   */
   async getNote(materialId: string, userId?: string): Promise<MaterialNote | null> {
     const response = await apiClient.get<any>(ENDPOINTS.materials.getNote, {
       params: {
@@ -140,6 +169,10 @@ export const readerService = {
     return payload?.note ?? raw?.note ?? null;
   },
 
+  /**
+   * Salva a anotacao textual do material no reader.
+   * @since 1.0.0
+   */
   async saveNote(materialId: string, noteText: string, userId?: string): Promise<MaterialNote> {
     const response = await apiClient.post<any>(ENDPOINTS.materials.saveNote, {
       user_id: userId,

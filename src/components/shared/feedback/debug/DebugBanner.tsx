@@ -38,7 +38,7 @@ const getInitialDebugMonitorState = () => {
 
 /**
  * Monitor visual de logs do ambiente de desenvolvimento.
- * Ele pode ser aberto para depurar requests e erros, mas nao deve sobrepor a home por padrao.
+ * Ele pode ser aberto para depurar requests e erros, mas não deve sobrepor a home por padrao.
  * @since v1.0.0
  */
 const DebugBanner: React.FC = () => {
@@ -137,7 +137,7 @@ const DebugBanner: React.FC = () => {
                 <button 
                   onClick={handleCopyLogs} 
                   className={`p-2 rounded-lg transition-colors ${copied ? 'bg-emerald-600 text-white' : 'hover:bg-slate-700 text-slate-400'}`}
-                  title="Copiar logs visÃ­veis"
+                  title="Copiar logs visíveis"
                 >
                   {copied ? <Check size={16} /> : <Copy size={16} />}
                 </button>

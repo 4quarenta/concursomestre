@@ -28,7 +28,7 @@ const AdminPageHeader = ({ title }: AdminPageHeaderProps) => (
           Admin
         </span>
       </div>
-      <p className="text-sm font-medium text-slate-500">Gestao completa da plataforma.</p>
+      <p className="text-sm font-medium text-slate-500">Gestão completa da plataforma.</p>
     </div>
   </header>
 );

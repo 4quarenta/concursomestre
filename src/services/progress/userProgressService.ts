@@ -13,11 +13,11 @@ import { apiClient, ENDPOINTS, readApiData } from '@services/api';
 import type { UserAnswer, UserNote } from '@types';
 
 /**
- * Reune o progresso persistido do usuario em uma fachada unica e previsivel.
+ * Reune o progresso persistido do usuário em uma fachada unica e previsivel.
  */
 export const userProgressService = {
   /**
-   * Carrega as respostas ja persistidas do usuario, aceitando tanto o contrato
+   * Carrega as respostas já persistidas do usuário, aceitando tanto o contrato
    * padrao do `Response::success` quanto arrays crus por compatibilidade.
    */
   async getUserAnswers(userId: string): Promise<UserAnswer[]> {
@@ -30,7 +30,7 @@ export const userProgressService = {
   },
 
   /**
-   * Carrega e normaliza as anotacoes de questoes do usuario.
+   * Carrega e normaliza as anotacoes de questões do usuário.
    * Notas de outros tipos ficam fora daqui para manter o contrato do app.
    */
   async getUserQuestionNotes(userId: string): Promise<UserNote[]> {

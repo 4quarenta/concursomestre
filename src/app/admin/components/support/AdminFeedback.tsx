@@ -23,7 +23,7 @@ const STATUS_LABELS: Record<AdminFeedbackThread['status'], string> = {
 const TYPE_LABELS: Record<string, string> = {
   cancellation: 'Cancelamento',
   support: 'Suporte',
-  report: 'Denuncia',
+  report: 'Denúncia',
   suggestion: 'Sugestao',
   bug: 'Bug',
   other: 'Outro',
@@ -32,22 +32,22 @@ const TYPE_LABELS: Record<string, string> = {
 const FEEDBACK_REPLY_TEMPLATES: Record<string, Array<{ label: string; message: string }>> = {
   bug: [
     {
-      label: 'Bug em analise',
-      message: 'Recebemos o bug reportado e ele ja esta em analise pelo time tecnico. Assim que tivermos um posicionamento final, enviaremos uma nova atualizacao.',
+      label: 'Bug em análise',
+      message: 'Recebemos o bug reportado e ele já esta em análise pelo time técnico. Assim que tivermos um posicionamento final, enviaremos uma nova atualizacao.',
     },
     {
       label: 'Correcao aplicada',
-      message: 'Concluimos a correcao do problema reportado e o ajuste ja foi encaminhado para a plataforma. Se voce ainda identificar o erro, responda esta conversa com o maximo de contexto possivel.',
+      message: 'Concluimos a correcao do problema reportado e o ajuste já foi encaminhado para a plataforma. Se você ainda identificar o erro, responda esta conversa com o máximo de contexto possível.',
     },
     {
       label: 'Precisamos de contexto',
-      message: 'Obrigado por sinalizar o problema. Para acelerar a analise, precisamos de mais contexto, como pagina, horario, navegador e passos para reproduzir o erro.',
+      message: 'Obrigado por sinalizar o problema. Para acelerar a análise, precisamos de mais contexto, como pagina, horario, navegador e passos para reproduzir o erro.',
     },
   ],
   suggestion: [
     {
       label: 'Sugestao recebida',
-      message: 'Obrigado pela sugestao. Ja registramos a ideia no backlog do produto e ela entrou na nossa fila de avaliacao.',
+      message: 'Obrigado pela sugestao. Já registramos a ideia no backlog do produto e ela entrou na nossa fila de avaliação.',
     },
     {
       label: 'Sugestao aprovada',
@@ -60,36 +60,36 @@ const FEEDBACK_REPLY_TEMPLATES: Record<string, Array<{ label: string; message: s
   ],
   cancellation: [
     {
-      label: 'Cancelamento em analise',
-      message: 'Recebemos sua solicitacao de cancelamento e ela esta em analise. Em breve retornaremos com a confirmacao e os proximos passos.',
+      label: 'Cancelamento em análise',
+      message: 'Recebemos sua solicitacao de cancelamento e ela esta em análise. Em breve retornaremos com a confirmacao e os proximos passos.',
     },
     {
       label: 'Cancelamento orientado',
-      message: 'Sua solicitacao foi registrada. Se houver cobranca futura ou alguma pendencia especifica, nos detalhe por aqui para concluirmos a tratativa com seguranca.',
+      message: 'Sua solicitação foi registrada. Se houver cobrança futura ou alguma pendência específica, nos detalhe por aqui para concluirmos a tratativa com segurança.',
     },
     {
       label: 'Retencao amigavel',
-      message: 'Entendemos seu pedido e queremos ajudar da melhor forma. Se o motivo estiver ligado a cobranca, acesso ou funcionalidades, podemos analisar uma alternativa antes do encerramento final.',
+      message: 'Entendemos seu pedido e queremos ajudar da melhor forma. Se o motivo estiver ligado a cobrança, acesso ou funcionalidades, podemos analisar uma alternativa antes do encerramento final.',
     },
   ],
   report: [
     {
-      label: 'Denuncia recebida',
-      message: 'Recebemos sua denuncia e ela ja foi encaminhada para moderacao. Assim que a analise for concluida, voce recebera uma atualizacao.',
+      label: 'Denúncia recebida',
+      message: 'Recebemos sua denúncia e ela já foi encaminhada para moderação. Assim que a análise for concluida, você recebera uma atualizacao.',
     },
     {
-      label: 'Denuncia em validacao',
-      message: 'Estamos validando as informacoes enviadas na denuncia e cruzando o contexto com os dados internos da plataforma. Retornaremos assim que a moderacao finalizar.',
+      label: 'Denúncia em validação',
+      message: 'Estamos validando as informações enviadas na denúncia e cruzando o contexto com os dados internos da plataforma. Retornaremos assim que a moderação finalizar.',
     },
     {
       label: 'Precisamos de prova',
-      message: 'Obrigado pela denuncia. Se voce tiver imagem, link ou outro contexto complementar, envie por aqui para fortalecer a analise do caso.',
+      message: 'Obrigado pela denúncia. Se você tiver imagem, link ou outro contexto complementar, envie por aqui para fortalecer a análise do caso.',
     },
   ],
   support: [
     {
       label: 'Atendimento iniciado',
-      message: 'Recebemos sua mensagem e seu atendimento ja foi iniciado. Em breve retornaremos com a orientacao adequada para o seu caso.',
+      message: 'Recebemos sua mensagem e seu atendimento já foi iniciado. Em breve retornaremos com a orientacao adequada para o seu caso.',
     },
     {
       label: 'Orientacao enviada',
@@ -97,13 +97,13 @@ const FEEDBACK_REPLY_TEMPLATES: Record<string, Array<{ label: string; message: s
     },
     {
       label: 'Aguardando retorno',
-      message: 'Precisamos de mais algumas informacoes para concluir seu atendimento. Assim que voce responder, seguimos com a tratativa.',
+      message: 'Precisamos de mais algumas informações para concluir seu atendimento. Assim que você responder, seguimos com a tratativa.',
     },
   ],
   other: [
     {
       label: 'Atendimento iniciado',
-      message: 'Recebemos sua mensagem e seu atendimento ja foi iniciado. Em breve retornaremos com a orientacao adequada para o seu caso.',
+      message: 'Recebemos sua mensagem e seu atendimento já foi iniciado. Em breve retornaremos com a orientacao adequada para o seu caso.',
     },
   ],
 };
@@ -130,7 +130,7 @@ export const AdminFeedback: React.FC = () => {
       setFeedbacks(items);
     } catch (error) {
       console.error('Error fetching feedback:', error);
-      addToast('Nao foi possivel carregar os feedbacks.', 'error');
+      addToast('Não foi possível carregar os feedbacks.', 'error');
     } finally {
       setLoading(false);
     }
@@ -194,7 +194,7 @@ export const AdminFeedback: React.FC = () => {
     } catch (error) {
       console.error('Error updating feedback status:', error);
       setFeedbacks(previous);
-      addToast('Nao foi possivel atualizar o status do feedback.', 'error');
+      addToast('Não foi possível atualizar o status do feedback.', 'error');
     } finally {
       setUpdatingStatusId(null);
     }
@@ -218,7 +218,7 @@ export const AdminFeedback: React.FC = () => {
       setReplies((current) => ({ ...current, [id]: threadReplies }));
     } catch (error) {
       console.error('Error fetching feedback replies:', error);
-      addToast('Nao foi possivel carregar a conversa.', 'error');
+      addToast('Não foi possível carregar a conversa.', 'error');
     } finally {
       setLoadingRepliesId(null);
     }
@@ -242,7 +242,7 @@ export const AdminFeedback: React.FC = () => {
       addToast('Resposta enviada com sucesso.', 'success');
     } catch (error) {
       console.error('Error sending feedback reply:', error);
-      addToast('Nao foi possivel enviar a resposta.', 'error');
+      addToast('Não foi possível enviar a resposta.', 'error');
     } finally {
       setSendingReplyId(null);
     }
@@ -267,7 +267,7 @@ export const AdminFeedback: React.FC = () => {
         <div>
           <h3 className="text-xl font-black text-slate-800 dark:text-white">Feedback e Suporte</h3>
           <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-            Central de triagem de mensagens, cancelamentos, bugs e solicitaÃ§Ãµes do usuÃ¡rio.
+            Central de triagem de mensagens, cancelamentos, bugs e solicitações do usuário.
           </p>
         </div>
 
@@ -298,7 +298,7 @@ export const AdminFeedback: React.FC = () => {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por usuÃ¡rio, e-mail, motivo ou conteÃºdo"
+              placeholder="Buscar por usuário, e-mail, motivo ou conteúdo"
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium text-slate-700 outline-none transition-all focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             />
           </div>
@@ -462,7 +462,7 @@ export const AdminFeedback: React.FC = () => {
                             ))}
                           </div>
                           <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                            Ao enviar a resposta pelo painel, o usuario recebe automaticamente um e-mail com o contexto deste atendimento.
+                            Ao enviar a resposta pelo painel, o usuário recebe automaticamente um e-mail com o contexto deste atendimento.
                           </p>
                           <div className="flex gap-2 items-start">
                             <textarea

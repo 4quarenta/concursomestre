@@ -36,13 +36,13 @@ type CreateSupportThreadInput = {
 };
 
 /**
- * Centraliza o fluxo da central de suporte/feedback do usuario.
- * Essa camada e consumida pela pagina publica de suporte e pelo historico de conversas.
+ * Centraliza o fluxo da central de suporte/feedback do usuário.
+ * Essa camada e consumida pela pagina pública de suporte e pelo histórico de conversas.
  * @since 1.0.0
  */
 export const supportService = {
   /**
-   * Lista os chamados do usuario autenticado.
+   * Lista os chamados do usuário autenticado.
    * @since 1.0.0
    */
   async listThreads(): Promise<SupportThread[]> {
@@ -89,7 +89,7 @@ export const supportService = {
    */
   async createThread(input: CreateSupportThreadInput): Promise<void> {
     const response = await apiClient.post(ENDPOINTS.feedback.create, input) as any;
-    assertApiSuccess(response, 'Nao foi possivel enviar a solicitacao.');
+    assertApiSuccess(response, 'Não foi possível enviar a solicitacao.');
   },
 
   /**
@@ -100,11 +100,11 @@ export const supportService = {
     const response = await apiClient.post(ENDPOINTS.feedback.create, {
       parent_id: parentId,
       type,
-      reason: 'Resposta do usuario',
+      reason: 'Resposta do usuário',
       details,
     }) as any;
 
-    assertApiSuccess(response, 'Nao foi possivel enviar a solicitacao.');
+    assertApiSuccess(response, 'Não foi possível enviar a solicitacao.');
   },
 };
 

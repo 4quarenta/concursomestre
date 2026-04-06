@@ -12,18 +12,18 @@
 import { BookOpen, ShoppingBag, User } from 'lucide-react';
 
 export const ADMIN_DATABASE_CATEGORIES = [
-  { id: 'content', label: 'Conteudo', icon: BookOpen, tabs: ['questions', 'import', 'filters'] },
-  { id: 'users', label: 'Usuarios', icon: User, tabs: ['users', 'blocked', 'rankings', 'reports'] },
+  { id: 'content', label: 'Conteúdo', icon: BookOpen, tabs: ['questions', 'import', 'filters'] },
+  { id: 'users', label: 'Usuários', icon: User, tabs: ['users', 'blocked', 'rankings', 'reports'] },
   { id: 'marketplace', label: 'Marketplace', icon: ShoppingBag, tabs: ['materials'] },
 ];
 
 export const ADMIN_DATABASE_SUBTAB_LABELS: Record<string, string> = {
-  questions: 'Questoes',
+  questions: 'Questões',
   import: 'Importador',
   filters: 'Filtros (Taxonomia)',
-  users: 'Gestao de Usuarios',
+  users: 'Gestão de Usuários',
   blocked: 'Bloqueados',
   rankings: 'Rankings',
   materials: 'Materiais',
-  reports: 'Denuncias',
+  reports: 'Denúncias',
 };

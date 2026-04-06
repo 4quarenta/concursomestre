@@ -74,7 +74,7 @@ describe('cardsService', () => {
   it('removes a saved card through the billing facade', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
-      message: 'Cartao removido com sucesso!',
+      message: 'Cartão removido com sucesso!',
     });
 
     const result = await cardsService.removeSavedCard('card-2', 'user-2');
@@ -89,7 +89,7 @@ describe('cardsService', () => {
   it('saves a legacy card through the official endpoint', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
-      message: 'Cartao salvo com sucesso!',
+      message: 'Cartão salvo com sucesso!',
     });
 
     const result = await cardsService.saveLegacyCard({
@@ -127,7 +127,7 @@ describe('cardsService', () => {
   it('syncs a Stripe card through the official endpoint', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
-      message: 'Cartao salvo com sucesso na Stripe!',
+      message: 'Cartão salvo com sucesso na Stripe!',
     });
 
     const result = await cardsService.syncStripeCard('pm_123');

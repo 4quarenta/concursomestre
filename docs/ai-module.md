@@ -8,11 +8,11 @@ Esta passada absorveu a rota legada de geracao de IA para a arquitetura oficial:
 
 O endpoint agora e um bridge fino para:
 
-- `C:\xampp\htdocs\questao-pro-backend\modules\ai\controllers\AiController.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\ai\services\AiService.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\ai\repositories\AiRepository.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\ai\validators\AiValidator.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\ai\routes.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\ai\controllers\AiController.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\ai\services\AiService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\ai\repositories\AiRepository.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\ai\validators\AiValidator.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\ai\routes.php`
 
 ## Regras aplicadas
 
@@ -24,16 +24,16 @@ O endpoint agora e um bridge fino para:
 
 ## Limpeza executada
 
-As rotas utilitarias abaixo sairam de `api/ai` por nao serem endpoints de produto:
+As rotas utilitarias abaixo sairam de `api/ai` por não serem endpoints de produto:
 
 - `api/ai/list_models.php`
 - `api/ai/list_model_names.php`
 
 O uso operacional permaneceu em CLI via:
 
-- `C:\xampp\htdocs\questao-pro-backend\scripts\manual-tests\list_gemini_models.php`
+- `C:\xampp\htdocs\questão-pro-backend\scripts\manual-tests\list_gemini_models.php`
 
 ## Observacao funcional
 
-O frontend atual do admin usa principalmente a integracao direta em `src/services/questions/aiService.ts`.
-Esta rodada preserva compatibilidade do endpoint legado `aiGenerate`, mas nao muda o fluxo moderno do painel.
+O frontend atual do admin usa principalmente a integração direta em `src/services/questions/aiService.ts`.
+Esta rodada preserva compatibilidade do endpoint legado `aiGenerate`, mas não muda o fluxo moderno do painel.

@@ -21,18 +21,18 @@ export const PLAN_ORDER = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
 export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   {
     key: 'unlimited_questions',
-    label: 'Questoes ilimitadas',
-    description: 'Remove o limite diario e libera a resolucao continua de questoes.',
+    label: 'Questões ilimitadas',
+    description: 'Remove o limite diario e libera a resolucao continua de questões.',
   },
   {
     key: 'basic_statistics',
     label: 'Estatisticas basicas',
-    description: 'Permite ver desempenho e historico essencial de resolucao.',
+    description: 'Permite ver desempenho e histórico essencial de resolucao.',
   },
   {
     key: 'community_comments',
-    label: 'Comentarios da comunidade',
-    description: 'Libera leitura e participacao nos comentarios dos alunos.',
+    label: 'Comentários da comunidade',
+    description: 'Libera leitura e participacao nos comentários dos alunos.',
   },
   {
     key: 'no_ads',
@@ -41,13 +41,13 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'teacher_comments',
-    label: 'Comentario do professor',
+    label: 'Comentário do professor',
     description: 'Libera o gabarito comentado assinado por professor.',
   },
   {
     key: 'detailed_analysis',
-    label: 'Analise detalhada',
-    description: 'Libera analises premium mais profundas por questao.',
+    label: 'Análise detalhada',
+    description: 'Libera analises premium mais profundas por questão.',
   },
   {
     key: 'ai_explanations',
@@ -191,4 +191,3 @@ export const getIncrementalBenefitKeysForPlan = (
     })
     .map((benefit) => benefit.key);
 };
-

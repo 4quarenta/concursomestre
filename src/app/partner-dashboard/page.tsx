@@ -66,7 +66,7 @@ const PartnerDashboard: React.FC = () => {
   const [fullFile, setFullFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
 
-  // Valores padrÃ£o para todos os campos do formulÃ¡rio de saque
+  // Valores padrão para todos os campos do formulário de saque
   const bankFormDefaults = {
     bankCode: '', bankName: '', agency: '', account: '', accountDigit: '',
     holderName: currentUser?.name || '', holderDocument: '',
@@ -78,8 +78,8 @@ const PartnerDashboard: React.FC = () => {
     docPhotoUrl: '',
   };
 
-  // Mescla defaults com dados jÃ¡ salvos: campos existentes preenchem o form,
-  // novos campos recebem o valor padrÃ£o
+  // Mescla defaults com dados já salvos: campos existentes preenchem o form,
+  // novos campos recebem o valor padrão
   const [bankForm, setBankForm] = useState<any>({
     ...bankFormDefaults,
     ...(currentUser?.bankAccount || {}),
@@ -88,13 +88,13 @@ const PartnerDashboard: React.FC = () => {
   const [savingBank, setSavingBank] = useState(false);
   const [bankAgeError, setBankAgeError] = useState('');
 
-  // Sincroniza o formulÃ¡rio quando o usuÃ¡rio for carregado/atualizado do contexto
+  // Sincroniza o formulário quando o usuário for carregado/atualizado do contexto
   React.useEffect(() => {
     if (currentUser?.bankAccount) {
       setBankForm((prev: any) => ({
         ...bankFormDefaults,
         ...currentUser.bankAccount,
-        // mantÃ©m qualquer alteraÃ§Ã£o local ainda nÃ£o salva se o objeto for o mesmo
+        // mantém qualquer alteração local ainda não salva se o objeto for o mesmo
         ...Object.fromEntries(
           Object.entries(prev).filter(([k]) => !(k in bankFormDefaults))
         ),
@@ -111,7 +111,7 @@ const PartnerDashboard: React.FC = () => {
 
   const { availableBalance, heldBalance, totalRevenue } = useMemo(() => {
     return myTransactions.reduce((acc, curr) => {
-      // Reembolsados nÃ£o entram na contabilizaÃ§Ã£o de saldo
+      // Reembolsados não entram na contabilização de saldo
       if (curr.status === 'refunded') return acc;
 
       const netAmount = curr.amount - curr.platformFee;
@@ -131,7 +131,7 @@ const PartnerDashboard: React.FC = () => {
   const totalSales = myTransactions.filter(t => t.status !== 'refunded').length;
   const pendingMaterials = myMaterials.filter(m => m.status === 'pending').length;
 
-  // GrÃ¡fico de Desempenho Mensal (Ãºltimas 4 semanas)
+  // Gráfico de Desempenho Mensal (últimas 4 semanas)
   const chartData = useMemo(() => {
     const semanas = [
       { name: 'Sem 4', start: 28, end: 22 },
@@ -149,7 +149,7 @@ const PartnerDashboard: React.FC = () => {
     }));
 
     myTransactions.forEach(t => {
-      // Ignorar reembolsados no grÃ¡fico
+      // Ignorar reembolsados no gráfico
       if (t.status === 'refunded') return;
       const diasAtras = (Date.now() - t.timestamp) / (1000 * 60 * 60 * 24);
       const sem = data.find(s => diasAtras <= s.startDay && diasAtras >= s.endDay);
@@ -169,7 +169,7 @@ const PartnerDashboard: React.FC = () => {
           isOpen={showAuthModal || !currentUser}
           onClose={() => { }}
           title="Acesso de Parceiros"
-          description="Para acessar o painel de vendas, gerenciar produtos e financeiro, faÃ§a login na sua conta."
+          description="Para acessar o painel de vendas, gerenciar produtos e financeiro, faça login na sua conta."
           actionSource="partner_dashboard"
         />
       </div>
@@ -187,11 +187,11 @@ const PartnerDashboard: React.FC = () => {
     e.stopPropagation(); // Stop propagation just in case
 
     if (!newMaterial.title || !newMaterial.description) {
-      addToast("Preencha todos os campos obrigatÃ³rios", "warning");
+      addToast("Preencha todos os campos obrigatórios", "warning");
       return;
     }
     if (!fullFile) {
-      addToast("VocÃª precisa fazer o upload do material completo (PDF).", "warning");
+      addToast("Você precisa fazer o upload do material completo (PDF).", "warning");
       return;
     }
 
@@ -264,7 +264,7 @@ const PartnerDashboard: React.FC = () => {
       }
     } catch (err) {
       console.error(err);
-      addToast("Ocorreu um erro inesperado ao enviar o formulÃ¡rio.", "error");
+      addToast("Ocorreu um erro inesperado ao enviar o formulário.", "error");
     } finally {
       setIsPublishing(false);
     }
@@ -325,14 +325,14 @@ const PartnerDashboard: React.FC = () => {
   const handleSaveBank = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // ValidaÃ§Ã£o de idade (mÃ­nimo 18 anos)
+    // Validação de idade (mínimo 18 anos)
     if (bankForm.birthDate) {
       const birth = new Date(bankForm.birthDate);
       const hoje = new Date();
       const anos = hoje.getFullYear() - birth.getFullYear() -
         (hoje < new Date(hoje.getFullYear(), birth.getMonth(), birth.getDate()) ? 1 : 0);
       if (anos < 18) {
-        setBankAgeError('VocÃª precisa ter 18 anos ou mais para vender na plataforma.');
+        setBankAgeError('Você precisa ter 18 anos ou mais para vender na plataforma.');
         return;
       }
     }
@@ -349,9 +349,9 @@ const PartnerDashboard: React.FC = () => {
 
       const dataToSave = { ...bankForm, docPhotoUrl: docUrl };
       updateUser({ bankAccount: dataToSave });
-      addToast('Dados bancÃ¡rios salvos! Seus recebimentos futuros cairÃ£o nesta conta.', 'success');
+      addToast('Dados bancários salvos! Seus recebimentos futuros cairão nesta conta.', 'success');
     } catch (err) {
-      addToast('Erro ao salvar dados bancÃ¡rios.', 'error');
+      addToast('Erro ao salvar dados bancários.', 'error');
       setSavingBank(false);
     }
   };
@@ -376,9 +376,9 @@ const PartnerDashboard: React.FC = () => {
   const isAlreadyPartner = currentUser.role === 'partner' || currentUser.role === 'admin' || currentUser.isPartner;
 
   const partnerTabs = [
-    { key: 'overview', label: 'VisÃ£o Geral', icon: LayoutDashboard },
+    { key: 'overview', label: 'Visão Geral', icon: LayoutDashboard },
     { key: 'products', label: 'Meus Materiais', icon: Package, badge: myMaterials.length },
-    { key: 'reviews', label: 'AvaliaÃ§Ãµes', icon: MessageSquare },
+    { key: 'reviews', label: 'Avaliações', icon: MessageSquare },
     { key: 'upload', label: 'Publicar Material', icon: UploadCloud },
     { key: 'finance', label: 'Financeiro', icon: Wallet },
   ];
@@ -390,7 +390,7 @@ const PartnerDashboard: React.FC = () => {
           <div className="w-24 h-24 bg-indigo-50 dark:bg-indigo-900/20 rounded-full flex items-center justify-center mx-auto shadow-inner transition-colors"><DollarSign size={40} className="text-indigo-600 dark:text-indigo-400" /></div>
           <div className="space-y-4">
             <h1 className="text-4xl font-black text-slate-900 dark:text-slate-100 transition-colors">Torne-se um Colaborador</h1>
-            <p className="text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed font-bold transition-colors">Compartilhe seu conhecimento pedagÃ³gico com milhares de alunos e monetize sua expertise de forma segura e profissional.</p>
+            <p className="text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed font-bold transition-colors">Compartilhe seu conhecimento pedagógico com milhares de alunos e monetize sua expertise de forma segura e profissional.</p>
           </div>
           {systemSettings?.features?.partnerRegistrationEnabled !== false && (
             <button
@@ -401,15 +401,15 @@ const PartnerDashboard: React.FC = () => {
                 setIsPublishing(true);
                 const success = await becomePartner();
                 if (success) {
-                  addToast("ParabÃ©ns! Agora vocÃª Ã© um colaborador.", "success");
+                  addToast("Parabéns! Agora você é um colaborador.", "success");
                 } else {
-                  addToast("NÃ£o foi possÃ­vel ativar seu perfil de parceiro. Tente novamente.", "error");
+                  addToast("Não foi possível ativar seu perfil de parceiro. Tente novamente.", "error");
                 }
                 setIsPublishing(false);
               }}
               className="px-12 py-5 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all shadow-xl shadow-slate-200 dark:shadow-none disabled:opacity-50 disabled:cursor-wait"
             >
-              {isPublishing ? 'Ativando...' : 'Aceitar e ComeÃ§ar Agora'}
+              {isPublishing ? 'Ativando...' : 'Aceitar e Começar Agora'}
             </button>
           )}
         </div>
@@ -434,12 +434,12 @@ const PartnerDashboard: React.FC = () => {
   const NotificationDropdown = () => (
     <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in text-left">
       <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
-        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">NotificaÃ§Ãµes</h3>
+        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
         {unreadCount > 0 && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">{unreadCount} novas</span>}
       </div>
       <div className="max-h-80 overflow-y-auto no-scrollbar">
         {notifications.filter(n => !n.deletedAt).length === 0 ? (
-          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificaÃ§Ã£o.</div>
+          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificação.</div>
         ) : (
           notifications.filter(n => !n.deletedAt).slice(0, 5).map(n => (
             <div key={n.id} onClick={() => handleNotificationClick(n)} className={`p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!n.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}>
@@ -519,7 +519,7 @@ const PartnerDashboard: React.FC = () => {
             <div className="flex items-center gap-3 pl-6 border-l border-slate-200 dark:border-slate-800">
               <div className="text-right">
                 <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{currentUser?.name}</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">NÃ­vel {userLevel}</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">Nível {userLevel}</p>
               </div>
               <div className="w-9 h-9 rounded-full bg-slate-900 dark:bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-md">
                 {userInitials}
@@ -538,7 +538,7 @@ const PartnerDashboard: React.FC = () => {
                 </h1>
                 <span className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase px-2 py-0.5 rounded-md tracking-widest border border-indigo-200 dark:border-indigo-800">Colaborador</span>
               </div>
-              <p className="text-slate-500 text-sm font-medium">Gerencie suas publicaÃ§Ãµes e ganhos.</p>
+              <p className="text-slate-500 text-sm font-medium">Gerencie suas publicações e ganhos.</p>
             </div>
             <div className="flex items-center gap-3 p-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
               <TrendingUp size={16} className="text-emerald-500" />
@@ -558,7 +558,7 @@ const PartnerDashboard: React.FC = () => {
                     {
                       label: 'Receita Total',
                       value: `R$ ${totalRevenue.toFixed(2)}`,
-                      sub: `R$ ${availableBalance.toFixed(2)} disponÃ­vel`,
+                      sub: `R$ ${availableBalance.toFixed(2)} disponível`,
                       icon: DollarSign,
                       color: 'emerald',
                       gradient: 'from-emerald-500/20 to-teal-500/20'
@@ -566,23 +566,23 @@ const PartnerDashboard: React.FC = () => {
                     {
                       label: 'Vendas Totais',
                       value: totalSales,
-                      sub: 'TransaÃ§Ãµes confirmadas',
+                      sub: 'Transações confirmadas',
                       icon: ShoppingBag,
                       color: 'indigo',
                       gradient: 'from-indigo-500/20 to-blue-500/20'
                     },
                     {
-                      label: 'Em ModeraÃ§Ã£o',
+                      label: 'Em Moderação',
                       value: pendingMaterials,
-                      sub: 'Aguardando validaÃ§Ã£o',
+                      sub: 'Aguardando validação',
                       icon: ListChecks,
                       color: 'amber',
                       gradient: 'from-amber-500/20 to-orange-500/20'
                     },
                     {
-                      label: 'Sua PontuaÃ§Ã£o',
+                      label: 'Sua Pontuação',
                       value: currentUser.reputation || 0,
-                      sub: 'Baseado em avaliaÃ§Ãµes',
+                      sub: 'Baseado em avaliações',
                       icon: Activity,
                       color: 'purple',
                       gradient: 'from-purple-500/20 to-pink-500/20'
@@ -601,9 +601,9 @@ const PartnerDashboard: React.FC = () => {
                             <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1 cursor-help">
                               {stat.sub} <HelpCircle size={10} className="text-slate-400" />
                             </p>
-                            {stat.label === 'Sua PontuaÃ§Ã£o' && (
+                            {stat.label === 'Sua Pontuação' && (
                               <div className="absolute top-full left-0 mt-2 w-48 p-3 bg-slate-900 dark:bg-slate-800 text-white text-[9px] font-medium rounded-xl opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
-                                Sua pontuaÃ§Ã£o reflete a qualidade e o engajamento dos seus materiais. VocÃª ganha pontos por vendas realizadas e avaliaÃ§Ãµes positivas dos alunos.
+                                Sua pontuação reflete a qualidade e o engajamento dos seus materiais. Você ganha pontos por vendas realizadas e avaliações positivas dos alunos.
                                 <div className="absolute -top-1 left-4 w-2 h-2 bg-slate-900 dark:bg-slate-800 rotate-45" />
                               </div>
                             )}
@@ -675,7 +675,7 @@ const PartnerDashboard: React.FC = () => {
                   <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-full">
                     <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 mb-8">
                       <Activity size={18} className="text-indigo-600 dark:text-indigo-400" />
-                      Ãšltimas Vendas
+                      Últimas Vendas
                     </h3>
                     <div className="flex-1 space-y-6">
                       {myTransactions.slice(0, 5).map((t, idx) => (
@@ -688,7 +688,7 @@ const PartnerDashboard: React.FC = () => {
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{t.materialTitle}</p>
                             <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-                              Por <span className="text-indigo-500 font-bold">{t.buyerName || `UsuÃ¡rio #${t.buyerId.substring(0, 4)}`}</span>
+                              Por <span className="text-indigo-500 font-bold">{t.buyerName || `Usuário #${t.buyerId.substring(0, 4)}`}</span>
                             </p>
                           </div>
                           <div className="text-right">
@@ -716,7 +716,7 @@ const PartnerDashboard: React.FC = () => {
                         onClick={() => setActiveTab('finance')}
                         className="mt-6 w-full py-3 text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
                       >
-                        Ver todos os lanÃ§amentos
+                        Ver todos os lançamentos
                       </button>
                     )}
                   </div>
@@ -726,11 +726,11 @@ const PartnerDashboard: React.FC = () => {
                 <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
                   <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 mb-8">
                     <HelpCircle size={18} className="text-indigo-600 dark:text-indigo-400" />
-                    AvaliaÃ§Ãµes e Perguntas Recentes
+                    Avaliações e Perguntas Recentes
                   </h3>
                   <div className="divide-y divide-slate-100 dark:divide-slate-800">
                     {(() => {
-                      // Coletar todos os comentÃ¡rios dos materiais do usuÃ¡rio
+                      // Coletar todos os comentários dos materiais do usuário
                       const allComments = myMaterials.flatMap(m =>
                         (m.comments || []).map(c => ({ ...c, materialTitle: m.title }))
                       ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -739,7 +739,7 @@ const PartnerDashboard: React.FC = () => {
                         return (
                           <div className="flex flex-col items-center justify-center py-10 opacity-40 gap-4">
                             <HelpCircle size={40} className="text-slate-400" />
-                            <p className="text-xs font-black uppercase tracking-widest text-slate-500">Nenhuma avaliaÃ§Ã£o ou pergunta ainda</p>
+                            <p className="text-xs font-black uppercase tracking-widest text-slate-500">Nenhuma avaliação ou pergunta ainda</p>
                           </div>
                         );
                       }
@@ -750,7 +750,7 @@ const PartnerDashboard: React.FC = () => {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
                                 <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{c.userName}</span>
-                                <span className="text-[10px] text-slate-400 dark:text-slate-500">â€¢ {new Date(c.date).toLocaleDateString()}</span>
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500">? {new Date(c.date).toLocaleDateString()}</span>
                               </div>
                               <p className="text-[10px] text-indigo-500 dark:text-indigo-400 font-bold mb-2 uppercase tracking-wide">
                                 Em: {c.materialTitle}
@@ -761,7 +761,7 @@ const PartnerDashboard: React.FC = () => {
                             </div>
                             <div className="bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-700 whitespace-nowrap">
                               <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">
-                                {c.likes > 0 ? `${c.likes} Ãštil` : 'Nova'}
+                                {c.likes > 0 ? `${c.likes} Útil` : 'Nova'}
                               </span>
                             </div>
                           </div>
@@ -779,7 +779,7 @@ const PartnerDashboard: React.FC = () => {
                   <div>
                     <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3">
                       <MessageSquare size={18} className="text-indigo-600 dark:text-indigo-400" />
-                      AvaliaÃ§Ãµes e Perguntas
+                      Avaliações e Perguntas
                     </h3>
                     <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 uppercase">
                       Gerencie e interaja com seus alunos
@@ -798,7 +798,7 @@ const PartnerDashboard: React.FC = () => {
                         return (
                           <div className="flex flex-col items-center justify-center py-20 opacity-40 gap-4">
                             <MessageSquare size={48} className="text-slate-400" />
-                            <p className="text-xs font-black uppercase tracking-widest text-slate-500">Nenhuma avaliaÃ§Ã£o recebida</p>
+                            <p className="text-xs font-black uppercase tracking-widest text-slate-500">Nenhuma avaliação recebida</p>
                           </div>
                         );
                       }
@@ -836,7 +836,7 @@ const PartnerDashboard: React.FC = () => {
 
                               <div className="flex items-center gap-4">
                                 <button className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400" disabled>
-                                  <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{c.likes || 0}</span> Ãštil
+                                  <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{c.likes || 0}</span> Útil
                                 </button>
                                 <button
                                   onClick={() => setReplyingTo({ materialId: c.materialId, commentId: c.id })}
@@ -937,11 +937,11 @@ const PartnerDashboard: React.FC = () => {
                     <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
                       <tr>
                         <th className="p-6">Material</th>
-                        <th className="p-6">PreÃ§o</th>
-                        <th className="p-6 text-center">AvaliaÃ§Ã£o</th>
+                        <th className="p-6">Preço</th>
+                        <th className="p-6 text-center">Avaliação</th>
                         <th className="p-6 text-center">Vendas</th>
                         <th className="p-6 text-center">Status</th>
-                        <th className="p-6 text-center">AÃ§Ãµes</th>
+                        <th className="p-6 text-center">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -974,7 +974,7 @@ const PartnerDashboard: React.FC = () => {
                                 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
                                 : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
                               }`}>
-                              {m.status === 'approved' ? 'Ativo' : m.status === 'pending' ? 'Em AnÃ¡lise' : 'Rejeitado'}
+                              {m.status === 'approved' ? 'Ativo' : m.status === 'pending' ? 'Em Análise' : 'Rejeitado'}
                             </span>
                           </td>
                           <td className="p-6 text-center">
@@ -1033,7 +1033,7 @@ const PartnerDashboard: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="text-xl font-black text-slate-900 dark:text-slate-100">Publicar Novo Material</h3>
-                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Siga as diretrizes para uma aprovaÃ§Ã£o rÃ¡pida</p>
+                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Siga as diretrizes para uma aprovação rápida</p>
                     </div>
                   </div>
 
@@ -1041,7 +1041,7 @@ const PartnerDashboard: React.FC = () => {
                     {/* Title & Description */}
                     <div className="space-y-6 md:col-span-2">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">TÃ­tulo do Material</label>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Título do Material</label>
                         <input
                           required
                           type="text"
@@ -1053,21 +1053,21 @@ const PartnerDashboard: React.FC = () => {
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">DescriÃ§Ã£o do ConteÃºdo</label>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Descrição do Conteúdo</label>
                         <textarea
                           required
                           rows={5}
                           value={newMaterial.description}
                           onChange={e => setNewMaterial({ ...newMaterial, description: e.target.value })}
                           className="w-full p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-[2.5rem] text-sm font-medium text-slate-600 dark:text-slate-300 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all resize-none"
-                          placeholder="Descreva o que seu material aborda, para quem Ã© indicado e seus diferenciais..."
+                          placeholder="Descreva o que seu material aborda, para quem é indicado e seus diferenciais..."
                         />
                       </div>
                     </div>
 
                     {/* Metadata fields */}
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">PreÃ§o Sugerido (R$)</label>
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Preço Sugerido (R$)</label>
                       <div className="relative">
                         <DollarSign className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                         <input
@@ -1083,7 +1083,7 @@ const PartnerDashboard: React.FC = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">MatÃ©ria Principal</label>
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Matéria Principal</label>
                       <select
                         value={newMaterial.subjectId || ''}
                         onChange={e => {
@@ -1099,7 +1099,7 @@ const PartnerDashboard: React.FC = () => {
                         }}
                         className="w-full h-14 px-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-slate-800 dark:text-slate-200 text-sm cursor-pointer outline-none focus:ring-4 focus:ring-indigo-500/10"
                       >
-                        <option value="">Selecionar MatÃ©ria</option>
+                        <option value="">Selecionar Matéria</option>
                         {systemSettings.taxonomies?.subjects.map(s => (
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}
@@ -1107,7 +1107,7 @@ const PartnerDashboard: React.FC = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Assunto / TÃ³pico</label>
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Assunto / Tópico</label>
                       <select
                         disabled={!newMaterial.subjectId}
                         value={newMaterial.topicId || ''}
@@ -1118,7 +1118,7 @@ const PartnerDashboard: React.FC = () => {
                         }}
                         className="w-full h-14 px-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-slate-800 dark:text-slate-200 text-sm cursor-pointer outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <option value="">{newMaterial.subjectId ? "Selecionar Assunto" : "Selecione uma matÃ©ria primeiro"}</option>
+                        <option value="">{newMaterial.subjectId ? "Selecionar Assunto" : "Selecione uma matéria primeiro"}</option>
                         {systemSettings.taxonomies?.topics
                           .filter(t => Number(t.parentId) === Number(newMaterial.subjectId))
                           .map(t => (
@@ -1221,7 +1221,7 @@ const PartnerDashboard: React.FC = () => {
                       </div>
                       <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-2xl border border-amber-100 dark:border-amber-900/20">
                         <p className="text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed font-bold">
-                          A senha serÃ¡ liberada automaticamente para o comprador apÃ³s o pagamento. Isso ajuda a evitar pirataria.
+                          A senha será liberada automaticamente para o comprador após o pagamento. Isso ajuda a evitar pirataria.
                         </p>
                       </div>
                     </div>
@@ -1231,7 +1231,7 @@ const PartnerDashboard: React.FC = () => {
                     <div className="flex items-center gap-3">
                       <ShieldCheck size={20} className="text-indigo-600" />
                       <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold max-w-[200px] leading-tight uppercase">
-                        Ao publicar, vocÃª concorda com nossos Termos de Parceria e Uso.
+                        Ao publicar, você concorda com nossos Termos de Parceria e Uso.
                       </p>
                     </div>
                     <button
@@ -1255,11 +1255,11 @@ const PartnerDashboard: React.FC = () => {
                     <div className="space-y-6">
                       <div>
                         <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-2">
-                          <Wallet size={12} /> Saldo DisponÃ­vel p/ Saque
+                          <Wallet size={12} /> Saldo Disponível p/ Saque
                         </p>
                         <h2 className="text-6xl font-black">R$ {availableBalance.toFixed(2)}</h2>
                         <p className="text-white/30 text-[10px] font-bold mt-2 uppercase tracking-widest">
-                          Ciclo fecha dia 20 &nbsp;Â·&nbsp; Pagamento enviado dia 1 do mÃªs seguinte &nbsp;Â·&nbsp; Erros vÃ£o para o prÃ³ximo ciclo
+                          Ciclo fecha dia 20 &nbsp;·&nbsp; Pagamento enviado dia 1 do mês seguinte &nbsp;·&nbsp; Erros vão para o próximo ciclo
                         </p>
                       </div>
                       <div className="flex items-center gap-8">
@@ -1271,7 +1271,7 @@ const PartnerDashboard: React.FC = () => {
                         </div>
                         <div className="w-px h-10 bg-white/10"></div>
                         <p className="text-[10px] text-white/30 font-medium max-w-[180px] leading-tight uppercase">
-                          LiberaÃ§Ã£o automÃ¡tica apÃ³s 7 dias da venda.
+                          Liberação automática após 7 dias da venda.
                         </p>
                       </div>
                     </div>
@@ -1284,9 +1284,9 @@ const PartnerDashboard: React.FC = () => {
                             <Landmark size={24} />
                           </div>
                           <div>
-                            <span className="font-black text-sm uppercase block">{currentUser.bankAccount?.bankName || 'NÃ£o configurada'}</span>
+                            <span className="font-black text-sm uppercase block">{currentUser.bankAccount?.bankName || 'Não configurada'}</span>
                             <span className="text-[10px] font-mono text-white/40">
-                              {currentUser.bankAccount ? `${currentUser.bankAccount.agency} â€¢ ${currentUser.bankAccount.account}-${currentUser.bankAccount.accountDigit}` : 'Conta nÃ£o cadastrada'}
+                              {currentUser.bankAccount ? `${currentUser.bankAccount.agency} • ${currentUser.bankAccount.account}-${currentUser.bankAccount.accountDigit}` : 'Conta não cadastrada'}
                             </span>
                           </div>
                         </div>
@@ -1295,19 +1295,19 @@ const PartnerDashboard: React.FC = () => {
                         onClick={() => { setBankForm(currentUser.bankAccount || bankForm); setFinanceSubTab('saque'); }}
                         className="w-full py-3 bg-white text-slate-900 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-50 transition-colors"
                       >
-                        Alterar Dados BancÃ¡rios
+                        Alterar Dados Bancários
                       </button>
                     </div>
                   </div>
                   <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-[100px] -mr-32 -mt-32"></div>
                 </div>
 
-                {/* Sub-abas: Extrato | ConfiguraÃ§Ã£o de Saque */}
+                {/* Sub-abas: Extrato | Configuração de Saque */}
                 <div className="border-b border-slate-200 dark:border-slate-800 flex gap-2">
                   {[
                     { key: 'extrato', label: 'Vendas', icon: ListChecks },
                     { key: 'pagamentos', label: 'Repasses (Pagamentos)', icon: Landmark },
-                    { key: 'saque', label: 'ConfiguraÃ§Ã£o de Saque', icon: Wallet },
+                    { key: 'saque', label: 'Configuração de Saque', icon: Wallet },
                   ].map(tab => (
                     <button
                       key={tab.key}
@@ -1336,7 +1336,7 @@ const PartnerDashboard: React.FC = () => {
                     {myTransactions.length === 0 ? (
                       <div className="py-20 flex flex-col items-center justify-center opacity-30 gap-4">
                         <Package size={48} />
-                        <p className="text-[10px] font-black uppercase tracking-widest">Nenhuma transaÃ§Ã£o registrada</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest">Nenhuma transação registrada</p>
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
@@ -1349,7 +1349,7 @@ const PartnerDashboard: React.FC = () => {
                               <th className="pb-4 pt-1 text-center">Status</th>
                               <th className="pb-4 pt-1 text-right">Bruto</th>
                               <th className="pb-4 pt-1 text-right">Taxa (20%)</th>
-                              <th className="pb-4 pt-1 text-right">LÃ­quido</th>
+                              <th className="pb-4 pt-1 text-right">Líquido</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
@@ -1423,14 +1423,14 @@ const PartnerDashboard: React.FC = () => {
                       <Wallet size={48} className="text-slate-400 dark:text-slate-500" />
                       <p className="text-[10px] font-black uppercase tracking-widest text-center max-w-sm">
                         Nenhum repasse realizado ainda. <br /><br />
-                        Os pagamentos sÃ£o processados e enviados para a sua conta bancÃ¡ria configurada <br />
-                        no dia 1Âº do mÃªs seguinte ao ciclo fechado (dia 20).
+                        Os pagamentos são processados e enviados para a sua conta bancária configurada <br />
+                        no dia 1º do mês seguinte ao ciclo fechado (dia 20).
                       </p>
                     </div>
                   </div>
                 )}
 
-                {/* Sub-aba: ConfiguraÃ§Ã£o de Saque */}
+                {/* Sub-aba: Configuração de Saque */}
                 {financeSubTab === 'saque' && (
                   <div className="bg-white dark:bg-slate-900 p-8 md:p-12 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-sm max-w-3xl animate-slide-up">
                     <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-6 mb-8">
@@ -1438,7 +1438,7 @@ const PartnerDashboard: React.FC = () => {
                         <Landmark size={18} />
                       </div>
                       <div>
-                        <h3 className="font-black text-slate-900 dark:text-slate-100 text-sm">ConfiguraÃ§Ã£o de Saque</h3>
+                        <h3 className="font-black text-slate-900 dark:text-slate-100 text-sm">Configuração de Saque</h3>
                         <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Preencha todos os dados para receber seus pagamentos corretamente.</p>
                       </div>
                     </div>
@@ -1452,11 +1452,11 @@ const PartnerDashboard: React.FC = () => {
 
                     <form onSubmit={handleSaveBank} className="space-y-8">
 
-                      {/* â”€â”€ Tipo de Pessoa â”€â”€ */}
+                      {/* ── Tipo de Pessoa ── */}
                       <div className="space-y-3">
                         <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Tipo de Pessoa</p>
                         <div className="flex gap-3">
-                          {[{ val: false, label: 'Pessoa FÃ­sica (CPF)' }, { val: true, label: 'Pessoa JurÃ­dica (CNPJ)' }].map(opt => (
+                          {[{ val: false, label: 'Pessoa Física (CPF)' }, { val: true, label: 'Pessoa Jurídica (CNPJ)' }].map(opt => (
                             <button key={String(opt.val)} type="button"
                               onClick={() => setBankForm({ ...bankForm, isCnpj: opt.val })}
                               className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${bankForm.isCnpj === opt.val
@@ -1467,7 +1467,7 @@ const PartnerDashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* â”€â”€ Dados Pessoais / Empresa â”€â”€ */}
+                      {/* ── Dados Pessoais / Empresa ── */}
                       <div className="space-y-3">
                         <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Dados do Titular</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1481,7 +1481,7 @@ const PartnerDashboard: React.FC = () => {
 
                           <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                              {bankForm.isCnpj ? 'CPF do SÃ³cio Administrador' : 'CPF (deve ser o mesmo da conta)'}
+                              {bankForm.isCnpj ? 'CPF do Sócio Administrador' : 'CPF (deve ser o mesmo da conta)'}
                             </label>
                             <input required type="text" value={bankForm.holderDocument}
                               onChange={e => setBankForm({ ...bankForm, holderDocument: e.target.value })}
@@ -1489,10 +1489,10 @@ const PartnerDashboard: React.FC = () => {
                               placeholder="000.000.000-00" />
                           </div>
 
-                          {/* Nascimento â€” obrigatÃ³rio para PF */}
+                          {/* Nascimento — obrigatório para PF */}
                           {!bankForm.isCnpj && (
                             <div className="space-y-1">
-                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Data de Nascimento (mÃ­n. 18 anos)</label>
+                              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Data de Nascimento (mín. 18 anos)</label>
                               <input required type="date" value={bankForm.birthDate}
                                 max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().split('T')[0]}
                                 onChange={e => { setBankForm({ ...bankForm, birthDate: e.target.value }); setBankAgeError(''); }}
@@ -1500,7 +1500,7 @@ const PartnerDashboard: React.FC = () => {
                             </div>
                           )}
 
-                          {/* CNPJ e RazÃ£o Social */}
+                          {/* CNPJ e Razão Social */}
                           {bankForm.isCnpj && (
                             <>
                               <div className="space-y-1">
@@ -1511,7 +1511,7 @@ const PartnerDashboard: React.FC = () => {
                                   placeholder="00.000.000/0001-00" />
                               </div>
                               <div className="space-y-1 md:col-span-2">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">RazÃ£o Social / Nome da Empresa</label>
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Razão Social / Nome da Empresa</label>
                                 <input required type="text" value={bankForm.companyName}
                                   onChange={e => setBankForm({ ...bankForm, companyName: e.target.value })}
                                   className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 transition-all" />
@@ -1521,9 +1521,9 @@ const PartnerDashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* â”€â”€ EndereÃ§o â”€â”€ */}
+                      {/* ── Endereço ── */}
                       <div className="space-y-3">
-                        <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">EndereÃ§o</p>
+                        <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Endereço</p>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           <div className="space-y-1 col-span-1">
                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CEP</label>
@@ -1540,7 +1540,7 @@ const PartnerDashboard: React.FC = () => {
                               placeholder="Rua, Avenida..." />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">NÃºmero</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Número</label>
                             <input required type="text" value={bankForm.number}
                               onChange={e => setBankForm({ ...bankForm, number: e.target.value })}
                               className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 transition-all" />
@@ -1575,26 +1575,26 @@ const PartnerDashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* â”€â”€ Dados BancÃ¡rios â”€â”€ */}
+                      {/* ── Dados Bancários ── */}
                       <div className="space-y-3">
-                        <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Dados BancÃ¡rios</p>
-                        <p className="text-[9px] text-amber-600 dark:text-amber-400 font-bold">âš  O CPF/CNPJ do titular deve ser o mesmo cadastrado na conta bancÃ¡ria.</p>
+                        <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Dados Bancários</p>
+                        <p className="text-[9px] text-amber-600 dark:text-amber-400 font-bold">⚠ O CPF/CNPJ do titular deve ser o mesmo cadastrado na conta bancária.</p>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-1 col-span-2">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Banco / InstituiÃ§Ã£o</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Banco / Instituição</label>
                             <input required type="text" value={bankForm.bankName}
                               onChange={e => setBankForm({ ...bankForm, bankName: e.target.value })}
                               className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 transition-all"
                               placeholder="Ex: Nubank, Banco Inter, Caixa" />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">AgÃªncia (sem dÃ­gito)</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Agência (sem dígito)</label>
                             <input required type="text" value={bankForm.agency}
                               onChange={e => setBankForm({ ...bankForm, agency: e.target.value })}
                               className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 transition-all" />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Conta (c/ dÃ­gito)</label>
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Conta (c/ dígito)</label>
                             <input required type="text"
                               value={`${bankForm.account}${bankForm.accountDigit ? '-' + bankForm.accountDigit : ''}`}
                               onChange={e => {
@@ -1609,13 +1609,13 @@ const PartnerDashboard: React.FC = () => {
                             <select value={bankForm.type} onChange={e => setBankForm({ ...bankForm, type: e.target.value })}
                               className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 transition-all">
                               <option value="checking">Corrente</option>
-                              <option value="savings">PoupanÃ§a</option>
+                              <option value="savings">Poupança</option>
                             </select>
                           </div>
                         </div>
                       </div>
 
-                      {/* â”€â”€ Chave PIX (opcional) â”€â”€ */}
+                      {/* ── Chave PIX (opcional) ── */}
                       <div className="space-y-3">
                         <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Chave PIX <span className="font-normal normal-case opacity-60">(opcional, mas recomendado)</span></p>
                         <div className="grid grid-cols-2 gap-4">
@@ -1628,7 +1628,7 @@ const PartnerDashboard: React.FC = () => {
                               <option value="cnpj">CNPJ</option>
                               <option value="email">E-mail</option>
                               <option value="phone">Celular</option>
-                              <option value="random">Chave AleatÃ³ria</option>
+                              <option value="random">Chave Aleatória</option>
                             </select>
                           </div>
                           <div className="space-y-1">
@@ -1642,10 +1642,10 @@ const PartnerDashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* â”€â”€ Documento de Identidade â”€â”€ */}
+                      {/* ── Documento de Identidade ── */}
                       <div className="space-y-3">
                         <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Documento de Identidade</p>
-                        <p className="text-[9px] text-slate-400 font-bold">Envie uma foto do RG, CNH ou Passaporte (frente e verso em uma Ãºnica imagem). NecessÃ¡rio para autorizar os saques.</p>
+                        <p className="text-[9px] text-slate-400 font-bold">Envie uma foto do RG, CNH ou Passaporte (frente e verso em uma única imagem). Necessário para autorizar os saques.</p>
                         <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-all group">
                           <input type="file" accept="image/*,application/pdf" className="hidden"
                             onChange={e => setDocFile(e.target.files?.[0] || null)} />
@@ -1658,14 +1658,14 @@ const PartnerDashboard: React.FC = () => {
                           ) : bankForm.docPhotoUrl ? (
                             <div className="flex flex-col items-center gap-2 text-emerald-600">
                               <CheckCircle2 size={28} />
-                              <span className="text-xs font-bold">Documento jÃ¡ enviado</span>
+                              <span className="text-xs font-bold">Documento já enviado</span>
                               <span className="text-[9px] text-slate-400">Clique para atualizar</span>
                             </div>
                           ) : (
                             <div className="flex flex-col items-center gap-2 text-slate-400 group-hover:text-indigo-500 transition-colors">
                               <UploadCloud size={28} />
                               <span className="text-xs font-bold">Clique para enviar documento</span>
-                              <span className="text-[9px]">JPG, PNG ou PDF â€” mÃ¡x. 5 MB</span>
+                              <span className="text-[9px]">JPG, PNG ou PDF — máx. 5 MB</span>
                             </div>
                           )}
                         </label>
@@ -1683,13 +1683,13 @@ const PartnerDashboard: React.FC = () => {
                         <div className="flex items-center gap-3 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/40">
                           <ArrowRight size={16} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0" />
                           <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 leading-relaxed">
-                            O ciclo de pagamento <strong>fecha todo dia 20</strong> â€” apenas as vendas realizadas atÃ© essa data (incluindo saldos retidos jÃ¡ liberados) serÃ£o transferidas no <strong>dia 1 do mÃªs seguinte</strong>. Vendas apÃ³s o dia 20 entram no prÃ³ximo ciclo.
+                            O ciclo de pagamento <strong>fecha todo dia 20</strong> — apenas as vendas realizadas até essa data (incluindo saldos retidos já liberados) serão transferidas no <strong>dia 1 do mês seguinte</strong>. Vendas após o dia 20 entram no próximo ciclo.
                           </p>
                         </div>
                         <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-100 dark:border-amber-900/40">
                           <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
                           <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 leading-relaxed">
-                            Em caso de <strong>erro no processamento</strong> â€” dados bancÃ¡rios incorretos, incompletos, incompatÃ­veis ou conta nÃ£o encontrada â€” o pagamento <strong>nÃ£o serÃ¡ perdido</strong>: ficarÃ¡ retido e serÃ¡ reenviado automaticamente no <strong>prÃ³ximo ciclo (mÃªs seguinte)</strong>. Mantenha seus dados sempre atualizados para evitar atrasos.
+                            Em caso de <strong>erro no processamento</strong> — dados bancários incorretos, incompletos, incompatíveis ou conta não encontrada — o pagamento <strong>não será perdido</strong>: ficará retido e será reenviado automaticamente no <strong>próximo ciclo (mês seguinte)</strong>. Mantenha seus dados sempre atualizados para evitar atrasos.
                           </p>
                         </div>
                       </div>
@@ -1723,14 +1723,14 @@ const PartnerDashboard: React.FC = () => {
                     <div className="bg-amber-50 dark:bg-amber-900/20 p-6 rounded-[2rem] border border-amber-100 dark:border-amber-900/40 flex gap-4">
                       <AlertTriangle className="text-amber-600 flex-shrink-0" size={20} />
                       <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 leading-relaxed uppercase">
-                        Este material jÃ¡ foi aprovado. AlteraÃ§Ãµes crÃ­ticas (como o arquivo PDF) exigem uma nova solicitaÃ§Ã£o caso queira mudar o conteÃºdo principal.
+                        Este material já foi aprovado. Alterações críticas (como o arquivo PDF) exigem uma nova solicitação caso queira mudar o conteúdo principal.
                       </p>
                     </div>
                   )}
 
                   <form onSubmit={handleEditSubmit} className="space-y-8">
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">TÃ­tulo</label>
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Título</label>
                       <input
                         required
                         type="text"
@@ -1741,7 +1741,7 @@ const PartnerDashboard: React.FC = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">DescriÃ§Ã£o</label>
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Descrição</label>
                       <textarea
                         required
                         rows={4}
@@ -1753,7 +1753,7 @@ const PartnerDashboard: React.FC = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">PreÃ§o (R$)</label>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Preço (R$)</label>
                         <input
                           required
                           type="number"
@@ -1766,7 +1766,7 @@ const PartnerDashboard: React.FC = () => {
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">MatÃ©ria Principal</label>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Matéria Principal</label>
                         <select
                           value={editingMaterial.subjectId || ''}
                           onChange={e => {
@@ -1782,7 +1782,7 @@ const PartnerDashboard: React.FC = () => {
                           }}
                           className="w-full h-12 px-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-slate-800 dark:text-slate-200 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10"
                         >
-                          <option value="">Selecionar MatÃ©ria</option>
+                          <option value="">Selecionar Matéria</option>
                           {systemSettings.taxonomies?.subjects.map(s => (
                             <option key={s.id} value={s.id}>{s.name}</option>
                           ))}
@@ -1790,7 +1790,7 @@ const PartnerDashboard: React.FC = () => {
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Assunto / TÃ³pico</label>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Assunto / Tópico</label>
                         <select
                           disabled={!editingMaterial.subjectId}
                           value={editingMaterial.topicId || ''}
@@ -1801,7 +1801,7 @@ const PartnerDashboard: React.FC = () => {
                           }}
                           className="w-full h-12 px-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-slate-800 dark:text-slate-200 text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:opacity-50"
                         >
-                          <option value="">{editingMaterial.subjectId ? "Selecionar Assunto" : "Selecione uma matÃ©ria primeiro"}</option>
+                          <option value="">{editingMaterial.subjectId ? "Selecionar Assunto" : "Selecione uma matéria primeiro"}</option>
                           {systemSettings.taxonomies?.topics
                             .filter(t => Number(t.parentId) === Number(editingMaterial.subjectId))
                             .map(t => (
@@ -1829,10 +1829,10 @@ const PartnerDashboard: React.FC = () => {
                             value={editingMaterial.pdfPassword || ''}
                             disabled={true}
                             className="w-full h-12 pl-10 pr-6 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl font-bold text-slate-400 dark:text-slate-500 cursor-not-allowed outline-none"
-                            placeholder="AlteraÃ§Ã£o nÃ£o permitida"
+                            placeholder="Alteração não permitida"
                           />
                         </div>
-                        <p className="text-[9px] font-medium text-slate-400 mt-1 ml-1">A senha Ã© imutÃ¡vel apÃ³s a criaÃ§Ã£o para seguranÃ§a do arquivo.</p>
+                        <p className="text-[9px] font-medium text-slate-400 mt-1 ml-1">A senha é imutável após a criação para segurança do arquivo.</p>
                       </div>
                     </div>
 
@@ -1872,7 +1872,7 @@ const PartnerDashboard: React.FC = () => {
                         disabled={isPublishing}
                         className="h-14 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl hover:shadow-xl shadow-slate-200 dark:shadow-none transition-all disabled:opacity-50"
                       >
-                        {isPublishing ? 'Salvando...' : 'Salvar AlteraÃ§Ãµes'}
+                        {isPublishing ? 'Salvando...' : 'Salvar Alterações'}
                       </button>
                     </div>
                   </form>

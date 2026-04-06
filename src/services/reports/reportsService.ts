@@ -29,13 +29,13 @@ export interface CreateReportResult {
 }
 
 /**
- * Fachada oficial do dominio de denuncias.
+ * Fachada oficial do dominio de denúncias.
  * Centraliza criacao autenticada e leitura administrativa.
  * @since 1.0.0
  */
 export const reportsService = {
   /**
-   * Registra uma nova denuncia de comentario, material ou questao.
+   * Registra uma nova denúncia de comentário, material ou questão.
    * Essa funcao alimenta os modais de report espalhados pela plataforma.
    * @since 1.0.0
    */
@@ -49,7 +49,7 @@ export const reportsService = {
       evidence_url: input.evidenceUrl,
     }) as any;
 
-    const envelope = assertApiSuccess(response, 'Falha ao registrar denuncia.');
+    const envelope = assertApiSuccess(response, 'Falha ao registrar denúncia.');
     const payload = readApiData<Record<string, any>>(response, {});
 
     return {
@@ -60,7 +60,7 @@ export const reportsService = {
   },
 
   /**
-   * Lista denuncias no formato usado pela operacao administrativa.
+   * Lista denúncias no formato usado pela operação administrativa.
    * @since 1.0.0
    */
   async listReports(): Promise<ErrorReport[]> {

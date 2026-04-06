@@ -41,7 +41,7 @@ describe('userProgressService', () => {
     vi.clearAllMocks();
   });
 
-  it('carrega respostas do usuario pelo endpoint oficial de answers', async () => {
+  it('carrega respostas do usuário pelo endpoint oficial de answers', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
       data: [
@@ -63,7 +63,7 @@ describe('userProgressService', () => {
     expect(answers[0].questionId).toBe(12);
   });
 
-  it('normaliza apenas notas de questoes no endpoint oficial de notes', async () => {
+  it('normaliza apenas notas de questões no endpoint oficial de notes', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
       notes: [

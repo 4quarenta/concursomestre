@@ -27,7 +27,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
     isOpen,
     onClose,
     title = "Acesso Restrito",
-    description = "Para utilizar esta funcionalidade e salvar seu progresso, vocÃª precisa estar conectado Ã  sua conta.",
+    description = "Para utilizar esta funcionalidade e salvar seu progresso, você precisa estar conectado à sua conta.",
     actionSource = "funcionalidade"
 }) => {
     const navigate = useNavigate();

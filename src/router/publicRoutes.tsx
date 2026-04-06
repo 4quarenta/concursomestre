@@ -34,13 +34,13 @@ interface PublicRoutesProps {
 }
 
 /**
- * Agrupa as rotas publicas e semi-publicas da plataforma.
- * Esse conjunto alimenta o roteador principal e define como landing, autenticacao e paginas abertas se conectam ao shell real do site.
+ * Agrupa as rotas públicas e semi-públicas da plataforma.
+ * Esse conjunto alimenta o roteador principal e define como landing, autenticação e paginas abertas se conectam ao shell real do site.
  */
 export const PublicRoutes: React.FC<PublicRoutesProps> = ({ currentUser, login }) => {
   /**
    * Mantem o Layout oficial montado enquanto a pagina lazy resolve.
-   * Assim o menu lateral e o cabecalho nao desaparecem durante a transicao das rotas publicas que compartilham o shell autenticado.
+   * Assim o menu lateral e o cabeçalho não desaparecem durante a transicao das rotas públicas que compartilham o shell autenticado.
    */
   const renderLayoutPage = (page: React.ReactNode) => (
     <Layout>

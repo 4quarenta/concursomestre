@@ -161,16 +161,16 @@ describe('admin architecture', () => {
   it('keeps the engineering rules documented in the repository', () => {
     expect(fs.existsSync(path.resolve(root, '.agent/rules/engineering-standards.md'))).toBe(true);
     expect(readFile('README.md')).toContain('engineering-standards.md');
-    expect(readFile('.agent/rules/engineering-standards.md')).toContain('Comentarios obrigatorios');
+    expect(readFile('.agent/rules/engineering-standards.md')).toContain('Comentários obrigatorios');
     expect(readFile('.agent/rules/engineering-standards.md')).toContain('Estrutura oficial do frontend');
-    expect(readFile('.agent/rules/engineering-standards.md')).toContain('Padrao de codigo');
+    expect(readFile('.agent/rules/engineering-standards.md')).toContain('Padrao de código');
     expect(readFile('.agent/rules/engineering-standards.md')).toContain('@since <versao>');
     expect(readFile('.agent/rules/engineering-standards.md')).toContain('v1.0.0');
   });
 
   it('keeps the central routing and admin shells documented in pt-BR', () => {
     expect(readFile('src/router/index.tsx')).toContain('Casca interna do roteamento oficial da plataforma');
-    expect(readFile('src/router/RouteSuspenseFallback.tsx')).toContain('Decide qual skeleton mostrar com base na rota atual e no estado de autenticacao');
+    expect(readFile('src/router/RouteSuspenseFallback.tsx')).toContain('Decide qual skeleton mostrar com base na rota atual e no estado de autenticação');
     expect(readFile('src/app/admin/page.tsx')).toContain('Entrada oficial da area administrativa');
     expect(readFile('src/app/admin/components/shared/useAdminPageController.tsx')).toContain('Controller principal da pagina administrativa');
     expect(readFile('src/app/admin/components/database/useAdminDatabaseManagerController.tsx')).toContain('Controller central da aba "Base de Dados"');

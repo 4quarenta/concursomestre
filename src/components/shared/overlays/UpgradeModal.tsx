@@ -80,8 +80,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                             Desbloqueie {featureName}
                         </h3>
                         <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
-                            {currentUser ? `VocÃª estÃ¡ no plano ${getEffectivePlanDisplayName(currentUser)}. ` : ''}
-                            FaÃ§a o upgrade para acessar essa e outras ferramentas exclusivas.
+                            {currentUser ? `Você está no plano ${getEffectivePlanDisplayName(currentUser)}. ` : ''}
+                            Faça o upgrade para acessar essa e outras ferramentas exclusivas.
                         </p>
                     </div>
 
@@ -100,7 +100,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                     <button
                         onClick={() => {
                             onClose();
-                            // Se estiver logado vai para profile (onde tem change plan), se nÃ£o, auth com register
+                            // Se estiver logado vai para profile (onde tem change plan), se não, auth com register
                             if (currentUser) {
                                 navigate('/profile');
                             } else {
@@ -110,12 +110,12 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                         className={`group flex items-center justify-center gap-3 w-full h-14 text-white rounded-2xl font-black text-xs uppercase tracking-[0.15em] shadow-lg transition-all active:scale-95 ${requiredPlan === 'Elite' ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 shadow-amber-900/20' : 'bg-slate-900 dark:bg-indigo-600 hover:bg-indigo-600 dark:hover:bg-indigo-500'}`}
                     >
                         {requiredPlan === 'Elite' ? <Sparkles size={16} /> : <Crown size={16} />}
-                        {currentUser ? 'Fazer Upgrade Agora' : 'ComeÃ§ar Gratuitamente'}
+                        {currentUser ? 'Fazer Upgrade Agora' : 'Começar Gratuitamente'}
                     </button>
 
                     {!currentUser && (
                         <button onClick={() => { onClose(); navigate('/auth'); }} className="w-full text-center text-[10px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 uppercase tracking-widest transition-colors">
-                            JÃ¡ sou assinante
+                            Já sou assinante
                         </button>
                     )}
                 </div>

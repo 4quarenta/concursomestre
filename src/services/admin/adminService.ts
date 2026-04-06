@@ -119,12 +119,12 @@ export interface AdminQuestionListPayload {
 
 /**
  * Fachada oficial do painel administrativo.
- * Ela concentra os contratos usados por dashboard, base de dados, financeiro, feedback e seguranca no admin.
+ * Ela concentra os contratos usados por dashboard, base de dados, financeiro, feedback e segurança no admin.
  * @since v1.0.0
  */
 export const adminService = {
   /**
-   * Carrega as configuracoes globais exibidas na aba de settings do admin.
+   * Carrega as configurações globais exibidas na aba de settings do admin.
    * @since v1.0.0
    */
   async getSystemSettings(): Promise<Partial<SystemSettings>> {
@@ -133,16 +133,16 @@ export const adminService = {
   },
 
   /**
-   * Persiste as configuracoes globais alteradas pelo painel administrativo.
+   * Persiste as configurações globais alteradas pelo painel administrativo.
    * @since v1.0.0
    */
   async saveSystemSettings(settings: SystemSettings): Promise<void> {
     const response = await apiClient.post<ApiResponse>(ENDPOINTS.settings.update, settings) as any;
-    assertApiSuccess(response, 'Nao foi possivel salvar as configuracoes.');
+    assertApiSuccess(response, 'Não foi possível salvar as configurações.');
   },
 
   /**
-   * Lista os usuarios para gestao e moderacao no admin.
+   * Lista os usuários para gestão e moderação no admin.
    * @since v1.0.0
    */
   async getUsers(): Promise<UserProfile[]> {
@@ -152,7 +152,7 @@ export const adminService = {
   },
 
   /**
-   * Lista as denuncias/reportes visiveis na operacao administrativa.
+   * Lista as denúncias/reportes visiveis na operação administrativa.
    * @since v1.0.0
    */
   async getReports(): Promise<ErrorReport[]> {
@@ -162,7 +162,7 @@ export const adminService = {
   },
 
   /**
-   * Executa a moderacao final de uma denuncia com justificativa administrativa.
+   * Executa a moderação final de uma denúncia com justificativa administrativa.
    * @since v1.0.0
    */
   async moderateReport(id: string, action: ReportResolution, adminReason: string, evidenceUrl?: string): Promise<void> {
@@ -173,7 +173,7 @@ export const adminService = {
       evidence_url: evidenceUrl,
     }) as any;
 
-    assertApiSuccess(response, 'Nao foi possivel moderar a denuncia.');
+    assertApiSuccess(response, 'Não foi possível moderar a denúncia.');
   },
 
   /**
@@ -182,16 +182,16 @@ export const adminService = {
    */
   async updateRanking(ranking: Ranking): Promise<void> {
     const response = await apiClient.post<ApiResponse>(ENDPOINTS.rankings.update, ranking) as any;
-    assertApiSuccess(response, 'Nao foi possivel atualizar o ranking.');
+    assertApiSuccess(response, 'Não foi possível atualizar o ranking.');
   },
 
   /**
-   * Exclui um ranking na operacao administrativa.
+   * Exclui um ranking na operação administrativa.
    * @since v1.0.0
    */
   async deleteRanking(id: string): Promise<void> {
     const response = await apiClient.post<ApiResponse>(ENDPOINTS.rankings.delete, { id }) as any;
-    assertApiSuccess(response, 'Nao foi possivel excluir o ranking.');
+    assertApiSuccess(response, 'Não foi possível excluir o ranking.');
   },
 
   /**
@@ -215,7 +215,7 @@ export const adminService = {
    */
   async toggleCache(enabled: boolean): Promise<string> {
     const response = await apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=settings`, { enabled }) as any;
-    return assertApiSuccess(response, 'Nao foi possivel atualizar o cache.').message || 'Configuracao do cache atualizada.';
+    return assertApiSuccess(response, 'Não foi possível atualizar o cache.').message || 'Configuração do cache atualizada.';
   },
 
   /**
@@ -224,16 +224,16 @@ export const adminService = {
    */
   async clearCache(): Promise<string> {
     const response = await apiClient.get<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clear`) as any;
-    return assertApiSuccess(response, 'Nao foi possivel limpar o cache.').message || 'Cache limpo com sucesso.';
+    return assertApiSuccess(response, 'Não foi possível limpar o cache.').message || 'Cache limpo com sucesso.';
   },
 
   /**
-   * Remove apenas entradas expiradas do cache pela tela de operacao.
+   * Remove apenas entradas expiradas do cache pela tela de operação.
    * @since v1.0.0
    */
   async cleanExpiredCache(): Promise<string> {
     const response = await apiClient.get<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clean`) as any;
-    return assertApiSuccess(response, 'Nao foi possivel limpar o cache expirado.').message || 'Entradas expiradas removidas.';
+    return assertApiSuccess(response, 'Não foi possível limpar o cache expirado.').message || 'Entradas expiradas removidas.';
   },
 
   /**
@@ -247,7 +247,7 @@ export const adminService = {
   },
 
   /**
-   * Carrega os KPIs do dashboard executivo com suporte a recorte por periodo.
+   * Carrega os KPIs do dashboard executivo com suporte a recorte por período.
    * @since v1.0.0
    */
   async getStats(params: {
@@ -289,7 +289,7 @@ export const adminService = {
   },
 
   /**
-   * Lista as questoes para a grade administrativa com pagina e busca.
+   * Lista as questões para a grade administrativa com pagina e busca.
    * @since v1.0.0
    */
   async getQuestions(params: {
@@ -321,7 +321,7 @@ export const adminService = {
   },
 
   /**
-   * Carrega o perfil detalhado de um usuario para o modal administrativo.
+   * Carrega o perfil detalhado de um usuário para o modal administrativo.
    * @since v1.0.0
    */
   async getUserDetails(userId: string): Promise<AdminUserDetailsPayload> {
@@ -339,12 +339,12 @@ export const adminService = {
   },
 
   /**
-   * Executa acoes administrativas em usuarios, assinaturas e transacoes.
+   * Executa ações administrativas em usuários, assinaturas e transações.
    * @since v1.0.0
    */
   async performUserAction(payload: AdminUserActionPayload): Promise<void> {
     const response = await apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload) as any;
-    assertApiSuccess(response, 'Nao foi possivel executar a acao administrativa.');
+    assertApiSuccess(response, 'Não foi possível executar a ação administrativa.');
   },
 
   /**
@@ -369,7 +369,7 @@ export const adminService = {
   },
 
   /**
-   * Confirma a ativacao do 2FA com o codigo informado pelo administrador.
+   * Confirma a ativacao do 2FA com o código informado pelo administrador.
    * @since v1.0.0
    */
   async enableTwoFactor(secret: string, code: string): Promise<string> {
@@ -378,7 +378,7 @@ export const adminService = {
       code,
     }) as any;
 
-    return assertApiSuccess(response, 'Nao foi possivel ativar o 2FA.').message || '2FA ativado com sucesso!';
+    return assertApiSuccess(response, 'Não foi possível ativar o 2FA.').message || '2FA ativado com sucesso!';
   },
 
   /**
@@ -387,7 +387,7 @@ export const adminService = {
    */
   async resetDatabase(payload: AdminDatabaseResetPayload): Promise<void> {
     const response = await apiClient.post<ApiResponse>(ENDPOINTS.admin.resetDatabase, payload) as any;
-    assertApiSuccess(response, 'Nao foi possivel resetar a base de dados.');
+    assertApiSuccess(response, 'Não foi possível resetar a base de dados.');
   },
 
   /**
@@ -405,7 +405,7 @@ export const adminService = {
    */
   async updateFeedbackStatus(id: number, status: FeedbackStatus): Promise<void> {
     const response = await apiClient.put<ApiResponse>(ENDPOINTS.admin.feedback, { id, status }) as any;
-    assertApiSuccess(response, 'Nao foi possivel atualizar o feedback.');
+    assertApiSuccess(response, 'Não foi possível atualizar o feedback.');
   },
 
   /**
@@ -427,7 +427,7 @@ export const adminService = {
       details,
     }) as any;
 
-    assertApiSuccess(response, 'Nao foi possivel enviar a resposta.');
+    assertApiSuccess(response, 'Não foi possível enviar a resposta.');
   },
 };
 

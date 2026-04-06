@@ -56,7 +56,7 @@ export const subscriptionsService = {
     const response = await apiClient.get<any>(ENDPOINTS.subscriptions.automationHelper);
     assertApiSuccess(
       response,
-      'Nao foi possivel carregar as instrucoes de automacao.',
+      'Não foi possível carregar as instrucoes de automacao.',
     );
 
     return mergeResponsePayload(response, {});
@@ -73,7 +73,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createMercadoPagoPreference, payload);
       assertApiSuccess(
         response,
-        'Nao foi possivel criar a preferencia do Mercado Pago.',
+        'Não foi possível criar a preferencia do Mercado Pago.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -91,7 +91,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.processMercadoPagoPayment, payload);
       assertApiSuccess(
         response,
-        'Nao foi possivel processar o pagamento do Mercado Pago.',
+        'Não foi possível processar o pagamento do Mercado Pago.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -115,7 +115,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripeCheckout, payload);
       assertApiSuccess(
         response,
-        'Nao foi possivel iniciar o checkout Stripe.',
+        'Não foi possível iniciar o checkout Stripe.',
       );
       return mergeResponsePayloadWithUrl(response, {});
     } catch (error) {
@@ -125,7 +125,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Cria uma assinatura Stripe pelo fluxo inline com cartao salvo ou novo.
+   * Cria uma assinatura Stripe pelo fluxo inline com cartão salvo ou novo.
    * @since 1.0.0
    */
   async createStripeSubscription(payload: {
@@ -142,7 +142,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripeSubscription, payload);
       assertApiSuccess(
         response,
-        'Nao foi possivel criar a assinatura Stripe.',
+        'Não foi possível criar a assinatura Stripe.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -169,7 +169,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.finalizeStripeSubscription, payload);
       assertApiSuccess(
         response,
-        'Nao foi possivel finalizar a assinatura Stripe.',
+        'Não foi possível finalizar a assinatura Stripe.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -191,7 +191,7 @@ export const subscriptionsService = {
       });
       const payload = readApiData<any>(response, {});
       return {
-        ...assertApiSuccess(response, 'Nao foi possivel validar o cupom.').raw,
+        ...assertApiSuccess(response, 'Não foi possível validar o cupom.').raw,
         coupon: payload?.coupon || response?.coupon || null,
       };
     } catch (error) {
@@ -201,7 +201,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Abre uma sessao do portal Stripe para gestao de billing do usuario.
+   * Abre uma sessão do portal Stripe para gestão de billing do usuário.
    * @since 1.0.0
    */
   async createStripePortalSession(): Promise<any> {
@@ -209,7 +209,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripePortal, {});
       assertApiSuccess(
         response,
-        'Nao foi possivel abrir o portal Stripe.',
+        'Não foi possível abrir o portal Stripe.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -219,7 +219,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Atualiza a preferencia de renovacao automatica da assinatura atual.
+   * Atualiza a preferencia de renovação automática da assinatura atual.
    * @since 1.0.0
    */
   async updateRenewal(autoRenew: boolean): Promise<any> {
@@ -229,7 +229,7 @@ export const subscriptionsService = {
 
     assertApiSuccess(
       response,
-      'Nao foi possivel atualizar a renovacao automatica.',
+      'Não foi possível atualizar a renovação automática.',
     );
 
     return mergeResponsePayload(response, {});
@@ -248,7 +248,7 @@ export const subscriptionsService = {
       });
       const payload = readApiData<any>(response, {});
       return {
-        ...assertApiSuccess(response, 'Nao foi possivel cancelar a assinatura.').raw,
+        ...assertApiSuccess(response, 'Não foi possível cancelar a assinatura.').raw,
         refund_processed: payload?.refund_processed ?? response?.refund_processed ?? false,
         refund_id: payload?.refund_id ?? response?.refund_id ?? null,
       };
@@ -267,7 +267,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.cancelRefund, {});
       assertApiSuccess(
         response,
-        'Nao foi possivel cancelar a solicitacao de reembolso.',
+        'Não foi possível cancelar a solicitacao de reembolso.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -285,7 +285,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.undoCancel, {});
       assertApiSuccess(
         response,
-        'Nao foi possivel reverter a solicitacao de cancelamento.',
+        'Não foi possível reverter a solicitacao de cancelamento.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {

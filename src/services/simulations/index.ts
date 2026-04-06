@@ -10,6 +10,6 @@
 */
 
 /**
- * Fachada oficial dos servicos de simulados.
+ * Fachada oficial dos serviços de simulados.
  */
 export { simulationsService } from './simulationsService';

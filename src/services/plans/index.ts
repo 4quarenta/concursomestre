@@ -10,7 +10,7 @@
 */
 
 /**
- * Fachada oficial dos servicos de planos.
+ * Fachada oficial dos serviços de planos.
  */
 export { planService } from './planService';
 export * from './planAccess';

@@ -48,7 +48,9 @@ import {
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import type { SystemSettings } from '@types';
+import apiClient from '@services/api/client';
 import { adminService } from '@services/admin/adminService';
+import { parseDailyMotivationMarkdown } from '@services/dashboard/dashboardInsightsService';
 import { LogViewer } from './LogViewer';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
@@ -60,9 +62,9 @@ interface AdminSettingsProps {
 }
 
 /**
- * Centraliza a configuraÃ§Ã£o administrativa da plataforma.
- * A extraÃ§Ã£o deste bloco reduz o tamanho do painel principal sem alterar
- * o fluxo de persistÃªncia jÃ¡ homologado pelo admin.
+ * Centraliza a configuração administrativa da plataforma.
+ * A extração deste bloco reduz o tamanho do painel principal sem alterar
+ * o fluxo de persistência já homologado pelo admin.
  */
 const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: AdminSettingsProps) => {
   const { currentUser, refreshUser } = useAuth();
@@ -88,6 +90,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
   const [localPhone, setLocalPhone] = useState(systemSettings.supportPhone || '');
   const [localPixKey, setLocalPixKey] = useState(systemSettings.pixKey || '');
   const [localSiteName, setLocalSiteName] = useState(systemSettings.siteName || 'ConcursoMestre');
+  const [localDailyMotivationMarkdown, setLocalDailyMotivationMarkdown] = useState(systemSettings.dailyMotivationMarkdown || '');
   const [localPlatformFee, setLocalPlatformFee] = useState(String(systemSettings.platformFeePercent ?? 20));
   // SMTP e modo de app
   const [localAppMode, setLocalAppMode] = useState<'development' | 'production'>(systemSettings.appMode || 'development');
@@ -99,7 +102,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
   const [localMailFrom, setLocalMailFrom] = useState(systemSettings.mailFromAddress || '');
   const [localMailFromName, setLocalMailFromName] = useState(systemSettings.mailFromName || 'ConcursoMestre');
 
-  // Funcionalidades (MÃ³dulos e Recursos) - Gerenciado localmente antes de salvar
+  // Funcionalidades (Módulos e Recursos) - Gerenciado localmente antes de salvar
   const [localFeatures, setLocalFeatures] = useState<Record<string, boolean>>(systemSettings.features || {});
 
   // Ad-related states
@@ -205,6 +208,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
     setLocalPhone(systemSettings.supportPhone || '');
     setLocalPixKey(systemSettings.pixKey || '');
     setLocalSiteName(systemSettings.siteName || 'ConcursoMestre');
+    setLocalDailyMotivationMarkdown(systemSettings.dailyMotivationMarkdown || '');
     setLocalPlatformFee(String(systemSettings.platformFeePercent ?? 20));
     setLocalAppMode(systemSettings.appMode || 'development');
     setLocalSmtpHost(systemSettings.smtpHost || '');
@@ -231,6 +235,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
       cardVaultProvider: localCardVaultProvider,
       siteName: localSiteName,
       supportPhone: localPhone,
+      dailyMotivationMarkdown: localDailyMotivationMarkdown,
       platformFeePercent: Number(localPlatformFee),
       pixKey: localPixKey,
       appMode: localAppMode,
@@ -264,47 +269,65 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
       facebookAdsId: localFacebookAdsId,
       features: localFeatures
     });
-    addToast('ConfiguraÃ§Ãµes salvas com sucesso!', 'success');
+    addToast('Configurações salvas com sucesso!', 'success');
   };
 
-  const apiBaseUrl = String((api as any).defaults.baseURL || '').replace(/\/+$/, '');
+  const apiBaseUrl = String(apiClient.defaults.baseURL || '').replace(/\/+$/, '');
   const stripeWebhookUrl = `${apiBaseUrl}/subscriptions/stripe_webhook.php`;
   const mercadoPagoWebhookUrl = `${apiBaseUrl}/subscriptions/webhook_mp.php`;
 
   const settingTabs = [
     { id: 'general', label: 'Geral', icon: Settings },
-    { id: 'modules', label: 'MÃ³dulos', icon: LayoutDashboard },
-    { id: 'security', label: 'SeguranÃ§a', icon: ShieldAlert },
-    { id: 'integrations', label: 'IntegraÃ§Ãµes', icon: Cpu },
+    { id: 'modules', label: 'Módulos', icon: LayoutDashboard },
+    { id: 'security', label: 'Segurança', icon: ShieldAlert },
+    { id: 'integrations', label: 'Integrações', icon: Cpu },
     { id: 'email', label: 'E-mail', icon: Mail },
-    { id: 'ads', label: 'AnÃºncios', icon: Megaphone },
+    { id: 'ads', label: 'Anúncios', icon: Megaphone },
     { id: 'performance', label: 'Performance', icon: Database },
   ];
 
   const pageToggles = [
-    // MÃ³dulos Originais
-    { id: 'practiceEnabled', label: 'PÃ¡gina de PrÃ¡tica', description: 'Ativa o sistema de resoluÃ§Ã£o de questÃµes', icon: BookOpen },
-    { id: 'simulationsEnabled', label: 'PÃ¡gina de Simulados', description: 'MÃ³dulo de provas cronometradas e simulados', icon: Clock },
+    // Módulos Originais
+    { id: 'practiceEnabled', label: 'Página de Prática', description: 'Ativa o sistema de resolução de questões', icon: BookOpen },
+    { id: 'simulationsEnabled', label: 'Página de Simulados', description: 'Módulo de provas cronometradas e simulados', icon: Clock },
     { id: 'marketplaceEnabled', label: 'Marketplace', description: 'Plataforma de compra e venda de materiais', icon: ShoppingCart },
-    { id: 'rankingsEnabled', label: 'Rankings', description: 'Exibe classificaÃ§Ãµes e desempenho de inscritos', icon: Trophy },
-    { id: 'xRayEnabled', label: 'Raio-X da Banca', description: 'AnÃ¡lise estatÃ­stica e perfil de bancas examinadoras', icon: Zap },
-    { id: 'landingPagePromoEnabled', label: 'PromoÃ§Ã£o na Home', description: 'Exibe banner de campanha na landing page principal', icon: Megaphone },
+    { id: 'rankingsEnabled', label: 'Rankings', description: 'Exibe classificações e desempenho de inscritos', icon: Trophy },
+    { id: 'xRayEnabled', label: 'Raio-X da Banca', description: 'Análise estatística e perfil de bancas examinadoras', icon: Zap },
+    { id: 'landingPagePromoEnabled', label: 'Promoção na Home', description: 'Exibe banner de campanha na landing page principal', icon: Megaphone },
     // Recursos
-    { id: 'communityEnabled', label: 'ComentÃ¡rios da Comunidade', description: 'InteraÃ§Ã£o e fÃ³rum de debate em questÃµes', icon: MessageSquare },
-    { id: 'aiCommentsEnabled', label: 'ComentÃ¡rios com IA', description: 'GeraÃ§Ã£o de anÃ¡lises via Gemini Pro 1.5/2.0', icon: Sparkles },
+    { id: 'communityEnabled', label: 'Comentários da Comunidade', description: 'Interação e fórum de debate em questões', icon: MessageSquare },
+    { id: 'aiCommentsEnabled', label: 'Comentários com IA', description: 'Geração de análises via Gemini Pro 1.5/2.0', icon: Sparkles },
     { id: 'bulkImportEnabled', label: 'Importador em Massa', description: 'Ferramenta de processamento de PDFs/Imagens', icon: Upload },
-    { id: 'reportsEnabled', label: 'Sistema de DenÃºncias', description: 'Ouvidoria e moderaÃ§Ã£o de conteÃºdo', icon: Flag },
-    { id: 'notificationsEnabled', label: 'NotificaÃ§Ãµes Push', description: 'Alertas globais e interaÃ§Ãµes sociais', icon: Bell },
-    // ConfiguraÃ§Ãµes e Bloqueios CrÃ­ticos
-    { id: 'maintenanceMode', label: 'Aviso de ManutenÃ§Ã£o', description: 'Bloqueia o acesso ao site para manutenÃ§Ã£o tÃ©cnica', icon: ShieldAlert },
-    { id: 'registrationEnabled', label: 'Novos Cadastros', description: 'Controla a entrada de novos usuÃ¡rios na plataforma', icon: Users },
-    { id: 'loginRequired', label: 'Login ObrigatÃ³rio', description: 'Exige login para acessar qualquer conteÃºdo interno', icon: Lock },
-    { id: 'partnerRegistrationEnabled', label: 'Cadastro de Vendedor', description: 'Permite que usuÃ¡rios se tornem colaboradores e vendam materiais', icon: ShoppingBag },
-    { id: 'recurringEnabled', label: 'CobranÃ§as Recorrentes (Beta)', description: 'Ativa a opÃ§Ã£o de assinatura recorrente mensal via plataforma para planos anuais/trimestrais sem comprometer o limite do cartÃ£o', icon: Repeat },
-    { id: 'autoRefundEnabled', label: 'AprovaÃ§Ã£o AutomÃ¡tica de Reembolso', description: 'Ativa o processamento instantÃ¢neo de reembolsos solicitados por usuÃ¡rios dentro do prazo legal', icon: RefreshCcw },
+    { id: 'reportsEnabled', label: 'Sistema de Denúncias', description: 'Ouvidoria e moderação de conteúdo', icon: Flag },
+    { id: 'notificationsEnabled', label: 'Notificações Push', description: 'Alertas globais e interações sociais', icon: Bell },
+    // Configurações e Bloqueios Críticos
+    { id: 'maintenanceMode', label: 'Aviso de Manutenção', description: 'Bloqueia o acesso ao site para manutenção técnica', icon: ShieldAlert },
+    { id: 'registrationEnabled', label: 'Novos Cadastros', description: 'Controla a entrada de novos usuários na plataforma', icon: Users },
+    { id: 'loginRequired', label: 'Login Obrigatório', description: 'Exige login para acessar qualquer conteúdo interno', icon: Lock },
+    { id: 'partnerRegistrationEnabled', label: 'Cadastro de Vendedor', description: 'Permite que usuários se tornem colaboradores e vendam materiais', icon: ShoppingBag },
+    { id: 'recurringEnabled', label: 'Cobranças Recorrentes (Beta)', description: 'Ativa a opção de assinatura recorrente mensal via plataforma para planos anuais/trimestrais sem comprometer o limite do cartão', icon: Repeat },
+    { id: 'autoRefundEnabled', label: 'Aprovação Automática de Reembolso', description: 'Ativa o processamento instantâneo de reembolsos solicitados por usuários dentro do prazo legal', icon: RefreshCcw },
   ];
 
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
+
+  /**
+   * Carrega um arquivo markdown local para a base de frases motivacionais.
+   * O texto lido fica pronto para ser salvo junto das configuracoes globais.
+   *
+   * @since 1.0.0
+   */
+  const handleDailyMotivationFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const markdown = await file.text();
+    setLocalDailyMotivationMarkdown(markdown);
+    addToast('Arquivo de motivacoes carregado.', 'success');
+    event.target.value = '';
+  };
 
   const SettingRow = ({ keyName, label, description, icon: Icon }: any) => (
     <div
@@ -358,7 +381,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
           onClick={handleSaveSettings}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-all shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20 active:scale-95"
         >
-          <Save size={18} /> Salvar AlteraÃ§Ãµes
+          <Save size={18} /> Salvar Alterações
         </button>
       </div>
 
@@ -372,7 +395,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                     <Terminal size={20} className="text-indigo-600 dark:text-indigo-400" />
                     Ambiente da Plataforma
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">Modo de operaÃ§Ã£o, logs e acessos de desenvolvimento</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">Modo de operação, logs e acessos de desenvolvimento</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button
@@ -385,7 +408,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                   <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
                   <div className="flex items-center gap-3">
                     <span className={`text-[10px] font-black uppercase tracking-widest ${localAppMode === 'development' ? 'text-amber-500' : 'text-emerald-500'}`}>
-                      {localAppMode === 'development' ? 'DEV' : 'PRODUÃ‡ÃƒO'}
+                      {localAppMode === 'development' ? 'DEV' : 'PRODUÇÃO'}
                     </span>
                     <button
                       type="button"
@@ -426,6 +449,67 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                   </div>
                 </div>
               </div>
+
+              <div className="rounded-[2.5rem] border border-fuchsia-100 bg-fuchsia-50/40 p-8 dark:border-fuchsia-900/30 dark:bg-fuchsia-900/10">
+                <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-lg font-black text-fuchsia-700 dark:text-fuchsia-300">
+                      <Sparkles size={20} />
+                      Motivacao diaria
+                    </h3>
+                    <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Suba um `.md` com 365 frases ou ajuste a base abaixo.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-fuchsia-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-600 transition-all hover:bg-fuchsia-50 dark:border-fuchsia-900/30 dark:bg-slate-900 dark:text-fuchsia-300">
+                      <Upload size={14} />
+                      Carregar .md
+                      <input type="file" accept=".md,text/markdown,text/plain" className="hidden" onChange={handleDailyMotivationFileUpload} />
+                    </label>
+                    <a
+                      href="/content/motivacoes-diarias.md"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 transition-all hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      <FileText size={14} />
+                      Baixar modelo
+                    </a>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+                  <div className="space-y-1.5">
+                    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Markdown das frases</label>
+                    <textarea
+                      value={localDailyMotivationMarkdown}
+                      onChange={(event) => setLocalDailyMotivationMarkdown(event.target.value)}
+                      className="h-72 w-full resize-none rounded-3xl border border-slate-200 bg-white px-5 py-4 text-xs font-medium leading-relaxed text-slate-700 outline-none transition-all focus:border-fuchsia-400 focus:ring-2 focus:ring-fuchsia-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    />
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="rounded-3xl border border-white/70 bg-white/80 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Frases validas</p>
+                      <p className="mt-2 text-4xl font-black tracking-tight text-slate-900 dark:text-slate-100">
+                        {parseDailyMotivationMarkdown(localDailyMotivationMarkdown).length}
+                      </p>
+                      <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                        Uma linha por frase. O ideal e manter 365 entradas.
+                      </p>
+                    </div>
+
+                    <div className="rounded-3xl border border-white/70 bg-white/80 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Leitura do parser</p>
+                      <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                        Linhas vazias e titulos sao ignorados.
+                        Listas numeradas markdown funcionam normalmente.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="p-8 bg-emerald-50/30 dark:bg-emerald-900/10 rounded-[2.5rem] border border-emerald-100/50 dark:border-emerald-900/30">
@@ -445,7 +529,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
           <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm animate-fade-in">
             <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 mb-6">
               <LayoutDashboard size={20} className="text-indigo-600 dark:text-indigo-400" />
-              PÃ¡ginas e MÃ³dulos
+              Páginas e Módulos
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {pageToggles.map(f => <SettingRow key={f.id} keyName={f.id} {...f} />)}
@@ -457,7 +541,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
           <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm animate-fade-in">
             <h3 className="text-lg font-black text-rose-600 dark:text-rose-400 flex items-center gap-2 mb-6">
               <ShieldAlert size={20} />
-              SeguranÃ§a e Acesso
+              Segurança e Acesso
             </h3>
             <div className="space-y-6">
               
@@ -466,10 +550,10 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                 <div className="flex flex-col md:flex-row gap-8">
                   <div className="flex-1 space-y-4">
                     <h4 className="text-sm font-black text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                       <ShieldCheck size={18} className="text-indigo-500" /> AutenticaÃ§Ã£o de Dois Fatores (2FA)
+                       <ShieldCheck size={18} className="text-indigo-500" /> Autenticação de Dois Fatores (2FA)
                     </h4>
                     <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                      Reforce a seguranÃ§a da sua conta de administrador exigindo um cÃ³digo gerado pelo Google Authenticator ou similar a cada login e aÃ§Ãµes sensÃ­veis.
+                      Reforce a segurança da sua conta de administrador exigindo um código gerado pelo Google Authenticator ou similar a cada login e ações sensíveis.
                     </p>
                     
                     <div className="flex items-center gap-3">
@@ -503,7 +587,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                              onClick={() => setTwoFactorStep('verify')}
                              className="w-full py-3 bg-slate-900 dark:bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl"
                           >
-                             JÃ¡ escaneei, prÃ³ximo passo
+                             Já escaneei, próximo passo
                           </button>
                        </div>
                     </div>
@@ -512,7 +596,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                   {twoFactorStep === 'verify' && (
                      <div className="flex-1 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-emerald-100 dark:border-emerald-900/40 shadow-xl animate-scale-in">
                         <div className="flex flex-col gap-4">
-                           <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Passo 2: Verifique o cÃ³digo</p>
+                           <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Passo 2: Verifique o código</p>
                            <input 
                              type="text" 
                              maxLength={6}
@@ -539,14 +623,14 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                           <Trash2 size={18} /> Reset Geral de Sistema
                        </h4>
                        <p className="text-[10px] text-rose-700/60 dark:text-rose-500/60 font-medium max-w-md">
-                          Esta aÃ§Ã£o apagarÃ¡ permanentemente TODAS as questÃµes, usuÃ¡rios, simulados e transaÃ§Ãµes. Seu usuÃ¡rio administrador serÃ¡ preservado. Esta aÃ§Ã£o Ã© irreversÃ­vel.
+                          Esta ação apagará permanentemente TODAS as questões, usuários, simulados e transações. Seu usuário administrador será preservado. Esta ação é irreversível.
                        </p>
                     </div>
                     <button 
                        onClick={() => setIsResetModalOpen(true)}
                        className="px-8 py-3 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-rose-200 dark:shadow-none"
                     >
-                       Resetar Todo ConteÃºdo
+                       Resetar Todo Conteúdo
                     </button>
                  </div>
               </div>
@@ -559,8 +643,8 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                            <div className="w-16 h-16 bg-rose-50 dark:bg-rose-900/20 rounded-full flex items-center justify-center mx-auto text-rose-600">
                               <ShieldAlert size={32} />
                            </div>
-                           <h3 className="text-xl font-black text-slate-900 dark:text-slate-100">ConfirmaÃ§Ã£o de Reset</h3>
-                           <p className="text-xs text-slate-500 font-medium">Para prosseguir, vocÃª deve autenticar esta aÃ§Ã£o destrutiva.</p>
+                           <h3 className="text-xl font-black text-slate-900 dark:text-slate-100">Confirmação de Reset</h3>
+                           <p className="text-xs text-slate-500 font-medium">Para prosseguir, você deve autenticar esta ação destrutiva.</p>
                         </div>
 
                         {resetError && (
@@ -621,7 +705,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                            </div>
                            {localAppMode !== 'development' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
                              <div className="space-y-1.5">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">CÃ³digo 2FA</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Código 2FA</label>
                                 <input 
                                    type="text" 
                                    value={reset2FACode}
@@ -667,11 +751,11 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
 
               <div className="p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-slate-100 dark:border-slate-800">
                 <h4 className="text-sm font-black text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-                  <Lock size={16} className="text-rose-500" /> RestriÃ§Ãµes de IP e SessÃ£o
+                  <Lock size={16} className="text-rose-500" /> Restrições de IP e Sessão
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-slate-500 font-medium">
-                  <p>ConfiguraÃ§Ãµes avanÃ§adas de Firewall e SSL sÃ£o gerenciadas via Servidor (Apache/Nginx).</p>
-                  <p>Log de auditoria interna disponÃ­vel na aba Geral &gt; Visualizar Logs.</p>
+                  <p>Configurações avançadas de Firewall e SSL são gerenciadas via Servidor (Apache/Nginx).</p>
+                  <p>Log de auditoria interna disponível na aba Geral &gt; Visualizar Logs.</p>
                 </div>
               </div>
             </div>
@@ -682,14 +766,14 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
           <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm animate-fade-in">
             <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 mb-6">
               <Cpu size={20} className="text-indigo-600 dark:text-indigo-400" />
-              IntegraÃ§Ãµes e Chaves de API
+              Integrações e Chaves de API
             </h3>
             <div className="space-y-8">
               <div className="p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-5">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div>
                     <h4 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Gateway principal de pagamento</h4>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">O checkout e a ÃƒÂ¡rea de assinatura passam a seguir o provedor escolhido aqui.</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">O checkout e a área de assinatura passam a seguir o provedor escolhido aqui.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${systemSettings.hasStripeSecretConfigured ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>
@@ -712,7 +796,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Mercado Pago</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Checkout customizado com Pix, boleto, cartÃƒÂµes salvos e fluxo existente.</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Checkout customizado com Pix, boleto, cartões salvos e fluxo existente.</p>
                       </div>
                       {localPaymentProvider === 'mercado_pago' && <CheckCircle2 size={18} className="text-blue-600 dark:text-blue-400 shrink-0" />}
                     </div>
@@ -724,7 +808,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Stripe</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Checkout hospedado, Billing Portal, recorrÃƒÂªncia nativa e reembolsos por webhook.</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Checkout hospedado, Billing Portal, recorrência nativa e reembolsos por webhook.</p>
                       </div>
                       {localPaymentProvider === 'stripe' && <CheckCircle2 size={18} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
                     </div>
@@ -733,7 +817,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                   <div className="p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 space-y-4">
                     <div>
-                      <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">ExperiÃªncia de Checkout</h4>
+                      <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Experiência de Checkout</h4>
                       <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Define se o aluno conclui a compra dentro da plataforma ou por redirecionamento externo.</p>
                     </div>
                     <div className="grid grid-cols-1 gap-3">
@@ -742,21 +826,21 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                         className={`p-4 rounded-2xl border text-left transition-all ${localPaymentCheckoutMode === 'internal' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/20'}`}
                       >
                         <p className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Interno</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">MantÃ©m o aluno no checkout da plataforma. Stripe usa formulÃ¡rio interno; Mercado Pago segue transparente.</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Mantém o aluno no checkout da plataforma. Stripe usa formulário interno; Mercado Pago segue transparente.</p>
                       </button>
                       <button
                         onClick={() => setLocalPaymentCheckoutMode('redirect')}
                         className={`p-4 rounded-2xl border text-left transition-all ${localPaymentCheckoutMode === 'redirect' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/20'}`}
                       >
                         <p className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Redirecionamento</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Usa a tela externa do provedor quando disponÃ­vel. Ãštil para operaÃ§Ã£o rÃ¡pida e troubleshooting.</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Usa a tela externa do provedor quando disponível. Útil para operação rápida e troubleshooting.</p>
                       </button>
                     </div>
                   </div>
                   <div className="p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 space-y-4">
                     <div>
-                      <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Cofre de CartÃ£o</h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Controla onde a plataforma trata os cartÃµes salvos e qual integraÃ§Ã£o abastece a Ã¡rea de cobranÃ§a.</p>
+                      <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Cofre de Cartão</h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Controla onde a plataforma trata os cartões salvos e qual integração abastece a área de cobrança.</p>
                     </div>
                     <select
                       value={localCardVaultProvider}
@@ -768,9 +852,9 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                       <option value="stripe">Stripe</option>
                     </select>
                     <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700 p-4">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Leitura prÃ¡tica</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Leitura prática</p>
                       <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-2 leading-relaxed">
-                        Local mantÃ©m o espelho de cartÃµes e a gestÃ£o dentro da plataforma. Stripe e Mercado Pago usam o cofre do provedor, mas continuam aparecendo e sendo gerenciados na interface interna quando o fluxo suportar isso.
+                        Local mantém o espelho de cartões e a gestão dentro da plataforma. Stripe e Mercado Pago usam o cofre do provedor, mas continuam aparecendo e sendo gerenciados na interface interna quando o fluxo suportar isso.
                       </p>
                     </div>
                   </div>
@@ -795,7 +879,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                 <div className="p-5 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div>
                     <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Exigir reCAPTCHA em areas sensiveis</h4>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Quando ativado, o desafio aparece em login, cadastro, recuperacao de senha, checkout, cancelamento de assinatura e outras acoes protegidas.</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Quando ativado, o desafio aparece em login, cadastro, recuperacao de senha, checkout, cancelamento de assinatura e outras ações protegidas.</p>
                   </div>
                   <button
                     type="button"
@@ -852,7 +936,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                 <div className="p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30 space-y-4">
                   <div>
                     <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Mercado Pago</h4>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">MantÃƒÂ©m o checkout transparente com Pix, boleto e cartÃƒÂµes salvos locais.</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Mantém o checkout transparente com Pix, boleto e cartões salvos locais.</p>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Public Key (frontend)</label>
@@ -913,7 +997,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                       className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-xl py-3 px-4" />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">SeguranÃ§a</label>
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Segurança</label>
                     <select value={localSmtpSecure} onChange={e => setLocalSmtpSecure(e.target.value as 'tls' | 'ssl')}
                       className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-xl py-3 px-4">
                       <option value="tls">TLS</option>
@@ -924,7 +1008,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
               </div>
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">UsuÃ¡rio / E-mail</label>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Usuário / E-mail</label>
                   <input type="text" value={localSmtpUser} onChange={e => setLocalSmtpUser(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-xl py-3 px-4" />
                 </div>
@@ -944,7 +1028,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
               <div>
                 <h3 className="text-lg font-black text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
                   <Megaphone size={20} />
-                  GestÃ£o de AnÃºncios
+                  Gestão de Anúncios
                 </h3>
                 <p className="text-xs text-slate-500 font-medium mt-1">Configure AdSense, Facebook Ads e banners</p>
               </div>
@@ -978,7 +1062,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                   <textarea value={localAdSidebar} onChange={e => setLocalAdSidebar(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-[10px] font-mono rounded-xl py-3 px-4 h-20 resize-none" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Banner RodapÃ© (Bottom)</label>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Banner Rodapé (Bottom)</label>
                   <textarea value={localAdBottom} onChange={e => setLocalAdBottom(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-[10px] font-mono rounded-xl py-3 px-4 h-20 resize-none" />
                 </div>
               </div>
@@ -990,7 +1074,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
           <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm animate-fade-in">
             <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 mb-6">
               <Database size={20} className="text-indigo-600 dark:text-indigo-400" />
-              OtimizaÃ§Ã£o e Cache
+              Otimização e Cache
             </h3>
             <CacheManagement />
           </div>
@@ -1002,7 +1086,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
 
 /**
  * Controle operacional do cache da API.
- * Fica colocalizado com as configuraÃ§Ãµes porque sÃ³ Ã© acessado pela
+ * Fica colocalizado com as configurações porque só é acessado pela
  * aba de performance e compartilha o mesmo contexto administrativo.
  */
 const CacheManagement = () => {
@@ -1016,9 +1100,9 @@ const CacheManagement = () => {
       const data = await adminService.getCacheStats();
       setCacheStats(data);
     } catch (error) {
-      console.error('Erro ao buscar estatÃ­sticas de cache:', error);
+      console.error('Erro ao buscar estatísticas de cache:', error);
       setCacheStats({ total_files: 0, valid_entries: 0, expired_entries: 0, total_size_mb: 0, enabled: true });
-      addToast('Nao foi possivel carregar as estatisticas de cache.', 'error');
+      addToast('Não foi possível carregar as estatisticas de cache.', 'error');
     }
   };
 
@@ -1035,7 +1119,7 @@ const CacheManagement = () => {
       await fetchCacheStats();
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
-      setMessage('Erro ao atualizar configuraÃ§Ãµes');
+      setMessage('Erro ao atualizar configurações');
     }
     setLoading(false);
   };
@@ -1052,7 +1136,7 @@ const CacheManagement = () => {
     } catch (error) {
       console.error('Erro ao limpar cache:', error);
       setMessage('Erro ao limpar cache');
-      addToast('Nao foi possivel limpar o cache.', 'error');
+      addToast('Não foi possível limpar o cache.', 'error');
     }
     setLoading(false);
   };
@@ -1068,7 +1152,7 @@ const CacheManagement = () => {
     } catch (error) {
       console.error('Erro ao limpar cache expirado:', error);
       setMessage('Erro ao limpar cache expirado');
-      addToast('Nao foi possivel limpar entradas expiradas do cache.', 'error');
+      addToast('Não foi possível limpar entradas expiradas do cache.', 'error');
     }
     setLoading(false);
   };
@@ -1098,7 +1182,7 @@ const CacheManagement = () => {
           <p className="text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.total_files || 0}</p>
         </div>
         <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
-          <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1">Entradas VÃ¡lidas</p>
+          <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1">Entradas Válidas</p>
           <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300">{cacheStats.valid_entries || 0}</p>
         </div>
         <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl border border-amber-100 dark:border-amber-900/30">
@@ -1118,7 +1202,7 @@ const CacheManagement = () => {
           <div>
             <h4 className="text-sm font-black text-slate-900 dark:text-slate-100 mb-1">Status do Cache</h4>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              {cacheStats.enabled ? 'Cache ativo - Respostas em cache' : 'Cache desativado - Sem otimizaÃ§Ã£o'}
+              {cacheStats.enabled ? 'Cache ativo - Respostas em cache' : 'Cache desativado - Sem otimização'}
             </p>
           </div>
           <button
@@ -1137,7 +1221,7 @@ const CacheManagement = () => {
         {/* TTL Setting */}
         <div className="bg-slate-50 dark:bg-slate-800/40 p-6 rounded-2xl border border-slate-100 dark:border-slate-800">
           <h4 className="text-sm font-black text-slate-900 dark:text-slate-100 mb-1">Tempo de Vida (TTL)</h4>
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">DuraÃ§Ã£o padrÃ£o do cache</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">Duração padrão do cache</p>
           <div className="flex items-center gap-2">
             <Clock size={14} className="text-indigo-500" />
             <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{cacheStats.default_ttl || 300} segundos</span>
@@ -1177,5 +1261,3 @@ const CacheManagement = () => {
 };
 
 export default AdminSettings;
-
-

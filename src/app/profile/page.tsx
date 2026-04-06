@@ -66,7 +66,7 @@ const Profile: React.FC = () => {
     const effectivePlanDisplayName = getEffectivePlanDisplayName(currentUser);
     const isElitePlan = isPlanAtLeast(currentUser, 'Elite');
 
-    const [activeTab, setActiveTab] = useState<ProfileTab>('evolution');
+    const [activeTab, setActiveTab] = useState<ProfileTab>('personal');
     const [selectedCycle, setSelectedCycle] = useState<BillingCycle>('monthly');
     const [evolutionRange, setEvolutionRange] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month');
     const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
@@ -96,14 +96,19 @@ const Profile: React.FC = () => {
     const cancelRequestInFlightRef = React.useRef(false);
     const renewalRequestInFlightRef = React.useRef(false);
 
-    // Sincronizar aba com parÃ¢metro da URL (?tab=)
+    // Sincronizar aba com parâmetro da URL (?tab=)
     React.useEffect(() => {
         const params = new URLSearchParams(location.search);
         const tabParam = params.get('tab');
-        if (tabParam && ['evolution', 'notebook', 'materials', 'personal', 'billing', 'billing-history', 'security', 'referral'].includes(tabParam)) {
+        if (tabParam === 'evolution') {
+            navigate('/profile?tab=personal', { replace: true });
+            return;
+        }
+
+        if (tabParam && ['notebook', 'materials', 'personal', 'billing', 'billing-history', 'security', 'referral'].includes(tabParam)) {
             setActiveTab(tabParam as ProfileTab);
         }
-    }, [location.search]);
+    }, [location.search, navigate]);
 
     // Handlers de API para Gerenciamento de Dados
     const fetchUserCards = async () => {
@@ -122,26 +127,26 @@ const Profile: React.FC = () => {
     const handleRemoveCard = async (cardId: string) => {
         const card = userCards.find(c => c.id === cardId);
         if (card?.locked_by_recurring === 1) {
-            return addToast('Este cartÃ£o nÃ£o pode ser removido pois estÃ¡ vinculado a uma assinatura ativa.', 'warning');
+            return addToast('Este cartão não pode ser removido pois está vinculado a uma assinatura ativa.', 'warning');
         }
 
-        if (!window.confirm('Tem certeza que deseja remover este cartÃ£o?')) return;
+        if (!window.confirm('Tem certeza que deseja remover este cartão?')) return;
         try {
             const res: any = await cardsService.removeSavedCard(cardId, currentUser?.id);
-            addToast(res.message || 'CartÃ£o removido com sucesso!', 'success');
+            addToast(res.message || 'Cartão removido com sucesso!', 'success');
             fetchUserCards();
         } catch (err: any) {
-            addToast(readApiErrorMessage(err, 'Erro ao remover cartÃ£o.'), 'error');
+            addToast(readApiErrorMessage(err, 'Erro ao remover cartão.'), 'error');
         }
     };
 
     const handleSetDefaultCard = async (cardId: string) => {
         try {
             const res: any = await cardsService.setDefaultSavedCard(cardId, currentUser?.id);
-            addToast(res.message || 'CartÃ£o padrÃ£o atualizado!', 'success');
+            addToast(res.message || 'Cartão padrão atualizado!', 'success');
             fetchUserCards();
         } catch (err: any) {
-            addToast(readApiErrorMessage(err, 'Erro ao definir cartÃ£o padrÃ£o.'), 'error');
+            addToast(readApiErrorMessage(err, 'Erro ao definir cartão padrão.'), 'error');
         }
     };
 
@@ -149,7 +154,7 @@ const Profile: React.FC = () => {
         e.preventDefault();
         if (!currentUser?.id) return;
         if (isStripeBilling) {
-            addToast('Use o cofre Stripe interno abaixo para salvar um novo cartÃ£o.', 'info');
+            addToast('Use o cofre Stripe interno abaixo para salvar um novo cartão.', 'info');
             return;
         }
         
@@ -165,11 +170,11 @@ const Profile: React.FC = () => {
 
         try {
             const res: any = await cardsService.saveLegacyCard(data);
-            addToast(res.message || 'CartÃ£o salvo com sucesso!', 'success');
+            addToast(res.message || 'Cartão salvo com sucesso!', 'success');
             setIsAddingCard(false);
             fetchUserCards();
         } catch (err: any) {
-            addToast(readApiErrorMessage(err, 'Erro de rede ao salvar cartÃ£o.'), 'error');
+            addToast(readApiErrorMessage(err, 'Erro de rede ao salvar cartão.'), 'error');
         } finally {
             setIsSavingCard(false);
         }
@@ -181,7 +186,7 @@ const Profile: React.FC = () => {
             const res = await cardsService.createStripeSetupIntent();
             setStripeSetupClientSecret(res.client_secret);
         } catch (err: any) {
-            addToast(readApiErrorMessage(err, 'Erro ao preparar o formulario Stripe.'), 'error');
+            addToast(readApiErrorMessage(err, 'Erro ao preparar o formulário Stripe.'), 'error');
         } finally {
             setIsSavingCard(false);
         }
@@ -190,12 +195,12 @@ const Profile: React.FC = () => {
     const handleStripeCardSaved = async (paymentMethodId: string) => {
         try {
             const res: any = await cardsService.syncStripeCard(paymentMethodId);
-            addToast(res.message || 'Cartao salvo com sucesso na Stripe!', 'success');
+            addToast(res.message || 'Cartão salvo com sucesso na Stripe!', 'success');
             setStripeSetupClientSecret(null);
             setIsAddingCard(false);
             await fetchUserCards();
         } catch (err: any) {
-            addToast(readApiErrorMessage(err, 'Erro ao salvar o cartao Stripe.'), 'error');
+            addToast(readApiErrorMessage(err, 'Erro ao salvar o cartão Stripe.'), 'error');
         }
     };
 
@@ -216,7 +221,7 @@ const Profile: React.FC = () => {
             const redirectUrl = res?.url;
 
             if (!redirectUrl) {
-                throw new Error(res?.message || 'NÃƒÂ£o foi possÃƒÂ­vel abrir o portal da Stripe.');
+                throw new Error(res?.message || 'Não foi possível abrir o portal da Stripe.');
             }
 
             window.location.href = redirectUrl;
@@ -285,7 +290,7 @@ const Profile: React.FC = () => {
         const hasRemainingCommitment = totalInstallments > 1 && paidInstallmentsCount < totalInstallments;
 
         if (nextValue && userCards.length === 0) {
-            addToast('Voce precisa de um cartao salvo para ativar a renovacao automatica.', 'warning');
+            addToast('Você precisa de um cartão salvo para ativar a renovação automática.', 'warning');
             setIsAddingCard(true);
             openSavedCardsManager();
             return;
@@ -305,15 +310,15 @@ const Profile: React.FC = () => {
                 setOptimisticAutoRenew(confirmedAutoRenew);
                 addToast(
                     confirmedAutoRenew
-                        ? 'Renovacao automatica ativada.'
+                        ? 'Renovação automática ativada.'
                         : (hasRemainingCommitment
-                            ? 'Renovacao automatica desativada. A assinatura sera encerrada ao fim do termo contratado.'
-                            : 'Renovacao automatica desativada. A assinatura sera encerrada ao fim do periodo atual.'),
+                            ? 'Renovação automática desativada. A assinatura sera encerrada ao fim do termo contratado.'
+                            : 'Renovação automática desativada. A assinatura sera encerrada ao fim do período atual.'),
                     'success'
                 );
                 await refreshUser();
             } else {
-                addToast(res.message || 'Erro ao atualizar renovacao.', 'error');
+                addToast(res.message || 'Erro ao atualizar renovação.', 'error');
                 setOptimisticAutoRenew(null);
             }
         } catch (err: any) {
@@ -336,7 +341,7 @@ const Profile: React.FC = () => {
             setUserTransactions(transactions);
         } catch (err) {
             console.error('Failed to fetch transactions', err);
-            addToast('Erro ao carregar histÃ³rico de pagamentos.', 'error');
+            addToast('Erro ao carregar histórico de pagamentos.', 'error');
         } finally {
             setIsLoadingTransactions(false);
         }
@@ -362,7 +367,7 @@ const Profile: React.FC = () => {
 
         if (normalized === 'refund_requested') {
             return {
-                label: 'Reembolso em analise',
+                label: 'Reembolso em análise',
                 className: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
             };
         }
@@ -402,9 +407,9 @@ const Profile: React.FC = () => {
     };
 
     const formatDateTimeBR = (value?: string | number | null) => {
-        if (!value) return 'Data nao informada';
+        if (!value) return 'Data não informada';
         const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return 'Data nao informada';
+        if (Number.isNaN(date.getTime())) return 'Data não informada';
         return date.toLocaleString('pt-BR');
     };
 
@@ -453,22 +458,22 @@ const Profile: React.FC = () => {
     const subscriptionValueDescription = showFreeInactiveSubscriptionState
         ? 'Plano gratuito ativo.'
         : installmentCount > 1
-            ? `Cobranca ${paidInstallments > 0 ? `da parcela ${Math.min(paidInstallments, installmentCount)} de ${installmentCount}` : 'mensal do termo contratado'}.`
-            : `Cobranca ${subscriptionCycleLabel.toLowerCase()}.`;
+            ? `Cobrança ${paidInstallments > 0 ? `da parcela ${Math.min(paidInstallments, installmentCount)} de ${installmentCount}` : 'mensal do termo contratado'}.`
+            : `Cobrança ${subscriptionCycleLabel.toLowerCase()}.`;
     const subscriptionHeadline = hasActiveSubscription
         ? (resolvedAutoRenew
-            ? `A renovacao automatica esta ligada e a proxima cobranca esta prevista para ${formatDateBR(activeSubscription?.current_period_end)}.`
+            ? `A renovação automática esta ligada e a proxima cobrança esta prevista para ${formatDateBR(activeSubscription?.current_period_end)}.`
             : (termCommitmentRemaining
-                ? 'A renovacao automatica esta desligada. O termo atual seguira ate a ultima parcela contratada e depois sera encerrado.'
-                : `A renovacao automatica esta desligada. Seu acesso fica ativo ate ${formatDateBR(activeSubscription?.current_period_end)}.`))
-        : 'Sua assinatura nao esta ativa no momento.';
+                ? 'A renovação automática esta desligada. O termo atual seguira ate a ultima parcela contratada e depois sera encerrado.'
+                : `A renovação automática esta desligada. Seu acesso fica ativo ate ${formatDateBR(activeSubscription?.current_period_end)}.`))
+        : 'Sua assinatura não esta ativa no momento.';
     const renewalCardDescription = hasActiveSubscription
         ? (resolvedAutoRenew
             ? 'Sua assinatura segue protegida para renovar automaticamente ao fim deste ciclo.'
             : (termCommitmentRemaining
-                ? 'A renovacao esta desligada. As cobrancas atuais seguem ate o fim do termo contratado e depois param automaticamente.'
-                : 'A renovacao esta desligada e o acesso termina no fim deste ciclo.'))
-        : 'Ative um plano pago para controlar a renovacao automatica por aqui.';
+                ? 'A renovação esta desligada. As cobrancas atuais seguem ate o fim do termo contratado e depois param automaticamente.'
+                : 'A renovação esta desligada e o acesso termina no fim deste ciclo.'))
+        : 'Ative um plano pago para controlar a renovação automática por aqui.';
 
     React.useEffect(() => {
         setOptimisticAutoRenew(null);
@@ -569,14 +574,14 @@ const Profile: React.FC = () => {
                         <div className="rounded-[1.6rem] border border-slate-200 bg-slate-50 px-5 py-5 dark:border-slate-800 dark:bg-slate-800/40">
                             <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Status</p>
                             <p className="mt-3 text-[1.2rem] font-black leading-[1.05] text-slate-900 dark:text-slate-100">
-                                {hasPendingRefundRequest ? 'Reembolso em analise' : hasActiveSubscription ? 'Acesso liberado' : 'Assinatura inativa'}
+                                {hasPendingRefundRequest ? 'Reembolso em análise' : hasActiveSubscription ? 'Acesso liberado' : 'Assinatura inativa'}
                             </p>
                             <p className="mt-2 text-sm font-medium leading-[1.55] text-slate-500 dark:text-slate-400">
                                 {hasPendingRefundRequest
-                                    ? 'Sua solicitacao esta em andamento e atualizaremos o historico assim que houver retorno do gateway.'
+                                    ? 'Sua solicitacao esta em andamento e atualizaremos o histórico assim que houver retorno do gateway.'
                                     : hasActiveSubscription
                                         ? 'Seu acesso premium esta liberado e o ciclo atual segue normalmente.'
-                                        : 'Sua assinatura nao esta ativa no momento.'}
+                                        : 'Sua assinatura não esta ativa no momento.'}
                             </p>
                         </div>
 
@@ -586,7 +591,7 @@ const Profile: React.FC = () => {
                                 {hasActiveSubscription ? formatDateBR(activeSubscription?.current_period_end) : 'Indeterminado'}
                             </p>
                             <p className="mt-2 text-sm font-medium leading-[1.55] text-slate-500 dark:text-slate-400">
-                                {hasActiveSubscription ? 'Periodo atual da assinatura.' : 'Sem ciclo de cobranca em andamento.'}
+                                {hasActiveSubscription ? 'Período atual da assinatura.' : 'Sem ciclo de cobrança em andamento.'}
                             </p>
                         </div>
 
@@ -646,8 +651,8 @@ const Profile: React.FC = () => {
                         <div className="rounded-[2rem] border border-slate-200 bg-white px-6 py-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                             <div className="flex items-start justify-between gap-4">
                                 <div className="space-y-2.5">
-                                    <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">Renovacao</p>
-                                    <h3 className="text-[0.98rem] font-medium leading-none text-slate-900 dark:text-slate-100">Renovacao automatica</h3>
+                                    <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">Renovação</p>
+                                    <h3 className="text-[0.98rem] font-medium leading-none text-slate-900 dark:text-slate-100">Renovação automática</h3>
                                     <p className="text-[12px] font-normal leading-[1.1] text-slate-500 dark:text-slate-400">
                                         {renewalCardDescription}
                                     </p>
@@ -659,7 +664,7 @@ const Profile: React.FC = () => {
                                     disabled={!hasActiveSubscription || isUpdatingRenewal}
                                     role="switch"
                                     aria-checked={resolvedAutoRenew}
-                                    aria-label={resolvedAutoRenew ? 'Desativar renovacao automatica' : 'Ativar renovacao automatica'}
+                                    aria-label={resolvedAutoRenew ? 'Desativar renovação automática' : 'Ativar renovação automática'}
                                     className={`relative inline-flex h-8 w-14 items-center rounded-full border transition-all ${resolvedAutoRenew ? 'border-emerald-500 bg-emerald-500/90' : 'border-slate-200 bg-slate-200 dark:border-slate-700 dark:bg-slate-800'} ${(!hasActiveSubscription || isUpdatingRenewal) ? 'cursor-not-allowed opacity-60' : 'hover:scale-[1.02] active:scale-[0.98]'}`}
                                 >
                                     <span className={`inline-flex h-6 w-6 transform items-center justify-center rounded-full bg-white shadow transition-transform ${resolvedAutoRenew ? 'translate-x-7' : 'translate-x-1'}`}>
@@ -678,7 +683,7 @@ const Profile: React.FC = () => {
                                     </h3>
                                     <p className="text-[12px] font-normal leading-[1.1] text-slate-500 dark:text-slate-400">
                                         {isWithinRefundWindow
-                                            ? 'Voce ainda esta dentro dos 7 dias para cancelar a assinatura com reembolso.'
+                                            ? 'Você ainda esta dentro dos 7 dias para cancelar a assinatura com reembolso.'
                                             : 'Se decidir encerrar a assinatura, o acesso segue ate o fim do ciclo atual.'}
                                     </p>
                                 </div>
@@ -686,7 +691,7 @@ const Profile: React.FC = () => {
                                 {hasPendingRefundRequest ? (
                                     <div className="flex flex-wrap items-center gap-3">
                                         <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                                            Reembolso em analise
+                                            Reembolso em análise
                                         </span>
                                         <button
                                             type="button"
@@ -715,7 +720,7 @@ const Profile: React.FC = () => {
                     <div className="flex items-start justify-between gap-4">
                         <div className="space-y-3">
                             <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Pagamento</p>
-                            <h3 className="text-[1.15rem] font-black leading-[1.05] text-slate-900 dark:text-slate-100">Cartoes e cobranca</h3>
+                            <h3 className="text-[1.15rem] font-black leading-[1.05] text-slate-900 dark:text-slate-100">Cartoes e cobrança</h3>
                             <p className="text-sm font-medium leading-[1.6] text-slate-500 dark:text-slate-400">
                                 Os cartoes salvos ficam em Dados pessoais para compras futuras e renovacoes.
                             </p>
@@ -747,12 +752,12 @@ const Profile: React.FC = () => {
                         <div className="space-y-3">
                             <p className="text-[11px] font-black uppercase tracking-[0.24em] text-indigo-100">Upgrade</p>
                             <h3 className="text-[1.25rem] font-black leading-[1.05]">
-                                {isElitePlan ? 'Seu plano ja esta no nivel maximo' : 'Veja outros planos'}
+                                {isElitePlan ? 'Seu plano já esta no nivel máximo' : 'Veja outros planos'}
                             </h3>
                             <p className="text-sm font-medium leading-[1.6] text-indigo-100/90">
                                 {isElitePlan
-                                    ? 'Compare beneficios e avalie se quer manter seu plano atual ou revisar outros ciclos.'
-                                    : 'Compare ciclos e beneficios antes de trocar o seu plano atual.'}
+                                    ? 'Compare benefícios e avalie se quer manter seu plano atual ou revisar outros ciclos.'
+                                    : 'Compare ciclos e benefícios antes de trocar o seu plano atual.'}
                             </p>
                         </div>
 
@@ -774,8 +779,8 @@ const Profile: React.FC = () => {
         <div className="space-y-6 animate-fade-in">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div className="space-y-1">
-                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Historico</p>
-                    <h2 className="text-2xl font-black leading-none text-slate-900 dark:text-slate-100">Transacoes</h2>
+                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Histórico</p>
+                    <h2 className="text-2xl font-black leading-none text-slate-900 dark:text-slate-100">Transações</h2>
                     <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
                         Acompanhe cobrancas aprovadas, parcelas futuras pre-aprovadas e faturas emitidas pelo gateway.
                     </p>
@@ -845,11 +850,11 @@ const Profile: React.FC = () => {
                                                     </p>
                                                     <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
                                                         <span>{tx.paymentProvider === 'stripe' ? 'Stripe' : 'Mercado Pago'}</span>
-                                                        <span>â€¢</span>
-                                                        <span>{tx.paymentMethodLabel || 'Cartao'}</span>
+                                                        <span>?</span>
+                                                        <span>{tx.paymentMethodLabel || 'Cartão'}</span>
                                                         {installmentLabel && (
                                                             <>
-                                                                <span>â€¢</span>
+                                                                <span>?</span>
                                                                 <span>{installmentLabel}</span>
                                                             </>
                                                         )}
@@ -909,7 +914,7 @@ const Profile: React.FC = () => {
                 ) : (
                     <div className="px-6 py-20 text-center">
                         <BarChart3 size={32} className="mx-auto mb-4 text-slate-300 dark:text-slate-700" />
-                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Nenhuma transacao registrada ainda.</p>
+                        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Nenhuma transação registrada ainda.</p>
                     </div>
                 )}
             </div>
@@ -952,12 +957,12 @@ const Profile: React.FC = () => {
 
                             <div className="space-y-3">
                                 <h3 className="text-2xl font-black italic text-slate-900 dark:text-slate-100">
-                                    Ja vai nos deixar, {currentUser?.name?.split(' ')[0] || 'aluno'}?
+                                    Já vai nos deixar, {currentUser?.name?.split(' ')[0] || 'aluno'}?
                                 </h3>
                                 <p className="mx-auto max-w-md text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
                                     {isWithinRefundWindow
-                                        ? 'Voce ainda esta no periodo de garantia. Se cancelar agora, o reembolso pode ser solicitado e seu acesso sera encerrado com seguranca.'
-                                        : 'Sua aprovacao esta cada dia mais proxima. Cancelando agora, a renovacao automatica sera desligada e o acesso seguira somente ate o fim do ciclo vigente.'}
+                                        ? 'Você ainda esta no período de garantia. Se cancelar agora, o reembolso pode ser solicitado e seu acesso sera encerrado com segurança.'
+                                        : 'Sua aprovação esta cada dia mais proxima. Cancelando agora, a renovação automática sera desligada e o acesso seguira somente ate o fim do ciclo vigente.'}
                                 </p>
                             </div>
 
@@ -987,9 +992,9 @@ const Profile: React.FC = () => {
                                     >
                                         <option value="">Selecione uma opcao...</option>
                                         <option value="price">Valor da assinatura</option>
-                                        <option value="usage">Nao estou usando o suficiente</option>
-                                        <option value="technical">Problemas tecnicos</option>
-                                        <option value="content">Falta de conteudos especificos</option>
+                                        <option value="usage">Não estou usando o suficiente</option>
+                                        <option value="technical">Problemas técnicos</option>
+                                        <option value="content">Falta de conteúdos especificos</option>
                                         <option value="other">Outros motivos</option>
                                     </select>
                                 </div>
@@ -1010,7 +1015,7 @@ const Profile: React.FC = () => {
                                 {recaptchaEnabled ? (
                                     <div className="space-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-900">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                                            Confirmacao de seguranca
+                                            Confirmacao de segurança
                                         </p>
                                         <div className="flex justify-center">
                                             <ReCAPTCHA
@@ -1022,7 +1027,7 @@ const Profile: React.FC = () => {
                                     </div>
                                 ) : (
                                     <p className="text-[11px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                                        A confirmacao por reCAPTCHA esta desativada nas configuracoes da plataforma.
+                                        A confirmacao por reCAPTCHA esta desativada nas configurações da plataforma.
                                     </p>
                                 )}
                             </div>
@@ -1049,7 +1054,7 @@ const Profile: React.FC = () => {
                             </div>
 
                             <p className="mt-4 text-[9px] font-black uppercase tracking-tight text-slate-400">
-                                Voce mantera seu acesso ate o dia {formatDateBR(currentUser?.subscription?.current_period_end)}
+                                Você mantera seu acesso ate o dia {formatDateBR(currentUser?.subscription?.current_period_end)}
                             </p>
                         </div>
                     </motion.div>
@@ -1068,8 +1073,8 @@ const Profile: React.FC = () => {
     }, [activeTab, isStripeBilling]);
 
    const EXAM_AREAS = [
-      { group: 'Carreiras', areas: ['Policial', 'Fiscal', 'Tribunais', 'JurÃ­dico', 'EducaÃ§Ã£o', 'Militar', 'SaÃºde', 'TI', 'Diplomata'] },
-      { group: 'Exames', areas: ['ResidÃªncia em SaÃºde', 'CFC - Exame de SuficiÃªncia', 'OAB - Exame de Ordem'] }
+      { group: 'Carreiras', areas: ['Policial', 'Fiscal', 'Tribunais', 'Jurídico', 'Educação', 'Militar', 'Saúde', 'TI', 'Diplomata'] },
+      { group: 'Exames', areas: ['Residência em Saúde', 'CFC - Exame de Suficiência', 'OAB - Exame de Ordem'] }
    ];
 
    const timelineData = useMemo(() => {
@@ -1126,15 +1131,15 @@ const Profile: React.FC = () => {
       const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
 
       const diffStats = {
-         'FÃ¡cil': { total: 0, correct: 0 },
-         'MÃ©dio': { total: 0, correct: 0 },
-         'DifÃ­cil': { total: 0, correct: 0 }
+         'Fácil': { total: 0, correct: 0 },
+         'Médio': { total: 0, correct: 0 },
+         'Difícil': { total: 0, correct: 0 }
       };
 
       userAnswers.forEach(ans => {
          const q = questions.find(item => item.id === ans.questionId);
          if (q) {
-            const label = q.difficulty === 'FÃ¡cil' ? 'FÃ¡cil' : q.difficulty === 'MÃ©dio' ? 'MÃ©dio' : 'DifÃ­cil';
+            const label = q.difficulty === 'Fácil' ? 'Fácil' : q.difficulty === 'Médio' ? 'Médio' : 'Difícil';
             if (diffStats[label as keyof typeof diffStats]) {
                diffStats[label as keyof typeof diffStats].total++;
                if (ans.isCorrect) diffStats[label as keyof typeof diffStats].correct++;
@@ -1160,7 +1165,7 @@ const Profile: React.FC = () => {
                </div>
                <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 mb-3">Identifique-se</h2>
                <p className="text-slate-500 dark:text-slate-400 font-medium mb-8 leading-relaxed">
-                  FaÃ§a login para acompanhar seu desempenho, gerenciar sua assinatura e salvar seu progresso.
+                  Faça login para acompanhar seu desempenho, gerenciar sua assinatura e salvar seu progresso.
                </p>
                <button
                   onClick={() => setShowAuthModal(true)}
@@ -1173,7 +1178,7 @@ const Profile: React.FC = () => {
                isOpen={showAuthModal}
                onClose={() => setShowAuthModal(false)}
                title="Acesse seu Perfil"
-               description="Gerencie seus dados e acompanhe sua evoluÃ§Ã£o detalhada."
+               description="Gerencie seus dados e acompanhe sua evolução detalhada."
             />
          </div>
       );
@@ -1198,10 +1203,10 @@ const Profile: React.FC = () => {
                 <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
                     <User className="text-indigo-600 dark:text-indigo-400" /> Meu Perfil
                 </h1>
-                <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1 transition-colors">Gerencie seus dados, assinatura e acompanhe sua evoluÃ§Ã£o.</p>
+                <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1 transition-colors">Gerencie seus dados, assinatura e acompanhe sua evolução.</p>
             </header>
 
-            {/* Banner: ConteÃºdo Incompleto */}
+            {/* Banner: Conteúdo Incompleto */}
             {currentUser && (!currentUser.cpf || !currentUser.address?.zipCode) && (
                 <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg animate-fade-in border border-indigo-400/30">
                     <div className="flex items-center gap-4">
@@ -1210,7 +1215,7 @@ const Profile: React.FC = () => {
                         </div>
                         <div>
                             <h4 className="font-bold text-sm">Complete seu cadastro para facilitar suas compras</h4>
-                            <p className="text-xs text-indigo-100 mt-0.5">Adicione seu CPF e endereÃ§o para agilizar o checkout de materiais e planos.</p>
+                            <p className="text-xs text-indigo-100 mt-0.5">Adicione seu CPF e endereço para agilizar o checkout de materiais e planos.</p>
                         </div>
                     </div>
                     <button onClick={() => setActiveTab('personal')} className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 transition-all flex items-center gap-2 shrink-0 active:scale-95">
@@ -1220,9 +1225,9 @@ const Profile: React.FC = () => {
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                {/* SIDEBAR DE NAVEGAÃ‡ÃƒO */}
+                {/* SIDEBAR DE NAVEGAÇÃO */}
                 <aside className="lg:col-span-3 space-y-6">
-                    {/* CartÃ£o do UsuÃ¡rio */}
+                    {/* Cartão do Usuário */}
                     <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center space-y-3 transition-colors">
                         <div 
                             className="relative group cursor-pointer"
@@ -1273,8 +1278,7 @@ const Profile: React.FC = () => {
                     {/* Menu */}
                     <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 transition-colors">
                         <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Menu</div>
-                        <SidebarItem id="evolution" label="Desempenho" icon={TrendingUp} />
-                        <SidebarItem id="notebook" label="Minhas AnotaÃ§Ãµes" icon={StickyNote} />
+                        <SidebarItem id="notebook" label="Minhas Anotações" icon={StickyNote} />
                         <SidebarItem id="materials" label="Meus Materiais" icon={Package} />
                         
                         <div className="h-px bg-slate-50 dark:bg-slate-800 my-2 transition-colors" />
@@ -1282,7 +1286,7 @@ const Profile: React.FC = () => {
                         <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Conta</div>
                         <SidebarItem id="personal" label="Dados Pessoais" icon={User} />
                         <SidebarItem id="billing" label="Assinatura" icon={CreditCard} />
-                        <SidebarItem id="billing-history" label="TransaÃ§Ãµes" icon={BarChart3} />
+                        <SidebarItem id="billing-history" label="Transações" icon={BarChart3} />
                         <SidebarItem id="referral" label="Indique e Ganhe" icon={Gift} />
                         <SidebarItem id="security" label="Privacidade" icon={ShieldCheck} />
                     </div>
@@ -1292,23 +1296,23 @@ const Profile: React.FC = () => {
                     </button>
                 </aside>
 
-            {/* ÃREA DE CONTEÃšDO */}
+            {/* ÁREA DE CONTEÚDO */}
             <main className="lg:col-span-9 space-y-6">
 
                {activeTab === 'evolution' && (
                   <div className="space-y-6 animate-fade-in">
-                     {/* NOVO CABEÃ‡ALHO DE ESTUDOS */}
+                     {/* NOVO CABEÇALHO DE ESTUDOS */}
                      <div className="bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 transition-colors">
                         <div className="flex-1 space-y-3">
                            <div className="flex items-center gap-2">
-                              <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Estudando questÃµes para</span>
+                              <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Estudando questões para</span>
                            </div>
                            <div className="flex flex-col md:flex-row md:items-center gap-4">
                               <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 leading-tight transition-colors">
-                                 {currentUser.targetExam || 'NÃ£o selecionado'}
+                                 {currentUser.targetExam || 'Não selecionado'}
                               </h2>
                               <div className="flex items-center gap-2">
-                                 <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold rounded-lg transition-colors">PrÃ© edital</span>
+                                 <span className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold rounded-lg transition-colors">Pré edital</span>
                                  <button
                                     onClick={() => setShowGoalModal(true)}
                                     className="flex items-center gap-1.5 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
@@ -1327,7 +1331,7 @@ const Profile: React.FC = () => {
                               <div className="absolute inset-0 flex items-center justify-center text-[11px] font-black text-slate-900 dark:text-slate-100">{generalStats.topicsProgress}%</div>
                            </div>
                            <div className="text-right">
-                              <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1 justify-end">Assuntos ConcluÃ­dos <Info size={10} /></p>
+                              <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1 justify-end">Assuntos Concluídos <Info size={10} /></p>
                               <p className="text-[10px] font-bold text-slate-600 dark:text-slate-300 transition-colors">Todos os assuntos</p>
                            </div>
                         </div>
@@ -1349,7 +1353,7 @@ const Profile: React.FC = () => {
                               <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Total</span>
                            </div>
                            <p className="text-3xl font-black text-slate-900 dark:text-slate-100 transition-colors">{generalStats.total}</p>
-                           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium transition-colors">QuestÃµes Respondidas</p>
+                           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium transition-colors">Questões Respondidas</p>
                         </div>
                         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                            <div className="flex justify-between items-start mb-2">
@@ -1357,7 +1361,7 @@ const Profile: React.FC = () => {
                               <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">Rank</span>
                            </div>
                            <p className="text-3xl font-black text-slate-900 dark:text-slate-100 transition-colors">{generalStats.xp}</p>
-                           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium transition-colors">Pontos de ExperiÃªncia</p>
+                           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium transition-colors">Pontos de Experiência</p>
                         </div>
                      </div>
 
@@ -1375,7 +1379,7 @@ const Profile: React.FC = () => {
                                        onClick={() => setEvolutionRange(range)}
                                        className={`px-3 py-1 rounded text-[9px] font-black uppercase tracking-widest transition-all ${evolutionRange === range ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600'}`}
                                     >
-                                       {range === 'today' ? 'Hoje' : range === 'week' ? 'Semana' : range === 'month' ? 'MÃªs' : 'Ano'}
+                                       {range === 'today' ? 'Hoje' : range === 'week' ? 'Semana' : range === 'month' ? 'Mês' : 'Ano'}
                                     </button>
                                  ))}
                               </div>
@@ -1401,19 +1405,19 @@ const Profile: React.FC = () => {
                                  <div className="absolute bottom-0 inset-x-0 flex flex-col items-center pb-1">
                                     <span className="text-3xl font-black text-slate-900 dark:text-slate-100">{generalStats.accuracy}%</span>
                                     <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${generalStats.accuracy >= 75 ? 'bg-emerald-100 text-emerald-700' : generalStats.accuracy >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                                       {generalStats.accuracy >= 75 ? 'ALTO' : generalStats.accuracy >= 50 ? 'MÃ‰DIO' : 'BAIXO'}
+                                       {generalStats.accuracy >= 75 ? 'ALTO' : generalStats.accuracy >= 50 ? 'MÉDIO' : 'BAIXO'}
                                     </span>
                                  </div>
                               </div>
                               <p className="text-[10px] text-center font-bold text-slate-500 dark:text-slate-400 max-w-[200px]">
-                                 Sua probabilidade de aprovaÃ§Ã£o para este cargo Ã© {' '}
-                                 <span className="text-emerald-500 font-black">{generalStats.accuracy >= 70 ? 'Superior' : 'Crescente'}</span> em relaÃ§Ã£o Ã  concorrÃªncia.
+                                 Sua probabilidade de aprovação para este cargo é {' '}
+                                 <span className="text-emerald-500 font-black">{generalStats.accuracy >= 70 ? 'Superior' : 'Crescente'}</span> em relação à concorrência.
                               </p>
                            </div>
 
-                           {/* NÃVEL DE DIFICULDADE */}
+                           {/* NÍVEL DE DIFICULDADE */}
                            <div className="md:col-span-4 space-y-4">
-                              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1">NÃ­vel de dificuldade <Info size={10} /></h4>
+                              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1">Nível de dificuldade <Info size={10} /></h4>
                               <div className="space-y-4 pt-2">
                                  {Object.entries(generalStats.diffStats).map(([label, stats]) => {
                                     const acc = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
@@ -1430,18 +1434,18 @@ const Profile: React.FC = () => {
                               </div>
                            </div>
 
-                           {/* RESOLUÃ‡Ã•ES */}
+                           {/* RESOLUÇÕES */}
                            <div className="md:col-span-4 space-y-3">
-                              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1">ResoluÃ§Ãµes <Info size={10} /></h4>
+                              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1">Resoluções <Info size={10} /></h4>
                               <div className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl flex justify-between items-center transition-colors">
-                                 <span className="text-[11px] font-bold text-slate-900 dark:text-slate-100 text-center"><span className="text-base font-black text-indigo-600 block">{generalStats.total}</span> ResoluÃ§Ãµes</span>
+                                 <span className="text-[11px] font-bold text-slate-900 dark:text-slate-100 text-center"><span className="text-base font-black text-indigo-600 block">{generalStats.total}</span> Resoluções</span>
                                  <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
                                  <span className="text-[11px] font-bold text-slate-900 dark:text-slate-100 text-center"><span className="text-base font-black text-emerald-600 block">{generalStats.correct}</span> Acertos</span>
                                  <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
                                  <span className="text-[11px] font-bold text-slate-900 dark:text-slate-100 text-center"><span className="text-base font-black text-red-600 block">{generalStats.wrong}</span> Erros</span>
                               </div>
                               <div className="pt-4 space-y-2">
-                                 <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 leading-relaxed uppercase tracking-widest">Desempenho por PerÃ­odo</p>
+                                 <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 leading-relaxed uppercase tracking-widest">Desempenho por Período</p>
                                  <div className="h-24 w-full">
                                     <ResponsiveContainer width="100%" height="100%">
                                        <AreaChart data={timelineData}>
@@ -1454,7 +1458,7 @@ const Profile: React.FC = () => {
                                           <XAxis dataKey="date" hide />
                                           <YAxis tick={{ fontSize: 8, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={20} />
                                           <Area type="monotone" dataKey="total" stroke="#f97316" strokeWidth={2} fill="url(#colorTotalProfile)" name="Quantidade" fillOpacity={1} />
-                                          <Area type="monotone" dataKey="taxa" stroke="#6366f1" strokeWidth={1} fillOpacity={0} name="PrecisÃ£o (%)" />
+                                          <Area type="monotone" dataKey="taxa" stroke="#6366f1" strokeWidth={1} fillOpacity={0} name="Precisão (%)" />
                                        </AreaChart>
                                     </ResponsiveContainer>
                                  </div>
@@ -1468,7 +1472,7 @@ const Profile: React.FC = () => {
                {activeTab === 'notebook' && (
                   <div className="space-y-6 animate-fade-in">
                      <div className="flex justify-between items-center">
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Minhas AnotaÃ§Ãµes</h2>
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Minhas Anotações</h2>
                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{userNotes.length} notas</span>
                      </div>
                      {userNotes.length > 0 ? (
@@ -1486,8 +1490,8 @@ const Profile: React.FC = () => {
                      ) : (
                         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
                            <StickyNote size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
-                           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhuma anotaÃ§Ã£o encontrada.</p>
-                           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Adicione notas nas questÃµes durante seus estudos.</p>
+                           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhuma anotação encontrada.</p>
+                           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Adicione notas nas questões durante seus estudos.</p>
                         </div>
                      )}
                   </div>
@@ -1507,7 +1511,7 @@ const Profile: React.FC = () => {
                                        <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
                                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Material</th>
                                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 hidden md:table-cell">Aquirido em</th>
-                                           <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 text-right">AÃ§Ã£o</th>
+                                           <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 text-right">Ação</th>
                                        </tr>
                                    </thead>
                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1544,7 +1548,7 @@ const Profile: React.FC = () => {
                                                                 <button 
                                                                     onClick={() => {
                                                                         void downloadAuthenticatedFile(buildMaterialDownloadEndpoint(material.id)).catch((error: any) => {
-                                                                            addToast(error?.message || 'Nao foi possivel baixar o material agora.', 'error');
+                                                                            addToast(error?.message || 'Não foi possível baixar o material agora.', 'error');
                                                                         });
                                                                     }}
                                                                     className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-200 dark:shadow-none"
@@ -1557,7 +1561,7 @@ const Profile: React.FC = () => {
                                                                         <Download size={14} /> Baixar
                                                                     </button>
                                                                     <div className="absolute bottom-full right-0 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded shadow-lg opacity-0 group-hover/tooltip:opacity-100 pointer-events-none transition-opacity z-50 normal-case font-medium">
-                                                                        Download disponÃ­vel em {Math.ceil(7 - daysSince)} dias (PolÃ­tica de Garantia).
+                                                                        Download disponível em {Math.ceil(7 - daysSince)} dias (Política de Garantia).
                                                                     </div>
                                                                 </div>
                                                             )}
@@ -1608,21 +1612,21 @@ const Profile: React.FC = () => {
                            };
 
                            // Manual Validation for better feedback
-                           if (!updates.name) { addToast('Nome Ã© obrigatÃ³rio.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.cpf) { addToast('CPF Ã© obrigatÃ³rio.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.zipCode) { addToast('CEP Ã© obrigatÃ³rio.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.street) { addToast('Rua Ã© obrigatÃ³ria.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.number) { addToast('NÃºmero Ã© obrigatÃ³rio.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.neighborhood) { addToast('Bairro Ã© obrigatÃ³rio.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.city) { addToast('Cidade Ã© obrigatÃ³ria.', 'error'); setIsUpdatingProfile(false); return; }
-                           if (!updates.address.state) { addToast('Estado (UF) Ã© obrigatÃ³rio.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!updates.name) { addToast('Nome é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!updates.cpf) { addToast('CPF é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!updates.address.zipCode) { addToast('CEP é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!updates.address.street) { addToast('Rua é obrigatória.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!updates.address.number) { addToast('Número é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!updates.address.neighborhood) { addToast('Bairro é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!updates.address.city) { addToast('Cidade é obrigatória.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!updates.address.state) { addToast('Estado (UF) é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
 
                            try {
                                await updateUser(updates);
                                // Notification is handled by AuthContext
                            } catch (err: any) {
                                console.error('Profile update error:', err);
-                               const msg = readApiErrorMessage(err, 'Erro ao sincronizar. Verifique sua conexÃ£o.');
+                               const msg = readApiErrorMessage(err, 'Erro ao sincronizar. Verifique sua conexão.');
                                addToast(msg, 'error');
                            } finally {
                                setIsUpdatingProfile(false);
@@ -1637,7 +1641,7 @@ const Profile: React.FC = () => {
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">E-mail de Acesso</label>
-                            <input name="email" type="email" defaultValue={currentUser.email} readOnly className="w-full h-11 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-500 dark:text-slate-400 outline-none cursor-not-allowed transition-all font-sans" title="NÃ£o Ã© possÃ­vel alterar o email" />
+                            <input name="email" type="email" defaultValue={currentUser.email} readOnly className="w-full h-11 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-500 dark:text-slate-400 outline-none cursor-not-allowed transition-all font-sans" title="Não é possível alterar o email" />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                            <div className="space-y-1.5">
@@ -1656,7 +1660,7 @@ const Profile: React.FC = () => {
                         </div>
 
                          <div className="space-y-4 pt-2">
-                            <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-800 pb-2">Dados de CobranÃ§a / EndereÃ§o</h3>
+                            <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-50 dark:border-slate-800 pb-2">Dados de Cobrança / Endereço</h3>
                             
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                <div className="col-span-1 space-y-1.5">
@@ -1668,7 +1672,7 @@ const Profile: React.FC = () => {
                                    <input name="street" type="text" defaultValue={currentUser.address?.street || ''} placeholder="Ex: Av. Paulista" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
                                <div className="col-span-1 space-y-1.5">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">NÃºmero</label>
+                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Número</label>
                                    <input name="number" type="text" defaultValue={currentUser.address?.number || ''} placeholder="123" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
                             </div>
@@ -1687,7 +1691,7 @@ const Profile: React.FC = () => {
                             <div className="grid grid-cols-3 gap-4">
                                <div className="col-span-2 space-y-1.5">
                                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Cidade</label>
-                                   <input name="city" type="text" defaultValue={currentUser.address?.city || ''} placeholder="Ex: SÃ£o Paulo" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
+                                   <input name="city" type="text" defaultValue={currentUser.address?.city || ''} placeholder="Ex: São Paulo" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
                                <div className="col-span-1 space-y-1.5">
                                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Estado (UF)</label>
@@ -1715,9 +1719,9 @@ const Profile: React.FC = () => {
                      <div id="saved-cards-personal-section" className="mt-12 border-t border-slate-100 pt-8 dark:border-slate-800">
                         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div>
-                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">CartÃµes Salvos</h3>
+                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Cartões Salvos</h3>
                                 <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                    Seus cartÃµes ficam disponÃ­veis aqui para compras futuras e para renovaÃ§Ã£o automÃ¡tica.
+                                    Seus cartões ficam disponíveis aqui para compras futuras e para renovação automática.
                                 </p>
                             </div>
                             <button
@@ -1735,7 +1739,7 @@ const Profile: React.FC = () => {
                                 }`}
                             >
                                 {isAddingCard ? <X size={14} /> : <CreditCard size={14} />}
-                                {isAddingCard ? 'Cancelar' : 'Adicionar cartÃ£o'}
+                                {isAddingCard ? 'Cancelar' : 'Adicionar cartão'}
                             </button>
                         </div>
 
@@ -1752,7 +1756,7 @@ const Profile: React.FC = () => {
                                                     className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-indigo-700 disabled:opacity-60"
                                                 >
                                                     {isSavingCard ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
-                                                    {isSavingCard ? 'Preparando formulÃ¡rio...' : 'Novo cartÃ£o Stripe'}
+                                                    {isSavingCard ? 'Preparando formulário...' : 'Novo cartão Stripe'}
                                                 </button>
                                             ) : (
                                                 <StripeSetupCardForm
@@ -1781,9 +1785,9 @@ const Profile: React.FC = () => {
                                                         <div>
                                                             <div className="flex flex-wrap items-center gap-2">
                                                                 <p className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
-                                                                    {String(card.brand || 'card').toUpperCase()} â€¢â€¢â€¢â€¢ {card.last_four_digits}
+                                                                    {String(card.brand || 'card').toUpperCase()} •••• {card.last_four_digits}
                                                                 </p>
-                                                                {Number(card.is_default) === 1 && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">PadrÃ£o</span>}
+                                                                {Number(card.is_default) === 1 && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">Padrão</span>}
                                                                 {Number(card.locked_by_recurring) === 1 && <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-white">Assinatura ativa</span>}
                                                             </div>
                                                             <p className="mt-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
@@ -1798,7 +1802,7 @@ const Profile: React.FC = () => {
                                                                 onClick={() => handleSetDefaultCard(card.id)}
                                                                 className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700 transition-all hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                                                             >
-                                                                Definir padrÃ£o
+                                                                Definir padrão
                                                             </button>
                                                         )}
                                                         {Number(card.locked_by_recurring) !== 1 && (
@@ -1817,8 +1821,8 @@ const Profile: React.FC = () => {
                                     ) : (
                                         <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
                                             <CreditCard size={28} className="mx-auto mb-3 text-slate-300 dark:text-slate-600" />
-                                            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Nenhum cartÃ£o salvo ainda.</p>
-                                            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Adicione um cartÃ£o para acelerar compras futuras e renovaÃ§Ãµes.</p>
+                                            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Nenhum cartão salvo ainda.</p>
+                                            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Adicione um cartão para acelerar compras futuras e renovações.</p>
                                         </div>
                                     )}
                                 </>
@@ -1828,12 +1832,12 @@ const Profile: React.FC = () => {
                                         <form onSubmit={handleSaveCard} className="rounded-2xl border border-indigo-100 bg-slate-50 p-5 dark:border-indigo-900/40 dark:bg-slate-800/30">
                                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">NÃºmero do CartÃ£o</label>
+                                                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Número do Cartão</label>
                                                     <input name="cardNumber" type="text" placeholder="0000 0000 0000 0000" required className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none dark:border-slate-700 dark:bg-slate-900" />
                                                 </div>
                                                 <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Nome no CartÃ£o</label>
-                                                    <input name="cardName" type="text" placeholder="COMO ESTÃ IMPRESSO" required className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none dark:border-slate-700 dark:bg-slate-900" />
+                                                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Nome no Cartão</label>
+                                                    <input name="cardName" type="text" placeholder="COMO ESTÁ IMPRESSO" required className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none dark:border-slate-700 dark:bg-slate-900" />
                                                 </div>
                                                 <div className="space-y-1.5">
                                                     <label className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Validade</label>
@@ -1851,7 +1855,7 @@ const Profile: React.FC = () => {
                                             </div>
                                             <button disabled={isSavingCard} type="submit" className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-indigo-700 disabled:opacity-60">
                                                 {isSavingCard ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-                                                {isSavingCard ? 'Salvando...' : 'Salvar cartÃ£o com seguranÃ§a'}
+                                                {isSavingCard ? 'Salvando...' : 'Salvar cartão com segurança'}
                                             </button>
                                         </form>
                                     )}
@@ -1870,8 +1874,8 @@ const Profile: React.FC = () => {
                                                         </div>
                                                         <div>
                                                             <div className="flex flex-wrap items-center gap-2">
-                                                                <p className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">â€¢â€¢â€¢â€¢ {card.last_four_digits || card.last4 || '****'}</p>
-                                                                {Number(card.is_default) === 1 && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">PadrÃ£o</span>}
+                                                                <p className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">•••• {card.last_four_digits || card.last4 || '****'}</p>
+                                                                {Number(card.is_default) === 1 && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">Padrão</span>}
                                                             </div>
                                                             <p className="mt-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
                                                                 Vence em {String(card.exp_month).padStart(2, '0')}/{card.exp_year}
@@ -1881,7 +1885,7 @@ const Profile: React.FC = () => {
                                                     <div className="flex items-center gap-2">
                                                         {Number(card.is_default) !== 1 && (
                                                             <button type="button" onClick={() => handleSetDefaultCard(card.id)} className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700 transition-all hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
-                                                                Definir padrÃ£o
+                                                                Definir padrão
                                                             </button>
                                                         )}
                                                         {Number(card.locked_by_recurring) !== 1 && (
@@ -1896,7 +1900,7 @@ const Profile: React.FC = () => {
                                     ) : (
                                         <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center dark:border-slate-800">
                                             <CreditCard size={28} className="mx-auto mb-3 text-slate-300 dark:text-slate-600" />
-                                            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Nenhum cartÃ£o salvo ainda.</p>
+                                            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Nenhum cartão salvo ainda.</p>
                                         </div>
                                     )}
                                 </>
@@ -1955,7 +1959,7 @@ const Profile: React.FC = () => {
                                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-tight">
                                     {currentUser.subscription?.current_period_end 
                                         ? `Sua assinatura renova automaticamente em ${new Date(currentUser.subscription.current_period_end).toLocaleDateString()}.`
-                                        : 'Acesse recursos essenciais para sua aprovaÃ§Ã£o.'}
+                                        : 'Acesse recursos essenciais para sua aprovação.'}
                                 </p>
                             </div>
 
@@ -1974,10 +1978,10 @@ const Profile: React.FC = () => {
                                         <div className="flex flex-col items-end gap-2 mt-2">
                                             {userTransactions.some((t:any) => t.status === 'refund_requested') ? (
                                                 <div className="flex flex-col items-end gap-1">
-                                                    <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded border border-amber-200/50">Reembolso em AnÃ¡lise</span>
+                                                    <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded border border-amber-200/50">Reembolso em Análise</span>
                                                     <button 
                                                         onClick={async () => {
-                                                            if (window.confirm('Deseja realmente cancelar sua solicitaÃ§Ã£o de reembolso? Sua assinatura permanecerÃ¡ ativa.')) {
+                                                            if (window.confirm('Deseja realmente cancelar sua solicitação de reembolso? Sua assinatura permanecerá ativa.')) {
                                                                 try {
                                                                     const res: any = await planService.cancelRefundRequest();
                                                                     if (res.success) {
@@ -1986,13 +1990,13 @@ const Profile: React.FC = () => {
                                                                         fetchUserTransactions();
                                                                     }
                                                                 } catch (err: any) {
-                                                                    addToast('Erro ao cancelar solicitaÃ§Ã£o.', 'error');
+                                                                    addToast('Erro ao cancelar solicitação.', 'error');
                                                                 }
                                                             }
                                                         }}
                                                         className="text-[9px] font-black text-slate-400 hover:text-indigo-600 uppercase tracking-widest underline underline-offset-2 transition-colors"
                                                     >
-                                                        Cancelar SolicitaÃ§Ã£o
+                                                        Cancelar Solicitação
                                                     </button>
                                                 </div>
                                             ) : (
@@ -2029,7 +2033,7 @@ const Profile: React.FC = () => {
                              )}
                         </div>
 
-                        {/* Toggle de RenovaÃ§Ã£o AutomÃ¡tica */}
+                        {/* Toggle de Renovação Automática */}
                         {currentUser.subscription && hasActiveSubscription && (
                             <div className="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between animate-in fade-in slide-in-from-bottom-2 duration-500">
                                 <div className="flex items-center gap-4">
@@ -2037,11 +2041,11 @@ const Profile: React.FC = () => {
                                         <RotateCcw size={18} className={currentUser.subscription?.auto_renew ? 'animate-spin-slow' : ''} />
                                     </div>
                                     <div>
-                                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">RenovaÃ§Ã£o AutomÃ¡tica</h4>
+                                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">Renovação Automática</h4>
                                         <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                                             {currentUser.subscription?.auto_renew 
-                                                ? 'Seu plano serÃ¡ renovado automaticamente ao fim do ciclo.' 
-                                                : 'Sua assinatura serÃ¡ encerrada ao final do perÃ­odo atual.'}
+                                                ? 'Seu plano será renovado automaticamente ao fim do ciclo.' 
+                                                : 'Sua assinatura será encerrada ao final do período atual.'}
                                         </p>
                                     </div>
                                 </div>
@@ -2064,11 +2068,11 @@ const Profile: React.FC = () => {
                              <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
                                  <div className="space-y-1">
                                      <div className="flex items-center justify-center md:justify-start gap-2">
-                                        <span className="bg-white/20 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-sm">Upgrade DisponÃ­vel</span>
+                                        <span className="bg-white/20 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-sm">Upgrade Disponível</span>
                                         <Crown size={14} className="text-amber-300" />
                                      </div>
-                                     <h3 className="text-xl font-black tracking-tight leading-tight italic">Torne-se Elite e acelere sua aprovaÃ§Ã£o!</h3>
-                                     <p className="text-[11px] font-medium text-indigo-100 max-w-sm opacity-80">Acesse simulados exclusivos, mentoria com IA e banco de questÃµes ilimitado.</p>
+                                     <h3 className="text-xl font-black tracking-tight leading-tight italic">Torne-se Elite e acelere sua aprovação!</h3>
+                                     <p className="text-[11px] font-medium text-indigo-100 max-w-sm opacity-80">Acesse simulados exclusivos, mentoria com IA e banco de questões ilimitado.</p>
                                  </div>
                                  <button 
                                     onClick={() => navigate('/plans')}
@@ -2080,14 +2084,14 @@ const Profile: React.FC = () => {
                         </div>
                      )}
 
-                     {/* MÃ©todos de Pagamento */}
+                     {/* Métodos de Pagamento */}
                      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors overflow-hidden">
                         {isStripeBilling && !usesInternalStripeVault ? (
                             <>
                                 <header className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
                                     <div>
                                         <h3 id="save-card-section" className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Billing Portal</h3>
-                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">CartÃµes, cobranÃ§as futuras e faturas ficam centralizados na Stripe.</p>
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">Cartões, cobranças futuras e faturas ficam centralizados na Stripe.</p>
                                     </div>
                                     <button
                                         onClick={handleOpenStripePortal}
@@ -2105,7 +2109,7 @@ const Profile: React.FC = () => {
                                             <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">Provider ativo</p>
                                             <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">{billingProviderLabel}</h4>
                                             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
-                                                Use o portal para trocar o cartao, acompanhar faturas, corrigir falhas de pagamento e manter a assinatura pronta para as renovacoes automaticas.
+                                                Use o portal para trocar o cartão, acompanhar faturas, corrigir falhas de pagamento e manter a assinatura pronta para as renovacoes automaticas.
                                             </p>
                                         </div>
                                         <button
@@ -2122,13 +2126,13 @@ const Profile: React.FC = () => {
                                         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Metodos de pagamento</p>
                                             <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
-                                                O cartao padrao fica salvo no cliente Stripe e pode ser atualizado a qualquer momento sem passar por armazenamento local na plataforma.
+                                                O cartão padrao fica salvo no cliente Stripe e pode ser atualizado a qualquer momento sem passar por armazenamento local na plataforma.
                                             </p>
                                         </div>
                                         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Falhas e cobrancas</p>
                                             <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
-                                                Quando uma renovacao falhar, o aluno atualiza o metodo no portal e o backend sincroniza o estado da assinatura via webhook.
+                                                Quando uma renovação falhar, o aluno atualiza o metodo no portal e o backend sincroniza o estado da assinatura via webhook.
                                             </p>
                                         </div>
                                     </div>
@@ -2137,7 +2141,7 @@ const Profile: React.FC = () => {
                                 <footer className="px-6 py-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-50 dark:border-slate-800 flex items-center gap-3">
                                     <Info size={14} className="text-slate-400 shrink-0" />
                                     <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide leading-relaxed">
-                                        SEUS DADOS DE COBRANCA SAO PROCESSADOS COM SEGURANCA PELA STRIPE. CARTOES, FATURAS E TENTATIVAS DE PAGAMENTO SAO GERENCIADOS NO BILLING PORTAL.
+                                        SEUS DADOS DE COBRANÇA SAO PROCESSADOS COM SEGURANÇA PELA STRIPE. CARTOES, FATURAS E TENTATIVAS DE PAGAMENTO SAO GERENCIADOS NO BILLING PORTAL.
                                     </p>
                                 </footer>
                             </>
@@ -2146,7 +2150,7 @@ const Profile: React.FC = () => {
                                 <header className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
                                     <div>
                                         <h3 id="save-card-section" className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Cofre Stripe</h3>
-                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">CartÃµes, padrÃ£o de renovaÃ§Ã£o e cofre externo da Stripe geridos dentro da sua plataforma.</p>
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">Cartões, padrão de renovação e cofre externo da Stripe geridos dentro da sua plataforma.</p>
                                     </div>
                                     <button
                                         onClick={() => {
@@ -2157,7 +2161,7 @@ const Profile: React.FC = () => {
                                         }}
                                         className={`px-4 py-2 border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isAddingCard ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
                                     >
-                                        {isAddingCard ? <X size={14} /> : <CreditCard size={14} />} {isAddingCard ? 'Cancelar' : 'Novo CartÃ£o'}
+                                        {isAddingCard ? <X size={14} /> : <CreditCard size={14} />} {isAddingCard ? 'Cancelar' : 'Novo Cartão'}
                                     </button>
                                 </header>
 
@@ -2166,7 +2170,7 @@ const Profile: React.FC = () => {
                                         <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">Provider ativo</p>
                                         <h4 className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{billingProviderLabel}</h4>
                                         <p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
-                                            O cartÃ£o continua tokenizado e guardado na Stripe, mas a gestÃ£o de cartÃ£o padrÃ£o, adiÃ§Ã£o e remoÃ§Ã£o acontece nesta tela.
+                                            O cartão continua tokenizado e guardado na Stripe, mas a gestão de cartão padrão, adição e remoção acontece nesta tela.
                                         </p>
                                     </div>
 
@@ -2179,7 +2183,7 @@ const Profile: React.FC = () => {
                                                     className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
                                                 >
                                                     {isSavingCard ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
-                                                    {isSavingCard ? 'Preparando formulÃ¡rio...' : 'Adicionar cartÃ£o Stripe'}
+                                                    {isSavingCard ? 'Preparando formulário...' : 'Adicionar cartão Stripe'}
                                                 </button>
                                             ) : (
                                                 <StripeSetupCardForm
@@ -2194,7 +2198,7 @@ const Profile: React.FC = () => {
                                     )}
 
                                     {isLoadingCards ? (
-                                        <div className="text-sm text-slate-500">Carregando cartÃµes...</div>
+                                        <div className="text-sm text-slate-500">Carregando cartões...</div>
                                     ) : userCards.length > 0 ? (
                                         <div className="space-y-3">
                                             {userCards.map((card: any) => (
@@ -2205,8 +2209,8 @@ const Profile: React.FC = () => {
                                                         </div>
                                                         <div>
                                                             <div className="flex items-center gap-2 flex-wrap">
-                                                                <p className="font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest text-xs">{card.brand} â€¢â€¢â€¢â€¢ {card.last_four_digits}</p>
-                                                                {card.is_default == 1 && <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest">PadrÃ£o</span>}
+                                                                <p className="font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest text-xs">{card.brand} •••• {card.last_four_digits}</p>
+                                                                {card.is_default == 1 && <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest">Padrão</span>}
                                                             </div>
                                                             <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Expira em {String(card.exp_month).padStart(2, '0')}/{card.exp_year}</p>
                                                         </div>
@@ -2214,7 +2218,7 @@ const Profile: React.FC = () => {
                                                     <div className="flex items-center gap-2 mt-4 md:mt-0">
                                                         {card.is_default != 1 && (
                                                             <button onClick={() => handleSetDefaultCard(card.id)} className="px-3 py-2 bg-slate-100 dark:bg-slate-800 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all">
-                                                                Definir padrÃ£o
+                                                                Definir padrão
                                                             </button>
                                                         )}
                                                         <button onClick={() => handleRemoveCard(card.id)} className="p-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-all">
@@ -2227,7 +2231,7 @@ const Profile: React.FC = () => {
                                     ) : (
                                         <div className="text-center py-10 text-slate-400">
                                             <CreditCard size={32} className="mx-auto mb-3 opacity-50" />
-                                            <p className="text-sm font-medium">Nenhum cartÃ£o Stripe salvo ainda.</p>
+                                            <p className="text-sm font-medium">Nenhum cartão Stripe salvo ainda.</p>
                                         </div>
                                     )}
                                 </div>
@@ -2235,7 +2239,7 @@ const Profile: React.FC = () => {
                                 <footer className="px-6 py-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-50 dark:border-slate-800 flex items-center gap-3">
                                     <Info size={14} className="text-slate-400 shrink-0" />
                                     <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide leading-relaxed">
-                                        O DADO SENSÃVEL CONTINUA NO COFRE DA STRIPE. A PLATAFORMA EXIBE E GERENCIA APENAS O ESPELHO OPERACIONAL PARA O ALUNO.
+                                        O DADO SENSÍVEL CONTINUA NO COFRE DA STRIPE. A PLATAFORMA EXIBE E GERENCIA APENAS O ESPELHO OPERACIONAL PARA O ALUNO.
                                     </p>
                                 </footer>
                             </>
@@ -2244,13 +2248,13 @@ const Profile: React.FC = () => {
                         <header className="p-6 border-b border-slate-50 dark:border-slate-800 flex justify-between items-center">
                             <div>
                                 <h3 id="save-card-section" className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Formas de Pagamento</h3>
-                                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">Gerencie seus cartÃµes salvos para renovaÃ§Ãµes automÃ¡ticas.</p>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">Gerencie seus cartões salvos para renovações automáticas.</p>
                             </div>
                             <button 
                                 onClick={() => setIsAddingCard(!isAddingCard)}
                                 className={`px-4 py-2 border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isAddingCard ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
                             >
-                                {isAddingCard ? <X size={14} /> : <CreditCard size={14} />} {isAddingCard ? 'Cancelar' : 'Novo CartÃ£o'}
+                                {isAddingCard ? <X size={14} /> : <CreditCard size={14} />} {isAddingCard ? 'Cancelar' : 'Novo Cartão'}
                             </button>
                         </header>
                         
@@ -2259,12 +2263,12 @@ const Profile: React.FC = () => {
                                 <form onSubmit={handleSaveCard} className="mb-8 p-6 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 animate-in slide-in-from-top-4 duration-300">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                         <div className="space-y-1.5">
-                                            <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase">NÃºmero do CartÃ£o</label>
+                                            <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase">Número do Cartão</label>
                                             <input name="cardNumber" type="text" placeholder="0000 0000 0000 0000" required className="w-full h-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 text-sm font-bold outline-none font-mono" />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase">Nome no CartÃ£o</label>
-                                            <input name="cardName" type="text" placeholder="JOÃƒO SILVA" required className="w-full h-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 text-sm font-bold outline-none" />
+                                            <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase">Nome no Cartão</label>
+                                            <input name="cardName" type="text" placeholder="JOÃO SILVA" required className="w-full h-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 text-sm font-bold outline-none" />
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-1.5">
@@ -2284,7 +2288,7 @@ const Profile: React.FC = () => {
                                     </div>
                                     <button disabled={isSavingCard} type="submit" className="w-full h-10 bg-indigo-600 text-white rounded-lg text-xs font-black uppercase tracking-widest hover:bg-indigo-500 transition-all flex items-center justify-center gap-2">
                                         {isSavingCard ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />} 
-                                        {isSavingCard ? 'Salvando...' : 'Salvar CartÃ£o com SeguranÃ§a'}
+                                        {isSavingCard ? 'Salvando...' : 'Salvar Cartão com Segurança'}
                                     </button>
                                 </form>
                             )}
@@ -2301,16 +2305,16 @@ const Profile: React.FC = () => {
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-widest">
-                                                        â€¢â€¢â€¢â€¢ {card.last_four_digits || card.last4 || '****'}
+                                                        •••• {card.last_four_digits || card.last4 || '****'}
                                                     </span>
-                                                    {card.is_default === 1 && <span className="text-[8px] font-black uppercase bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200/50">PadrÃ£o</span>}
+                                                    {card.is_default === 1 && <span className="text-[8px] font-black uppercase bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200/50">Padrão</span>}
                                                     {card.locked_by_recurring === 1 && (
                                                         <div className="group/lock relative">
                                                             <span className="text-[8px] font-black uppercase bg-indigo-600 text-white px-2 py-0.5 rounded flex items-center gap-1 cursor-help shadow-sm">
                                                                 <ShieldAlert size={8} /> Assinatura Ativa
                                                             </span>
                                                             <div className="absolute bottom-full left-0 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded shadow-lg opacity-0 group-hover/lock:opacity-100 pointer-events-none transition-opacity z-50 font-medium normal-case">
-                                                                Este cartÃ£o Ã© o mÃ©todo de pagamento da sua assinatura principal.
+                                                                Este cartão é o método de pagamento da sua assinatura principal.
                                                             </div>
                                                         </div>
                                                     )}
@@ -2334,7 +2338,7 @@ const Profile: React.FC = () => {
                                         <div className="flex items-center gap-2">
                                             {card.is_default !== 1 && (
                                                 <button onClick={() => handleSetDefaultCard(card.id)} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 px-3 py-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
-                                                    Definir PadrÃ£o
+                                                    Definir Padrão
                                                 </button>
                                             )}
                                             {card.locked_by_recurring !== 1 && (
@@ -2358,7 +2362,7 @@ const Profile: React.FC = () => {
                         <footer className="px-6 py-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-50 dark:border-slate-800 flex items-center gap-3">
                             <Info size={14} className="text-slate-400 shrink-0" />
                             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide leading-relaxed">
-                                SEUS DADOS DE PAGAMENTO SÃƒO PROCESSADOS COM SEGURANÃ‡A PELO MERCADO PAGO E NÃƒO FICAM ARMAZENADOS INTEGRALMENTE EM NOSSOS SERVIDORES.
+                                SEUS DADOS DE PAGAMENTO SÃO PROCESSADOS COM SEGURANÇA PELO MERCADO PAGO E NÃO FICAM ARMAZENADOS INTEGRALMENTE EM NOSSOS SERVIDORES.
                             </p>
                         </footer>
                             </>
@@ -2372,7 +2376,7 @@ const Profile: React.FC = () => {
                {false && activeTab === 'billing-history' && (
                   <div className="space-y-6 animate-fade-in">
                       <div className="flex justify-between items-center">
-                          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">HistÃ³rico de TransaÃ§Ãµes</h2>
+                          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Histórico de Transações</h2>
                           <button onClick={fetchUserTransactions} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><RotateCcw size={18} /></button>
                       </div>
 
@@ -2384,7 +2388,7 @@ const Profile: React.FC = () => {
                                   <thead>
                                       <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
                                           <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Data</th>
-                                          <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">DescriÃ§Ã£o</th>
+                                          <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descrição</th>
                                           <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 text-center">Status</th>
                                           <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 text-right">Valor</th>
                                       </tr>
@@ -2418,7 +2422,7 @@ const Profile: React.FC = () => {
                       ) : (
                           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
                               <BarChart3 size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
-                              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium tracking-tight">Nenhuma transaÃ§Ã£o registrada.</p>
+                              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium tracking-tight">Nenhuma transação registrada.</p>
                           </div>
                       )}
                   </div>
@@ -2433,8 +2437,8 @@ const Profile: React.FC = () => {
                             </div>
                             <div className="max-w-md relative z-10 space-y-4">
                                 <span className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest backdrop-blur-sm">Programa de Parceria</span>
-                                <h2 className="text-3xl font-black tracking-tight leading-tight">Indique amigos e ganhe 20% de comissÃ£o!</h2>
-                                <p className="text-sm font-medium text-indigo-100 leading-relaxed">Compartilhe seu link exclusivo. Cada nova assinatura em planos Elite atravÃ©s do seu link gera crÃ©ditos automÃ¡ticos para vocÃª.</p>
+                                <h2 className="text-3xl font-black tracking-tight leading-tight">Indique amigos e ganhe 20% de comissão!</h2>
+                                <p className="text-sm font-medium text-indigo-100 leading-relaxed">Compartilhe seu link exclusivo. Cada nova assinatura em planos Elite através do seu link gera créditos automáticos para você.</p>
                                 
                                 <div className="pt-4 flex items-center gap-3">
                                     <div className="flex-1 bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 flex items-center justify-between gap-4">
@@ -2445,7 +2449,7 @@ const Profile: React.FC = () => {
                                             onClick={() => {
                                                 navigator.clipboard.writeText(`https://concursomestre.com/r/${currentUser.id}`);
                                                 setIsCopying(true);
-                                                addToast('Link copiado para a Ã¡rea de transferÃªncia!', 'success');
+                                                addToast('Link copiado para a área de transferência!', 'success');
                                                 setTimeout(() => setIsCopying(false), 2000);
                                             }}
                                             className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all active:scale-95 flex items-center gap-2 shrink-0"
@@ -2461,11 +2465,11 @@ const Profile: React.FC = () => {
                             </div>
                        </div>
 
-                       {/* Stats das IndicaÃ§Ãµes */}
+                       {/* Stats das Indicações */}
                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                            {[
                                { label: 'Total de Cliques', value: referralStats?.clicks || 0, icon: MousePointer2, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-                               { label: 'IndicaÃ§Ãµes Ativas', value: referralStats?.conversions || 0, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                               { label: 'Indicações Ativas', value: referralStats?.conversions || 0, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
                                { label: 'Saldo a Receber', value: `R$ ${(referralStats?.balance || 0).toFixed(2)}`, icon: Wallet, color: 'text-amber-600', bg: 'bg-amber-50' }
                            ].map((stat, i) => (
                                <div key={i} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
@@ -2488,8 +2492,8 @@ const Profile: React.FC = () => {
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                                 {[
                                     { step: '01', title: 'Compartilhe o Link', desc: 'Envie para amigos ou em grupos de estudo.' },
-                                    { step: '02', title: 'Amigo Assina', desc: 'Sua indicaÃ§Ã£o ganha acesso ao melhor conteÃºdo.' },
-                                    { step: '03', title: 'VocÃª Ganha 20%', desc: 'Receba sua comissÃ£o sobre o valor da assinatura.' }
+                                    { step: '02', title: 'Amigo Assina', desc: 'Sua indicação ganha acesso ao melhor conteúdo.' },
+                                    { step: '03', title: 'Você Ganha 20%', desc: 'Receba sua comissão sobre o valor da assinatura.' }
                                 ].map((step, i) => (
                                     <div key={i} className="space-y-2">
                                         <div className="text-2xl font-black text-indigo-600/20 dark:text-indigo-500/10 italic leading-none">{step.step}</div>
@@ -2504,11 +2508,11 @@ const Profile: React.FC = () => {
 
                {activeTab === 'security' && (
                   <div className="space-y-6 animate-fade-in">
-                      {/* AlteraÃ§Ã£o de Senha */}
+                      {/* Alteração de Senha */}
                       <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                           <div className="flex items-center gap-3 mb-6">
                               <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400"><Shield size={20} /></div>
-                              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight transition-colors">SeguranÃ§a da Conta</h2>
+                              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Segurança da Conta</h2>
                           </div>
                           
                           <form 
@@ -2519,14 +2523,14 @@ const Profile: React.FC = () => {
                                   const newPass = formData.get('newPassword') as string;
                                   const confirm = formData.get('confirmPassword') as string;
                                   
-                                  if (newPass !== confirm) return addToast('As senhas nÃ£o coincidem.', 'error');
+                                  if (newPass !== confirm) return addToast('As senhas não coincidem.', 'error');
                                   
                                   try {
                                       const res = await profileService.changePassword(current, newPass);
                                       addToast(res.message || 'Senha alterada com sucesso!', 'success');
                                       (e.target as HTMLFormElement).reset();
                                   } catch (err: any) {
-                                      addToast(readApiErrorMessage(err, 'Falha na comunicaÃ§Ã£o com o servidor.'), 'error');
+                                      addToast(readApiErrorMessage(err, 'Falha na comunicação com o servidor.'), 'error');
                                   }
                               }}
                               className="space-y-4 max-w-md"
@@ -2551,17 +2555,17 @@ const Profile: React.FC = () => {
                           </form>
                       </div>
 
-                      {/* PreferÃªncias de Privacidade */}
+                      {/* Preferências de Privacidade */}
                       <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                          <div className="flex justify-between items-center mb-6">
-                             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Privacidade e PreferÃªncias</h2>
-                             <button onClick={() => addToast('PreferÃªncias salvas!', 'success')} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline">Salvar Tudo</button>
+                             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Privacidade e Preferências</h2>
+                             <button onClick={() => addToast('Preferências salvas!', 'success')} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline">Salvar Tudo</button>
                          </div>
                          <div className="divide-y divide-slate-100 dark:divide-slate-800">
                             {[
-                               { id: 'isPublic', label: 'Perfil PÃºblico (Ranking)', desc: 'Permite que seu nome apareÃ§a nos rankings de simulados.', checked: currentUser.preferences?.isPublic, icon: Users },
-                               { id: 'notifications', label: 'NotificaÃ§Ãµes por Email', desc: 'Receba alertas sobre novos simulados e promoÃ§Ãµes.', checked: currentUser.preferences?.notifications, icon: Bell },
-                               { id: 'shareData', label: 'Compartilhar Dados de Estudo', desc: 'Sua atividade ajuda a IA a melhorar as recomendaÃ§Ãµes (AnÃ´nimo).', checked: currentUser.preferences?.shareData, icon: Zap }
+                               { id: 'isPublic', label: 'Perfil Público (Ranking)', desc: 'Permite que seu nome apareça nos rankings de simulados.', checked: currentUser.preferences?.isPublic, icon: Users },
+                               { id: 'notifications', label: 'Notificações por Email', desc: 'Receba alertas sobre novos simulados e promoções.', checked: currentUser.preferences?.notifications, icon: Bell },
+                               { id: 'shareData', label: 'Compartilhar Dados de Estudo', desc: 'Sua atividade ajuda a IA a melhorar as recomendações (Anônimo).', checked: currentUser.preferences?.shareData, icon: Zap }
                             ].map((item, i) => (
                                <div key={i} className="flex items-center justify-between py-5 group">
                                   <div className="flex items-start gap-4">
@@ -2585,9 +2589,9 @@ const Profile: React.FC = () => {
                       {/* Zona de Perigo */}
                       <div className="bg-rose-50/50 dark:bg-rose-950/10 p-8 rounded-2xl border border-rose-100 dark:border-rose-900/30 transition-colors">
                           <h3 className="text-sm font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest mb-2">Excluir Conta</h3>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-4">Esta aÃ§Ã£o Ã© irreversÃ­vel e excluirÃ¡ todos os seus materiais, progresso e dados permanentemente.</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-4">Esta ação é irreversível e excluirá todos os seus materiais, progresso e dados permanentemente.</p>
                           <button className="text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest flex items-center gap-2 hover:bg-rose-600 hover:text-white px-4 py-2 rounded-xl border border-rose-200 dark:border-rose-900/50 transition-all">
-                              <LogOut size={14} /> Solicitar ExclusÃ£o
+                              <LogOut size={14} /> Solicitar Exclusão
                           </button>
                       </div>
                   </div>
@@ -2596,14 +2600,14 @@ const Profile: React.FC = () => {
             </main>
          </div>
 
-         {/* Modal de SeleÃ§Ã£o de Meta */}
+         {/* Modal de Seleção de Meta */}
          {showGoalModal && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in transition-all">
                <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in slide-in-from-bottom-4 duration-300">
                   <header className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                      <div>
                         <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">Escolha seu foco</h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Selecione a Ã¡rea para a qual vocÃª estÃ¡ estudando.</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Selecione a área para a qual você está estudando.</p>
                      </div>
                      <button onClick={() => setShowGoalModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-slate-400"><X size={20} /></button>
                   </header>
@@ -2613,17 +2617,17 @@ const Profile: React.FC = () => {
                         <div key={group.group} className="space-y-3">
                            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{group.group}</h4>
                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {group.areas.map(area => (
+{group.areas.map(area => (
                                  <button
                                     key={area}
                                     onClick={() => {
                                        updateUser({ targetExam: area });
                                        setShowGoalModal(false);
                                     }}
-                                    className={`flex items-center justify-between p-4 rounded-2xl border text-left transition-all group ${currentUser.targetExam === area ? 'bg-indigo-50 dark:bg-indigo-900/40 border-indigo-600' : 'bg-slate-50 dark:bg-slate-800/50 border-transparent hover:border-slate-200 dark:hover:border-slate-700'}`}
+                                     className={`flex items-center justify-between p-4 rounded-2xl border text-left transition-all group ${currentUser.targetExam === area ? 'bg-indigo-50 dark:bg-indigo-900/40 border-indigo-600' : 'bg-slate-50 dark:bg-slate-800/50 border-transparent hover:border-slate-200 dark:hover:border-slate-700'}`}
                                  >
                                     <span className={`text-sm font-bold ${currentUser.targetExam === area ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-600 dark:text-slate-400'}`}>{area}</span>
-                                    {currentUser.targetExam === area ? (
+                                       {currentUser.targetExam === area ? (
                                        <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center"><ChevronRight size={12} className="text-white" /></div>
                                     ) : (
                                        <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"><ChevronRight size={12} className="text-slate-400" /></div>
@@ -2636,7 +2640,7 @@ const Profile: React.FC = () => {
                   </div>
 
                   <footer className="p-6 bg-slate-50 dark:bg-slate-800/30 text-center">
-                     <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium tracking-wide">ISSO AJUDARÃ A PERSONALIZAR SUAS RECOMENDAÃ‡Ã•ES E RANKINGS.</p>
+                     <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium tracking-wide">ISSO AJUDARÁ A PERSONALIZAR SUAS RECOMENDAÇÕES E RANKINGS.</p>
                   </footer>
                </div>
             </div>
@@ -2671,7 +2675,7 @@ const Profile: React.FC = () => {
                              <div className="space-y-4">
                                  <div className="space-y-2">
                                      <h3 className="text-2xl font-black text-slate-900 dark:text-slate-100 italic">
-                                         JÃ¡ vai nos deixar, {currentUser.name?.split(' ')[0]}?
+                                         Já vai nos deixar, {currentUser.name?.split(' ')[0]}?
                                      </h3>
                                      <p className="text-sm font-medium text-slate-500 dark:text-slate-400 leading-relaxed px-4">
                                          {(() => {
@@ -2680,14 +2684,14 @@ const Profile: React.FC = () => {
                                              const isRefundable = (now - start) < (7 * 24 * 60 * 60 * 1000);
                                              
                                              if (isRefundable) {
-                                                 return "VocÃª ainda estÃ¡ no perÃ­odo de garantia. Se cancelar agora, faremos seu reembolso total, mas sua jornada rumo Ã  aprovaÃ§Ã£o perderÃ¡ o fÃ´lego da nossa IA.";
+                                                 return "Você ainda está no período de garantia. Se cancelar agora, faremos seu reembolso total, mas sua jornada rumo à aprovação perderá o fôlego da nossa IA.";
                                              }
-                                             return "Sua aprovaÃ§Ã£o estÃ¡ cada dia mais prÃ³xima! Cancelando agora, vocÃª perderÃ¡ acesso ao Banco de QuestÃµes mais completo do mercado ao fim do ciclo atual.";
+                                             return "Sua aprovação está cada dia mais próxima! Cancelando agora, você perderá acesso ao Banco de Questões mais completo do mercado ao fim do ciclo atual.";
                                          })()}
                                      </p>
                                  </div>
 
-                                 {/* Banner de Garantia Movido para cÃ¡ */}
+                                 {/* Banner de Garantia Movido para cá */}
                                  {(() => {
                                     const start = new Date(currentUser.subscription.current_period_start).getTime();
                                     const now = new Date().getTime();
@@ -2702,7 +2706,7 @@ const Profile: React.FC = () => {
                                              <div className="flex-1">
                                                 <h4 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Garantia Legal de 7 Dias</h4>
                                                 <p className="text-[11px] font-medium text-indigo-900/60 dark:text-indigo-300/60 leading-tight">
-                                                   Sua satisfaÃ§Ã£o Ã© nossa prioridade. Cancele e receba 100% do valor de volta em atÃ© 7 dias apÃ³s a contrataÃ§Ã£o.
+                                                   Sua satisfação é nossa prioridade. Cancele e receba 100% do valor de volta em até 7 dias após a contratação.
                                                 </p>
                                              </div>
                                           </div>
@@ -2719,11 +2723,11 @@ const Profile: React.FC = () => {
                                      onChange={(e) => setCancelReason(e.target.value)}
                                      className="w-full h-11 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 text-sm font-bold highlight-none outline-none focus:ring-2 focus:ring-rose-500/10"
                                  >
-                                     <option value="">Selecione uma opÃ§Ã£o...</option>
+                                     <option value="">Selecione uma opção...</option>
                                      <option value="price">Valor da assinatura</option>
-                                     <option value="usage">NÃ£o estou usando o suficiente</option>
-                                     <option value="technical">Problemas tÃ©cnicos</option>
-                                     <option value="content">Falta de conteÃºdos especÃ­ficos</option>
+                                     <option value="usage">Não estou usando o suficiente</option>
+                                     <option value="technical">Problemas técnicos</option>
+                                     <option value="content">Falta de conteúdos específicos</option>
                                      <option value="other">Outros motivos</option>
                                  </select>
                              </div>
@@ -2748,7 +2752,7 @@ const Profile: React.FC = () => {
                              </div>
                              
                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-tight">
-                                 VOCÃŠ MANTERÃ SEU ACESSO ATÃ‰ O DIA {new Date(currentUser.subscription.current_period_end).toLocaleDateString()}
+                                 VOCÊ MANTERÁ SEU ACESSO ATÉ O DIA {new Date(currentUser.subscription.current_period_end).toLocaleDateString()}
                              </p>
                         </div>
                      </motion.div>

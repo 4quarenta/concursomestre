@@ -56,8 +56,8 @@ const ManualQuestionModal = ({
     setManualQ((prev: any) => ({ ...prev, ...patch }));
   };
 
-  const MULTIPLE_CHOICE_LABEL = 'MÃƒÂºltipla Escolha';
-  const MID_LEVEL_LABEL = 'MÃƒÂ©dio';
+  const MULTIPLE_CHOICE_LABEL = 'Múltipla Escolha';
+  const MID_LEVEL_LABEL = 'Médio';
 
   const handleTypeChange = (newType: string) => {
     setManualQ((prev: any) => {
@@ -130,10 +130,15 @@ const ManualQuestionModal = ({
   const manualItems = manualQ.itens || [];
   const manualTitle =
     editingExtractedIndex !== null
-      ? `Revisar Questao Extraida #${editingExtractedIndex + 1}`
+      ? `Revisar Questão Extraida #${editingExtractedIndex + 1}`
       : editingQuestion
-        ? 'Editar Questao'
-        : 'Adicionar Nova Questao';
+        ? 'Editar Questão'
+        : 'Adicionar Nova Questão';
+
+  const provaList = Array.isArray(manualQ.provas) ? manualQ.provas : [];
+  const selectedProva = manualQ.provaId
+    ? provaList.find((item: any) => String(item.id) === String(manualQ.provaId))
+    : null;
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-slate-50 animate-in fade-in slide-in-from-bottom-4 duration-300 dark:bg-slate-950">
@@ -142,7 +147,7 @@ const ManualQuestionModal = ({
           <div>
             <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">{manualTitle}</h3>
             <p className="font-display text-sm font-medium text-slate-500 dark:text-slate-400">
-              Gerencie o conteudo e os filtros inteligentes para garantir a qualidade.
+              Gerencie o conteúdo e os filtros inteligentes para garantir a qualidade.
             </p>
           </div>
 
@@ -157,7 +162,7 @@ const ManualQuestionModal = ({
                     : 'border-slate-200 bg-white text-slate-400 hover:border-red-400 dark:border-slate-700 dark:bg-slate-800'
                 }`}
               >
-                {manualQ.anulada ? 'Questao Anulada' : 'Anular Questao'}
+                {manualQ.anulada ? 'Questão Anulada' : 'Anular Questão'}
               </button>
               <button
                 type="button"
@@ -187,12 +192,12 @@ const ManualQuestionModal = ({
             <div className="flex flex-col gap-2">
               {manualQ.anulada && (
                 <div className="flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-400">
-                  <AlertCircle size={18} /> Esta questao sera exibida como ANULADA para os alunos.
+                  <AlertCircle size={18} /> Esta questão sera exibida como ANULADA para os alunos.
                 </div>
               )}
               {manualQ.desatualizada && (
                 <div className="flex items-center gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs font-bold text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-400">
-                  <AlertTriangle size={18} /> Esta questao sera exibida como DESATUALIZADA.
+                  <AlertTriangle size={18} /> Esta questão sera exibida como DESATUALIZADA.
                 </div>
               )}
             </div>
@@ -248,6 +253,47 @@ const ManualQuestionModal = ({
                 />
               </div>
             </div>
+            {manualQ.provaId && (
+              <div className="md:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 text-slate-700 shadow-sm dark:border-indigo-900/40 dark:bg-indigo-900/10 dark:text-slate-200">
+                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">
+                  Prova vinculada
+                </p>
+                {selectedProva ? (
+                  <div className="mt-3 grid gap-4 md:grid-cols-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Nome</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-slate-100">{selectedProva.nome || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Banca</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-slate-100">{selectedProva.banca?.sigla || selectedProva.banca?.nome || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Orgao</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-slate-100">{selectedProva.orgao?.sigla || selectedProva.orgao?.nome || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Cargo</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-slate-100">
+                        {selectedProva.cargo?.descricao || selectedProva.cargo?.['descri\u00e7\u00e3o'] || '-'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Ano</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-slate-100">{selectedProva.ano || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Nivel</p>
+                      <p className="text-sm font-black text-slate-900 dark:text-slate-100">{selectedProva.nivel || '-'}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Prova nao encontrada para este ID. Verifique se o cadastro existe no banco de provas.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -267,14 +313,14 @@ const ManualQuestionModal = ({
             <SmartTagSelector
               label="Cargo(s)"
               options={existingRoles}
-              selected={(manualQ.cargos || []).map((item: any) => (typeof item === 'string' ? item : item.descricao || item.name))}
+              selected={(manualQ.cargos || []).map((item: any) => (typeof item === 'string' ? item : item.descrição || item.name))}
               onChange={(value) => updateManualQ({ cargos: value })}
               placeholder="Ex: Analista Judiciario..."
             />
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Tipo da Questao</label>
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Tipo da Questão</label>
                 <select
                   value={manualQ.modality || (manualItems.length === 2 ? 'Certo/Errado' : MULTIPLE_CHOICE_LABEL)}
                   onChange={(event) => handleTypeChange(event.target.value)}
@@ -322,7 +368,7 @@ const ManualQuestionModal = ({
                   })
                 }
                 className="min-h-[140px] w-full rounded-2xl border border-slate-300 bg-white p-4 text-base font-bold text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                placeholder="Qual o comando da questao? Aceita HTML."
+                placeholder="Qual o comando da questão? Aceita HTML."
               />
             </div>
 
@@ -389,7 +435,7 @@ const ManualQuestionModal = ({
             <div className="grid grid-cols-1 gap-8 border-t border-slate-200 pt-8 dark:border-slate-800 md:grid-cols-2">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Comentario do Professor</label>
+                  <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Comentário do Professor</label>
                   <button
                     type="button"
                     onClick={onGenerateTeacherComment}
@@ -403,13 +449,13 @@ const ManualQuestionModal = ({
                   value={manualQ.teacherComment || ''}
                   onChange={(event) => updateManualQ({ teacherComment: event.target.value })}
                   className="min-h-[120px] w-full rounded-3xl border border-slate-200 bg-slate-50 p-6 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-indigo-300 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-200"
-                  placeholder="Breve comentario ou dica do professor..."
+                  placeholder="Breve comentário ou dica do professor..."
                 />
               </div>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Analise Detalhada (IA)</label>
+                  <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Análise Detalhada (IA)</label>
                   <button
                     type="button"
                     onClick={onGenerateDetailedComment}
@@ -423,7 +469,7 @@ const ManualQuestionModal = ({
                   value={manualQ.detailedComment || ''}
                   onChange={(event) => updateManualQ({ detailedComment: event.target.value })}
                   className="min-h-[150px] w-full rounded-3xl border border-indigo-100 bg-indigo-50/50 p-6 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-indigo-300 dark:border-indigo-900/30 dark:bg-indigo-900/10 dark:text-slate-200"
-                  placeholder="Analise alternativa por alternativa..."
+                  placeholder="Análise alternativa por alternativa..."
                 />
               </div>
             </div>
@@ -443,7 +489,7 @@ const ManualQuestionModal = ({
             onClick={onSave}
             className="flex items-center gap-2 rounded-2xl bg-slate-900 px-10 py-4 text-xs font-black uppercase tracking-widest text-white shadow-2xl shadow-slate-200 transition-all hover:bg-indigo-600 dark:bg-indigo-600 dark:shadow-none dark:hover:bg-indigo-700"
           >
-            <Save size={18} /> {editingExtractedIndex !== null ? 'Atualizar Revisao' : 'Salvar Questao'}
+            <Save size={18} /> {editingExtractedIndex !== null ? 'Atualizar Revisao' : 'Salvar Questão'}
           </button>
         </div>
       </div>

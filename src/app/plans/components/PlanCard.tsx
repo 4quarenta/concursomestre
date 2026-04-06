@@ -79,7 +79,7 @@ export const PlanCard: React.FC<PlanCardProps> = ({ plan, onSubscribe, isCurrent
                     )}
                     {hasUpgradeDiscount && (
                         <div className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider flex items-center gap-1 animate-pulse">
-                            <Star size={10} className="fill-indigo-400" /> Upgrade DisponÃ­vel
+                            <Star size={10} className="fill-indigo-400" /> Upgrade Disponível
                         </div>
                     )}
                 </div>
@@ -94,13 +94,13 @@ export const PlanCard: React.FC<PlanCardProps> = ({ plan, onSubscribe, isCurrent
                         <span className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
                             {isFree ? '0' : (hasUpgradeDiscount ? (finalPrice / (plan.interval_unit === 'year' ? 12 : (plan.interval_count || 1))) : monthlyPrice).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-500 font-bold uppercase">/mÃªs</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-500 font-bold uppercase">/mês</span>
                     </div>
 
                     {hasUpgradeDiscount && (
                         <div className="flex items-center gap-1.5 mt-0.5">
                             <span className="text-[9px] text-slate-500 line-through font-bold">R$ {monthlyPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                            <span className="text-[9px] text-indigo-400 font-black px-1 py-0.5 bg-indigo-500/10 rounded">BÃ”NUS MIGRAÃ‡ÃƒO</span>
+                            <span className="text-[9px] text-indigo-400 font-black px-1 py-0.5 bg-indigo-500/10 rounded">BÔNUS MIGRAÇÃO</span>
                         </div>
                     )}
                 </div>
@@ -119,7 +119,7 @@ export const PlanCard: React.FC<PlanCardProps> = ({ plan, onSubscribe, isCurrent
                         </div>
                         {hasUpgradeDiscount && (
                             <p className="text-[9px] font-bold text-emerald-500 mt-0.5">
-                                VocÃª economiza R$ {proRatedCredit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} hoje!
+                                Você economiza R$ {proRatedCredit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} hoje!
                             </p>
                         )}
                     </div>
@@ -169,7 +169,7 @@ export const PlanCard: React.FC<PlanCardProps> = ({ plan, onSubscribe, isCurrent
                     }
                 `}
             >
-                {isCurrent ? 'Plano Atual' : isDisabled ? 'IndisponÃ­vel' : isLoading ? 'Processando...' : 'Assinar Agora'}
+                {isCurrent ? 'Plano Atual' : isDisabled ? 'Indisponível' : isLoading ? 'Processando...' : 'Assinar Agora'}
             </button>
         </div>
     );

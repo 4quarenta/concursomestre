@@ -2,11 +2,11 @@
 
 ## Objetivo
 
-Remover artefatos de cache e cookies do diretorio publico `api/cache`, mantendo apenas o bridge administrativo `manage.php` exposto.
+Remover artefatos de cache e cookies do diretorio pÃºblico `api/cache`, mantendo apenas o bridge administrativo `manage.php` exposto.
 
 ## Mudancas aplicadas
 
-- `SimpleCache` agora usa `storage/cache` como diretório padrão.
+- `SimpleCache` agora usa `storage/cache` como diretï¿½rio padrï¿½o.
 - `cache_helpers.php` passou a inicializar cache em `storage/cache`.
 - `modules/questions/routes.php` e `modules/statistics/routes.php` passaram a gravar caches de arquivo em `storage/cache`.
 - `StatisticsService` passou a gravar `cookie jars` em `storage/runtime/cookies`.
@@ -15,6 +15,6 @@ Remover artefatos de cache e cookies do diretorio publico `api/cache`, mantendo 
 
 ## Impacto
 
-- Menos superfície pública para artefatos operacionais.
+- Menos superfï¿½cie pï¿½blica para artefatos operacionais.
 - Estrutura alinhada ao blueprint com `storage/` como destino de runtime.
-- Compatibilidade preservada para os endpoints que já usavam cache em disco.
+- Compatibilidade preservada para os endpoints que jï¿½ usavam cache em disco.

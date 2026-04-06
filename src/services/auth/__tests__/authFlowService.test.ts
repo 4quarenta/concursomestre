@@ -111,7 +111,7 @@ describe('authFlowService', () => {
   it('verifies 2FA through the official auth endpoint', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
-      message: 'Codigo validado.',
+      message: 'Código validado.',
       data: {
         token: 'tok_2fa',
       },
@@ -127,7 +127,7 @@ describe('authFlowService', () => {
       code: '123456',
     });
     expect(result.token).toBe('tok_2fa');
-    expect(result.message).toBe('Codigo validado.');
+    expect(result.message).toBe('Código validado.');
   });
 
   it('resends the confirmation email through the official endpoint', async () => {

@@ -31,7 +31,7 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
     const { systemSettings } = useData();
     const hidesAds = hasPlanBenefit(currentUser, 'no_ads', systemSettings.planEntitlements);
 
-    // Efeito para carregar o script global do AdSense se necessÃ¡rio
+    // Efeito para carregar o script global do AdSense se necessário
     useEffect(() => {
         if (!systemSettings.adsEnabled || hidesAds) return;
 
@@ -51,7 +51,7 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
         }
     }, [systemSettings.adsEnabled, systemSettings.adsenseClientId, hidesAds]);
 
-    // Efeito principal de renderizaÃ§Ã£o/injeÃ§Ã£o de anÃºncios
+    // Efeito principal de renderização/injeção de anúncios
     useEffect(() => {
         if (!systemSettings.adsEnabled || hidesAds || !bannerRef.current) return;
 
@@ -62,7 +62,7 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
         };
         const customContent = contentMap[type];
 
-        // Caso 1: ConteÃºdo Customizado (HTML/Scripts do DB)
+        // Caso 1: Conteúdo Customizado (HTML/Scripts do DB)
         if (customContent) {
             bannerRef.current.innerHTML = customContent;
             const scripts = bannerRef.current.getElementsByTagName('script');
@@ -89,7 +89,7 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
             : officialTestPubId;
 
         const isTest = clientId === officialTestPubId;
-        const slotId = isTest ? officialTestSlotId : '8707198108'; // Slot real ou genÃ©rico
+        const slotId = isTest ? officialTestSlotId : '8707198108'; // Slot real ou genérico
 
         // Limpa e injeta
         bannerRef.current.innerHTML = '';

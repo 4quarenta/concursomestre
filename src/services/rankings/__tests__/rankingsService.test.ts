@@ -70,6 +70,32 @@ describe('rankingsService', () => {
     expect(rankings[0].id).toBe('r-1');
   });
 
+  it('returns empty list when the backend responds with success but no rankings payload', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+    });
+
+    const rankings = await rankingsService.list();
+
+    expect(rankings).toEqual([]);
+  });
+
+  it('accepts legacy envelopes with rankings nested inside data.rankings', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        rankings: [
+          { id: 'r-legacy', name: 'Ranking Legado' },
+        ],
+      },
+    });
+
+    const rankings = await rankingsService.list();
+
+    expect(rankings).toHaveLength(1);
+    expect(rankings[0].id).toBe('r-legacy');
+  });
+
   it('creates rankings through the official endpoint', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
@@ -79,7 +105,7 @@ describe('rankingsService', () => {
     const id = await rankingsService.create({
       id: 'r-local',
       name: 'Novo Ranking',
-      institution: 'InstituiÃ§Ã£o',
+      institution: 'Instituição',
       totalQuestions: 60,
       vacanciesAc: 1,
       vacanciesAfro: 0,
@@ -95,7 +121,7 @@ describe('rankingsService', () => {
 
     expect(mockPost).toHaveBeenCalledWith('rankingsCreate', expect.objectContaining({
       name: 'Novo Ranking',
-      institution: 'InstituiÃ§Ã£o',
+      institution: 'Instituição',
     }));
     expect(id).toBe('r-2');
   });

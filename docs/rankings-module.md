@@ -8,11 +8,11 @@ Fechar o dominio `rankings` na arquitetura oficial, incluindo os scripts legados
 
 O modulo oficial permanece em:
 
-- `C:\xampp\htdocs\questao-pro-backend\modules\rankings\routes.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\rankings\controllers\RankingsController.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\rankings\services\RankingsService.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\rankings\repositories\RankingsRepository.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\rankings\validators\RankingsValidator.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\rankings\routes.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\rankings\controllers\RankingsController.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\rankings\services\RankingsService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\rankings\repositories\RankingsRepository.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\rankings\validators\RankingsValidator.php`
 
 ### Rodada atual
 
@@ -60,7 +60,7 @@ Agora o fluxo usa:
 
 Isso evita dupla chamada e corrige o caso em que a tela tentava criar um ranking ao editar um existente.
 
-## Validacao
+## Validação
 
 - `RankingsModuleWiringTest.php`
 - `src/services/rankings/__tests__/rankingsService.test.ts`

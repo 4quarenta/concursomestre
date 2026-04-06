@@ -46,7 +46,7 @@ describe('changelogService', () => {
           version: '1.0.0',
           release_date: '2026-04-02',
           title: 'Primeira versao',
-          description: 'Descricao',
+          description: 'Descrição',
           content_json: [],
         },
       ],

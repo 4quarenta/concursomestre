@@ -22,7 +22,7 @@ export type NormalizedApiEnvelope<T = unknown> = {
 };
 
 /**
- * Detecta e padroniza o shape principal da resposta para os servicos.
+ * Detecta e padroniza o shape principal da resposta para os serviços.
  * @since 1.0.0
  */
 export const normalizeApiEnvelope = <T = unknown>(response: any): NormalizedApiEnvelope<T> => {
@@ -43,7 +43,7 @@ export const normalizeApiEnvelope = <T = unknown>(response: any): NormalizedApiE
 };
 
 /**
- * Extrai o payload util independentemente de a resposta vir envelopada ou nao.
+ * Extrai o payload util independentemente de a resposta vir envelopada ou não.
  * @since 1.0.0
  */
 export const readApiData = <T>(response: any, fallback: T): T => {
@@ -61,7 +61,7 @@ export const readApiData = <T>(response: any, fallback: T): T => {
 };
 
 /**
- * Garante sucesso logico da mutacao sem obrigar cada servico a repetir a
+ * Garante sucesso logico da mutação sem obrigar cada serviço a repetir a
  * mesma regra de mensagem/erro.
  * @since 1.0.0
  */
@@ -98,8 +98,8 @@ export const readApiErrorMessage = (error: any, fallbackMessage: string): string
 };
 
 /**
- * Extrai codigos tecnicos usados por alguns fluxos legados enquanto o backend
- * ainda nao esta 100% padronizado.
+ * Extrai codigos técnicos usados por alguns fluxos legados enquanto o backend
+ * ainda não esta 100% padronizado.
  * @since 1.0.0
  */
 export const readApiErrorCode = (error: any): string | number | undefined => {

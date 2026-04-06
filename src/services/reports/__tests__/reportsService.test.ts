@@ -58,7 +58,7 @@ describe('reportsService', () => {
   it('creates reports through the official reports endpoint', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
-      message: 'Denuncia registrada com sucesso.',
+      message: 'Denúncia registrada com sucesso.',
       data: {
         id: 'rep-10',
         duplicate: false,
@@ -70,7 +70,7 @@ describe('reportsService', () => {
       targetType: 'material',
       targetId: 'mat-1',
       reason: 'Plagio',
-      details: 'Conteudo duplicado.',
+      details: 'Conteúdo duplicado.',
       evidenceUrl: 'https://cdn.example.com/prova.png',
     });
 
@@ -79,13 +79,13 @@ describe('reportsService', () => {
       target_type: 'material',
       target_id: 'mat-1',
       reason: 'Plagio',
-      details: 'Conteudo duplicado.',
+      details: 'Conteúdo duplicado.',
       evidence_url: 'https://cdn.example.com/prova.png',
     });
     expect(result).toEqual({
       id: 'rep-10',
       duplicate: false,
-      message: 'Denuncia registrada com sucesso.',
+      message: 'Denúncia registrada com sucesso.',
     });
   });
 

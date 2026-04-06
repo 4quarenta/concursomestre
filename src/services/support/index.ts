@@ -10,6 +10,6 @@
 */
 
 /**
- * Fachada oficial dos servicos de suporte e feedback do usuario.
+ * Fachada oficial dos serviços de suporte e feedback do usuário.
  */
 export * from './supportService';

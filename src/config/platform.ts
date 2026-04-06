@@ -78,7 +78,7 @@ const ensureLinkTag = (rel: string, href: string) => {
 
 /**
  * Aplica no documento web os metadados oficiais definidos no manifesto da plataforma.
- * Esse bootstrap mantem titulo, descricao, nome da aplicacao e icone alinhados ao contrato central.
+ * Esse bootstrap mantem título, descrição, nome da aplicação e ícone alinhados ao contrato central.
  * @since v1.0.0
  */
 export const applyWebsiteMetadata = (manifest: WebsitePlatformManifest = websiteManifest) => {

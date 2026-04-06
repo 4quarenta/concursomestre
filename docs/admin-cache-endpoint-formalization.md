@@ -1,20 +1,20 @@
-﻿# Admin Cache Endpoint Formalization
+# Admin Cache Endpoint Formalization
 
 ## Objetivo
-Mover o endpoint oficial de gestao de cache para a area administrativa do backend e deixar `api/cache/manage.php` apenas como compatibilidade legada.
+Mover o endpoint oficial de gestão de cache para a area administrativa do backend e deixar `api/cache/manage.php` apenas como compatibilidade legada.
 
 ## Endpoint oficial
-- `C:\xampp\htdocs\questao-pro-backend\api\admin\cache.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\admin\cache.php`
 
 ## Bridge legado
-- `C:\xampp\htdocs\questao-pro-backend\api\cache\manage.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\cache\manage.php`
 
 ## Alinhamentos realizados
 - frontend passou a usar `admin/cache.php`
 - alias `cacheManage` no roteamento legado agora aponta para `api/admin/cache.php`
 - `api/cache/manage.php` permanece vivo so como bridge
 
-## Validacao executada
+## Validação executada
 - php lint dos endpoints e teste de wiring
 - `AdminCacheEndpointWiringTest.php`
 - `src/services/admin/__tests__/adminService.test.ts`

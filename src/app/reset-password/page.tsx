@@ -43,12 +43,12 @@ const ResetPasswordPage: React.FC = () => {
 
     useEffect(() => {
         if (!token) {
-            setError('Token de redefinicao ausente. Solicite um novo link.');
+            setError('Token de redefinição ausente. Solicite um novo link.');
             return;
         }
 
         if (currentUser && emailFromUrl && currentUser.email !== emailFromUrl) {
-            setError('Este link de redefinicao pertence a outra conta. Faca logout ou use a conta correta.');
+            setError('Este link de redefinição pertence a outra conta. Faca logout ou use a conta correta.');
         }
     }, [token, currentUser, emailFromUrl]);
 
@@ -62,7 +62,7 @@ const ResetPasswordPage: React.FC = () => {
         }
 
         if (password !== confirmPassword) {
-            setError('As senhas nao coincidem.');
+            setError('As senhas não coincidem.');
             return;
         }
 
@@ -76,7 +76,7 @@ const ResetPasswordPage: React.FC = () => {
             });
             setSuccess(true);
         } catch (err) {
-            setError(readApiErrorMessage(err, 'Erro de conexao com o servidor.'));
+            setError(readApiErrorMessage(err, 'Erro de conexão com o servidor.'));
         } finally {
             setIsLoading(false);
         }
@@ -91,7 +91,7 @@ const ResetPasswordPage: React.FC = () => {
                     </div>
                     <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Senha Alterada!</h2>
                     <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
-                        Sua senha foi redefinida com sucesso. Voce ja pode acessar sua conta com a nova senha.
+                        Sua senha foi redefinida com sucesso. Você já pode acessar sua conta com a nova senha.
                     </p>
                     <button
                         onClick={() => navigate('/auth?mode=login')}
@@ -135,7 +135,7 @@ const ResetPasswordPage: React.FC = () => {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="w-full h-12 pl-10 pr-12 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-100 font-semibold text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-300 dark:placeholder:text-slate-600"
-                                    placeholder="Minimo 6 caracteres"
+                                    placeholder="Mínimo 6 caracteres"
                                 />
                                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
                                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}

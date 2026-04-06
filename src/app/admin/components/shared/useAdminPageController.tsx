@@ -31,12 +31,12 @@ export const ADMIN_PAGE_TABS = [
   { key: 'database', label: 'Base de Dados', icon: Database },
   { key: 'finance', label: 'Financeiro', icon: DollarSign },
   { key: 'feedback', label: 'Feedback', icon: MessageSquare },
-  { key: 'settings', label: 'Configuracoes', icon: Settings },
+  { key: 'settings', label: 'Configurações', icon: Settings },
 ] as const;
 
 /**
  * Controller principal da pagina administrativa.
- * Ele conecta providers globais aos shells do admin e distribui os props consumidos por dashboard, base de dados, financeiro e configuracoes.
+ * Ele conecta providers globais aos shells do admin e distribui os props consumidos por dashboard, base de dados, financeiro e configurações.
  */
 export const useAdminPageController = () => {
   const {
@@ -79,7 +79,7 @@ export const useAdminPageController = () => {
 
   /**
    * Sincroniza a aba inicial com a URL e garante o preload dos datasets centrais do painel.
-   * Essa preparacao faz o admin abrir com usuarios, reports, rankings e taxonomias prontos para uso.
+   * Essa preparacao faz o admin abrir com usuários, reports, rankings e taxonomias prontos para uso.
    */
   useEffect(() => {
     const section = searchParams.get('tab');

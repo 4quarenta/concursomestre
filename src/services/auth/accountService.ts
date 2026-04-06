@@ -20,13 +20,13 @@ type UpdateUserProfileResult = {
 };
 
 /**
- * Centraliza mutacoes de perfil e role do usuario autenticado.
- * O backend usa a sessao atual para identificar o alvo da alteracao.
+ * Centraliza mutacoes de perfil e role do usuário autenticado.
+ * O backend usa a sessão atual para identificar o alvo da alteracao.
  * @since 1.0.0
  */
 export const accountService = {
   /**
-   * Persiste alteracoes do perfil do usuario autenticado.
+   * Persiste alteracoes do perfil do usuário autenticado.
    * Essa chamada alimenta a tela de conta e qualquer fluxo de onboarding complementar.
    * @since 1.0.0
    */
@@ -41,7 +41,7 @@ export const accountService = {
   },
 
   /**
-   * Atalho explicito para a transicao de usuario comum para parceiro.
+   * Atalho explicito para a transicao de usuário comum para parceiro.
    * Ele reaproveita o mesmo endpoint de perfil para manter o contrato do frontend simples.
    * @since 1.0.0
    */

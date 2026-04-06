@@ -73,7 +73,7 @@ const Page: React.FC = () => {
         setStatus('success');
         setMessage(result.message || pageCopy.successFallback);
         setXpGained(result.newXp > 0 ? result.newXp : 50);
-        addToast('Conta ativada! Voce ganhou bonus de XP.', 'success');
+        addToast('Conta ativada! Você ganhou bonus de XP.', 'success');
 
         if (currentUser) {
           await refreshUser();
@@ -99,7 +99,7 @@ const Page: React.FC = () => {
         }
 
         setStatus('error');
-        setMessage(readApiErrorMessage(error, 'Erro de conexao com o servidor. O link pode ter expirado.'));
+        setMessage(readApiErrorMessage(error, 'Erro de conexão com o servidor. O link pode ter expirado.'));
       }
     };
 
@@ -133,7 +133,7 @@ const Page: React.FC = () => {
                     Bem-vindo(a) ao Time!
                   </h2>
                   <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed max-w-xs mx-auto">
-                    Enviamos um link de confirmacao para <strong>{currentUser.email}</strong>. Confirme para desbloquear questoes, simulados e rankings.
+                    Enviamos um link de confirmacao para <strong>{currentUser.email}</strong>. Confirme para desbloquear questões, simulados e rankings.
                   </p>
                 </div>
                 <div className="w-full space-y-3 pt-2">

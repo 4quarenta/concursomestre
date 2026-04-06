@@ -10,7 +10,7 @@
 */
 
 /**
- * Paleta local dos graficos da analise de banca.
- * Fica na feature porque hoje nao ha reuso transversal suficiente para shared.
+ * Paleta local dos graficos da análise de banca.
+ * Fica na feature porque hoje não ha reuso transversal suficiente para shared.
  */
 export const CHART_COLORS = ['#6366f1', '#8b5cf6', '#d946ef', '#14b8a6', '#f59e0b'];

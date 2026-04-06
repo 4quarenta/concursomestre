@@ -67,7 +67,7 @@ describe('questionService', () => {
       success: true,
       data: {
         rows: [
-          { id: 1, enunciado: 'Questao 1' },
+          { id: 1, enunciado: 'Questão 1' },
         ],
         total: 120,
       },
@@ -166,7 +166,7 @@ describe('questionService', () => {
       data: { id: 33 },
     });
 
-    const payload = { id: 33, enunciado: 'Questao atualizada' } as any;
+    const payload = { id: 33, enunciado: 'Questão atualizada' } as any;
     const result = await questionService.updateQuestion('33', payload);
 
     expect(mockPost).toHaveBeenCalledWith('questionsUpdate', {
@@ -179,7 +179,7 @@ describe('questionService', () => {
   it('deletes a question through the backend contract that expects query params', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
-      message: 'Questao excluida',
+      message: 'Questão excluida',
     });
 
     const result = await questionService.deleteQuestion(44);
@@ -194,7 +194,7 @@ describe('questionService', () => {
     mockPost.mockResolvedValueOnce({
       success: true,
       isSaved: true,
-      message: 'Questao salva',
+      message: 'Questão salva',
     });
 
     const result = await questionService.toggleSavedQuestion('user-2', 77);

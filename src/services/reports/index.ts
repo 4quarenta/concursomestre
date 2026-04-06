@@ -10,6 +10,6 @@
 */
 
 /**
- * Ponto de entrada oficial dos servicos de denuncias.
+ * Ponto de entrada oficial dos serviços de denúncias.
  */
 export { reportsService } from './reportsService';

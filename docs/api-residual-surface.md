@@ -24,4 +24,4 @@
 - O runtime operacional preferencial continua em `modules/*`, `shared/*` e `scripts/*`.
 
 ### Garantia adicionada
-- O teste [C:\xampp\htdocs\questao-pro-backend\tests\ApiResidualSurfaceWiringTest.php](C:\xampp\htdocs\questao-pro-backend\tests\ApiResidualSurfaceWiringTest.php) congela essa superfície residual.
+- O teste [C:\xampp\htdocs\questão-pro-backend\tests\ApiResidualSurfaceWiringTest.php](C:\xampp\htdocs\questão-pro-backend\tests\ApiResidualSurfaceWiringTest.php) congela essa superfície residual.

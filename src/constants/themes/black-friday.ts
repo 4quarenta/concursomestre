@@ -13,7 +13,7 @@ import { Zap } from 'lucide-react';
 import { ThemeConfig } from './types';
 
 export const blackFridayTheme: ThemeConfig = {
-    heroBadge: 'ðŸ”¥ BLACK FRIDAY: APROVAÃ‡ÃƒO EM OFERTA',
+    heroBadge: '🔥 BLACK FRIDAY: APROVAÇÃO EM OFERTA',
     heroGradient: 'from-yellow-400 via-amber-500 to-yellow-600',
     bgOverlay: 'bg-zinc-900',
     accent: 'text-amber-500 bg-zinc-900',

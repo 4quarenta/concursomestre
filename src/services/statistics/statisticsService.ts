@@ -13,10 +13,16 @@ import { apiClient, ENDPOINTS } from '@services/api';
 import type { ApiResponse } from '@services/api';
 import type { UserStatistics, QuestionStatistics, PlatformStatistics } from './types';
 
+/**
+ * Fachada oficial do dominio de estatisticas.
+ * Ela alimenta visoes de usuário, questão e plataforma sem expor rotas cruas para a UI.
+ * @since 1.0.0
+ */
 export const statisticsService = {
   /**
-   * Carrega os indicadores consolidados do usuario para alimentar dashboards
+   * Carrega os indicadores consolidados do usuário para alimentar dashboards
    * pessoais, progresso e comparativos.
+   * @since 1.0.0
    */
   async getUserStatistics(userId: string): Promise<UserStatistics> {
     const response = await apiClient.get<ApiResponse<UserStatistics>>(
@@ -26,7 +32,8 @@ export const statisticsService = {
   },
 
   /**
-   * Carrega o agregado estatistico de uma questao especifica.
+   * Carrega o agregado estatistico de uma questão especifica.
+   * @since 1.0.0
    */
   async getQuestionStatistics(questionId: number): Promise<QuestionStatistics> {
     const response = await apiClient.get<ApiResponse<QuestionStatistics>>(
@@ -38,6 +45,7 @@ export const statisticsService = {
   /**
    * Carrega indicadores globais da plataforma para areas administrativas e
    * paineis executivos.
+   * @since 1.0.0
    */
   async getPlatformStatistics(): Promise<PlatformStatistics> {
     const response = await apiClient.get<ApiResponse<PlatformStatistics>>(
@@ -47,7 +55,8 @@ export const statisticsService = {
   },
 
   /**
-   * Atualiza o agregado estatistico do usuario depois de uma resposta.
+   * Atualiza o agregado estatistico do usuário depois de uma resposta.
+   * @since 1.0.0
    */
   async updateUserStatistics(userId: string, data: {
     questionId: number;

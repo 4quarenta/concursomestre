@@ -10,6 +10,6 @@
 */
 
 /**
- * Fachada oficial do progresso do usuario na arquitetura congelada.
+ * Fachada oficial do progresso do usuário na arquitetura congelada.
  */
 export { userProgressService } from './userProgressService';

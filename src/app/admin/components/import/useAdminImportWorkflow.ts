@@ -63,7 +63,7 @@ export const useAdminImportWorkflow = ({
 
   const handleImportProcess = async () => {
     if (!qFile || !kFile) {
-      addToast('`Arquivos de Prova e Gabarito sÃ£o obrigatÃ³rios para este processo.', 'error');
+      addToast('`Arquivos de Prova e Gabarito são obrigatórios para este processo.', 'error');
       return;
     }
 
@@ -83,16 +83,16 @@ export const useAdminImportWorkflow = ({
       setKeyProgress(100);
       addLog('Gabarito oficial mapeado pela IA.');
 
-      addLog('Iniciando motor de extraÃ§Ã£o IA (Prova)...');
+      addLog('Iniciando motor de extração IA (Prova)...');
       const questionBuffer = await qFile.arrayBuffer();
       const questionPdf = await pdfjs.getDocument(questionBuffer).promise;
       const pagesCount = questionPdf.numPages;
-      addLog(`Arquivo de prova identificado: ${pagesCount} pÃ¡ginas.`);
+      addLog(`Arquivo de prova identificado: ${pagesCount} páginas.`);
 
       let allFoundQuestions: Question[] = [];
 
       for (let pageIndex = 1; pageIndex <= pagesCount; pageIndex += 1) {
-        addLog(`Lendo pÃ¡g ${pageIndex}/${pagesCount}...`);
+        addLog(`Lendo pág ${pageIndex}/${pagesCount}...`);
 
         const pageImage = await pdfToImage(questionPdf, pageIndex);
         const result = await aiService.extractQuestionsFromPage(
@@ -102,7 +102,7 @@ export const useAdminImportWorkflow = ({
         );
 
         if (result.questions && result.questions.length > 0) {
-          addLog(`${result.questions.length} questÃµes encontradas na pÃ¡g ${pageIndex}.`);
+          addLog(`${result.questions.length} questões encontradas na pág ${pageIndex}.`);
 
           const mappedQuestions = result.questions.map((question, questionIndex) => {
             const questionNumber = allFoundQuestions.length + questionIndex + 1;
@@ -120,7 +120,7 @@ export const useAdminImportWorkflow = ({
                 ? [{ name: result.metadata.source, id: null, slug: result.metadata.source.toLowerCase() }]
                 : [],
               cargos: result.metadata?.role
-                ? [{ id: null, slug: result.metadata.role.toLowerCase(), descricao: result.metadata.role }]
+                ? [{ id: null, slug: result.metadata.role.toLowerCase(), descrição: result.metadata.role }]
                 : [],
               assuntos: [
                 ...(rawQuestion.subject
@@ -132,7 +132,7 @@ export const useAdminImportWorkflow = ({
               ],
               anos: result.metadata?.year ? [Number(result.metadata.year)] : [new Date().getFullYear()],
               tipo: (rawQuestion.options || []).length === 2 ? 'certo ou errado' : 'multipla escolha',
-              dificuldade: rawQuestion.difficulty === 'FÃ¡cil' ? 1 : rawQuestion.difficulty === 'DifÃ­cil' ? 3 : 2,
+              dificuldade: rawQuestion.difficulty === 'Fácil' ? 1 : rawQuestion.difficulty === 'Difícil' ? 3 : 2,
               itens: (rawQuestion.options || []).map((option: string, optionIndex: number) => ({
                 id: optionIndex + 1,
                 ordem: optionIndex + 1,
@@ -153,9 +153,9 @@ export const useAdminImportWorkflow = ({
         setExamProgress(Math.round((pageIndex / pagesCount) * 100));
       }
 
-      addLog('IMPORTAÃ‡ÃƒO CONCLUÃDA! Revise as questÃµes.');
+      addLog('IMPORTAÇÃO CONCLUÍDA! Revise as questões.');
     } catch (error: any) {
-      addLog(`ERRO CRÃTICO: ${error.message}`);
+      addLog(`ERRO CRÍTICO: ${error.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -166,7 +166,7 @@ export const useAdminImportWorkflow = ({
 
     setIsBulkGenerating(true);
     setBulkProgress(0);
-    addLog('Iniciando geraÃ§Ã£o em massa de comentÃ¡rios detalhados...');
+    addLog('Iniciando geração em massa de comentários detalhados...');
 
     const updatedQuestions = [...extractedQuestions];
     const totalQuestions = updatedQuestions.length;
@@ -178,14 +178,14 @@ export const useAdminImportWorkflow = ({
           updatedQuestions[index] = { ...updatedQuestions[index], detailedComment: detail };
           setExtractedQuestions([...updatedQuestions]);
         } catch (error) {
-          addLog(`Erro ao gerar detalhado para questÃ£o ${index + 1}`);
+          addLog(`Erro ao gerar detalhado para questão ${index + 1}`);
         }
       }
 
       setBulkProgress(Math.round(((index + 1) / totalQuestions) * 100));
     }
 
-    addLog('GeraÃ§Ã£o em massa concluÃ­da!');
+    addLog('Geração em massa concluída!');
     setIsBulkGenerating(false);
   };
 
@@ -209,7 +209,7 @@ export const useAdminImportWorkflow = ({
         return next;
       });
     } catch (error) {
-      addToast('`Erro ao gerar comentÃ¡rio. Tente novamente.', 'error');
+      addToast('`Erro ao gerar comentário. Tente novamente.', 'error');
     } finally {
       setGeneratingSpecific(null);
     }

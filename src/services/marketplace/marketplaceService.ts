@@ -55,7 +55,7 @@ export const marketplaceService = {
   },
 
   /**
-   * Publica um novo material no backend oficial.
+   * Pública um novo material no backend oficial.
    * O retorno normalizado permite que o contexto atualize a vitrine sem parsing extra.
    * @since 1.0.0
    */
@@ -80,8 +80,8 @@ export const marketplaceService = {
   },
 
   /**
-   * Executa a moderacao administrativa de um material denunciado.
-   * Esse resultado alimenta os modais de aprovacao, rejeicao e bloqueio no painel.
+   * Executa a moderação administrativa de um material denunciado.
+   * Esse resultado alimenta os modais de aprovação, rejeicao e bloqueio no painel.
    * @since 1.0.0
    */
   async moderateMaterial(
@@ -115,8 +115,8 @@ export const marketplaceService = {
   },
 
   /**
-   * Centraliza a leitura de transacoes do marketplace para que contexts e telas
-   * nao precisem conhecer o endpoint bruto de transacoes.
+   * Centraliza a leitura de transações do marketplace para que contexts e telas
+   * não precisem conhecer o endpoint bruto de transações.
    * @since 1.0.0
    */
   async listTransactions(params: MarketplaceTransactionListParams = {}): Promise<Transaction[]> {
@@ -124,7 +124,7 @@ export const marketplaceService = {
   },
 
   /**
-   * Busca a avaliacao do usuario atual para um material especifico.
+   * Busca a avaliação do usuário atual para um material especifico.
    * @since 1.0.0
    */
   async getUserMaterialRating(materialId: string): Promise<number> {
@@ -137,7 +137,7 @@ export const marketplaceService = {
   },
 
   /**
-   * Registra uma avaliacao de material e devolve o agregado atualizado.
+   * Registra uma avaliação de material e devolve o agregado atualizado.
    * @since 1.0.0
    */
   async rateMaterial(materialId: string, rating: number): Promise<{ newRating: number; totalRatings: number }> {
@@ -146,7 +146,7 @@ export const marketplaceService = {
       rating,
     }) as any;
 
-    const raw = assertApiSuccess(response, 'Erro ao registrar avaliacao.').raw;
+    const raw = assertApiSuccess(response, 'Erro ao registrar avaliação.').raw;
     const payload = readApiData<any>(raw, {});
 
     return {
@@ -156,7 +156,7 @@ export const marketplaceService = {
   },
 
   /**
-   * Compatibiliza chamadas antigas que ainda passam `number` como id de usuario.
+   * Compatibiliza chamadas antigas que ainda passam `number` como id de usuário.
    * @since 1.0.0
    */
   async getTransactions(userId: number): Promise<Transaction[]> {
@@ -164,7 +164,7 @@ export const marketplaceService = {
   },
 
   /**
-   * Lista transacoes relacionadas a um usuario especifico.
+   * Lista transações relacionadas a um usuário especifico.
    * @since 1.0.0
    */
   async getUserTransactions(userId: string): Promise<Transaction[]> {
@@ -172,7 +172,7 @@ export const marketplaceService = {
   },
 
   /**
-   * Busca os materiais publicados por um usuario no fluxo de perfil/admin.
+   * Busca os materiais publicados por um usuário no fluxo de perfil/admin.
    * @since 1.0.0
    */
   async listUserMaterials(userId: string): Promise<any[]> {
@@ -180,7 +180,7 @@ export const marketplaceService = {
       params: { userId },
     }) as any;
 
-    const raw = assertApiSuccess(response, 'Erro ao carregar os materiais do usuario.').raw;
+    const raw = assertApiSuccess(response, 'Erro ao carregar os materiais do usuário.').raw;
     const payload = readApiData<any>(raw, {});
     return Array.isArray(payload?.materials)
       ? payload.materials
@@ -215,7 +215,7 @@ export const marketplaceService = {
 
   /**
    * Mantem a compra oficial dentro do dominio de marketplace e devolve a
-   * transacao criada para o contexto sincronizar estado local e notificacoes.
+   * transação criada para o contexto sincronizar estado local e notificações.
    * @since 1.0.0
    */
   async createMaterialPurchase(materialId: string | number): Promise<Transaction> {
@@ -232,7 +232,7 @@ export const marketplaceService = {
   },
 
   /**
-   * Publica material usando a ponte antiga esperada por alguns fluxos da UI.
+   * Pública material usando a ponte antiga esperada por alguns fluxos da UI.
    * @since 1.0.0
    */
   async uploadMaterial(material: Partial<Material>): Promise<boolean> {
@@ -285,7 +285,7 @@ export const marketplaceService = {
 
   /**
    * Placeholder mantido para o futuro painel de parceiros.
-   * Hoje nao ha backend dedicado para esta listagem no frontend atual.
+   * Hoje não ha backend dedicado para esta listagem no frontend atual.
    * @since 1.0.0
    */
   async getPartnerTransactions(_partnerId: string): Promise<Transaction[]> {
@@ -294,7 +294,7 @@ export const marketplaceService = {
 
   /**
    * Bridge legado mantido apenas para compatibilidade de interface.
-   * O estado real das transacoes hoje vive nos contexts e services oficiais.
+   * O estado real das transações hoje vive nos contexts e services oficiais.
    * @since 1.0.0
    */
   setTransactions(_transactions: Transaction[]) {

@@ -13,7 +13,7 @@ import { PartyPopper } from 'lucide-react';
 import { ThemeConfig } from './types';
 
 export const carnavalTheme: ThemeConfig = {
-    heroBadge: 'ðŸŽ‰ CARNAVAL: FOLIA DA APROVAÃ‡ÃƒO',
+    heroBadge: '🎉 CARNAVAL: FOLIA DA APROVAÇÃO',
     heroGradient: 'from-fuchsia-600 to-purple-600',
     bgOverlay: 'bg-fuchsia-400',
     accent: 'text-fuchsia-600 bg-fuchsia-50',

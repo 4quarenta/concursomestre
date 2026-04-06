@@ -124,7 +124,7 @@ const AdminImportSection = ({
               {!systemSettings.geminiApiKey && (
                 <p className="text-[9px] font-medium leading-tight text-amber-600 dark:text-amber-400">
                   <AlertTriangle size={10} className="mr-1 inline" />
-                  Necessario configurar uma chave valida para extrair questoes.
+                  Necessario configurar uma chave valida para extrair questões.
                 </p>
               )}
             </div>
@@ -167,7 +167,7 @@ const AdminImportSection = ({
                   onClick={() => onExtractWithCommentChange(!extractWithComment)}
                   className="cursor-pointer select-none text-xs font-bold text-amber-800 dark:text-amber-200"
                 >
-                  Extrair Comentario Resumido (Prof)
+                  Extrair Comentário Resumido (Prof)
                 </label>
               </div>
             </div>
@@ -222,7 +222,7 @@ const AdminImportSection = ({
               <div className="flex flex-col items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors md:flex-row dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-black uppercase text-emerald-600 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
-                    <CheckCircle2 size={16} /> {extractedQuestions.length} Questoes Extraidas
+                    <CheckCircle2 size={16} /> {extractedQuestions.length} Questões Extraidas
                   </div>
                 </div>
                 <div className="flex w-full gap-2 md:w-auto">
@@ -232,7 +232,7 @@ const AdminImportSection = ({
                     disabled={isBulkGenerating || isProcessing}
                     className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-[10px] font-black uppercase text-indigo-700 transition-all hover:bg-indigo-100 disabled:opacity-50 md:flex-none dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
                   >
-                    {isBulkGenerating ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />} Gerar Analise Detalhada (Todas)
+                    {isBulkGenerating ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />} Gerar Análise Detalhada (Todas)
                   </button>
                   <button
                     type="button"
@@ -249,7 +249,7 @@ const AdminImportSection = ({
                 <div className="animate-fade-in rounded-2xl border border-indigo-100 bg-white px-6 py-4 shadow-sm">
                   <div className="mb-1 flex justify-between items-end">
                     <span className="flex items-center gap-2 text-[10px] font-black uppercase text-indigo-600">
-                      <Sparkles size={12} /> Gerando Comentarios em Massa
+                      <Sparkles size={12} /> Gerando Comentários em Massa
                     </span>
                     <span className="text-[10px] font-bold text-slate-400">{bulkProgress}%</span>
                   </div>
@@ -290,7 +290,7 @@ const AdminImportSection = ({
                           type="button"
                           onClick={() => onEditExtractedQuestion(question, index)}
                           className="rounded-lg bg-slate-50 p-1.5 text-slate-400 transition-all hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-500 dark:hover:text-indigo-400"
-                          title="Editar Questao Extraida"
+                          title="Editar Questão Extraida"
                         >
                           <Edit3 size={14} />
                         </button>
@@ -300,7 +300,7 @@ const AdminImportSection = ({
                     <div className="mb-4 flex flex-wrap gap-3">
                       <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
                         <Briefcase size={12} />
-                        <span className="text-[10px] font-bold uppercase">{question.cargos?.map((role: any) => role.descricao).join(', ') || question.role || 'Cargo Geral'}</span>
+                        <span className="text-[10px] font-bold uppercase">{question.cargos?.map((role: any) => role.descrição).join(', ') || question.role || 'Cargo Geral'}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
                         <Calendar size={12} />
@@ -351,7 +351,7 @@ const AdminImportSection = ({
                     {question.teacherComment && (
                       <div className="mt-4 animate-fade-in space-y-2 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs text-amber-800 opacity-80 group-hover:opacity-100 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
                         <p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                          <BookOpen size={14} /> Comentario do Professor
+                          <BookOpen size={14} /> Comentário do Professor
                         </p>
                         <p className="font-medium italic leading-relaxed">{question.teacherComment}</p>
                       </div>
@@ -360,7 +360,7 @@ const AdminImportSection = ({
                     {question.detailedComment && (
                       <div className="mt-2 animate-fade-in space-y-2 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-xs text-indigo-800 opacity-80 group-hover:opacity-100 dark:border-indigo-900/30 dark:bg-indigo-900/10 dark:text-indigo-200">
                         <p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                          <Sparkles size={14} /> Analise Detalhada (IA)
+                          <Sparkles size={14} /> Análise Detalhada (IA)
                         </p>
                         <p className="line-clamp-3 font-medium italic leading-relaxed">{question.detailedComment}</p>
                       </div>

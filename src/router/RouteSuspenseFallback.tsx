@@ -12,10 +12,11 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@providers/AuthProvider';
+import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 
 /**
  * Lista de rotas que usam o shell principal autenticado da plataforma.
- * Esse mapeamento ajuda o fallback a imitar o layout real enquanto a pagina lazy ainda nao terminou de carregar.
+ * Esse mapeamento ajuda o fallback a imitar o layout real enquanto a pagina lazy ainda não terminou de carregar.
  */
 const APP_LAYOUT_PATHS = new Set([
   '/',
@@ -28,6 +29,7 @@ const APP_LAYOUT_PATHS = new Set([
   '/marketplace',
   '/ranking',
   '/profile',
+  '/performance/subjects',
   '/notifications',
   '/support',
 ]);
@@ -70,7 +72,7 @@ const SidebarItems: React.FC<{ count: number; activeTone?: string }> = ({ count,
 );
 
 /**
- * Replica a faixa promocional superior usada no shell publico da plataforma.
+ * Replica a faixa promocional superior usada no shell público da plataforma.
  */
 const PromoStrip = () => (
   <div className="flex items-center justify-center gap-3 border-b border-white/10 bg-slate-900 px-6 py-2.5 dark:bg-indigo-950">
@@ -89,7 +91,7 @@ const PanelFallback: React.FC<{ accent: 'rose' | 'indigo' }> = ({ accent }) => {
 
   return (
     <div className="flex h-[100dvh] max-h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
-      <aside className="hidden w-64 flex-none border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 md:flex md:flex-col">
+      <aside className="hidden h-[100dvh] max-h-screen w-64 flex-none border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 md:fixed md:z-50 md:flex md:flex-col">
         <div className="border-b border-slate-50 p-6 dark:border-slate-800">
           <div className="flex items-center gap-3">
             <Block className={`h-10 w-10 rounded-xl ${accentBox}`} />
@@ -149,7 +151,7 @@ const PanelFallback: React.FC<{ accent: 'rose' | 'indigo' }> = ({ accent }) => {
 };
 
 /**
- * Skeleton do shell autenticado principal com sidebar, cabecalho e area central de conteudo.
+ * Skeleton do shell autenticado principal com sidebar, cabeçalho e area central de conteúdo.
  * Ele e usado nas paginas internas que compartilham o Layout oficial do site.
  */
 const AppLayoutFallback = () => (
@@ -220,7 +222,7 @@ const AppLayoutFallback = () => (
         </div>
 
         <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
-          <div className="mx-auto flex max-w-5xl flex-col gap-8 pb-10">
+          <div className={`mx-auto flex ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} flex-col gap-8 pb-10`}>
             <Block className="h-24 w-full rounded-[2rem] bg-gradient-to-r from-slate-200/80 to-slate-100 dark:from-slate-800 dark:to-slate-900" />
 
             <section className="space-y-5">
@@ -260,7 +262,7 @@ const AppLayoutFallback = () => (
 );
 
 /**
- * Skeleton da experiencia de autenticacao.
+ * Skeleton da experiencia de autenticação.
  * Mantem a leitura visual proxima do fluxo real de login, cadastro e recuperacao de senha.
  */
 const AuthFallback = () => (
@@ -311,7 +313,7 @@ const AuthFallback = () => (
 
 /**
  * Skeleton das paginas de marketing e descoberta, como landing e promos.
- * O objetivo e manter hero, CTA e prova social com a mesma hierarquia da plataforma publica.
+ * O objetivo e manter hero, CTA e prova social com a mesma hierarquia da plataforma pública.
  */
 const MarketingFallback = () => (
   <div className="min-h-screen bg-white dark:bg-slate-950">
@@ -401,7 +403,7 @@ const DocumentFallback = () => (
 );
 
 /**
- * Skeleton do checkout, refletindo a separacao entre resumo da compra e formulario.
+ * Skeleton do checkout, refletindo a separacao entre resumo da compra e formulário.
  */
 const CheckoutFallback = () => (
   <div className="min-h-screen bg-slate-50 px-4 py-12 dark:bg-slate-950">
@@ -449,7 +451,7 @@ const ReaderFallback = () => (
 
 /**
  * Fallback local das rotas com Layout.
- * Ele substitui apenas a area central da pagina para que a sidebar e o shell real nao sumam durante a transicao.
+ * Ele substitui apenas a area central da pagina para que a sidebar e o shell real não sumam durante a transicao.
  */
 export const LayoutContentRouteFallback: React.FC = () => (
   <div className="flex flex-col gap-8 animate-pulse">
@@ -478,7 +480,7 @@ export const LayoutContentRouteFallback: React.FC = () => (
 );
 
 /**
- * Decide qual skeleton mostrar com base na rota atual e no estado de autenticacao.
+ * Decide qual skeleton mostrar com base na rota atual e no estado de autenticação.
  * Esse componente fica ligado diretamente ao roteador oficial e garante que cada transicao se pareca com a pagina real.
  */
 const RouteSuspenseFallback: React.FC = () => {

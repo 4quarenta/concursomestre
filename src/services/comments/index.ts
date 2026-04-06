@@ -10,6 +10,6 @@
 */
 
 /**
- * Fachada oficial dos servicos de comentarios.
+ * Fachada oficial dos serviços de comentários.
  */
 export { commentService } from './commentsService';

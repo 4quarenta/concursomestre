@@ -1,27 +1,27 @@
-﻿# Shared Utils/Security Extraction
+# Shared Utils/Security Extraction
 
 ## Objetivo
-Concluir a extracao da infraestrutura transversal restante de `api/utils` para `shared/`, deixando a pasta publica apenas com bridges finos e movendo scripts operacionais para `scripts/`.
+Concluir a extracao da infraestrutura transversal restante de `api/utils` para `shared/`, deixando a pasta pública apenas com bridges finos e movendo scripts operacionais para `scripts/`.
 
 ## O que foi consolidado
-- `C:\xampp\htdocs\questao-pro-backend\shared\utils\Mailer.php`
-- `C:\xampp\htdocs\questao-pro-backend\shared\utils\SimpleCache.php`
-- `C:\xampp\htdocs\questao-pro-backend\shared\utils\cache_helpers.php`
-- `C:\xampp\htdocs\questao-pro-backend\shared\security\Recaptcha.php`
-- `C:\xampp\htdocs\questao-pro-backend\shared\security\Validator.php`
-- `C:\xampp\htdocs\questao-pro-backend\shared\security\SQLSecurity.php`
+- `C:\xampp\htdocs\questão-pro-backend\shared\utils\Mailer.php`
+- `C:\xampp\htdocs\questão-pro-backend\shared\utils\SimpleCache.php`
+- `C:\xampp\htdocs\questão-pro-backend\shared\utils\cache_helpers.php`
+- `C:\xampp\htdocs\questão-pro-backend\shared\security\Recaptcha.php`
+- `C:\xampp\htdocs\questão-pro-backend\shared\security\Validator.php`
+- `C:\xampp\htdocs\questão-pro-backend\shared\security\SQLSecurity.php`
 
 ## Bridges legados
-- `C:\xampp\htdocs\questao-pro-backend\api\utils\Mailer.php`
-- `C:\xampp\htdocs\questao-pro-backend\api\utils\SimpleCache.php`
-- `C:\xampp\htdocs\questao-pro-backend\api\utils\cache_helpers.php`
-- `C:\xampp\htdocs\questao-pro-backend\api\utils\recaptcha_helper.php`
-- `C:\xampp\htdocs\questao-pro-backend\api\utils\Validator.php`
-- `C:\xampp\htdocs\questao-pro-backend\api\utils\SQLSecurity.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\utils\Mailer.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\utils\SimpleCache.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\utils\cache_helpers.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\utils\recaptcha_helper.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\utils\Validator.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\utils\SQLSecurity.php`
 
 ## Reclassificacao operacional
-- Removido o endpoint publico `C:\xampp\htdocs\questao-pro-backend\api\utils\check_recaptcha.php`
-- Criado o script CLI `C:\xampp\htdocs\questao-pro-backend\scripts\checks\check_recaptcha_settings.php`
+- Removido o endpoint público `C:\xampp\htdocs\questão-pro-backend\api\utils\check_recaptcha.php`
+- Criado o script CLI `C:\xampp\htdocs\questão-pro-backend\scripts\checks\check_recaptcha_settings.php`
 
 ## Modulos consumidores alinhados
 - `modules/auth`
@@ -32,14 +32,14 @@ Concluir a extracao da infraestrutura transversal restante de `api/utils` para `
 - `modules/questions`
 - `modules/statistics`
 
-## Validacao executada
+## Validação executada
 - `C:\xampp\php\php.exe -l` nos arquivos novos e bridges
-- `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SharedUtilsSecurityWiringTest.php`
-- `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\AuthModuleWiringTest.php`
-- `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\UsersModuleWiringTest.php`
-- `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SubscriptionsCheckoutWiringTest.php`
-- `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\QuestionsModuleWiringTest.php`
-- `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\StatisticsModuleWiringTest.php`
+- `C:\xampp\php\php.exe C:\xampp\htdocs\questão-pro-backend\tests\SharedUtilsSecurityWiringTest.php`
+- `C:\xampp\php\php.exe C:\xampp\htdocs\questão-pro-backend\tests\AuthModuleWiringTest.php`
+- `C:\xampp\php\php.exe C:\xampp\htdocs\questão-pro-backend\tests\UsersModuleWiringTest.php`
+- `C:\xampp\php\php.exe C:\xampp\htdocs\questão-pro-backend\tests\SubscriptionsCheckoutWiringTest.php`
+- `C:\xampp\php\php.exe C:\xampp\htdocs\questão-pro-backend\tests\QuestionsModuleWiringTest.php`
+- `C:\xampp\php\php.exe C:\xampp\htdocs\questão-pro-backend\tests\StatisticsModuleWiringTest.php`
 - `npm run test:auth`
 - `npm run test:admin`
 - `npm run build`

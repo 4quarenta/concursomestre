@@ -32,10 +32,12 @@ export type BankXrayFilters = {
  * Fachada oficial do dominio de raio-x. Ela centraliza a leitura dos payloads
  * do backend atual enquanto o frontend vai sendo migrado para contratos mais
  * previsiveis.
+ * @since 1.0.0
  */
 export const bankAnalysisService = {
   /**
-   * Busca inteligencia publica da banca a partir do site oficial cadastrado.
+   * Busca inteligencia pública da banca a partir do site oficial cadastrado.
+   * @since 1.0.0
    */
   async getBankIntel(url: string): Promise<BankIntelPayload> {
     const response = await apiClient.get(
@@ -60,6 +62,7 @@ export const bankAnalysisService = {
 
   /**
    * Busca o raio-x consolidado da banca para os filtros selecionados.
+   * @since 1.0.0
    */
   async getXrayStats(filters: BankXrayFilters): Promise<any> {
     const response = await apiClient.get(
@@ -78,6 +81,7 @@ export const bankAnalysisService = {
 
   /**
    * Mantem compatibilidade com usos antigos do dominio.
+   * @since 1.0.0
    */
   async getAnalysis(boardId: string): Promise<BankAnalysis> {
     const response = await apiClient.get(ENDPOINTS.bankAnalysis.board, {
@@ -89,7 +93,8 @@ export const bankAnalysisService = {
   },
 
   /**
-   * Mantem compatibilidade com analiticos de usuario ainda nao migrados.
+   * Mantem compatibilidade com analiticos de usuário ainda não migrados.
+   * @since 1.0.0
    */
   async getUserAnalytics(): Promise<AnalyticsData> {
     const response = await apiClient.get(ENDPOINTS.bankAnalysis.user) as any;
@@ -100,6 +105,7 @@ export const bankAnalysisService = {
   /**
    * Mantem compatibilidade com os insights de padroes ainda usados
    * indiretamente por partes legadas do app.
+   * @since 1.0.0
    */
   async getPatternInsights(boardId: string): Promise<any> {
     const response = await apiClient.get(ENDPOINTS.bankAnalysis.insights, {

@@ -13,7 +13,7 @@ import { ShoppingBag } from 'lucide-react';
 import { ThemeConfig } from './types';
 
 export const consumidorTheme: ThemeConfig = {
-    heroBadge: 'ðŸ›ï¸ DIA DO CONSUMIDOR: VOCÃŠ MERECE A PROVAÃ‡ÃƒO',
+    heroBadge: '🛍️ DIA DO CONSUMIDOR: VOCÊ MERECE A PROVAÇÃO',
     heroGradient: 'from-rose-500 to-slate-800',
     bgOverlay: 'bg-rose-400',
     accent: 'text-rose-600 bg-rose-50',

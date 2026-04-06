@@ -102,7 +102,7 @@ const UserProfileAdminModal = ({
               <p className="text-xl font-black text-indigo-600 dark:text-indigo-400">{detailedUser.profile?.xp || 0}</p>
             </div>
             <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-900/50">
-              <p className="text-[10px] font-bold uppercase text-slate-400">Comentarios</p>
+              <p className="text-[10px] font-bold uppercase text-slate-400">Comentários</p>
               <p className="text-xl font-black text-slate-800 dark:text-slate-200">{detailedUser.stats?.comments_count || 0}</p>
             </div>
             <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-900/50">
@@ -151,7 +151,7 @@ const UserProfileAdminModal = ({
               <div>
                 <label className="text-[10px] font-black uppercase text-slate-400">Nivel de Acesso (Cargo)</label>
                 <select value={editUserForm.role || 'user'} onChange={(event) => onEditUserFormChange({ ...editUserForm, role: event.target.value })} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs font-bold outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900">
-                  <option value="user">Usuario Comum</option>
+                  <option value="user">Usuário Comum</option>
                   <option value="tester">Testador (Acesso Max Vitalicio)</option>
                   <option value="partner">Parceiro (Professor)</option>
                   <option value="admin">Administrador</option>
@@ -174,11 +174,11 @@ const UserProfileAdminModal = ({
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500">CPF</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{detailedUser.profile?.cpf || 'Nao informado'}</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{detailedUser.profile?.cpf || 'Não informado'}</p>
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500">Concurso Alvo</p>
-                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{detailedUser.profile?.target_exam || 'Nao informado'}</p>
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{detailedUser.profile?.target_exam || 'Não informado'}</p>
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500">Resumo de Atividade</p>
@@ -238,7 +238,7 @@ const UserProfileAdminModal = ({
                   <p className="font-mono text-xs text-slate-400">{detailedUser.profile?.address?.zipCode}</p>
                 </div>
               ) : (
-                <p className="text-sm italic text-slate-400">Endereco nao cadastrado.</p>
+                <p className="text-sm italic text-slate-400">Endereco não cadastrado.</p>
               )}
             </div>
           </div>
@@ -269,13 +269,13 @@ const UserProfileAdminModal = ({
 
             {activeSubscription?.current_period_end ? (
               <div className="mb-6 rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/50">
-                <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Expira em / Renovacao</p>
+                <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Expira em / Renovação</p>
                 <p className="font-mono text-lg font-bold text-slate-800 dark:text-slate-200">{formatDate(activeSubscription.current_period_end)}</p>
               </div>
             ) : null}
 
             <div className="space-y-3">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Acoes Rapidas</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ações Rapidas</p>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -303,7 +303,7 @@ const UserProfileAdminModal = ({
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-            <h4 className="mb-4 text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Historico de Assinaturas</h4>
+            <h4 className="mb-4 text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Histórico de Assinaturas</h4>
             <div className="no-scrollbar max-h-[300px] space-y-3 overflow-y-auto">
               {subscriptions.length ? (
                 subscriptions.map((subscription: any) => (
@@ -320,7 +320,7 @@ const UserProfileAdminModal = ({
                   </div>
                 ))
               ) : (
-                <p className="text-xs italic text-slate-400">Sem historico.</p>
+                <p className="text-xs italic text-slate-400">Sem histórico.</p>
               )}
             </div>
           </div>
@@ -335,7 +335,7 @@ const UserProfileAdminModal = ({
     return (
       <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <h4 className="mb-4 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
-          <DollarSign size={14} /> Historico Financeiro Completo
+          <DollarSign size={14} /> Histórico Financeiro Completo
         </h4>
 
         {transactions.length ? (
@@ -347,7 +347,7 @@ const UserProfileAdminModal = ({
                   <th className="p-3">Tipo</th>
                   <th className="p-3">Valor</th>
                   <th className="p-3">Status</th>
-                  <th className="rounded-r-xl p-3 text-center">Acoes</th>
+                  <th className="rounded-r-xl p-3 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -379,7 +379,7 @@ const UserProfileAdminModal = ({
                             <button
                               type="button"
                               onClick={() => {
-                                if (confirm('Deseja emitir Nota Fiscal para esta transacao?')) onUserAction('issue_invoice', { transaction_id: transaction.id });
+                                if (confirm('Deseja emitir Nota Fiscal para esta transação?')) onUserAction('issue_invoice', { transaction_id: transaction.id });
                               }}
                               disabled={actionLoading}
                               className="rounded-lg border border-slate-100 bg-slate-50 p-1.5 text-slate-400 transition-all hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-400"
@@ -390,11 +390,11 @@ const UserProfileAdminModal = ({
                             <button
                               type="button"
                               onClick={() => {
-                                if (confirm('Tem certeza que deseja estornar esta transacao?')) onUserAction('refund_transaction', { transaction_id: transaction.id });
+                                if (confirm('Tem certeza que deseja estornar esta transação?')) onUserAction('refund_transaction', { transaction_id: transaction.id });
                               }}
                               disabled={actionLoading}
                               className="rounded-lg border border-slate-100 bg-slate-50 p-1.5 text-slate-400 transition-all hover:bg-red-50 hover:text-red-600 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                              title="Estornar Transacao"
+                              title="Estornar Transação"
                             >
                               <RefreshCcw size={14} />
                             </button>
@@ -414,7 +414,7 @@ const UserProfileAdminModal = ({
             </table>
           </div>
         ) : (
-          <p className="py-8 text-center italic text-slate-400">Nenhuma transacao registrada.</p>
+          <p className="py-8 text-center italic text-slate-400">Nenhuma transação registrada.</p>
         )}
       </div>
     );
@@ -427,7 +427,7 @@ const UserProfileAdminModal = ({
       <div className="animate-fade-in space-y-6">
         <div className="flex items-center justify-between">
           <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
-            <MessageSquare size={14} className="text-indigo-500" /> Historico de Comentarios (Ultimos 50)
+            <MessageSquare size={14} className="text-indigo-500" /> Histórico de Comentários (últimos 50)
           </h4>
           <span className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:border-indigo-900/30 dark:bg-indigo-900/20 dark:text-indigo-400">
             Total: {detailedUser.stats?.comments_count || 0}
@@ -443,7 +443,7 @@ const UserProfileAdminModal = ({
                     <Clock size={10} /> {formatDateTime(comment.created_at)}
                   </span>
                   <Link
-                    to={`/questoes?q=${comment.question_id}`}
+                    to={`/questões?q=${comment.question_id}`}
                     target="_blank"
                     className="flex items-center gap-1 rounded-lg bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-all hover:bg-indigo-50 hover:text-indigo-600 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
                   >
@@ -461,7 +461,7 @@ const UserProfileAdminModal = ({
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-300 dark:bg-slate-800">
               <MessageSquare size={20} />
             </div>
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Nenhum comentario encontrado</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Nenhum comentário encontrado</p>
           </div>
         )}
       </div>
@@ -518,7 +518,7 @@ const UserProfileAdminModal = ({
               <button type="button" onClick={() => onDetailTabChange('overview')} className={`border-b-2 px-2 pb-4 text-xs font-black uppercase tracking-widest transition-all ${detailTab === 'overview' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>Visao Geral</button>
               <button type="button" onClick={() => onDetailTabChange('subscription')} className={`border-b-2 px-2 pb-4 text-xs font-black uppercase tracking-widest transition-all ${detailTab === 'subscription' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>Assinatura & Planos</button>
               <button type="button" onClick={() => onDetailTabChange('transactions')} className={`border-b-2 px-2 pb-4 text-xs font-black uppercase tracking-widest transition-all ${detailTab === 'transactions' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>Financeiro</button>
-              <button type="button" onClick={() => onDetailTabChange('comments')} className={`border-b-2 px-2 pb-4 text-xs font-black uppercase tracking-widest transition-all ${detailTab === 'comments' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>Comentarios ({detailedUser?.last_comments?.length || 0})</button>
+              <button type="button" onClick={() => onDetailTabChange('comments')} className={`border-b-2 px-2 pb-4 text-xs font-black uppercase tracking-widest transition-all ${detailTab === 'comments' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}>Comentários ({detailedUser?.last_comments?.length || 0})</button>
             </div>
 
             <div className="no-scrollbar flex-1 overflow-y-auto p-8">

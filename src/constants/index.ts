@@ -14,11 +14,11 @@ export const PLAN_DETAILS = {
   Gratuito: {
     color: 'bg-slate-500',
     features: [
-      { text: '15 questÃµes por dia', included: true },
-      { text: 'EstatÃ­sticas bÃ¡sicas', included: true },
-      { text: 'ComentÃ¡rios da comunidade', included: true },
-      { text: 'ExplicaÃ§Ãµes via IA', included: false },
-      { text: 'Sem anÃºncios', included: false },
+      { text: '15 questões por dia', included: true },
+      { text: 'Estatísticas básicas', included: true },
+      { text: 'Comentários da comunidade', included: true },
+      { text: 'Explicações via IA', included: false },
+      { text: 'Sem anúncios', included: false },
       { text: 'Chat Mentor Ilimitado', included: false },
       { text: 'Simulados Exclusivos', included: false },
     ]
@@ -26,11 +26,11 @@ export const PLAN_DETAILS = {
   Essencial: {
     color: 'bg-blue-500',
     features: [
-      { text: 'QuestÃµes Ilimitadas', included: true },
-      { text: 'EstatÃ­sticas bÃ¡sicas', included: true },
-      { text: 'ComentÃ¡rios da comunidade', included: true },
-      { text: 'Sem anÃºncios', included: true },
-      { text: 'ExplicaÃ§Ãµes via IA', included: false },
+      { text: 'Questões Ilimitadas', included: true },
+      { text: 'Estatísticas básicas', included: true },
+      { text: 'Comentários da comunidade', included: true },
+      { text: 'Sem anúncios', included: true },
+      { text: 'Explicações via IA', included: false },
       { text: 'Chat Mentor Ilimitado', included: false },
       { text: 'Simulados Exclusivos', included: false },
     ]
@@ -39,10 +39,10 @@ export const PLAN_DETAILS = {
     color: 'bg-indigo-600',
     popular: true,
     features: [
-      { text: 'QuestÃµes Ilimitadas', included: true },
-      { text: 'AnÃ¡lise de Desempenho Detalhada', included: true },
-      { text: 'Sem anÃºncios', included: true },
-      { text: 'ExplicaÃ§Ãµes via IA (Gemini)', included: true },
+      { text: 'Questões Ilimitadas', included: true },
+      { text: 'Análise de Desempenho Detalhada', included: true },
+      { text: 'Sem anúncios', included: true },
+      { text: 'Explicações via IA (Gemini)', included: true },
       { text: 'Caderno de Erros Inteligente', included: true },
       { text: 'Simulados Exclusivos', included: true },
     ]
@@ -53,7 +53,7 @@ export const PLAN_DETAILS = {
       { text: 'Tudo do plano Pro', included: true },
       { text: 'Chat Mentor Ilimitado', included: true },
       { text: 'Cronograma de Estudos IA', included: true },
-      { text: 'Suporte PrioritÃ¡rio', included: true },
+      { text: 'Suporte Prioritário', included: true },
       { text: 'Acesso Antecipado a Recursos', included: true },
     ]
   }

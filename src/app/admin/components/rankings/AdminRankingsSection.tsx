@@ -29,11 +29,11 @@ const AdminRankingsSection = ({
         <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
           <tr>
             {renderSortableHeader('Ranking', 'name')}
-            {renderSortableHeader('InstituiÃ§Ã£o', 'institution')}
+            {renderSortableHeader('Instituição', 'institution')}
             {renderSortableHeader('Vagas/Reserva', 'vacancies')}
             {renderSortableHeader('Inscritos', 'entries.length')}
             {renderSortableHeader('Status', 'keyStatus')}
-            <th className="p-4 text-center">AÃ§Ãµes</th>
+            <th className="p-4 text-center">Ações</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-slate-800">

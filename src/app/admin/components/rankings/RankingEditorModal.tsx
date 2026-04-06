@@ -40,7 +40,7 @@ const RankingEditorModal = ({
             </div>
             <div>
               <h3 className="text-xl font-black uppercase tracking-tight text-slate-900 dark:text-slate-100">Editar Ranking</h3>
-              <p className="text-xs font-medium text-slate-500">Ajuste as configuracoes e regras do ranking.</p>
+              <p className="text-xs font-medium text-slate-500">Ajuste as configurações e regras do ranking.</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-400 transition-colors hover:bg-white dark:hover:bg-slate-700">
@@ -87,7 +87,7 @@ const RankingEditorModal = ({
               />
             </div>
             <div className="space-y-2">
-              <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Total de Questoes</label>
+              <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Total de Questões</label>
               <input
                 type="number"
                 value={ranking.totalQuestions}

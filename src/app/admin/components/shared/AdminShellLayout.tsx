@@ -13,6 +13,7 @@ import React from 'react';
 import AdminTopBar from './AdminTopBar';
 import AdminPageHeader from './AdminPageHeader';
 import { DashboardSidebar } from '../../../../components/shared/layout/DashboardSidebar';
+import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 
 interface AdminShellLayoutProps {
   activeTab: string;
@@ -44,7 +45,7 @@ const AdminShellLayout = ({
     <div className="ml-0 flex min-w-0 flex-1 flex-col overflow-hidden transition-colors duration-300 md:ml-64">
       <AdminTopBar {...topBarProps} />
 
-      <div className="no-scrollbar mx-auto flex-1 w-full max-w-7xl overflow-y-auto px-4 py-8 animate-fade-in md:px-8">
+      <div className={`no-scrollbar mx-auto flex-1 w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} overflow-y-auto px-4 py-8 animate-fade-in md:px-8`}>
         <AdminPageHeader title={pageTitle} />
 
         <div className="min-h-[500px]">{children}</div>

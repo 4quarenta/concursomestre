@@ -71,12 +71,12 @@ const Support: React.FC = () => {
 
             await supportService.createThread(payload);
 
-                addToast('SolicitaÃ§Ã£o enviada com sucesso!', 'success');
+                addToast('Solicitação enviada com sucesso!', 'success');
                 setSubject('');
                 setDetails('');
                 fetchHistory();
         } catch (error) {
-            addToast('Erro ao enviar solicitaÃ§Ã£o.', 'error');
+            addToast('Erro ao enviar solicitação.', 'error');
         } finally {
             setIsSubmitting(false);
         }
@@ -126,7 +126,7 @@ const Support: React.FC = () => {
             addToast('Resposta enviada com sucesso.', 'success');
         } catch (error) {
             console.error('Error sending support reply', error);
-            addToast('Nao foi possivel enviar sua resposta.', 'error');
+            addToast('Não foi possível enviar sua resposta.', 'error');
         } finally {
             setSendingReplyId(null);
         }
@@ -146,7 +146,7 @@ const Support: React.FC = () => {
         return (
             <div className="mt-8">
                 <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-4">
-                    HistÃ³rico Recente
+                    Histórico Recente
                 </h3>
                 <div className="space-y-3">
                     {filtered.map((item) => (
@@ -160,14 +160,14 @@ const Support: React.FC = () => {
                                         item.status === 'read' ? 'bg-blue-100 text-blue-600' :
                                             'bg-amber-100 text-amber-600'
                                         }`}>
-                                        {item.status === 'new' ? 'Aberto' : item.status === 'read' ? 'Em AnÃ¡lise' : 'Resolvido'}
+                                        {item.status === 'new' ? 'Aberto' : item.status === 'read' ? 'Em Análise' : 'Resolvido'}
                                     </span>
                                     <span className="text-[10px] text-slate-400">
                                         {new Date(item.created_at).toLocaleDateString()}
                                     </span>
                                 </div>
                                 <p className="text-sm text-slate-700 dark:text-slate-300 font-medium mb-2">
-                                    {item.reason || 'Sem tÃ­tulo'}
+                                    {item.reason || 'Sem título'}
                                 </p>
                                 <p className="text-xs text-slate-500 dark:text-slate-400">
                                     {item.details}
@@ -198,7 +198,7 @@ const Support: React.FC = () => {
                                             <div key={reply.id} className={`p-3 rounded-lg text-xs ${reply.user_id === currentUser?.id ? 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 ml-4' : 'bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/20 mr-4'}`}>
                                                 <div className="flex justify-between items-center mb-1">
                                                     <span className="font-bold text-slate-700 dark:text-slate-300">
-                                                        {reply.user_id === currentUser?.id ? 'VocÃª' : 'Suporte'}
+                                                        {reply.user_id === currentUser?.id ? 'Você' : 'Suporte'}
                                                     </span>
                                                     <span className="text-[9px] text-slate-400">
                                                         {new Date(reply.created_at).toLocaleString()}
@@ -234,7 +234,7 @@ const Support: React.FC = () => {
                                             </button>
                                         </form>
                                         <p className="mt-2 text-[10px] text-slate-400">
-                                            Quando o suporte responder pelo painel administrativo, voce tambem recebe um e-mail automatico com a atualizacao.
+                                            Quando o suporte responder pelo painel administrativo, você também recebe um e-mail automático com a atualizacao.
                                         </p>
                                     </div>
                                 </div>
@@ -284,7 +284,7 @@ const Support: React.FC = () => {
                         : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
                         }`}
                 >
-                    <Info size={18} /> Pedir InformaÃ§Ã£o
+                    <Info size={18} /> Pedir Informação
                 </button>
                 <button
                     onClick={() => setActiveTab('donation')}
@@ -293,7 +293,7 @@ const Support: React.FC = () => {
                         : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
                         }`}
                 >
-                    <Heart size={18} /> Fazer DoaÃ§Ã£o
+                    <Heart size={18} /> Fazer Doação
                 </button>
             </div>
 
@@ -307,9 +307,9 @@ const Support: React.FC = () => {
                                 </div>
                                 <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2">Apoie o ConcursoMestre</h2>
                                 <p className="text-slate-500 dark:text-slate-400 leading-relaxed max-w-lg mx-auto">
-                                    Somos uma plataforma independente construÃ­da com paixÃ£o para ajudar estudantes a alcanÃ§arem seus sonhos.
-                                    Os custos de servidores, desenvolvimento e manutenÃ§Ã£o sÃ£o altos.
-                                    Qualquer valor nos ajuda a continuar evoluindo e mantendo o acesso democrÃ¡tico.
+                                    Somos uma plataforma independente construída com paixão para ajudar estudantes a alcançarem seus sonhos.
+                                    Os custos de servidores, desenvolvimento e manutenção são altos.
+                                    Qualquer valor nos ajuda a continuar evoluindo e mantendo o acesso democrático.
                                 </p>
                             </div>
 
@@ -317,14 +317,14 @@ const Support: React.FC = () => {
                                 <div className="p-4 border border-emerald-100 dark:border-emerald-900/30 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-xl text-center">
                                     <Coffee className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
                                     <h3 className="font-bold text-slate-800 dark:text-slate-200">PIX</h3>
-                                    <p className="text-xs text-slate-500 mb-3">Chave AleatÃ³ria ou Email</p>
+                                    <p className="text-xs text-slate-500 mb-3">Chave Aleatória ou Email</p>
                                     <code className="block bg-white dark:bg-slate-800 p-2 rounded border border-dashed border-slate-300 dark:border-slate-700 text-xs font-mono select-all">
                                         {pixKey}
                                     </code>
                                 </div>
                                 <div className="p-4 border border-indigo-100 dark:border-indigo-900/30 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-xl text-center">
                                     <CreditCard className="w-8 h-8 text-indigo-600 mx-auto mb-2" />
-                                    <h3 className="font-bold text-slate-800 dark:text-slate-200">CartÃ£o / Boleto</h3>
+                                    <h3 className="font-bold text-slate-800 dark:text-slate-200">Cartão / Boleto</h3>
                                     <p className="text-xs text-slate-500 mb-3">Via Mercado Pago</p>
                                     <button className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
                                         Doar R$ 10,00
@@ -334,7 +334,7 @@ const Support: React.FC = () => {
 
                             <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl text-center">
                                 <p className="text-xs font-medium text-slate-500 italic">
-                                    "O conhecimento Ã© a Ãºnica ferramenta que ninguÃ©m pode tirar de vocÃª."
+                                    "O conhecimento é a única ferramenta que ninguém pode tirar de você."
                                 </p>
                             </div>
                         </div>
@@ -342,8 +342,8 @@ const Support: React.FC = () => {
                         <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
                             <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
                                 {activeTab === 'bug' && <><AlertTriangle className="text-red-500" /> Reportar um Problema</>}
-                                {activeTab === 'feedback' && <><MessageSquare className="text-indigo-500" /> Enviar SugestÃ£o</>}
-                                {activeTab === 'info' && <><Info className="text-blue-500" /> Solicitar InformaÃ§Ã£o</>}
+                                {activeTab === 'feedback' && <><MessageSquare className="text-indigo-500" /> Enviar Sugestão</>}
+                                {activeTab === 'info' && <><Info className="text-blue-500" /> Solicitar Informação</>}
                             </h2>
 
                             <form onSubmit={handleSubmit} className="space-y-4">
@@ -354,7 +354,7 @@ const Support: React.FC = () => {
                                         value={subject}
                                         onChange={e => setSubject(e.target.value)}
                                         className="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
-                                        placeholder={activeTab === 'bug' ? "Ex: Erro ao salvar questÃ£o" : "Ex: SugestÃ£o de nova funcionalidade"}
+                                        placeholder={activeTab === 'bug' ? "Ex: Erro ao salvar questão" : "Ex: Sugestão de nova funcionalidade"}
                                         required
                                     />
                                 </div>
@@ -388,12 +388,12 @@ const Support: React.FC = () => {
 
                     <div className="mt-8 bg-indigo-50 dark:bg-indigo-900/20 p-6 rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
                         <h3 className="font-bold text-indigo-900 dark:text-indigo-300 mb-2 flex items-center gap-2">
-                            <CheckCircle2 size={18} /> Dicas Ãšteis
+                            <CheckCircle2 size={18} /> Dicas Úteis
                         </h3>
                         <ul className="text-xs text-indigo-800 dark:text-indigo-200 space-y-2 opacity-80">
-                            <li>â€¢ Ao reportar bugs, inclua passos para reproduzir.</li>
-                            <li>â€¢ Para sugestÃµes, explique como isso ajudaria seus estudos.</li>
-                            <li>â€¢ Verifique se sua dÃºvida jÃ¡ nÃ£o estÃ¡ no FAQ.</li>
+                            <li>? Ao reportar bugs, inclua passos para reproduzir.</li>
+                            <li>• Para sugestões, explique como isso ajudaria seus estudos.</li>
+                            <li>• Verifique se sua dúvida já não está no FAQ.</li>
                         </ul>
                     </div>
                 </div>

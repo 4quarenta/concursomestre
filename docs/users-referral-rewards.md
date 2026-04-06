@@ -11,11 +11,11 @@ O fluxo saiu de:
 
 E passou para:
 
-- `C:\xampp\htdocs\questao-pro-backend\modules\users\controllers\UsersRewardsController.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\users\services\UsersReferralRewardsService.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\users\repositories\UsersRepository.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\users\routes.php`
-- `C:\xampp\htdocs\questao-pro-backend\scripts\tasks\process_referral_rewards.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\users\controllers\UsersRewardsController.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\users\services\UsersReferralRewardsService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\users\repositories\UsersRepository.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\users\routes.php`
+- `C:\xampp\htdocs\questão-pro-backend\scripts\tasks\process_referral_rewards.php`
 
 ## Regras aplicadas
 
@@ -25,9 +25,9 @@ E passou para:
 - o processamento periodico agora tem script CLI oficial
 - o bridge HTTP passou a exigir `CRON_SECRET`
 
-## Seguranca
+## Segurança
 
-- `api/tasks/ProcessRewards.php` nao fica mais aberto sem chave
+- `api/tasks/ProcessRewards.php` não fica mais aberto sem chave
 - a execucao oficial recomendada passa a ser o script CLI `scripts/tasks/process_referral_rewards.php`
 - o helper legado foi removido para evitar regra duplicada fora do modulo
 

@@ -45,7 +45,7 @@ describe('simulationsService', () => {
     vi.clearAllMocks();
   });
 
-  it('persiste uma sessao de simulado pelo endpoint oficial', async () => {
+  it('persiste uma sessão de simulado pelo endpoint oficial', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
       id: 'sim-123',

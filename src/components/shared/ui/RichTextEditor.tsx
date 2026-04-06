@@ -65,7 +65,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ initialValue = '', onCh
       {/* Toolbar */}
       <div className="flex items-center gap-1 p-2 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 flex-wrap transition-colors">
         <ToolbarButton icon={Bold} command="bold" title="Negrito" />
-        <ToolbarButton icon={Italic} command="italic" title="ItÃ¡lico" />
+        <ToolbarButton icon={Italic} command="italic" title="Itálico" />
         <ToolbarButton icon={Underline} command="underline" title="Sublinhado" />
 
         <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1 transition-colors" />

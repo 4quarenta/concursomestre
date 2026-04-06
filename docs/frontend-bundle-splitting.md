@@ -3,11 +3,11 @@
 ### Objetivo
 - Reduzir o chunk principal do frontend.
 - Fazer o navegador baixar cada tela sob demanda.
-- Separar vendors pesados por dominio tecnico para melhorar cache e carregamento inicial.
+- Separar vendors pesados por dominio técnico para melhorar cache e carregamento inicial.
 
 ### Mudancas
 - `src/router/publicRoutes.tsx`
-  - paginas publicas migradas para `React.lazy`.
+  - paginas públicas migradas para `React.lazy`.
 - `src/router/privateRoutes.tsx`
   - paginas autenticadas migradas para `React.lazy`.
 - `src/router/adminRoutes.tsx`
@@ -29,7 +29,7 @@
 - Apos lazy loading por rota, o principal caiu para cerca de `814 kB`.
 - Apos o split manual de vendors, o build passou a distribuir os pesos entre chunks dedicados, sem warning de chunk acima do limite padrao do Vite.
 
-### Validacao
+### Validação
 - `npm run build`
 - `npm run test:auth`
 - `npm run test:admin`

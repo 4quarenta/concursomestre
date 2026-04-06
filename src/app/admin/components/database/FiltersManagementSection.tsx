@@ -147,7 +147,7 @@ const FiltersManagementSection = ({
                 <th className="p-4">Nome / Parentesco</th>
                 <th className="p-4">Tipo</th>
                 <th className="p-4">Slug (URL)</th>
-                <th className="p-4 text-center">Acoes</th>
+                <th className="p-4 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-800">

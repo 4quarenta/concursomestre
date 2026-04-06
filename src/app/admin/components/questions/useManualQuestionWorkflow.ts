@@ -58,6 +58,7 @@ const createEmptyManualQuestion = () => ({
   topics: [],
   roles: [],
   provaId: '',
+  provas: [],
 });
 
 export const useManualQuestionWorkflow = ({
@@ -147,7 +148,7 @@ export const useManualQuestionWorkflow = ({
       const detail = await aiService.generateDetailedAnalysis(systemSettings.geminiApiKey || '', question);
       setManualQ((previous: any) => ({ ...previous, detailedComment: detail }));
     } catch (error) {
-      addToast('Erro ao gerar analise detalhada da questao.', 'error');
+      addToast('Erro ao gerar análise detalhada da questão.', 'error');
     } finally {
       setIsGeneratingDetailed(false);
     }
@@ -163,7 +164,7 @@ export const useManualQuestionWorkflow = ({
       const comment = await aiService.generateTeacherComment(systemSettings.geminiApiKey || '', question);
       setManualQ((previous: any) => ({ ...previous, teacherComment: comment }));
     } catch (error) {
-      addToast('Erro ao gerar comentario do professor.', 'error');
+      addToast('Erro ao gerar comentário do professor.', 'error');
     } finally {
       setIsGeneratingTeacher(false);
     }
@@ -193,8 +194,8 @@ export const useManualQuestionWorkflow = ({
       ),
       cargos: manualQ.cargos.map((cargo: any) =>
         typeof cargo === 'string'
-          ? systemSettings.taxonomies?.roles?.find((taxonomy: any) => taxonomy.name === cargo) || { id: null, slug: slugify(cargo), descricao: cargo, name: cargo }
-          : { ...cargo, name: cargo.name || cargo.descricao },
+          ? systemSettings.taxonomies?.roles?.find((taxonomy: any) => taxonomy.name === cargo) || { id: null, slug: slugify(cargo), descrição: cargo, name: cargo }
+          : { ...cargo, name: cargo.name || cargo.descrição },
       ),
       assuntos: [
         ...manualQ.subjects.map((subject: any) => {
@@ -234,7 +235,7 @@ export const useManualQuestionWorkflow = ({
       if (editingExtractedIndex !== null) {
         replaceExtractedQuestion(editingExtractedIndex, newQuestion);
         setEditingExtractedIndex(null);
-        addToast('`Questao extraida revisada com sucesso!', 'success');
+        addToast('`Questão extraida revisada com sucesso!', 'success');
       } else {
         let response;
         if (editingQuestion) {
@@ -246,7 +247,7 @@ export const useManualQuestionWorkflow = ({
         setEditingQuestion(null);
         await onRefreshQuestions();
 
-        let message = 'Questao salva com sucesso!';
+        let message = 'Questão salva com sucesso!';
         if (response?.newTaxonomies?.length > 0) {
           message += `\n\nNovos itens criados: ${response.newTaxonomies.map((taxonomy: any) => `${taxonomy.type}: ${taxonomy.name}`).join(', ')}`;
         }
@@ -254,7 +255,7 @@ export const useManualQuestionWorkflow = ({
       }
     } catch (error) {
       console.error('Error saving manual question:', error);
-      addToast('`Erro ao salvar questao. Verifique o console para mais detalhes.', 'error');
+      addToast('`Erro ao salvar questão. Verifique o console para mais detalhes.', 'error');
     } finally {
       closeManualModal();
     }
@@ -272,7 +273,7 @@ export const useManualQuestionWorkflow = ({
         enunciado_clean: question.enunciado_clean || (rawQuestion.text ? rawQuestion.text.replace(/<[^>]*>?/gm, '') : ''),
         bancas: (question.bancas || []).map((item: any) => (typeof item === 'string' ? item : item.sigla || item.name)),
         orgaos: (question.orgaos || []).map((item: any) => (typeof item === 'string' ? item : item.name)),
-        cargos: (question.cargos || []).map((item: any) => (typeof item === 'string' ? item : item.descricao || item.name)),
+        cargos: (question.cargos || []).map((item: any) => (typeof item === 'string' ? item : item.descrição || item.name)),
         subjects: (question.assuntos?.filter((item: any) => item.materia) || []).map((item: any) => item.nome || item.name || item),
         assuntos: (question.assuntos?.filter((item: any) => !item.materia) || []).map((item: any) => item.nome || item.name || item),
         anos: (question.anos || []).map((item: any) => (typeof item === 'number' ? String(item) : item)),
@@ -294,6 +295,7 @@ export const useManualQuestionWorkflow = ({
         desatualizada: question.desatualizada || rawQuestion.isOutdated || false,
         detailedComment: question.detailedComment || '',
         provaId: (question as any).prova_id || rawQuestion.provaId || '',
+        provas: question.provas || rawQuestion.provas || [],
       });
     } else {
       setEditingQuestion(null);

@@ -48,6 +48,7 @@ const MarketplaceContext = createContext<MarketplaceContextType | undefined>(und
 
 /**
  * Atualiza um material pelo id sem repetir mapeamentos manuais pelo provider.
+ * @since 1.0.0
  */
 const mapMaterialById = (
   list: Material[],
@@ -58,7 +59,8 @@ const mapMaterialById = (
 ));
 
 /**
- * Atualiza uma transacao pelo id mantendo a transformacao centralizada.
+ * Atualiza uma transação pelo id mantendo a transformação centralizada.
+ * @since 1.0.0
  */
 const mapTransactionById = (
   list: Transaction[],
@@ -70,8 +72,9 @@ const mapTransactionById = (
 
 /**
  * Provider oficial do dominio de marketplace.
- * Ele coordena estado, notificacoes e atualizacoes otimistas enquanto a
+ * Ele coordena estado, notificações e atualizacoes otimistas enquanto a
  * camada `src/services` concentra os contratos HTTP do dominio.
+ * @since 1.0.0
  */
 export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -85,6 +88,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   // Carrega os materiais uma unica vez para abastecer vitrine, dashboard do parceiro e administracao.
   const materialsInitRef = useRef(false);
+  /**
+   * Carrega a vitrine inicial de materiais uma unica vez por montagem do provider.
+   * @since 1.0.0
+   */
   useEffect(() => {
     if (materialsInitRef.current) return;
     materialsInitRef.current = true;
@@ -99,6 +106,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       .finally(() => setIsLoadingMaterials(false));
   }, []);
 
+  /**
+   * Recarrega as transações do usuário autenticado para biblioteca e histórico.
+   * @since 1.0.0
+   */
   const fetchUserTransactions = async () => {
     if (!currentUser) return;
 
@@ -110,7 +121,12 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
-  // Carrega transacoes do usuario atual ou todas as transacoes quando o admin abre o painel.
+  // Carrega transações do usuário atual ou todas as transações quando o admin abre o painel.
+  /**
+   * Mantem o histórico de transações alinhado ao papel do usuário atual.
+   * Admins veem tudo; usuários comuns veem apenas suas proprias compras.
+   * @since 1.0.0
+   */
   useEffect(() => {
     if (authLoading) return;
 
@@ -133,6 +149,11 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [authLoading, currentUser?.id, currentUser?.isAdmin, currentUser?.role]);
 
+  /**
+   * Efetiva a compra local de um material e dispara as notificações relacionadas.
+   * Esse fluxo conecta checkout, biblioteca do usuário e telemetria do marketplace.
+   * @since 1.0.0
+   */
   const purchaseMaterial = async (material: Material) => {
     if (!currentUser) return;
 
@@ -149,7 +170,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       sendNotification(
         currentUser.id,
         'Compra Realizada',
-        `Voce adquiriu "${material.title}". Protocolo: ${String(transaction.id).substring(0, 12)}`,
+        `Você adquiriu "${material.title}". Protocolo: ${String(transaction.id).substring(0, 12)}`,
         'success',
         'marketplace',
       );
@@ -158,7 +179,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         sendNotification(
           material.authorId,
           'Venda Realizada',
-          `Voce vendeu "${material.title}" para ${currentUser.name}. Protocolo: ${String(transaction.id).substring(0, 12)}`,
+          `Você vendeu "${material.title}" para ${currentUser.name}. Protocolo: ${String(transaction.id).substring(0, 12)}`,
           'success',
           'marketplace',
         );
@@ -166,7 +187,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       sendNotification(
         'admin',
-        'Nova Transacao no Marketplace',
+        'Nova Transação no Marketplace',
         `Venda realizada: "${material.title}" por ${currentUser.name}.`,
         'success',
         'marketplace',
@@ -181,6 +202,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  /**
+   * Solicita reembolso de uma compra no marketplace.
+   * @since 1.0.0
+   */
   const requestRefund = async (transactionId: string, reason: string) => {
     try {
       await marketplaceService.requestRefund(transactionId, reason);
@@ -189,7 +214,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         status: 'refund_requested',
         refundReason: reason,
       })));
-      sendNotification(currentUser!.id, 'Reembolso Solicitado', 'Sua solicitacao esta em analise.', 'info', 'marketplace');
+      sendNotification(currentUser!.id, 'Reembolso Solicitado', 'Sua solicitacao esta em análise.', 'info', 'marketplace');
       addToast('Solicitacao de reembolso enviada.', 'success');
     } catch (error: any) {
       console.error('Refund request error:', error);
@@ -197,20 +222,28 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  /**
+   * Pública um novo material e atualiza a vitrine localmente.
+   * @since 1.0.0
+   */
   const publishMaterial = async (newMaterial: Material): Promise<boolean> => {
     try {
       const createdMaterial = await marketplaceService.createMaterial(newMaterial);
       setMaterials((prev) => [createdMaterial, ...prev]);
-      sendNotification('admin', 'Novo Material', `Material "${newMaterial.title}" aguardando aprovacao.`, 'info', 'marketplace');
-      addToast('Material enviado para aprovacao com sucesso!', 'success');
+      sendNotification('admin', 'Novo Material', `Material "${newMaterial.title}" aguardando aprovação.`, 'info', 'marketplace');
+      addToast('Material enviado para aprovação com sucesso!', 'success');
       return true;
     } catch (error) {
       console.error('Error publishing material:', error);
-      addToast('Erro ao publicar material. Verifique sua conexao.', 'error');
+      addToast('Erro ao publicar material. Verifique sua conexão.', 'error');
       return false;
     }
   };
 
+  /**
+   * Envia arquivo de material ou capa exibindo progresso no provider.
+   * @since 1.0.0
+   */
   const uploadFile = async (file: File, password?: string): Promise<{ url: string; pageCount?: number } | null> => {
     try {
       setUploadProgress(0);
@@ -229,6 +262,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  /**
+   * Atualiza metadados de um material existente.
+   * @since 1.0.0
+   */
   const updateMaterial = async (id: string, updates: Partial<Material>): Promise<boolean> => {
     try {
       const updatedMaterial = await marketplaceService.updateMaterial(id, updates);
@@ -245,6 +282,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  /**
+   * Executa a moderação administrativa de um material e recalcula reputação do autor.
+   * @since 1.0.0
+   */
   const moderateMaterial = async (
     id: string,
     status: 'approved' | 'rejected',
@@ -272,13 +313,18 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
       }
 
-      addToast('Moderacao aplicada com sucesso!', 'success');
+      addToast('Moderação aplicada com sucesso!', 'success');
     } catch (error) {
       console.error('Moderation error:', error);
-      addToast('Erro ao processar moderacao.', 'error');
+      addToast('Erro ao processar moderação.', 'error');
     }
   };
 
+  /**
+   * Resolve administrativamente um pedido de estorno.
+   * Quando aprovado, também remove o acesso local ao material comprado.
+   * @since 1.0.0
+   */
   const resolveRefund = async (transactionId: string, resolution: 'approved' | 'rejected') => {
     try {
       await marketplaceService.processRefund(transactionId, resolution === 'approved');
@@ -300,6 +346,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  /**
+   * Adiciona um comentário em um material e atualiza a arvore local.
+   * @since 1.0.0
+   */
   const addMaterialComment = async (materialId: string, text: string, parentId?: string) => {
     if (!currentUser) return null;
 
@@ -330,18 +380,22 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return newComment;
     } catch (error) {
       console.error('Failed to add comment:', error);
-      addToast('Erro ao adicionar comentario.', 'error');
+      addToast('Erro ao adicionar comentário.', 'error');
       return null;
     }
   };
 
+  /**
+   * Registra a curtida de comentário em material e notifica o dono quando aplicavel.
+   * @since 1.0.0
+   */
   const likeMaterialComment = async (materialId: string, commentId: string) => {
     if (!currentUser) return;
 
     try {
       await commentService.likeComment(commentId, currentUser.id);
     } catch (error) {
-      console.error('Falha ao curtir comentario:', error);
+      console.error('Falha ao curtir comentário:', error);
       return;
     }
 
@@ -356,8 +410,8 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (ownerId && ownerId !== currentUser.id) {
         sendNotification(
           ownerId,
-          'Curtiram seu comentario',
-          `${currentUser.name} curtiu seu comentario em "${material.title}".`,
+          'Curtiram seu comentário',
+          `${currentUser.name} curtiu seu comentário em "${material.title}".`,
           'success',
           'social',
         );
@@ -365,14 +419,18 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   };
 
+  /**
+   * Remove um comentário de material no backend e no estado local.
+   * @since 1.0.0
+   */
   const deleteMaterialComment = async (materialId: string, commentId: string) => {
     if (!currentUser) return;
 
     try {
       await commentService.deleteComment(commentId, currentUser.id);
     } catch (error) {
-      console.error('Falha ao deletar comentario no backend:', error);
-      addToast('Erro ao deletar comentario.', 'error');
+      console.error('Falha ao deletar comentário no backend:', error);
+      addToast('Erro ao deletar comentário.', 'error');
       return;
     }
 
@@ -382,11 +440,15 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     })));
   };
 
+  /**
+   * Exclui definitivamente um material apos confirmacao do usuário.
+   * @since 1.0.0
+   */
   const deleteMaterial = async (id: string) => {
     const materialToDelete = materials.find((material) => material.id === id);
     if (!materialToDelete) return;
 
-    if (window.confirm(`Tem certeza que deseja excluir o material "${materialToDelete.title}"? Esta acao e irreversivel.`)) {
+    if (window.confirm(`Tem certeza que deseja excluir o material "${materialToDelete.title}"? Esta ação e irreversivel.`)) {
       try {
         await marketplaceService.deleteMaterial(id);
         setMaterials((prev) => prev.filter((material) => material.id !== id));
@@ -425,6 +487,10 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   );
 };
 
+/**
+ * Hook público para consumo do estado do marketplace.
+ * @since 1.0.0
+ */
 export const useMarketplace = () => {
   const context = useContext(MarketplaceContext);
   if (context === undefined) {

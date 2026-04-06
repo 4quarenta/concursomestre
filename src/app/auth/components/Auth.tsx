@@ -21,14 +21,14 @@ import { apiClient, ENDPOINTS } from '@services/api';
 import { useToast } from '@providers/ToastProvider';
 import { useTheme } from '@providers/ThemeProvider';
 
-/** Modo de visualizaÃ§Ã£o da tela de autenticaÃ§Ã£o */
+/** Modo de visualização da tela de autenticação */
 type AuthMode = 'login' | 'signup' | 'forgot' | 'forgot-success' | 'two-factor';
 
 interface AuthProps {
   onLogin: (user: UserProfile | null, token?: string | null) => Promise<void>;
 }
 
-/** Monta UserProfile com valores padrÃ£o a partir do objeto retornado pela API */
+/** Monta UserProfile com valores padrão a partir do objeto retornado pela API */
 const buildUserProfile = (user: any): UserProfile => {
   const resolvedBilling = user.billing && typeof user.billing === 'object' ? user.billing : {};
 
@@ -127,7 +127,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setIsLoading(true);
     try {
       if (recaptchaEnabled && !captchaToken) {
-        addToast('Por favor, complete o desafio de seguranÃ§a.', 'error');
+        addToast('Por favor, complete o desafio de segurança.', 'error');
         return;
       }
 
@@ -148,7 +148,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         setError('E-mail ou senha incorretos.');
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Erro de conexÃ£o com o servidor.');
+      setError(err?.response?.data?.message || 'Erro de conexão com o servidor.');
     } finally {
       setIsLoading(false);
     }
@@ -159,13 +159,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     if (!formData.name.trim()) { setError('Informe seu nome.'); return; }
     if (!formData.email.trim()) { setError('Informe seu e-mail.'); return; }
     if (formData.password.length < 6) { setError('A senha deve ter pelo menos 6 caracteres.'); return; }
-    if (formData.password !== formData.confirmPassword) { setError('As senhas nÃ£o coincidem.'); return; }
+    if (formData.password !== formData.confirmPassword) { setError('As senhas não coincidem.'); return; }
     if (!formData.termsAccepted) { setError('Aceite os termos de uso para continuar.'); return; }
 
     setIsLoading(true);
     try {
       if (recaptchaEnabled && !captchaToken) {
-        addToast('Por favor, complete o desafio de seguranÃ§a.', 'error');
+        addToast('Por favor, complete o desafio de segurança.', 'error');
         return;
       }
 
@@ -180,13 +180,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       });
       if (result.success && result.data) {
         const { user, token } = result.data;
-        // Auto-login imediato apÃ³s o cadastro
+        // Auto-login imediato após o cadastro
         await onLogin(buildUserProfile(user), token);
       } else {
         setError(result.message || 'Erro ao criar conta.');
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Erro de conexÃ£o com o servidor.');
+      setError(err?.response?.data?.message || 'Erro de conexão com o servidor.');
     } finally {
       setIsLoading(false);
     }
@@ -198,7 +198,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setIsLoading(true);
     try {
       if (recaptchaEnabled && !captchaToken) {
-        addToast('Por favor, complete o desafio de seguranÃƒÂ§a.', 'error');
+        addToast('Por favor, complete o desafio de segurança.', 'error');
         return;
       }
 
@@ -210,7 +210,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         setMode('forgot-success');
       }
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Erro ao processar solicitaÃ§Ã£o.';
+      const msg = err?.response?.data?.message || 'Erro ao processar solicitação.';
       setError(msg);
     } finally {
       setIsLoading(false);
@@ -218,7 +218,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
   const handleVerify2FA = async () => {
     if (twoFactorCode.length < 6) {
-      setError('Informe o cÃ³digo de 6 dÃ­gitos.');
+      setError('Informe o código de 6 dígitos.');
       return;
     }
     setIsLoading(true);
@@ -231,10 +231,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         const { token } = result.data;
         await onLogin(null, token);
       } else {
-        setError(result.message || 'CÃ³digo invÃ¡lido.');
+        setError(result.message || 'Código inválido.');
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Erro na verificaÃ§Ã£o do 2FA.');
+      setError(err?.response?.data?.message || 'Erro na verificação do 2FA.');
     } finally {
       setIsLoading(false);
     }
@@ -260,7 +260,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     recaptchaRef.current?.reset();
   }, [mode]);
 
-  // ------- TELA DE SUCESSO DE RECUPERAÃ‡ÃƒO -------
+  // ------- TELA DE SUCESSO DE RECUPERAÇÃO -------
   if (mode === 'forgot-success') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-950 dark:to-slate-900 p-4">
@@ -270,8 +270,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </div>
           <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100">E-mail enviado!</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
-            Se o endereÃ§o <strong className="text-slate-700 dark:text-slate-300">{formData.forgotEmail}</strong> estiver cadastrado,
-            vocÃª receberÃ¡ as instruÃ§Ãµes para redefinir sua senha em breve.
+            Se o endereço <strong className="text-slate-700 dark:text-slate-300">{formData.forgotEmail}</strong> estiver cadastrado,
+            você receberá as instruções para redefinir sua senha em breve.
           </p>
           <button
             onClick={() => switchMode('login')}
@@ -284,7 +284,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     );
   }
 
-  // ------- TELA DE VERIFICAÃ‡ÃƒO 2FA -------
+  // ------- TELA DE VERIFICAÇÃO 2FA -------
   if (mode === 'two-factor') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-950 dark:to-slate-900 p-4">
@@ -293,9 +293,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto">
               <ShieldCheck size={32} />
             </div>
-            <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100">VerificaÃ§Ã£o em Duas Etapas</h2>
+            <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100">Verificação em Duas Etapas</h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm">
-              Insira o cÃ³digo de 6 dÃ­gitos gerado pelo seu aplicativo de autenticaÃ§Ã£o para <strong>{twoFactorEmail}</strong>.
+              Insira o código de 6 dígitos gerado pelo seu aplicativo de autenticação para <strong>{twoFactorEmail}</strong>.
             </p>
           </div>
 
@@ -345,7 +345,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   return (
     <div className="min-h-screen flex bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-950 dark:to-slate-900 transition-colors">
-      {/* Painel esquerdo decorativo (visÃ­vel apenas em telas grandes) */}
+      {/* Painel esquerdo decorativo (visível apenas em telas grandes) */}
       <div className="hidden lg:flex lg:w-5/12 bg-indigo-600 dark:bg-indigo-700 flex-col items-center justify-center p-16 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 left-0 w-96 h-96 bg-white rounded-full -translate-x-40 -translate-y-40" />
@@ -358,17 +358,17 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             <span className="text-2xl font-black tracking-tight">ConcursoMestre</span>
           </div>
           <h1 className="text-4xl font-black leading-tight">
-            Prepareâ€‘se para a <span className="text-indigo-200">aprovaÃ§Ã£o</span>
+            Prepare‑se para a <span className="text-indigo-200">aprovação</span>
           </h1>
           <p className="text-indigo-100 leading-relaxed text-sm font-medium">
-            QuestÃµes comentadas, Raioâ€‘X de bancas, simulados cronometrados e IA para acelerar seus estudos.
+            Questões comentadas, Raio‑X de bancas, simulados cronometrados e IA para acelerar seus estudos.
           </p>
           <div className="space-y-3">
             {[
-              'âœ… Banco com milhares de questÃµes',
-              'ðŸ§  AnÃ¡lise de desempenho com IA',
-              'ðŸ“Š Raioâ€‘X da Banca favorita',
-              'ðŸ† Rankings e simulados',
+              '✅ Banco com milhares de questões',
+              '🧠 Análise de desempenho com IA',
+              '📊 Raio‑X da Banca favorita',
+              '🏆 Rankings e simulados',
             ].map(item => (
               <p key={item} className="text-indigo-100 text-sm font-semibold">{item}</p>
             ))}
@@ -376,7 +376,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         </div>
       </div>
 
-      {/* FormulÃ¡rio direito */}
+      {/* Formulário direito */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-md">
           {/* Logo mobile */}
@@ -388,7 +388,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           {/* Card */}
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 transition-colors animate-scale-in">
 
-            {/* CabeÃ§alho */}
+            {/* Cabeçalho */}
             <div className="mb-8">
               {isForgot && (
                 <button
@@ -399,13 +399,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 </button>
               )}
               <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                {isForgot ? 'Recuperar senha' : isSignup ? 'Criar conta grÃ¡tis' : 'Bemâ€‘vindo de volta'}
+                {isForgot ? 'Recuperar senha' : isSignup ? 'Criar conta grátis' : 'Bem‑vindo de volta'}
               </h2>
               <p className="text-slate-400 dark:text-slate-500 text-xs mt-1.5 font-medium">
                 {isForgot
-                  ? 'Informe seu e-mail e enviaremos as instruÃ§Ãµes.'
+                  ? 'Informe seu e-mail e enviaremos as instruções.'
                   : isSignup
-                    ? '100 XP de bÃ´nus ao se cadastrar!'
+                    ? '100 XP de bônus ao se cadastrar!'
                     : 'Insira suas credenciais para continuar.'}
               </p>
             </div>
@@ -418,7 +418,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 </div>
                 <h3 className="text-base font-black text-slate-900 dark:text-slate-100">Cadastros Suspensos</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                  No momento nÃ£o estamos aceitando novos alunos. Tente novamente mais tarde!
+                  No momento não estamos aceitando novos alunos. Tente novamente mais tarde!
                 </p>
                 <button onClick={() => switchMode('login')} className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline">
                   Voltar para Login
@@ -427,7 +427,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
 
-                {/* Nome â€” apenas no cadastro */}
+                {/* Nome ? apenas no cadastro */}
                 {isSignup && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-0.5">Nome Completo</label>
@@ -449,7 +449,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 {/* E-mail */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-0.5">
-                    {isForgot ? 'Eâ€‘mail cadastrado' : 'Eâ€‘mail'}
+                    {isForgot ? 'E‑mail cadastrado' : 'E‑mail'}
                   </label>
                   <div className="relative">
                     <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -465,7 +465,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   </div>
                 </div>
 
-                {/* Senha â€” nÃ£o aparece em "esqueci" */}
+                {/* Senha — não aparece em "esqueci" */}
                 {!isForgot && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-0.5">Senha</label>
@@ -477,7 +477,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         value={formData.password}
                         onChange={e => update('password', e.target.value)}
                         className="w-full h-12 pl-10 pr-12 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-slate-100 font-semibold text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-300 dark:placeholder:text-slate-600"
-                        placeholder={isSignup ? 'MÃ­nimo 6 caracteres' : 'â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢'}
+                        placeholder={isSignup ? 'Mínimo 6 caracteres' : '••••••••'}
                       />
                       <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
                         {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -486,7 +486,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   </div>
                 )}
 
-                {/* Confirmar senha â€” apenas no cadastro */}
+                {/* Confirmar senha ? apenas no cadastro */}
                 {isSignup && (
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-0.5">Confirmar Senha</label>
@@ -507,7 +507,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   </div>
                 )}
 
-                {/* Aceite dos termos â€” apenas no cadastro */}
+                {/* Aceite dos termos ? apenas no cadastro */}
                 {isSignup && (
                   <label className="flex items-start gap-3 p-3.5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl cursor-pointer hover:bg-indigo-50/50 dark:hover:bg-slate-800 transition-colors">
                     <input
@@ -520,7 +520,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                       Li e aceito os{' '}
                       <Link to="/terms" className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline">Termos de Uso</Link>
                       {' '}e a{' '}
-                      <Link to="/privacy" className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline">PolÃ­tica de Privacidade</Link>.
+                      <Link to="/privacy" className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline">Política de Privacidade</Link>.
                     </span>
                   </label>
                 )}
@@ -548,7 +548,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   </div>
                 )}
 
-                {/* Link Esqueci Senha â€” apenas no login */}
+                {/* Link Esqueci Senha ? apenas no login */}
                 {!isSignup && !isForgot && (
                   <div className="flex justify-end -mt-1">
                     <button
@@ -568,7 +568,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                       <AlertCircle size={14} className="flex-shrink-0" />
                       <span className="flex-1">{error}</span>
                     </div>
-                    {error.includes('nÃ£o cadastrado') && (
+                    {error.includes('não cadastrado') && (
                       <button
                         type="button"
                         onClick={() => {
@@ -583,7 +583,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   </div>
                 )}
 
-                {/* BotÃ£o principal */}
+                {/* Botão principal */}
                 <button
                   type="submit"
                   disabled={isLoading}
@@ -592,9 +592,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   {isLoading
                     ? <Loader2 size={20} className="animate-spin" />
                     : isForgot
-                      ? <><Mail size={16} /> Enviar instruÃ§Ãµes</>
+                      ? <><Mail size={16} /> Enviar instruções</>
                       : isSignup
-                        ? <><ArrowRight size={16} /> Criar Conta GrÃ¡tis</>
+                        ? <><ArrowRight size={16} /> Criar Conta Grátis</>
                         : <><ArrowRight size={16} /> Entrar na Plataforma</>
                   }
                 </button>
@@ -605,7 +605,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             {!isForgot && (
               <div className="text-center space-y-3 mt-7">
                 <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-                  {isSignup ? 'JÃ¡ tem conta?' : 'Novo por aqui?'}
+                  {isSignup ? 'Já tem conta?' : 'Novo por aqui?'}
                   {' '}
                   <button
                     onClick={() => switchMode(isSignup ? 'login' : 'signup')}
@@ -619,12 +619,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   to="/"
                   className="inline-block text-[10px] font-black text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 uppercase tracking-widest transition-colors"
                 >
-                  â† Voltar para a Home
+                  ← Voltar para a Home
                 </Link>
               </div>
             )}
 
-            {/* Painel de acesso rÃ¡pido dev â€” apenas no modo login + dev */}
+            {/* Painel de acesso rápido dev — apenas no modo login + dev */}
             {!isForgot && !isSignup && isDevMode && (
               <DevQuickLogin onLogin={onLogin} />
             )}
@@ -636,8 +636,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 };
 
 /**
- * Painel de login rÃ¡pido para contas de desenvolvimento.
- * VisÃ­vel apenas quando appMode !== 'production'.
+ * Painel de login rápido para contas de desenvolvimento.
+ * Visível apenas quando appMode !== 'production'.
  */
 export const DevQuickLogin: React.FC<{ onLogin: (user: any, token?: string | null) => Promise<void> }> = ({ onLogin }) => {
   const { systemSettings } = useData();
@@ -669,7 +669,7 @@ export const DevQuickLogin: React.FC<{ onLogin: (user: any, token?: string | nul
   return (
     <div className="mt-5 p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-2xl space-y-2">
       <p className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest flex items-center gap-1">
-        <Terminal size={11} /> DEV â€” Acesso RÃ¡pido
+        <Terminal size={11} /> DEV — Acesso Rápido
       </p>
       <div className="flex flex-wrap gap-2">
         {accounts.map(acc => (

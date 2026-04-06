@@ -97,7 +97,7 @@ const Page: React.FC = () => {
           return;
         }
 
-        setErrorMessage(readApiErrorMessage(error, 'Nao foi possivel carregar o changelog agora.'));
+        setErrorMessage(readApiErrorMessage(error, 'Não foi possível carregar o changelog agora.'));
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -128,7 +128,7 @@ const Page: React.FC = () => {
         <div className="max-w-6xl mx-auto px-6 py-16 flex flex-col md:flex-row items-center justify-between gap-8 relative z-10">
           <div className="text-left max-w-2xl">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs font-black uppercase tracking-widest mb-6 border border-indigo-100 dark:border-indigo-800 shadow-sm">
-              <Rocket size={14} className="animate-pulse" /> Evolucao da plataforma
+              <Rocket size={14} className="animate-pulse" /> Evolução da plataforma
             </div>
             <h1 className="text-4xl md:text-5xl font-black text-slate-900 dark:text-white mb-4 tracking-tight leading-tight">
               Changelog & Atualizacoes
@@ -175,7 +175,7 @@ const Page: React.FC = () => {
               <div className="p-6 bg-slate-900 dark:bg-indigo-900/20 rounded-2xl text-white mt-12">
                 <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">Dica</p>
                 <p className="text-xs font-bold leading-relaxed">
-                  Use o menu acima para navegar pelo historico de atualizacoes e ver o que mudou em cada versao.
+                  Use o menu acima para navegar pelo histórico de atualizacoes e ver o que mudou em cada versao.
                 </p>
               </div>
             </div>
@@ -241,7 +241,7 @@ const Page: React.FC = () => {
       </div>
 
       <div className="max-w-6xl mx-auto px-6 mt-20 pt-10 border-t border-slate-200 dark:border-slate-800 text-center">
-        <p className="text-slate-400 text-sm font-medium">ConcursoMestre Â© 2026</p>
+        <p className="text-slate-400 text-sm font-medium">ConcursoMestre © 2026</p>
         <div className="mt-8">
           <Link
             to="/"

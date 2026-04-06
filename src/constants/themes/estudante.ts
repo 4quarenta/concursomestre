@@ -13,7 +13,7 @@ import { GraduationCap } from 'lucide-react';
 import { ThemeConfig } from './types';
 
 export const estudanteTheme: ThemeConfig = {
-    heroBadge: 'ðŸŽ“ VOLTA Ã€S AULAS: PREPARAÃ‡ÃƒO TOTAL',
+    heroBadge: '🎓 VOLTA ÀS AULAS: PREPARAÇÃO TOTAL',
     heroGradient: 'from-blue-600 to-indigo-600',
     bgOverlay: 'bg-blue-400',
     accent: 'text-indigo-600 bg-blue-50',

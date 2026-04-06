@@ -10,7 +10,7 @@
 */
 
 /**
- * Fachada oficial dos servicos do marketplace.
+ * Fachada oficial dos serviços do marketplace.
  */
 export type { Material, Transaction } from '@types';
 export { marketplaceService } from './marketplaceService';

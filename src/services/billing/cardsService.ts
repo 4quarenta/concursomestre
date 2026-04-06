@@ -24,11 +24,13 @@ type OptionalUserPayload = {
 };
 
 /**
- * Centraliza o cofre de cartoes e o setup de cartao salvo no frontend.
+ * Centraliza o cofre de cartoes e o setup de cartão salvo no frontend.
+ * @since 1.0.0
  */
 export const cardsService = {
   /**
-   * Lista os cartoes salvos do usuario atual.
+   * Lista os cartoes salvos do usuário atual.
+   * @since 1.0.0
    */
   async listSavedCards(userId?: string): Promise<SavedCardsListResult> {
     const response = await apiClient.post<any>(
@@ -50,7 +52,8 @@ export const cardsService = {
   },
 
   /**
-   * Remove um cartao salvo.
+   * Remove um cartão salvo.
+   * @since 1.0.0
    */
   async removeSavedCard(cardId: string, userId?: string): Promise<any> {
     const response = await apiClient.post<any>(
@@ -61,16 +64,17 @@ export const cardsService = {
       },
     ) as any;
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel remover o cartao.');
+    const envelope = assertApiSuccess(response, 'Não foi possível remover o cartão.');
     return {
       ...response,
       success: true,
-      message: envelope.message || 'Cartao removido com sucesso!',
+      message: envelope.message || 'Cartão removido com sucesso!',
     } as any;
   },
 
   /**
-   * Define um cartao salvo como padrao.
+   * Define um cartão salvo como padrao.
+   * @since 1.0.0
    */
   async setDefaultSavedCard(cardId: string, userId?: string): Promise<any> {
     const response = await apiClient.post<any>(
@@ -81,39 +85,41 @@ export const cardsService = {
       },
     ) as any;
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel definir o cartao padrao.');
+    const envelope = assertApiSuccess(response, 'Não foi possível definir o cartão padrao.');
     return {
       ...response,
       success: true,
-      message: envelope.message || 'Cartao padrao atualizado!',
+      message: envelope.message || 'Cartão padrao atualizado!',
     };
   },
 
   /**
-   * Salva um cartao no cofre legado/local.
+   * Salva um cartão no cofre legado/local.
+   * @since 1.0.0
    */
   async saveLegacyCard(payload: Record<string, unknown>): Promise<any> {
     const response = await apiClient.post<any>(ENDPOINTS.users.saveCard, payload) as any;
-    const envelope = assertApiSuccess(response, 'Nao foi possivel salvar o cartao.');
+    const envelope = assertApiSuccess(response, 'Não foi possível salvar o cartão.');
     return {
       ...response,
       success: true,
-      message: envelope.message || 'Cartao salvo com sucesso!',
+      message: envelope.message || 'Cartão salvo com sucesso!',
     };
   },
 
   /**
-   * Prepara o setup intent do Stripe para salvar novo cartao.
+   * Prepara o setup intent do Stripe para salvar novo cartão.
+   * @since 1.0.0
    */
   async createStripeSetupIntent(): Promise<{ success: true; client_secret: string }> {
     const response = await apiClient.post<any>(ENDPOINTS.users.createStripeSetupIntent, {}) as any;
-    assertApiSuccess(response, 'Nao foi possivel preparar o formulario Stripe.');
+    assertApiSuccess(response, 'Não foi possível preparar o formulário Stripe.');
 
     const payload = readApiData<any>(response, {});
     const clientSecret = payload?.client_secret ?? response?.client_secret;
 
     if (!clientSecret) {
-      throw new Error('Nao foi possivel preparar o formulario Stripe.');
+      throw new Error('Não foi possível preparar o formulário Stripe.');
     }
 
     return {
@@ -124,17 +130,18 @@ export const cardsService = {
 
   /**
    * Sincroniza o metodo de pagamento Stripe apos o setup intent.
+   * @since 1.0.0
    */
   async syncStripeCard(paymentMethodId: string): Promise<any> {
     const response = await apiClient.post<any>(ENDPOINTS.users.syncStripeCard, {
       payment_method_id: paymentMethodId,
     }) as any;
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel sincronizar o cartao Stripe.');
+    const envelope = assertApiSuccess(response, 'Não foi possível sincronizar o cartão Stripe.');
     return {
       ...response,
       success: true,
-      message: envelope.message || 'Cartao salvo com sucesso na Stripe!',
+      message: envelope.message || 'Cartão salvo com sucesso na Stripe!',
     };
   },
 };

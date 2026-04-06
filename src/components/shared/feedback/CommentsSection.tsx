@@ -36,9 +36,9 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
     const isHighlighted = highlightedId === comment.id;
     const getBadge = (plan?: string) => {
         switch (plan) {
-            case 'Elite': return <span title="UsuÃ¡rio Elite"><Crown size={12} className="text-amber-500 fill-amber-500" /></span>;
-            case 'Pro': return <span title="UsuÃ¡rio Pro"><Zap size={12} className="text-indigo-500 fill-indigo-500" /></span>;
-            case 'Essencial': return <span title="UsuÃ¡rio Essencial"><Star size={12} className="text-blue-500 fill-blue-500" /></span>;
+            case 'Elite': return <span title="Usuário Elite"><Crown size={12} className="text-amber-500 fill-amber-500" /></span>;
+            case 'Pro': return <span title="Usuário Pro"><Zap size={12} className="text-indigo-500 fill-indigo-500" /></span>;
+            case 'Essencial': return <span title="Usuário Essencial"><Star size={12} className="text-blue-500 fill-blue-500" /></span>;
             default: return null;
         }
     };
@@ -161,7 +161,7 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
     onLikeComment,
     onReportComment,
     onDeleteComment,
-    title = "ComentÃ¡rios da Comunidade",
+    title = "Comentários da Comunidade",
     isExpanded = true,
     restrictedReplies,
     ownerId
@@ -196,13 +196,13 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
         }
     }, [replyTo]);
 
-    // Efeito para destacar e rolar atÃ© o novo comentÃ¡rio
+    // Efeito para destacar e rolar até o novo comentário
     useEffect(() => {
         if (lastAddedId) {
             const element = document.getElementById(`comment-${lastAddedId}`);
             if (element) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                // Limpar o destaque apÃ³s alguns segundos
+                // Limpar o destaque após alguns segundos
                 const timer = setTimeout(() => {
                     setLastAddedId(null);
                 }, 3000);
@@ -217,11 +217,11 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
         setCommentHtml('');
         setReplyTo(null);
 
-        // Sinalizar que estamos aguardando um novo comentÃ¡rio para destacar
+        // Sinalizar que estamos aguardando um novo comentário para destacar
         setLastAddedId('pending');
     };
 
-    // Efeito para capturar o ID do Ãºltimo comentÃ¡rio adicionado quando a lista for atualizada
+    // Efeito para capturar o ID do último comentário adicionado quando a lista for atualizada
     useEffect(() => {
         if (lastAddedId === 'pending' && comments.length > 0) {
             const findLatestId = (cms: Comment[]): string | null => {
@@ -272,7 +272,7 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                             </div>
                         )}
 
-                        <RichTextEditor initialValue={commentHtml} onChange={setCommentHtml} placeholder="Escreva seu comentÃ¡rio..." />
+                        <RichTextEditor initialValue={commentHtml} onChange={setCommentHtml} placeholder="Escreva seu comentário..." />
                         <div className="flex justify-end">
                             <button
                                 onClick={handleSubmit}
@@ -285,7 +285,7 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                     </>
                 ) : (
                     <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-3">
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">VocÃª precisa estar logado para participar da discussÃ£o.</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Você precisa estar logado para participar da discussão.</p>
                         <a href="#/auth" className="inline-block px-6 py-2 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all">
                             Fazer Login
                         </a>
@@ -302,8 +302,8 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                         onLike={(id) => onLikeComment(id)}
                         onReport={async (id) => {
                             const confirmed = await confirm({
-                                title: "Reportar ComentÃ¡rio",
-                                description: "VocÃª deseja denunciar este comentÃ¡rio por conter conteÃºdo inapropriado ou abusivo?",
+                                title: "Reportar Comentário",
+                                description: "Você deseja denunciar este comentário por conter conteúdo inapropriado ou abusivo?",
                                 confirmText: "Reportar",
                                 cancelText: "Voltar",
                                 type: 'warning'
@@ -315,8 +315,8 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                         onDelete={async (id) => {
                             if (comment.userId === currentUser?.id) {
                                 const confirmed = await confirm({
-                                    title: "Deletar ComentÃ¡rio",
-                                    description: "Esta aÃ§Ã£o nÃ£o pode ser desfeita. Deseja realmente excluir este comentÃ¡rio?",
+                                    title: "Deletar Comentário",
+                                    description: "Esta ação não pode ser desfeita. Deseja realmente excluir este comentário?",
                                     confirmText: "Deletar",
                                     cancelText: "Voltar",
                                     type: 'danger'

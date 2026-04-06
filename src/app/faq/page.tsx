@@ -32,11 +32,11 @@ const FAQ_DATA = [
     questions: [
       {
         q: 'Como ganho XP e subo de nivel?',
-        a: 'O XP e conquistado resolvendo questoes: cada acerto concede 10 XP e cada erro 2 XP. Cada nivel exige 1000 XP para ser completado.',
+        a: 'O XP e conquistado resolvendo questões: cada acerto concede 10 XP e cada erro 2 XP. Cada nivel exige 1000 XP para ser completado.',
       },
       {
-        q: 'O que e o sistema de reputacao?',
-        a: 'Sua reputacao cresce quando seus comentarios ajudam outros usuarios. Curtidas em respostas e colaboracoes relevantes aumentam esse indicador.',
+        q: 'O que e o sistema de reputação?',
+        a: 'Sua reputação cresce quando seus comentários ajudam outros usuários. Curtidas em respostas e colaboracoes relevantes aumentam esse indicador.',
       },
       {
         q: 'Qual a vantagem de ter um nivel alto?',
@@ -49,8 +49,8 @@ const FAQ_DATA = [
     icon: Crown,
     questions: [
       {
-        q: 'Como funcionam os planos e a renovacao?',
-        a: 'Os planos mensal, trimestral e anual podem ter renovacao automatica. A gestao fica disponivel na area de assinatura do perfil.',
+        q: 'Como funcionam os planos e a renovação?',
+        a: 'Os planos mensal, trimestral e anual podem ter renovação automática. A gestão fica disponível na area de assinatura do perfil.',
       },
       {
         q: 'Tenho direito a reembolso?',
@@ -58,7 +58,7 @@ const FAQ_DATA = [
       },
       {
         q: 'Como cancelo minha assinatura?',
-        a: 'O cancelamento da recorrencia fica disponivel em Perfil > Assinatura. O acesso premium permanece ate o fim do periodo ja pago.',
+        a: 'O cancelamento da recorrencia fica disponível em Perfil > Assinatura. O acesso premium permanece ate o fim do período já pago.',
       },
     ],
   },
@@ -68,15 +68,15 @@ const FAQ_DATA = [
     questions: [
       {
         q: 'O que e o Raio-X da banca?',
-        a: 'E a analise estatistica que mostra recorrencia de temas, padrao de cobranca e dificuldade por banca examinadora.',
+        a: 'E a análise estatistica que mostra recorrencia de temas, padrao de cobrança e dificuldade por banca examinadora.',
       },
       {
         q: 'Como funciona a mentoria por IA?',
-        a: 'A IA cruza desempenho, historico e padroes de estudo para sugerir foco, sequencia e reforco de revisao.',
+        a: 'A IA cruza desempenho, histórico e padroes de estudo para sugerir foco, sequencia e reforco de revisao.',
       },
       {
         q: 'O que sao os simulados ineditos?',
-        a: 'Sao provas montadas para replicar estilo de edital e banca, com correcao, ranking e analise de desempenho.',
+        a: 'Sao provas montadas para replicar estilo de edital e banca, com correcao, ranking e análise de desempenho.',
       },
     ],
   },
@@ -86,11 +86,11 @@ const FAQ_DATA = [
     questions: [
       {
         q: 'Como acesso os materiais que comprei?',
-        a: 'Os materiais ficam disponiveis na area do Marketplace e no seu historico de compras, com acesso ao arquivo e itens relacionados.',
+        a: 'Os materiais ficam disponíveis na área do Marketplace e no seu histórico de compras, com acesso ao arquivo e itens relacionados.',
       },
       {
         q: 'Quem cria os materiais do Marketplace?',
-        a: 'Os materiais podem ser publicados por parceiros e autores validados, com fluxo de moderacao e controle administrativo.',
+        a: 'Os materiais podem ser publicados por parceiros e autores validados, com fluxo de moderação e controle administrativo.',
       },
     ],
   },
@@ -100,21 +100,21 @@ const FAQ_DATA = [
     questions: [
       {
         q: 'Como funciona o Indique e Ganhe?',
-        a: 'Cada usuario possui um codigo ou link proprio. Quando um indicado se cadastra ou assina, a plataforma calcula os bonus previstos para a campanha ativa.',
+        a: 'Cada usuário possui um código ou link proprio. Quando um indicado se cadastra ou assina, a plataforma calcula os bonus previstos para a campanha ativa.',
       },
     ],
   },
   {
-    category: 'Suporte e seguranca',
+    category: 'Suporte e segurança',
     icon: ShieldCheck,
     questions: [
       {
-        q: 'Como falar com o suporte tecnico?',
-        a: 'Use a tela de suporte para abrir um chamado, enviar sugestoes ou relatar problemas. O historico fica centralizado por conversa.',
+        q: 'Como falar com o suporte técnico?',
+        a: 'Use a tela de suporte para abrir um chamado, enviar sugestoes ou relatar problemas. O histórico fica centralizado por conversa.',
       },
       {
-        q: 'Meus dados de pagamento estao seguros?',
-        a: 'Sim. O processamento passa pelos gateways oficiais e a plataforma evita armazenar dados sensiveis completos de cartao.',
+        q: 'Meus dados de pagamento estão seguros?',
+        a: 'Sim. O processamento passa pelos gateways oficiais e a plataforma evita armazenar dados sensiveis completos de cartão.',
       },
     ],
   },
@@ -138,13 +138,13 @@ const Page: React.FC = () => {
       <div className="max-w-4xl mx-auto space-y-12">
         <div className="text-center space-y-4">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full text-xs font-black uppercase tracking-widest">
-            <HelpCircle size={14} /> Duvidas frequentes
+            <HelpCircle size={14} /> Dúvidas frequentes
           </div>
           <h1 className="text-4xl md:text-5xl font-black text-slate-900 dark:text-white tracking-tight">
-            Tudo o que voce precisa <span className="text-indigo-600">saber</span>
+            Tudo o que você precisa <span className="text-indigo-600">saber</span>
           </h1>
           <p className="text-slate-500 dark:text-slate-400 text-lg max-w-2xl mx-auto">
-            Explore nossa base de conhecimento e tire o maximo proveito da plataforma.
+            Explore nossa base de conhecimento e tire o máximo proveito da plataforma.
           </p>
         </div>
 
@@ -226,11 +226,11 @@ const Page: React.FC = () => {
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-black/10 rounded-full -ml-24 -mb-24 blur-3xl" />
           <div className="relative space-y-3">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-white text-[10px] font-black uppercase tracking-widest">
-              <AlertCircle size={14} /> Ainda com duvidas?
+              <AlertCircle size={14} /> Ainda com dúvidas?
             </div>
             <h3 className="text-2xl md:text-3xl font-black text-white">Nosso suporte esta pronto para ajudar</h3>
             <p className="text-indigo-100 max-w-xl mx-auto">
-              Se voce nao encontrou a resposta que precisava, abra um chamado pela area de suporte e acompanhe tudo pelo historico da plataforma.
+              Se você não encontrou a resposta que precisava, abra um chamado pela area de suporte e acompanhe tudo pelo histórico da plataforma.
             </p>
           </div>
         </div>

@@ -1,11 +1,11 @@
-﻿# Shared Module Dependency Cleanup
+# Shared Module Dependency Cleanup
 
 ## Objetivo
 Fazer os modulos oficiais do backend consumirem `shared/*` diretamente, em vez de depender de bridges legados em `api/utils/*`.
 
 ## O que mudou
-- Criado `C:\xampp\htdocs\questao-pro-backend\shared\security\AdminSecurity.php`
-- Criado `C:\xampp\htdocs\questao-pro-backend\shared\responses\Response.php`
+- Criado `C:\xampp\htdocs\questão-pro-backend\shared\security\AdminSecurity.php`
+- Criado `C:\xampp\htdocs\questão-pro-backend\shared\responses\Response.php`
 - `api/utils/AdminSecurity.php` virou bridge fino
 - `api/utils/Response.php` virou bridge fino
 - Todos os `modules/*` passaram a importar direto de `shared/auth`, `shared/security` e `shared/responses`
@@ -19,9 +19,9 @@ Fazer os modulos oficiais do backend consumirem `shared/*` diretamente, em vez d
 - `api/utils/Response.php`
 
 ## Garantia arquitetural
-Foi criado `C:\xampp\htdocs\questao-pro-backend\tests\SharedModuleDependenciesWiringTest.php`, que falha se qualquer arquivo em `modules/*` voltar a depender de `api/utils/`.
+Foi criado `C:\xampp\htdocs\questão-pro-backend\tests\SharedModuleDependenciesWiringTest.php`, que falha se qualquer arquivo em `modules/*` voltar a depender de `api/utils/`.
 
-## Validacao executada
+## Validação executada
 - php lint dos arquivos novos e bridges
 - `SharedAuthInfrastructureWiringTest.php`
 - `SharedHttpWiringTest.php`

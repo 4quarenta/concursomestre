@@ -52,18 +52,18 @@ describe('accountService', () => {
     });
 
     const result = await accountService.updateUserProfile({
-      name: 'Usuario Teste',
+      name: 'Usuário Teste',
       cpf: '12345678900',
     } as any);
 
     expect(mockPost).toHaveBeenCalledWith('users/update.php', {
-      name: 'Usuario Teste',
+      name: 'Usuário Teste',
       cpf: '12345678900',
     });
     expect(result.success).toBe(true);
   });
 
-  it('promove o usuario para parceiro pelo mesmo endpoint oficial', async () => {
+  it('promove o usuário para parceiro pelo mesmo endpoint oficial', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
       message: 'Profile updated successfully',

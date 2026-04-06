@@ -24,7 +24,7 @@ interface AppProvidersProps {
 
 /**
  * Centraliza a composicao dos providers globais do app.
- * Isso reduz acoplamento na entrada da aplicacao e deixa mais claro
+ * Isso reduz acoplamento na entrada da aplicação e deixa mais claro
  * quais camadas de contexto sustentam a UI inteira.
  * @since 1.0.0
  */

@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import type { UserProfile } from '@types';
 
 interface RequireAuthProps {
@@ -28,7 +28,11 @@ export const RequireAuth: React.FC<RequireAuthProps> = ({
   loginRequired = true,
   children,
 }) => {
+  const location = useLocation();
+
   if (!currentUser && loginRequired) {
+    const requestedRoute = `${location.pathname}${location.search}${location.hash}`;
+    sessionStorage.setItem('redirectAfterLogin', requestedRoute);
     return <Navigate to="/auth" replace />;
   }
 

@@ -13,7 +13,7 @@ import { Flame } from 'lucide-react';
 import { ThemeConfig } from './types';
 
 export const saoJoaoTheme: ThemeConfig = {
-    heroBadge: 'ðŸ”¥ SÃƒO JOÃƒO: ACENDA A FOGUEIRA DO SEU CONHECIMENTO',
+    heroBadge: '🔥 SÃO JOÃO: ACENDA A FOGUEIRA DO SEU CONHECIMENTO',
     heroGradient: 'from-orange-600 to-red-600',
     bgOverlay: 'bg-orange-400',
     accent: 'text-orange-600 bg-orange-50',

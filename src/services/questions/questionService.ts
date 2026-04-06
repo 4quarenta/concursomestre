@@ -25,13 +25,13 @@ type SubmitAnswerResult = {
 };
 
 /**
- * Fachada oficial do dominio de questoes.
- * Ela conecta pratica, historico, estatisticas e manutencao administrativa ao backend oficial.
+ * Fachada oficial do domínio de questões.
+ * Ela conecta prática, histórico, estatísticas e manutenção administrativa ao backend oficial.
  * @since v1.0.0
  */
 export const questionService = {
   /**
-   * Carrega uma pagina de questoes com total, preservando compatibilidade com
+   * Carrega uma página de questões com total, preservando compatibilidade com
    * respostas que retornam `rows`, `data.rows` ou arrays crus.
    * @since v1.0.0
    */
@@ -57,7 +57,7 @@ export const questionService = {
 
   /**
    * Mantem a compatibilidade com consumidores antigos que esperam apenas a
-   * lista de questoes.
+   * lista de questões.
    * @since v1.0.0
    */
   async getQuestions(filters?: Record<string, any>): Promise<Question[]> {
@@ -66,7 +66,7 @@ export const questionService = {
   },
 
   /**
-   * Persiste a resposta do usuario e devolve o snapshot de progressao
+   * Persiste a resposta do usuário e devolve o snapshot de progressao
    * necessario para atualizar XP e nivel no frontend.
    * @since v1.0.0
    */
@@ -83,7 +83,7 @@ export const questionService = {
       },
     ) as any;
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel salvar a resposta.');
+    const envelope = assertApiSuccess(response, 'Não foi possível salvar a resposta.');
     const payload = readApiData<any>(response, {});
     return {
       success: true,
@@ -94,7 +94,7 @@ export const questionService = {
   },
 
   /**
-   * Carrega o historico de respostas do usuario para uma questao especifica.
+   * Carrega o histórico de respostas do usuário para uma questão especifica.
    * Quando o backend estiver em modo convidado, ele devolve uma lista vazia.
    * @since v1.0.0
    */
@@ -114,7 +114,7 @@ export const questionService = {
   },
 
   /**
-   * Carrega as estatisticas agregadas de uma questao para o grafico da UI.
+   * Carrega as estatisticas agregadas de uma questão para o grafico da UI.
    * @since v1.0.0
    */
   async getQuestionStats(questionId: string | number): Promise<QuestionStats> {
@@ -136,13 +136,13 @@ export const questionService = {
   },
 
   /**
-   * Bridge legado para usos antigos do servico.
+   * Bridge legado para usos antigos do serviço.
    * @since v1.0.0
    */
   async submitAnswer(answer: UserAnswer): Promise<{ success: boolean; message?: string }> {
     try {
       if (!('userId' in answer) || !(answer as any).userId) {
-        return { success: false, message: 'User ID obrigatorio para salvar resposta.' };
+        return { success: false, message: 'User ID obrigatório para salvar resposta.' };
       }
 
       const result = await this.submitUserAnswer((answer as any).userId, answer);
@@ -153,7 +153,7 @@ export const questionService = {
   },
 
   /**
-   * Cria uma unica questao usando o endpoint oficial de persistencia.
+   * Cria uma unica questão usando o endpoint oficial de persistencia.
    * @since v1.0.0
    */
   async createQuestion(questionData: Question): Promise<{ success: boolean; question?: Question }> {
@@ -163,7 +163,7 @@ export const questionService = {
         questionData,
       ) as any;
 
-      const envelope = assertApiSuccess<{ question?: Question; id?: string | number }>(response, 'Nao foi possivel criar a questao.');
+      const envelope = assertApiSuccess<{ question?: Question; id?: string | number }>(response, 'Não foi possível criar a questão.');
       const payload = readApiData<{ question?: Question; id?: string | number }>(response, {});
       return {
         success: true,
@@ -175,7 +175,7 @@ export const questionService = {
   },
 
   /**
-   * Cria varias questoes preservando o contrato antigo usado pelo app.
+   * Cria varias questões preservando o contrato antigo usado pelo app.
    * @since v1.0.0
    */
   async createQuestions(questions: Question[]): Promise<{ success: boolean; count?: number; created?: Question[] }> {
@@ -198,7 +198,7 @@ export const questionService = {
   },
 
   /**
-   * Atualiza uma questao usando o endpoint oficial de update.
+   * Atualiza uma questão usando o endpoint oficial de update.
    * @since v1.0.0
    */
   async updateQuestion(id: string, questionData: Question): Promise<{ success: boolean; question?: Question }> {
@@ -208,7 +208,7 @@ export const questionService = {
         { ...questionData, id },
       ) as any;
 
-      assertApiSuccess(response, 'Nao foi possivel atualizar a questao.');
+      assertApiSuccess(response, 'Não foi possível atualizar a questão.');
       return {
         success: true,
         question: { ...questionData, id: Number(id) || id },
@@ -219,7 +219,7 @@ export const questionService = {
   },
 
   /**
-   * Exclui uma questao usando o contrato real do backend, que ainda espera
+   * Exclui uma questão usando o contrato real do backend, que ainda espera
    * o id na query string.
    * @since v1.0.0
    */
@@ -230,7 +230,7 @@ export const questionService = {
         { params: { id: String(id) } },
       ) as any;
 
-      const envelope = assertApiSuccess(response, 'Nao foi possivel excluir a questao.');
+      const envelope = assertApiSuccess(response, 'Não foi possível excluir a questão.');
       return {
         success: true,
         message: envelope.message,
@@ -241,7 +241,7 @@ export const questionService = {
   },
 
   /**
-   * Alterna o estado salvo de uma questao para o usuario atual.
+   * Alterna o estado salvo de uma questão para o usuário atual.
    * @since v1.0.0
    */
   async toggleSavedQuestion(userId: string, questionId: string | number): Promise<{ success: boolean; isSaved?: boolean; message?: string }> {
@@ -254,7 +254,7 @@ export const questionService = {
         },
       ) as any;
 
-      const envelope = assertApiSuccess<{ isSaved?: boolean }>(response, 'Nao foi possivel atualizar os salvos.');
+      const envelope = assertApiSuccess<{ isSaved?: boolean }>(response, 'Não foi possível atualizar os salvos.');
       const payload = readApiData<{ isSaved?: boolean }>(response, {});
       return {
         success: true,
@@ -267,7 +267,7 @@ export const questionService = {
   },
 
   /**
-   * Limpa o progresso de respostas do usuario atual.
+   * Limpa o progresso de respostas do usuário atual.
    * @since v1.0.0
    */
   async resetAnswers(userId: string): Promise<{ success: boolean; message?: string }> {
@@ -277,7 +277,7 @@ export const questionService = {
         { user_id: userId },
       ) as any;
 
-      const envelope = assertApiSuccess(response, 'Nao foi possivel limpar as respostas.');
+      const envelope = assertApiSuccess(response, 'Não foi possível limpar as respostas.');
 
       return {
         success: true,

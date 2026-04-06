@@ -10,6 +10,6 @@
 */
 
 /**
- * Fachada oficial dos servicos de raio-x da banca.
+ * Fachada oficial dos serviços de raio-x da banca.
  */
 export { bankAnalysisService } from './bankAnalysisService';

@@ -23,6 +23,7 @@ import AdBanner from '../feedback/AdBanner';
 import { useToast } from '@providers/ToastProvider';
 import { apiClient } from '@services/api';
 import { ENDPOINTS } from '@services/api';
+import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 import {
   getEffectivePlanDisplayName,
   getEffectivePlanTier,
@@ -76,20 +77,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const handleResendConfirmation = async () => {
     if (resendTimer > 0) return;
-    // emailVerified Ã© o campo mapeado pelo backend (camelCase)
+    // emailVerified é o campo mapeado pelo backend (camelCase)
     if (!user || user.emailVerified) return;
 
     try {
-      // O interceptor do axios (client.ts) jÃ¡ retorna response.data diretamente
+      // O interceptor do axios (client.ts) já retorna response.data diretamente
       const response: any = await apiClient.post(ENDPOINTS.auth.resendConfirmation, { email: user.email });
 
       if (response && response.success) {
         setResendTimer(60);
         addToast(response.message || 'E-mail reenviado com sucesso!', 'success');
 
-        // Se o e-mail jÃ¡ foi verificado (o backend retorna success com mensagem de aviso),
-        // atualizamos o usuÃ¡rio para sumir o banner imediatamente.
-        if (response.message?.includes('jÃ¡ foi verificado')) {
+        // Se o e-mail já foi verificado (o backend retorna success com mensagem de aviso),
+        // atualizamos o usuário para sumir o banner imediatamente.
+        if (response.message?.includes('já foi verificado')) {
           refreshUser();
         }
       } else {
@@ -104,7 +105,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const navItems = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/', enabled: !!user },
-    { label: 'QuestÃµes', icon: BookOpen, path: '/practice', enabled: systemSettings.features.practiceEnabled },
+    { label: 'Questões', icon: BookOpen, path: '/practice', enabled: systemSettings.features.practiceEnabled },
     { label: 'Simulados', icon: Timer, path: '/simulation', enabled: true },
     { label: 'Raio-X Banca', icon: Zap, path: '/x-ray', enabled: systemSettings.features.xRayEnabled },
     { label: 'Rankings', icon: Trophy, path: '/ranking', enabled: systemSettings.features.rankingsEnabled },
@@ -114,12 +115,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   if (user?.isAdmin) {
     navItems.push({ label: 'Painel Admin', icon: ShieldAlert, path: '/admin' });
-  }
-
-  const isPartner = user?.role === 'partner' || user?.isPartner || user?.isAdmin;
-
-  if (isPartner) {
-    navItems.push({ label: 'Painel do Parceiro', icon: Store, path: '/partner-dashboard' });
   }
 
   const isActive = (path: string) => location.pathname === path;
@@ -181,18 +176,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const NotificationDropdown = () => (
     <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in">
       <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
-        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">NotificaÃ§Ãµes</h3>
+        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
         {unreadCount > 0 && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">{unreadCount} novas</span>}
       </div>
       <div className="max-h-80 overflow-y-auto no-scrollbar">
         {notifications.filter(n => !n.deletedAt).length === 0 ? (
-          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificaÃ§Ã£o.</div>
+          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificação.</div>
         ) : (
           notifications.filter(n => !n.deletedAt).slice(0, 5).map(n => {
             const CategoryIcon = getCategoryIcon(n.category);
             return (
               <div key={n.id} onClick={(e) => {
-                // Se nÃ£o tem link, marcamos como lida ao clicar na notificaÃ§Ã£o diretamente
+                // Se não tem link, marcamos como lida ao clicar na notificação diretamente
                 if (!n.link) {
                   markNotificationAsRead(n.id);
                 } else {
@@ -254,7 +249,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             <h2 className="text-2xl font-black mb-3 text-slate-800 dark:text-slate-100 tracking-tight">Verifique seu E-mail</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium mb-8">
-              Enviamos um link de confirmaÃ§Ã£o para <br/><strong className="text-slate-700 dark:text-slate-200">{user.email}</strong>.
+              Enviamos um link de confirmação para <br/><strong className="text-slate-700 dark:text-slate-200">{user.email}</strong>.
               <br/><br/>
               Acesse sua caixa de entrada e ative sua conta para liberar todas as funcionalidades e ganhar <span className="text-indigo-600 dark:text-indigo-400 font-bold">+50 XP</span>!
             </p>
@@ -329,7 +324,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </div>
                 <div>
                   <p className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-1">{userName}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">{user ? `NÃ­vel ${userLevel}` : 'Acesse sua conta'}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">{user ? `Nível ${userLevel}` : 'Acesse sua conta'}</p>
                 </div>
               </div>
             </div>
@@ -354,6 +349,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 // Raio-X Banca is exclusive to Tier 4 (Elite)
                 const isLocked = item.label === 'Raio-X Banca' && !hasXRayAccess;
                 const isGloballyDisabled = item.enabled === false;
+                const shouldShowDevBadge = isGloballyDisabled;
 
                 return (
                   <Link
@@ -361,7 +357,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     to={item.path}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={`${styles} ${isLocked ? 'opacity-75' : ''}`}
-                    title={isGloballyDisabled ? 'Desativado globalmente (VisÃ­vel apenas para Admin)' : ''}
+                    title={isGloballyDisabled ? 'Desativado globalmente (Visível apenas para Admin)' : ''}
                   >
                     <item.icon size={20} />
                     {item.label}
@@ -371,7 +367,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     {isLocked && (
                       <Lock size={14} className="absolute right-4 text-amber-500" />
                     )}
-                    {isGloballyDisabled && (
+                    {shouldShowDevBadge && (
                       <span className="absolute right-4 px-1.5 py-0.5 text-[8px] font-black uppercase bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 rounded">DEV</span>
                     )}
                   </Link>
@@ -431,7 +427,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <HelpCircle size={20} />
               </button>
 
-              {/* Sempre mostrar notificaÃ§Ãµes se o usuÃ¡rio estiver logado, independente da feature flag global, se o usuÃ¡rio pediu para restaurar */}
+              {/* Sempre mostrar notificações se o usuário estiver logado, independente da feature flag global, se o usuário pediu para restaurar */}
               {user && (
                 <div className="relative">
                   <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all relative">
@@ -449,7 +445,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <div className="flex items-center gap-3 pl-6 border-l border-slate-200 dark:border-slate-800">
                 <div className="text-right">
                   <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{userName}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">{user ? `NÃ­vel ${userLevel}` : 'Visitante'}</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">{user ? `Nível ${userLevel}` : 'Visitante'}</p>
                 </div>
                 <div className="w-9 h-9 rounded-full bg-slate-900 dark:bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-md cursor-pointer hover:opacity-80 transition-opacity" onClick={() => user ? navigate('/profile') : navigate('/auth')}>
                   {userInitials}
@@ -459,7 +455,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
-            <div className="max-w-5xl mx-auto pb-10">
+            <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto pb-10`}>
               <AdBanner type="top" className="mb-8" />
               {children}
               <AdBanner type="bottom" className="mt-8" />

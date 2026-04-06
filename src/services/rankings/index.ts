@@ -10,6 +10,6 @@
 */
 
 /**
- * Fachada oficial dos serviÃ§os de rankings.
+ * Fachada oficial dos serviços de rankings.
  */
 export { rankingsService } from './rankingsService';

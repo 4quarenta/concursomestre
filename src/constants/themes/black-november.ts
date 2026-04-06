@@ -13,7 +13,7 @@ import { Timer } from 'lucide-react';
 import { ThemeConfig } from './types';
 
 export const blackNovemberTheme: ThemeConfig = {
-    heroBadge: 'ðŸ´ BLACK NOVEMBER: O MÃŠS TODO COM DESCONTO',
+    heroBadge: '🏴 BLACK NOVEMBER: O MÊS TODO COM DESCONTO',
     heroGradient: 'from-amber-400 via-amber-500 to-amber-700',
     bgOverlay: 'bg-zinc-900',
     accent: 'text-amber-500 bg-zinc-900',

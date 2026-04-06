@@ -27,11 +27,13 @@ export type ChangelogVersion = {
 };
 
 /**
- * Centraliza a leitura do changelog publico da plataforma.
+ * Centraliza a leitura do changelog público da plataforma.
+ * @since 1.0.0
  */
 export const changelogService = {
   /**
    * Lista as versoes publicadas ordenadas pelo backend.
+   * @since 1.0.0
    */
   async listVersions(): Promise<ChangelogVersion[]> {
     const response = await apiClient.get<any>(ENDPOINTS.changelog.list) as any;

@@ -10,8 +10,9 @@
 */
 
 /**
- * AI Service (Gemini)
- * Handles AI-powered question analysis and generation
+ * Fachada de IA baseada em Gemini para importacao, OCR e explicacoes de questões.
+ * Ela e usada principalmente pelo importador administrativo e por fluxos de comentário didatico.
+ * @since 1.0.0
  */
 
 import { GoogleGenAI, Type } from "@google/genai";
@@ -28,9 +29,15 @@ export interface PageExtractionResult {
     questions: Partial<Question>[];
 }
 
+/**
+ * Centraliza os fluxos de IA usados pelo frontend administrativo.
+ * @since 1.0.0
+ */
 export const aiService = {
     /**
-     * Extract questions from image using Gemini AI
+     * Extrai questões de uma imagem de pagina usando Gemini.
+     * Esse fluxo abastece o importador por PDF/imagem no painel admin.
+     * @since 1.0.0
      */
     async extractQuestionsFromPage(
         apiKey: string,
@@ -38,32 +45,32 @@ export const aiService = {
         includeTeacherComment: boolean = true
     ): Promise<PageExtractionResult> {
         if (!apiKey || apiKey.includes('PLACEHOLDER')) {
-            throw new Error("Chave de API invÃ¡lida. Configure nas ConfiguraÃ§Ãµes do Admin.");
+            throw new Error("Chave de API inválida. Configure nas Configurações do Admin.");
         }
 
         const ai = new GoogleGenAI({ apiKey });
 
         const commentInstruction = includeTeacherComment
-            ? "- ComentÃ¡rio do Professor (teacherComment): Gere uma explicaÃ§Ã£o didÃ¡tica e RESUMIDA de por que a resposta correta Ã© a correta."
+            ? "- Comentário do Professor (teacherComment): Gere uma explicação didática e RESUMIDA de por que a resposta correta é a correta."
             : "";
 
         const prompt = `
-      VocÃª Ã© um especialista em OCR e estruturaÃ§Ã£o de dados de provas de Concursos e ENEM.
-      Analise a imagem da pÃ¡gina da prova fornecida.
+      Você é um especialista em OCR e estruturação de dados de provas de Concursos e ENEM.
+      Análise a imagem da página da prova fornecida.
       
       IMPORTANTE:
-      - Extraia TODAS as questÃµes visÃ­veis na pÃ¡gina.
+      - Extraia TODAS as questões visíveis na página.
       - Se a prova estiver em colunas, leia todas as colunas.
-      - NÃ£o ignore questÃµes incompletas se o enunciado estiver legÃ­vel.
+      - Não ignore questões incompletas se o enunciado estiver legível.
       
-      1. Identifique os metadados da prova: Banca (agency), Ã“rgÃ£o/Fonte (source), Ano (year), Cargo (role), Tipo (examType).
-      2. Para cada questÃ£o encontrada, gere obrigatoriamente:
+      1. Identifique os metadados da prova: Banca (agency), Órgão/Fonte (source), Ano (year), Cargo (role), Tipo (examType).
+      2. Para cada questão encontrada, gere obrigatoriamente:
          - Enunciado (text)
          - Texto de Apoio (introText) se houver.
          - Alternativas (options).
-         - MatÃ©ria (Subject) baseado no conteÃºdo.
-         - Assunto EspecÃ­fico (topic). Ex: 'Crase', 'Probabilidade', 'Atos Administrativos'.
-         - NÃ­vel de Escolaridade (level). Ex: 'Fundamental', 'MÃ©dio', 'Superior'.
+         - Matéria (Subject) baseado no conteúdo.
+         - Assunto Específico (topic). Ex: 'Crase', 'Probabilidade', 'Atos Administrativos'.
+         - Nível de Escolaridade (level). Ex: 'Fundamental', 'Médio', 'Superior'.
          ${commentInstruction}
       
       Retorne APENAS um JSON seguindo o esquema.
@@ -74,7 +81,7 @@ export const aiService = {
             introText: { type: Type.STRING },
             subject: { type: Type.STRING },
             topic: { type: Type.STRING },
-            level: { type: Type.STRING, enum: ['Fundamental', 'MÃ©dio', 'Superior'] },
+            level: { type: Type.STRING, enum: ['Fundamental', 'Médio', 'Superior'] },
             difficulty: { type: Type.STRING },
             options: { type: Type.ARRAY, items: { type: Type.STRING } }
         };
@@ -126,20 +133,21 @@ export const aiService = {
     },
 
     /**
-     * Extract answer key mapping from image
+     * Extrai o gabarito oficial a partir de uma imagem.
+     * @since 1.0.0
      */
     async extractAnswerKeyMapping(
         apiKey: string,
         keyImageBase64: string
     ): Promise<Record<number, number>> {
-        if (!apiKey) throw new Error("API Key invÃ¡lida.");
+        if (!apiKey) throw new Error("API Key inválida.");
 
         const ai = new GoogleGenAI({ apiKey });
 
         const prompt = `
-      Analise a imagem do gabarito oficial.
-      Extraia o mapeamento de NÃºmero da QuestÃ£o para a Alternativa Correta.
-      Retorne um objeto JSON onde a chave Ã© o nÃºmero da questÃ£o e o valor Ã© o Ã­ndice da alternativa (0 para A, 1 para B, 2 para C, 3 para D, 4 para E).
+      Análise a imagem do gabarito oficial.
+      Extraia o mapeamento de Número da Questão para a Alternativa Correta.
+      Retorne um objeto JSON onde a chave é o número da questão e o valor é o índice da alternativa (0 para A, 1 para B, 2 para C, 3 para D, 4 para E).
       Exemplo: {"1": 2, "2": 0}
     `;
 
@@ -158,10 +166,12 @@ export const aiService = {
     },
 
     /**
-     * Generate detailed analysis for a question
+     * Gera uma análise detalhada em Markdown para uma questão.
+     * Esse texto pode ser usado em comentários do professor e revisao assistida.
+     * @since 1.0.0
      */
     async generateDetailedAnalysis(apiKey: string, question: Question): Promise<string> {
-        if (!apiKey) throw new Error("API Key invÃ¡lida.");
+        if (!apiKey) throw new Error("API Key inválida.");
 
         const ai = new GoogleGenAI({ apiKey });
 
@@ -169,25 +179,25 @@ export const aiService = {
         const correctLetter = correctItemIndex !== -1 ? String.fromCharCode(65 + correctItemIndex) : '?';
 
         const prompt = `
-      Atue como um professor sÃªnior de cursinho preparatÃ³rio.
-      Analise a seguinte questÃ£o:
+      Atue como um professor sênior de cursinho preparatório.
+      Análise a seguinte questão:
       
       Enunciado: ${question.enunciado}
       Alternativas:
       ${question.itens.map((it, i) => `${String.fromCharCode(65 + i)}) ${it.corpo}`).join('\n')}
       
-      A resposta correta Ã© a letra: ${correctLetter}
+      A resposta correta é a letra: ${correctLetter}
       
-      Gere um comentÃ¡rio detalhado, didÃ¡tico e estruturado em Markdown.
+      Gere um comentário detalhado, didático e estruturado em Markdown.
       
       REGRAS ESTRITAS DE ESTILO:
-      1. NÃƒO use saudaÃ§Ãµes, introduÃ§Ãµes ("OlÃ¡ aluno", "Vamos analisar") ou conclusÃµes genÃ©ricas.
-      2. VÃ¡ DIRETO AO PONTO. Comece imediatamente com a anÃ¡lise.
+      1. NÃO use saudações, introduções ("Olá aluno", "Vamos analisar") ou conclusões genéricas.
+      2. Vá DIRETO AO PONTO. Comece imediatamente com a análise.
       3. Explique brevemente o conceito central.
-      4. Analise CADA alternativa (A, B, C, D, E) explicando o erro ou acerto.
-      5. Use formataÃ§Ã£o negrito para palavras-chave.
+      4. Análise CADA alternativa (A, B, C, D, E) explicando o erro ou acerto.
+      5. Use formatação negrito para palavras-chave.
       
-      NÃ£o retorne JSON, retorne o texto em Markdown diretamente.
+      Não retorne JSON, retorne o texto em Markdown diretamente.
     `;
 
         const response = await ai.models.generateContent({
@@ -195,14 +205,15 @@ export const aiService = {
             contents: prompt
         });
 
-        return response.text || "NÃ£o foi possÃ­vel gerar a anÃ¡lise detalhada.";
+        return response.text || "Não foi possível gerar a análise detalhada.";
     },
 
     /**
-     * Generate teacher comment for a question
+     * Gera um comentário curto do professor para uma questão.
+     * @since 1.0.0
      */
     async generateTeacherComment(apiKey: string, question: Question): Promise<string> {
-        if (!apiKey) throw new Error("API Key invÃ¡lida.");
+        if (!apiKey) throw new Error("API Key inválida.");
 
         const ai = new GoogleGenAI({ apiKey });
 
@@ -210,11 +221,11 @@ export const aiService = {
         const correctLetter = correctItemIndex !== -1 ? String.fromCharCode(65 + correctItemIndex) : '?';
 
         const prompt = `
-      Analise a questÃ£o: "${question.enunciado}".
+      Análise a questão: "${question.enunciado}".
       Alternativas: ${question.itens.map(it => it.corpo).join(', ')}.
-      A correta Ã© a letra ${correctLetter}.
+      A correta é a letra ${correctLetter}.
       
-      Gere um comentÃ¡rio curto e didÃ¡tico do professor explicando o gabarito. Sem saudaÃ§Ãµes.
+      Gere um comentário curto e didático do professor explicando o gabarito. Sem saudações.
     `;
 
         const response = await ai.models.generateContent({
@@ -226,35 +237,37 @@ export const aiService = {
     },
 
     /**
-     * Get question explanation
+     * Gera uma explicacao direta da questão em Markdown.
+     * @since 1.0.0
      */
     async getQuestionExplanation(apiKey: string, question: Question): Promise<string> {
-        if (!apiKey) throw new Error("API Key invÃ¡lida.");
+        if (!apiKey) throw new Error("API Key inválida.");
 
         const ai = new GoogleGenAI({ apiKey });
 
         const correctItemIndex = question.itens.findIndex(it => it.id === question.resposta);
         const correctLetter = correctItemIndex !== -1 ? String.fromCharCode(65 + correctItemIndex) : '?';
 
-        const prompt = `Explique didaticamente a questÃ£o: "${question.enunciado}" com resposta correta sendo a alternativa ${correctLetter}. Use Markdown.`;
+        const prompt = `Explique didaticamente a questão: "${question.enunciado}" com resposta correta sendo a alternativa ${correctLetter}. Use Markdown.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-1.5-flash-latest',
             contents: prompt
         });
 
-        return response.text || "Sem explicaÃ§Ã£o.";
+        return response.text || "Sem explicação.";
     },
 
     /**
-     * Extract approved list from PDF
+     * Extrai uma lista de aprovados a partir de um PDF.
+     * @since 1.0.0
      */
     async extractApprovedListFromPDF(apiKey: string, pdfBase64: string): Promise<string[]> {
-        if (!apiKey) throw new Error("API Key invÃ¡lida.");
+        if (!apiKey) throw new Error("API Key inválida.");
 
         const ai = new GoogleGenAI({ apiKey });
 
-        const prompt = `Extraia os nÃºmeros de inscriÃ§Ã£o dos aprovados deste PDF. Retorne um JSON { "approvedRegistrationNumbers": ["123", "456"] }.`;
+        const prompt = `Extraia os números de inscrição dos aprovados deste PDF. Retorne um JSON { "approvedRegistrationNumbers": ["123", "456"] }.`;
 
         const response = await ai.models.generateContent({
             model: 'gemini-1.5-flash-latest',

@@ -16,7 +16,7 @@ import { useAdminPageController } from './components/shared/useAdminPageControll
 
 /**
  * Entrada oficial da area administrativa.
- * Esta pagina funciona apenas como casca final do painel, conectando o controller central ao shell visual e ao conteudo por aba.
+ * Esta pagina funciona apenas como casca final do painel, conectando o controller central ao shell visual e ao conteúdo por aba.
  */
 const Admin: React.FC = () => {
   const {

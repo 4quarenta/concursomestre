@@ -42,8 +42,8 @@ const parseJsonLikePayload = <T>(payload: T): T => {
 };
 
 /**
- * Identifica endpoints de autenticacao que nao devem disparar refresh recursivo.
- * Evita loops de renovacao enquanto login, logout e refresh ainda estao em andamento.
+ * Identifica endpoints de autenticação que não devem disparar refresh recursivo.
+ * Evita loops de renovação enquanto login, logout e refresh ainda estão em andamento.
  * @since 1.0.0
  */
 const isAuthEndpoint = (url?: string | null): boolean => {
@@ -60,7 +60,7 @@ const isAuthEndpoint = (url?: string | null): boolean => {
 
 /**
  * Registra os interceptadores de request/response da camada HTTP oficial.
- * Eles ligam token em memoria, refresh automatico e telemetria de debug da aplicacao.
+ * Eles ligam token em memoria, refresh automático e telemetria de debug da aplicação.
  * @since 1.0.0
  */
 export const registerApiInterceptors = (apiClient: any): void => {

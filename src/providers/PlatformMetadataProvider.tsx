@@ -17,7 +17,7 @@ interface PlatformMetadataProviderProps {
 }
 
 /**
- * Provider de bootstrap da identidade publica da plataforma.
+ * Provider de bootstrap da identidade pública da plataforma.
  * Ele aplica no documento web o manifesto oficial antes que o restante da UI navegue entre as rotas.
  * @since 1.0.0
  */

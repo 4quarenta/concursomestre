@@ -56,7 +56,7 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
   clientSecret,
   billingName,
   billingEmail,
-  submitLabel = 'Salvar cartao',
+  submitLabel = 'Salvar cartão',
   onSaved,
 }) => {
   const stripe = useStripe();
@@ -93,13 +93,13 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
     if (!stripe || !elements) return;
 
     if (!cardholderName.trim()) {
-      setError('Informe o nome do titular do cartao.');
+      setError('Informe o nome do titular do cartão.');
       return;
     }
 
     const cardNumberElement = elements.getElement(CardNumberElement);
     if (!cardNumberElement) {
-      setError('O campo de numero do cartao ainda nao foi carregado.');
+      setError('O campo de numero do cartão ainda não foi carregado.');
       return;
     }
 
@@ -118,13 +118,13 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
       });
 
       if (result.error || !result.setupIntent?.payment_method) {
-        throw new Error(result.error?.message || 'Nao foi possivel salvar o cartao.');
+        throw new Error(result.error?.message || 'Não foi possível salvar o cartão.');
       }
 
       const paymentMethodId = String(result.setupIntent.payment_method);
       await onSaved(paymentMethodId);
     } catch (saveError: any) {
-      setError(saveError.message || 'Falha ao salvar o cartao na Stripe.');
+      setError(saveError.message || 'Falha ao salvar o cartão na Stripe.');
     } finally {
       setSaving(false);
     }
@@ -149,7 +149,7 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
               type="text"
               value={cardholderName}
               onChange={(event) => setCardholderName(event.target.value)}
-              placeholder="Como esta impresso no cartao"
+              placeholder="Como esta impresso no cartão"
               autoComplete="cc-name"
               className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white dark:focus:border-indigo-400 dark:focus:bg-[#111428] dark:focus:ring-indigo-500/10"
             />
@@ -160,7 +160,7 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
 
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
-              Numero do cartao
+              Numero do cartão
             </label>
             <div className={fieldShellClassName}>
               <CardNumberElement
@@ -193,7 +193,7 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
 
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                Codigo de seguranca
+                Código de segurança
               </label>
               <div className={fieldShellClassName}>
                 <CardCvcElement
@@ -211,7 +211,7 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
           {(cardholderName || billingEmail) && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-medium text-slate-500 dark:border-slate-800 dark:bg-[#0f1020] dark:text-slate-400">
               {cardholderName ? `Titular: ${cardholderName}` : null}
-              {cardholderName && billingEmail ? ' Â· ' : null}
+              {cardholderName && billingEmail ? ' · ' : null}
               {billingEmail ? `Email: ${billingEmail}` : null}
             </div>
           )}
@@ -226,7 +226,7 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
         className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-emerald-700 disabled:opacity-60"
       >
         {saving ? <Loader2 size={16} className="animate-spin" /> : null}
-        {saving ? 'Salvando cartao...' : submitLabel}
+        {saving ? 'Salvando cartão...' : submitLabel}
       </button>
     </form>
   );
@@ -239,7 +239,7 @@ export const StripeSetupCardForm: React.FC<StripeSetupCardFormProps> = ({
   const stripePromise = useMemo(() => loadStripe(publishableKey), [publishableKey]);
 
   if (!publishableKey) {
-    return <p className="text-[11px] font-bold text-rose-500">Stripe Publishable Key nao configurada.</p>;
+    return <p className="text-[11px] font-bold text-rose-500">Stripe Publishable Key não configurada.</p>;
   }
 
   return (

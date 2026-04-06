@@ -39,7 +39,7 @@ const AdminMaterialsSection = ({
             {renderSortableHeader('Autor/Preco', 'price')}
             {renderSortableHeader('Vendas', 'salesCount')}
             {renderSortableHeader('Status', 'status')}
-            <th className="p-4 text-center">Acoes</th>
+            <th className="p-4 text-center">Ações</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -91,7 +91,7 @@ const AdminMaterialsSection = ({
                       type="button"
                       onClick={() => {
                         void openAuthenticatedFile(buildMaterialAccessEndpoint(material.id)).catch((error: any) => {
-                          addToast(error?.message || 'Nao foi possivel abrir a visualizacao do material.', 'error');
+                          addToast(error?.message || 'Não foi possível abrir a visualizacao do material.', 'error');
                         });
                       }}
                       className="p-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-lg transition-colors"

@@ -134,7 +134,7 @@ describe('auth session manager', () => {
     vi.unstubAllGlobals();
   });
 
-  it('nao tenta bootstrap refresh quando nao existe cookie CSRF', async () => {
+  it('não tenta bootstrap refresh quando não existe cookie CSRF', async () => {
     const session = await importSessionModule();
 
     const snapshot = await session.bootstrapAuthSession();
@@ -192,7 +192,7 @@ describe('auth session manager', () => {
     expect(session.getAccessToken()).toBe(refreshedToken);
   });
 
-  it('faz bootstrap pela dupla refresh + auth/me quando existe cookie de sessao', async () => {
+  it('faz bootstrap pela dupla refresh + auth/me quando existe cookie de sessão', async () => {
     cookieJar = 'cm_csrf=test-csrf';
     const futureExp = Math.floor(Date.now() / 1000) + 1800;
 
@@ -288,7 +288,7 @@ describe('auth session manager', () => {
     expect(session.getAccessToken()).toBe(sharedToken);
   });
 
-  it('limpa a sessao local no logout', async () => {
+  it('limpa a sessão local no logout', async () => {
     cookieJar = 'cm_csrf=test-csrf';
     const futureExp = Math.floor(Date.now() / 1000) + 1800;
 

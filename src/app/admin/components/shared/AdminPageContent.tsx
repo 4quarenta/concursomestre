@@ -28,7 +28,7 @@ interface AdminPageContentProps {
 }
 
 /**
- * Roteia o conteudo principal do painel administrativo.
+ * Roteia o conteúdo principal do painel administrativo.
  * Ele recebe os props prontos do controller da pagina e monta a feature correta para cada aba do admin.
  */
 const AdminPageContent = ({

@@ -2,24 +2,24 @@
 
 ## Objetivo
 
-Remover scripts operacionais de schema e seed do diretório publico `api/migrations`.
+Remover scripts operacionais de schema e seed do diretï¿½rio pÃºblico `api/migrations`.
 
 ## Destino oficial adotado
 
-Todos os scripts PHP legados de migração foram movidos para:
+Todos os scripts PHP legados de migraï¿½ï¿½o foram movidos para:
 
-- `C:/xampp/htdocs/questao-pro-backend/scripts/migrations/legacy`
+- `C:/xampp/htdocs/questÃ£o-pro-backend/scripts/migrations/legacy`
 
 ## Motivo
 
 Esses arquivos:
-- não são endpoints HTTP
+- nï¿½o sï¿½o endpoints HTTP
 - alteram schema/dados
-- pertencem à camada operacional
-- não devem ficar acessíveis publicamente por URL
+- pertencem ï¿½ camada operacional
+- nï¿½o devem ficar acessï¿½veis publicamente por URL
 
 ## Impacto
 
 - `api/migrations` foi eliminado.
-- os scripts continuam executáveis internamente via CLI/PHP.
-- o backend fica mais alinhado ao blueprint com lógica operacional dentro de `scripts/`.
+- os scripts continuam executï¿½veis internamente via CLI/PHP.
+- o backend fica mais alinhado ao blueprint com lï¿½gica operacional dentro de `scripts/`.

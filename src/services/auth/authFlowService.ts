@@ -61,19 +61,19 @@ export type VerifyTwoFactorPayload = {
 };
 
 /**
- * Centraliza os fluxos de autenticacao usados por telas de entrada e checkout.
+ * Centraliza os fluxos de autenticação usados por telas de entrada e checkout.
  * Mantem cadastro, login, confirmacao e 2FA alinhados ao contrato oficial do backend.
  * @since 1.0.0
  */
 export const authFlowService = {
   /**
-   * Cria uma conta e devolve o usuario autenticado no mesmo contrato usado
-   * pelo provider de sessao.
+   * Cria uma conta e devolve o usuário autenticado no mesmo contrato usado
+   * pelo provider de sessão.
    * @since 1.0.0
    */
   async register(payload: RegisterPayload): Promise<AuthFlowSuccessPayload> {
     const response = await apiClient.post<any>(ENDPOINTS.auth.register, payload) as any;
-    assertApiSuccess(response, 'Nao foi possivel criar a conta.');
+    assertApiSuccess(response, 'Não foi possível criar a conta.');
 
     const data = readApiData<AuthFlowSuccessPayload>(response, {} as AuthFlowSuccessPayload);
     return {
@@ -93,12 +93,12 @@ export const authFlowService = {
 
   /**
    * Realiza login com email e senha usando o contrato oficial do backend.
-   * O resultado desta funcao alimenta o bootstrap de sessao do shell principal do site.
+   * O resultado desta funcao alimenta o bootstrap de sessão do shell principal do site.
    * @since 1.0.0
    */
   async login(payload: LoginPayload): Promise<AuthFlowSuccessPayload> {
     const response = await apiClient.post<any>(ENDPOINTS.auth.login, payload) as any;
-    assertApiSuccess(response, 'Nao foi possivel realizar o login.');
+    assertApiSuccess(response, 'Não foi possível realizar o login.');
 
     const data = readApiData<AuthFlowSuccessPayload>(response, {} as AuthFlowSuccessPayload);
     return {
@@ -122,7 +122,7 @@ export const authFlowService = {
    */
   async forgotPassword(payload: ForgotPasswordPayload): Promise<string> {
     const response = await apiClient.post<any>(ENDPOINTS.auth.forgotPassword, payload) as any;
-    const envelope = assertApiSuccess(response, 'Nao foi possivel enviar as instrucoes de recuperacao.');
+    const envelope = assertApiSuccess(response, 'Não foi possível enviar as instrucoes de recuperacao.');
 
     return envelope.message || 'Enviamos as instrucoes para redefinir sua senha.';
   },
@@ -133,17 +133,17 @@ export const authFlowService = {
    */
   async resendConfirmation(email: string): Promise<string> {
     const response = await apiClient.post<any>(ENDPOINTS.auth.resendConfirmation, { email }) as any;
-    const envelope = assertApiSuccess(response, 'Nao foi possivel reenviar o e-mail de confirmacao.');
+    const envelope = assertApiSuccess(response, 'Não foi possível reenviar o e-mail de confirmacao.');
     return envelope.message || 'E-mail de confirmacao reenviado com sucesso.';
   },
 
   /**
-   * Confirma o e-mail do usuario a partir do token enviado no fluxo de cadastro.
+   * Confirma o e-mail do usuário a partir do token enviado no fluxo de cadastro.
    * @since 1.0.0
    */
   async confirmEmail(token: string): Promise<ConfirmEmailResult> {
     const response = await apiClient.post<any>(ENDPOINTS.auth.confirmEmail, { token }) as any;
-    const envelope = assertApiSuccess(response, 'Nao foi possivel confirmar o e-mail.');
+    const envelope = assertApiSuccess(response, 'Não foi possível confirmar o e-mail.');
     const data = readApiData<{ newXp?: number }>(response, {});
 
     return {
@@ -153,29 +153,29 @@ export const authFlowService = {
   },
 
   /**
-   * Finaliza o fluxo de redefinicao de senha usando o token do e-mail.
+   * Finaliza o fluxo de redefinição de senha usando o token do e-mail.
    * @since 1.0.0
    */
   async resetPassword(payload: ResetPasswordPayload): Promise<string> {
     const response = await apiClient.post<any>(ENDPOINTS.auth.resetPassword, payload) as any;
-    const envelope = assertApiSuccess(response, 'Nao foi possivel redefinir a senha.');
+    const envelope = assertApiSuccess(response, 'Não foi possível redefinir a senha.');
 
     return envelope.message || 'Senha alterada com sucesso.';
   },
 
   /**
-   * Valida o codigo do segundo fator e devolve o token de sessao liberado.
+   * Valida o código do segundo fator e devolve o token de sessão liberado.
    * Esse retorno e usado pelo login para concluir a entrada sem duplicar regras na UI.
    * @since 1.0.0
    */
   async verifyTwoFactor(payload: VerifyTwoFactorPayload): Promise<{ token: string | null; message: string }> {
     const response = await apiClient.post<any>(ENDPOINTS.auth.verifyTwoFactor, payload) as any;
-    const envelope = assertApiSuccess(response, 'Nao foi possivel validar o codigo de seguranca.');
+    const envelope = assertApiSuccess(response, 'Não foi possível validar o código de segurança.');
     const data = readApiData<{ token?: string | null }>(response, {});
 
     return {
       token: data.token ?? null,
-      message: envelope.message || 'Codigo validado com sucesso.',
+      message: envelope.message || 'Código validado com sucesso.',
     };
   },
 };

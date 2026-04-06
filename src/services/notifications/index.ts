@@ -10,6 +10,6 @@
 */
 
 /**
- * Fachada oficial dos servicos de notificacoes.
+ * Fachada oficial dos serviços de notificações.
  */
 export { notificationService } from './notificationService';

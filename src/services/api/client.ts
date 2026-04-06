@@ -43,7 +43,7 @@ const resolveApiBaseUrl = (): string => {
 };
 
 /**
- * Resolve a raiz do backend removendo o segmento publico `/api`.
+ * Resolve a raiz do backend removendo o segmento público `/api`.
  * Ela e usada quando a UI precisa abrir arquivos e assets fora do contrato JSON tradicional.
  * @since v1.0.0
  */
@@ -86,7 +86,7 @@ const ensureAuthenticatedAccessToken = async (): Promise<string> => {
 
     const refreshedToken = refreshedSession?.accessToken ?? getAccessToken();
     if (!refreshedToken) {
-        throw new Error('Sessao expirada. Faca login novamente.');
+        throw new Error('Sessão expirada. Faca login novamente.');
     }
 
     return refreshedToken;
@@ -118,7 +118,7 @@ const readFailedResponseMessage = async (response: Response): Promise<string> =>
 };
 
 /**
- * Executa um `fetch` autenticado com refresh automatico em caso de 401.
+ * Executa um `fetch` autenticado com refresh automático em caso de 401.
  * Ele sustenta os fluxos de download e preview protegidos pelo backend oficial.
  * @since v1.0.0
  */
@@ -190,7 +190,7 @@ export const buildMaterialDownloadEndpoint = (materialId: string): string =>
     `${ENDPOINTS.materials.download}?material_id=${encodeURIComponent(materialId)}`;
 
 /**
- * Monta o endpoint de validacao de acesso ao reader de material.
+ * Monta o endpoint de validação de acesso ao reader de material.
  * Ele e consumido quando a plataforma precisa abrir um PDF autenticado no visualizador.
  * @since v1.0.0
  */
@@ -206,7 +206,7 @@ export const buildDownloadUrl = (materialId: string): string =>
     resolveApiResourceUrl(buildMaterialDownloadEndpoint(materialId));
 
 /**
- * Baixa um arquivo autenticado e forÃ§a o navegador a salvar localmente.
+ * Baixa um arquivo autenticado e força o navegador a salvar localmente.
  * Esse fluxo e usado principalmente em materiais comprados e anexos protegidos.
  * @since v1.0.0
  */
@@ -231,7 +231,7 @@ export const downloadAuthenticatedFile = async (resource: string, fallbackFileNa
 };
 
 /**
- * Abre um arquivo autenticado em nova aba mantendo o controle de refresh da sessao.
+ * Abre um arquivo autenticado em nova aba mantendo o controle de refresh da sessão.
  * Essa funcao sustenta o reader e visualizadores protegidos sem expor a URL real do backend.
  * @since v1.0.0
  */
@@ -257,7 +257,7 @@ export const openAuthenticatedFile = async (resource: string): Promise<void> => 
 };
 
 /**
- * Resolve a URL publica de um asset salvo no backend.
+ * Resolve a URL pública de um asset salvo no backend.
  * Ele e consumido por imagens, uploads e previews espalhados pelo site e pelo admin.
  * @since v1.0.0
  */

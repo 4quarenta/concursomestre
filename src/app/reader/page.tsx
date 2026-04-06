@@ -35,7 +35,7 @@ const ReaderPage: React.FC = () => {
         }
 
         if (!id) {
-            setError("Material nÃ£o especificado.");
+            setError("Material não especificado.");
             setLoading(false);
             return;
         }
@@ -70,7 +70,7 @@ const ReaderPage: React.FC = () => {
 
         if (!material) {
             console.warn('[ReaderPage] Material not found in database.');
-            setError("Material nÃ£o encontrado.");
+            setError("Material não encontrado.");
             setLoading(false);
             return;
         }
@@ -79,13 +79,13 @@ const ReaderPage: React.FC = () => {
         const hasAccess = !!transaction || isAuthor || isAdmin;
 
         if (!hasAccess) {
-            setError("VocÃª nÃ£o possui permissÃ£o para acessar este material ou ele nÃ£o existe.");
+            setError("Você não possui permissão para acessar este material ou ele não existe.");
             setLoading(false);
             return;
         }
 
         if (!material.fileUrl) {
-            setError("O arquivo deste material nÃ£o estÃ¡ disponÃ­vel.");
+            setError("O arquivo deste material não está disponível.");
             setLoading(false);
             return;
         }

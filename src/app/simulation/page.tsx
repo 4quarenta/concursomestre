@@ -85,8 +85,8 @@ const Simulation: React.FC = () => {
             <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center text-slate-400 mb-6">
                <GraduationCap size={40} />
             </div>
-            <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 mb-2">Simulados IndisponÃ­veis</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm font-medium">Esta funcionalidade foi desabilitada temporariamente pela administraÃ§Ã£o da plataforma.</p>
+            <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 mb-2">Simulados Indisponíveis</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm font-medium">Esta funcionalidade foi desabilitada temporariamente pela administração da plataforma.</p>
             <button
                onClick={() => window.history.back()}
                className="mt-8 flex items-center gap-2 px-6 py-2.5 bg-slate-900 dark:bg-indigo-600 text-white text-xs font-black uppercase rounded-xl hover:scale-105 transition-all shadow-lg"
@@ -111,7 +111,7 @@ const Simulation: React.FC = () => {
    const allAgencies = useMemo(() => Array.from(new Set(questions.flatMap(q => q.bancas?.map(b => b.sigla || b.nome) || []).filter(Boolean))).sort() as string[], [questions]);
    const allYears = useMemo(() => Array.from(new Set(questions.flatMap(q => q.anos || []).map(String))).sort().reverse(), [questions]);
    const allOrgs = useMemo(() => Array.from(new Set(questions.flatMap(q => q.orgaos || []).map(o => o.sigla || o.nome).filter(Boolean))).sort(), [questions]);
-   const allRoles = useMemo(() => Array.from(new Set(questions.flatMap(q => q.cargos || []).map(c => c.descricao || (c as any).nome).filter(Boolean))).sort(), [questions]);
+   const allRoles = useMemo(() => Array.from(new Set(questions.flatMap(q => q.cargos || []).map(c => c.descrição || (c as any).nome).filter(Boolean))).sort(), [questions]);
    const allLevels = useMemo(() => Array.from(new Set(questions.map(q => q.nivel || (q as any).level).filter(Boolean))).sort(), [questions]);
 
    const [config, setConfig] = useState<SimulationConfig>({
@@ -136,14 +136,14 @@ const Simulation: React.FC = () => {
       ensureTaxonomiesLoaded();
    }, [ensureTaxonomiesLoaded]);
 
-   // Verificar se o usuÃ¡rio pode criar sim personalizado (apenas Pro ou Elite)
+   // Verificar se o usuário pode criar sim personalizado (apenas Pro ou Elite)
    const canCreateCustomSim = currentUser && (currentUser as any).plan && (currentUser as any).plan !== 'Gratuito' && (currentUser as any).plan !== 'Essencial';
 
    const handleCreate = () => {
       if (currentUser && !currentUser.emailVerified) {
          setAuthModalConfig({
             title: "Confirme seu E-mail",
-            description: "Para realizar simulados e testar seus conhecimentos, vocÃª precisa confirmar seu e-mail."
+            description: "Para realizar simulados e testar seus conhecimentos, você precisa confirmar seu e-mail."
          });
          setShowAuthModal(true);
          return;
@@ -153,14 +153,14 @@ const Simulation: React.FC = () => {
          const matchAgency = config.filters.agencies.length === 0 || q.bancas?.some(b => config.filters.agencies.includes(b.sigla || b.nome));
          const matchYear = config.filters.years.length === 0 || (q.anos && q.anos.some(y => config.filters.years.includes(String(y))));
          const matchOrg = config.filters.organizations.length === 0 || q.orgaos?.some(o => config.filters.organizations.includes(o.sigla || o.nome));
-         const matchRole = config.filters.roles.length === 0 || q.cargos?.some(c => config.filters.roles.includes(c.descricao || (c as any).nome));
+         const matchRole = config.filters.roles.length === 0 || q.cargos?.some(c => config.filters.roles.includes(c.descrição || (c as any).nome));
          const matchLevel = config.filters.levels.length === 0 || config.filters.levels.includes(q.nivel || (q as any).level);
          const matchTopic = config.filters.topics.length === 0 || q.assuntos?.some(a => config.filters.topics.includes(a.nome as any));
 
          return matchSubject && matchAgency && matchYear && matchOrg && matchRole && matchLevel && matchTopic;
       });
 
-      if (filtered.length === 0) return addToast("`Nenhuma questÃ£o encontrada com esses filtros.", "warning");
+      if (filtered.length === 0) return addToast("`Nenhuma questão encontrada com esses filtros.", "warning");
       const finalQs = filtered.sort(() => Math.random() - 0.5).slice(0, config.questionCount);
       setActiveSession({ id: `sim-${Date.now()}`, config, questions: finalQs, answers: {}, startTime: Date.now(), status: 'in_progress' });
       setTimeLeft(config.timerMinutes * 60); setCurrentIdx(0); setStep('active');
@@ -241,18 +241,18 @@ const Simulation: React.FC = () => {
 
             <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-8 transition-colors">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <SearchableMultiSelect label="MatÃ©rias" icon={Target} options={Object.values(Subject)} selected={config.subjects} onChange={v => setConfig({ ...config, subjects: v as Subject[] })} placeholder="Todas as matÃ©rias..." />
+                  <SearchableMultiSelect label="Matérias" icon={Target} options={Object.values(Subject)} selected={config.subjects} onChange={v => setConfig({ ...config, subjects: v as Subject[] })} placeholder="Todas as matérias..." />
                   <SearchableMultiSelect label="Bancas" icon={Filter} options={allAgencies} selected={config.filters.agencies} onChange={v => setConfig({ ...config, filters: { ...config.filters, agencies: v } })} placeholder="Todas as bancas..." />
                   <SearchableMultiSelect label="Anos" icon={Calendar} options={allYears} selected={config.filters.years} onChange={v => setConfig({ ...config, filters: { ...config.filters, years: v } })} placeholder="Todos os anos..." />
-                  <SearchableMultiSelect label="Ã“rgÃ£os" icon={Building2} options={allOrgs} selected={config.filters.organizations} onChange={v => setConfig({ ...config, filters: { ...config.filters, organizations: v } })} placeholder="Todos os Ã³rgÃ£os..." />
+                  <SearchableMultiSelect label="Órgãos" icon={Building2} options={allOrgs} selected={config.filters.organizations} onChange={v => setConfig({ ...config, filters: { ...config.filters, organizations: v } })} placeholder="Todos os órgãos..." />
                   <SearchableMultiSelect label="Cargos" icon={Briefcase} options={allRoles} selected={config.filters.roles} onChange={v => setConfig({ ...config, filters: { ...config.filters, roles: v } })} placeholder="Todos os cargos..." />
-                  <SearchableMultiSelect label="NÃ­veis" icon={GraduationCap} options={allLevels} selected={config.filters.levels} onChange={v => setConfig({ ...config, filters: { ...config.filters, levels: v } })} placeholder="Todos os nÃ­veis..." />
-                  <SearchableMultiSelect label="Assuntos (TÃ³picos)" icon={BookOpen} options={allTopics} selected={config.filters.topics} onChange={v => setConfig({ ...config, filters: { ...config.filters, topics: v } })} placeholder="Todos os tÃ³picos..." />
+                  <SearchableMultiSelect label="Níveis" icon={GraduationCap} options={allLevels} selected={config.filters.levels} onChange={v => setConfig({ ...config, filters: { ...config.filters, levels: v } })} placeholder="Todos os níveis..." />
+                  <SearchableMultiSelect label="Assuntos (Tópicos)" icon={BookOpen} options={allTopics} selected={config.filters.topics} onChange={v => setConfig({ ...config, filters: { ...config.filters, topics: v } })} placeholder="Todos os tópicos..." />
                </div>
 
                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-6 border-t border-slate-50 dark:border-slate-800 transition-colors">
                   <div className="space-y-1.5">
-                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">QuestÃµes</label>
+                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">Questões</label>
                      <select value={config.questionCount} onChange={e => setConfig({ ...config, questionCount: Number(e.target.value) })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all cursor-pointer">
                         {[10, 20, 30, 60, 90].map(v => <option key={v} value={v}>{v} Itens</option>)}
                      </select>
@@ -265,7 +265,7 @@ const Simulation: React.FC = () => {
                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">Modo de Resposta</label>
                      <select value={config.feedbackMode} onChange={e => setConfig({ ...config, feedbackMode: e.target.value as any })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all cursor-pointer transition-colors">
                         <option value="after_all">Resultado no Final</option>
-                        <option value="instant">Feedback InstantÃ¢neo</option>
+                        <option value="instant">Feedback Instantâneo</option>
                      </select>
                   </div>
                </div>
@@ -274,7 +274,7 @@ const Simulation: React.FC = () => {
                   if (!currentUser) {
                      setAuthModalConfig({
                         title: "Inicie seu Treino",
-                        description: "Para criar simulados personalizados e acompanhar sua evoluÃ§Ã£o, acesse sua conta."
+                        description: "Para criar simulados personalizados e acompanhar sua evolução, acesse sua conta."
                      });
                      setShowAuthModal(true);
                      return;
@@ -289,7 +289,7 @@ const Simulation: React.FC = () => {
 
                   handleCreate();
                }} className="w-full py-4 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest text-[11px] rounded-2xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all shadow-xl shadow-slate-200 dark:shadow-none flex items-center justify-center gap-3 group transition-all">
-                  ComeÃ§ar Agora <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                  Começar Agora <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                </button>
             </div>
             {renderModals()}
@@ -340,7 +340,7 @@ const Simulation: React.FC = () => {
                <div className="fixed inset-0 z-50 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowPalette(false)}>
                   <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-2xl p-8 w-full max-w-md animate-scale-in transition-colors" onClick={e => e.stopPropagation()}>
                      <div className="flex justify-between items-center mb-6">
-                        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">NavegaÃ§Ã£o da Prova</h4>
+                        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Navegação da Prova</h4>
                         <button onClick={() => setShowPalette(false)} className="text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"><X size={20} /></button>
                      </div>
                      <div className="grid grid-cols-5 gap-2 max-h-[300px] overflow-y-auto no-scrollbar p-1">
@@ -390,7 +390,7 @@ const Simulation: React.FC = () => {
                            <ChevronLeft size={16} /> Anterior
                         </button>
                         <button onClick={() => { currentIdx === activeSession.questions.length - 1 ? handleFinish() : setCurrentIdx(currentIdx + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="px-10 py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200 dark:shadow-none hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all flex items-center gap-2">
-                           {currentIdx === activeSession.questions.length - 1 ? 'Entregar Prova' : 'PrÃ³xima'} <ChevronRight size={16} />
+                           {currentIdx === activeSession.questions.length - 1 ? 'Entregar Prova' : 'Próxima'} <ChevronRight size={16} />
                         </button>
                      </div>
                   </>
@@ -469,8 +469,8 @@ const Simulation: React.FC = () => {
                      <div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm transition-colors"><Zap size={18} /></div>
                      <p className="text-xs font-medium text-slate-600 dark:text-slate-400 leading-relaxed transition-colors">
                         {accuracy >= 70
-                           ? "Excelente performance! VocÃª estÃ¡ acima da mÃ©dia para este certame."
-                           : "Bom treino! Foque em revisar as questÃµes que errou para consolidar o aprendizado."}
+                           ? "Excelente performance! Você está acima da média para este certame."
+                           : "Bom treino! Foque em revisar as questões que errou para consolidar o aprendizado."}
                      </p>
                   </div>
                </div>
@@ -478,7 +478,7 @@ const Simulation: React.FC = () => {
 
             <div className="space-y-4">
                <div className="flex justify-between items-center px-1">
-                  <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">RevisÃ£o de QuestÃµes</h3>
+                  <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Revisão de Questões</h3>
                   <div className="flex items-center gap-2">
                      <button onClick={() => setViewMode('focus')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'focus' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`} title="Modo Foco"><List size={14} /></button>
                      <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`} title="Modo Lista"><LayoutGrid size={14} /></button>
@@ -500,8 +500,8 @@ const Simulation: React.FC = () => {
                            <div className="flex items-center gap-4">
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs transition-colors ${selectedIndex === undefined ? 'bg-slate-100 dark:bg-slate-800 text-slate-400' : isCorrect ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>{i + 1}</div>
                               <div className="flex-1 min-w-0">
-                                 <div className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" dangerouslySetInnerHTML={{ __html: q.enunciado_clean || q.enunciado || 'QuestÃ£o sem enunciado...' }} />
-                                 <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium transition-colors truncate">{(q.assuntos && q.assuntos.length > 0) ? q.assuntos[0].nome : 'Geral'} â€¢ {q.topic || 'Geral'}</p>
+                                 <div className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" dangerouslySetInnerHTML={{ __html: q.enunciado_clean || q.enunciado || 'Questão sem enunciado...' }} />
+                                 <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium transition-colors truncate">{(q.assuntos && q.assuntos.length > 0) ? q.assuntos[0].nome : 'Geral'} ? {q.topic || 'Geral'}</p>
                               </div>
                            </div>
                            <div className="flex items-center gap-3">
@@ -527,7 +527,7 @@ const Simulation: React.FC = () => {
                   <ArrowLeft size={16} /> Voltar ao Resumo
                </button>
                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest transition-colors">RevisÃ£o</span>
+                  <span className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest transition-colors">Revisão</span>
                   <span className="text-xs font-bold text-slate-800 dark:text-slate-200 transition-colors">{reviewIdx + 1} / {activeSession.questions.length}</span>
                </div>
                <div className="flex gap-2">
@@ -557,7 +557,7 @@ const Simulation: React.FC = () => {
                <div className="w-14 h-14 bg-white dark:bg-slate-900 rounded-2xl shadow-sm flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0 transition-colors"><Zap size={28} /></div>
                <div>
                   <h4 className="text-sm font-black text-indigo-900 dark:text-indigo-100 uppercase mb-1 transition-colors">Dica de Estudo</h4>
-                  <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed font-medium transition-colors">Revise os fundamentos e veja os comentÃ¡rios para consolidar o aprendizado deste tÃ³pico sem distraÃ§Ãµes.</p>
+                  <p className="text-xs text-indigo-700 dark:text-indigo-300 leading-relaxed font-medium transition-colors">Revise os fundamentos e veja os comentários para consolidar o aprendizado deste tópico sem distrações.</p>
                </div>
             </div>
             {renderModals()}

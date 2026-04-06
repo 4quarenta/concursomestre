@@ -20,7 +20,7 @@ type NotificationListPayload = {
 };
 
 /**
- * Extrai a lista de notificacoes preservando compatibilidade com os retornos
+ * Extrai a lista de notificações preservando compatibilidade com os retornos
  * legados que alternam entre array cru, `{ data: [] }` e payload nomeado.
  * @since 1.0.0
  */
@@ -47,13 +47,13 @@ const readNotifications = (response: any): Notification[] => {
 };
 
 /**
- * Fachada oficial do dominio de notificacoes.
+ * Fachada oficial do dominio de notificações.
  * Ela conecta o header do site, dropdowns e fluxos administrativos ao backend padronizado.
  * @since 1.0.0
  */
 export const notificationService = {
   /**
-   * Carrega as notificacoes do usuario autenticado.
+   * Carrega as notificações do usuário autenticado.
    * @since 1.0.0
    */
   async getNotifications(): Promise<Notification[]> {
@@ -68,7 +68,7 @@ export const notificationService = {
 
   /**
    * Mantem a mesma API usada pelo app, mas a fonte de verdade continua sendo
-   * o usuario autenticado no backend.
+   * o usuário autenticado no backend.
    * @since 1.0.0
    */
   async getUserNotifications(_userId: string): Promise<Notification[]> {
@@ -82,7 +82,7 @@ export const notificationService = {
   },
 
   /**
-   * Marca uma notificacao como lida.
+   * Marca uma notificação como lida.
    * @since 1.0.0
    */
   async markAsRead(notificationId: string): Promise<{ success: boolean }> {
@@ -91,12 +91,12 @@ export const notificationService = {
       { notification_id: notificationId },
     ) as any;
 
-    assertApiSuccess(response, 'Nao foi possivel marcar a notificacao como lida.');
+    assertApiSuccess(response, 'Não foi possível marcar a notificação como lida.');
     return { success: true };
   },
 
   /**
-   * Marca todas as notificacoes como lidas.
+   * Marca todas as notificações como lidas.
    * @since 1.0.0
    */
   async markAllAsRead(): Promise<{ success: boolean }> {
@@ -104,12 +104,12 @@ export const notificationService = {
       ENDPOINTS.notifications.markAllRead,
     ) as any;
 
-    assertApiSuccess(response, 'Nao foi possivel marcar todas as notificacoes como lidas.');
+    assertApiSuccess(response, 'Não foi possível marcar todas as notificações como lidas.');
     return { success: true };
   },
 
   /**
-   * Exclui uma notificacao individual.
+   * Exclui uma notificação individual.
    * @since 1.0.0
    */
   async deleteNotification(notificationId: string): Promise<{ success: boolean }> {
@@ -118,12 +118,12 @@ export const notificationService = {
       { notification_id: notificationId },
     ) as any;
 
-    assertApiSuccess(response, 'Nao foi possivel excluir a notificacao.');
+    assertApiSuccess(response, 'Não foi possível excluir a notificação.');
     return { success: true };
   },
 
   /**
-   * Remove todas as notificacoes do usuario atual.
+   * Remove todas as notificações do usuário atual.
    * @since 1.0.0
    */
   async clearAll(): Promise<{ success: boolean }> {
@@ -131,13 +131,13 @@ export const notificationService = {
       ENDPOINTS.notifications.clearAll,
     ) as any;
 
-    assertApiSuccess(response, 'Nao foi possivel limpar as notificacoes.');
+    assertApiSuccess(response, 'Não foi possível limpar as notificações.');
     return { success: true };
   },
 
   /**
-   * Dispara notificacao administrativa/sistemica para um usuario.
-   * Essa ponte e usada por moderacao, financeiro e operacoes do painel admin.
+   * Dispara notificação administrativa/sistemica para um usuário.
+   * Essa ponte e usada por moderação, financeiro e operações do painel admin.
    * @since 1.0.0
    */
   async sendNotification(
@@ -163,7 +163,7 @@ export const notificationService = {
         },
       ) as any;
 
-      assertApiSuccess(response, 'Nao foi possivel enviar a notificacao.');
+      assertApiSuccess(response, 'Não foi possível enviar a notificação.');
       return { success: true };
     } catch (error) {
       console.error('Error sending notification:', error);

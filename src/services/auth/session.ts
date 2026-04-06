@@ -74,7 +74,7 @@ const authChannel = typeof BroadcastChannel !== 'undefined'
 
 /**
  * Normaliza tokens vindos de cookies, memoria ou payloads legados.
- * Remove aspas e valores sentinela para evitar falso-positivo de autenticacao.
+ * Remove aspas e valores sentinela para evitar falso-positivo de autenticação.
  * @since 1.0.0
  */
 const normalizeToken = (value: string | null | undefined): string | null => {
@@ -99,7 +99,7 @@ const normalizeToken = (value: string | null | undefined): string | null => {
 
 /**
  * Decodifica o payload de um JWT sem validar assinatura.
- * Serve para ler expiracao e metadados locais usados pelo controle de sessao.
+ * Serve para ler expiracao e metadados locais usados pelo controle de sessão.
  * @since 1.0.0
  */
 export const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
@@ -119,7 +119,7 @@ export const decodeJwtPayload = (token: string): Record<string, unknown> | null 
 
 /**
  * Calcula a expiracao absoluta do access token em milissegundos.
- * O provider usa esse valor para refresh proativo e renovacao por demanda.
+ * O provider usa esse valor para refresh proativo e renovação por demanda.
  * @since 1.0.0
  */
 export const getAccessTokenExpirationMs = (token: string | null | undefined = accessToken): number | null => {
@@ -139,7 +139,7 @@ export const getAccessTokenExpirationMs = (token: string | null | undefined = ac
 };
 
 /**
- * Informa se o token atual ja expirou ou esta dentro da janela de tolerancia.
+ * Informa se o token atual já expirou ou esta dentro da janela de tolerancia.
  * Essa verificacao guia retries HTTP, bootstrap e refresh programado.
  * @since 1.0.0
  */
@@ -181,14 +181,14 @@ const getCookieValue = (name: string): string | null => {
 };
 
 /**
- * Devolve o token CSRF oficial da sessao web atual.
+ * Devolve o token CSRF oficial da sessão web atual.
  * O frontend usa esse valor em refresh, logout e outros POSTs sensiveis.
  * @since 1.0.0
  */
 export const getCsrfToken = (): string | null => getCookieValue('cm_csrf');
 
 /**
- * Materializa um retrato consistente do estado de autenticacao em memoria.
+ * Materializa um retrato consistente do estado de autenticação em memoria.
  * Ele e entregue aos listeners e providers sem expor variaveis globais soltas.
  * @since 1.0.0
  */
@@ -212,7 +212,7 @@ const notifyListeners = (): void => {
 
 /**
  * Cancela o agendamento de refresh proativo pendente.
- * Evita timers duplicados quando o token muda ou a sessao e limpa.
+ * Evita timers duplicados quando o token muda ou a sessão e limpa.
  * @since 1.0.0
  */
 const clearProactiveRefreshTimer = (): void => {
@@ -223,7 +223,7 @@ const clearProactiveRefreshTimer = (): void => {
 };
 
 /**
- * Agenda a renovacao do token antes da expiracao real.
+ * Agenda a renovação do token antes da expiracao real.
  * Esse timer reduz a chance de 401 em navegacao normal do site.
  * @since 1.0.0
  */
@@ -255,7 +255,7 @@ const writeAuthEventToStorage = (event: AuthBroadcastEvent): void => {
 };
 
 /**
- * Publica um evento de autenticacao para as outras abas abertas.
+ * Pública um evento de autenticação para as outras abas abertas.
  * Login, logout e refresh usam esse fluxo para manter o shell do site coerente.
  * @since 1.0.0
  */
@@ -272,7 +272,7 @@ const broadcastAuthEvent = (event: Omit<AuthBroadcastEvent, 'sourceTabId' | 'at'
 
 /**
  * Atualiza o token em memoria e reprograma o refresh futuro.
- * Serve como ponto unico para troca do access token em toda a sessao web.
+ * Serve como ponto unico para troca do access token em toda a sessão web.
  * @since 1.0.0
  */
 const applyAccessToken = (token: string | null | undefined): void => {
@@ -282,7 +282,7 @@ const applyAccessToken = (token: string | null | undefined): void => {
 };
 
 /**
- * Aplica token, usuario e metadados de bootstrap no estado global de auth.
+ * Aplica token, usuário e metadados de bootstrap no estado global de auth.
  * Esse metodo costura o provider do site com os eventos vindos do backend e de outras abas.
  * @since 1.0.0
  */
@@ -315,8 +315,8 @@ const updateSessionState = (
 };
 
 /**
- * Inscreve um listener reativo para mudancas de sessao.
- * O retorno remove a inscricao, padrao usado por providers e hooks do app.
+ * Inscreve um listener reativo para mudancas de sessão.
+ * O retorno remove a inscriÃ§Ã£o, padrao usado por providers e hooks do app.
  * @since 1.0.0
  */
 export const subscribeToAuthSession = (listener: SessionListener): (() => void) => {
@@ -336,15 +336,15 @@ export const subscribeToAuthSession = (listener: SessionListener): (() => void) 
 export const getAccessToken = (): string | null => accessToken;
 
 /**
- * Exibe o snapshot do usuario autenticado mantido localmente.
- * Componentes usam esse atalho quando nao precisam esperar um refresh completo.
+ * Exibe o snapshot do usuário autenticado mantido localmente.
+ * Componentes usam esse atalho quando não precisam esperar um refresh completo.
  * @since 1.0.0
  */
 export const getCurrentUserSnapshot = (): UserProfile | null => currentUser;
 
 /**
  * Atualiza apenas o perfil em memoria, preservando o token corrente.
- * Isso e usado quando o usuario edita dados sem refazer o login no site.
+ * Isso e usado quando o usuário edita dados sem refazer o login no site.
  * @since 1.0.0
  */
 export const updateCurrentUserSnapshot = (user: UserProfile | null): void => {
@@ -374,7 +374,7 @@ const readRefreshLock = (): { owner: string; startedAt: number } | null => {
 
 /**
  * Informa se o lock de refresh ainda esta dentro da validade.
- * Locks velhos sao ignorados para nao deixar a sessao presa por erro de aba.
+ * Locks velhos sao ignorados para não deixar a sessão presa por erro de aba.
  * @since 1.0.0
  */
 const isLockFresh = (lock: { owner: string; startedAt: number } | null): boolean => {
@@ -408,7 +408,7 @@ const tryAcquireRefreshLock = (): boolean => {
 
 /**
  * Libera o lock de refresh da aba atual.
- * A liberacao acontece no finally para nao deixar outras abas bloqueadas.
+ * A liberacao acontece no finally para não deixar outras abas bloqueadas.
  * @since 1.0.0
  */
 const releaseRefreshLock = (): void => {
@@ -424,7 +424,7 @@ const releaseRefreshLock = (): void => {
 
 /**
  * Aguarda que outra aba conclua login, logout ou refresh.
- * Esse fallback reduz chamadas concorrentes ao endpoint de renovacao.
+ * Esse fallback reduz chamadas concorrentes ao endpoint de renovação.
  * @since 1.0.0
  */
 const waitForExternalRefresh = (): Promise<AuthBroadcastEvent | null> => {
@@ -482,7 +482,7 @@ const waitForExternalRefresh = (): Promise<AuthBroadcastEvent | null> => {
 };
 
 /**
- * Aplica localmente um evento de autenticacao vindo de outra aba.
+ * Aplica localmente um evento de autenticação vindo de outra aba.
  * O resultado devolvido alimenta fluxos que estavam esperando um refresh externo.
  * @since 1.0.0
  */
@@ -519,8 +519,8 @@ const parseSuccessPayload = <T>(payload: any): T | null => {
 };
 
 /**
- * Busca o usuario autenticado usando o token atualmente carregado.
- * Essa chamada completa a montagem da sessao depois de login, refresh ou bootstrap.
+ * Busca o usuário autenticado usando o token atualmente carregado.
+ * Essa chamada completa a montagem da sessão depois de login, refresh ou bootstrap.
  * @since 1.0.0
  */
 export const fetchAuthenticatedUser = async (): Promise<UserProfile> => {
@@ -539,7 +539,7 @@ export const fetchAuthenticatedUser = async (): Promise<UserProfile> => {
 
     const payload = parseSuccessPayload<{ user: UserProfile }>(response.data);
     if (!payload?.user) {
-        throw new Error('Nao foi possivel obter o usuario autenticado.');
+        throw new Error('Não foi possível obter o usuário autenticado.');
     }
 
     updateSessionState(token, payload.user, { isBootstrapped: true, broadcast: false });
@@ -547,14 +547,14 @@ export const fetchAuthenticatedUser = async (): Promise<UserProfile> => {
 };
 
 /**
- * Monta uma sessao autenticada em memoria a partir de token e usuario opcionais.
- * O fluxo e usado por login, 2FA e integracoes que liberam sessao imediatamente.
+ * Monta uma sessão autenticada em memoria a partir de token e usuário opcionais.
+ * O fluxo e usado por login, 2FA e integrações que liberam sessão imediatamente.
  * @since 1.0.0
  */
 export const establishAuthenticatedSession = async (token: string | null | undefined, user?: UserProfile | null): Promise<AuthSessionSnapshot> => {
     const normalizedToken = normalizeToken(token);
     if (!normalizedToken) {
-        throw new Error('Token de autenticacao ausente.');
+        throw new Error('Token de autenticação ausente.');
     }
 
     updateSessionState(normalizedToken, user ?? null, {
@@ -577,8 +577,8 @@ export const establishAuthenticatedSession = async (token: string | null | undef
 };
 
 /**
- * Limpa completamente a sessao autenticada do navegador atual.
- * Opcionalmente tambem replica o logout para as demais abas da plataforma.
+ * Limpa completamente a sessão autenticada do navegador atual.
+ * Opcionalmente também replica o logout para as demais abas da plataforma.
  * @since 1.0.0
  */
 export const clearAuthenticatedSession = (reason?: string | null, broadcast = true): void => {
@@ -591,7 +591,7 @@ export const clearAuthenticatedSession = (reason?: string | null, broadcast = tr
 };
 
 /**
- * Renova a sessao com coordenacao entre abas e protecao por CSRF.
+ * Renova a sessão com coordenacao entre abas e protecao por CSRF.
  * Esse e o nucleo que sustenta bootstrap, retry de 401 e refresh proativo do site.
  * @since 1.0.0
  */
@@ -608,7 +608,7 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
                 return null;
             }
 
-            throw new Error('CSRF token ausente para renovar a sessao.');
+            throw new Error('CSRF token ausente para renovar a sessão.');
         }
 
         if (!options.force && options.reason !== 'bootstrap' && accessToken && !isAccessTokenExpired(accessToken, 60)) {
@@ -626,7 +626,7 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
                 if (options.allowAnonymousFailure) {
                     return currentUser ? getSnapshot() : null;
                 }
-                throw new Error('Nao foi possivel coordenar a renovacao da sessao.');
+                throw new Error('Não foi possível coordenar a renovação da sessão.');
             }
         }
 
@@ -671,7 +671,7 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
 };
 
 /**
- * Inicializa a sessao quando a aplicacao sobe no navegador.
+ * Inicializa a sessão quando a aplicação sobe no navegador.
  * Ele tenta reaproveitar cookies existentes e deixar o provider pronto para o shell do site.
  * @since 1.0.0
  */
@@ -709,7 +709,7 @@ export const bootstrapAuthSession = async (): Promise<AuthSessionSnapshot> => {
 
 /**
  * Executa logout remoto e limpa o estado local independentemente do resultado da rede.
- * Isso garante que a UI nao fique presa autenticada quando o backend falha no encerramento.
+ * Isso garante que a UI não fique presa autenticada quando o backend falha no encerramento.
  * @since 1.0.0
  */
 export const logoutAuthSession = async (): Promise<void> => {
@@ -737,7 +737,7 @@ export const logoutAuthSession = async (): Promise<void> => {
 };
 
 /**
- * Trata eventos de autenticacao recebidos de outras abas abertas.
+ * Trata eventos de autenticação recebidos de outras abas abertas.
  * Mantem menus, guards e providers sincronizados sem exigir recarga manual.
  * @since 1.0.0
  */

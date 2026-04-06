@@ -6,17 +6,17 @@ Consolidar o dominio de taxonomias e filtros como camada oficial do sistema e re
 
 ## Backend
 
-O modulo oficial ja estava concentrado em:
+O modulo oficial já estava concentrado em:
 
-- `C:\xampp\htdocs\questao-pro-backend\modules\filters\routes.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\filters\controllers\FiltersController.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\filters\services\FiltersService.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\filters\repositories\FiltersRepository.php`
-- `C:\xampp\htdocs\questao-pro-backend\modules\filters\validators\FiltersValidator.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\filters\routes.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\filters\controllers\FiltersController.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\filters\services\FiltersService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\filters\repositories\FiltersRepository.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\filters\validators\FiltersValidator.php`
 
-Nesta rodada, a validacao arquitetural ficou congelada em:
+Nesta rodada, a validação arquitetural ficou congelada em:
 
-- `C:\xampp\htdocs\questao-pro-backend\tests\FiltersModuleWiringTest.php`
+- `C:\xampp\htdocs\questão-pro-backend\tests\FiltersModuleWiringTest.php`
 
 ## Frontend
 
@@ -40,11 +40,11 @@ Nesta rodada, a validacao arquitetural ficou congelada em:
 
 ## Regras preservadas
 
-- `list` continua publico para carregar taxonomias do app
-- `save` e `delete` continuam protegidos por sessao admin
+- `list` continua público para carregar taxonomias do app
+- `save` e `delete` continuam protegidos por sessão admin
 - a normalizacao de `bancas`, `orgaos`, `assuntos`, `cargos`, `anos` e `carreiras` continua centralizada no service
 
-## Validacao
+## Validação
 
 - `FiltersModuleWiringTest.php`
 - `src/services/filters/__tests__/filters.test.ts`

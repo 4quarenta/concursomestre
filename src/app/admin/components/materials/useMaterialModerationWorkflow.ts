@@ -59,14 +59,14 @@ export const useMaterialModerationWorkflow = ({
       if (question) {
         openManualModal(question);
       } else {
-        addToast('Questao nao encontrada (pode ter sido excluida).', 'error');
+        addToast('Questão não encontrada (pode ter sido excluida).', 'error');
       }
       return;
     }
 
     if (report.targetType === 'material') {
       if (!report.materialId) {
-        addToast('Erro: ID do material nao encontrado na denuncia.', 'error');
+        addToast('Erro: ID do material não encontrado na denúncia.', 'error');
         return;
       }
 
@@ -74,21 +74,21 @@ export const useMaterialModerationWorkflow = ({
       if (material) {
         openMaterialModeration(material, report);
       } else {
-        addToast(`Material nao encontrado com ID: ${report.materialId}`, 'error');
+        addToast(`Material não encontrado com ID: ${report.materialId}`, 'error');
       }
       return;
     }
 
     if (report.targetType === 'comment') {
       setModerationReason(getQuickReportResolutionReason(report));
-      addToast('Denuncias de comentario ja podem ser resolvidas ou ignoradas. O editor do alvo ainda nao foi acoplado ao painel.', 'info');
+      addToast('Denúncias de comentário já podem ser resolvidas ou ignoradas. O editor do alvo ainda não foi acoplado ao painel.', 'info');
     }
   };
 
   const handleApproveMaterial = () => {
     if (!editingMaterial) return;
 
-    const finalReason = moderationReason.trim() || 'Conteudo revisado e considerado adequado para a plataforma.';
+    const finalReason = moderationReason.trim() || 'Conteúdo revisado e considerado adequado para a plataforma.';
     moderateMaterial(editingMaterial.id, 'approved', finalReason, moderationEvidence || undefined);
 
     if (selectedReport) {
@@ -101,7 +101,7 @@ export const useMaterialModerationWorkflow = ({
   const handleHideMaterial = () => {
     if (!editingMaterial) return;
 
-    const finalReason = moderationReason.trim() || 'O conteudo foi ocultado temporariamente por nao atender as diretrizes da comunidade ou estar em revisao.';
+    const finalReason = moderationReason.trim() || 'O conteúdo foi ocultado temporariamente por não atender as diretrizes da comunidade ou estar em revisao.';
     if (!confirm('Ocultar este material da loja?')) return;
 
     moderateMaterial(editingMaterial.id, 'rejected', finalReason, moderationEvidence || undefined);
@@ -117,7 +117,7 @@ export const useMaterialModerationWorkflow = ({
     if (!editingMaterial) return;
 
     const blockReason = moderationReason.trim() || 'Violacao recorrente ou grave das diretrizes da plataforma.';
-    const blockMessage = `[CONTEUDO BLOQUEADO] Seu material foi suspenso. Motivo: "${blockReason}". CASO DISCORDE, VOCE TEM 5 DIAS UTEIS PARA CONTESTAR. Envie sua justificativa para suporte@concursomestre.com informando o ID #${editingMaterial.id}.`;
+    const blockMessage = `[CONTEÚDO BLOQUEADO] Seu material foi suspenso. Motivo: "${blockReason}". CASO DISCORDE, VOCÊ TEM 5 DIAS UTEIS PARA CONTESTAR. Envie sua justificativa para suporte@concursomestre.com informando o ID #${editingMaterial.id}.`;
 
     if (!confirm('Bloquear material permanentemente e solicitar contestacao?')) return;
 

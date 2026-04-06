@@ -65,14 +65,14 @@ export const paymentsService = {
 
   /**
    * Processa a compra avulsa de um material no backend e entrega um resultado
-   * simples para a UI reagir sem parsing manual. O backend usa a sessao
+   * simples para a UI reagir sem parsing manual. O backend usa a sessão
    * autenticada como fonte de verdade do comprador.
    * @since 1.0.0
    */
   async processMaterialPayment(payload: MaterialPaymentPayload): Promise<MaterialPaymentResult> {
     try {
       const response = await apiClient.post<any>(ENDPOINTS.payments.processMaterial, payload);
-      const raw = assertApiSuccess(response, 'Nao foi possivel processar o pagamento do material.').raw;
+      const raw = assertApiSuccess(response, 'Não foi possível processar o pagamento do material.').raw;
       const data = readApiData<any>(raw, {});
 
       return {
@@ -80,7 +80,7 @@ export const paymentsService = {
         message: data?.message || raw?.message,
       };
     } catch (error: any) {
-      throw new Error(readApiErrorMessage(error, 'Nao foi possivel processar o pagamento do material.'));
+      throw new Error(readApiErrorMessage(error, 'Não foi possível processar o pagamento do material.'));
     }
   },
 };

@@ -68,7 +68,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
   billingName,
   billingEmail,
   billingAddress,
-  submitLabel = 'Pagar com cartao',
+  submitLabel = 'Pagar com cartão',
   onPaymentMethodCreated,
   onPaymentFinalized,
 }) => {
@@ -105,18 +105,18 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
     event.preventDefault();
 
     if (!stripe || !elements) {
-      setError('O formulario seguro ainda esta carregando. Tente novamente em alguns segundos.');
+      setError('O formulário seguro ainda esta carregando. Tente novamente em alguns segundos.');
       return;
     }
 
     if (!cardholderName.trim()) {
-      setError('Informe o nome do titular do cartao.');
+      setError('Informe o nome do titular do cartão.');
       return;
     }
 
     const cardNumberElement = elements.getElement(CardNumberElement);
     if (!cardNumberElement) {
-      setError('O campo de numero do cartao ainda nao foi carregado.');
+      setError('O campo de numero do cartão ainda não foi carregado.');
       return;
     }
 
@@ -142,7 +142,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
       });
 
       if (paymentMethodResult.error || !paymentMethodResult.paymentMethod?.id) {
-        throw new Error(paymentMethodResult.error?.message || 'Nao foi possivel validar os dados do cartao.');
+        throw new Error(paymentMethodResult.error?.message || 'Não foi possível validar os dados do cartão.');
       }
 
       const nextStep = await onPaymentMethodCreated(paymentMethodResult.paymentMethod.id);
@@ -162,7 +162,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
               });
 
         if (confirmation.error) {
-          throw new Error(confirmation.error.message || 'Nao foi possivel confirmar o pagamento do cartao.');
+          throw new Error(confirmation.error.message || 'Não foi possível confirmar o pagamento do cartão.');
         }
       }
 
@@ -176,7 +176,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
             : null),
       });
     } catch (submitError: any) {
-      setError(submitError?.message || 'Falha ao processar o pagamento com cartao.');
+      setError(submitError?.message || 'Falha ao processar o pagamento com cartão.');
     } finally {
       setSubmitting(false);
     }
@@ -193,10 +193,10 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-2">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Cartao
+          Cartão
         </p>
         <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-          Informe numero, validade e codigo de seguranca do cartao.
+          Informe numero, validade e código de segurança do cartão.
         </p>
       </div>
 
@@ -208,7 +208,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
           type="text"
           value={cardholderName}
           onChange={(event) => setCardholderName(event.target.value)}
-          placeholder="Como esta impresso no cartao"
+          placeholder="Como esta impresso no cartão"
           autoComplete="cc-name"
           className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white dark:focus:border-indigo-400 dark:focus:bg-[#111428] dark:focus:ring-indigo-500/10"
         />
@@ -219,7 +219,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
 
       <div className="space-y-2">
         <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Numero do cartao
+          Numero do cartão
         </label>
         <div className={fieldShellClassName}>
           <CardNumberElement
@@ -256,7 +256,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
 
         <div className="space-y-2">
           <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-            Codigo de seguranca
+            Código de segurança
           </label>
           <div className={fieldShellClassName}>
             <CardCvcElement
@@ -281,12 +281,12 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
           <div className="space-y-1">
             <p className="text-xs font-bold text-slate-900 dark:text-white">Pagamento seguro</p>
             <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-              Os dados do cartao sao tokenizados pela Stripe e nao passam em texto puro pelo sistema.
+              Os dados do cartão sao tokenizados pela Stripe e não passam em texto puro pelo sistema.
             </p>
             {cardholderName || billingEmail ? (
               <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                 {cardholderName ? `Titular: ${cardholderName}` : null}
-                {cardholderName && billingEmail ? ' Â· ' : null}
+                {cardholderName && billingEmail ? ' · ' : null}
                 {billingEmail ? `Email: ${billingEmail}` : null}
               </p>
             ) : null}
@@ -315,7 +315,7 @@ const StripeCardElementForm: React.FC<StripeCardElementFormProps> = ({
   const stripePromise = useMemo(() => loadStripe(publishableKey), [publishableKey]);
 
   if (!publishableKey) {
-    return <p className="text-[11px] font-bold text-rose-500">Stripe Publishable Key nao configurada.</p>;
+    return <p className="text-[11px] font-bold text-rose-500">Stripe Publishable Key não configurada.</p>;
   }
 
   return (
