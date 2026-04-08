@@ -56,48 +56,10 @@ export const subscriptionsService = {
     const response = await apiClient.get<any>(ENDPOINTS.subscriptions.automationHelper);
     assertApiSuccess(
       response,
-      'Não foi possível carregar as instrucoes de automacao.',
+      'NÃ£o foi possÃ­vel carregar as instrucoes de automacao.',
     );
 
     return mergeResponsePayload(response, {});
-  },
-
-  /**
-   * Cria a preferencia do Mercado Pago para checkout de assinatura.
-   * @since 1.0.0
-   */
-  async createMercadoPagoSubscriptionPreference(payload: {
-    plan_id: number;
-  }): Promise<any> {
-    try {
-      const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createMercadoPagoPreference, payload);
-      assertApiSuccess(
-        response,
-        'Não foi possível criar a preferencia do Mercado Pago.',
-      );
-      return mergeResponsePayload(response, {});
-    } catch (error) {
-      console.error('Error creating Mercado Pago subscription preference:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Processa o pagamento Mercado Pago quando o checkout ocorre no proprio site.
-   * @since 1.0.0
-   */
-  async processMercadoPagoPayment(payload: Record<string, unknown>): Promise<any> {
-    try {
-      const response = await apiClient.post<any>(ENDPOINTS.subscriptions.processMercadoPagoPayment, payload);
-      assertApiSuccess(
-        response,
-        'Não foi possível processar o pagamento do Mercado Pago.',
-      );
-      return mergeResponsePayload(response, {});
-    } catch (error) {
-      console.error('Error processing Mercado Pago payment:', error);
-      throw error;
-    }
   },
 
   /**
@@ -115,7 +77,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripeCheckout, payload);
       assertApiSuccess(
         response,
-        'Não foi possível iniciar o checkout Stripe.',
+        'NÃ£o foi possÃ­vel iniciar o checkout Stripe.',
       );
       return mergeResponsePayloadWithUrl(response, {});
     } catch (error) {
@@ -125,7 +87,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Cria uma assinatura Stripe pelo fluxo inline com cartão salvo ou novo.
+   * Cria uma assinatura Stripe pelo fluxo inline com cartÃ£o salvo ou novo.
    * @since 1.0.0
    */
   async createStripeSubscription(payload: {
@@ -142,7 +104,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripeSubscription, payload);
       assertApiSuccess(
         response,
-        'Não foi possível criar a assinatura Stripe.',
+        'NÃ£o foi possÃ­vel criar a assinatura Stripe.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -169,7 +131,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.finalizeStripeSubscription, payload);
       assertApiSuccess(
         response,
-        'Não foi possível finalizar a assinatura Stripe.',
+        'NÃ£o foi possÃ­vel finalizar a assinatura Stripe.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -191,7 +153,7 @@ export const subscriptionsService = {
       });
       const payload = readApiData<any>(response, {});
       return {
-        ...assertApiSuccess(response, 'Não foi possível validar o cupom.').raw,
+        ...assertApiSuccess(response, 'NÃ£o foi possÃ­vel validar o cupom.').raw,
         coupon: payload?.coupon || response?.coupon || null,
       };
     } catch (error) {
@@ -201,7 +163,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Abre uma sessão do portal Stripe para gestão de billing do usuário.
+   * Abre uma sessÃ£o do portal Stripe para gestÃ£o de billing do usuÃ¡rio.
    * @since 1.0.0
    */
   async createStripePortalSession(): Promise<any> {
@@ -209,7 +171,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripePortal, {});
       assertApiSuccess(
         response,
-        'Não foi possível abrir o portal Stripe.',
+        'NÃ£o foi possÃ­vel abrir o portal Stripe.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -219,17 +181,17 @@ export const subscriptionsService = {
   },
 
   /**
-   * Atualiza a preferencia de renovação automática da assinatura atual.
+   * Atualiza a preferencia de renovaÃ§Ã£o automÃ¡tica da assinatura atual.
    * @since 1.0.0
    */
   async updateRenewal(autoRenew: boolean): Promise<any> {
     const response = await apiClient.post(ENDPOINTS.subscriptions.updateRenewal, {
-        auto_renew: autoRenew,
-      });
+      auto_renew: autoRenew,
+    });
 
     assertApiSuccess(
       response,
-      'Não foi possível atualizar a renovação automática.',
+      'NÃ£o foi possÃ­vel atualizar a renovaÃ§Ã£o automÃ¡tica.',
     );
 
     return mergeResponsePayload(response, {});
@@ -248,7 +210,7 @@ export const subscriptionsService = {
       });
       const payload = readApiData<any>(response, {});
       return {
-        ...assertApiSuccess(response, 'Não foi possível cancelar a assinatura.').raw,
+        ...assertApiSuccess(response, 'NÃ£o foi possÃ­vel cancelar a assinatura.').raw,
         refund_processed: payload?.refund_processed ?? response?.refund_processed ?? false,
         refund_id: payload?.refund_id ?? response?.refund_id ?? null,
       };
@@ -267,7 +229,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.cancelRefund, {});
       assertApiSuccess(
         response,
-        'Não foi possível cancelar a solicitacao de reembolso.',
+        'NÃ£o foi possÃ­vel cancelar a solicitacao de reembolso.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -285,7 +247,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.undoCancel, {});
       assertApiSuccess(
         response,
-        'Não foi possível reverter a solicitacao de cancelamento.',
+        'NÃ£o foi possÃ­vel reverter a solicitacao de cancelamento.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {

@@ -14,8 +14,8 @@ import { PlusCircle, X } from 'lucide-react';
 
 interface SmartTagSelectorProps {
   label: string;
-  options: string[];
-  selected: string[];
+  options: Array<string | number | Record<string, any> | null | undefined>;
+  selected: Array<string | number | Record<string, any> | null | undefined>;
   onChange: (values: string[]) => void;
   placeholder?: string;
   multiple?: boolean;
@@ -38,8 +38,35 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const filteredOptions = options.filter((option) =>
-    option.toLowerCase().includes(inputValue.toLowerCase()) && !selected.includes(option)
+  const normalizeOptionValue = (value: SmartTagSelectorProps['options'][number]) => {
+    if (typeof value === 'string' || typeof value === 'number') {
+      return String(value).trim();
+    }
+
+    if (value && typeof value === 'object') {
+      return String(
+        value.name
+        ?? value.nome
+        ?? value.sigla
+        ?? value.descricao
+        ?? value['descrição']
+        ?? '',
+      ).trim();
+    }
+
+    return '';
+  };
+
+  const normalizedSelected = Array.from(
+    new Set((selected || []).map(normalizeOptionValue).filter(Boolean)),
+  );
+
+  const normalizedOptions = Array.from(
+    new Set((options || []).map(normalizeOptionValue).filter(Boolean)),
+  );
+
+  const filteredOptions = normalizedOptions.filter((option) =>
+    option.toLowerCase().includes(inputValue.toLowerCase()) && !normalizedSelected.includes(option),
   );
 
   const handleAdd = (value: string) => {
@@ -48,8 +75,8 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
     }
 
     if (multiple) {
-      if (!selected.includes(value)) {
-        onChange([...selected, value]);
+      if (!normalizedSelected.includes(value)) {
+        onChange([...normalizedSelected, value]);
       }
     } else {
       onChange([value]);
@@ -60,7 +87,7 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
   };
 
   const handleRemove = (value: string) => {
-    onChange(selected.filter((selectedValue) => selectedValue !== value));
+    onChange(normalizedSelected.filter((selectedValue) => selectedValue !== value));
   };
 
   const slugPreview = inputValue
@@ -73,7 +100,7 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
       <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{label}</label>
       <div className="relative">
         <div className="min-h-[44px] p-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl flex flex-wrap gap-2 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
-          {selected.map((selectedValue, index) => (
+          {normalizedSelected.map((selectedValue, index) => (
             <span
               key={`${selectedValue}-${index}`}
               className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border border-indigo-100 dark:border-indigo-900/50"
@@ -103,7 +130,7 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
                 handleAdd(inputValue);
               }
             }}
-            placeholder={selected.length === 0 ? placeholder : ''}
+            placeholder={normalizedSelected.length === 0 ? placeholder : ''}
             className="flex-1 bg-transparent border-none outline-none text-sm font-bold text-slate-900 dark:text-slate-100 min-w-[80px] px-2"
           />
         </div>
@@ -121,7 +148,7 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
               </button>
             ))}
 
-            {inputValue && !options.includes(inputValue) && (
+            {inputValue && !normalizedOptions.includes(inputValue) && (
               <button
                 type="button"
                 onClick={() => handleAdd(inputValue)}

@@ -11,16 +11,19 @@
 
 import React from 'react';
 import { Shield } from 'lucide-react';
+import { PLATFORM_PAGE_DESCRIPTION_CLASS, PLATFORM_PAGE_TITLE_CLASS } from '@constants/layout';
 
 interface AdminPageHeaderProps {
   title: string;
+  description?: string;
+  activeSectionLabel?: string;
 }
 
-const AdminPageHeader = ({ title }: AdminPageHeaderProps) => (
+const AdminPageHeader = ({ title, description = 'Gestao completa da plataforma.', activeSectionLabel }: AdminPageHeaderProps) => (
   <header className="mb-8 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
     <div>
       <div className="mb-1 flex items-center gap-2">
-        <h1 className="flex items-center gap-2 text-3xl font-black text-slate-900 dark:text-slate-100">
+        <h1 className={`flex items-center gap-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>
           <Shield className="text-rose-600" />
           {title}
         </h1>
@@ -28,7 +31,15 @@ const AdminPageHeader = ({ title }: AdminPageHeaderProps) => (
           Admin
         </span>
       </div>
-      <p className="text-sm font-medium text-slate-500">Gestão completa da plataforma.</p>
+      <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>{description}</p>
+      {activeSectionLabel ? (
+        <div className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+          <span className="text-slate-400">Secao ativa</span>
+          <span className="rounded-full bg-indigo-50 px-2 py-1 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
+            {activeSectionLabel}
+          </span>
+        </div>
+      ) : null}
     </div>
   </header>
 );

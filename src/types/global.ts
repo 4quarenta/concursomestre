@@ -318,7 +318,9 @@ export interface UserProfile {
   plan?: string;
   status: 'active' | 'suspended' | 'banned' | 'pending';
   isAdmin?: boolean;
+  isStaff?: boolean;
   isPartner?: boolean;
+  canAccessAdmin?: boolean;
   hasSavedCard?: boolean;
   savedQuestionIds: string[];
   simulations: SimulationSession[];
@@ -484,9 +486,9 @@ export interface GlobalTaxonomies {
 
 export interface SystemSettings {
   activeTheme: AppPromotionTheme;
-  paymentProvider?: 'mercado_pago' | 'stripe';
+  paymentProvider?: 'stripe';
   paymentCheckoutMode?: 'internal' | 'redirect';
-  cardVaultProvider?: 'local' | 'mercado_pago' | 'stripe';
+  cardVaultProvider?: 'stripe';
   pricing: {
     Gratuito: PlanPricing;
     Essencial: PlanPricing;
@@ -552,12 +554,9 @@ export interface SystemSettings {
   stripeWebhookSecret?: string;
   hasStripeSecretConfigured?: boolean;
   hasStripeWebhookConfigured?: boolean;
-  mercadoPagoKey?: string;
-  mercadoPagoAccessToken?: string;
-  mercadoPagoWebhookSecret?: string;
-  hasMercadoPagoAccessTokenConfigured?: boolean;
   firebaseConfig?: any;
   taxonomies?: GlobalTaxonomies;
+  examBank?: Prova[];
 }
 
 export interface Material {
@@ -601,7 +600,7 @@ export interface Transaction {
   status: 'completed' | 'approved' | 'refund_requested' | 'refunded' | 'cancelled';
   refundReason?: string;
   type?: 'material' | 'plan';
-  paymentProvider?: 'mercado_pago' | 'stripe';
+  paymentProvider?: 'stripe';
   timestamp: number;
 }
 
@@ -623,9 +622,9 @@ export interface UserSubscription {
   plan_id: number;
   status: 'active' | 'past_due' | 'canceled' | 'incomplete' | 'trialing';
   auto_renew?: boolean;
-  payment_provider?: 'mercado_pago' | 'stripe';
+  payment_provider?: 'stripe';
   payment_checkout_mode?: 'internal' | 'redirect';
-  card_vault_provider?: 'local' | 'mercado_pago' | 'stripe';
+  card_vault_provider?: 'local' | 'stripe';
   provider_subscription_id?: string | null;
   provider_customer_id?: string | null;
   cancel_at_period_end?: boolean;

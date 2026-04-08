@@ -11,9 +11,10 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, AlertTriangle, Check, Image as ImageIcon, Loader2, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
-import type { Question } from '@types';
+import { AlertCircle, AlertTriangle, Check, Image as ImageIcon, Loader2, Plus, Save, Search, Sparkles, Trash2, X } from 'lucide-react';
+import type { Prova, Question } from '@types';
 import { SmartTagSelector } from '../database/SmartTagSelector';
+import { buildProvaSearchText, formatProvaLabel, normalizeProvaRecord } from '../exams/examBankUtils';
 
 interface ManualQuestionModalProps {
   manualQ: any;
@@ -26,6 +27,7 @@ interface ManualQuestionModalProps {
   existingTopics: string[];
   existingYears: Array<string | number>;
   existingRoles: string[];
+  existingProvas: Prova[];
   isGeneratingTeacher: boolean;
   isGeneratingDetailed: boolean;
   onGenerateTeacherComment: () => void;
@@ -33,6 +35,50 @@ interface ManualQuestionModalProps {
   onClose: () => void;
   onSave: () => void;
 }
+
+/**
+ * Normaliza o nome exibido de um cargo no modal manual.
+ * Evita falhas quando a origem chega nula ou com formatos legados.
+ *
+ * @since 1.0.0
+ */
+const getRoleDisplayLabel = (value: any) => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+
+  if (value && typeof value === 'object') {
+    return String(
+      value.descricao
+      ?? value['descrição']
+      ?? value.name
+      ?? value.nome
+      ?? value.sigla
+      ?? '',
+    ).trim();
+  }
+
+  return '';
+};
+
+const mergeProvaSources = (primary: Prova[], fallback: any[]) => {
+  const provaMap = new Map<string, Prova>();
+
+  [...primary, ...fallback]
+    .map((item) => normalizeProvaRecord(item))
+    .filter(Boolean)
+    .forEach((item) => {
+      provaMap.set(String((item as Prova).id), item as Prova);
+    });
+
+  return Array.from(provaMap.values()).sort((left, right) => {
+    if (right.ano !== left.ano) {
+      return right.ano - left.ano;
+    }
+
+    return left.nome.localeCompare(right.nome, 'pt-BR');
+  });
+};
 
 const ManualQuestionModal = ({
   manualQ,
@@ -45,6 +91,7 @@ const ManualQuestionModal = ({
   existingTopics,
   existingYears,
   existingRoles,
+  existingProvas,
   isGeneratingTeacher,
   isGeneratingDetailed,
   onGenerateTeacherComment,
@@ -55,6 +102,9 @@ const ManualQuestionModal = ({
   const updateManualQ = (patch: Record<string, unknown>) => {
     setManualQ((prev: any) => ({ ...prev, ...patch }));
   };
+
+  const [provaSearch, setProvaSearch] = React.useState('');
+  const [isProvaSearchOpen, setIsProvaSearchOpen] = React.useState(false);
 
   const MULTIPLE_CHOICE_LABEL = 'Múltipla Escolha';
   const MID_LEVEL_LABEL = 'Médio';
@@ -135,10 +185,52 @@ const ManualQuestionModal = ({
         ? 'Editar Questão'
         : 'Adicionar Nova Questão';
 
-  const provaList = Array.isArray(manualQ.provas) ? manualQ.provas : [];
+  const provaList = React.useMemo(
+    () => mergeProvaSources(existingProvas || [], Array.isArray(manualQ.provas) ? manualQ.provas : []),
+    [existingProvas, manualQ.provas],
+  );
   const selectedProva = manualQ.provaId
     ? provaList.find((item: any) => String(item.id) === String(manualQ.provaId))
     : null;
+  const filteredProvas = React.useMemo(() => {
+    const normalizedSearch = provaSearch.trim().toLowerCase();
+    if (!normalizedSearch) {
+      return provaList.slice(0, 12);
+    }
+
+    return provaList
+      .filter((item) => buildProvaSearchText(item).includes(normalizedSearch))
+      .slice(0, 12);
+  }, [provaList, provaSearch]);
+
+  React.useEffect(() => {
+    if (selectedProva) {
+      setProvaSearch(formatProvaLabel(selectedProva));
+      return;
+    }
+
+    if (!manualQ.provaId) {
+      setProvaSearch('');
+    }
+  }, [manualQ.provaId, selectedProva]);
+
+  const handleSelectProva = (prova: Prova) => {
+    updateManualQ({
+      provaId: prova.id,
+      provas: [prova],
+    });
+    setProvaSearch(formatProvaLabel(prova));
+    setIsProvaSearchOpen(false);
+  };
+
+  const handleClearProva = () => {
+    updateManualQ({
+      provaId: '',
+      provas: [],
+    });
+    setProvaSearch('');
+    setIsProvaSearchOpen(false);
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-slate-50 animate-in fade-in slide-in-from-bottom-4 duration-300 dark:bg-slate-950">
@@ -233,26 +325,98 @@ const ManualQuestionModal = ({
               placeholder="Ex: Crase, Atos..."
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-1.5">
+                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Buscar prova vinculada</label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={16} />
+                  <input
+                    type="text"
+                    value={provaSearch}
+                    onChange={(event) => {
+                      setProvaSearch(event.target.value);
+                      setIsProvaSearchOpen(true);
+                    }}
+                    onFocus={() => setIsProvaSearchOpen(true)}
+                    placeholder="Digite nome, banca, orgao, cargo, ano ou ID"
+                    className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-24 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  />
+                  <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
+                    {manualQ.provaId ? (
+                      <button
+                        type="button"
+                        onClick={handleClearProva}
+                        className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 transition-all hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                      >
+                        Limpar
+                      </button>
+                    ) : null}
+                    {manualQ.provaId ? (
+                      <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
+                        #{manualQ.provaId}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {isProvaSearchOpen ? (
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                      <div className="max-h-72 overflow-y-auto">
+                        {filteredProvas.map((prova) => (
+                          <button
+                            key={prova.id}
+                            type="button"
+                            onClick={() => handleSelectProva(prova)}
+                            className="flex w-full items-start justify-between gap-3 border-b border-slate-100 px-4 py-3 text-left transition-all last:border-b-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800"
+                          >
+                            <div>
+                              <p className="text-sm font-black text-slate-900 dark:text-slate-100">{prova.nome}</p>
+                              <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                                #{prova.id} {prova.ano ? `- ${prova.ano}` : ''} {prova.banca?.sigla ? `- ${prova.banca.sigla}` : ''} {prova.orgao?.sigla ? `- ${prova.orgao.sigla}` : ''}
+                              </p>
+                              <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                                {prova.cargo?.descricao || prova.cargo?.['descrição'] || 'Sem cargo definido'}
+                              </p>
+                            </div>
+                            {String(prova.id) === String(manualQ.provaId || '') ? (
+                              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300">
+                                Vinculada
+                              </span>
+                            ) : null}
+                          </button>
+                        ))}
+
+                        {filteredProvas.length === 0 ? (
+                          <div className="px-4 py-6 text-center text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Nenhuma prova encontrada para a busca atual.
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
               <SmartTagSelector
                 label="Ano"
                 options={existingYears}
                 selected={(manualQ.anos || []).map(String)}
                 onChange={(value) => updateManualQ({ anos: value })}
-                placeholder="2024"
-                multiple={true}
-              />
-              <div className="space-y-1.5">
-                <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">ID da Prova</label>
-                <input
-                  type="number"
-                  value={manualQ.provaId || ''}
-                  onChange={(event) => updateManualQ({ provaId: event.target.value })}
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-                  placeholder="Ex: 54321"
+                  placeholder="2024"
+                  multiple={true}
                 />
+                <div className="space-y-1.5">
+                  <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">ID da prova</label>
+                  <input
+                    type="text"
+                    value={manualQ.provaId || ''}
+                    onChange={(event) => updateManualQ({ provaId: event.target.value })}
+                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    placeholder="ID manual, se necessario"
+                  />
+                </div>
               </div>
-            </div>
+              </div>
             {manualQ.provaId && (
               <div className="md:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 text-slate-700 shadow-sm dark:border-indigo-900/40 dark:bg-indigo-900/10 dark:text-slate-200">
                 <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">
@@ -313,7 +477,7 @@ const ManualQuestionModal = ({
             <SmartTagSelector
               label="Cargo(s)"
               options={existingRoles}
-              selected={(manualQ.cargos || []).map((item: any) => (typeof item === 'string' ? item : item.descrição || item.name))}
+              selected={(manualQ.cargos || []).map(getRoleDisplayLabel).filter(Boolean)}
               onChange={(value) => updateManualQ({ cargos: value })}
               placeholder="Ex: Analista Judiciario..."
             />

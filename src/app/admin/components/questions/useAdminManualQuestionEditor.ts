@@ -16,6 +16,7 @@ import { useManualQuestionWorkflow } from './useManualQuestionWorkflow';
 type ToastHandler = (message: string, type?: string) => void;
 
 interface UseAdminManualQuestionEditorOptions {
+  questions: Question[];
   systemSettings: SystemSettings;
   addToast: ToastHandler;
   onAddQuestion: (question: Question) => Promise<any> | any;
@@ -25,6 +26,7 @@ interface UseAdminManualQuestionEditorOptions {
 }
 
 export const useAdminManualQuestionEditor = ({
+  questions,
   systemSettings,
   addToast,
   onAddQuestion,
@@ -41,7 +43,7 @@ export const useAdminManualQuestionEditor = ({
     replaceExtractedQuestion,
   });
 
-  const manualQuestionReferenceData = useManualQuestionReferenceData(systemSettings);
+  const manualQuestionReferenceData = useManualQuestionReferenceData(systemSettings, questions);
 
   return {
     openManualModal: manualQuestionWorkflow.openManualModal,
@@ -58,6 +60,7 @@ export const useAdminManualQuestionEditor = ({
       existingTopics: manualQuestionReferenceData.existingTopics,
       existingYears: manualQuestionReferenceData.existingYears,
       existingRoles: manualQuestionReferenceData.existingRoles,
+      existingProvas: manualQuestionReferenceData.existingProvas,
       isGeneratingTeacher: manualQuestionWorkflow.isGeneratingTeacher,
       isGeneratingDetailed: manualQuestionWorkflow.isGeneratingDetailed,
       onGenerateTeacherComment: manualQuestionWorkflow.handleGenerateManualTeacherComment,

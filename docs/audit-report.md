@@ -1,4 +1,8 @@
 # Audit Report
+## Aviso operacional
+- Este relatorio mantem historico de migracoes.
+- Referencias a Mercado Pago abaixo sao apenas historicas e nao representam o fluxo ativo.
+- O produto opera com Stripe como unico provedor de assinaturas.
 
 ## Ciclo 2026-04-05
 

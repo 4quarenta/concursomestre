@@ -10,12 +10,13 @@
     "test:auth": "vitest run src/services/auth/__tests__/session.test.ts",
     "test:admin": "vitest run src/services/admin/__tests__/adminService.test.ts src/services/admin/__tests__/adminArchitecture.test.ts",
     "test:headers": "powershell -ExecutionPolicy Bypass -File scripts/checks/verify-standard-file-header.ps1",
+    "check:billing-renewal": "node scripts/checks/billing-renewal-check.mjs",
+    "check:billing-e2e": "node scripts/checks/run-billing-e2e-validation.mjs",
     "test:transition": "powershell -ExecutionPolicy Bypass -File scripts/checks/transition-readiness.ps1",
     "finalize:transition": "powershell -ExecutionPolicy Bypass -File scripts/checks/transition-finalize.ps1"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
-    "@mercadopago/sdk-react": "^1.0.7",
     "@stripe/react-stripe-js": "^6.0.0",
     "@stripe/stripe-js": "^9.0.0",
     "@types/react-google-recaptcha": "^2.1.9",

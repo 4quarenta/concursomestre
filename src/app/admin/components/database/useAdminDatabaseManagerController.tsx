@@ -15,8 +15,9 @@ import { useToast } from '@providers/ToastProvider';
 import AdminDatabaseNavigation from './AdminDatabaseNavigation';
 import AdminDatabaseModals from './AdminDatabaseModals';
 import AdminDatabaseSections from './AdminDatabaseSections';
-import { ADMIN_DATABASE_CATEGORIES, ADMIN_DATABASE_SUBTAB_LABELS } from './adminDatabaseNavigationConfig';
+import { ADMIN_DATABASE_CATEGORIES, ADMIN_DATABASE_SUBTAB_LABELS, ADMIN_DATABASE_SUBTAB_META } from './adminDatabaseNavigationConfig';
 import { useAdminModerationWorkbench } from './useAdminModerationWorkbench';
+import { useAdminExamBankWorkflow } from '../exams/useAdminExamBankWorkflow';
 import SortableHeader from './SortableHeader';
 import { useAdminDatabaseDatasets } from './useAdminDatabaseDatasets';
 import { useAdminDatabaseNavigationState } from './useAdminDatabaseNavigationState';
@@ -43,6 +44,7 @@ export interface AdminDatabaseManagerControllerProps {
   onDeleteMaterial: (materialId: string) => Promise<any> | any;
   systemSettings: any;
   updateSystemSettings: (settings: any) => Promise<any> | any;
+  saveSystemSettingsNow: (settings?: any) => Promise<void> | void;
   updateRanking: (ranking: any) => Promise<void> | void;
   initialTab?: string;
 }
@@ -66,6 +68,7 @@ export const useAdminDatabaseManagerController = ({
   onDeleteMaterial,
   systemSettings,
   updateSystemSettings,
+  saveSystemSettingsNow,
   updateRanking,
   initialTab = 'questions',
 }: AdminDatabaseManagerControllerProps) => {
@@ -168,7 +171,10 @@ export const useAdminDatabaseManagerController = ({
     startEditingUser,
     cancelEditingUser,
     handleUserAction,
-  } = useAdminUserProfileWorkflow({ addToast });
+  } = useAdminUserProfileWorkflow({
+    addToast,
+    reloadUsers: () => ensureUsersLoaded(true),
+  });
 
   /**
    * Faz a ponte entre configurações do importador e o provider global de settings.
@@ -211,6 +217,34 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
+   * Centraliza o banco de provas global para vinculo rapido nas questoes.
+   */
+  const {
+    examBank,
+    filteredExamBank,
+    linkedCountByExamId,
+    editingExamId,
+    examDraft,
+    setExamDraft,
+    startEditingExam,
+    cancelEditingExam,
+    handleSaveExam,
+    deletingExam,
+    requestDeleteExam,
+    cancelDeleteExam,
+    handleDeleteExam,
+    actionLoading: examActionLoading,
+  } = useAdminExamBankWorkflow({
+    questions,
+    systemSettings,
+    updateSystemSettings,
+    saveSystemSettingsNow,
+    onUpdateQuestion,
+    filter,
+    addToast,
+  });
+
+  /**
    * Unifica o fluxo de importacao e de criacao/edicao manual de questões.
    */
   const {
@@ -219,6 +253,7 @@ export const useAdminDatabaseManagerController = ({
     manualQuestionModalProps,
     importWorkflowProps,
   } = useAdminQuestionWorkbench({
+    questions,
     systemSettings,
     addToast,
     onAddQuestion,
@@ -257,6 +292,7 @@ export const useAdminDatabaseManagerController = ({
     activeSubTab,
     onSelectSubTab: handleSelectSubTab,
     subTabLabels: ADMIN_DATABASE_SUBTAB_LABELS,
+    subTabMeta: ADMIN_DATABASE_SUBTAB_META,
     filter,
     onFilterChange: setFilter,
     bulkImportEnabled: Boolean(systemSettings.features?.bulkImportEnabled),
@@ -269,6 +305,9 @@ export const useAdminDatabaseManagerController = ({
   const sectionsProps: React.ComponentProps<typeof AdminDatabaseSections> = {
     activeSubTab,
     adminQuestions,
+    filteredExams: filteredExamBank,
+    totalExams: examBank.length,
+    linkedCountByExamId,
     pagination,
     filteredUsers,
     filteredMaterials,
@@ -285,6 +324,17 @@ export const useAdminDatabaseManagerController = ({
     onQuestionsPageChange: loadQuestions,
     onQuestionEdit: openManualModal,
     onQuestionDelete: onDeleteQuestion,
+    editingExamId,
+    examDraft,
+    onExamDraftChange: setExamDraft,
+    onStartEditExam: startEditingExam,
+    onCancelEditExam: cancelEditingExam,
+    onSaveEditExam: handleSaveExam,
+    deletingExam,
+    onRequestDeleteExam: requestDeleteExam,
+    onCancelDeleteExam: cancelDeleteExam,
+    onConfirmDeleteExam: handleDeleteExam,
+    examActionLoading,
     onOpenUserProfile: openUserProfile,
     onModerateMaterial: openMaterialModerationFromList,
     onDeleteMaterial,

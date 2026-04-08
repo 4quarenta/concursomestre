@@ -56,6 +56,7 @@ import {
   PLAN_ORDER,
   normalizePlanEntitlements,
 } from '@constants/subscriptions/planEntitlements';
+import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 
@@ -64,7 +65,8 @@ interface AdminFinanceProps {
   updateSystemSettings: (settings: SystemSettings) => void;
   allTransactions: any[];
   allUsers: UserProfile[];
-  initialSection?: 'balance' | 'transactions' | 'refunds' | 'prices' | 'marketing' | 'automation';
+  initialSection?: 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation' | 'balance' | 'prices' | 'marketing';
+  onSectionChange?: (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation') => void;
   addCoupon: (coupon: { code: string; discountPercentage: number; maxUses: number }) => void;
   deleteCoupon: (couponCode: string) => void;
 }
@@ -188,12 +190,6 @@ const AdminMarketing = ({ systemSettings, updateSystemSettings, addCoupon, delet
                 <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{systemSettings.activePromotion.name}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{systemSettings.activePromotion.bannerText}</p>
               </div>
-              <button
-                onClick={() => addToast("`Notificação enviada!", "error")}
-                className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all"
-              >
-                Disparar para todos os usuários
-              </button>
             </div>
           </div>
         </div>
@@ -262,16 +258,30 @@ const AdminFinance = ({
   updateSystemSettings,
   allTransactions,
   allUsers,
-  initialSection = 'balance',
+  initialSection = 'subscriptions',
+  onSectionChange,
   addCoupon,
   deleteCoupon,
 }: AdminFinanceProps) => {
   const { addToast } = useToast();
   const { saveSystemSettingsNow } = useData();
-  const [activeSection, setActiveSection] = useState<'balance' | 'transactions' | 'refunds' | 'prices' | 'marketing' | 'automation'>(initialSection as any);
+  const normalizeSection = (section: AdminFinanceProps['initialSection']) => {
+    if (section === 'balance') return 'subscriptions';
+    if (section === 'prices' || section === 'marketing') return 'plans-coupons';
+    if (section === 'transactions' || section === 'refunds' || section === 'automation' || section === 'plans-coupons' || section === 'subscriptions') {
+      return section;
+    }
+    return 'subscriptions';
+  };
+
+  const [activeSection, setActiveSection] = useState<'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation'>(normalizeSection(initialSection));
   const [financeFilters, setFinanceFilters] = useState({ search: '', status: 'all', dateRange: 'all' });
   const [currentPage, setCurrentPage] = useState(1);
   const [refundActionKey, setRefundActionKey] = useState<string | null>(null);
+  const [pendingRefundDecision, setPendingRefundDecision] = useState<{
+    transactionId: string;
+    resolution: 'approved' | 'rejected';
+  } | null>(null);
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [automationHelper, setAutomationHelper] = useState<any | null>(null);
   const [automationHelperLoading, setAutomationHelperLoading] = useState(false);
@@ -284,10 +294,19 @@ const AdminFinance = ({
   const [sellersMetrics, setSellersMetrics] = useState<any[]>([]);
   const [viewingSellerDetails, setViewingSellerDetails] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'available_desc' | 'available_asc' | 'date_asc' | 'date_desc'>('available_desc');
-  const paymentProvider = (systemSettings.paymentProvider || 'mercado_pago') as 'mercado_pago' | 'stripe';
+  const paymentProvider = 'stripe' as const;
   const automationDownloadUrl = automationHelper?.download_url || '';
   const automationCronUrl = automationHelper?.cron_url || '';
   const automationCronCommand = automationHelper?.linux_command || '';
+
+  useEffect(() => {
+    setActiveSection(normalizeSection(initialSection));
+  }, [initialSection]);
+
+  const changeSection = (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation') => {
+    setActiveSection(section);
+    onSectionChange?.(section);
+  };
 
   useEffect(() => {
     if (!allTransactions || !allUsers) return;
@@ -300,6 +319,7 @@ const AdminFinance = ({
     allTransactions.forEach((t: any) => {
       if (!metricsBySeller[t.sellerId]) {
         const seller = allUsers.find((u: any) => u.id === t.sellerId);
+        const paymentDay = Number(seller?.billing?.paymentDay);
         metricsBySeller[t.sellerId] = {
           id: t.sellerId,
           name: seller?.name || 'Desconhecido',
@@ -310,6 +330,7 @@ const AdminFinance = ({
           availablePayout: 0,
           transactions: []
         };
+        metricsBySeller[t.sellerId].paymentDay = Number.isFinite(paymentDay) && paymentDay > 0 ? paymentDay : null;
       }
 
       if (t.status === 'completed') {
@@ -362,8 +383,10 @@ const AdminFinance = ({
     return [...sellersMetrics].sort((a, b) => {
       if (sortBy === 'available_desc') return b.availablePayout - a.availablePayout;
       if (sortBy === 'available_asc') return a.availablePayout - b.availablePayout;
-      if (sortBy === 'date_asc') return a.paymentDay - b.paymentDay;
-      if (sortBy === 'date_desc') return b.paymentDay - a.paymentDay;
+      const safePaymentDayA = typeof a.paymentDay === 'number' ? a.paymentDay : Number.POSITIVE_INFINITY;
+      const safePaymentDayB = typeof b.paymentDay === 'number' ? b.paymentDay : Number.POSITIVE_INFINITY;
+      if (sortBy === 'date_asc') return safePaymentDayA - safePaymentDayB;
+      if (sortBy === 'date_desc') return safePaymentDayB - safePaymentDayA;
       return 0;
     });
   }, [sellersMetrics, sortBy]);
@@ -485,6 +508,42 @@ const AdminFinance = ({
     () => filteredTransactions.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
     [currentPage, filteredTransactions],
   );
+  const completedVolume = useMemo(
+    () => (allTransactions || [])
+      .filter((transaction: any) => ['approved', 'completed'].includes(String(transaction.status || '').toLowerCase()))
+      .reduce((acc: number, transaction: any) => acc + Number(transaction.amount || 0), 0),
+    [allTransactions],
+  );
+  const failedTransactionsCount = useMemo(
+    () => (allTransactions || []).filter((transaction: any) => ['rejected', 'failed'].includes(String(transaction.status || '').toLowerCase())).length,
+    [allTransactions],
+  );
+  const financeOverviewCards = [
+    {
+      label: 'Volume aprovado',
+      value: `R$ ${completedVolume.toFixed(2)}`,
+      tone: 'emerald',
+      helper: 'Transacoes aprovadas ou concluidas.',
+    },
+    {
+      label: 'Pedidos em disputa',
+      value: String(refundRequests.length),
+      tone: refundRequests.length > 0 ? 'rose' : 'slate',
+      helper: `R$ ${totalInDispute.toFixed(2)} aguardando decisao.`,
+    },
+    {
+      label: 'Falhas recentes',
+      value: String(failedTransactionsCount),
+      tone: failedTransactionsCount > 0 ? 'amber' : 'slate',
+      helper: 'Falhas ou rejeicoes no fluxo financeiro.',
+    },
+    {
+      label: 'Gateway ativo',
+      value: 'Stripe',
+      tone: 'indigo',
+      helper: systemSettings?.features?.recurringEnabled ? 'Recorrencia habilitada.' : 'Recorrencia desativada.',
+    },
+  ] as const;
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -706,19 +765,22 @@ const AdminFinance = ({
 
   // --- REEMBOLSOS ---
   const { resolveRefund } = useMarketplace();
-  const handleResolveRefund = async (transactionId: string, resolution: 'approved' | 'rejected') => {
-    if (!window.confirm(`Tem certeza que deseja ${resolution === 'approved' ? 'APROVAR' : 'REJEITAR'} este reembolso?`)) {
-      return;
-    }
-
-    const nextKey = `${transactionId}:${resolution}`;
+  const requestResolveRefund = (transactionId: string, resolution: 'approved' | 'rejected') => {
     if (refundActionKey) return;
+    setPendingRefundDecision({ transactionId, resolution });
+  };
 
+  const handleResolveRefund = async () => {
+    if (!pendingRefundDecision) return;
+
+    const nextKey = `${pendingRefundDecision.transactionId}:${pendingRefundDecision.resolution}`;
     setRefundActionKey(nextKey);
+
     try {
-      await resolveRefund(transactionId, resolution);
+      await resolveRefund(pendingRefundDecision.transactionId, pendingRefundDecision.resolution);
     } finally {
       setRefundActionKey(null);
+      setPendingRefundDecision(null);
     }
   };
 
@@ -726,48 +788,80 @@ const AdminFinance = ({
 
   return (
     <div className="space-y-6 animate-slide-up">
-      <div className="flex gap-2 p-1 bg-white dark:bg-slate-900 rounded-xl w-fit border border-slate-200 dark:border-slate-800 shadow-sm transition-all overflow-x-auto no-scrollbar">
+      <AdminConfirmDialog
+        isOpen={pendingRefundDecision !== null}
+        title={pendingRefundDecision?.resolution === 'approved' ? 'Aprovar reembolso' : 'Rejeitar reembolso'}
+        description={
+          pendingRefundDecision?.resolution === 'approved'
+            ? 'A transacao selecionada sera marcada como reembolsada e o estado local sera recarregado pelo fluxo oficial.'
+            : 'A solicitacao sera rejeitada e a transacao voltara ao estado aprovado pelo fluxo oficial.'
+        }
+        confirmLabel={pendingRefundDecision?.resolution === 'approved' ? 'Aprovar reembolso' : 'Rejeitar pedido'}
+        tone={pendingRefundDecision?.resolution === 'approved' ? 'primary' : 'danger'}
+        loading={refundActionKey !== null}
+        onConfirm={() => void handleResolveRefund()}
+        onCancel={() => {
+          setPendingRefundDecision(null);
+          setRefundActionKey(null);
+        }}
+      />
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {financeOverviewCards.map((card) => (
+            <div
+              key={card.label}
+              className={"rounded-[2rem] border p-5 shadow-sm transition-colors " + (card.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : card.tone === 'rose' ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10' : card.tone === 'amber' ? 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10' : card.tone === 'indigo' ? 'border-indigo-200 bg-indigo-50 dark:border-indigo-900/30 dark:bg-indigo-900/10' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900')}
+            >
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{card.label}</p>
+              <p className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">{card.value}</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{card.helper}</p>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Dominio financeiro</p>
+          <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Assinaturas, transacoes, reembolsos, planos e automacao</p>
+          <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+            Acoes criticas exibem sucesso apenas apos persistencia real. Refund, automacao e planos seguem o fluxo oficial.
+          </p>
+        </div>
+      </div>
+      <div className="flex gap-2 rounded-[2rem] border border-slate-200 bg-white p-2 shadow-sm transition-all overflow-x-auto no-scrollbar dark:border-slate-800 dark:bg-slate-900">
         <button
-          onClick={() => setActiveSection('balance')}
-          className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSection === 'balance' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+          onClick={() => changeSection('subscriptions')}
+          className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'subscriptions' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
         >
-          <div className="flex items-center gap-2"><Users size={14} /> Vendedores</div>
+          <div className="flex items-center gap-2"><Users size={14} /> Assinaturas</div>
         </button>
         <button
-          onClick={() => setActiveSection('refunds')}
-          className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSection === 'refunds' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+          onClick={() => changeSection('refunds')}
+          className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'refunds' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
         >
           <div className="flex items-center gap-2"><ShieldAlert size={14} /> Reembolsos {refundRequests.length > 0 && <span className="bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px]">{refundRequests.length}</span>}</div>
         </button>
         <button
-          onClick={() => setActiveSection('transactions')}
-          className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSection === 'transactions' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+          onClick={() => changeSection('transactions')}
+          className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'transactions' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
         >
-          <div className="flex items-center gap-2"><FileText size={14} /> Transações</div>
+          <div className="flex items-center gap-2"><FileText size={14} /> Transacoes</div>
         </button>
         <button
-          onClick={() => setActiveSection('prices')}
-          className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSection === 'prices' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+          onClick={() => changeSection('plans-coupons')}
+          className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'plans-coupons' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
         >
-          <div className="flex items-center gap-2"><Tag size={14} /> Preços & Planos</div>
+          <div className="flex items-center gap-2"><Tag size={14} /> Planos e cupons</div>
         </button>
         <button
-          onClick={() => setActiveSection('marketing')}
-          className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSection === 'marketing' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+          onClick={() => changeSection('automation')}
+          className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'automation' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
         >
-          <div className="flex items-center gap-2"><Megaphone size={14} /> Marketing</div>
-        </button>
-        <button
-          onClick={() => setActiveSection('automation')}
-          className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeSection === 'automation' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-        >
-          <div className="flex items-center gap-2"><Terminal size={14} /> Automação</div>
+          <div className="flex items-center gap-2"><Terminal size={14} /> Automacao</div>
         </button>
       </div>
 
 
-
-      {activeSection === 'balance' && (
+      {activeSection === 'subscriptions' && (
         <div className="space-y-6 animate-fade-in">
           {/* LISTA DE REPASSES A VENDEDORES - Agora foco principal da aba "Vendedores" */}
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -816,7 +910,7 @@ const AdminFinance = ({
                         </td>
                         <td className="p-6 text-center">
                           <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-[10px] font-bold text-slate-600 dark:text-slate-400">
-                            <Calendar size={12} /> Dia {seller.paymentDay}
+                            <Calendar size={12} /> {seller.paymentDay ? `Dia ${seller.paymentDay}` : 'Nao definido'}
                           </div>
                         </td>
                         <td className="p-6 text-center">
@@ -860,7 +954,7 @@ const AdminFinance = ({
               </div>
               <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700">
                 <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">Próximo Pagamento</p>
-                <p className="text-xl font-black text-slate-700 dark:text-slate-200">Dia {selectedSeller.paymentDay}</p>
+                <p className="text-xl font-black text-slate-700 dark:text-slate-200">{selectedSeller.paymentDay ? `Dia ${selectedSeller.paymentDay}` : 'Nao definido'}</p>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-0">
@@ -1224,7 +1318,7 @@ const AdminFinance = ({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    void handleResolveRefund(transaction.id, 'approved');
+                                    requestResolveRefund(transaction.id, 'approved');
                                   }}
                                   disabled={isRefundActionLocked}
                                   className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 underline disabled:opacity-50"
@@ -1234,7 +1328,7 @@ const AdminFinance = ({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    void handleResolveRefund(transaction.id, 'rejected');
+                                    requestResolveRefund(transaction.id, 'rejected');
                                   }}
                                   disabled={isRefundActionLocked}
                                   className="text-[9px] font-black uppercase text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 underline disabled:opacity-50"
@@ -1500,7 +1594,7 @@ const AdminFinance = ({
                                    <button
                                      onClick={(e) => {
                                        e.stopPropagation();
-                                       void handleResolveRefund(t.id, 'approved');
+                                       requestResolveRefund(t.id, 'approved');
                                      }}
                                      disabled={refundActionKey !== null}
                                      className="text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 underline disabled:opacity-50"
@@ -1510,7 +1604,7 @@ const AdminFinance = ({
                                    <button
                                      onClick={(e) => {
                                        e.stopPropagation();
-                                       void handleResolveRefund(t.id, 'rejected');
+                                       requestResolveRefund(t.id, 'rejected');
                                      }}
                                      disabled={refundActionKey !== null}
                                      className="text-[9px] font-black uppercase text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 underline disabled:opacity-50"
@@ -1577,7 +1671,7 @@ const AdminFinance = ({
         );
       })()}
 
-      {activeSection === 'prices' && (
+      {activeSection === 'plans-coupons' && (
         <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-all duration-300">
           <div className="mb-8 border-b border-slate-100 dark:border-slate-800/50 pb-6">
             <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">Configuração de Planos</h3>
@@ -1784,10 +1878,19 @@ const AdminFinance = ({
               </table>
             </div>
           </div>
+
+          <div className="mt-8 border-t border-slate-100 pt-8 dark:border-slate-800">
+            <AdminMarketing
+              systemSettings={systemSettings}
+              updateSystemSettings={updateSystemSettings}
+              addCoupon={addCoupon}
+              deleteCoupon={deleteCoupon}
+            />
+          </div>
         </div>
       )}
       
-      {activeSection === 'marketing' && (
+      {false && activeSection === 'marketing' && (
         <AdminMarketing
           systemSettings={systemSettings}
           updateSystemSettings={updateSystemSettings}
@@ -1811,7 +1914,7 @@ const AdminFinance = ({
               </div>
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
                 <Cpu size={12} />
-                {paymentProvider === 'stripe' ? 'Stripe ativo' : 'Mercado Pago ativo'}
+                Stripe ativo
               </span>
             </div>
           </div>
@@ -1821,12 +1924,10 @@ const AdminFinance = ({
               <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-5 space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Provedor</p>
                 <p className="text-lg font-black text-slate-900 dark:text-slate-100">
-                  {paymentProvider === 'stripe' ? 'Stripe Billing + Reconciliação' : 'Mercado Pago Subscription API'}
+                  Stripe Billing + Reconciliacao
                 </p>
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {paymentProvider === 'stripe'
-                    ? 'O cron revisa assinaturas, parcelas, invoices e divergências entre gateway e base local.'
-                    : 'O cron executa a rotina de cobranças recorrentes e retentativas automáticas do provedor.'}
+                  O cron revisa assinaturas, parcelas, invoices e divergencias entre gateway e base local.
                 </p>
               </div>
               <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-5 space-y-2">
@@ -1917,9 +2018,7 @@ const AdminFinance = ({
                 <div>
                   <h4 className="text-xs font-black uppercase tracking-widest text-indigo-900 dark:text-indigo-400">Fluxo operacional ativo</h4>
                   <p className="mt-1 text-xs font-medium leading-relaxed text-indigo-800/70 dark:text-indigo-400/80">
-                    {paymentProvider === 'stripe'
-                      ? 'A reconciliação Stripe revisa invoices, pagamentos, renovação, parcelas e divergências entre o gateway e a base local antes de manter a assinatura ativa.'
-                      : 'A automação do Mercado Pago mantém a cobrança recorrente, as retentativas e a atualização dos períodos de acesso dos alunos após cada pagamento aprovado.'}
+                    A reconciliacao Stripe revisa invoices, pagamentos, renovacao, parcelas e divergencias entre o gateway e a base local antes de manter a assinatura ativa.
                   </p>
                 </div>
               </div>
@@ -1948,13 +2047,13 @@ const AdminFinance = ({
         </div>
       )}
 
-      {activeSection === 'automation-legacy' && (
+      {false && activeSection === 'automation-legacy' && (
         <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in transition-colors duration-300">
           <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20">
             <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
               <Terminal size={20} className="text-indigo-600 dark:text-indigo-400" /> Automação de Cobrança (Subscription API)
             </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">O sistema utiliza a <strong>Mercado Pago Subscription API</strong> (Nativa) para gerenciar cobranças recorrentes automaticamente.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">Fluxo legado desativado. A operacao atual utiliza apenas Stripe Billing.</p>
           </div>
           
           <div className="p-8 space-y-8">
@@ -2026,7 +2125,7 @@ const AdminFinance = ({
                 <div>
                   <h4 className="text-xs font-black text-indigo-900 dark:text-indigo-400 uppercase tracking-widest">Integração Nativa Ativa</h4>
                   <p className="text-xs text-indigo-800/70 dark:text-indigo-400/70 font-medium leading-relaxed mt-1">
-                    As cobranças agendadas e retentativas de pagamento são gerenciadas diretamente pelos servidores do Mercado Pago. Os Webhooks integrados garantem que os períodos de acesso dos alunos sejam renovados automaticamente após cada pagamento aprovado.
+                    O fluxo legado foi removido. As renovacoes e conciliacoes ativas passam apenas pela Stripe e seus webhooks.
                   </p>
                 </div>
               </div>

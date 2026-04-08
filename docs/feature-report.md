@@ -1,5 +1,9 @@
 # Feature Report
 Atualizado em: 2026-04-03
+## Aviso operacional
+Este arquivo preserva snapshots historicos.
+Qualquer mencao a Mercado Pago abaixo deve ser tratada como legado descontinuado.
+O fluxo ativo de billing e assinaturas agora e Stripe-only.
 ## Objetivo
 Este documento descreve o que existe hoje na plataforma ConcursoMestre.
 Ele funciona como inventario funcional completo do sistema e responde:

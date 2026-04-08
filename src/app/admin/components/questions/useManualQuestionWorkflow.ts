@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import type { Question, SystemSettings } from '@types';
 import { aiService } from '@services/questions';
 import { slugify } from '../database/slugify';
+import { normalizeProvaRecord } from '../exams/examBankUtils';
 
 type ToastHandler = (message: string, type?: string) => void;
 
@@ -24,6 +25,55 @@ interface UseManualQuestionWorkflowOptions {
   onRefreshQuestions: () => Promise<void> | void;
   replaceExtractedQuestion: (index: number, question: Question) => void;
 }
+
+/**
+ * Normaliza o texto principal de entidades administrativas.
+ * Evita acessar propriedades indefinidas durante a montagem do modal manual.
+ *
+ * @since 1.0.0
+ */
+const getEntityLabel = (value: any) => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+
+  if (value && typeof value === 'object') {
+    return String(
+      value.name
+      ?? value.nome
+      ?? value.sigla
+      ?? value.descricao
+      ?? value['descrição']
+      ?? '',
+    ).trim();
+  }
+
+  return '';
+};
+
+/**
+ * Normaliza especificamente cargos, preservando compatibilidade com chaves legadas.
+ *
+ * @since 1.0.0
+ */
+const getRoleLabel = (value: any) => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+
+  if (value && typeof value === 'object') {
+    return String(
+      value.descricao
+      ?? value['descrição']
+      ?? value.name
+      ?? value.nome
+      ?? value.sigla
+      ?? '',
+    ).trim();
+  }
+
+  return '';
+};
 
 const createEmptyManualQuestion = () => ({
   enunciado: '',
@@ -83,11 +133,12 @@ export const useManualQuestionWorkflow = ({
     let changed = false;
 
     selectedCargos.forEach((cargoName: any) => {
-      const cargo = systemSettings.taxonomies?.roles?.find((role: any) => role.name === cargoName || role.sigla === cargoName);
+      const normalizedCargoName = getRoleLabel(cargoName);
+      const cargo = systemSettings.taxonomies?.roles?.find((role: any) => getRoleLabel(role) === normalizedCargoName || role.sigla === normalizedCargoName);
       if (cargo && cargo.parentId) {
         const parentOrgao = systemSettings.taxonomies?.organizations?.find((organization: any) => organization.id === cargo.parentId);
         if (parentOrgao) {
-          const orgaoName = parentOrgao.sigla || parentOrgao.name;
+          const orgaoName = getEntityLabel(parentOrgao);
           if (!newOrgaos.includes(orgaoName)) {
             newOrgaos.push(orgaoName);
             changed = true;
@@ -192,11 +243,13 @@ export const useManualQuestionWorkflow = ({
           ? systemSettings.taxonomies?.organizations?.find((taxonomy: any) => taxonomy.sigla === orgao || taxonomy.name === orgao) || { id: null, nome: orgao, sigla: orgao, name: orgao, slug: slugify(orgao) }
           : { ...orgao, name: orgao.name || orgao.nome || orgao.sigla },
       ),
-      cargos: manualQ.cargos.map((cargo: any) =>
-        typeof cargo === 'string'
-          ? systemSettings.taxonomies?.roles?.find((taxonomy: any) => taxonomy.name === cargo) || { id: null, slug: slugify(cargo), descrição: cargo, name: cargo }
-          : { ...cargo, name: cargo.name || cargo.descrição },
-      ),
+      cargos: manualQ.cargos
+        .map((cargo: any) => getRoleLabel(cargo))
+        .filter(Boolean)
+        .map((cargo: string) =>
+          systemSettings.taxonomies?.roles?.find((taxonomy: any) => getRoleLabel(taxonomy) === cargo)
+          || { id: null, slug: slugify(cargo), descricao: cargo, ['descrição']: cargo, name: cargo },
+        ),
       assuntos: [
         ...manualQ.subjects.map((subject: any) => {
           const found = typeof subject === 'string' ? systemSettings.taxonomies?.subjects?.find((taxonomy: any) => taxonomy.name === subject) : subject;
@@ -218,6 +271,7 @@ export const useManualQuestionWorkflow = ({
       ],
       anos: manualQ.anos.map((year: any) => (typeof year === 'string' ? { id: null, name: year, slug: year } : { id: null, name: String(year), slug: String(year) })),
       provaId: manualQ.provaId || null,
+      provas: (manualQ.provas || []).map((prova: any) => normalizeProvaRecord(prova)).filter(Boolean),
       tipo: manualQ.modality === 'Certo/Errado' ? 'certo ou errado' : 'multipla escolha',
       dificuldade: manualQ.difficulty,
       itens: manualQ.itens.filter((item: any) => item.corpo.trim()),
@@ -271,11 +325,11 @@ export const useManualQuestionWorkflow = ({
         ...question,
         enunciado: question.enunciado || rawQuestion.text || '',
         enunciado_clean: question.enunciado_clean || (rawQuestion.text ? rawQuestion.text.replace(/<[^>]*>?/gm, '') : ''),
-        bancas: (question.bancas || []).map((item: any) => (typeof item === 'string' ? item : item.sigla || item.name)),
-        orgaos: (question.orgaos || []).map((item: any) => (typeof item === 'string' ? item : item.name)),
-        cargos: (question.cargos || []).map((item: any) => (typeof item === 'string' ? item : item.descrição || item.name)),
-        subjects: (question.assuntos?.filter((item: any) => item.materia) || []).map((item: any) => item.nome || item.name || item),
-        assuntos: (question.assuntos?.filter((item: any) => !item.materia) || []).map((item: any) => item.nome || item.name || item),
+        bancas: (question.bancas || []).map((item: any) => getEntityLabel(item)).filter(Boolean),
+        orgaos: (question.orgaos || []).map((item: any) => getEntityLabel(item)).filter(Boolean),
+        cargos: (question.cargos || []).map((item: any) => getRoleLabel(item)).filter(Boolean),
+        subjects: (question.assuntos?.filter((item: any) => item?.materia) || []).map((item: any) => getEntityLabel(item) || item).filter(Boolean),
+        assuntos: (question.assuntos?.filter((item: any) => !item?.materia) || []).map((item: any) => getEntityLabel(item) || item).filter(Boolean),
         anos: (question.anos || []).map((item: any) => (typeof item === 'number' ? String(item) : item)),
         dificuldade: question.dificuldade || rawQuestion.difficulty || 2,
         difficulty: question.dificuldade || rawQuestion.difficulty || 2,

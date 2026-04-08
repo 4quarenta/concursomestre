@@ -11,7 +11,7 @@
 
 
 import React, { useState } from 'react';
-import { LayoutDashboard, BookOpen, User, Menu, X, BrainCircuit, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, DollarSign, Lock, HelpCircle, Rocket, Store } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, Menu, X, BrainCircuit, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, DollarSign, Lock, HelpCircle, Rocket, Store, Crown } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
@@ -24,7 +24,9 @@ import { useToast } from '@providers/ToastProvider';
 import { apiClient } from '@services/api';
 import { ENDPOINTS } from '@services/api';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
+import { canAccessAdminPanel } from '@services/auth';
 import {
+  getEffectivePlanName,
   getEffectivePlanDisplayName,
   getEffectivePlanTier,
   hasActivePlanAccess,
@@ -45,6 +47,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [resendTimer, setResendTimer] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
+  const canOpenAdminPanel = canAccessAdminPanel(user);
 
   const [showVerificationModal, setShowVerificationModal] = useState(() => {
     return !!(user && !user.emailVerified && !sessionStorage.getItem('welcomeModalClosed'));
@@ -113,7 +116,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { label: 'Perfil', icon: User, path: '/profile', enabled: !!user },
   ].filter(item => item.enabled !== false || user?.isAdmin);
 
-  if (user?.isAdmin) {
+  if (canOpenAdminPanel) {
     navItems.push({ label: 'Painel Admin', icon: ShieldAlert, path: '/admin' });
   }
 
@@ -123,6 +126,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Otherwise, fallback to 'Gratuito'. This mirrors the logic in Profile.tsx
   const hasActiveSub = hasActivePlanAccess(user);
   const currentPlan = hasActiveSub ? getEffectivePlanDisplayName(user) : 'Gratuito';
+  const currentCanonicalPlan = getEffectivePlanName(user);
   const currentTier = React.useMemo(() => getEffectivePlanTier(user), [user]);
   const hasXRayAccess = hasPlanBenefit(user, 'xray_banca', systemSettings.planEntitlements);
 
@@ -130,19 +134,35 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const userInitials = userName.charAt(0);
   const userLevel = user?.level || 0;
 
-  const getPlanBoxClassName = (tier: number) => {
-    // Use complete class strings for Tailwind JIT
+  const getPlanStatusTheme = (tier: number) => {
     switch (tier) {
-      case 4: // Elite
-        return 'bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl p-4 text-white shadow-lg';
-      case 3: // Pro
-        return 'bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl p-4 text-white shadow-lg';
-      case 2: // Essencial
-        return 'bg-gradient-to-r from-blue-500 to-cyan-600 rounded-xl p-4 text-white shadow-lg';
-      default: // Gratuito
-        return 'bg-slate-100 dark:bg-slate-800/80 rounded-xl p-4 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/50 shadow-sm';
+      case 4:
+        return {
+          box: 'bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl p-4 text-white shadow-lg',
+          icon: Crown,
+          badge: 'Maximo',
+        };
+      case 3:
+        return {
+          box: 'bg-gradient-to-r from-indigo-600 to-violet-600 rounded-xl p-4 text-white shadow-lg',
+          icon: Zap,
+          badge: 'Pro',
+        };
+      case 2:
+        return {
+          box: 'bg-gradient-to-r from-sky-500 to-cyan-600 rounded-xl p-4 text-white shadow-lg',
+          icon: Check,
+          badge: 'Essencial',
+        };
+      default:
+        return {
+          box: 'bg-slate-100 dark:bg-slate-800/80 rounded-xl p-4 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/50 shadow-sm',
+          icon: Lock,
+          badge: 'Gratis',
+        };
     }
   };
+  const currentPlanTheme = getPlanStatusTheme(currentTier);
 
   const handleNotificationClick = (n: Notification) => {
     markNotificationAsRead(n.id);
@@ -377,10 +397,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
               {user && (
-                <div className={getPlanBoxClassName(currentTier)}>
+                <div className={currentPlanTheme.box}>
                   <Link to="/plans" className="block text-inherit hover:opacity-80 transition-opacity">
                     <p className="text-xs font-semibold opacity-80 uppercase tracking-wider mb-1">Status da Conta</p>
-                    <p className="text-sm font-bold flex items-center gap-1">Plano {currentPlan}</p>
+                    <p className="text-sm font-bold flex items-center gap-2">
+                      <currentPlanTheme.icon size={14} className={currentTier === 4 ? 'fill-current' : ''} />
+                      Plano {currentCanonicalPlan}
+                    </p>
+                    <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] opacity-80">
+                      {currentPlanTheme.badge}
+                    </p>
                   </Link>
                 </div>
               )}

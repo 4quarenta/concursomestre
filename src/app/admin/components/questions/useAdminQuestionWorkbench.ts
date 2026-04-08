@@ -16,6 +16,7 @@ import { useAdminManualQuestionEditor } from './useAdminManualQuestionEditor';
 type ToastHandler = (message: string, type?: string) => void;
 
 interface UseAdminQuestionWorkbenchOptions {
+  questions: Question[];
   systemSettings: SystemSettings;
   addToast: ToastHandler;
   onAddQuestion: (question: Question) => Promise<any> | any;
@@ -25,6 +26,7 @@ interface UseAdminQuestionWorkbenchOptions {
 }
 
 export const useAdminQuestionWorkbench = ({
+  questions,
   systemSettings,
   addToast,
   onAddQuestion,
@@ -39,6 +41,7 @@ export const useAdminQuestionWorkbench = ({
   });
 
   const manualQuestionEditor = useAdminManualQuestionEditor({
+    questions,
     systemSettings,
     addToast,
     onAddQuestion,

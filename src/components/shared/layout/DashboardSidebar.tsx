@@ -64,12 +64,25 @@ interface DashboardSidebarProps {
     type: 'admin' | 'partner';
     activeTab: string;
     onTabChange: (tab: any) => void;
-    tabs: { key: string; label: string; icon: any; badge?: number }[];
+    tabs: { key: string; label: string; icon: any; badge?: number; group?: string }[];
 }
 
 export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ type, activeTab, onTabChange, tabs }) => {
     const { currentUser, logout } = useAuth();
     const location = useLocation();
+
+    const groupedTabs = tabs.reduce<Array<{ group: string; items: DashboardSidebarProps['tabs'] }>>((acc, tab) => {
+        const group = tab.group || 'Geral';
+        const existingGroup = acc.find((entry) => entry.group === group);
+
+        if (existingGroup) {
+            existingGroup.items.push(tab);
+            return acc;
+        }
+
+        acc.push({ group, items: [tab] });
+        return acc;
+    }, []);
 
     const handleLogout = () => {
         logout();
@@ -95,15 +108,22 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ type, active
 
             {/* Navigation */}
             <nav className="p-4 space-y-2 overflow-y-auto no-scrollbar">
-                {tabs.map((tab) => (
-                    <SidebarItem
-                        key={tab.key}
-                        label={tab.label}
-                        icon={tab.icon}
-                        active={activeTab === tab.key}
-                        onClick={() => onTabChange(tab.key)}
-                        badge={tab.badge}
-                    />
+                {groupedTabs.map((group) => (
+                    <div key={group.group} className="space-y-2">
+                        <p className="px-3 pt-3 text-[10px] font-black uppercase tracking-[0.28em] text-slate-400 dark:text-slate-500">
+                            {group.group}
+                        </p>
+                        {group.items.map((tab) => (
+                            <SidebarItem
+                                key={tab.key}
+                                label={tab.label}
+                                icon={tab.icon}
+                                active={activeTab === tab.key}
+                                onClick={() => onTabChange(tab.key)}
+                                badge={tab.badge}
+                            />
+                        ))}
+                    </div>
                 ))}
             </nav>
 

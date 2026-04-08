@@ -13,6 +13,7 @@ import React from 'react';
 import FiltersManagementSection from './FiltersManagementSection';
 import AdminMaterialsSection from '../materials/AdminMaterialsSection';
 import BlockedMaterialsSection from '../materials/BlockedMaterialsSection';
+import AdminExamBankSection from '../exams/AdminExamBankSection';
 import AdminImportSection from '../import/AdminImportSection';
 import AdminQuestionsSection from '../questions/AdminQuestionsSection';
 import AdminRankingsSection from '../rankings/AdminRankingsSection';
@@ -26,6 +27,9 @@ import AdminUsersSection from '../users/AdminUsersSection';
 interface AdminDatabaseSectionsProps {
   activeSubTab: string;
   adminQuestions: any[];
+  filteredExams: any[];
+  totalExams: number;
+  linkedCountByExamId: Map<string, number>;
   pagination: any;
   filteredUsers: any[];
   filteredMaterials: any[];
@@ -42,6 +46,17 @@ interface AdminDatabaseSectionsProps {
   onQuestionsPageChange: (page: number) => void;
   onQuestionEdit: (question?: any) => void;
   onQuestionDelete: (questionId: any) => Promise<any> | any;
+  editingExamId: string | null;
+  examDraft: any;
+  onExamDraftChange: (value: any) => void;
+  onStartEditExam: (exam: any) => void;
+  onCancelEditExam: () => void;
+  onSaveEditExam: () => void;
+  deletingExam: any;
+  onRequestDeleteExam: (exam: any) => void;
+  onCancelDeleteExam: () => void;
+  onConfirmDeleteExam: () => void;
+  examActionLoading: 'save' | 'delete' | null;
   onOpenUserProfile: (userId: string) => void;
   onModerateMaterial: (material: any) => void;
   onDeleteMaterial: (materialId: string) => Promise<any> | any;
@@ -62,6 +77,9 @@ interface AdminDatabaseSectionsProps {
 const AdminDatabaseSections = ({
   activeSubTab,
   adminQuestions,
+  filteredExams,
+  totalExams,
+  linkedCountByExamId,
   pagination,
   filteredUsers,
   filteredMaterials,
@@ -78,6 +96,17 @@ const AdminDatabaseSections = ({
   onQuestionsPageChange,
   onQuestionEdit,
   onQuestionDelete,
+  editingExamId,
+  examDraft,
+  onExamDraftChange,
+  onStartEditExam,
+  onCancelEditExam,
+  onSaveEditExam,
+  deletingExam,
+  onRequestDeleteExam,
+  onCancelDeleteExam,
+  onConfirmDeleteExam,
+  examActionLoading,
   onOpenUserProfile,
   onModerateMaterial,
   onDeleteMaterial,
@@ -103,6 +132,27 @@ const AdminDatabaseSections = ({
         onEdit={onQuestionEdit}
         onDelete={onQuestionDelete}
         onPageChange={onQuestionsPageChange}
+      />
+    );
+  }
+
+  if (activeSubTab === 'exams') {
+    return (
+      <AdminExamBankSection
+        exams={filteredExams}
+        totalExams={totalExams}
+        linkedCountByExamId={linkedCountByExamId}
+        editingExamId={editingExamId}
+        examDraft={examDraft}
+        onExamDraftChange={onExamDraftChange}
+        onStartEdit={onStartEditExam}
+        onCancelEdit={onCancelEditExam}
+        onSaveEdit={onSaveEditExam}
+        deletingExam={deletingExam}
+        onRequestDelete={onRequestDeleteExam}
+        onCancelDelete={onCancelDeleteExam}
+        onConfirmDelete={onConfirmDeleteExam}
+        actionLoading={examActionLoading}
       />
     );
   }

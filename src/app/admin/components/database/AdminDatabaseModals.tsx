@@ -31,7 +31,7 @@ interface AdminDatabaseModalsProps {
   onEditUserFormChange: (value: any) => void;
   onStartEditingUser: () => void;
   onCancelEditingUser: () => void;
-  onUserAction: (action: string, payload?: any) => Promise<any>;
+  onUserAction: (action: string, payload?: any, options?: { actionKey?: string; successMessage?: string }) => Promise<any>;
   actionLoading: string | null;
   onCloseUserProfile: () => void;
   editingRanking: any;

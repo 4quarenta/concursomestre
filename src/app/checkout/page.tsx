@@ -9,7 +9,7 @@
 *
 */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
@@ -18,26 +18,17 @@ import { planService } from '@services/plans';
 import { Plan } from '@types';
 import { authFlowService } from '@services/auth';
 import { cardsService } from '@services/billing';
-import { paymentsService } from '@services/payments';
 import {
     CheckCircle2, ShieldCheck, ArrowRight, ArrowLeft, CreditCard,
-    Lock, User, Mail, UserPlus, LogIn, ChevronRight, QrCode, FileText, Calendar, ToggleRight, ToggleLeft, AlertTriangle, XCircle,
-    Award, Zap, Globe, Shield, Plus, History, Fingerprint
+    Lock, User, Mail, UserPlus, LogIn, ChevronRight, Calendar, ToggleRight, ToggleLeft, AlertTriangle, XCircle,
+    Award, Zap, Globe, Shield, Plus, History, Fingerprint, QrCode, FileText
 } from 'lucide-react';
-import { getInstallments, getIssuers, getPaymentMethods, initMercadoPago } from '@mercadopago/sdk-react';
 import ReCAPTCHA from 'react-google-recaptcha';
 import StripeCardElementForm from './components/StripeCardElementForm';
 import StripeSavedCardCvcForm from './components/StripeSavedCardCvcForm';
 
 type CheckoutStep = 'identification' | 'payment' | 'success';
 type AuthMode = 'login' | 'register';
-type PaymentMethod = 'credit_card' | 'pix' | 'boleto';
-
-declare global {
-    interface Window {
-        MercadoPago: any;
-    }
-}
 
 const CheckoutPage: React.FC = () => {
     const { planId } = useParams<{ planId: string }>();
@@ -56,10 +47,8 @@ const CheckoutPage: React.FC = () => {
     // Step State
     const [step, setStep] = useState<CheckoutStep>('identification');
     const [authMode, setAuthMode] = useState<AuthMode>('register');
-    const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>('credit_card');
     const [autoRenew, setAutoRenew] = useState(true);
     const [saveCard, setSaveCard] = useState(false);
-    const [isRecurring, setIsRecurring] = useState(false);
     const [countdown, setCountdown] = useState(10);
 
     // Auth Form State
@@ -97,16 +86,14 @@ const CheckoutPage: React.FC = () => {
 
     const isDevMode = systemSettings?.appMode !== 'production';
     const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
-    const activePaymentProvider = (systemSettings?.paymentProvider || 'mercado_pago') as 'mercado_pago' | 'stripe';
+    const activePaymentProvider = 'stripe' as const;
     const isStripeProvider = activePaymentProvider === 'stripe';
     const stripeCheckoutMode = (systemSettings?.paymentCheckoutMode || 'internal') as 'internal' | 'redirect';
-    const cardVaultProvider = (systemSettings?.cardVaultProvider || 'local') as 'local' | 'mercado_pago' | 'stripe';
-    const isStripeInternalCheckout = isStripeProvider && stripeCheckoutMode === 'internal';
-    const MP_PUBLIC_KEY = systemSettings?.mercadoPagoKey || 'TEST-1e38d560-c2b8-4a5c-8b12-bad17bb8a9ba';
+    const cardVaultProvider = (systemSettings?.cardVaultProvider || 'stripe') as 'stripe';
+    const isStripeInternalCheckout = stripeCheckoutMode === 'internal';
     const STRIPE_PUBLISHABLE_KEY = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
-    const savedCardCheckoutSupported = !/^TEST-/i.test(MP_PUBLIC_KEY || '');
-    const savedCardCheckoutBlockedMessage = 'O Mercado Pago so aceita pagamento com cartão salvo neste fluxo usando credenciais de produção e, em homologação, usuários de teste. Com a chave TEST atual, use um cartão novo no checkout.';
-    
+    const selectedMethod = 'credit_card' as const;
+    const setSelectedMethod = (_value: string) => undefined;
     const [paymentData, setPaymentData] = useState({
         cardNumber: '',
         cardHolder: '',
@@ -117,50 +104,45 @@ const CheckoutPage: React.FC = () => {
         installments: '1'
     });
 
-    // Mercado Pago State
-    const [installmentOptions, setInstallmentOptions] = useState<any[]>([]);
-    const [paymentMethodId, setPaymentMethodId] = useState<string>('');
-    const [issuerId, setIssuerId] = useState<string | null>(null);
-
-    // Saved Cards State
-    const [savedCards, setSavedCards] = useState<any[]>([]);
-    const [isUsingSavedCard, setIsUsingSavedCard] = useState(false);
-    const [selectedCard, setSelectedCard] = useState<any>(null);
-    const [savedCardSecurityReady, setSavedCardSecurityReady] = useState(false);
-    const [savedCardSecurityComplete, setSavedCardSecurityComplete] = useState(false);
-    const [savedCardSecurityError, setSavedCardSecurityError] = useState<string | null>(null);
-    const [stripeCards, setStripeCards] = useState<any[]>([]);
-    const [isLoadingStripeCards, setIsLoadingStripeCards] = useState(false);
-    const requiresSavedCard = isRecurring || (autoRenew && !isUsingSavedCard);
-    const [selectedStripeCardId, setSelectedStripeCardId] = useState<string | null>(null);
-    const [pendingStripeSubscriptionId, setPendingStripeSubscriptionId] = useState<string | null>(null);
-    const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
-    const savedCardMpRef = useRef<any>(null);
-    const savedCardSecurityFieldRef = useRef<any>(null);
-    const savedCardSecurityTouchedRef = useRef(false);
+    const isRecurring = false;
+    const setIsRecurring = (_value: boolean) => undefined;
+    const installmentOptions: any[] = [];
+    const setInstallmentOptions = (_value: any[]) => undefined;
+    const paymentMethodId = '';
+    const setPaymentMethodId = (_value: string) => undefined;
+    const issuerId: string | null = null;
+    const setIssuerId = (_value: string | null) => undefined;
+    const savedCards: any[] = [];
+    const setSavedCards = (_value: any[]) => undefined;
+    const isUsingSavedCard = false;
+    const setIsUsingSavedCard = (_value: boolean) => undefined;
+    const selectedCard: any = null;
+    const setSelectedCard = (_value: any) => undefined;
+    const savedCardSecurityReady = false;
+    const setSavedCardSecurityReady = (_value: boolean) => undefined;
+    const savedCardSecurityComplete = false;
+    const setSavedCardSecurityComplete = (_value: boolean) => undefined;
+    const savedCardSecurityError: string | null = null;
+    const setSavedCardSecurityError = (_value: string | null) => undefined;
+    const requiresSavedCard = autoRenew && !isUsingSavedCard;
+    const savedCardCheckoutSupported = false;
+    const savedCardCheckoutBlockedMessage = 'Cartões salvos legados foram desativados neste checkout.';
+    const savedCardMpRef = { current: null as any };
+    const savedCardSecurityFieldRef = { current: null as any };
+    const savedCardSecurityTouchedRef = { current: false };
 
     const normalizePaymentMethodId = (value?: string | null): string => {
         if (!value) return '';
-
-        const normalized = value.toString().trim().toLowerCase();
-        const aliases: Record<string, string> = {
-            mastercard: 'master',
-            master: 'master',
-            visa: 'visa',
-            amex: 'amex',
-            'american express': 'amex',
-            americanexpress: 'amex',
-            elo: 'elo',
-            hipercard: 'hipercard',
-            diners: 'diners',
-            'diners club': 'diners',
-            dinersclub: 'diners',
-            discover: 'discover',
-            jcb: 'jcb',
-        };
-
-        return aliases[normalized] || normalized;
+        return value.toString().trim().toLowerCase();
     };
+
+    const getBrandFromCardNumber = (_number: string): string | null => null;
+    const updateInstallments = async (_bin?: string, _paymentMethodId?: string) => undefined;
+    const resolvePaymentMetadata = async ({ bin }: { bin?: string; fallbackPaymentMethodId?: string | null; fallbackIssuerId?: string | number | null }) => ({
+        paymentMethodId: '',
+        issuerId: null,
+        bin: (bin || '').replace(/\D/g, '').slice(0, 8),
+    });
 
     const maskToken = (value?: string | null): string => {
         if (!value) return 'missing';
@@ -168,17 +150,23 @@ const CheckoutPage: React.FC = () => {
         return `${value.slice(0, 4)}...${value.slice(-4)}`;
     };
 
-    const logMercadoPagoDebug = (label: string, payload: Record<string, unknown>) => {
+    const logCheckoutDebug = (label: string, payload: Record<string, unknown>) => {
         if (!import.meta.env.DEV) return;
-        console.info(`[MercadoPago] ${label}`, payload);
+        console.info(`[checkout-disabled-sdk] ${label}`, payload);
     };
+
+    const [stripeCards, setStripeCards] = useState<any[]>([]);
+    const [isLoadingStripeCards, setIsLoadingStripeCards] = useState(false);
+    const [selectedStripeCardId, setSelectedStripeCardId] = useState<string | null>(null);
+    const [pendingStripeSubscriptionId, setPendingStripeSubscriptionId] = useState<string | null>(null);
+    const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
 
     const selectedStripeCard = useMemo(() => {
         return stripeCards.find((card: any) => card.id === selectedStripeCardId) || null;
     }, [stripeCards, selectedStripeCardId]);
 
-    const isUsingStripeSavedCard = isStripeProvider && Boolean(selectedStripeCard);
-    const stripeRequiresSavedCard = isStripeProvider && autoRenew && !isUsingStripeSavedCard;
+    const isUsingStripeSavedCard = Boolean(selectedStripeCard);
+    const stripeRequiresSavedCard = autoRenew && !isUsingStripeSavedCard;
 
     useEffect(() => {
         if (!planId) {
@@ -189,263 +177,10 @@ const CheckoutPage: React.FC = () => {
     }, [planId]);
 
     useEffect(() => {
-        if (!isStripeProvider && MP_PUBLIC_KEY) {
-            initMercadoPago(MP_PUBLIC_KEY, {
-                locale: 'pt-BR',
-                trackingDisabled: true,
-                advancedFraudPrevention: true,
-            });
-        }
-    }, [MP_PUBLIC_KEY, isStripeProvider]);
-
-    useEffect(() => {
-        const shouldMountSavedCardField =
-            !isStripeProvider &&
-            Boolean(MP_PUBLIC_KEY) &&
-            selectedMethod === 'credit_card' &&
-            isUsingSavedCard &&
-            Boolean(selectedCard?.mp_card_id);
-
-        setSavedCardSecurityReady(false);
-        setSavedCardSecurityComplete(false);
-        setSavedCardSecurityError(null);
-        savedCardSecurityTouchedRef.current = false;
-
-        if (savedCardSecurityFieldRef.current) {
-            try {
-                savedCardSecurityFieldRef.current.unmount();
-            } catch (error) {
-                console.warn('Failed to unmount saved card security field', error);
-            }
-            savedCardSecurityFieldRef.current = null;
-        }
-
-        if (!shouldMountSavedCardField) {
-            return;
-        }
-
-        if (!window.MercadoPago) {
-            setSavedCardSecurityError('O SDK do Mercado Pago ainda não carregou. Atualize a página e tente novamente.');
-            return;
-        }
-
-        const mpInstance = new window.MercadoPago(MP_PUBLIC_KEY, {
-            locale: 'pt-BR',
-        });
-        savedCardMpRef.current = mpInstance;
-
-        const securityCodeField = mpInstance.fields.create('securityCode', {
-            placeholder: '123',
-            mode: 'mandatory',
-            style: {
-                color: '#0f172a',
-                fontSize: '16px',
-                fontWeight: '700',
-                fontFamily: 'Inter, sans-serif',
-                padding: '0',
-                width: '100%',
-            },
-        });
-
-        securityCodeField.on('ready', () => {
-            setSavedCardSecurityError(null);
-            setSavedCardSecurityReady(true);
-            setSavedCardSecurityComplete(false);
-            savedCardSecurityTouchedRef.current = false;
-            window.setTimeout(() => {
-                try {
-                    securityCodeField.focus();
-                } catch (error) {
-                    console.warn('Failed to focus saved card security field', error);
-                }
-            }, 120);
-        });
-
-        securityCodeField.on('change', () => {
-            savedCardSecurityTouchedRef.current = true;
-        });
-
-        securityCodeField.on('validityChange', ({ errorMessages }: any) => {
-            const nextError = errorMessages?.[0]?.message || null;
-            setSavedCardSecurityError(nextError);
-            setSavedCardSecurityComplete(savedCardSecurityTouchedRef.current && !nextError);
-        });
-
-        securityCodeField.on('error', ({ error }: any) => {
-            setSavedCardSecurityReady(false);
-            setSavedCardSecurityComplete(false);
-            setSavedCardSecurityError(error || 'Não foi possível carregar o campo seguro do cartão salvo.');
-        });
-
-        securityCodeField.mount('saved-card-security-code-container');
-        savedCardSecurityFieldRef.current = securityCodeField;
-
-        return () => {
-            try {
-                securityCodeField.unmount();
-            } catch (error) {
-                console.warn('Failed to cleanup saved card security field', error);
-            }
-            if (savedCardSecurityFieldRef.current === securityCodeField) {
-                savedCardSecurityFieldRef.current = null;
-            }
-        };
-    }, [MP_PUBLIC_KEY, isStripeProvider, isUsingSavedCard, selectedCard?.id, selectedCard?.mp_card_id, selectedMethod]);
-
-    useEffect(() => {
-        if (selectedMethod !== 'credit_card' && isRecurring) {
-            setIsRecurring(false);
-        }
-    }, [selectedMethod, isRecurring]);
-
-    useEffect(() => {
-        if (isStripeProvider && selectedMethod !== 'credit_card') {
-            setSelectedMethod('credit_card');
-        }
-    }, [isStripeProvider, selectedMethod]);
-
-    useEffect(() => {
-        if (isStripeProvider) {
-            setIsRecurring(false);
-            setIsUsingSavedCard(false);
-            setSelectedCard(null);
-            setSelectedStripeCardId(null);
-            setPendingStripeSubscriptionId(null);
-            setPendingStripePaymentMethodId(null);
-            setIssuerId(null);
-        }
+        setSelectedStripeCardId(null);
+        setPendingStripeSubscriptionId(null);
+        setPendingStripePaymentMethodId(null);
     }, [isStripeProvider]);
-
-    // Watch card number for BIN detection
-    useEffect(() => {
-        const cleanNumber = paymentData.cardNumber.replace(/\s/g, '');
-        const bin = cleanNumber.slice(0, 6);
-        
-        // Local Brand Detection (Fallback if API fails)
-        const localBrand = getBrandFromCardNumber(cleanNumber);
-        if (localBrand) {
-            setPaymentMethodId(localBrand);
-        }
-
-        if (bin.length === 6 && plan) {
-            updateInstallments(bin);
-        }
-    }, [paymentData.cardNumber, plan]);
-
-    const getBrandFromCardNumber = (number: string): string | null => {
-        if (!number) return null;
-        if (/^4/.test(number)) return 'visa';
-        if (/^5[1-5]|^2[2-7]/.test(number)) return 'master';
-        if (/^3[47]/.test(number)) return 'amex';
-        if (/^6062|^3841|^6370|^6375|^6376|^6372|^6371|^6040/.test(number)) return 'hipercard';
-        if (/^4011|^5067|^4576|^4389|^5041|^6363|^6362|^5066|^5090|^6504|^6505|^6506|^6507|^6509|^6516|^6550|^6552/.test(number)) return 'elo';
-        if (/^6011|^622|^64|^65/.test(number)) return 'discover';
-        return null;
-    };
-
-    const updateInstallments = async (bin?: string, paymentMethodId?: string) => {
-        const normalizedPaymentMethodId = normalizePaymentMethodId(paymentMethodId);
-
-        try {
-            const data = await paymentsService.getInstallments({
-                amount: plan?.price,
-                bin,
-                paymentMethodId: normalizedPaymentMethodId || undefined,
-            });
-
-            if (data && data[0]) {
-                setInstallmentOptions(data[0].payer_costs || []);
-                // Only override if the API actually gave us a brand
-                if (data[0].payment_method_id) {
-                    setPaymentMethodId(normalizePaymentMethodId(data[0].payment_method_id));
-                } else if (normalizedPaymentMethodId) {
-                    setPaymentMethodId(normalizedPaymentMethodId);
-                }
-                // Capture issuer ID (Crucial for Elo/Hipercard to avoid 2131 error)
-                if (data[0].issuer?.id) {
-                    setIssuerId(data[0].issuer.id.toString());
-                } else {
-                    setIssuerId(null);
-                }
-            }
-        } catch (err) {
-            console.error('Failed to fetch installments:', err);
-            if (normalizedPaymentMethodId) {
-                setPaymentMethodId(normalizedPaymentMethodId);
-            }
-        }
-    };
-
-    const resolvePaymentMetadata = async ({
-        bin,
-        fallbackPaymentMethodId,
-        fallbackIssuerId,
-    }: {
-        bin?: string;
-        fallbackPaymentMethodId?: string | null;
-        fallbackIssuerId?: string | number | null;
-    }) => {
-        const cleanBin = (bin || '').replace(/\D/g, '').slice(0, 8);
-        let resolvedPaymentMethodId = normalizePaymentMethodId(fallbackPaymentMethodId);
-        let resolvedIssuerId = fallbackIssuerId ? String(fallbackIssuerId) : null;
-
-        if (cleanBin.length >= 6) {
-            try {
-                const paymentMethodsResponse = await getPaymentMethods({ bin: cleanBin });
-                const matchedMethod = paymentMethodsResponse?.results?.find((method: any) => {
-                    return normalizePaymentMethodId(method.id) === resolvedPaymentMethodId;
-                }) || paymentMethodsResponse?.results?.[0];
-
-                if (matchedMethod?.id) {
-                    resolvedPaymentMethodId = normalizePaymentMethodId(matchedMethod.id);
-                }
-
-                if (resolvedPaymentMethodId) {
-                    const issuersResponse = await getIssuers({
-                        paymentMethodId: resolvedPaymentMethodId,
-                        bin: cleanBin,
-                    });
-
-                    if (issuersResponse?.[0]?.id) {
-                        resolvedIssuerId = String(issuersResponse[0].id);
-                    }
-
-                    const installmentsResponse = await getInstallments({
-                        amount: String(Number(plan?.price || 0)),
-                        bin: cleanBin,
-                        paymentMethodId: resolvedPaymentMethodId,
-                        paymentTypeId: 'credit_card',
-                        locale: 'pt-BR',
-                    });
-
-                    if (installmentsResponse?.[0]?.payment_method_id) {
-                        resolvedPaymentMethodId = normalizePaymentMethodId(installmentsResponse[0].payment_method_id);
-                    }
-
-                    if (installmentsResponse?.[0]?.issuer?.id) {
-                        resolvedIssuerId = String(installmentsResponse[0].issuer.id);
-                    }
-
-                    if (installmentsResponse?.[0]?.payer_costs?.length) {
-                        setInstallmentOptions(installmentsResponse[0].payer_costs);
-                    }
-                }
-            } catch (sdkError) {
-                console.warn('Mercado Pago SDK metadata resolution failed, falling back to current state.', sdkError);
-            }
-        }
-
-        if (resolvedPaymentMethodId) {
-            setPaymentMethodId(resolvedPaymentMethodId);
-        }
-        setIssuerId(resolvedIssuerId);
-
-        return {
-            paymentMethodId: resolvedPaymentMethodId,
-            issuerId: resolvedIssuerId,
-            bin: cleanBin,
-        };
-    };
 
     const loadPlan = async () => {
         try {
@@ -596,7 +331,7 @@ const CheckoutPage: React.FC = () => {
             if (import.meta.env.DEV) console.log('💳 Cards API Response:', res);
 
             if (res.removed_stale_cards > 0) {
-                addToast('Removemos cartão(ões) salvos vinculados a um ambiente antigo do Mercado Pago. Salve novamente o cartão para reutilizá-lo.', 'warning');
+                addToast('Removemos cartões salvos de uma integracao legada. Salve novamente o cartao para reutilizacao.', 'warning');
             }
 
             if (res.success && res.cards && res.cards.length > 0) {
@@ -826,227 +561,34 @@ const CheckoutPage: React.FC = () => {
 
     const handlePayment = async () => {
         if (!plan || !currentUser) return;
+        if (!ensureCheckoutRequirements()) return;
 
-        if (!ensureCheckoutRequirements()) {
-            return;
-        }
-
-        if (isStripeProvider) {
-            if (selectedMethod !== 'credit_card') {
-                addToast('O checkout Stripe desta plataforma aceita assinaturas apenas por cartão.', 'warning');
-                return;
-            }
-
-            if (isStripeInternalCheckout) {
-                addToast('Use o formulário de cartão abaixo para concluir a assinatura sem sair da plataforma.', 'info');
-                return;
-            }
-
-            setProcessing(true);
-            try {
-                const response = await planService.createStripeCheckoutSession({
-                    plan_id: plan.id,
-                    auto_renew: autoRenew,
-                    coupon_code: appliedCoupon?.code || undefined,
-                    billing_mode: stripeBillingMode,
-                    installment_count: selectedStripeInstallmentCount,
-                });
-
-                const redirectUrl = response?.data?.url || response?.url || response?.data?.redirect_url;
-                if (!response?.success || !redirectUrl) {
-                    throw new Error(response?.message || 'Não foi possível iniciar o checkout Stripe.');
-                }
-
-                window.location.href = redirectUrl;
-                return;
-            } catch (error: any) {
-                console.error('Stripe checkout error:', error);
-                const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao iniciar o checkout Stripe.';
-                addToast(errorMsg, 'error');
-                setProcessing(false);
-                return;
-            }
-        }
-
-        if (selectedMethod === 'credit_card') {
-            if (isUsingSavedCard) {
-                if (!savedCardCheckoutSupported) {
-                    addToast(savedCardCheckoutBlockedMessage, 'warning');
-                    return;
-                }
-                if (!selectedCard) {
-                    addToast('Selecione um cartão para continuar.', 'warning');
-                    return;
-                }
-                if (!savedCardSecurityReady) {
-                    addToast(savedCardSecurityError || 'Preencha o código de segurança do cartão salvo.', 'warning');
-                    return;
-                }
-            } else if (!paymentData.cardNumber || !paymentData.cardHolder || !paymentData.cardExpiry || !paymentData.cardCvv || !paymentData.cpf) {
-                addToast('Preencha todos os dados do cartão.', 'error');
-                return;
-            }
-        } else {
-            if (!paymentData.payerName || !paymentData.cpf) {
-                addToast('Preencha os dados do pagador.', 'error');
-                return;
-            }
-        }
-
-        if (selectedMethod === 'credit_card' && isUsingSavedCard && savedCardSecurityReady && !savedCardSecurityComplete) {
-            addToast(savedCardSecurityError || 'Digite o código de segurança do cartão salvo para continuar.', 'warning');
+        if (isStripeInternalCheckout) {
+            addToast('Use o formulario Stripe abaixo para concluir a assinatura.', 'info');
             return;
         }
 
         setProcessing(true);
         try {
-            if (selectedMethod === 'credit_card') {
-                let cardToken: string = '';
-                let cardLastFour: string = '';
-                let cardBin: string = '';
+            const response = await planService.createStripeCheckoutSession({
+                plan_id: plan.id,
+                auto_renew: autoRenew,
+                coupon_code: appliedCoupon?.code || undefined,
+                billing_mode: stripeBillingMode,
+                installment_count: selectedStripeInstallmentCount,
+            });
 
-                try {
-                    const mp = new window.MercadoPago(MP_PUBLIC_KEY);
-                    
-                    if (isUsingSavedCard && selectedCard) {
-                        const savedCardMp = savedCardMpRef.current || mp;
-                        const cardTokenRes = await savedCardMp.fields.createCardToken({
-                            cardId: selectedCard.mp_card_id,
-                        });
-                        
-                        if (!cardTokenRes || !cardTokenRes.id) {
-                            throw new Error('Erro ao validar o cartão salvo com o Mercado Pago. Verifique o código de segurança.');
-                        }
-                        
-                        cardToken = cardTokenRes.id;
-                        cardLastFour = selectedCard.last_four_digits;
-                        cardBin = (cardTokenRes.first_six_digits || selectedCard.first_six_digits || selectedCard.bin || '').toString();
-                    } else {
-                        const [expiryMonth, expiryYear] = paymentData.cardExpiry.split('/');
-                        const fullYear = expiryYear?.trim().length === 2 ? '20' + expiryYear.trim() : expiryYear?.trim() || '';
-
-                        const cardTokenRes = await mp.createCardToken({
-                            cardNumber:           paymentData.cardNumber.replace(/\s/g, ''),
-                            cardholderName:       paymentData.cardHolder,
-                            cardExpirationMonth:  expiryMonth.trim(),
-                            cardExpirationYear:   fullYear,
-                            securityCode:         paymentData.cardCvv,
-                            identificationType:   'CPF',
-                            identificationNumber: paymentData.cpf.replace(/\D/g, ''),
-                            cardholderEmail:      currentUser?.email || '',
-                        });
-
-                        if (!cardTokenRes || !cardTokenRes.id) {
-                            throw new Error('Erro ao gerar token de segurança do cartão. Verifique os dados.');
-                        }
-
-                        cardToken    = cardTokenRes.id;
-                        cardLastFour = paymentData.cardNumber.replace(/\s/g, '').slice(-4);
-                        cardBin = (cardTokenRes.first_six_digits || paymentData.cardNumber.replace(/\D/g, '').slice(0, 8)).toString();
-                    }
-                } catch (tkErr: any) {
-                    console.error('Tokenization error:', tkErr);
-                    throw new Error(tkErr.message || 'Falha na comunicação segura com o Mercado Pago.');
-                }
-
-                const installments = isRecurring ? 1 : parseInt(paymentData.installments, 10);
-                const resolvedPayment = await resolvePaymentMetadata({
-                    bin: cardBin,
-                    fallbackPaymentMethodId: isUsingSavedCard ? (selectedCard?.payment_method_id || selectedCard?.brand) : paymentMethodId,
-                    fallbackIssuerId: isUsingSavedCard ? selectedCard?.issuer_id : issuerId,
-                });
-
-                if (!cardToken) {
-                    throw new Error('Token do cartão ausente. A tokenização não foi concluída.');
-                }
-
-                if (!resolvedPayment.paymentMethodId) {
-                    throw new Error('Não foi possível identificar o payment_method_id do cartão.');
-                }
-
-                if (!Number.isFinite(installments) || installments < 1) {
-                    throw new Error('Número de parcelas inválido para o pagamento.');
-                }
-
-                const paymentPayload = {
-                    token: cardToken,
-                    card_bin: resolvedPayment.bin || cardBin || undefined,
-                    plan_id: plan.id,
-                    amount: monetaryTotals.totalDue,
-                    transaction_amount: monetaryTotals.totalDue,
-                    user_id: currentUser.id,
-                    payment_method_id: resolvedPayment.paymentMethodId,
-                    issuer_id: resolvedPayment.issuerId || undefined,
-                    local_card_id: isUsingSavedCard ? selectedCard?.id : undefined,
-                    installments,
-                    recurring_mode: isRecurring,
-                    is_recurring: isRecurring,
-                    auto_renew: autoRenew,
-                    save_card: saveCard || autoRenew || isRecurring,
-                    pro_rated_credit: proRatedCredit,
-                    coupon_code: appliedCoupon?.code,
-                    discount_amount: discountAmount,
-                    cardLastFour,
-                    payer: {
-                        email: currentUser.email,
-                    } as Record<string, any>
-                };
-
-                if (!isUsingSavedCard) {
-                    paymentPayload.payer.identification = {
-                        type: 'CPF',
-                        number: paymentData.cpf.replace(/\D/g, '')
-                    };
-                }
-
-                logMercadoPagoDebug('payload', {
-                    token: maskToken(paymentPayload.token),
-                    payment_method_id: paymentPayload.payment_method_id,
-                    issuer_id: paymentPayload.issuer_id || null,
-                    installments: paymentPayload.installments,
-                    transaction_amount: paymentPayload.transaction_amount,
-                    local_card_id: paymentPayload.local_card_id || null,
-                    recurring_mode: paymentPayload.recurring_mode,
-                    is_saved_card: isUsingSavedCard,
-                    card_bin: resolvedPayment.bin || cardBin || null,
-                });
-
-                const response = await planService.processPayment(paymentPayload);
-
-                logMercadoPagoDebug('response', {
-                    success: response?.success,
-                    status: response?.status,
-                    error: response?.error || null,
-                });
-
-                if (response.success && response.status === 'approved') {
-                    setStep('success');
-                    setProcessing(false);
-                    await refreshUser();
-                    await loadSavedCards();
-
-                    if (response.card_save_warning) {
-                        addToast(response.card_save_warning, 'warning');
-                    } else if (response.card_saved && !isUsingSavedCard) {
-                        addToast('Cartão salvo com sucesso para compras futuras.', 'success');
-                    }
-                } else {
-                    addToast(response.error || 'Pagamento recusado ou erro no processamento.', 'error');
-                    setProcessing(false);
-                }
-            } else {
-                addToast('Processamento via PIX/Boleto em breve. Use cartão de crédito.', 'info');
-                setProcessing(false);
+            const redirectUrl = response?.data?.url || response?.url || response?.data?.redirect_url;
+            if (!response?.success || !redirectUrl) {
+                throw new Error(response?.message || 'Nao foi possivel iniciar o checkout Stripe.');
             }
+
+            window.location.href = redirectUrl;
         } catch (error: any) {
-            console.error(error);
-            if (error.response?.data?.error_code === 2010) {
-                await loadSavedCards();
-                setIsUsingSavedCard(false);
-                setSelectedCard(null);
-            }
-            const errorMsg = error.response?.data?.error || error.message || 'Erro ao processar pagamento.';
+            console.error('Stripe checkout error:', error);
+            const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao iniciar o checkout Stripe.';
             addToast(errorMsg, 'error');
+        } finally {
             setProcessing(false);
         }
     };
@@ -1396,8 +938,8 @@ const CheckoutPage: React.FC = () => {
         return { firstCharge: baseAmount, totalDue };
     }, [plan, isRecurring, isStripeProvider, maxInstallments, proRatedCredit, appliedCoupon, discountAmount, selectedInstallment.installment_amount, selectedInstallment.total_amount, supportsStripeBillingChoices, selectedStripeInstallmentCount]);
 
-    const paymentProviderLabel = isStripeProvider ? 'Stripe' : 'Mercado Pago';
-    const selectedMethodLabel = selectedMethod === 'credit_card' ? 'Cartão' : selectedMethod === 'pix' ? 'Pix' : 'Boleto';
+    const paymentProviderLabel = 'Stripe';
+    const selectedMethodLabel = 'Cartão';
     const renewalLabel = autoRenew ? 'Automática' : 'Manual';
     const paymentActionLabel = isStripeProvider
         ? (isStripeInternalCheckout ? 'Finalize no formulário Stripe abaixo' : 'Continuar para pagamento')
@@ -1868,13 +1410,13 @@ const CheckoutPage: React.FC = () => {
 
                                                             {!savedCardCheckoutSupported && (
                                                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-semibold leading-relaxed text-amber-800">
-                                                                    O checkout com cartão salvo do Mercado Pago exige credenciais de produção. Enquanto sua integração estiver com chave <span className="font-black">TEST</span>, você ainda pode salvar o cartão com segurança, mas a reutilizacao dele no checkout ficara indisponivel.
+                                                                    Cartoes salvos de uma integracao legada foram desativados neste checkout. Use um novo cartao ou um cartao ja sincronizado com a Stripe.
                                                                 </div>
                                                             )}
 
                                                             <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-1 px-1">
                                                                 {savedCards.map((card) => (
-	                                                                    <button key={card.id || card.mp_card_id} onClick={() => {
+	                                                                    <button key={card.id || card.stripe_payment_method_id} onClick={() => {
 	                                                                        if (!savedCardCheckoutSupported) {
 	                                                                            addToast(savedCardCheckoutBlockedMessage, 'info');
 	                                                                            return;

@@ -18,6 +18,7 @@ import ReCAPTCHA from 'react-google-recaptcha';
 import type { UserProfile } from '@types';
 import { useData } from '@providers/DataProvider';
 import { apiClient, ENDPOINTS } from '@services/api';
+import { canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from '@services/auth';
 import { useToast } from '@providers/ToastProvider';
 import { useTheme } from '@providers/ThemeProvider';
 
@@ -31,13 +32,19 @@ interface AuthProps {
 /** Monta UserProfile com valores padrão a partir do objeto retornado pela API */
 const buildUserProfile = (user: any): UserProfile => {
   const resolvedBilling = user.billing && typeof user.billing === 'object' ? user.billing : {};
+  const role = normalizeUserRole(user.role);
+  const baseProfile = {
+    ...user,
+    role,
+    isAdmin: role === 'admin',
+    isStaff: role === 'staff',
+  } as UserProfile;
 
   return {
-    ...user,
+    ...baseProfile,
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role,
     level: Number(user.level || 1),
     xp: Number(user.xp || 0),
     savedQuestionIds: user.savedQuestionIds || [],
@@ -55,8 +62,8 @@ const buildUserProfile = (user: any): UserProfile => {
     },
     reputation: Number(user.reputation || 100),
     status: user.status,
-    isAdmin: user.role === 'admin',
-    isPartner: user.role === 'partner' || user.role === 'admin',
+    isPartner: canAccessPartnerArea(baseProfile),
+    canAccessAdmin: canAccessAdminPanel(baseProfile),
   };
 };
 

@@ -1,0 +1,18 @@
+{
+  "id": "evt_fixture_checkout_completed",
+  "object": "event",
+  "type": "checkout.session.completed",
+  "created": 1700000000,
+  "data": {
+    "object": {
+      "id": "cs_test_fixture",
+      "object": "checkout.session",
+      "mode": "subscription",
+      "payment_status": "paid",
+      "status": "complete",
+      "customer": "cus_fixture",
+      "subscription": "sub_fixture",
+      "client_reference_id": "fixture-user"
+    }
+  }
+}

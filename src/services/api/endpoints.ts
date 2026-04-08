@@ -159,8 +159,6 @@ export const ENDPOINTS = {
     },
 
     subscriptions: {
-        createMercadoPagoPreference: 'subscriptions/create.php',
-        processMercadoPagoPayment: 'subscriptions/process_payment.php',
         automationHelper: 'subscriptions/automation_helper.php',
         createStripeCheckout: 'subscriptions/create_stripe_checkout.php',
         createStripeSubscription: 'subscriptions/create_stripe_subscription.php',

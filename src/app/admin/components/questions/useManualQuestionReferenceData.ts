@@ -10,9 +10,10 @@
 */
 
 import { useMemo } from 'react';
-import type { SystemSettings } from '@types';
+import type { Question, SystemSettings } from '@types';
+import { mergeExamBankSources } from '../exams/examBankUtils';
 
-export const useManualQuestionReferenceData = (systemSettings: SystemSettings) => {
+export const useManualQuestionReferenceData = (systemSettings: SystemSettings, questions: Question[] = []) => {
   const existingAgencies = useMemo(() => {
     return (systemSettings.taxonomies?.agencies || []).map((taxonomy: any) => taxonomy.sigla || taxonomy.name);
   }, [systemSettings.taxonomies?.agencies]);
@@ -37,6 +38,10 @@ export const useManualQuestionReferenceData = (systemSettings: SystemSettings) =
     return (systemSettings.taxonomies?.roles || []).map((taxonomy: any) => taxonomy.name);
   }, [systemSettings.taxonomies?.roles]);
 
+  const existingProvas = useMemo(() => {
+    return mergeExamBankSources(systemSettings, questions);
+  }, [questions, systemSettings]);
+
   return {
     existingAgencies,
     existingOrgaos,
@@ -44,5 +49,6 @@ export const useManualQuestionReferenceData = (systemSettings: SystemSettings) =
     existingTopics,
     existingYears,
     existingRoles,
+    existingProvas,
   };
 };

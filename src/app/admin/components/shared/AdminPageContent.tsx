@@ -11,40 +11,49 @@
 
 import React from 'react';
 import AdminDatabaseManager from '../database/AdminDatabaseManager';
-import AdminDashboardSection from '../dashboard/AdminDashboard';
 import AdminFinanceSection from '../finance/AdminFinance';
+import AdminPanelSection from '../panel/AdminPanelSection';
 import AdminSettingsSection from '../settings/AdminSettings';
-import { AdminFeedback } from '../support/AdminFeedback';
+import AdminSupportSection from '../support/AdminSupportSection';
 import type { AdminPageTab } from './useAdminPageController';
 
 interface AdminPageContentProps {
   activeTab: AdminPageTab;
-  dashboardSectionProps: React.ComponentProps<typeof AdminDashboardSection>;
+  panelSectionProps: React.ComponentProps<typeof AdminPanelSection>;
+  panelSectionKey: string;
   databaseSectionProps: React.ComponentProps<typeof AdminDatabaseManager>;
   databaseSectionKey: string;
   financeSectionProps: React.ComponentProps<typeof AdminFinanceSection>;
   financeSectionKey: string;
+  supportSectionProps: React.ComponentProps<typeof AdminSupportSection>;
+  supportSectionKey: string;
   settingsSectionProps: React.ComponentProps<typeof AdminSettingsSection>;
+  settingsSectionKey: string;
 }
 
 /**
- * Roteia o conteúdo principal do painel administrativo.
- * Ele recebe os props prontos do controller da pagina e monta a feature correta para cada aba do admin.
+ * Roteia o conteudo principal pelos cinco dominios oficiais do admin.
+ *
+ * @since 1.0.0
  */
 const AdminPageContent = ({
   activeTab,
-  dashboardSectionProps,
+  panelSectionProps,
+  panelSectionKey,
   databaseSectionProps,
   databaseSectionKey,
   financeSectionProps,
   financeSectionKey,
+  supportSectionProps,
+  supportSectionKey,
   settingsSectionProps,
+  settingsSectionKey,
 }: AdminPageContentProps) => {
-  if (activeTab === 'dashboard') {
-    return <AdminDashboardSection {...dashboardSectionProps} />;
+  if (activeTab === 'panel') {
+    return <AdminPanelSection {...panelSectionProps} key={panelSectionKey} />;
   }
 
-  if (activeTab === 'database') {
+  if (activeTab === 'operation') {
     return <AdminDatabaseManager {...databaseSectionProps} key={databaseSectionKey} />;
   }
 
@@ -52,12 +61,12 @@ const AdminPageContent = ({
     return <AdminFinanceSection {...financeSectionProps} key={financeSectionKey} />;
   }
 
-  if (activeTab === 'feedback') {
-    return <AdminFeedback />;
+  if (activeTab === 'support') {
+    return <AdminSupportSection {...supportSectionProps} key={supportSectionKey} />;
   }
 
   if (activeTab === 'settings') {
-    return <AdminSettingsSection {...settingsSectionProps} />;
+    return <AdminSettingsSection {...settingsSectionProps} key={settingsSectionKey} />;
   }
 
   return null;

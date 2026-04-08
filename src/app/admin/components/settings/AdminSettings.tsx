@@ -52,13 +52,18 @@ import apiClient from '@services/api/client';
 import { adminService } from '@services/admin/adminService';
 import { parseDailyMotivationMarkdown } from '@services/dashboard/dashboardInsightsService';
 import { LogViewer } from './LogViewer';
+import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
+type AdminSettingsTab = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'ads' | 'performance' | 'logs';
 
 interface AdminSettingsProps {
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => void;
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<void>;
   addToast: AdminToastFn;
+  initialSection?: AdminSettingsTab;
+  onSectionChange?: (section: AdminSettingsTab) => void;
 }
 
 /**
@@ -66,21 +71,24 @@ interface AdminSettingsProps {
  * A extração deste bloco reduz o tamanho do painel principal sem alterar
  * o fluxo de persistência já homologado pelo admin.
  */
-const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: AdminSettingsProps) => {
+const AdminSettings = ({
+  systemSettings,
+  updateSystemSettings,
+  saveSystemSettingsNow,
+  addToast,
+  initialSection = 'general',
+  onSectionChange,
+}: AdminSettingsProps) => {
   const { currentUser, refreshUser } = useAuth();
-  const [settingActiveTab, setSettingActiveTab] = useState<'general' | 'modules' | 'security' | 'integrations' | 'email' | 'ads' | 'performance'>('general');
+  const [settingActiveTab, setSettingActiveTab] = useState<AdminSettingsTab>(initialSection);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // API Keys
   const [localApiKey, setLocalApiKey] = useState(systemSettings.geminiApiKey || '');
-  const [localPaymentProvider, setLocalPaymentProvider] = useState<'mercado_pago' | 'stripe'>(systemSettings.paymentProvider || 'mercado_pago');
   const [localPaymentCheckoutMode, setLocalPaymentCheckoutMode] = useState<'internal' | 'redirect'>(systemSettings.paymentCheckoutMode || 'internal');
-  const [localCardVaultProvider, setLocalCardVaultProvider] = useState<'local' | 'mercado_pago' | 'stripe'>(systemSettings.cardVaultProvider || 'local');
   const [localStripePublishableKey, setLocalStripePublishableKey] = useState(systemSettings.stripePublishableKey || systemSettings.stripeKey || '');
   const [localStripeSecretKey, setLocalStripeSecretKey] = useState('');
   const [localStripeWebhookSecret, setLocalStripeWebhookSecret] = useState('');
-  const [localMercadoPagoPublicKey, setLocalMercadoPagoPublicKey] = useState(systemSettings.mercadoPagoKey || '');
-  const [localMercadoPagoAccessToken, setLocalMercadoPagoAccessToken] = useState('');
-  const [localMercadoPagoWebhookSecret, setLocalMercadoPagoWebhookSecret] = useState('');
   const [localRecaptchaEnabled, setLocalRecaptchaEnabled] = useState(!!systemSettings.recaptchaEnabled);
   const [localRecaptchaSiteKey, setLocalRecaptchaSiteKey] = useState(systemSettings.recaptchaSiteKey || '');
   const [localRecaptchaSecretKey, setLocalRecaptchaSecretKey] = useState(systemSettings.recaptchaSecretKey || '');
@@ -190,15 +198,10 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
 
   useEffect(() => {
     setLocalApiKey(systemSettings.geminiApiKey || '');
-    setLocalPaymentProvider(systemSettings.paymentProvider || 'mercado_pago');
     setLocalPaymentCheckoutMode(systemSettings.paymentCheckoutMode || 'internal');
-    setLocalCardVaultProvider(systemSettings.cardVaultProvider || 'local');
     setLocalStripePublishableKey(systemSettings.stripePublishableKey || systemSettings.stripeKey || '');
     setLocalStripeSecretKey('');
     setLocalStripeWebhookSecret('');
-    setLocalMercadoPagoPublicKey(systemSettings.mercadoPagoKey || '');
-    setLocalMercadoPagoAccessToken('');
-    setLocalMercadoPagoWebhookSecret('');
     setLocalRecaptchaEnabled(!!systemSettings.recaptchaEnabled);
     setLocalRecaptchaSiteKey(systemSettings.recaptchaSiteKey || '');
     setLocalRecaptchaSecretKey(systemSettings.recaptchaSecretKey || '');
@@ -227,89 +230,118 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
     setLocalAdBottom(systemSettings.adBannerBottom || '');
   }, [systemSettings]);
 
-  const handleSaveSettings = () => {
-    updateSystemSettings({
-      ...systemSettings,
-      paymentProvider: localPaymentProvider,
-      paymentCheckoutMode: localPaymentCheckoutMode,
-      cardVaultProvider: localCardVaultProvider,
-      siteName: localSiteName,
-      supportPhone: localPhone,
-      dailyMotivationMarkdown: localDailyMotivationMarkdown,
-      platformFeePercent: Number(localPlatformFee),
-      pixKey: localPixKey,
-      appMode: localAppMode,
-      geminiApiKey: localApiKey,
-      recaptchaEnabled: localRecaptchaEnabled,
-      recaptchaSiteKey: localRecaptchaSiteKey,
-      recaptchaSecretKey: localRecaptchaSecretKey,
-      stripeKey: localStripePublishableKey,
-      stripePublishableKey: localStripePublishableKey,
-      stripeSecretKey: localStripeSecretKey,
-      stripeWebhookSecret: localStripeWebhookSecret,
-      mercadoPagoKey: localMercadoPagoPublicKey,
-      mercadoPagoAccessToken: localMercadoPagoAccessToken,
-      mercadoPagoWebhookSecret: localMercadoPagoWebhookSecret,
-      firebaseConfig: { ...systemSettings.firebaseConfig, apiKey: localFirebaseKey },
-      googleAnalyticsId: localGaId,
-      metaPixelId: localPixelId,
-      smtpHost: localSmtpHost,
-      smtpPort: Number(localSmtpPort),
-      smtpUser: localSmtpUser,
-      smtpPass: localSmtpPass,
-      smtpSecure: localSmtpSecure,
-      mailFromAddress: localMailFrom,
-      mailFromName: localMailFromName,
+  useEffect(() => {
+    setSettingActiveTab(initialSection);
+  }, [initialSection]);
 
-      adBannerTop: localAdTop,
-      adBannerSidebar: localAdSidebar,
-      adBannerBottom: localAdBottom,
-      adsEnabled: localAdsEnabled,
-      adsenseClientId: localAdsenseId,
-      facebookAdsId: localFacebookAdsId,
-      features: localFeatures
-    });
-    addToast('Configurações salvas com sucesso!', 'success');
+  /**
+   * Monta o payload oficial das configuracoes a partir do estado local da UI.
+   * Esse builder garante que o save explicito e o autosave usem a mesma fonte.
+   *
+   * @since 1.0.0
+   */
+  const buildSettingsPayload = (): SystemSettings => ({
+    ...systemSettings,
+    paymentProvider: 'stripe',
+    paymentCheckoutMode: localPaymentCheckoutMode,
+    cardVaultProvider: 'stripe',
+    siteName: localSiteName,
+    supportPhone: localPhone,
+    dailyMotivationMarkdown: localDailyMotivationMarkdown,
+    platformFeePercent: Number(localPlatformFee),
+    pixKey: localPixKey,
+    appMode: localAppMode,
+    geminiApiKey: localApiKey,
+    recaptchaEnabled: localRecaptchaEnabled,
+    recaptchaSiteKey: localRecaptchaSiteKey,
+    recaptchaSecretKey: localRecaptchaSecretKey,
+    stripeKey: localStripePublishableKey,
+    stripePublishableKey: localStripePublishableKey,
+    stripeSecretKey: localStripeSecretKey,
+    stripeWebhookSecret: localStripeWebhookSecret,
+    firebaseConfig: { ...systemSettings.firebaseConfig, apiKey: localFirebaseKey },
+    googleAnalyticsId: localGaId,
+    metaPixelId: localPixelId,
+    smtpHost: localSmtpHost,
+    smtpPort: Number(localSmtpPort),
+    smtpUser: localSmtpUser,
+    smtpPass: localSmtpPass,
+    smtpSecure: localSmtpSecure,
+    mailFromAddress: localMailFrom,
+    mailFromName: localMailFromName,
+    adBannerTop: localAdTop,
+    adBannerSidebar: localAdSidebar,
+    adBannerBottom: localAdBottom,
+    adsEnabled: localAdsEnabled,
+    adsenseClientId: localAdsenseId,
+    facebookAdsId: localFacebookAdsId,
+    features: localFeatures,
+  });
+
+  /**
+   * Faz o save explicito das configuracoes com persistencia confirmada.
+   * Ele evita toasts falsos de sucesso e trava cliques repetidos.
+   *
+   * @since 1.0.0
+   */
+  const handlePersistSettings = async () => {
+    if (isSavingSettings) {
+      return;
+    }
+
+    const nextSettings = buildSettingsPayload();
+    setIsSavingSettings(true);
+    updateSystemSettings(nextSettings);
+
+    try {
+      await saveSystemSettingsNow(nextSettings);
+      addToast('Configuracoes salvas com sucesso!', 'success');
+    } catch (error) {
+      addToast('Nao foi possivel salvar as configuracoes.', 'error');
+    } finally {
+      setIsSavingSettings(false);
+    }
   };
 
   const apiBaseUrl = String(apiClient.defaults.baseURL || '').replace(/\/+$/, '');
   const stripeWebhookUrl = `${apiBaseUrl}/subscriptions/stripe_webhook.php`;
-  const mercadoPagoWebhookUrl = `${apiBaseUrl}/subscriptions/webhook_mp.php`;
 
   const settingTabs = [
     { id: 'general', label: 'Geral', icon: Settings },
-    { id: 'modules', label: 'Módulos', icon: LayoutDashboard },
-    { id: 'security', label: 'Segurança', icon: ShieldAlert },
-    { id: 'integrations', label: 'Integrações', icon: Cpu },
+    { id: 'modules', label: 'Modulos', icon: LayoutDashboard },
+    { id: 'security', label: 'Seguranca', icon: ShieldAlert },
+    { id: 'integrations', label: 'Integracoes', icon: Cpu },
     { id: 'email', label: 'E-mail', icon: Mail },
-    { id: 'ads', label: 'Anúncios', icon: Megaphone },
+    { id: 'ads', label: 'Anuncios', icon: Megaphone },
     { id: 'performance', label: 'Performance', icon: Database },
+    { id: 'logs', label: 'Logs', icon: FileText },
   ];
-
   const pageToggles = [
-    // Módulos Originais
-    { id: 'practiceEnabled', label: 'Página de Prática', description: 'Ativa o sistema de resolução de questões', icon: BookOpen },
-    { id: 'simulationsEnabled', label: 'Página de Simulados', description: 'Módulo de provas cronometradas e simulados', icon: Clock },
-    { id: 'marketplaceEnabled', label: 'Marketplace', description: 'Plataforma de compra e venda de materiais', icon: ShoppingCart },
-    { id: 'rankingsEnabled', label: 'Rankings', description: 'Exibe classificações e desempenho de inscritos', icon: Trophy },
-    { id: 'xRayEnabled', label: 'Raio-X da Banca', description: 'Análise estatística e perfil de bancas examinadoras', icon: Zap },
-    { id: 'landingPagePromoEnabled', label: 'Promoção na Home', description: 'Exibe banner de campanha na landing page principal', icon: Megaphone },
-    // Recursos
-    { id: 'communityEnabled', label: 'Comentários da Comunidade', description: 'Interação e fórum de debate em questões', icon: MessageSquare },
-    { id: 'aiCommentsEnabled', label: 'Comentários com IA', description: 'Geração de análises via Gemini Pro 1.5/2.0', icon: Sparkles },
-    { id: 'bulkImportEnabled', label: 'Importador em Massa', description: 'Ferramenta de processamento de PDFs/Imagens', icon: Upload },
-    { id: 'reportsEnabled', label: 'Sistema de Denúncias', description: 'Ouvidoria e moderação de conteúdo', icon: Flag },
-    { id: 'notificationsEnabled', label: 'Notificações Push', description: 'Alertas globais e interações sociais', icon: Bell },
-    // Configurações e Bloqueios Críticos
-    { id: 'maintenanceMode', label: 'Aviso de Manutenção', description: 'Bloqueia o acesso ao site para manutenção técnica', icon: ShieldAlert },
-    { id: 'registrationEnabled', label: 'Novos Cadastros', description: 'Controla a entrada de novos usuários na plataforma', icon: Users },
-    { id: 'loginRequired', label: 'Login Obrigatório', description: 'Exige login para acessar qualquer conteúdo interno', icon: Lock },
-    { id: 'partnerRegistrationEnabled', label: 'Cadastro de Vendedor', description: 'Permite que usuários se tornem colaboradores e vendam materiais', icon: ShoppingBag },
-    { id: 'recurringEnabled', label: 'Cobranças Recorrentes (Beta)', description: 'Ativa a opção de assinatura recorrente mensal via plataforma para planos anuais/trimestrais sem comprometer o limite do cartão', icon: Repeat },
-    { id: 'autoRefundEnabled', label: 'Aprovação Automática de Reembolso', description: 'Ativa o processamento instantâneo de reembolsos solicitados por usuários dentro do prazo legal', icon: RefreshCcw },
+    { id: 'practiceEnabled', label: 'Pagina de pratica', description: 'Ativa o sistema de resolucao de questoes.', icon: BookOpen },
+    { id: 'simulationsEnabled', label: 'Pagina de simulados', description: 'Modulo de provas cronometradas e simulados.', icon: Clock },
+    { id: 'marketplaceEnabled', label: 'Marketplace', description: 'Plataforma de compra e venda de materiais.', icon: ShoppingCart },
+    { id: 'rankingsEnabled', label: 'Rankings', description: 'Exibe classificacoes e desempenho de inscritos.', icon: Trophy },
+    { id: 'xRayEnabled', label: 'Raio-X da banca', description: 'Analise estatistica e perfil de bancas examinadoras.', icon: Zap },
+    { id: 'landingPagePromoEnabled', label: 'Promocao na home', description: 'Exibe banner de campanha na landing page principal.', icon: Megaphone },
+    { id: 'communityEnabled', label: 'Comentarios da comunidade', description: 'Interacao e forum de debate em questoes.', icon: MessageSquare },
+    { id: 'aiCommentsEnabled', label: 'Comentarios com IA', description: 'Geracao de analises via Gemini Pro 1.5/2.0.', icon: Sparkles },
+    { id: 'bulkImportEnabled', label: 'Importador em massa', description: 'Ferramenta de processamento de PDFs e imagens.', icon: Upload },
+    { id: 'reportsEnabled', label: 'Sistema de denuncias', description: 'Ouvidoria e moderacao de conteudo.', icon: Flag },
+    { id: 'notificationsEnabled', label: 'Notificacoes push', description: 'Alertas globais e interacoes sociais.', icon: Bell },
+    { id: 'maintenanceMode', label: 'Aviso de manutencao', description: 'Bloqueia o acesso ao site para manutencao tecnica.', icon: ShieldAlert },
+    { id: 'registrationEnabled', label: 'Novos cadastros', description: 'Controla a entrada de novos usuarios na plataforma.', icon: Users },
+    { id: 'loginRequired', label: 'Login obrigatorio', description: 'Exige login para acessar qualquer conteudo interno.', icon: Lock },
+    { id: 'partnerRegistrationEnabled', label: 'Cadastro de vendedor', description: 'Permite que usuarios se tornem colaboradores e vendam materiais.', icon: ShoppingBag },
+    { id: 'recurringEnabled', label: 'Cobrancas recorrentes (Beta)', description: 'Ativa a opcao de assinatura recorrente mensal via plataforma para planos anuais e trimestrais.', icon: Repeat },
+    { id: 'autoRefundEnabled', label: 'Aprovacao automatica de reembolso', description: 'Ativa o processamento instantaneo de reembolsos solicitados dentro do prazo legal.', icon: RefreshCcw },
   ];
 
   const [isLogViewerOpen, setIsLogViewerOpen] = useState(false);
+
+  const changeSection = (section: AdminSettingsTab) => {
+    setSettingActiveTab(section);
+    onSectionChange?.(section);
+  };
 
   /**
    * Carrega um arquivo markdown local para a base de frases motivacionais.
@@ -367,7 +399,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
           {settingTabs.map(tab => (
             <button
               key={tab.id}
-              onClick={() => setSettingActiveTab(tab.id as any)}
+              onClick={() => changeSection(tab.id as AdminSettingsTab)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${settingActiveTab === tab.id
                 ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
@@ -378,8 +410,9 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
           ))}
         </div>
         <button
-          onClick={handleSaveSettings}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-all shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20 active:scale-95"
+          onClick={() => void handlePersistSettings()}
+          disabled={isSavingSettings}
+          className="bg-indigo-600 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70 text-white px-8 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest flex items-center gap-2 transition-all shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20 active:scale-95"
         >
           <Save size={18} /> Salvar Alterações
         </button>
@@ -772,8 +805,8 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
               <div className="p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-slate-100 dark:border-slate-800 space-y-5">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                   <div>
-                    <h4 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Gateway principal de pagamento</h4>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">O checkout e a área de assinatura passam a seguir o provedor escolhido aqui.</p>
+                    <h4 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Gateway oficial de pagamento</h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1">A plataforma opera apenas com Stripe para checkout, billing portal, webhook e recorrencia.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${systemSettings.hasStripeSecretConfigured ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>
@@ -782,37 +815,19 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                     <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${systemSettings.hasStripeWebhookConfigured ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>
                       Stripe Webhook {systemSettings.hasStripeWebhookConfigured ? 'configurado' : 'pendente'}
                     </span>
-                    <span className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${systemSettings.hasMercadoPagoAccessTokenConfigured ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>
-                      MP Access Token {systemSettings.hasMercadoPagoAccessTokenConfigured ? 'configurado' : 'pendente'}
-                    </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button
-                    onClick={() => setLocalPaymentProvider('mercado_pago')}
-                    className={`p-5 rounded-3xl border text-left transition-all ${localPaymentProvider === 'mercado_pago' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg shadow-blue-500/10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 hover:border-blue-300'}`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Mercado Pago</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Checkout customizado com Pix, boleto, cartões salvos e fluxo existente.</p>
-                      </div>
-                      {localPaymentProvider === 'mercado_pago' && <CheckCircle2 size={18} className="text-blue-600 dark:text-blue-400 shrink-0" />}
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => setLocalPaymentProvider('stripe')}
-                    className={`p-5 rounded-3xl border text-left transition-all ${localPaymentProvider === 'stripe' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-lg shadow-indigo-500/10' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 hover:border-indigo-300'}`}
-                  >
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="p-5 rounded-3xl border text-left transition-all border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-lg shadow-indigo-500/10">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Stripe</p>
                         <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Checkout hospedado, Billing Portal, recorrência nativa e reembolsos por webhook.</p>
                       </div>
-                      {localPaymentProvider === 'stripe' && <CheckCircle2 size={18} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
+                      <CheckCircle2 size={18} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
                     </div>
-                  </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                   <div className="p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 space-y-4">
@@ -826,7 +841,7 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                         className={`p-4 rounded-2xl border text-left transition-all ${localPaymentCheckoutMode === 'internal' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/20'}`}
                       >
                         <p className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Interno</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Mantém o aluno no checkout da plataforma. Stripe usa formulário interno; Mercado Pago segue transparente.</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2">Mantém o aluno no checkout da plataforma com Elements e cartões salvos.</p>
                       </button>
                       <button
                         onClick={() => setLocalPaymentCheckoutMode('redirect')}
@@ -842,19 +857,13 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                       <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Cofre de Cartão</h4>
                       <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Controla onde a plataforma trata os cartões salvos e qual integração abastece a área de cobrança.</p>
                     </div>
-                    <select
-                      value={localCardVaultProvider}
-                      onChange={e => setLocalCardVaultProvider(e.target.value as 'local' | 'mercado_pago' | 'stripe')}
-                      className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    >
-                      <option value="local">Local</option>
-                      <option value="mercado_pago">Mercado Pago</option>
-                      <option value="stripe">Stripe</option>
-                    </select>
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-black uppercase tracking-widest text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300">
+                      Stripe Vault ativo
+                    </div>
                     <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700 p-4">
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Leitura prática</p>
                       <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-2 leading-relaxed">
-                        Local mantém o espelho de cartões e a gestão dentro da plataforma. Stripe e Mercado Pago usam o cofre do provedor, mas continuam aparecendo e sendo gerenciados na interface interna quando o fluxo suportar isso.
+                        O espelho local existe apenas para refletir o cofre oficial da Stripe. Nenhum fluxo legado de cartao permanece ativo no produto.
                       </p>
                     </div>
                   </div>
@@ -931,31 +940,6 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
                   <div className="rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 px-4 py-3">
                     <p className="text-[10px] font-black text-indigo-700 dark:text-indigo-300 uppercase tracking-widest">Webhook Stripe</p>
                     <p className="text-[10px] font-mono text-indigo-700/80 dark:text-indigo-300/80 mt-1 break-all">{stripeWebhookUrl}</p>
-                  </div>
-                </div>
-                <div className="p-6 rounded-3xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/30 space-y-4">
-                  <div>
-                    <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest">Mercado Pago</h4>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Mantém o checkout transparente com Pix, boleto e cartões salvos locais.</p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Public Key (frontend)</label>
-                    <input type="text" value={localMercadoPagoPublicKey} onChange={e => setLocalMercadoPagoPublicKey(e.target.value)} placeholder="APP_USR-..."
-                      className="w-full bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-blue-500/20" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Access Token (backend)</label>
-                    <input type="password" value={localMercadoPagoAccessToken} onChange={e => setLocalMercadoPagoAccessToken(e.target.value)} placeholder="APP_USR-..."
-                      className="w-full bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-blue-500/20" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Webhook Secret (backend)</label>
-                    <input type="password" value={localMercadoPagoWebhookSecret} onChange={e => setLocalMercadoPagoWebhookSecret(e.target.value)} placeholder="Webhook secret"
-                      className="w-full bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700 text-xs font-mono font-bold rounded-xl py-3 px-4 outline-none focus:ring-2 focus:ring-blue-500/20" />
-                  </div>
-                  <div className="rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 px-4 py-3">
-                    <p className="text-[10px] font-black text-blue-700 dark:text-blue-300 uppercase tracking-widest">Webhook Mercado Pago</p>
-                    <p className="text-[10px] font-mono text-blue-700/80 dark:text-blue-300/80 mt-1 break-all">{mercadoPagoWebhookUrl}</p>
                   </div>
                 </div>
               </div>
@@ -1079,6 +1063,47 @@ const AdminSettings = ({ systemSettings, updateSystemSettings, addToast }: Admin
             <CacheManagement />
           </div>
         )}
+
+        {settingActiveTab === 'logs' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <FileText size={20} className="text-indigo-600 dark:text-indigo-400" />
+                    Logs operacionais
+                  </h3>
+                  <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Centraliza a leitura dos logs tecnicos do backend, webhook e tarefas recorrentes.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsLogViewerOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700"
+                >
+                  <FileText size={14} />
+                  Abrir visualizador
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Webhook</p>
+                <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">Use esta area para inspecionar falhas de pagamento, duplicidade e reprocessamentos.</p>
+              </div>
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Cron</p>
+                <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">Conferencia das execucoes de reconciliacao Stripe e eventos de automacao.</p>
+              </div>
+              <div className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Auditoria</p>
+                <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">Acoes criticas do admin devem ser validadas aqui apos a persistencia real.</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1094,6 +1119,7 @@ const CacheManagement = () => {
   const [cacheStats, setCacheStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [isClearCacheDialogOpen, setIsClearCacheDialogOpen] = useState(false);
 
   const fetchCacheStats = async () => {
     try {
@@ -1124,8 +1150,7 @@ const CacheManagement = () => {
     setLoading(false);
   };
 
-  const handleClearCache = async () => {
-    if (!window.confirm('Tem certeza que deseja limpar todo o cache?')) return;
+  const performClearCache = async () => {
     if (loading) return;
     setLoading(true);
     try {
@@ -1137,8 +1162,15 @@ const CacheManagement = () => {
       console.error('Erro ao limpar cache:', error);
       setMessage('Erro ao limpar cache');
       addToast('Não foi possível limpar o cache.', 'error');
+    } finally {
+      setLoading(false);
+      setIsClearCacheDialogOpen(false);
     }
-    setLoading(false);
+  };
+
+  const handleClearCache = () => {
+    if (loading) return;
+    setIsClearCacheDialogOpen(true);
   };
 
   const handleCleanExpired = async () => {
@@ -1167,6 +1199,17 @@ const CacheManagement = () => {
 
   return (
     <div className="space-y-6">
+      <AdminConfirmDialog
+        isOpen={isClearCacheDialogOpen}
+        title="Limpar todo o cache"
+        description="Essa acao remove todas as entradas do cache administrativo e operacional. Use apenas quando precisar forcar uma nova reconstrução do runtime."
+        confirmLabel="Limpar cache"
+        tone="danger"
+        loading={loading}
+        onConfirm={() => void performClearCache()}
+        onCancel={() => setIsClearCacheDialogOpen(false)}
+      />
+
       {/* Status Message */}
       {message && (
         <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 flex items-center gap-2 text-emerald-700 dark:text-emerald-300 text-sm font-medium animate-slide-up">

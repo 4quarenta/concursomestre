@@ -23,14 +23,20 @@ const Admin: React.FC = () => {
     activeTab,
     setActiveTab,
     activeTabLabel,
+    activeTabDescription,
+    activeSectionLabel,
     adminTabs,
     topBarProps,
-    dashboardSectionProps,
+    panelSectionProps,
+    panelSectionKey,
     databaseSectionProps,
     databaseSectionKey,
     financeSectionProps,
     financeSectionKey,
+    supportSectionProps,
+    supportSectionKey,
     settingsSectionProps,
+    settingsSectionKey,
   } = useAdminPageController();
 
   return (
@@ -39,16 +45,22 @@ const Admin: React.FC = () => {
       onTabChange={setActiveTab}
       adminTabs={adminTabs}
       pageTitle={activeTabLabel ?? 'Admin'}
+      pageDescription={activeTabDescription}
+      activeSectionLabel={activeSectionLabel}
       topBarProps={topBarProps}
     >
       <AdminPageContent
         activeTab={activeTab}
-        dashboardSectionProps={dashboardSectionProps}
+        panelSectionProps={panelSectionProps}
+        panelSectionKey={panelSectionKey}
         databaseSectionProps={databaseSectionProps}
         databaseSectionKey={databaseSectionKey}
         financeSectionProps={financeSectionProps}
         financeSectionKey={financeSectionKey}
+        supportSectionProps={supportSectionProps}
+        supportSectionKey={supportSectionKey}
         settingsSectionProps={settingsSectionProps}
+        settingsSectionKey={settingsSectionKey}
       />
     </AdminShellLayout>
   );

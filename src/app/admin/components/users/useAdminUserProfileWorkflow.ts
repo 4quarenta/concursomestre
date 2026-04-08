@@ -14,20 +14,49 @@ import { adminService } from '@services/admin/adminService';
 import { readApiErrorMessage } from '@services/api';
 
 type ToastHandler = (message: string, type?: string) => void;
-type DetailTab = 'overview' | 'subscription' | 'transactions' | 'comments';
+export type DetailTab = 'overview' | 'subscription' | 'transactions' | 'comments';
 
-type EditUserForm = {
+export type EditUserForm = {
   name: string;
   email: string;
   cpf: string;
   phone: string;
   targetExam: string;
-  role?: string;
+  role: 'user' | 'staff' | 'partner' | 'admin';
+  status: 'active' | 'suspended' | 'banned' | 'pending';
+  reputation: string;
 };
 
 interface UseAdminUserProfileWorkflowOptions {
   addToast: ToastHandler;
+  reloadUsers?: () => Promise<void> | void;
 }
+
+interface HandleUserActionOptions {
+  actionKey?: string;
+  successMessage?: string;
+}
+
+const normalizeEditableRole = (value: unknown): EditUserForm['role'] => {
+  if (value === 'staff' || value === 'partner' || value === 'admin') {
+    return value;
+  }
+
+  // Converte o papel legado apenas dentro da tela de edicao.
+  if (value === 'tester') {
+    return 'staff';
+  }
+
+  return 'user';
+};
+
+const normalizeEditableStatus = (value: unknown): EditUserForm['status'] => {
+  if (value === 'suspended' || value === 'banned' || value === 'pending') {
+    return value;
+  }
+
+  return 'active';
+};
 
 const createEmptyEditUserForm = (): EditUserForm => ({
   name: '',
@@ -35,18 +64,45 @@ const createEmptyEditUserForm = (): EditUserForm => ({
   cpf: '',
   phone: '',
   targetExam: '',
+  role: 'user',
+  status: 'active',
+  reputation: '100',
 });
 
+const buildEditUserForm = (detailedUser: any): EditUserForm => ({
+  name: detailedUser?.profile?.name || '',
+  email: detailedUser?.profile?.email || '',
+  cpf: detailedUser?.profile?.cpf || '',
+  phone: detailedUser?.profile?.phone || '',
+  targetExam: detailedUser?.profile?.target_exam || '',
+  role: normalizeEditableRole(detailedUser?.profile?.role),
+  status: normalizeEditableStatus(detailedUser?.profile?.status),
+  reputation: String(Number(detailedUser?.profile?.reputation ?? 100)),
+});
+
+/**
+ * Orquestra o modal detalhado de usuarios do admin.
+ * O hook centraliza carregamento, refresh, edicao e mutacoes operacionais sem deixar regra na tela.
+ *
+ * @since 1.0.0
+ */
 export const useAdminUserProfileWorkflow = ({
   addToast,
+  reloadUsers,
 }: UseAdminUserProfileWorkflowOptions) => {
   const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
   const [detailedUser, setDetailedUser] = useState<any>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
-  const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [isEditingUser, setIsEditingUser] = useState(false);
   const [editUserForm, setEditUserForm] = useState<EditUserForm>(createEmptyEditUserForm);
+
+  const refreshDetailedUser = async (userId: string) => {
+    const response = await adminService.getUserDetails(userId);
+    setDetailedUser(response);
+    return response;
+  };
 
   useEffect(() => {
     if (!viewingProfileId) {
@@ -54,27 +110,27 @@ export const useAdminUserProfileWorkflow = ({
       setDetailTab('overview');
       setIsEditingUser(false);
       setEditUserForm(createEmptyEditUserForm());
+      setActionLoading(null);
       return;
     }
 
     setIsEditingUser(false);
     setIsLoadingDetail(true);
 
-    adminService
-      .getUserDetails(String(viewingProfileId))
-      .then((response) => {
-        setDetailedUser(response);
-      })
+    refreshDetailedUser(String(viewingProfileId))
       .catch((error) => {
         console.error(error);
-        addToast(readApiErrorMessage(error, 'Erro ao carregar detalhes do usuário.'), 'error');
+        addToast(readApiErrorMessage(error, 'Erro ao carregar detalhes do usuario.'), 'error');
         setDetailedUser(null);
       })
       .finally(() => setIsLoadingDetail(false));
-  }, [viewingProfileId]);
+  }, [viewingProfileId, addToast]);
 
   const openUserProfile = (userId: string | number | null | undefined) => {
-    if (userId === null || userId === undefined || userId === '') return;
+    if (userId === null || userId === undefined || userId === '') {
+      return;
+    }
+
     setViewingProfileId(String(userId));
   };
 
@@ -82,57 +138,66 @@ export const useAdminUserProfileWorkflow = ({
     setViewingProfileId(null);
   };
 
-  const handleUserAction = async (action: string, data: any) => {
-    if (!detailedUser) return;
-
-    setActionLoading(true);
+  const handleUserAction = async (
+    action: string,
+    data: any,
+    options?: HandleUserActionOptions,
+  ) => {
+    if (!detailedUser?.profile?.id) {
+      addToast('Usuario nao carregado para esta acao.', 'error');
+      return null;
+    }
 
     const payload = {
-      user_id: detailedUser.profile?.id,
+      user_id: String(detailedUser.profile.id),
       action,
       ...data,
     };
 
-    if (!payload.user_id && action !== 'refund_transaction') {
-      console.error('Cannot perform action: user_id is missing', detailedUser);
-      addToast('Erro: ID do usuário faltando para esta ação.', 'error');
-      setActionLoading(false);
-      return;
-    }
+    const actionKey = options?.actionKey || action;
+    setActionLoading(actionKey);
 
     try {
-      await adminService.performUserAction(payload);
-      addToast('Ação realizada com sucesso!', 'success');
+      const result = await adminService.performUserActionWithResult(payload);
 
       if (action === 'update_profile') {
         setIsEditingUser(false);
       }
 
-      const refreshedUser = await adminService.getUserDetails(String(viewingProfileId));
-      setDetailedUser(refreshedUser);
+      const nextUser = await refreshDetailedUser(String(viewingProfileId));
+      await reloadUsers?.();
+
+      addToast(
+        result.message
+        || options?.successMessage
+        || 'Acao realizada com sucesso.',
+        'success',
+      );
+
+      return {
+        result,
+        user: nextUser,
+      };
     } catch (error) {
       console.error(error);
-      addToast(readApiErrorMessage(error, 'Erro ao realizar a ação.'), 'error');
+      addToast(readApiErrorMessage(error, 'Erro ao realizar a acao.'), 'error');
+      throw error;
     } finally {
-      setActionLoading(false);
+      setActionLoading(null);
     }
   };
 
   const startEditingUser = () => {
-    if (!detailedUser) return;
+    if (!detailedUser) {
+      return;
+    }
 
-    setEditUserForm({
-      name: detailedUser.profile?.name || '',
-      email: detailedUser.profile?.email || '',
-      cpf: detailedUser.profile?.cpf || '',
-      phone: detailedUser.profile?.phone || '',
-      targetExam: detailedUser.profile?.target_exam || '',
-      role: detailedUser.profile?.role || 'user',
-    });
+    setEditUserForm(buildEditUserForm(detailedUser));
     setIsEditingUser(true);
   };
 
   const cancelEditingUser = () => {
+    setEditUserForm(detailedUser ? buildEditUserForm(detailedUser) : createEmptyEditUserForm());
     setIsEditingUser(false);
   };
 
@@ -153,3 +218,5 @@ export const useAdminUserProfileWorkflow = ({
     handleUserAction,
   };
 };
+
+export default useAdminUserProfileWorkflow;

@@ -10,10 +10,11 @@
 */
 
 import { useEffect, useState } from 'react';
-import { ADMIN_DATABASE_CATEGORIES } from './adminDatabaseNavigationConfig';
+import { ADMIN_DATABASE_SUBTAB_META } from './adminDatabaseNavigationConfig';
 
 type AdminDatabaseSubTab =
   | 'questions'
+  | 'exams'
   | 'users'
   | 'materials'
   | 'rankings'
@@ -22,7 +23,7 @@ type AdminDatabaseSubTab =
   | 'blocked'
   | 'filters';
 
-type AdminDatabaseCategory = 'content' | 'users' | 'marketplace';
+type AdminDatabaseCategory = 'content' | 'people' | 'moderation';
 
 interface UseAdminDatabaseNavigationStateOptions {
   initialTab?: AdminDatabaseSubTab;
@@ -32,6 +33,7 @@ interface UseAdminDatabaseNavigationStateOptions {
 
 const VALID_SUBTABS: AdminDatabaseSubTab[] = [
   'questions',
+  'exams',
   'users',
   'materials',
   'rankings',
@@ -42,8 +44,7 @@ const VALID_SUBTABS: AdminDatabaseSubTab[] = [
 ];
 
 const getCategoryFromSubTab = (subTab: string): AdminDatabaseCategory => {
-  const matchedCategory = ADMIN_DATABASE_CATEGORIES.find((category) => category.tabs.includes(subTab));
-  return (matchedCategory?.id as AdminDatabaseCategory) || 'content';
+  return (ADMIN_DATABASE_SUBTAB_META[subTab]?.category as AdminDatabaseCategory) || 'content';
 };
 
 export const useAdminDatabaseNavigationState = ({

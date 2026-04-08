@@ -310,6 +310,27 @@ describe('adminService', () => {
     });
   });
 
+  it('returns backend confirmation when the admin flow needs the persisted message', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      message: 'Perfil atualizado com sucesso.',
+      data: {
+        audit_action: 'user.update_profile',
+      },
+    });
+
+    const result = await adminService.performUserActionWithResult({
+      user_id: 'user-1',
+      action: 'update_profile',
+      name: 'Usuario Teste',
+      email: 'teste@example.com',
+      role: 'staff',
+    });
+
+    expect(result.message).toBe('Perfil atualizado com sucesso.');
+    expect(result.data?.audit_action).toBe('user.update_profile');
+  });
+
   it('lists resettable database tables through the official endpoint', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,

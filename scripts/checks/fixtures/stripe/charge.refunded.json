@@ -1,0 +1,16 @@
+{
+  "id": "evt_fixture_charge_refunded",
+  "object": "event",
+  "type": "charge.refunded",
+  "created": 1700000000,
+  "data": {
+    "object": {
+      "id": "ch_fixture_refunded",
+      "object": "charge",
+      "status": "succeeded",
+      "refunded": true,
+      "payment_intent": "pi_fixture_paid",
+      "customer": "cus_fixture"
+    }
+  }
+}

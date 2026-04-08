@@ -17,7 +17,7 @@ Plataforma de questoes para concursos publicos com pratica filtrada, simulados, 
 - raio-x de banca e estatisticas de estudo
 - ranking competitivo para acompanhar desempenho apos provas
 - marketplace de materiais com compra, leitura autenticada e comentarios
-- checkout com Stripe e Mercado Pago
+- checkout e assinaturas com Stripe
 - painel administrativo para operacao, moderacao, financeiro e configuracoes
 
 ## Estrutura do projeto

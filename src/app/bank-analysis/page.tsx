@@ -23,6 +23,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
+import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 import { CHART_COLORS } from './constants';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
@@ -148,7 +149,7 @@ const BankAnalysis: React.FC = () => {
 
    if (!hasXRayAccess) {
       return (
-         <div className="max-w-4xl mx-auto space-y-8 animate-fade-in pb-20">
+         <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-8 animate-fade-in pb-20`}>
             <header>
                <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
                   <Zap className="text-amber-500 dark:text-amber-400" size={24} /> Raio-X da Banca
@@ -189,7 +190,7 @@ const BankAnalysis: React.FC = () => {
    }
 
    return (
-      <div className="max-w-5xl mx-auto space-y-6 animate-fade-in pb-20">
+      <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 animate-fade-in pb-20`}>
          <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div>
                <div className="flex items-center gap-2 mb-1">

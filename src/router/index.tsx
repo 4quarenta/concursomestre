@@ -16,6 +16,7 @@ import { AnimatePresence } from 'framer-motion';
 import GlobalLoader from '../components/GlobalLoader';
 import DebugBanner from '../components/shared/feedback/debug/DebugBanner';
 import { useAuth } from '@providers/AuthProvider';
+import { canAccessAdminPanel } from '@services/auth';
 import { useData } from '@providers/DataProvider';
 import { AdminRoutes } from './adminRoutes';
 import { PrivateRoutes } from './privateRoutes';
@@ -34,6 +35,7 @@ const RoutedAppRouter: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   useRoutePersistence(location, navigate, isLoading);
+  const canAccessAdmin = canAccessAdminPanel(currentUser);
 
   /**
    * Guarda a rota desejada antes do login para que o usuário volte ao fluxo correto depois de autenticar.
@@ -56,7 +58,7 @@ const RoutedAppRouter: React.FC = () => {
   const isMaintenance = systemSettings?.features?.maintenanceMode || false;
   const loginRequired = systemSettings?.features?.loginRequired || false;
 
-  if (isMaintenance && !currentUser?.isAdmin && !showLoginBypass) {
+  if (isMaintenance && !canAccessAdmin && !showLoginBypass) {
     return (
       <div className="min-h-screen bg-white dark:bg-slate-950 flex items-center justify-center p-6 text-center transition-colors">
         <div className="max-w-md space-y-8 animate-scale-in">
@@ -94,7 +96,7 @@ const RoutedAppRouter: React.FC = () => {
   }
 
   const isPastDueSubscription = currentUser?.subscription?.status === 'past_due';
-  const isPaymentIssue = (currentUser?.paymentIssue || isPastDueSubscription) && !currentUser?.isAdmin;
+  const isPaymentIssue = (currentUser?.paymentIssue || isPastDueSubscription) && !canAccessAdmin;
   const isFixingPayment = location.pathname === '/profile' || location.pathname === '/plans' || location.pathname.startsWith('/checkout');
 
   if (isPaymentIssue && !isFixingPayment) {

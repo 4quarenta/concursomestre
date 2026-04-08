@@ -324,10 +324,10 @@ const Support: React.FC = () => {
                                 </div>
                                 <div className="p-4 border border-indigo-100 dark:border-indigo-900/30 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-xl text-center">
                                     <CreditCard className="w-8 h-8 text-indigo-600 mx-auto mb-2" />
-                                    <h3 className="font-bold text-slate-800 dark:text-slate-200">Cartão / Boleto</h3>
-                                    <p className="text-xs text-slate-500 mb-3">Via Mercado Pago</p>
-                                    <button className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
-                                        Doar R$ 10,00
+                                    <h3 className="font-bold text-slate-800 dark:text-slate-200">Doacao por cartao</h3>
+                                    <p className="text-xs text-slate-500 mb-3">Canal em reestruturacao</p>
+                                    <button disabled className="text-xs bg-slate-300 text-white px-3 py-1.5 rounded-lg font-bold cursor-not-allowed">
+                                        Em breve
                                     </button>
                                 </div>
                             </div>

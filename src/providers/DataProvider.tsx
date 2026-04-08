@@ -36,9 +36,9 @@ import { useToast } from '@providers/ToastProvider';
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   activeTheme: 'default',
-  paymentProvider: 'mercado_pago',
+  paymentProvider: 'stripe',
   paymentCheckoutMode: 'internal',
-  cardVaultProvider: 'local',
+  cardVaultProvider: 'stripe',
   pricing: {
     Gratuito: { ...PRICING.Gratuito, quarterlyDiscountPercent: 0, annualDiscountPercent: 0 },
     Essencial: { ...PRICING.Essencial, quarterlyDiscountPercent: 10, annualDiscountPercent: 30 },

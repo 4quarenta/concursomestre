@@ -7,13 +7,12 @@ SECAO 1. PAGAMENTOS E ASSINATURAS
 ---------------------------------
 
 1. Gateway configuravel pelo admin
-- O admin pode escolher o gateway principal de pagamento entre Mercado Pago e Stripe.
-- O admin tambem controla o modo do checkout e o cofre de cartoes.
+- O admin opera apenas com Stripe no billing da plataforma.
+- O admin controla o modo do checkout e o cofre oficial de cartoes da Stripe.
 
 2. Checkout interno
 - A plataforma suporta checkout interno sem tirar o usuario da aplicacao.
 - No Stripe, o checkout interno permite pagar com cartao novo ou cartao salvo.
-- No Mercado Pago, o checkout suporta cartao, Pix e boleto conforme a configuracao ativa.
 
 3. Requisitos antes do pagamento
 - Antes de pagar, o usuario precisa estar logado.
@@ -123,9 +122,6 @@ SECAO 4. OBSERVACOES OPERACIONAIS
 - O sistema usa o ecossistema Stripe para assinatura, cobranca, fatura, webhooks e reembolso.
 - O historico pode exibir dados reais da invoice do Stripe quando ela existir.
 
-2. Mercado Pago
-- O sistema tambem suporta checkout com Mercado Pago, incluindo meios locais como Pix e boleto quando habilitados.
-
-3. FAQ futuro
+2. FAQ futuro
 - Este arquivo deve continuar recebendo novas funcionalidades aprovadas da plataforma.
 - O objetivo e servir como base para um FAQ completo no futuro.

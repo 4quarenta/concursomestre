@@ -12,6 +12,12 @@
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, BookOpen, Target } from 'lucide-react';
+import {
+  PLATFORM_METRIC_VALUE_CLASS,
+  PLATFORM_PAGE_DESCRIPTION_CLASS,
+  PLATFORM_PAGE_TITLE_CLASS,
+  PLATFORM_SECTION_TITLE_CLASS,
+} from '@constants/layout';
 import { useData } from '@providers/DataProvider';
 import { buildSubjectPerformanceData, calculateAccuracySummary } from '@services/dashboard/dashboardInsightsService';
 
@@ -57,10 +63,10 @@ const PerformanceSubjectsPage: React.FC = () => {
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-indigo-500 dark:text-indigo-400">
             Performance detalhada
           </p>
-          <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-slate-100">
+          <h1 className={PLATFORM_PAGE_TITLE_CLASS}>
             Todos os dados por materia
           </h1>
-          <p className="max-w-2xl text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+          <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
             Veja onde voce esta forte, onde esta errando mais e quais materias pedem revisao.
           </p>
         </div>
@@ -68,15 +74,15 @@ const PerformanceSubjectsPage: React.FC = () => {
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-[1.8rem] border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Materias</p>
-            <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{subjectMetrics.length}</p>
+            <p className={`mt-2 ${PLATFORM_METRIC_VALUE_CLASS}`}>{subjectMetrics.length}</p>
           </div>
           <div className="rounded-[1.8rem] border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Questoes</p>
-            <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{summary.totalQuestions}</p>
+            <p className={`mt-2 ${PLATFORM_METRIC_VALUE_CLASS}`}>{summary.totalQuestions}</p>
           </div>
           <div className="rounded-[1.8rem] border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Precisao geral</p>
-            <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{summary.accuracyRate}%</p>
+            <p className={`mt-2 ${PLATFORM_METRIC_VALUE_CLASS}`}>{summary.accuracyRate}%</p>
           </div>
         </div>
       </header>
@@ -87,7 +93,7 @@ const PerformanceSubjectsPage: React.FC = () => {
             <BookOpen size={20} />
           </div>
           <div>
-            <h2 className="text-3xl font-black tracking-tight text-slate-900 dark:text-slate-100">Tabela completa</h2>
+            <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Tabela completa</h2>
             <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">Resultados consolidados por materia.</p>
           </div>
         </div>

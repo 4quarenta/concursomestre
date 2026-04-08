@@ -16,5 +16,6 @@
 export { accountService } from './accountService';
 export { authFlowService } from './authFlowService';
 export * from './session';
+export * from './userAccess';
 export type { ReputationData } from './reputationService';
 export { reputationService } from './reputationService';

@@ -10,7 +10,13 @@
 */
 
 import React from 'react';
-import { Edit3, Eye } from 'lucide-react';
+import { ChevronRight, Edit3, Eye } from 'lucide-react';
+import {
+  getAdminUserRoleBadgeClass,
+  getAdminUserRoleLabel,
+  getAdminUserStatusBadgeClass,
+  getAdminUserStatusLabel,
+} from './userAdminOptions';
 
 interface AdminUsersSectionProps {
   users: any[];
@@ -18,74 +24,111 @@ interface AdminUsersSectionProps {
   onOpenProfile: (userId: string) => void;
 }
 
+/**
+ * Lista operacional de usuarios do admin.
+ * A tabela resume papel, status, plano e atividade antes de abrir o modal completo.
+ *
+ * @since 1.0.0
+ */
 const AdminUsersSection = ({
   users,
   renderSortableHeader,
   onOpenProfile,
 }: AdminUsersSectionProps) => {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors duration-300">
+    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
       <table className="w-full text-left text-xs">
-        <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
+        <thead className="border-b border-slate-100 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
           <tr>
-            {renderSortableHeader('Usuário', 'name')}
-            {renderSortableHeader('Cargo/Plano', 'billing.plan')}
-            {renderSortableHeader('Estatisticas', 'level')}
-            <th className="p-4 text-center">Ações</th>
+            {renderSortableHeader('Usuario', 'name')}
+            {renderSortableHeader('Papel e status', 'role')}
+            {renderSortableHeader('Plano e meta', 'billing.plan')}
+            {renderSortableHeader('Engajamento', 'level')}
+            <th className="p-4 text-center text-[10px] font-black uppercase tracking-widest">Acoes</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-          {users.map((user) => (
-            <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-              <td className="p-4">
-                <div className="flex flex-col">
-                  <span className="font-bold text-slate-900 dark:text-slate-100">{user.name}</span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">{user.email}</span>
-                </div>
-              </td>
-              <td className="p-4">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                    {user.targetExam || 'N/I'}
-                  </span>
-                  <span className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full text-[9px] font-black uppercase w-fit">
-                    {user.billing?.plan || 'Gratuito'}
-                  </span>
-                </div>
-              </td>
-              <td className="p-4">
-                <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                  Nivel {user.level} ? {user.xp} XP
-                </div>
-                <div className="w-24 h-1 bg-slate-100 dark:bg-slate-800 rounded-full mt-1 overflow-hidden">
-                  <div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, (user.xp % 1000) / 10)}%` }} />
-                </div>
-              </td>
-              <td className="p-4 text-center">
-                <div className="flex justify-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onOpenProfile(user.id)}
-                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-xl transition-all"
-                    title="Ver Perfil Completo"
-                  >
-                    <Eye size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenProfile(user.id)}
-                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-xl transition-all"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {users.map((user) => {
+            const progressWidth = Math.min(100, ((Number(user.xp || 0) % 1000) / 1000) * 100);
+
+            return (
+              <tr key={user.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td className="p-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-black text-slate-900 dark:text-slate-100">{user.name}</span>
+                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{user.email}</span>
+                    <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">ID: {user.id}</span>
+                  </div>
+                </td>
+                <td className="p-4">
+                  <div className="flex flex-col gap-2">
+                    <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${getAdminUserRoleBadgeClass(user.role)}`}>
+                      {getAdminUserRoleLabel(user.role)}
+                    </span>
+                    <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${getAdminUserStatusBadgeClass(user.status)}`}>
+                      {getAdminUserStatusLabel(user.status)}
+                    </span>
+                  </div>
+                </td>
+                <td className="p-4">
+                  <div className="flex flex-col gap-2">
+                    <span className="w-fit rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">
+                      {user.billing?.plan || 'Gratuito'}
+                    </span>
+                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                      Meta: {user.targetExam || 'Nao definida'}
+                    </span>
+                  </div>
+                </td>
+                <td className="p-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      <span>Nivel {Number(user.level || 0)}</span>
+                      <span>{Number(user.xp || 0)} XP</span>
+                    </div>
+                    <div className="h-1.5 w-28 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div className="h-full rounded-full bg-emerald-500" style={{ width: `${progressWidth}%` }} />
+                    </div>
+                    <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                      Reputacao {Number(user.reputation || 0)}/100
+                    </span>
+                  </div>
+                </td>
+                <td className="p-4 text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenProfile(user.id)}
+                      className="rounded-2xl border border-slate-200 bg-white p-2 text-slate-500 transition-all hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-indigo-900/40 dark:hover:text-indigo-300"
+                      title="Abrir perfil detalhado"
+                    >
+                      <Eye size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onOpenProfile(user.id)}
+                      className="rounded-2xl border border-slate-200 bg-white p-2 text-slate-500 transition-all hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-indigo-900/40 dark:hover:text-indigo-300"
+                      title="Editar usuario"
+                    >
+                      <Edit3 size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onOpenProfile(user.id)}
+                      className="rounded-2xl border border-slate-200 bg-white p-2 text-slate-500 transition-all hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-indigo-900/40 dark:hover:text-indigo-300"
+                      title="Abrir operacao completa"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
           {users.length === 0 && (
             <tr>
-              <td colSpan={4} className="p-8 text-center text-slate-400 dark:text-slate-600 italic">
-                Nenhum usuário encontrado.
+              <td colSpan={5} className="p-8 text-center text-slate-400 italic dark:text-slate-600">
+                Nenhum usuario encontrado.
               </td>
             </tr>
           )}

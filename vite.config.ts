@@ -58,7 +58,7 @@ export default defineConfig(({ mode }) => {
               return 'stripe';
             }
 
-            if (id.includes('@mercadopago') || id.includes('@google/genai') || id.includes('react-google-recaptcha')) {
+            if (id.includes('@google/genai') || id.includes('react-google-recaptcha')) {
               return 'integrations';
             }
 

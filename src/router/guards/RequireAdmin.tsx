@@ -12,6 +12,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import type { UserProfile } from '@types';
+import { canAccessAdminPanel } from '@services/auth';
 
 interface RequireAdminProps {
   currentUser: UserProfile | null;
@@ -31,7 +32,7 @@ export const RequireAdmin: React.FC<RequireAdminProps> = ({ currentUser, childre
     return <Navigate to="/auth" replace />;
   }
 
-  if (!currentUser?.isAdmin) {
+  if (!canAccessAdminPanel(currentUser)) {
     return <Navigate to="/" replace />;
   }
 

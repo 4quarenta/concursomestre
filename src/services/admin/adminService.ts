@@ -75,6 +75,7 @@ export interface AdminUserDetailsPayload {
   profile: Record<string, any>;
   subscriptions: Record<string, any>[];
   transactions: Record<string, any>[];
+  available_plans: Record<string, any>[];
   materials: Record<string, any>[];
   stats: {
     comments_count: number;
@@ -96,6 +97,11 @@ export interface AdminUserActionPayload {
   role?: string;
   status?: string;
   reputation?: number;
+}
+
+export interface AdminUserActionResult {
+  message?: string;
+  data?: Record<string, any>;
 }
 
 export interface AdminDatabaseResetPayload {
@@ -330,12 +336,26 @@ export const adminService = {
       profile: {},
       subscriptions: [],
       transactions: [],
+      available_plans: [],
       materials: [],
       stats: {
         comments_count: 0,
       },
       last_comments: [],
     });
+  },
+
+  /**
+   * Executa a acao administrativa e devolve a mensagem confirmada pelo backend.
+   * @since v1.0.0
+   */
+  async performUserActionWithResult(payload: AdminUserActionPayload): Promise<AdminUserActionResult> {
+    const response = await apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload) as any;
+    const result = assertApiSuccess(response, 'Nao foi possivel executar a acao administrativa.');
+    return {
+      message: result.message,
+      data: result.data,
+    };
   },
 
   /**

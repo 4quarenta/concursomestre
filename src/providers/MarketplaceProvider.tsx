@@ -326,22 +326,32 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
    * @since 1.0.0
    */
   const resolveRefund = async (transactionId: string, resolution: 'approved' | 'rejected') => {
+    const previousTransactions = [...transactions];
     try {
       await marketplaceService.processRefund(transactionId, resolution === 'approved');
-      setTransactions((prev) => mapTransactionById(prev, transactionId, (transaction) => ({
-        ...transaction,
-        status: resolution === 'approved' ? 'refunded' : 'approved',
-        refundReason: resolution === 'approved' ? transaction.refundReason : undefined,
-      })));
-
-      const transaction = transactions.find((item) => item.id === transactionId);
+      const transaction = previousTransactions.find((item) => item.id === transactionId);
       if (transaction && resolution === 'approved') {
         removeMaterialAccess?.(transaction.materialId);
+      }
+
+      if (currentUser?.role === 'admin' || currentUser?.isAdmin) {
+        const refreshedTransactions = await marketplaceService.listTransactions();
+        setTransactions(refreshedTransactions);
+      } else if (currentUser?.id) {
+        const refreshedTransactions = await marketplaceService.getUserTransactions(currentUser.id);
+        setTransactions(refreshedTransactions);
+      } else {
+        setTransactions((prev) => mapTransactionById(prev, transactionId, (currentTransaction) => ({
+          ...currentTransaction,
+          status: resolution === 'approved' ? 'refunded' : 'approved',
+          refundReason: resolution === 'approved' ? currentTransaction.refundReason : undefined,
+        })));
       }
 
       addToast(`Reembolso ${resolution === 'approved' ? 'aprovado' : 'negado'} com sucesso!`, 'success');
     } catch (error) {
       console.error('Resolve refund error:', error);
+      setTransactions(previousTransactions);
       addToast('Erro ao processar reembolso.', 'error');
     }
   };
