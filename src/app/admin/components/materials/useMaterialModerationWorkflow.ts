@@ -24,6 +24,8 @@ interface UseMaterialModerationWorkflowOptions {
   openManualModal: (question?: Question) => void;
 }
 
+type MaterialModerationAction = 'hide' | 'block' | null;
+
 export const useMaterialModerationWorkflow = ({
   questions,
   allMaterials,
@@ -36,12 +38,16 @@ export const useMaterialModerationWorkflow = ({
   const [selectedReport, setSelectedReport] = useState<ErrorReport | null>(null);
   const [moderationReason, setModerationReason] = useState('');
   const [moderationEvidence, setModerationEvidence] = useState<string | null>(null);
+  const [pendingModerationAction, setPendingModerationAction] = useState<MaterialModerationAction>(null);
+  const [actionLoading, setActionLoading] = useState<'approve' | 'hide' | 'block' | null>(null);
 
   const closeMaterialModeration = () => {
     setEditingMaterial(null);
     setSelectedReport(null);
     setModerationReason('');
     setModerationEvidence(null);
+    setPendingModerationAction(null);
+    setActionLoading(null);
   };
 
   const openMaterialModeration = (material: Material, report?: ErrorReport | null) => {
@@ -85,49 +91,68 @@ export const useMaterialModerationWorkflow = ({
     }
   };
 
-  const handleApproveMaterial = () => {
+  const handleApproveMaterial = async () => {
     if (!editingMaterial) return;
 
     const finalReason = moderationReason.trim() || 'Conteúdo revisado e considerado adequado para a plataforma.';
-    moderateMaterial(editingMaterial.id, 'approved', finalReason, moderationEvidence || undefined);
+    setActionLoading('approve');
 
-    if (selectedReport) {
-      resolveReport(selectedReport.id, 'resolved', finalReason, moderationEvidence || undefined);
+    try {
+      await moderateMaterial(editingMaterial.id, 'approved', finalReason, moderationEvidence || undefined);
+
+      if (selectedReport) {
+        await resolveReport(selectedReport.id, 'resolved', finalReason, moderationEvidence || undefined);
+      }
+
+      closeMaterialModeration();
+    } finally {
+      setActionLoading(null);
     }
-
-    closeMaterialModeration();
   };
 
   const handleHideMaterial = () => {
-    if (!editingMaterial) return;
-
-    const finalReason = moderationReason.trim() || 'O conteúdo foi ocultado temporariamente por não atender as diretrizes da comunidade ou estar em revisao.';
-    if (!confirm('Ocultar este material da loja?')) return;
-
-    moderateMaterial(editingMaterial.id, 'rejected', finalReason, moderationEvidence || undefined);
-
-    if (selectedReport) {
-      resolveReport(selectedReport.id, 'resolved', finalReason, moderationEvidence || undefined);
-    }
-
-    closeMaterialModeration();
+    if (!editingMaterial || actionLoading) return;
+    setPendingModerationAction('hide');
   };
 
   const handleBlockMaterial = () => {
-    if (!editingMaterial) return;
+    if (!editingMaterial || actionLoading) return;
+    setPendingModerationAction('block');
+  };
 
-    const blockReason = moderationReason.trim() || 'Violacao recorrente ou grave das diretrizes da plataforma.';
-    const blockMessage = `[CONTEÚDO BLOQUEADO] Seu material foi suspenso. Motivo: "${blockReason}". CASO DISCORDE, VOCÊ TEM 5 DIAS UTEIS PARA CONTESTAR. Envie sua justificativa para suporte@concursomestre.com informando o ID #${editingMaterial.id}.`;
+  const cancelPendingModerationAction = () => {
+    if (actionLoading) return;
+    setPendingModerationAction(null);
+  };
 
-    if (!confirm('Bloquear material permanentemente e solicitar contestacao?')) return;
+  const confirmPendingModerationAction = async () => {
+    if (!editingMaterial || !pendingModerationAction) return;
 
-    moderateMaterial(editingMaterial.id, 'rejected', blockMessage, moderationEvidence || undefined);
+    const isHideAction = pendingModerationAction === 'hide';
+    const finalReason = isHideAction
+      ? moderationReason.trim() || 'O conteúdo foi ocultado temporariamente por não atender as diretrizes da comunidade ou estar em revisao.'
+      : moderationReason.trim() || 'Violacao recorrente ou grave das diretrizes da plataforma.';
+    const blockMessage = `[CONTEUDO BLOQUEADO] Seu material foi suspenso. Motivo: "${finalReason}". CASO DISCORDE, VOCE TEM 5 DIAS UTEIS PARA CONTESTAR. Envie sua justificativa para suporte@concursomestre.com informando o ID #${editingMaterial.id}.`;
 
-    if (selectedReport) {
-      resolveReport(selectedReport.id, 'resolved', blockReason, moderationEvidence || undefined);
+    setActionLoading(pendingModerationAction);
+
+    try {
+      await moderateMaterial(
+        editingMaterial.id,
+        'rejected',
+        isHideAction ? finalReason : blockMessage,
+        moderationEvidence || undefined,
+      );
+
+      if (selectedReport) {
+        await resolveReport(selectedReport.id, 'resolved', finalReason, moderationEvidence || undefined);
+      }
+
+      closeMaterialModeration();
+    } finally {
+      setActionLoading(null);
+      setPendingModerationAction(null);
     }
-
-    closeMaterialModeration();
   };
 
   const handleEvidenceSelected = (file: File | null) => {
@@ -147,6 +172,8 @@ export const useMaterialModerationWorkflow = ({
     setModerationReason,
     moderationEvidence,
     setModerationEvidence,
+    pendingModerationAction,
+    actionLoading,
     openMaterialModeration,
     openBlockedMaterialForReview,
     handleEditReportTarget,
@@ -154,6 +181,8 @@ export const useMaterialModerationWorkflow = ({
     handleApproveMaterial,
     handleHideMaterial,
     handleBlockMaterial,
+    cancelPendingModerationAction,
+    confirmPendingModerationAction,
     handleEvidenceSelected,
   };
 };

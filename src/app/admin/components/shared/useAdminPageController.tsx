@@ -10,7 +10,7 @@
 */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   BookOpen,
   DollarSign,
@@ -26,14 +26,14 @@ import { useMarketplace } from '@providers/MarketplaceProvider';
 import {
   ADMIN_SECTION_CONFIG,
   DEFAULT_SECTION_BY_TAB,
-  isAdminPageTab,
   isFinanceSection,
   isOperationSection,
   isPanelSection,
   isSettingsSection,
   isSupportSection,
-  LEGACY_TAB_MAP,
   TAB_DESCRIPTIONS,
+  buildAdminPath,
+  resolveAdminRoute,
   type AdminFinanceSection,
   type AdminNavigationTab,
   type AdminPageTab,
@@ -73,8 +73,6 @@ export const useAdminPageController = () => {
     resolveReport,
     updateSystemSettings,
     saveSystemSettingsNow,
-    addCoupon,
-    deleteCoupon,
     updateRanking,
     notifications,
     markNotificationAsRead,
@@ -88,7 +86,8 @@ export const useAdminPageController = () => {
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const params = useParams<{ tab?: string; section?: string }>();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [activeTab, setActiveTabState] = useState<AdminPageTab>('panel');
@@ -116,6 +115,7 @@ export const useAdminPageController = () => {
 
   const activeTabLabel = adminTabs.find((tab) => tab.key === activeTab)?.label || 'Painel';
   const activeSections = ADMIN_SECTION_CONFIG[activeTab];
+  const legacySearchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const activeSectionLabel = useMemo(() => {
     const currentKey = activeTab === 'panel'
       ? initialPanelSection
@@ -130,18 +130,8 @@ export const useAdminPageController = () => {
     return ADMIN_SECTION_CONFIG[activeTab].find((section) => section.key === currentKey)?.label || '';
   }, [activeTab, initialFinanceSection, initialOperationSection, initialPanelSection, initialSettingsSection, initialSupportSection]);
 
-  const syncAdminUrl = (tab: AdminPageTab, section?: string) => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set('tab', tab);
-
-    const nextSection = section || DEFAULT_SECTION_BY_TAB[tab];
-    if (nextSection) {
-      nextParams.set('section', nextSection);
-    } else {
-      nextParams.delete('section');
-    }
-
-    setSearchParams(nextParams, { replace: true });
+  const syncAdminUrl = (tab: AdminPageTab, section?: string, options?: { replace?: boolean; hash?: string }) => {
+    navigate(buildAdminPath(tab, section, options?.hash), { replace: options?.replace ?? true });
   };
 
   const setGroupSection = (tab: AdminPageTab, section: string) => {
@@ -175,45 +165,39 @@ export const useAdminPageController = () => {
    * @since 1.0.0
    */
   useEffect(() => {
-    const rawTab = String(searchParams.get('tab') || '').trim();
-    const rawSection = String(searchParams.get('section') || '').trim();
+    const route = resolveAdminRoute(
+      params.tab || legacySearchParams.get('tab'),
+      params.section || legacySearchParams.get('section'),
+    );
 
-    const applySectionsFromGroup = (tab: AdminPageTab, section: string) => {
-      setActiveTabState(tab);
+    setActiveTabState(route.tab);
+    setGroupSection(route.tab, route.section);
 
-      if (tab === 'panel') {
-        setInitialPanelSection(isPanelSection(section) ? section : 'dashboard');
-      }
-      if (tab === 'operation') {
-        setInitialOperationSection(isOperationSection(section) ? section : 'questions');
-      }
-      if (tab === 'finance') {
-        setInitialFinanceSection(isFinanceSection(section) ? section : 'subscriptions');
-      }
-      if (tab === 'support') {
-        setInitialSupportSection(isSupportSection(section) ? section : 'feedback');
-      }
-      if (tab === 'settings') {
-        setInitialSettingsSection(isSettingsSection(section) ? section : 'general');
-      }
-    };
+    const canonicalAdminPath = buildAdminPath(route.tab, route.section, location.hash);
+    const currentAdminPath = `${location.pathname}${location.hash}`;
 
-    if (rawTab === 'operation' && rawSection === 'reports') {
-      applySectionsFromGroup('support', 'reports');
-    } else if (isAdminPageTab(rawTab)) {
-      applySectionsFromGroup(rawTab, rawSection || DEFAULT_SECTION_BY_TAB[rawTab]);
-    } else if (LEGACY_TAB_MAP[rawTab]) {
-      const legacy = LEGACY_TAB_MAP[rawTab];
-      applySectionsFromGroup(legacy.tab, rawSection || legacy.section || DEFAULT_SECTION_BY_TAB[legacy.tab]);
-    } else {
-      applySectionsFromGroup('panel', 'dashboard');
+    if (location.search || canonicalAdminPath !== currentAdminPath) {
+      navigate(canonicalAdminPath, { replace: true });
+      return;
     }
 
     void ensureUsersLoaded();
     void ensureReportsLoaded();
     void ensureRankingsLoaded();
     void ensureTaxonomiesLoaded();
-  }, [searchParams, ensureUsersLoaded, ensureReportsLoaded, ensureRankingsLoaded, ensureTaxonomiesLoaded]);
+  }, [
+    params.tab,
+    params.section,
+    legacySearchParams,
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+    ensureUsersLoaded,
+    ensureReportsLoaded,
+    ensureRankingsLoaded,
+    ensureTaxonomiesLoaded,
+  ]);
 
   /**
    * Permite que atalhos internos apontem para grupos novos sem quebrar a assinatura antiga.
@@ -328,8 +312,6 @@ export const useAdminPageController = () => {
       allUsers: users,
       systemSettings,
       updateSystemSettings,
-      addCoupon,
-      deleteCoupon,
       initialSection: initialFinanceSection,
       onSectionChange: (section: AdminFinanceSection) => handleSectionChange('finance', section),
     },

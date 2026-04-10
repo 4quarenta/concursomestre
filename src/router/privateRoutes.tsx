@@ -11,14 +11,19 @@
 
 import React from 'react';
 import { Navigate, Route } from 'react-router-dom';
-import type { UserProfile } from '@types';
+import type { SystemSettings, UserProfile } from '@types';
 import Layout from '../components/shared/layout/Layout';
+import ModuleAccessFallback from '../components/shared/feedback/ModuleAccessFallback';
 import PageTransition from '../components/PageTransition';
 import { RequireAuth } from './guards';
 import { LayoutContentRouteFallback } from './RouteSuspenseFallback';
+import { buildProfilePath } from '../app/profile/profileNavigation';
 
 const BankAnalysisPage = React.lazy(() => import('../app/bank-analysis/page'));
 const CheckoutPage = React.lazy(() => import('../app/checkout/page'));
+const ConcursosPage = React.lazy(() => import('../app/concursos/page'));
+const FlashcardsPage = React.lazy(() => import('../app/flashcards/page'));
+const AnnotatedLawsPage = React.lazy(() => import('../app/lei-comentada/page'));
 const MarketplacePage = React.lazy(() => import('../app/marketplace/page'));
 const NotificationsPage = React.lazy(() => import('../app/notifications/page'));
 const PartnerDashboardPage = React.lazy(() => import('../app/partner-dashboard/page'));
@@ -33,13 +38,16 @@ const SupportPage = React.lazy(() => import('../app/support/page'));
 interface PrivateRoutesProps {
   currentUser: UserProfile | null;
   loginRequired: boolean;
+  systemSettings: SystemSettings;
 }
 
 /**
  * Agrupa as rotas autenticadas e da area principal da aplicação.
  * Esse conjunto conecta pratica, simulados, ranking, perfil e suporte ao shell autenticado e aos guards de sessão.
  */
-export const PrivateRoutes: React.FC<PrivateRoutesProps> = ({ currentUser, loginRequired }) => {
+export const PrivateRoutes: React.FC<PrivateRoutesProps> = ({ currentUser, loginRequired, systemSettings }) => {
+  const isStrictAdmin = Boolean(currentUser?.isAdmin || currentUser?.role === 'admin');
+
   /**
    * Mantem o Layout oficial visivel enquanto a pagina interna lazy ainda esta resolvendo.
    * Isso evita a sensacao de "quebra" visual durante a navegacao entre telas do app.
@@ -52,56 +60,79 @@ export const PrivateRoutes: React.FC<PrivateRoutesProps> = ({ currentUser, login
     </Layout>
   );
 
+  /**
+   * Mantem o shell oficial sem animacao de pagina inteira.
+   * Usado em superficies com subnavegacao estrutural propria, como perfil.
+   */
+  const renderStableLayoutPage = (page: React.ReactNode) => (
+    <Layout>
+      <React.Suspense fallback={<LayoutContentRouteFallback />}>
+        {page}
+      </React.Suspense>
+    </Layout>
+  );
+
+  const renderFeatureRoute = (
+    page: React.ReactNode,
+    isEnabled: boolean,
+    featureLabel: string,
+  ) => (
+    <RequireAuth currentUser={currentUser} loginRequired={loginRequired}>
+      {isEnabled || isStrictAdmin
+        ? renderLayoutPage(page)
+        : renderLayoutPage(
+          <ModuleAccessFallback description={`O modulo ${featureLabel} nao esta disponivel para o seu perfil.`} />,
+        )}
+    </RequireAuth>
+  );
+
   return (
     <>
       <Route
-        path="/practice"
+        path="/concursos"
         element={
           <RequireAuth currentUser={currentUser} loginRequired={loginRequired}>
-            {renderLayoutPage(<PracticePage />)}
+            {renderLayoutPage(<ConcursosPage />)}
           </RequireAuth>
         }
+      />
+      <Route
+        path="/practice"
+        element={renderFeatureRoute(<PracticePage />, systemSettings.features.practiceEnabled, 'Questoes')}
+      />
+      <Route
+        path="/lei-comentada"
+        element={renderFeatureRoute(<AnnotatedLawsPage />, systemSettings.features.annotatedLawsEnabled, 'Lei comentada')}
+      />
+      <Route
+        path="/flashcards"
+        element={renderFeatureRoute(<FlashcardsPage />, systemSettings.features.flashcardsEnabled, 'Flashcards')}
       />
       <Route
         path="/simulation"
-        element={
-          <RequireAuth currentUser={currentUser} loginRequired={loginRequired}>
-            {renderLayoutPage(<SimulationPage />)}
-          </RequireAuth>
-        }
+        element={renderFeatureRoute(<SimulationPage />, systemSettings.features.simulationsEnabled, 'Simulados')}
       />
       <Route
         path="/x-ray"
-        element={
-          <RequireAuth currentUser={currentUser} loginRequired={loginRequired}>
-            {renderLayoutPage(<BankAnalysisPage />)}
-          </RequireAuth>
-        }
+        element={renderFeatureRoute(<BankAnalysisPage />, systemSettings.features.xRayEnabled, 'Raio-X Banca')}
       />
       <Route
         path="/marketplace"
-        element={
-          <RequireAuth currentUser={currentUser} loginRequired={loginRequired}>
-            {renderLayoutPage(<MarketplacePage />)}
-          </RequireAuth>
-        }
+        element={renderFeatureRoute(<MarketplacePage />, systemSettings.features.marketplaceEnabled, 'Loja')}
       />
       <Route
         path="/ranking"
-        element={
-          <RequireAuth currentUser={currentUser} loginRequired={loginRequired}>
-            {renderLayoutPage(<RankingPage />)}
-          </RequireAuth>
-        }
+        element={renderFeatureRoute(<RankingPage />, systemSettings.features.rankingsEnabled, 'Rankings')}
       />
-      <Route path="/profile" element={currentUser ? renderLayoutPage(<ProfilePage />) : <Navigate to="/auth" replace />} />
+      <Route path="/profile" element={currentUser ? <Navigate to={buildProfilePath('personal')} replace /> : <Navigate to="/auth" replace />} />
+      <Route path="/profile/:tab" element={currentUser ? renderStableLayoutPage(<ProfilePage />) : <Navigate to="/auth" replace />} />
       <Route path="/performance/subjects" element={currentUser ? renderLayoutPage(<PerformanceSubjectsPage />) : <Navigate to="/auth" replace />} />
       <Route path="/notifications" element={currentUser ? renderLayoutPage(<NotificationsPage />) : <Navigate to="/auth" replace />} />
       <Route path="/partner-dashboard" element={currentUser ? <PageTransition><PartnerDashboardPage /></PageTransition> : <Navigate to="/" replace />} />
       <Route path="/support" element={currentUser ? renderLayoutPage(<SupportPage />) : <Navigate to="/auth" replace />} />
-      <Route path="/subscription/success" element={currentUser ? <Navigate to="/profile" replace /> : <Navigate to="/auth" replace />} />
+      <Route path="/subscription/success" element={currentUser ? <Navigate to={buildProfilePath('billing')} replace /> : <Navigate to="/auth" replace />} />
       <Route path="/subscription/failure" element={currentUser ? <Navigate to="/plans" replace /> : <Navigate to="/auth" replace />} />
-      <Route path="/subscription/pending" element={currentUser ? <Navigate to="/profile" replace /> : <Navigate to="/auth" replace />} />
+      <Route path="/subscription/pending" element={currentUser ? <Navigate to={buildProfilePath('billing')} replace /> : <Navigate to="/auth" replace />} />
       <Route path="/read/:id" element={currentUser ? <PageTransition><ReaderPage /></PageTransition> : <Navigate to="/auth" replace />} />
       <Route path="/checkout/:planId" element={<PageTransition><CheckoutPage /></PageTransition>} />
     </>

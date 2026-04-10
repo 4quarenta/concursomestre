@@ -1,0 +1,36 @@
+{
+  "scope": "sitemap_coverage",
+  "generatedAt": "2026-04-09T01:58:18.730Z",
+  "canonicalBaseUrl": "https://concursomestre.com.br/",
+  "sitemapUrl": "https://concursomestre.com.br/sitemap.xml",
+  "robotsUrl": "https://concursomestre.com.br/robots.txt",
+  "totalUrls": 46,
+  "coverage": {
+    "institutional": {
+      "total": 6,
+      "indexed": 6,
+      "missing": 0
+    },
+    "questions": {
+      "total": 40,
+      "indexed": 40,
+      "missing": 0
+    },
+    "rankings": {
+      "total": 0,
+      "indexed": 0,
+      "missing": 0
+    },
+    "materials": {
+      "total": 0,
+      "indexed": 0,
+      "missing": 0
+    }
+  },
+  "missingSamples": {
+    "questions": [],
+    "rankings": [],
+    "materials": []
+  },
+  "note": "Cobertura mede URLs geradas no sitemap. Indexacao em buscadores depende de rastreamento externo."
+}

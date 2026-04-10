@@ -69,9 +69,10 @@ interface AdminDatabaseSectionsProps {
   onCreateFilter: () => void;
   onCreateChildFilter: (item: any) => void;
   onEditFilter: (item: any) => void;
-  onDeleteFilter: (id: string) => Promise<any> | any;
+  onDeleteFilter: (item: any) => Promise<any> | any;
   onGeminiApiKeyChange: (value: string) => void;
   onSaveImportSettings: () => Promise<any> | any;
+  isSavingImportSettings?: boolean;
 }
 
 const AdminDatabaseSections = ({
@@ -122,6 +123,7 @@ const AdminDatabaseSections = ({
   onDeleteFilter,
   onGeminiApiKeyChange,
   onSaveImportSettings,
+  isSavingImportSettings,
 }: AdminDatabaseSectionsProps) => {
   if (activeSubTab === 'questions') {
     return (
@@ -233,6 +235,7 @@ const AdminDatabaseSections = ({
         systemSettings={systemSettings}
         onGeminiApiKeyChange={onGeminiApiKeyChange}
         onSaveSettings={onSaveImportSettings}
+        isSavingSettings={isSavingImportSettings}
         {...importWorkflowProps}
       />
     );

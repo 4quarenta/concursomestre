@@ -21,6 +21,7 @@ import QuestionCard from '../questions/components/QuestionCard';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
+import { useStudyTrackerActions } from '@providers/StudyTrackerProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import AdBanner from '../../components/shared/feedback/AdBanner';
@@ -78,6 +79,7 @@ const Simulation: React.FC = () => {
    const { currentUser, addSimulation } = useAuth();
    const { questions, submitAnswer, systemSettings, ensureTaxonomiesLoaded } = useData();
    const { addToast } = useToast();
+   const { registerSimulationElapsed } = useStudyTrackerActions();
 
    if (systemSettings.features.simulationsEnabled === false) {
       return (
@@ -168,6 +170,10 @@ const Simulation: React.FC = () => {
 
    const handleFinish = () => {
       if (!activeSession) return;
+      if (activeSession.status === 'completed') return;
+
+      const finishedAt = Date.now();
+      const elapsedSimulationSeconds = Math.max(0, Math.round((finishedAt - activeSession.startTime) / 1000));
 
       const results = activeSession.questions.map(q => {
          const selectedIndexOrObj = activeSession.answers[q.id];
@@ -198,11 +204,12 @@ const Simulation: React.FC = () => {
       const completed = {
          ...activeSession,
          status: 'completed' as const,
-         endTime: Date.now(),
+         endTime: finishedAt,
          score,
          answers: enrichedAnswers as any
       };
 
+      registerSimulationElapsed(activeSession.id, elapsedSimulationSeconds);
       setActiveSession(completed);
       addSimulation(completed);
       setStep('result');

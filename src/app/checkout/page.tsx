@@ -26,6 +26,7 @@ import {
 import ReCAPTCHA from 'react-google-recaptcha';
 import StripeCardElementForm from './components/StripeCardElementForm';
 import StripeSavedCardCvcForm from './components/StripeSavedCardCvcForm';
+import { buildProfilePath } from '../profile/profileNavigation';
 
 type CheckoutStep = 'identification' | 'payment' | 'success';
 type AuthMode = 'login' | 'register';
@@ -67,6 +68,7 @@ const CheckoutPage: React.FC = () => {
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
     const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
     const [discountAmount, setDiscountAmount] = useState(0);
+    const [appliedCouponSource, setAppliedCouponSource] = useState<'auto' | 'manual' | null>(null);
     const recaptchaRef = React.useRef<ReCAPTCHA>(null);
     const [stripeBillingMode, setStripeBillingMode] = useState<'single_installment' | 'term_recurring'>('single_installment');
     const [showCheckoutRequirementsModal, setShowCheckoutRequirementsModal] = useState(false);
@@ -226,7 +228,7 @@ const CheckoutPage: React.FC = () => {
                     if (currentUser.subscription?.status === 'active') {
                         if (targetPlanTier <= currentPlanTier && targetPlanTimeScore <= currentTimeScore) {
                             addToast(`Você já possui o plano ${currentUser.subscription.plan?.name || 'Premium'}. Não é possível assinar um plano inferior ou igual enquanto o atual estiver ativo.`, 'warning');
-                            navigate('/profile');
+                            navigate(buildProfilePath('billing'));
                             return;
                         }
 
@@ -260,6 +262,64 @@ const CheckoutPage: React.FC = () => {
             setLoading(false);
         }
     };
+
+    const couponValidationAmount = useMemo(() => {
+        return Math.max(0, Number(plan?.price || 0) - proRatedCredit);
+    }, [plan?.price, proRatedCredit]);
+
+    const resetAppliedCoupon = () => {
+        setAppliedCoupon(null);
+        setDiscountAmount(0);
+        setAppliedCouponSource(null);
+    };
+
+    useEffect(() => {
+        resetAppliedCoupon();
+        setCouponCode('');
+    }, [plan?.id]);
+
+    useEffect(() => {
+        if (!plan?.id || couponValidationAmount <= 0 || appliedCouponSource === 'manual') {
+            return;
+        }
+
+        let active = true;
+
+        const resolveAutomaticCoupon = async () => {
+            try {
+                const response = await planService.validateCoupon('', couponValidationAmount, {
+                    planId: plan.id,
+                    targetType: 'plan',
+                    targetId: plan.id,
+                });
+
+                if (!active) {
+                    return;
+                }
+
+                if (response.success && response.coupon) {
+                    setAppliedCoupon(response.coupon);
+                    setDiscountAmount(Number(response.coupon.discount_amount || 0));
+                    setAppliedCouponSource('auto');
+                    return;
+                }
+
+                resetAppliedCoupon();
+            } catch (error) {
+                if (!active) {
+                    return;
+                }
+
+                resetAppliedCoupon();
+            }
+        };
+
+        void resolveAutomaticCoupon();
+
+        return () => {
+            active = false;
+        };
+    }, [plan?.id, couponValidationAmount, appliedCouponSource]);
 
     const handleExpiryChange = (value: string) => {
         let clean = value.replace(/\D/g, '');
@@ -368,7 +428,7 @@ const CheckoutPage: React.FC = () => {
     useEffect(() => {
         if (step === 'success') {
             const timer = setTimeout(() => {
-                navigate('/profile?tab=billing');
+        navigate('/profile/billing');
             }, 10000);
 
             const interval = setInterval(() => {
@@ -471,20 +531,20 @@ const CheckoutPage: React.FC = () => {
         if (!couponCode) return;
         setIsApplyingCoupon(true);
         try {
-            const response = await planService.validateCoupon(
-                couponCode,
-                Number(plan?.price || 0),
-                plan?.id,
-            );
+            const response = await planService.validateCoupon(couponCode, couponValidationAmount, {
+                planId: plan?.id,
+                targetType: 'plan',
+                targetId: plan?.id,
+            });
 
             if (response.success && response.coupon) {
                 setAppliedCoupon(response.coupon);
                 setDiscountAmount(Number(response.coupon.discount_amount || 0));
+                setAppliedCouponSource('manual');
                 addToast('Cupom aplicado com sucesso!', 'success');
             } else {
                 addToast(response.message || 'Cupom inválido ou expirado.', 'error');
-                setAppliedCoupon(null);
-                setDiscountAmount(0);
+                resetAppliedCoupon();
             }
         } catch (err) {
             addToast('Erro ao validar cupom.', 'error');
@@ -993,7 +1053,7 @@ const CheckoutPage: React.FC = () => {
 
             <div className="px-8 py-8 text-center md:px-12">
                 <button
-                    onClick={() => navigate('/profile?tab=billing')}
+                          onClick={() => navigate('/profile/billing')}
                     className="inline-flex h-14 items-center justify-center gap-3 rounded-2xl bg-indigo-600 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-indigo-700"
                 >
                     Ir para minha assinatura
@@ -1022,7 +1082,7 @@ const CheckoutPage: React.FC = () => {
             if (currentUser) navigate(-1);
             else setStep('identification');
         } else if (step === 'success') {
-            navigate('/profile?tab=billing');
+            navigate('/profile/billing');
         } else {
             navigate(-1);
         }
@@ -1655,9 +1715,13 @@ const CheckoutPage: React.FC = () => {
                                                 <div className="mt-3 flex items-center justify-between px-4 py-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-xl">
                                                     <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
                                                         <Award size={14} />
-                                                        <span className="text-[10px] font-black uppercase tracking-widest">Cupom "{appliedCoupon.code}" aplicado!</span>
+                                                        <span className="text-[10px] font-black uppercase tracking-widest">
+                                                            Cupom "{appliedCoupon.code}" {appliedCouponSource === 'auto' ? 'auto aplicado!' : 'aplicado!'}
+                                                        </span>
                                                     </div>
-                                                    <button onClick={() => { setAppliedCoupon(null); setDiscountAmount(0); }} className="text-[8px] font-black text-rose-500 uppercase tracking-widest hover:underline">Remover</button>
+                                                    {appliedCouponSource === 'manual' && (
+                                                        <button onClick={() => resetAppliedCoupon()} className="text-[8px] font-black text-rose-500 uppercase tracking-widest hover:underline">Remover</button>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -1723,7 +1787,7 @@ const CheckoutPage: React.FC = () => {
                                     <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto font-medium">Parabéns! Sua assinatura do plano <span className="text-indigo-600 dark:text-indigo-400 font-black">{displayName}</span> foi ativada com sucesso.</p>
                                 </div>
                                 <div className="pt-4 flex flex-col items-center gap-4">
-                                    <button onClick={() => navigate('/profile?tab=billing')} className="px-12 py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-[0.2em] text-[10px] rounded-2xl shadow-xl shadow-indigo-500/20 transition-all hover:-translate-y-1">Começar Agora</button>
+                        <button onClick={() => navigate('/profile/billing')} className="px-12 py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-[0.2em] text-[10px] rounded-2xl shadow-xl shadow-indigo-500/20 transition-all hover:-translate-y-1">Começar Agora</button>
                                     <div className="text-[10px] text-slate-400 uppercase tracking-widest font-black flex items-center gap-2">
                                         <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div>
                                         Redirecionando automaticamente em {countdown} segundos...

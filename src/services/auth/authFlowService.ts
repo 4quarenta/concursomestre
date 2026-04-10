@@ -10,6 +10,7 @@
 */
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { readApiErrorMessage } from '@services/api/response';
 import type { UserProfile } from '@types';
 
 export type AuthFlowSuccessPayload = {
@@ -58,6 +59,10 @@ export type ForgotPasswordPayload = {
 export type VerifyTwoFactorPayload = {
   email: string;
   code: string;
+};
+
+const normalizeAuthFlowError = (error: unknown, fallbackMessage: string): Error => {
+  return new Error(readApiErrorMessage(error, fallbackMessage));
 };
 
 /**
@@ -142,14 +147,18 @@ export const authFlowService = {
    * @since 1.0.0
    */
   async confirmEmail(token: string): Promise<ConfirmEmailResult> {
-    const response = await apiClient.post<any>(ENDPOINTS.auth.confirmEmail, { token }) as any;
-    const envelope = assertApiSuccess(response, 'Não foi possível confirmar o e-mail.');
-    const data = readApiData<{ newXp?: number }>(response, {});
+    try {
+      const response = await apiClient.post<any>(ENDPOINTS.auth.confirmEmail, { token }) as any;
+      const envelope = assertApiSuccess(response, 'Não foi possível confirmar o e-mail.');
+      const data = readApiData<{ newXp?: number }>(response, {});
 
-    return {
-      message: envelope.message || 'E-mail verificado com sucesso!',
-      newXp: Number(data.newXp ?? 0),
-    };
+      return {
+        message: envelope.message || 'E-mail verificado com sucesso!',
+        newXp: Number(data.newXp ?? 0),
+      };
+    } catch (error) {
+      throw normalizeAuthFlowError(error, 'Não foi possível confirmar o e-mail.');
+    }
   },
 
   /**

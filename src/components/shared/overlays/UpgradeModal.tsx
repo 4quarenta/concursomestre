@@ -17,6 +17,7 @@ import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { CanonicalPlanName, getEffectivePlanDisplayName } from '@services/plans/planAccess';
 import { getBenefitDefinition, getEnabledBenefitKeysForPlan, getIncrementalBenefitKeysForPlan } from '@constants/subscriptions/planEntitlements';
+import { buildProfilePath } from '../../../app/profile/profileNavigation';
 
 interface UpgradeModalProps {
     isOpen: boolean;
@@ -102,7 +103,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                             onClose();
                             // Se estiver logado vai para profile (onde tem change plan), se não, auth com register
                             if (currentUser) {
-                                navigate('/profile');
+                                navigate(buildProfilePath('billing'));
                             } else {
                                 navigate('/auth?register=true');
                             }

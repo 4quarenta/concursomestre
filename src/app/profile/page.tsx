@@ -12,7 +12,7 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import ReCAPTCHA from 'react-google-recaptcha';
 import {
    User, Mail, Star, Book, Settings, Shield,
@@ -51,9 +51,9 @@ import {
 } from '@constants/layout';
 import StripeSetupCardForm from './components/StripeSetupCardForm';
 import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from '@services/plans/planAccess';
+import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileNavigation';
 
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
-type ProfileTab = 'evolution' | 'notebook' | 'materials' | 'personal' | 'billing' | 'billing-history' | 'security' | 'referral';
 
 const Profile: React.FC = () => {
     const { currentUser, logout, login, refreshUser, updateUser } = useAuth();
@@ -61,6 +61,7 @@ const Profile: React.FC = () => {
     const { addToast } = useToast();
     const location = useLocation();
     const navigate = useNavigate();
+    const params = useParams<{ tab?: string }>();
     const activeBillingProvider = (currentUser?.subscription?.payment_provider || systemSettings?.paymentProvider || 'stripe') as 'stripe';
     const isStripeBilling = activeBillingProvider === 'stripe';
     const billingProviderLabel = 'Stripe';
@@ -102,19 +103,25 @@ const Profile: React.FC = () => {
     const cancelRequestInFlightRef = React.useRef(false);
     const renewalRequestInFlightRef = React.useRef(false);
 
+    const changeActiveTab = React.useCallback((nextTab: ProfileTab, options?: { replace?: boolean }) => {
+        const resolvedTab = resolveProfileTab(nextTab);
+        setActiveTab(resolvedTab);
+        navigate(buildProfilePath(resolvedTab), { replace: options?.replace ?? false });
+    }, [navigate]);
+
     // Sincronizar aba com parâmetro da URL (?tab=)
     React.useEffect(() => {
-        const params = new URLSearchParams(location.search);
-        const tabParam = params.get('tab');
-        if (tabParam === 'evolution') {
-            navigate('/profile?tab=personal', { replace: true });
+        const legacyTab = new URLSearchParams(location.search).get('tab');
+        const resolvedTab = resolveProfileTab(params.tab || legacyTab);
+        const canonicalPath = buildProfilePath(resolvedTab);
+
+        if (location.pathname !== canonicalPath || location.search) {
+            navigate(canonicalPath, { replace: true });
             return;
         }
 
-        if (tabParam && ['notebook', 'materials', 'personal', 'billing', 'billing-history', 'security', 'referral'].includes(tabParam)) {
-            setActiveTab(tabParam as ProfileTab);
-        }
-    }, [location.search, navigate]);
+        setActiveTab(resolvedTab);
+    }, [location.pathname, location.search, navigate, params.tab]);
 
     // Handlers de API para Gerenciamento de Dados
     const fetchUserCards = async () => {
@@ -211,8 +218,7 @@ const Profile: React.FC = () => {
     };
 
     const openSavedCardsManager = () => {
-        setActiveTab('personal');
-        navigate('/profile?tab=personal');
+        changeActiveTab('personal');
         window.setTimeout(() => {
             document.getElementById('saved-cards-personal-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 120);
@@ -1193,8 +1199,7 @@ const Profile: React.FC = () => {
     const SidebarItem = ({ id, label, icon: Icon }: any) => (
         <button
             onClick={() => {
-                setActiveTab(id);
-                navigate(`?tab=${id}`, { replace: true });
+                changeActiveTab(id, { replace: true });
             }}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === id ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'}`}
         >
@@ -1224,7 +1229,7 @@ const Profile: React.FC = () => {
                             <p className="text-xs text-indigo-100 mt-0.5">Adicione seu CPF e endereço para agilizar o checkout de materiais e planos.</p>
                         </div>
                     </div>
-                    <button onClick={() => setActiveTab('personal')} className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 transition-all flex items-center gap-2 shrink-0 active:scale-95">
+                    <button onClick={() => changeActiveTab('personal')} className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 transition-all flex items-center gap-2 shrink-0 active:scale-95">
                         Completar Agora <ArrowRight size={14} />
                     </button>
                 </div>

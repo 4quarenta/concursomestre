@@ -300,6 +300,48 @@ export interface Notification {
   deletedAt?: number;
 }
 
+export type SeoRobotsPolicy = 'index,follow' | 'noindex,follow' | 'noindex,nofollow' | 'index,nofollow';
+
+export interface SeoPageSettings {
+  title?: string;
+  meta_description?: string;
+  canonical_url?: string;
+  og_title?: string;
+  og_description?: string;
+  og_image?: string;
+  robots_override?: SeoRobotsPolicy | '';
+}
+
+export interface SeoGlobalSettings {
+  site_title: string;
+  meta_description: string;
+  canonical_base_url: string;
+  robots_default: SeoRobotsPolicy;
+  default_og_title: string;
+  default_og_description: string;
+  default_og_image: string;
+  default_twitter_title: string;
+  default_twitter_description: string;
+  default_twitter_image: string;
+  google_site_verification?: string;
+  bing_site_verification?: string;
+  noindex_non_production: boolean;
+  enable_sitemap: boolean;
+  enable_robots_txt_control: boolean;
+}
+
+export interface SeoSettings {
+  global: SeoGlobalSettings;
+  pages: {
+    landing: SeoPageSettings;
+    plans: SeoPageSettings;
+    faq: SeoPageSettings;
+    changelog: SeoPageSettings;
+    privacy: SeoPageSettings;
+    terms: SeoPageSettings;
+  };
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -394,9 +436,13 @@ export interface Ranking {
 export interface DiscountCode {
   code: string;
   discountPercentage: number;
+  discountAmount?: number;
   uses: number;
   maxUses?: number;
   expiresAt?: string;
+  autoApply?: boolean;
+  targetType?: 'all' | 'plan' | 'item';
+  targetId?: string | null;
 }
 
 export interface PlanPricing {
@@ -406,6 +452,8 @@ export interface PlanPricing {
   quarterlyDiscountPercent: number;
   annualDiscountPercent: number;
 }
+
+export type PlanName = 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
 
 export interface Promotion {
   isActive: boolean;
@@ -444,9 +492,14 @@ export interface PlanBenefitDefinition {
   key: PlanBenefitKey;
   label: string;
   description: string;
+  limitKey?: PlanUsageLimitKey;
 }
 
-export type PlanBenefitMatrix = Record<PlanBenefitKey, boolean>;
+export interface PlanBenefitAccess {
+  enabled: boolean;
+}
+
+export type PlanBenefitMatrix = Record<PlanBenefitKey, PlanBenefitAccess>;
 
 export interface PlanEntitlements {
   Gratuito: PlanBenefitMatrix;
@@ -455,9 +508,39 @@ export interface PlanEntitlements {
   Elite: PlanBenefitMatrix;
 }
 
+export type PlanUsageLimitKey =
+  | 'questions_per_day'
+  | 'comments_per_day'
+  | 'simulations_per_week'
+  | 'simulations_per_month'
+  | 'ai_explanations_per_day'
+  | 'saved_questions_limit';
+
+export interface PlanUsageLimitDefinition {
+  key: PlanUsageLimitKey;
+  label: string;
+  description: string;
+  inputLabel: string;
+}
+
+export interface PlanUsageLimitValue {
+  mode: 'unlimited' | 'limited';
+  value: number | null;
+}
+
+export type PlanUsageLimitMatrix = Record<PlanUsageLimitKey, PlanUsageLimitValue>;
+
+export interface PlanUsageLimits {
+  Gratuito: PlanUsageLimitMatrix;
+  Essencial: PlanUsageLimitMatrix;
+  Pro: PlanUsageLimitMatrix;
+  Elite: PlanUsageLimitMatrix;
+}
+
 export interface PlanConfig {
   color: string;
   popular?: boolean;
+  enabled?: boolean;
   features: PlanFeature[];
 }
 
@@ -502,12 +585,15 @@ export interface SystemSettings {
     Elite: PlanConfig;
   };
   planEntitlements?: PlanEntitlements;
+  planUsageLimits?: PlanUsageLimits;
   activePromotion: Promotion;
   coupons: DiscountCode[];
   features: {
     practiceEnabled: boolean;
     marketplaceEnabled: boolean;
     rankingsEnabled: boolean;
+    annotatedLawsEnabled: boolean;
+    flashcardsEnabled: boolean;
     communityEnabled: boolean;
     aiCommentsEnabled: boolean;
     bulkImportEnabled: boolean;
@@ -557,6 +643,7 @@ export interface SystemSettings {
   firebaseConfig?: any;
   taxonomies?: GlobalTaxonomies;
   examBank?: Prova[];
+  seo?: SeoSettings;
 }
 
 export interface Material {
@@ -614,6 +701,8 @@ export interface Plan {
   tier?: number; // 1=Gratuito, 2=Essencial, 3=Pro, 4=Elite
   features: PlanFeature[];
   external_plan_id?: string;
+  is_active?: boolean;
+  canonical_name?: PlanName;
 }
 
 export interface UserSubscription {

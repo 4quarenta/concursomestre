@@ -21,9 +21,28 @@ export interface UserStatistics {
     accuracyRate: number;
     currentStreak: number;
     bestStreak: number;
+    questionStudyTime: number;
+    readingStudyTime: number;
     totalStudyTime: number;
-    lastActivity: Date;
+    lastActivity: string;
     subjectBreakdown: SubjectStatistics[];
+}
+
+export interface StudySessionPayload {
+    practiceSeconds: number;
+    simulationSeconds: number;
+    readingSeconds: number;
+    startedAt?: string;
+    endedAt?: string;
+    sourceContext?: Record<string, unknown>;
+}
+
+export interface StudySessionResult {
+    sessionId: string;
+    questionStudyTime: number;
+    readingStudyTime: number;
+    totalStudyTime: number;
+    statistics: UserStatistics;
 }
 
 export interface SubjectStatistics {

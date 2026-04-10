@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://concursomestre.com.br/sitemap.xml

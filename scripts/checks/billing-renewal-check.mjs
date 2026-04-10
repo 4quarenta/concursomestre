@@ -14,13 +14,17 @@ import path from 'node:path';
 
 const repoRoot = process.cwd();
 const backendRoot = 'C:/xampp/htdocs/questao-pro-backend';
-const jsonOutput = path.join(repoRoot, 'billing-renewal-check.json');
-const mdOutput = path.join(repoRoot, 'billing-renewal-check.md');
-const e2eReportPath = path.join(repoRoot, 'scripts', 'checks', 'billing-e2e-report.json');
+const reportsRoot = path.join(repoRoot, 'scripts', 'checks', 'output');
+const docsReportsRoot = path.join(repoRoot, 'docs', 'reports');
+const jsonOutput = path.join(reportsRoot, 'billing-renewal-check.json');
+const mdOutput = path.join(docsReportsRoot, 'billing-renewal-check.md');
+const e2eReportPath = path.join(reportsRoot, 'billing-e2e-report.json');
 
 const read = (filePath) => fs.readFileSync(filePath, 'utf8');
 const exists = (filePath) => fs.existsSync(filePath);
 const normalize = (value) => value.replace(/\r\n/g, '\n');
+fs.mkdirSync(reportsRoot, { recursive: true });
+fs.mkdirSync(docsReportsRoot, { recursive: true });
 
 /**
  * Busca texto ou regex dentro de um arquivo.

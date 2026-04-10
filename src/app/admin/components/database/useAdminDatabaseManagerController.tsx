@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useToast } from '@providers/ToastProvider';
 import AdminDatabaseNavigation from './AdminDatabaseNavigation';
 import AdminDatabaseModals from './AdminDatabaseModals';
@@ -73,7 +73,7 @@ export const useAdminDatabaseManagerController = ({
   initialTab = 'questions',
 }: AdminDatabaseManagerControllerProps) => {
   const { addToast } = useToast();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
 
   /**
    * Controla categoria ativa, subaba e filtro textual da area de base de dados.
@@ -87,8 +87,8 @@ export const useAdminDatabaseManagerController = ({
     handleSelectSubTab,
   } = useAdminDatabaseNavigationState({
     initialTab,
-    searchTab: searchParams.get('tab'),
-    locationHash: window.location.hash,
+    searchTab: initialTab,
+    locationHash: location.hash,
   });
 
   /**
@@ -113,7 +113,11 @@ export const useAdminDatabaseManagerController = ({
     setSelectedParentId,
     showTaxonomyModal,
     handleSaveFilter,
-    handleDeleteFilter,
+    pendingDeleteFilter,
+    isDeletingFilter,
+    requestDeleteFilter,
+    cancelDeleteFilter,
+    confirmDeleteFilter,
     startEditingFilter,
     cancelEditingFilter,
     openCreateFilterModal,
@@ -182,9 +186,11 @@ export const useAdminDatabaseManagerController = ({
   const {
     handleGeminiApiKeyChange,
     handleSaveImportSettings,
+    isSavingImportSettings,
   } = useAdminImportSettingsBridge({
     systemSettings,
     updateSystemSettings,
+    saveSystemSettingsNow,
   });
 
   /**
@@ -347,9 +353,10 @@ export const useAdminDatabaseManagerController = ({
     onCreateFilter: openCreateFilterModal,
     onCreateChildFilter: openCreateChildFilterModal,
     onEditFilter: startEditingFilter,
-    onDeleteFilter: handleDeleteFilter,
+    onDeleteFilter: requestDeleteFilter,
     onGeminiApiKeyChange: handleGeminiApiKeyChange,
     onSaveImportSettings: handleSaveImportSettings,
+    isSavingImportSettings,
   };
 
   /**
@@ -395,6 +402,10 @@ export const useAdminDatabaseManagerController = ({
     onSelectedParentIdChange: setSelectedParentId,
     onCloseTaxonomyModal: cancelEditingFilter,
     onSaveFilter: handleSaveFilter,
+    pendingDeleteFilter,
+    isDeletingFilter,
+    onCancelDeleteFilter: cancelDeleteFilter,
+    onConfirmDeleteFilter: confirmDeleteFilter,
   };
 
   return {

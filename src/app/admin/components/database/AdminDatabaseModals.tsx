@@ -15,6 +15,7 @@ import MaterialModerationModal from '../materials/MaterialModerationModal';
 import ManualQuestionModal from '../questions/ManualQuestionModal';
 import RankingEditorModal from '../rankings/RankingEditorModal';
 import UserProfileAdminModal from '../users/UserProfileAdminModal';
+import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 interface AdminDatabaseModalsProps {
   isManualQuestionModalOpen: boolean;
@@ -56,6 +57,10 @@ interface AdminDatabaseModalsProps {
   onSelectedParentIdChange: (value: string) => void;
   onCloseTaxonomyModal: () => void;
   onSaveFilter: () => Promise<any>;
+  pendingDeleteFilter: { id: number; name: string } | null;
+  isDeletingFilter: boolean;
+  onCancelDeleteFilter: () => void;
+  onConfirmDeleteFilter: () => Promise<any> | any;
 }
 
 const AdminDatabaseModals = ({
@@ -98,6 +103,10 @@ const AdminDatabaseModals = ({
   onSelectedParentIdChange,
   onCloseTaxonomyModal,
   onSaveFilter,
+  pendingDeleteFilter,
+  isDeletingFilter,
+  onCancelDeleteFilter,
+  onConfirmDeleteFilter,
 }: AdminDatabaseModalsProps) => (
   <>
     {isManualQuestionModalOpen && <ManualQuestionModal {...manualQuestionModalProps} />}
@@ -152,6 +161,16 @@ const AdminDatabaseModals = ({
         onSave={onSaveFilter}
       />
     )}
+
+    <AdminConfirmDialog
+      isOpen={pendingDeleteFilter !== null}
+      title="Excluir filtro"
+      description={`O filtro "${pendingDeleteFilter?.name || ''}" sera removido permanentemente do cadastro oficial.`}
+      confirmLabel="Excluir filtro"
+      loading={isDeletingFilter}
+      onCancel={onCancelDeleteFilter}
+      onConfirm={() => void onConfirmDeleteFilter()}
+    />
   </>
 );
 

@@ -39,6 +39,7 @@ import { useMarketplace } from '@providers/MarketplaceProvider';
 import { Link, useNavigate } from 'react-router-dom';
 import AdBanner from '../../../components/shared/feedback/AdBanner';
 import { getBenefitPlanLabel, getBenefitRequiredPlan, hasPlanBenefit } from '@services/plans/planAccess';
+import { buildQuestionPath } from '@services/seo';
 
 interface QuestionCardProps {
   question: Question;
@@ -116,9 +117,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   // Auto-expand comments when question is highlighted OR when there's a comment hash
   useEffect(() => {
     const hash = window.location.hash;
+    const hasCommentQuery = new URLSearchParams(window.location.search).has('comment');
     const hasCommentHash = hash.includes('comment-');
 
-    if (isHighlighted || hasCommentHash) {
+    if (isHighlighted || hasCommentQuery || hasCommentHash) {
       setShowComments(true);
 
       // Scroll to comment if hash exists
@@ -394,7 +396,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold text-slate-400 dark:text-slate-500">#{indexDisplay}</span>
-            <span className="text-[10px] font-bold text-slate-300 dark:text-slate-600">Q{question.id}</span>
+            <Link
+              to={buildQuestionPath(question)}
+              className="text-[10px] font-bold text-slate-300 transition-colors hover:text-indigo-500 hover:underline dark:text-slate-600 dark:hover:text-indigo-400"
+              title={`Abrir pagina da questao ${question.id}`}
+            >
+              Q{question.id}
+            </Link>
             <div className="flex gap-1.5">
               <span className="inline-flex items-center justify-center px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 text-[8px] font-bold rounded uppercase tracking-wide">{(question.assuntos && question.assuntos.length > 0) ? question.assuntos[0].nome : 'Geral'}</span>
               <span className="inline-flex items-center justify-center px-2 py-0.5 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-[8px] font-bold rounded border border-slate-200 dark:border-slate-600 uppercase">{['', 'Muito Fácil', 'Fácil', 'Médio', 'Difícil', 'Muito Difícil'][Number(question.dificuldade)] || 'Dificuldade ' + question.dificuldade}</span>

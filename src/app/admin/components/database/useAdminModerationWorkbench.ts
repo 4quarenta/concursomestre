@@ -41,6 +41,8 @@ export const useAdminModerationWorkbench = ({
     setModerationReason,
     moderationEvidence,
     setModerationEvidence,
+    pendingModerationAction,
+    actionLoading,
     openMaterialModeration,
     openBlockedMaterialForReview,
     handleEditReportTarget,
@@ -48,6 +50,8 @@ export const useAdminModerationWorkbench = ({
     handleApproveMaterial,
     handleHideMaterial,
     handleBlockMaterial,
+    cancelPendingModerationAction,
+    confirmPendingModerationAction,
     handleEvidenceSelected,
   } = useMaterialModerationWorkflow({
     questions,
@@ -79,6 +83,10 @@ export const useAdminModerationWorkbench = ({
         onApprove: handleApproveMaterial,
         onHide: handleHideMaterial,
         onBlock: handleBlockMaterial,
+        pendingModerationAction,
+        actionLoading,
+        onCancelPendingAction: cancelPendingModerationAction,
+        onConfirmPendingAction: confirmPendingModerationAction,
       }
     : null;
 

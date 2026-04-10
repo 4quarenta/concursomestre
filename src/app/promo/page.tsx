@@ -14,6 +14,7 @@ import React from 'react';
 import { useData } from '@providers/DataProvider';
 import { Check, Star, Zap, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { buildProfilePath } from '../profile/profileNavigation';
 
 const PromoLanding: React.FC = () => {
     const { systemSettings } = useData();
@@ -38,7 +39,7 @@ const PromoLanding: React.FC = () => {
                     <h1 className="text-5xl md:text-7xl font-black tracking-tight leading-none drop-shadow-sm">{promo.landingPageHeadline}</h1>
                     <p className="text-xl md:text-2xl font-medium opacity-90 max-w-2xl mx-auto leading-relaxed">{promo.landingPageSubheadline}</p>
                     <div className="pt-4">
-                        <button onClick={() => navigate('/profile')} className="px-12 py-5 bg-white text-slate-900 font-black uppercase tracking-widest text-sm rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all">
+                        <button onClick={() => navigate(buildProfilePath('personal'))} className="px-12 py-5 bg-white text-slate-900 font-black uppercase tracking-widest text-sm rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all">
                             Quero Aproveitar {promo.discountPercentage}% OFF
                         </button>
                     </div>
@@ -80,7 +81,7 @@ const PromoLanding: React.FC = () => {
                             </div>
                         </div>
                         <p className="text-indigo-100 font-medium mb-12 text-lg max-w-xl opacity-90">Sua jornada rumo à estabilidade começa com a melhor decisão do seu ano.</p>
-                        <button onClick={() => navigate('/profile')} className="w-full md:w-auto px-16 py-6 bg-white text-indigo-700 font-black uppercase tracking-widest text-sm rounded-2xl shadow-xl hover:bg-slate-50 hover:scale-105 active:scale-95 transition-all">
+                        <button onClick={() => navigate(buildProfilePath('personal'))} className="w-full md:w-auto px-16 py-6 bg-white text-indigo-700 font-black uppercase tracking-widest text-sm rounded-2xl shadow-xl hover:bg-slate-50 hover:scale-105 active:scale-95 transition-all">
                             Assinar com Desconto
                         </button>
                         <div className="flex items-center gap-2 mt-8 text-[11px] opacity-70 uppercase tracking-widest font-black">

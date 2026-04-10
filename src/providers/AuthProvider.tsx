@@ -288,7 +288,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         message,
         'success',
         'system',
-        '/profile?tab=evolution',
+        '/profile/personal',
       ).catch(err => console.warn('Falha ao criar notificação de level up:', err));
     }
   }, [state.currentUser]);

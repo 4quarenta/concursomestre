@@ -20,7 +20,7 @@ export type AdminPanelSection = 'dashboard' | 'alerts' | 'billing-health';
 export type AdminOperationSection = 'questions' | 'exams' | 'import' | 'filters' | 'users' | 'materials' | 'rankings';
 export type AdminFinanceSection = 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation';
 export type AdminSupportSection = 'feedback' | 'threads' | 'reports';
-export type AdminSettingsSection = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'ads' | 'performance' | 'logs';
+export type AdminSettingsSection = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'ads' | 'seo' | 'performance' | 'logs';
 
 export type AdminNavigationTab = {
   key: AdminPageTab;
@@ -40,14 +40,14 @@ export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
   operation: 'Questoes, importacao, usuarios, materiais e rankings.',
   finance: 'Transacoes, assinaturas, reembolsos, planos e automacao.',
   support: 'Feedbacks, denuncias e threads operacionais.',
-  settings: 'Controles globais, integracoes, email, ads e logs.',
+  settings: 'Controles globais, integracoes, email, ads, SEO e logs.',
 };
 
 export const PANEL_SECTION_KEYS = ['dashboard', 'alerts', 'billing-health'] as const;
 export const OPERATION_SECTION_KEYS = ['questions', 'exams', 'import', 'filters', 'users', 'materials', 'rankings'] as const;
 export const FINANCE_SECTION_KEYS = ['subscriptions', 'transactions', 'refunds', 'plans-coupons', 'automation'] as const;
 export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports'] as const;
-export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'security', 'integrations', 'email', 'ads', 'performance', 'logs'] as const;
+export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'security', 'integrations', 'email', 'ads', 'seo', 'performance', 'logs'] as const;
 
 /**
  * Valida a secao do grupo Painel.
@@ -125,6 +125,7 @@ export const LEGACY_TAB_MAP: Record<string, { tab: AdminPageTab; section?: strin
   integrations: { tab: 'settings', section: 'integrations' },
   email: { tab: 'settings', section: 'email' },
   ads: { tab: 'settings', section: 'ads' },
+  seo: { tab: 'settings', section: 'seo' },
   performance: { tab: 'settings', section: 'performance' },
   logs: { tab: 'settings', section: 'logs' },
 };
@@ -168,6 +169,7 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'integrations', label: 'Integracoes' },
     { key: 'email', label: 'Email' },
     { key: 'ads', label: 'Ads' },
+    { key: 'seo', label: 'SEO' },
     { key: 'performance', label: 'Performance' },
     { key: 'logs', label: 'Logs' },
   ],
@@ -184,4 +186,83 @@ export const DEFAULT_SECTION_BY_TAB: Record<AdminPageTab, string> = {
   finance: 'subscriptions',
   support: 'feedback',
   settings: 'general',
+};
+
+const normalizeAdminRouteSegment = (value?: string | null) =>
+  String(value || '').trim().toLowerCase();
+
+const resolveSectionByTab = (tab: AdminPageTab, rawSection?: string | null) => {
+  const section = normalizeAdminRouteSegment(rawSection);
+
+  if (tab === 'panel') {
+    return isPanelSection(section) ? section : DEFAULT_SECTION_BY_TAB.panel;
+  }
+
+  if (tab === 'operation') {
+    return isOperationSection(section) ? section : DEFAULT_SECTION_BY_TAB.operation;
+  }
+
+  if (tab === 'finance') {
+    return isFinanceSection(section) ? section : DEFAULT_SECTION_BY_TAB.finance;
+  }
+
+  if (tab === 'support') {
+    return isSupportSection(section) ? section : DEFAULT_SECTION_BY_TAB.support;
+  }
+
+  return isSettingsSection(section) ? section : DEFAULT_SECTION_BY_TAB.settings;
+};
+
+/**
+ * Resolve a rota administrativa canonica a partir de segmentos atuais ou legados.
+ *
+ * @since 1.0.0
+ */
+export const resolveAdminRoute = (rawTab?: string | null, rawSection?: string | null) => {
+  const normalizedTab = normalizeAdminRouteSegment(rawTab);
+  const normalizedSection = normalizeAdminRouteSegment(rawSection);
+
+  if (normalizedTab === 'operation' && normalizedSection === 'reports') {
+    return { tab: 'support' as const, section: 'reports' as const };
+  }
+
+  if (isAdminPageTab(normalizedTab)) {
+    const legacySection = LEGACY_TAB_MAP[normalizedSection];
+    const section = legacySection?.tab === normalizedTab
+      ? legacySection.section || DEFAULT_SECTION_BY_TAB[normalizedTab]
+      : normalizedSection;
+
+    return {
+      tab: normalizedTab,
+      section: resolveSectionByTab(normalizedTab, section),
+    };
+  }
+
+  if (LEGACY_TAB_MAP[normalizedTab]) {
+    const legacy = LEGACY_TAB_MAP[normalizedTab];
+    return {
+      tab: legacy.tab,
+      section: resolveSectionByTab(legacy.tab, normalizedSection || legacy.section),
+    };
+  }
+
+  return {
+    tab: 'panel' as const,
+    section: DEFAULT_SECTION_BY_TAB.panel as AdminPanelSection,
+  };
+};
+
+/**
+ * Monta a URL canonica do admin no formato `/admin/<tab>/<section>`.
+ *
+ * @since 1.0.0
+ */
+export const buildAdminPath = (
+  tab: AdminPageTab,
+  section?: string | null,
+  hash = '',
+) => {
+  const resolved = resolveAdminRoute(tab, section);
+  const safeHash = hash.startsWith('#') ? hash : '';
+  return `/admin/${resolved.tab}/${resolved.section}${safeHash}`;
 };

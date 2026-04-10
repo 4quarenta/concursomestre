@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { useData } from '@providers/DataProvider';
 import { useAuth } from '@providers/AuthProvider';
+import { useStudyTracker } from '@providers/StudyTrackerProvider';
 import {
   PLATFORM_METRIC_VALUE_CLASS,
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -52,6 +53,7 @@ import {
   type DashboardTimeRange,
 } from '@services/dashboard/dashboardInsightsService';
 import { getStudyStreakSnapshot, touchStudyStreak, type StudyStreakSnapshot } from '@services/dashboard/studyStreakService';
+import { formatStudyDuration } from '@services/statistics/studyTimeFormatting';
 
 const EMPTY_STREAK: StudyStreakSnapshot = {
   current: 0,
@@ -163,7 +165,9 @@ const CircularPerformanceRing = ({
 const Dashboard: React.FC = () => {
   const { currentUser } = useAuth();
   const { userAnswers, questions, userComments, systemSettings, ensureUserProgressLoaded } = useData();
+  const { displayTotals, isLoading: isStudyTimeLoading } = useStudyTracker();
   const [timeRange, setTimeRange] = useState<DashboardTimeRange>('all');
+  const [showCorrectTimeline, setShowCorrectTimeline] = useState<boolean>(true);
   const [dailyMotivationMarkdown, setDailyMotivationMarkdown] = useState<string>(systemSettings.dailyMotivationMarkdown || '');
   const [studyStreak, setStudyStreak] = useState<StudyStreakSnapshot>(() => (
     currentUser?.id ? getStudyStreakSnapshot(currentUser.id) : EMPTY_STREAK
@@ -336,7 +340,7 @@ const Dashboard: React.FC = () => {
         />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-3 xl:grid-cols-[1.25fr_0.9fr_1fr]">
         <section className="rounded-[2rem] border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-violet-100 p-5 shadow-sm dark:border-indigo-900/40 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/70">
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700 shadow-sm dark:bg-indigo-500/20 dark:text-indigo-200">
@@ -384,6 +388,40 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </section>
+
+        <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300">
+              <Calendar size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Tempo de Estudos</h2>
+                <span className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                  {isStudyTimeLoading ? 'Sincronizando' : 'Ao vivo'}
+                </span>
+              </div>
+              <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+                Leitura, questoes e total acumulado com a sessao atual.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-3 gap-2">
+            <div className="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-800/70">
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Leitura</p>
+              <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.readingSeconds)}</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-800/70">
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Questoes</p>
+              <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.questionSeconds)}</p>
+            </div>
+            <div className="rounded-2xl bg-indigo-50 px-3 py-3 dark:bg-indigo-500/10">
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-indigo-500 dark:text-indigo-300">Total</p>
+              <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.totalSeconds)}</p>
+            </div>
+          </div>
+        </section>
       </div>
 
       {systemSettings.adsEnabled && (
@@ -404,8 +442,21 @@ const Dashboard: React.FC = () => {
                 O grafico agora mostra atividade real de questoes respondidas no periodo.
               </p>
             </div>
-            <div className="inline-flex rounded-xl bg-indigo-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
-              Questoes respondidas
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCorrectTimeline((currentValue) => !currentValue)}
+                className={`inline-flex items-center rounded-xl border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] transition-colors ${
+                  showCorrectTimeline
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                    : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+                }`}
+              >
+                {showCorrectTimeline ? 'Ocultar acertos' : 'Mostrar acertos'}
+              </button>
+              <div className="inline-flex rounded-xl bg-indigo-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+                Questoes respondidas
+              </div>
             </div>
           </div>
 
@@ -439,8 +490,10 @@ const Dashboard: React.FC = () => {
                     ]}
                     labelFormatter={(label) => `Periodo: ${label}`}
                   />
-                    <Area type="linear" dataKey="questions" stroke="#4f46e5" fill="url(#questionsFill)" strokeWidth={2.5} name="questions" />
+                  <Area type="linear" dataKey="questions" stroke="#4f46e5" fill="url(#questionsFill)" strokeWidth={2.5} name="questions" />
+                  {showCorrectTimeline ? (
                     <Area type="linear" dataKey="correct" stroke="#0ea5a4" fill="url(#correctFill)" strokeWidth={2} name="correct" />
+                  ) : null}
                 </AreaChart>
               </ResponsiveContainer>
             ) : (

@@ -50,23 +50,23 @@ const AdminPageContent = ({
   settingsSectionKey,
 }: AdminPageContentProps) => {
   if (activeTab === 'panel') {
-    return <AdminPanelSection {...panelSectionProps} key={panelSectionKey} />;
+    return <AdminPanelSection {...panelSectionProps} />;
   }
 
   if (activeTab === 'operation') {
-    return <AdminDatabaseManager {...databaseSectionProps} key={databaseSectionKey} />;
+    return <AdminDatabaseManager {...databaseSectionProps} />;
   }
 
   if (activeTab === 'finance') {
-    return <AdminFinanceSection {...financeSectionProps} key={financeSectionKey} />;
+    return <AdminFinanceSection {...financeSectionProps} />;
   }
 
   if (activeTab === 'support') {
-    return <AdminSupportSection {...supportSectionProps} key={supportSectionKey} />;
+    return <AdminSupportSection {...supportSectionProps} />;
   }
 
   if (activeTab === 'settings') {
-    return <AdminSettingsSection {...settingsSectionProps} key={settingsSectionKey} />;
+    return <AdminSettingsSection {...settingsSectionProps} />;
   }
 
   return null;

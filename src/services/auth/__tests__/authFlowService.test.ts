@@ -48,6 +48,20 @@ vi.mock('@services/api', () => ({
   },
 }));
 
+vi.mock('@services/api/response', () => ({
+  readApiErrorMessage: (error: any, fallbackMessage: string) => {
+    if (typeof error?.response?.data?.message === 'string' && error.response.data.message.trim()) {
+      return error.response.data.message;
+    }
+
+    if (typeof error?.message === 'string' && error.message.trim()) {
+      return error.message;
+    }
+
+    return fallbackMessage;
+  },
+}));
+
 import { authFlowService } from '../authFlowService';
 
 describe('authFlowService', () => {
@@ -178,6 +192,20 @@ describe('authFlowService', () => {
     });
     expect(result.message).toBe('Conta confirmada.');
     expect(result.newXp).toBe(50);
+  });
+
+  it('propagates the backend confirm-email error message', async () => {
+    mockPost.mockRejectedValueOnce({
+      response: {
+        data: {
+          message: 'Link de verificacao invalido ou expirado.',
+        },
+      },
+    });
+
+    await expect(authFlowService.confirmEmail('token-invalido')).rejects.toThrow(
+      'Link de verificacao invalido ou expirado.',
+    );
   });
 
   it('resets the password through the official endpoint', async () => {

@@ -38,6 +38,7 @@ interface AdminImportSectionProps {
   systemSettings: SystemSettings;
   onGeminiApiKeyChange: (value: string) => void;
   onSaveSettings: () => void;
+  isSavingSettings?: boolean;
   qFile: File | null;
   onQFileChange: (file: File | null) => void;
   kFile: File | null;
@@ -63,6 +64,7 @@ const AdminImportSection = ({
   systemSettings,
   onGeminiApiKeyChange,
   onSaveSettings,
+  isSavingSettings = false,
   qFile,
   onQFileChange,
   kFile,
@@ -116,9 +118,10 @@ const AdminImportSection = ({
                 <button
                   type="button"
                   onClick={onSaveSettings}
+                  disabled={isSavingSettings}
                   className="h-9 rounded-xl bg-indigo-50 px-3 text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
                 >
-                  <Save size={14} />
+                  {isSavingSettings ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 </button>
               </div>
               {!systemSettings.geminiApiKey && (

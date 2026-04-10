@@ -29,8 +29,6 @@ function Get-FrontendTargets {
     )
 
     $targets = @(
-        (Join-Path $Root 'App.tsx')
-        (Join-Path $Root 'index.tsx')
         (Join-Path $Root 'vite.config.ts')
     ) | Where-Object { Test-Path $_ }
 

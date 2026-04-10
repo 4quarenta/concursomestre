@@ -46,7 +46,15 @@ vi.mock('@services/api', () => ({
   },
 }));
 
-import { filtersService, normalizeFiltersToTaxonomies } from '../index';
+import {
+  ENEM_FOCUS_NAME,
+  filtersService,
+  getEnemSubjectAreasForQuestion,
+  injectEnemFocusOption,
+  isEnemQuestion,
+  normalizeCareerSelectorLabel,
+  normalizeFiltersToTaxonomies,
+} from '../index';
 
 describe('filtersService', () => {
   beforeEach(() => {
@@ -63,6 +71,38 @@ describe('filtersService', () => {
     expect(taxonomies.agencies[0].name).toBe('FGV');
     expect(taxonomies.subjects[0].name).toBe('Direito');
     expect(taxonomies.years).toEqual(['2024']);
+  });
+
+  it('always exposes ENEM in the foco selector helper', () => {
+    expect(injectEnemFocusOption(['Policial', 'Fiscal'])).toEqual([
+      ENEM_FOCUS_NAME,
+      'Policial',
+      'Fiscal',
+    ]);
+  });
+
+  it('normalizes focus labels to a single slash-based pattern', () => {
+    expect(normalizeCareerSelectorLabel('Educação (Professores, Especialistas e outros)')).toBe(
+      'Educação / Professores, Especialistas e outros',
+    );
+    expect(normalizeCareerSelectorLabel('Educação / Professor')).toBe('Educação / Professor');
+  });
+
+  it('detects ENEM questions and maps subject areas', () => {
+    const enemQuestion = {
+      orgaos: [{ nome: 'INEP', sigla: 'INEP' }],
+      carreiras: [],
+      bancas: [],
+      assuntos: [
+        { nome: 'Geografia', materia: true },
+        { nome: 'Cartografia', materia: false },
+      ],
+      areas: [],
+      provas: [{ nome: 'ENEM 2025', orgao: { nome: 'INEP' }, banca: { nome: 'INEP' } }],
+    } as any;
+
+    expect(isEnemQuestion(enemQuestion)).toBe(true);
+    expect(getEnemSubjectAreasForQuestion(enemQuestion)).toContain('Ciencias Humanas e suas Tecnologias');
   });
 
   it('loads raw filters payload from the official endpoint', async () => {

@@ -9,11 +9,12 @@
 *
 */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Download, Edit3, Trash2 } from 'lucide-react';
 import type { Material } from '@types';
 import { useToast } from '@providers/ToastProvider';
 import { buildMaterialAccessEndpoint, openAuthenticatedFile } from '@services/api';
+import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 interface AdminMaterialsSectionProps {
   materials: Material[];
@@ -29,10 +30,41 @@ const AdminMaterialsSection = ({
   onDelete,
 }: AdminMaterialsSectionProps) => {
   const { addToast } = useToast();
+  const [pendingDeleteMaterial, setPendingDeleteMaterial] = useState<Material | null>(null);
+  const [isDeletingMaterial, setIsDeletingMaterial] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteMaterial || isDeletingMaterial) {
+      return;
+    }
+
+    setIsDeletingMaterial(true);
+    try {
+      await onDelete(pendingDeleteMaterial.id);
+      setPendingDeleteMaterial(null);
+    } finally {
+      setIsDeletingMaterial(false);
+    }
+  };
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors duration-300">
-      <table className="w-full text-left text-xs">
+    <>
+      <AdminConfirmDialog
+        isOpen={pendingDeleteMaterial !== null}
+        title="Excluir material"
+        description={`O material "${pendingDeleteMaterial?.title || ''}" sera removido permanentemente da plataforma.`}
+        confirmLabel="Excluir material"
+        loading={isDeletingMaterial}
+        onCancel={() => {
+          if (!isDeletingMaterial) {
+            setPendingDeleteMaterial(null);
+          }
+        }}
+        onConfirm={() => void handleConfirmDelete()}
+      />
+
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors duration-300">
+        <table className="w-full text-left text-xs">
         <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
           <tr>
             {renderSortableHeader('Material', 'title')}
@@ -101,7 +133,7 @@ const AdminMaterialsSection = ({
                   )}
                   <button
                     type="button"
-                    onClick={() => onDelete(material.id)}
+                    onClick={() => setPendingDeleteMaterial(material)}
                     className="p-2 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 rounded-lg transition-colors"
                   >
                     <Trash2 size={14} />
@@ -118,8 +150,9 @@ const AdminMaterialsSection = ({
             </tr>
           )}
         </tbody>
-      </table>
-    </div>
+        </table>
+      </div>
+    </>
   );
 };
 

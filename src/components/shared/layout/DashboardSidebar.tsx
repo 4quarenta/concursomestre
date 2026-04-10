@@ -86,7 +86,7 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ type, active
 
     const handleLogout = () => {
         logout();
-        window.location.href = '/#/auth'; // Força redirecionamento via URL para garantir limpeza total
+        window.location.assign('/auth');
     };
 
     return (

@@ -13,7 +13,7 @@ import React, { useState, useMemo } from 'react';
 import ReactDOM, { createPortal } from 'react-dom';
 import { Subject, Material } from '@types';
 import { Search, Filter, BookOpen, Star, ArrowRight, Shield, CheckCircle, Lock, CreditCard, Layout, Book, FileText, ShoppingBag, X, ChevronRight, Tag, History, Clock, AlertTriangle, Package, TrendingUp, Download, RefreshCcw, ShieldCheck, Eye, MessageSquare, Send, Check, Flag, Store, List, Grid, ShieldAlert, XCircle, GraduationCap } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
@@ -495,6 +495,7 @@ const Marketplace: React.FC = () => {
     const { reportError, reports, systemSettings, ensureTaxonomiesLoaded } = useData();
     const { addToast } = useToast();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const [activeTab, setActiveTab] = useState<'browse' | 'orders'>('browse');
     const [filter, setFilter] = useState<{ keyword: string; subject: string; type: string; price: string; authorId: string | null }>({ keyword: '', subject: 'All', type: 'All', price: 'All', authorId: null });
@@ -507,34 +508,26 @@ const Marketplace: React.FC = () => {
 
     // Handle deep linking from notifications
     React.useEffect(() => {
-        const handleHashChange = () => {
-            const hash = window.location.hash;
-            if (hash.includes('/marketplace') && hash.includes('openMaterial=')) {
-                try {
-                    const urlStr = hash.replace('#', '');
-                    const url = new URL(urlStr, window.location.origin);
-                    const openMaterialId = url.searchParams.get('openMaterial');
-                    const hasComment = url.searchParams.get('comment');
+        const openMaterialId = searchParams.get('openMaterial');
+        const hasComment = searchParams.get('comment');
 
-                    if (openMaterialId && materials.length > 0) {
-                        const targetMaterial = materials.find(m => String(m.id) === openMaterialId);
-                        if (targetMaterial && !selectedMaterial) {
-                            setSelectedMaterial(targetMaterial);
-                            if (hasComment) {
-                                setInitialModalTab('reviews'); // Dúvidas are inside reviews tab now
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.error("Error parsing URL hash for deep linking", e);
-                }
-            }
-        };
+        if (!openMaterialId || materials.length === 0) {
+            return;
+        }
 
-        handleHashChange(); // Check on mount
-        window.addEventListener('hashchange', handleHashChange);
-        return () => window.removeEventListener('hashchange', handleHashChange);
-    }, [materials, selectedMaterial]);
+        const targetMaterial = materials.find((material) => String(material.id) === openMaterialId);
+        if (!targetMaterial) {
+            return;
+        }
+
+        if (!selectedMaterial || String(selectedMaterial.id) !== String(targetMaterial.id)) {
+            setSelectedMaterial(targetMaterial);
+        }
+
+        if (hasComment) {
+            setInitialModalTab('reviews');
+        }
+    }, [materials, searchParams, selectedMaterial]);
 
     React.useEffect(() => {
         ensureTaxonomiesLoaded();
@@ -793,7 +786,7 @@ const Marketplace: React.FC = () => {
                             </p>
                         </div>
                         <div className="flex flex-col gap-2 pt-2">
-                            <button onClick={() => navigate('/profile?tab=personal')} className="w-full py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all">Completar Agora</button>
+                                <button onClick={() => navigate('/profile/personal')} className="w-full py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all">Completar Agora</button>
                             <button onClick={() => setShowKYCWarning(false)} className="text-[10px] font-bold text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 py-2 transition-colors">Cancelar</button>
                         </div>
                     </div>
@@ -1221,9 +1214,11 @@ const Marketplace: React.FC = () => {
                     onClose={() => {
                         setSelectedMaterial(null);
                         setInitialModalTab('overview');
-                        // Clean up URL to prevent reopening on reload if desired, but for now just close it.
-                        if (window.location.hash.includes('openMaterial=')) {
-                            window.location.hash = '/marketplace';
+                        if (searchParams.has('openMaterial') || searchParams.has('comment')) {
+                            const nextParams = new URLSearchParams(searchParams);
+                            nextParams.delete('openMaterial');
+                            nextParams.delete('comment');
+                            setSearchParams(nextParams, { replace: true });
                         }
                     }}
                     onBuy={() => handleBuy(selectedMaterial)}

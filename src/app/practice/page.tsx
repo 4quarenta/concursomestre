@@ -20,8 +20,52 @@ import { useData } from '@providers/DataProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import AdBanner from '../../components/shared/feedback/AdBanner';
 import { getEffectivePlanName } from '@services/plans/planAccess';
+import {
+  ENEM_FOCUS_NAME,
+  ENEM_SUBJECT_AREA_DESCRIPTIONS,
+  ENEM_SUBJECT_AREA_OPTIONS,
+  getEnemSubjectAreasForQuestion,
+  injectEnemFocusOption,
+  isEnemQuestion,
+  normalizeCareerSelectorLabel,
+} from '@services/filters';
 
 const PAGE_SIZE = 10;
+
+const DEFAULT_FILTERS = {
+  keyword: '',
+  subject: 'All',
+  difficulty: 'All',
+  agency: 'All',
+  organization: 'All',
+  year: 'All',
+  level: 'All',
+  topic: 'All',
+  role: 'All',
+  career: 'All',
+  modality: 'All',
+  onlySaved: false,
+  hasTeacherComment: false,
+  hasDetailedComment: false,
+  excludeCanceled: false,
+  excludeOutdated: false,
+  excludeAnswered: false,
+};
+
+const sanitizePracticeFiltersForFocus = (nextFilters: typeof DEFAULT_FILTERS) => {
+  if (nextFilters.career !== ENEM_FOCUS_NAME) {
+    return nextFilters;
+  }
+
+  return {
+    ...nextFilters,
+    agency: 'All',
+    organization: 'All',
+    level: 'All',
+    role: 'All',
+    modality: 'All',
+  };
+};
 
 const Practice: React.FC = () => {
   const { currentUser, toggleSavedQuestion, addXp } = useAuth();
@@ -35,17 +79,18 @@ const Practice: React.FC = () => {
   const highlightedQuestionId = searchParams.get('questionId');
 
   const initialFilters = useMemo(() => ({
-    keyword: searchParams.get('keyword') || '',
-    subject: searchParams.get('subject') || searchParams.get('materia') || 'All',
-    difficulty: searchParams.get('difficulty') || 'All',
-    agency: searchParams.get('agency') || 'All',
-    organization: searchParams.get('organization') || 'All',
-    year: searchParams.get('year') || 'All',
-    level: searchParams.get('level') || 'All',
-    topic: searchParams.get('topic') || searchParams.get('assunto') || 'All',
-    role: searchParams.get('role') || 'All',
-    career: searchParams.get('career') || 'All',
-    modality: searchParams.get('modality') || 'All',
+    ...DEFAULT_FILTERS,
+    keyword: searchParams.get('keyword') || DEFAULT_FILTERS.keyword,
+    subject: searchParams.get('subject') || searchParams.get('materia') || DEFAULT_FILTERS.subject,
+    difficulty: searchParams.get('difficulty') || DEFAULT_FILTERS.difficulty,
+    agency: searchParams.get('agency') || DEFAULT_FILTERS.agency,
+    organization: searchParams.get('organization') || DEFAULT_FILTERS.organization,
+    year: searchParams.get('year') || DEFAULT_FILTERS.year,
+    level: searchParams.get('level') || DEFAULT_FILTERS.level,
+    topic: searchParams.get('topic') || searchParams.get('assunto') || DEFAULT_FILTERS.topic,
+    role: searchParams.get('role') || DEFAULT_FILTERS.role,
+    career: normalizeCareerSelectorLabel(searchParams.get('career') || DEFAULT_FILTERS.career),
+    modality: searchParams.get('modality') || DEFAULT_FILTERS.modality,
     onlySaved: searchParams.get('onlySaved') === 'true',
     hasTeacherComment: searchParams.get('hasTeacherComment') === 'true',
     hasDetailedComment: searchParams.get('hasDetailedComment') === 'true',
@@ -54,8 +99,8 @@ const Practice: React.FC = () => {
     excludeAnswered: searchParams.get('excludeAnswered') === 'true'
   }), [searchParams]);
 
-  const [filters, setFilters] = useState(initialFilters);
-  const [pendingFilters, setPendingFilters] = useState(initialFilters); // State for UI selection before submit
+  const [filters, setFilters] = useState(() => sanitizePracticeFiltersForFocus(initialFilters));
+  const [pendingFilters, setPendingFilters] = useState(() => sanitizePracticeFiltersForFocus(initialFilters)); // State for UI selection before submit
   const [isFiltering, setIsFiltering] = useState(false);
   const [filterTimestamp, setFilterTimestamp] = useState(Date.now()); // Force reset on filter
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
@@ -67,10 +112,22 @@ const Practice: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loaderRef = useRef<HTMLDivElement>(null);
 
-  // Removido declaração duplicada do searchParams
+  const sanitizeFiltersForFocus = sanitizePracticeFiltersForFocus;
+
+  const isEnemPendingFocus = pendingFilters.career === ENEM_FOCUS_NAME;
+
+  // Removido declarção duplicada do searchParams
   const filteredQuestions = useMemo(() => {
     let filtered = questions.filter(q => {
-      const matchSubject = filters.subject === 'All' || q.assuntos?.some(a => a.nome === filters.subject || (a.materia && a.nome === filters.subject));
+      const enemQuestion = isEnemQuestion(q);
+      const enemSubjectAreas = getEnemSubjectAreasForQuestion(q);
+      const isEnemFocus = filters.career === ENEM_FOCUS_NAME;
+      const matchSubject = filters.subject === 'All'
+        || (
+          isEnemFocus
+            ? enemSubjectAreas.includes(filters.subject as (typeof ENEM_SUBJECT_AREA_OPTIONS)[number])
+            : q.assuntos?.some(a => a.nome === filters.subject || (a.materia && a.nome === filters.subject))
+        );
       
       const difficultyMap: Record<string, number> = {
         'Muito Fácil': 1,
@@ -81,14 +138,19 @@ const Practice: React.FC = () => {
       };
       
       const matchDifficulty = filters.difficulty === 'All' || q.dificuldade === difficultyMap[filters.difficulty];
-      const matchAgency = filters.agency === 'All' || q.bancas?.some(b => b.sigla === filters.agency || b.nome === filters.agency);
-      const matchOrganization = filters.organization === 'All' || q.orgaos?.some(o => o.sigla === filters.organization || o.nome === filters.organization);
+      const matchAgency = isEnemFocus || filters.agency === 'All' || q.bancas?.some(b => b.sigla === filters.agency || b.nome === filters.agency);
+      const matchOrganization = isEnemFocus || filters.organization === 'All' || q.orgaos?.some(o => o.sigla === filters.organization || o.nome === filters.organization);
       const matchYear = filters.year === 'All' || q.anos?.some(y => String(y) === filters.year);
-      const matchLevel = filters.level === 'All' || q.level === filters.level;
+      const matchLevel = isEnemFocus || filters.level === 'All' || q.level === filters.level;
       const matchTopic = filters.topic === 'All' || q.assuntos?.some(a => a.nome === filters.topic);
-      const matchRole = filters.role === 'All' || q.cargos?.some(c => c.descrição === filters.role);
-      const matchCareer = filters.career === 'All' || q.carreiras?.some(c => c.nome === filters.career);
-      const matchModality = filters.modality === 'All' || q.tipo === (filters.modality === 'Certo/Errado' ? 'certo ou errado' : 'multipla escolha');
+      const matchRole = isEnemFocus || filters.role === 'All' || q.cargos?.some(c => ((c as any).descricao || (c as any)['descrição'] || (c as any).name) === filters.role);
+      const matchCareer = filters.career === 'All'
+        || (
+          isEnemFocus
+            ? enemQuestion
+            : q.carreiras?.some(c => normalizeCareerSelectorLabel(c?.nome) === normalizeCareerSelectorLabel(filters.career))
+        );
+      const matchModality = isEnemFocus || filters.modality === 'All' || q.tipo === (filters.modality === 'Certo/Errado' ? 'certo ou errado' : 'multipla escolha');
       const matchKeyword = !filters.keyword || (q.enunciado_clean || q.enunciado || '').toLowerCase().includes(filters.keyword.toLowerCase());
       const matchSaved = !filters.onlySaved || currentUser?.savedQuestionIds.includes(String(q.id));
 
@@ -102,7 +164,6 @@ const Practice: React.FC = () => {
       return matchSubject && matchDifficulty && matchKeyword && matchAgency && matchOrganization && matchYear && matchLevel && matchTopic && matchRole && matchCareer && matchModality && matchSaved && matchTeacher && matchDetailed && matchCanceled && matchOutdated && matchExcludeAnswered;
     });
 
-    // If highlightedQuestionId exists, filter to show only that question
     if (highlightedQuestionId) {
       filtered = filtered.filter(q => String(q.id) === highlightedQuestionId);
     }
@@ -183,20 +244,48 @@ const Practice: React.FC = () => {
   }, [currentUser, dispatchAnswer]);
 
   const handleFilterChange = useCallback((key: string, value: any) => {
-    setPendingFilters(prev => ({ ...prev, [key]: value }));
-  }, []);
+    setPendingFilters(prev => {
+      let nextFilters = { ...prev, [key]: value };
+
+      if (key === 'career') {
+        if (value === ENEM_FOCUS_NAME) {
+          nextFilters = sanitizeFiltersForFocus({
+            ...nextFilters,
+            subject: ENEM_SUBJECT_AREA_OPTIONS.includes(nextFilters.subject as (typeof ENEM_SUBJECT_AREA_OPTIONS)[number])
+              ? nextFilters.subject
+              : 'All',
+            topic: 'All',
+          });
+        } else if (prev.career === ENEM_FOCUS_NAME) {
+          nextFilters = {
+            ...nextFilters,
+            subject: ENEM_SUBJECT_AREA_OPTIONS.includes(nextFilters.subject as (typeof ENEM_SUBJECT_AREA_OPTIONS)[number])
+              ? 'All'
+              : nextFilters.subject,
+            topic: 'All',
+          };
+        }
+      }
+
+      if (key === 'subject') {
+        nextFilters = { ...nextFilters, topic: 'All' };
+      }
+
+      return nextFilters;
+    });
+  }, [sanitizeFiltersForFocus]);
 
   const applyFilters = useCallback(() => {
     setIsFiltering(true);
     setTimeout(() => {
-      setFilters(pendingFilters);
+      setFilters(sanitizeFiltersForFocus(pendingFilters));
       setFilterTimestamp(Date.now());
       setVisibleCount(PAGE_SIZE);
       setCurrentQuestionIndex(0);
       setIsFiltering(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 500);
-  }, [pendingFilters]);
+  }, [pendingFilters, sanitizeFiltersForFocus]);
 
   const clearFilter = useCallback((key: string) => {
     let defaultValue: any = 'All';
@@ -207,18 +296,44 @@ const Practice: React.FC = () => {
     // If we want manual submit, clearing a single chip should perhaps update pending?
     // But chips show *active* filters. So clearing them should probably re-trigger apply or update active directly.
     // Let's update both for immediate effect on chips.
-    const newFilters = { ...filters, [key]: defaultValue };
+    let newFilters = { ...filters, [key]: defaultValue };
+    if (key === 'career' && filters.career === ENEM_FOCUS_NAME) {
+      newFilters = {
+        ...newFilters,
+        subject: ENEM_SUBJECT_AREA_OPTIONS.includes(String(filters.subject) as (typeof ENEM_SUBJECT_AREA_OPTIONS)[number]) ? 'All' : newFilters.subject,
+        topic: 'All',
+      };
+    }
+    newFilters = sanitizeFiltersForFocus(newFilters);
     setFilters(newFilters);
-    setPendingFilters(prev => ({ ...prev, [key]: defaultValue }));
-  }, [filters]);
+    setPendingFilters(prev => {
+      let nextFilters = { ...prev, [key]: defaultValue };
+      if (key === 'career' && prev.career === ENEM_FOCUS_NAME) {
+        nextFilters = {
+          ...nextFilters,
+          subject: ENEM_SUBJECT_AREA_OPTIONS.includes(String(prev.subject) as (typeof ENEM_SUBJECT_AREA_OPTIONS)[number]) ? 'All' : nextFilters.subject,
+          topic: 'All',
+        };
+      }
+      return sanitizeFiltersForFocus(nextFilters);
+    });
+  }, [filters, sanitizeFiltersForFocus]);
 
-  const FilterSelect = ({ label, value, onChange, options }: any) => (
+  const FilterSelect = ({ label, value, onChange, options, disabled = false, helperText }: any) => (
     <div className="flex flex-col gap-1.5 w-full">
       <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase ml-1 tracking-wider">{label}</label>
-      <select value={value} onChange={e => onChange(e.target.value)} className="w-full h-11 px-3 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer font-medium text-slate-600 dark:text-slate-300">
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={e => onChange(e.target.value)}
+        className={`w-full h-11 px-3 text-sm border rounded-xl outline-none transition-all font-medium ${disabled ? 'bg-slate-100 dark:bg-slate-800/70 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-70' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer focus:ring-2 focus:ring-indigo-500/20'}`}
+      >
         <option value="All">Todos</option>
-        {options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+        {options.map((opt: string, index: number) => <option key={`${label}-${opt}-${index}`} value={opt}>{opt}</option>)}
       </select>
+      {helperText ? (
+        <p className="px-1 text-[10px] font-medium leading-4 text-slate-400 dark:text-slate-500">{helperText}</p>
+      ) : null}
     </div>
   );
 
@@ -235,6 +350,8 @@ const Practice: React.FC = () => {
 
   // if (!currentUser) return null; // Removed to allow guest access
 
+  const enemQuestions = useMemo(() => questions.filter(isEnemQuestion), [questions]);
+
   const uniqueAgencies = useMemo(() => {
     if (systemSettings.taxonomies?.agencies?.length) return systemSettings.taxonomies.agencies.map((t: any) => t.sigla || t.name);
     return Array.from(new Set(questions.flatMap(q => q.bancas?.map(b => b.sigla) || []).filter(Boolean))) as string[];
@@ -246,15 +363,29 @@ const Practice: React.FC = () => {
   }, [questions, systemSettings.taxonomies?.organizations]);
 
   const uniqueSubjects = useMemo(() => {
+    if (isEnemPendingFocus) {
+      return [...ENEM_SUBJECT_AREA_OPTIONS];
+    }
+
     if (systemSettings.taxonomies?.subjects?.length) return systemSettings.taxonomies.subjects.map((t: any) => t.name);
     return Array.from(new Set(questions.flatMap(q => q.assuntos?.filter(a => a.materia).map(a => a.nome) || []).filter(Boolean))) as string[];
-  }, [questions, systemSettings.taxonomies?.subjects]);
+  }, [isEnemPendingFocus, questions, systemSettings.taxonomies?.subjects]);
 
   const uniqueTopics = useMemo(() => {
+    if (isEnemPendingFocus) {
+      const scopedEnemQuestions = pendingFilters.subject === 'All'
+        ? enemQuestions
+        : enemQuestions.filter((question) => getEnemSubjectAreasForQuestion(question).includes(pendingFilters.subject as (typeof ENEM_SUBJECT_AREA_OPTIONS)[number]));
+
+      return Array.from(new Set(
+        scopedEnemQuestions.flatMap((question) => question.assuntos?.filter((assunto) => !assunto.materia).map((assunto) => assunto.nome) || []).filter(Boolean),
+      )) as string[];
+    }
+
     if (systemSettings.taxonomies?.topics?.length) {
       let availableTopics = systemSettings.taxonomies.topics;
-      if (filters.subject !== 'All') {
-        const subjectObj = systemSettings.taxonomies.subjects?.find((s: any) => s.name === filters.subject);
+      if (pendingFilters.subject !== 'All') {
+        const subjectObj = systemSettings.taxonomies.subjects?.find((s: any) => s.name === pendingFilters.subject);
         if (subjectObj) {
           availableTopics = availableTopics.filter((t: any) => !t.parentId || t.parentId === subjectObj.id);
         }
@@ -262,16 +393,17 @@ const Practice: React.FC = () => {
       return availableTopics.map((t: any) => t.name);
     }
     return Array.from(new Set(questions.flatMap(q => q.assuntos?.filter(a => !a.materia).map(a => a.nome) || []).filter(Boolean))) as string[];
-  }, [questions, systemSettings.taxonomies?.topics, filters.subject, systemSettings.taxonomies?.subjects]);
+  }, [enemQuestions, isEnemPendingFocus, pendingFilters.subject, questions, systemSettings.taxonomies?.subjects, systemSettings.taxonomies?.topics]);
 
   const uniqueYears = useMemo(() => {
-    if (systemSettings.taxonomies?.years?.length) return systemSettings.taxonomies.years.map(String);
-    return Array.from(new Set(questions.flatMap(q => q.anos || []).map(String).filter(Boolean))) as string[];
-  }, [questions, systemSettings.taxonomies?.years]);
+    const yearSource = isEnemPendingFocus ? enemQuestions : questions;
+    if (!isEnemPendingFocus && systemSettings.taxonomies?.years?.length) return systemSettings.taxonomies.years.map(String);
+    return Array.from(new Set(yearSource.flatMap(q => q.anos || []).map(String).filter(Boolean))) as string[];
+  }, [enemQuestions, isEnemPendingFocus, questions, systemSettings.taxonomies?.years]);
 
   const uniqueRoles = useMemo(() => {
-    if (systemSettings.taxonomies?.roles?.length) return systemSettings.taxonomies.roles.map((t: any) => t.descrição || t.name);
-    return Array.from(new Set(questions.flatMap(q => q.cargos?.map(c => c.descrição) || []).filter(Boolean))) as string[];
+    if (systemSettings.taxonomies?.roles?.length) return systemSettings.taxonomies.roles.map((t: any) => t.descricao || t['descrição'] || t.name);
+    return Array.from(new Set(questions.flatMap(q => q.cargos?.map(c => (c as any).descricao || (c as any)['descrição'] || (c as any).name) || []).filter(Boolean))) as string[];
   }, [questions, systemSettings.taxonomies?.roles]);
 
   const uniqueModalities = useMemo(() => {
@@ -280,11 +412,14 @@ const Practice: React.FC = () => {
   }, [systemSettings.taxonomies?.modalities]);
 
   const uniqueCareers = useMemo(() => {
-    if (systemSettings.taxonomies?.careers?.length) return systemSettings.taxonomies.careers.map((t: any) => t.name);
-    return Array.from(new Set(questions.flatMap(q => q.carreiras?.map(c => c.nome) || []).filter(Boolean))) as string[];
+    const baseCareers = systemSettings.taxonomies?.careers?.length
+      ? systemSettings.taxonomies.careers.map((t: any) => normalizeCareerSelectorLabel(t.name))
+      : Array.from(new Set(questions.flatMap(q => q.carreiras?.map(c => normalizeCareerSelectorLabel(c.nome)) || []).filter(Boolean))) as string[];
+
+    return injectEnemFocusOption(baseCareers);
   }, [questions, systemSettings.taxonomies?.careers]);
 
-  // Labels amigáveis para os chips
+  // Labels amigaveis para os chips
   const filterLabels: Record<string, string> = {
     subject: 'Matéria',
     difficulty: 'Dificuldade',
@@ -334,11 +469,10 @@ const Practice: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  const reset = { keyword: '', subject: 'All', difficulty: 'All', agency: 'All', organization: 'All', year: 'All', level: 'All', topic: 'All', role: 'All', career: 'All', modality: 'All', onlySaved: false, hasTeacherComment: false, hasDetailedComment: false, excludeCanceled: false, excludeOutdated: false, excludeAnswered: false };
-                    setFilters(reset);
-                    setPendingFilters(reset);
-                    setLastFetchedPage(1);
-                  }}
+                  setFilters(DEFAULT_FILTERS);
+                  setPendingFilters(DEFAULT_FILTERS);
+                  setLastFetchedPage(1);
+                }}
                   className="h-12 px-4 text-slate-300 dark:text-slate-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                 title="Limpar todos os filtros"
               >
@@ -357,16 +491,38 @@ const Practice: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             <FilterSelect label="Foco" value={pendingFilters.career} onChange={(v: any) => handleFilterChange('career', v)} options={uniqueCareers} />
-            <FilterSelect label="Matéria" value={pendingFilters.subject} onChange={(v: any) => handleFilterChange('subject', v)} options={uniqueSubjects} />
+            <FilterSelect
+              label="Matéria"
+              value={pendingFilters.subject}
+              onChange={(v: any) => handleFilterChange('subject', v)}
+              options={uniqueSubjects}
+              helperText={isEnemPendingFocus ? 'No foco ENEM, a matéria usa as áreas oficiais de conhecimento.' : undefined}
+            />
             <FilterSelect label="Dificuldade" value={pendingFilters.difficulty} onChange={(v: any) => handleFilterChange('difficulty', v)} options={Object.values(Difficulty)} />
-            <FilterSelect label="Banca" value={pendingFilters.agency} onChange={(v: any) => handleFilterChange('agency', v)} options={uniqueAgencies} />
-            <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v: any) => handleFilterChange('organization', v)} options={uniqueOrganizations} />
+            <FilterSelect label="Banca" value={pendingFilters.agency} onChange={(v: any) => handleFilterChange('agency', v)} options={uniqueAgencies} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
+            <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v: any) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
             <FilterSelect label="Ano" value={pendingFilters.year} onChange={(v: any) => handleFilterChange('year', v)} options={uniqueYears} />
-            <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v: any) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} />
+            <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v: any) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
             <FilterSelect label="Assunto" value={pendingFilters.topic} onChange={(v: any) => handleFilterChange('topic', v)} options={uniqueTopics} />
-            <FilterSelect label="Cargo" value={pendingFilters.role} onChange={(v: any) => handleFilterChange('role', v)} options={uniqueRoles} />
-            <FilterSelect label="Modalidade" value={pendingFilters.modality} onChange={(v: any) => handleFilterChange('modality', v)} options={uniqueModalities} />
+            <FilterSelect label="Cargo" value={pendingFilters.role} onChange={(v: any) => handleFilterChange('role', v)} options={uniqueRoles} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
+            <FilterSelect label="Modalidade" value={pendingFilters.modality} onChange={(v: any) => handleFilterChange('modality', v)} options={uniqueModalities} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
           </div>
+
+          {isEnemPendingFocus ? (
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/80 p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600">Mapa ENEM</p>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {ENEM_SUBJECT_AREA_OPTIONS.map((areaName) => (
+                  <div key={areaName} className="rounded-xl border border-indigo-100 bg-white/90 p-3">
+                    <p className="text-xs font-black text-slate-900">{areaName}</p>
+                    <p className="mt-2 text-[10px] font-medium leading-5 text-slate-500">
+                      {ENEM_SUBJECT_AREA_DESCRIPTIONS[areaName].join(', ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {/* Checkbox Filters */}
           <div className="flex flex-col gap-4 pt-2">
@@ -585,11 +741,10 @@ const Practice: React.FC = () => {
               <p className="text-sm text-slate-400 dark:text-slate-600 max-w-xs mx-auto mb-6">Tente ajustar seus filtros para encontrar o que procura.</p>
               <button
                 onClick={() => {
-                  const reset = { keyword: '', subject: 'All', difficulty: 'All', agency: 'All', organization: 'All', year: 'All', level: 'All', topic: 'All', role: 'All', career: 'All', modality: 'All', onlySaved: false, hasTeacherComment: false, hasDetailedComment: false, excludeCanceled: false, excludeOutdated: false, excludeAnswered: false };
-                    setFilters(reset);
-                    setPendingFilters(reset);
-                    setLastFetchedPage(1);
-                  }}
+                  setFilters(DEFAULT_FILTERS);
+                  setPendingFilters(DEFAULT_FILTERS);
+                  setLastFetchedPage(1);
+                }}
                   className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
               >
                 Limpar Filtros
@@ -679,3 +834,6 @@ const Practice: React.FC = () => {
 };
 
 export default Practice;
+
+
+

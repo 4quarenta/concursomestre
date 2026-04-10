@@ -29,7 +29,7 @@ interface FiltersManagementSectionProps {
   onCreate: () => void;
   onAddChild: (type: string, parentId: number) => void;
   onEdit: (item: any) => void;
-  onDelete: (id: number) => void;
+  onDelete: (item: any) => void;
 }
 
 const getUnifiedTaxonomyList = (systemSettings: SystemSettings, activeFilterType: string) => {
@@ -189,7 +189,7 @@ const FiltersManagementSection = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDelete(item.id)}
+                        onClick={() => onDelete(item)}
                         className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition-all"
                       >
                         <Trash2 size={14} />

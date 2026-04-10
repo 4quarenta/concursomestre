@@ -189,7 +189,7 @@ const AdminSupportSection = ({
           />
         </div>
       ) : (
-        <AdminFeedback />
+        <AdminFeedback mode={activeSection === 'threads' ? 'threads' : 'feedback'} />
       )}
     </div>
   );

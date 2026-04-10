@@ -11,7 +11,13 @@
 
 import { apiClient, ENDPOINTS } from '@services/api';
 import type { ApiResponse } from '@services/api';
-import type { UserStatistics, QuestionStatistics, PlatformStatistics } from './types';
+import type {
+  UserStatistics,
+  QuestionStatistics,
+  PlatformStatistics,
+  StudySessionPayload,
+  StudySessionResult,
+} from './types';
 
 /**
  * Fachada oficial do dominio de estatisticas.
@@ -28,7 +34,15 @@ export const statisticsService = {
     const response = await apiClient.get<ApiResponse<UserStatistics>>(
       `${ENDPOINTS.statistics.user}/${userId}`,
     ) as unknown as ApiResponse<UserStatistics>;
-    return response.data;
+    const payload = (response.data || response) as Partial<UserStatistics>;
+    return {
+      questionStudyTime: 0,
+      readingStudyTime: 0,
+      totalStudyTime: 0,
+      lastActivity: '',
+      subjectBreakdown: [],
+      ...payload,
+    };
   },
 
   /**
@@ -52,6 +66,26 @@ export const statisticsService = {
       ENDPOINTS.statistics.platform,
     ) as unknown as ApiResponse<PlatformStatistics>;
     return response.data;
+  },
+
+  /**
+   * Registra uma sessao de estudo consolidada no backend oficial.
+   * @since v1.0.0
+   */
+  async recordStudySession(payload: StudySessionPayload): Promise<StudySessionResult> {
+    const response = await apiClient.post<ApiResponse<StudySessionResult>>(
+      ENDPOINTS.statistics.studySession,
+      {
+        practice_seconds: payload.practiceSeconds,
+        simulation_seconds: payload.simulationSeconds,
+        reading_seconds: payload.readingSeconds,
+        started_at: payload.startedAt,
+        ended_at: payload.endedAt,
+        source_context: payload.sourceContext || {},
+      },
+    ) as unknown as ApiResponse<StudySessionResult>;
+
+    return (response.data || response) as StudySessionResult;
   },
 
   /**

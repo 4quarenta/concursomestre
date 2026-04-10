@@ -175,18 +175,26 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
 
     // Check for URL hash parameter to highlight external deep link
     useEffect(() => {
+        const searchCommentId = new URLSearchParams(window.location.search).get('comment');
+        if (searchCommentId) {
+            setLastAddedId(searchCommentId);
+            return;
+        }
+
         const hash = window.location.hash;
-        if (hash.includes('comment=')) {
-            try {
-                const urlStr = hash.replace('#', '');
-                const url = new URL(urlStr, window.location.origin);
-                const commentId = url.searchParams.get('comment');
-                if (commentId) {
-                    setLastAddedId(commentId); // Use existing highlight logic
-                }
-            } catch (e) {
-                // Ignore parse errors
+        if (!hash.includes('comment=')) {
+            return;
+        }
+
+        try {
+            const urlStr = hash.replace('#', '');
+            const url = new URL(urlStr, window.location.origin);
+            const commentId = url.searchParams.get('comment');
+            if (commentId) {
+                setLastAddedId(commentId); // Use existing highlight logic
             }
+        } catch (e) {
+            // Ignore parse errors
         }
     }, [isExpanded]); // Run when section becomes visible
 

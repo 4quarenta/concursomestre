@@ -29,6 +29,7 @@ import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import { bankAnalysisService } from '@services/bank-analysis';
 import { getBenefitRequiredPlan, hasPlanBenefit } from '@services/plans/planAccess';
+import type { BankXrayPayload } from '@services/bank-analysis/bankAnalysisService';
 
 const BankAnalysis: React.FC = () => {
    const { currentUser } = useAuth();
@@ -39,7 +40,7 @@ const BankAnalysis: React.FC = () => {
    const [selectedYear, setSelectedYear] = useState<string>('All');
    const [showAuthModal, setShowAuthModal] = useState(false);
    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-   const [stats, setStats] = useState<any>(null);
+   const [stats, setStats] = useState<BankXrayPayload | null>(null);
 
    // Estados para animação de análise
    const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -117,7 +118,7 @@ const BankAnalysis: React.FC = () => {
             banca: selectedAgency,
             cargo: selectedRole || undefined,
             ano: selectedYear !== 'All' ? selectedYear : undefined
-         }).then((data: any) => {
+         }).then((data) => {
             if (!isActive) return;
             clearInterval(interval);
             setProgress(100);
@@ -399,7 +400,7 @@ const BankAnalysis: React.FC = () => {
                            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Distribuição por Matéria e Assunto</span>
                         </div>
                         <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                           {stats.detailedBreakdown.map((item: any, index: number) => (
+                           {stats.detailedBreakdown.map((item, index: number) => (
                               <div key={item.subject} className="p-6 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                                  <div className="flex items-center justify-between mb-5">
                                     <div className="flex items-center gap-3">
@@ -414,7 +415,7 @@ const BankAnalysis: React.FC = () => {
                                     </div>
                                  </div>
                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {item.topics.map((topic: any, tIdx: number) => (
+                                    {item.topics.map((topic, tIdx: number) => (
                                        <div key={topic.topic} className="flex flex-col gap-2 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-3.5 rounded-xl shadow-sm group hover:border-indigo-200 dark:hover:border-indigo-600 transition-all">
                                           <div className="flex items-center justify-between gap-2 overflow-hidden flex-1">
                                              <div className="flex items-center gap-2 overflow-hidden">

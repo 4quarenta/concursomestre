@@ -80,6 +80,19 @@ const findLegacyLayerImports = () => {
   });
 };
 
+const findPatternMatches = (dir: string, pattern: RegExp) => {
+  const sourceFiles = listSourceFiles(dir);
+
+  return sourceFiles.flatMap((filePath) => {
+    const relativePath = path.relative(root, filePath);
+    const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+
+    return lines.flatMap((line, index) =>
+      pattern.test(line) ? [`${relativePath}:${index + 1}:${line.trim()}`] : []
+    );
+  });
+};
+
 describe('admin architecture', () => {
   it('keeps the admin page as a thin composition shell', () => {
     expect(countLines('src/app/admin/page.tsx')).toBeLessThanOrEqual(60);
@@ -160,7 +173,7 @@ describe('admin architecture', () => {
 
   it('keeps the engineering rules documented in the repository', () => {
     expect(fs.existsSync(path.resolve(root, '.agent/rules/engineering-standards.md'))).toBe(true);
-    expect(readFile('README.md')).toContain('engineering-standards.md');
+    expect(readFile('docs/README.md')).toContain('referencia oficial');
     expect(readFile('.agent/rules/engineering-standards.md')).toContain('Comentários obrigatorios');
     expect(readFile('.agent/rules/engineering-standards.md')).toContain('Estrutura oficial do frontend');
     expect(readFile('.agent/rules/engineering-standards.md')).toContain('Padrao de código');
@@ -174,5 +187,37 @@ describe('admin architecture', () => {
     expect(readFile('src/app/admin/page.tsx')).toContain('Entrada oficial da area administrativa');
     expect(readFile('src/app/admin/components/shared/useAdminPageController.tsx')).toContain('Controller principal da pagina administrativa');
     expect(readFile('src/app/admin/components/database/useAdminDatabaseManagerController.tsx')).toContain('Controller central da aba "Base de Dados"');
+  });
+
+  it('keeps critical admin confirmations out of native browser dialogs', () => {
+    expect(findPatternMatches('src/app/admin', /\bconfirm\s*\(/)).toEqual([]);
+    expect(readFile('src/providers/MarketplaceProvider.tsx')).not.toContain('window.confirm');
+  });
+
+  it('keeps finance free of fake fallback data and with extracted marketing section', () => {
+    expect(readFile('src/app/admin/components/finance/AdminFinance.tsx')).toContain("import AdminMarketing from './AdminMarketing'");
+    expect(readFile('src/app/admin/components/finance/AdminFinance.tsx')).not.toContain('Math.random(');
+    expect(fs.existsSync(path.resolve(root, 'src/app/admin/components/finance/AdminMarketing.tsx'))).toBe(true);
+  });
+
+  it('keeps settings navigation extracted from the main settings screen', () => {
+    expect(readFile('src/app/admin/components/settings/AdminSettings.tsx')).toContain("import AdminSettingsTabsBar from './AdminSettingsTabsBar'");
+    expect(fs.existsSync(path.resolve(root, 'src/app/admin/components/settings/AdminSettingsTabsBar.tsx'))).toBe(true);
+    expect(fs.existsSync(path.resolve(root, 'src/app/admin/components/settings/AdminSeoSettingsSection.tsx'))).toBe(true);
+    expect(fs.existsSync(path.resolve(root, 'src/app/admin/components/settings/AdminCacheManagement.tsx'))).toBe(true);
+    expect(readFile('src/app/admin/config/adminPageNavigationConfig.ts')).toContain("seo");
+  });
+
+  it('keeps import settings on the official save flow', () => {
+    const bridgeContent = readFile('src/app/admin/components/import/useAdminImportSettingsBridge.ts');
+    expect(bridgeContent).not.toContain('useData(');
+    expect(bridgeContent).not.toContain("dispatch({ type: 'UPDATE_SYSTEM_SETTINGS'");
+    expect(bridgeContent).toContain('saveSystemSettingsNow');
+  });
+
+  it('keeps admin deep links on path segments instead of search params', () => {
+    expect(readFile('src/router/adminRoutes.tsx')).toContain('path="/admin/:tab/:section"');
+    expect(readFile('src/app/admin/components/shared/useAdminPageController.tsx')).not.toContain('useSearchParams');
+    expect(findPatternMatches('src', /\/admin\?/)).toEqual([]);
   });
 });

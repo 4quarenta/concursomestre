@@ -55,6 +55,15 @@ export const marketplaceService = {
   },
 
   /**
+   * Busca um material publico especifico pela listagem oficial.
+   * @since 1.0.0
+   */
+  async getMaterialById(materialId: string): Promise<Material | null> {
+    const materials = await this.listMaterials();
+    return materials.find((material) => String(material.id) === String(materialId)) || null;
+  },
+
+  /**
    * Pública um novo material no backend oficial.
    * O retorno normalizado permite que o contexto atualize a vitrine sem parsing extra.
    * @since 1.0.0
@@ -218,16 +227,16 @@ export const marketplaceService = {
    * transação criada para o contexto sincronizar estado local e notificações.
    * @since 1.0.0
    */
-  async createMaterialPurchase(materialId: string | number): Promise<Transaction> {
-    return transactionsService.createMaterialPurchase(materialId);
+  async createMaterialPurchase(materialId: string | number, couponCode?: string): Promise<Transaction> {
+    return transactionsService.createMaterialPurchase(materialId, couponCode);
   },
 
   /**
    * Ponte booleana mantida por compatibilidade com fluxos legados de compra.
    * @since 1.0.0
    */
-  async purchaseMaterial(materialId: number): Promise<boolean> {
-    const transaction = await this.createMaterialPurchase(materialId);
+  async purchaseMaterial(materialId: number, couponCode?: string): Promise<boolean> {
+    const transaction = await this.createMaterialPurchase(materialId, couponCode);
     return Boolean(transaction?.id);
   },
 

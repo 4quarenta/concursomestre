@@ -54,6 +54,15 @@ export const rankingsService = {
   },
 
   /**
+   * Busca um ranking publico especifico a partir da listagem oficial.
+   * @since v1.0.0
+   */
+  async getById(rankingId: string): Promise<Ranking | null> {
+    const rankings = await this.list();
+    return rankings.find((ranking) => String(ranking.id) === String(rankingId)) || null;
+  },
+
+  /**
    * Cria um novo ranking pelo fluxo administrativo.
    * O retorno preserva o id final para reidratar a lista local sem recarregar a tela inteira.
    * @since v1.0.0

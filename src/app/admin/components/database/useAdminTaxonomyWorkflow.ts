@@ -24,6 +24,11 @@ interface EditingFilterItem {
   type?: string;
 }
 
+interface PendingDeleteFilterItem {
+  id: number;
+  name: string;
+}
+
 interface UseAdminTaxonomyWorkflowOptions {
   addToast: ToastHandler;
 }
@@ -50,6 +55,8 @@ export const useAdminTaxonomyWorkflow = ({
   const [filterWebsite, setFilterWebsite] = useState('');
   const [filterSearch, setFilterSearch] = useState('');
   const [editingFilterItem, setEditingFilterItem] = useState<EditingFilterItem | null>(null);
+  const [pendingDeleteFilter, setPendingDeleteFilter] = useState<PendingDeleteFilterItem | null>(null);
+  const [isDeletingFilter, setIsDeletingFilter] = useState(false);
   const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
   const [showTaxonomyModal, setShowTaxonomyModal] = useState(false);
 
@@ -101,14 +108,36 @@ export const useAdminTaxonomyWorkflow = ({
     }
   };
 
-  const handleDeleteFilter = async (id: number) => {
-    if (!confirm('Tem certeza?')) return;
+  const requestDeleteFilter = (item: { id: number; name?: string }) => {
+    setPendingDeleteFilter({
+      id: item.id,
+      name: item.name || 'filtro selecionado',
+    });
+  };
 
+  const cancelDeleteFilter = () => {
+    if (isDeletingFilter) {
+      return;
+    }
+
+    setPendingDeleteFilter(null);
+  };
+
+  const confirmDeleteFilter = async () => {
+    if (!pendingDeleteFilter || isDeletingFilter) {
+      return;
+    }
+
+    setIsDeletingFilter(true);
     try {
-      await filtersService.remove(id);
+      await filtersService.remove(pendingDeleteFilter.id);
       await fetchFilters();
+      addToast('Filtro removido com sucesso.', 'success');
+      setPendingDeleteFilter(null);
     } catch (error) {
       addToast(readApiErrorMessage(error, 'Erro ao deletar filtro'), 'error');
+    } finally {
+      setIsDeletingFilter(false);
     }
   };
 
@@ -168,7 +197,11 @@ export const useAdminTaxonomyWorkflow = ({
     setSelectedParentId,
     showTaxonomyModal,
     handleSaveFilter,
-    handleDeleteFilter,
+    pendingDeleteFilter,
+    isDeletingFilter,
+    requestDeleteFilter,
+    cancelDeleteFilter,
+    confirmDeleteFilter,
     startEditingFilter,
     cancelEditingFilter,
     openCreateFilterModal,

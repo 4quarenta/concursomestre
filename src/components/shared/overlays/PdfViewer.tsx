@@ -478,7 +478,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                             onClick={() => {
                                 const subjectParam = encodeURIComponent(materialSubject);
                                 const topicParam = material?.topic ? `&topic=${encodeURIComponent(material.topic)}` : '';
-                                window.open(`/#/practice?subject=${subjectParam}${topicParam}`, '_blank');
+                                window.open(`/practice?subject=${subjectParam}${topicParam}`, '_blank');
                             }}
                             className="p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold uppercase bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
                             title="Resolver Questões"

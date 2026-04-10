@@ -12,6 +12,7 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@providers/AuthProvider';
+import type { UserProfile } from '@types';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 
 /**
@@ -36,6 +37,15 @@ const APP_LAYOUT_PATHS = new Set([
 
 const AUTH_PATHS = new Set(['/auth', '/reset-password', '/confirm-email']);
 const DOCUMENT_PATHS = new Set(['/terms', '/privacy']);
+
+const usesAppLayout = (pathname: string): boolean => (
+  pathname.startsWith('/promo')
+  || pathname.startsWith('/profile')
+  || pathname.startsWith('/question/')
+  || pathname.startsWith('/ranking/')
+  || pathname.startsWith('/material/')
+  || APP_LAYOUT_PATHS.has(pathname)
+);
 
 /**
  * Bloco base do skeleton.
@@ -312,6 +322,34 @@ const AuthFallback = () => (
 );
 
 /**
+ * Skeleton dedicado da confirmacao de e-mail.
+ * Ele evita o flash visual do layout de login durante a validacao do token.
+ */
+const ConfirmEmailFallback = () => (
+  <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
+    <div className="mb-8 flex items-center gap-2 text-xl font-bold text-indigo-600 dark:text-indigo-400">
+      <Block className="h-7 w-7 rounded-2xl bg-indigo-100 dark:bg-indigo-900/30" />
+      <Block className="h-7 w-44 rounded-full bg-indigo-200/50 dark:bg-indigo-900/30" />
+    </div>
+
+    <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-col items-center space-y-6 py-8">
+        <Block className="h-20 w-20 rounded-full bg-indigo-100 dark:bg-indigo-900/30" />
+        <div className="space-y-3">
+          <Block className="mx-auto h-8 w-52 rounded-[2rem]" />
+          <Block className="mx-auto h-4 w-64" />
+          <Block className="mx-auto h-4 w-56" />
+        </div>
+        <div className="w-full space-y-3 pt-2">
+          <Block className="h-12 w-full rounded-2xl bg-indigo-500/20 dark:bg-indigo-500/20" />
+          <Block className="mx-auto h-4 w-32" />
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+/**
  * Skeleton das paginas de marketing e descoberta, como landing e promos.
  * O objetivo e manter hero, CTA e prova social com a mesma hierarquia da plataforma pública.
  */
@@ -483,9 +521,21 @@ export const LayoutContentRouteFallback: React.FC = () => (
  * Decide qual skeleton mostrar com base na rota atual e no estado de autenticação.
  * Esse componente fica ligado diretamente ao roteador oficial e garante que cada transicao se pareca com a pagina real.
  */
-const RouteSuspenseFallback: React.FC = () => {
-  const { pathname } = useLocation();
-  const { currentUser } = useAuth();
+interface RouteSuspenseFallbackProps {
+  pathnameOverride?: string;
+  currentUserOverride?: UserProfile | null;
+  preferAppLayoutAtRoot?: boolean;
+}
+
+const RouteSuspenseFallback: React.FC<RouteSuspenseFallbackProps> = ({
+  pathnameOverride,
+  currentUserOverride,
+  preferAppLayoutAtRoot = false,
+}) => {
+  const location = useLocation();
+  const { currentUser: authCurrentUser } = useAuth();
+  const pathname = pathnameOverride || location.pathname;
+  const currentUser = currentUserOverride !== undefined ? currentUserOverride : authCurrentUser;
 
   if (pathname.startsWith('/admin')) {
     return <PanelFallback accent="rose" />;
@@ -496,6 +546,10 @@ const RouteSuspenseFallback: React.FC = () => {
   }
 
   if (AUTH_PATHS.has(pathname)) {
+    if (pathname === '/confirm-email') {
+      return <ConfirmEmailFallback />;
+    }
+
     return <AuthFallback />;
   }
 
@@ -511,11 +565,11 @@ const RouteSuspenseFallback: React.FC = () => {
     return <ReaderFallback />;
   }
 
-  if (pathname === '/' && !currentUser) {
+  if (pathname === '/' && !currentUser && !preferAppLayoutAtRoot) {
     return <MarketingFallback />;
   }
 
-  if (pathname.startsWith('/promo') || APP_LAYOUT_PATHS.has(pathname)) {
+  if (pathname === '/' || usesAppLayout(pathname)) {
     return <AppLayoutFallback />;
   }
 

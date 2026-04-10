@@ -35,7 +35,7 @@ const AdminNavigationSidebar = ({
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/#/auth';
+    window.location.assign('/auth');
   };
 
   return (

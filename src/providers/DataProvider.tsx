@@ -27,7 +27,8 @@ import { adminService } from '@services/admin/adminService';
 import { filtersService } from '@services/filters';
 import { rankingsService } from '@services/rankings';
 import { reportsService } from '@services/reports';
-import { DEFAULT_PLAN_ENTITLEMENTS } from '@constants/subscriptions/planEntitlements';
+import { DEFAULT_PLAN_ENTITLEMENTS, DEFAULT_PLAN_USAGE_LIMITS } from '@constants/subscriptions/planEntitlements';
+import { buildAdminPath } from '../app/admin/config/adminPageNavigationConfig';
 
 import { useAuth } from './AuthProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -47,6 +48,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   },
   planDetails: PLAN_DETAILS,
   planEntitlements: DEFAULT_PLAN_ENTITLEMENTS,
+  planUsageLimits: DEFAULT_PLAN_USAGE_LIMITS,
   activePromotion: {
     isActive: false,
     name: 'Black Friday',
@@ -60,12 +62,14 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     featuresHighlight: ['IA Ilimitada', 'Raio-X da Banca', 'Simulados']
   },
   coupons: [
-    { code: 'BEMVINDO10', discountPercentage: 10, uses: 15, maxUses: 100 },
+    { code: 'BEMVINDO10', discountPercentage: 10, uses: 15, maxUses: 100, autoApply: false, targetType: 'all', targetId: null },
   ],
   features: {
     practiceEnabled: true,
     marketplaceEnabled: true,
     rankingsEnabled: true,
+    annotatedLawsEnabled: false,
+    flashcardsEnabled: false,
     communityEnabled: true,
     aiCommentsEnabled: true,
     bulkImportEnabled: true,
@@ -83,6 +87,59 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   recaptchaEnabled: false,
   recaptchaSiteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI', // Chave de teste pública do Google
   recaptchaSecretKey: ''
+};
+
+const FEATURE_SETTING_KEYS = Object.keys(DEFAULT_SYSTEM_SETTINGS.features) as Array<keyof SystemSettings['features']>;
+
+const normalizeFeatureFlag = (value: unknown, fallback: boolean): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+      return true;
+    }
+
+    if (['0', 'false', 'no', 'off', ''].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return fallback;
+};
+
+const mergeSystemSettings = (
+  base: SystemSettings,
+  incoming?: Partial<SystemSettings> | null,
+): SystemSettings => {
+  const payload = (incoming || {}) as Partial<SystemSettings> & Record<string, unknown>;
+  const nextSettings = { ...base, ...payload } as SystemSettings;
+  const incomingFeatures = (payload.features && typeof payload.features === 'object'
+    ? payload.features
+    : {}) as Partial<SystemSettings['features']>;
+  const mergedFeatures = { ...base.features, ...incomingFeatures } as SystemSettings['features'];
+
+  FEATURE_SETTING_KEYS.forEach((featureKey) => {
+    const hasNestedValue = Object.prototype.hasOwnProperty.call(incomingFeatures, featureKey);
+    const hasFlatValue = Object.prototype.hasOwnProperty.call(payload, featureKey);
+    const candidate = hasNestedValue
+      ? incomingFeatures[featureKey]
+      : (hasFlatValue ? payload[featureKey as string] : mergedFeatures[featureKey]);
+
+    mergedFeatures[featureKey] = normalizeFeatureFlag(candidate, base.features[featureKey]);
+  });
+
+  return {
+    ...nextSettings,
+    features: mergedFeatures,
+  };
 };
 
 interface DataState {
@@ -352,7 +409,7 @@ function dataReducer(state: DataState, action: DataAction): DataState {
       };
 
     case 'UPDATE_SYSTEM_SETTINGS':
-      return { ...state, systemSettings: { ...state.systemSettings, ...action.payload } };
+      return { ...state, systemSettings: mergeSystemSettings(state.systemSettings, action.payload) };
 
     case 'ADD_COUPON':
       return {
@@ -715,8 +772,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     adminService.getSystemSettings()
       .then((settingsPayload) => {
         if (settingsPayload && Object.keys(settingsPayload).length > 0) {
-          lastSavedSystemSettingsRef.current = { ...DEFAULT_SYSTEM_SETTINGS, ...settingsPayload };
-          dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: settingsPayload as SystemSettings });
+          const normalizedSettings = mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, settingsPayload);
+          lastSavedSystemSettingsRef.current = normalizedSettings;
+          dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: normalizedSettings });
         }
       })
       .catch(err => console.error("Failed to load system settings:", err));
@@ -1133,7 +1191,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           `O usuário ${report.userName} reportou um problema em ${targetLabel}.`,
           'warning',
           'report',
-          `/admin?section=database&tab=reports#${reportId}`
+          buildAdminPath('support', 'reports', `#${reportId}`)
         );
 
         addToast(result.message || 'Denúncia enviada com sucesso!', 'success');
@@ -1283,8 +1341,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * @since 1.0.0
    */
   const updateSystemSettings = useCallback((payload: SystemSettings) => {
-    dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload });
-    pendingSystemSettingsRef.current = payload;
+    const nextSettings = mergeSystemSettings(state.systemSettings, payload);
+    dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: nextSettings });
+    pendingSystemSettingsRef.current = nextSettings;
 
     if (settingsSaveTimerRef.current) {
       clearTimeout(settingsSaveTimerRef.current);
@@ -1293,14 +1352,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     settingsSaveTimerRef.current = setTimeout(() => {
       void flushSystemSettingsSave();
     }, 450);
-  }, [flushSystemSettingsSave]);
+  }, [flushSystemSettingsSave, state.systemSettings]);
 
   /**
    * Forca a persistencia imediata das configurações quando a tela exige save explicito.
    * @since 1.0.0
    */
   const saveSystemSettingsNow = useCallback(async (payload?: SystemSettings) => {
-    const nextSettings = payload ?? pendingSystemSettingsRef.current ?? state.systemSettings;
+    const requestedSettings = payload ?? pendingSystemSettingsRef.current ?? state.systemSettings;
+    const nextSettings = mergeSystemSettings(state.systemSettings, requestedSettings);
     if (!nextSettings) return;
 
     if (settingsSaveTimerRef.current) {

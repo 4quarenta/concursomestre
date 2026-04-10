@@ -13,7 +13,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, RefreshCcw, ShieldCheck, Terminal } from 'lucide-react';
 import AdminDashboard from '../dashboard/AdminDashboard';
 import { subscriptionsService } from '@services/subscriptions';
+import { seoService } from '@services/seo';
 import type { AdminPanelSection as AdminPanelSectionKey } from '../shared/useAdminPageController';
+import { calculateSeoCompletenessScore, mergeSeoSettings } from '../settings/seoSettings';
 
 interface AdminPanelSectionProps extends React.ComponentProps<typeof AdminDashboard> {
   initialSection?: AdminPanelSectionKey;
@@ -36,12 +38,14 @@ const AdminPanelSection = ({
   onSectionChange,
   allTransactions,
   allReports,
+  allMaterials,
   systemSettings,
   onNavigate,
   ...dashboardProps
 }: AdminPanelSectionProps) => {
   const [activeSection, setActiveSection] = useState<AdminPanelSectionKey>(initialSection);
   const [automationHelper, setAutomationHelper] = useState<any | null>(null);
+  const [sitemapCoveragePercent, setSitemapCoveragePercent] = useState<number | null>(null);
 
   useEffect(() => {
     setActiveSection(initialSection);
@@ -57,6 +61,26 @@ const AdminPanelSection = ({
       .catch(() => setAutomationHelper({ error: 'Nao foi possivel carregar a automacao oficial.' }));
   }, [activeSection, automationHelper]);
 
+  useEffect(() => {
+    if (activeSection !== 'billing-health' || sitemapCoveragePercent !== null) {
+      return;
+    }
+
+    seoService.getSitemapStatus()
+      .then((payload) => {
+        if (!payload) {
+          setSitemapCoveragePercent(null);
+          return;
+        }
+
+        const dynamicTotal = payload.coverage.questions.total + payload.coverage.rankings.total + payload.coverage.materials.total;
+        const dynamicIndexed = payload.coverage.questions.indexed + payload.coverage.rankings.indexed + payload.coverage.materials.indexed;
+        const percent = dynamicTotal > 0 ? Math.round((dynamicIndexed / dynamicTotal) * 100) : 100;
+        setSitemapCoveragePercent(percent);
+      })
+      .catch(() => setSitemapCoveragePercent(null));
+  }, [activeSection, sitemapCoveragePercent]);
+
   const changeSection = (section: AdminPanelSectionKey) => {
     setActiveSection(section);
     onSectionChange?.(section);
@@ -65,6 +89,9 @@ const AdminPanelSection = ({
   const unresolvedReports = (allReports || []).filter((report: any) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase()));
   const refundRequests = (allTransactions || []).filter((transaction: any) => transaction.status === 'refund_requested');
   const rejectedTransactions = (allTransactions || []).filter((transaction: any) => transaction.status === 'rejected');
+  const pendingMaterials = (allMaterials || []).filter((material: any) => String(material.status || '').toLowerCase() === 'pending');
+  const feedbackInboxCount = Number((systemSettings as any)?.adminFeedbackCount || 0);
+  const seoScore = calculateSeoCompletenessScore(mergeSeoSettings(systemSettings?.seo));
 
   const billingHealthItems = useMemo(() => ([
     {
@@ -74,8 +101,13 @@ const AdminPanelSection = ({
     },
     {
       label: 'Webhook Stripe',
-      value: automationHelper?.cron_url ? 'Cron operacional disponivel' : 'Nao comprovado',
-      tone: automationHelper?.cron_url ? 'indigo' : 'amber',
+      value: systemSettings?.hasStripeWebhookConfigured || systemSettings?.stripeWebhookSecret ? 'Configurado' : 'Nao comprovado',
+      tone: systemSettings?.hasStripeWebhookConfigured || systemSettings?.stripeWebhookSecret ? 'emerald' : 'amber',
+    },
+    {
+      label: 'Cron oficial',
+      value: automationHelper?.linux_command ? 'Disponivel' : 'Nao comprovado',
+      tone: automationHelper?.linux_command ? 'indigo' : 'amber',
     },
     {
       label: 'Recorrencia',
@@ -87,7 +119,33 @@ const AdminPanelSection = ({
       value: String(refundRequests.length),
       tone: refundRequests.length > 0 ? 'amber' : 'emerald',
     },
-  ]), [automationHelper, refundRequests.length, systemSettings?.features?.recurringEnabled, systemSettings?.stripeKey, systemSettings?.stripePublishableKey]);
+    {
+      label: 'SEO',
+      value: `${seoScore}%`,
+      tone: seoScore >= 80 ? 'emerald' : seoScore >= 50 ? 'amber' : 'rose',
+    },
+    {
+      label: 'Cobertura sitemap',
+      value: sitemapCoveragePercent === null ? 'Nao comprovado' : `${sitemapCoveragePercent}%`,
+      tone: sitemapCoveragePercent === null
+        ? 'amber'
+        : sitemapCoveragePercent >= 90
+          ? 'emerald'
+          : sitemapCoveragePercent >= 60
+            ? 'indigo'
+            : 'rose',
+    },
+  ]), [
+    automationHelper?.linux_command,
+    refundRequests.length,
+    seoScore,
+    sitemapCoveragePercent,
+    systemSettings?.features?.recurringEnabled,
+    systemSettings?.hasStripeWebhookConfigured,
+    systemSettings?.stripeKey,
+    systemSettings?.stripePublishableKey,
+    systemSettings?.stripeWebhookSecret,
+  ]);
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -118,9 +176,9 @@ const AdminPanelSection = ({
       )}
 
       {activeSection === 'alerts' && (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
           <button
-            onClick={() => onNavigate?.('reports')}
+            onClick={() => onNavigate?.('support', 'reports')}
             className="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 text-left transition-all hover:border-amber-300 dark:border-amber-900/30 dark:bg-amber-900/10"
           >
             <AlertTriangle size={18} className="text-amber-600 dark:text-amber-300" />
@@ -148,12 +206,32 @@ const AdminPanelSection = ({
             <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{rejectedTransactions.length}</p>
             <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Transacoes com rejeicao ou erro operacional.</p>
           </button>
+
+          <button
+            onClick={() => onNavigate?.('support', 'feedback')}
+            className="rounded-[2rem] border border-indigo-200 bg-indigo-50 p-6 text-left transition-all hover:border-indigo-300 dark:border-indigo-900/30 dark:bg-indigo-900/10"
+          >
+            <ShieldCheck size={18} className="text-indigo-600 dark:text-indigo-300" />
+            <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Inbox de suporte</p>
+            <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{feedbackInboxCount}</p>
+            <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Feedbacks e conversas que ainda exigem retorno.</p>
+          </button>
+
+          <button
+            onClick={() => onNavigate?.('operation', 'materials')}
+            className="rounded-[2rem] border border-emerald-200 bg-emerald-50 p-6 text-left transition-all hover:border-emerald-300 dark:border-emerald-900/30 dark:bg-emerald-900/10"
+          >
+            <RefreshCcw size={18} className="text-emerald-600 dark:text-emerald-300" />
+            <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">Materiais aguardando</p>
+            <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{pendingMaterials.length}</p>
+            <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Fila de moderacao de materiais pendentes.</p>
+          </button>
         </div>
       )}
 
       {activeSection === 'billing-health' && (
         <div className="space-y-6">
-          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-5">
             {billingHealthItems.map((item) => (
               <div
                 key={item.label}
@@ -194,9 +272,9 @@ const AdminPanelSection = ({
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
               <p className="text-sm font-black text-slate-900 dark:text-slate-100">Pendencias reais</p>
               <ul className="mt-5 space-y-3 text-xs font-medium text-slate-500 dark:text-slate-400">
-                <li>Renovacao Stripe E2E real segue marcada como NAO COMPROVADO.</li>
-                <li>Webhook fora de ordem em ambiente real segue NAO COMPROVADO.</li>
-                <li>Refund concorrente em todos os cenarios segue NAO COMPROVADO.</li>
+                <li>Execute `npm run check:billing-renewal` antes de cada deploy financeiro.</li>
+                <li>Confirme webhook e cron reais no servidor depois de publicar segredos novos.</li>
+                <li>Use o viewer de logs para validar refunds e reprocessamentos antes de encerrar incidentes.</li>
               </ul>
             </div>
           </div>

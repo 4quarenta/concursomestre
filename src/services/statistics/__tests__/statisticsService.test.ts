@@ -26,6 +26,7 @@ vi.mock('@services/api', () => ({
       user: 'statistics/user',
       question: 'statistics/question',
       platform: 'statistics/platform',
+      studySession: 'statistics/study-session.php',
     },
   },
 }));
@@ -43,6 +44,11 @@ describe('statisticsService', () => {
       data: {
         userId: 'user-1',
         totalQuestionsAnswered: 10,
+        questionStudyTime: 120,
+        readingStudyTime: 45,
+        totalStudyTime: 165,
+        lastActivity: '2026-04-09 12:00:00',
+        subjectBreakdown: [],
       },
     });
 
@@ -51,6 +57,7 @@ describe('statisticsService', () => {
     expect(mockGet).toHaveBeenCalledWith('statistics/user/user-1');
     expect(result.userId).toBe('user-1');
     expect(result.totalQuestionsAnswered).toBe(10);
+    expect(result.questionStudyTime).toBe(120);
   });
 
   it('loads question statistics through the official endpoint', async () => {
@@ -102,5 +109,55 @@ describe('statisticsService', () => {
       timeSpent: 12,
     });
     expect(result.success).toBe(true);
+  });
+
+  it('records a study session through the official statistics endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        sessionId: 'study-1',
+        totalStudyTime: 210,
+        questionStudyTime: 180,
+        readingStudyTime: 30,
+        statistics: {
+          userId: 'user-1',
+          questionStudyTime: 180,
+          readingStudyTime: 30,
+          totalStudyTime: 210,
+          totalQuestionsAnswered: 10,
+          correctAnswers: 8,
+          wrongAnswers: 2,
+          accuracyRate: 80,
+          currentStreak: 3,
+          bestStreak: 5,
+          lastActivity: '2026-04-09 15:00:00',
+          subjectBreakdown: [],
+        },
+      },
+    });
+
+    const result = await statisticsService.recordStudySession({
+      practiceSeconds: 120,
+      simulationSeconds: 60,
+      readingSeconds: 30,
+      startedAt: '2026-04-09T14:30:00.000Z',
+      endedAt: '2026-04-09T15:00:00.000Z',
+      sourceContext: {
+        pathname: '/practice',
+      },
+    });
+
+    expect(mockPost).toHaveBeenCalledWith('statistics/study-session.php', {
+      practice_seconds: 120,
+      simulation_seconds: 60,
+      reading_seconds: 30,
+      started_at: '2026-04-09T14:30:00.000Z',
+      ended_at: '2026-04-09T15:00:00.000Z',
+      source_context: {
+        pathname: '/practice',
+      },
+    });
+    expect(result.sessionId).toBe('study-1');
+    expect(result.statistics.totalStudyTime).toBe(210);
   });
 });

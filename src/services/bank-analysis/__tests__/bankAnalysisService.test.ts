@@ -83,4 +83,31 @@ describe('bankAnalysisService', () => {
     });
     expect(result.total).toBe(42);
   });
+
+  it('normalizes incomplete xray payloads to avoid runtime crashes', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        total: '7',
+        textStyle: null,
+        subjectData: [{ name: 'Direito Constitucional', value: '3' }],
+        detailedBreakdown: [{ subject: null, topics: [{ topic: null, percent: '25' }] }],
+      },
+    });
+
+    const result = await bankAnalysisService.getXrayStats({
+      banca: 'FGV',
+    });
+
+    expect(result.textStyle).toBe('Objetiva e Direta');
+    expect(result.subjectData[0]).toEqual({ name: 'Direito Constitucional', value: 3 });
+    expect(result.detailedBreakdown[0]).toEqual({
+      subject: 'Sem materia',
+      total: 0,
+      percent: 0,
+      topics: [{ topic: 'Sem assunto', percent: 25 }],
+    });
+    expect(result.difficultyData).toEqual([]);
+    expect(result.examList).toEqual([]);
+  });
 });

@@ -108,7 +108,7 @@ const FEEDBACK_REPLY_TEMPLATES: Record<string, Array<{ label: string; message: s
   ],
 };
 
-export const AdminFeedback: React.FC = () => {
+export const AdminFeedback: React.FC<{ mode?: 'feedback' | 'threads' }> = ({ mode = 'feedback' }) => {
   const { addToast } = useToast();
   const [feedbacks, setFeedbacks] = useState<AdminFeedbackThread[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,17 +140,35 @@ export const AdminFeedback: React.FC = () => {
     void fetchFeedback();
   }, [fetchFeedback]);
 
+  const dataset = useMemo(() => {
+    if (mode === 'threads') {
+      return feedbacks.filter((item) => Number(item.reply_count || 0) > 0 || item.status !== 'new');
+    }
+
+    return feedbacks;
+  }, [feedbacks, mode]);
+
+  const overdueCount = useMemo(
+    () => dataset.filter((item) => item.status !== 'resolved' && (Date.now() - new Date(item.created_at).getTime()) > 48 * 60 * 60 * 1000).length,
+    [dataset],
+  );
+
+  const withoutReplyCount = useMemo(
+    () => dataset.filter((item) => Number(item.reply_count || 0) === 0 && item.status !== 'resolved').length,
+    [dataset],
+  );
+
   const feedbackStats = useMemo(() => ({
-    total: feedbacks.length,
-    new: feedbacks.filter((item) => item.status === 'new').length,
-    read: feedbacks.filter((item) => item.status === 'read').length,
-    resolved: feedbacks.filter((item) => item.status === 'resolved').length,
-  }), [feedbacks]);
+    total: dataset.length,
+    new: dataset.filter((item) => item.status === 'new').length,
+    read: dataset.filter((item) => item.status === 'read').length,
+    resolved: dataset.filter((item) => item.status === 'resolved').length,
+  }), [dataset]);
 
   const filteredFeedbacks = useMemo(() => {
     const normalizedSearch = deferredSearch.trim().toLowerCase();
 
-    return feedbacks.filter((item) => {
+    return dataset.filter((item) => {
       if (statusFilter !== 'all' && item.status !== statusFilter) {
         return false;
       }
@@ -176,7 +194,7 @@ export const AdminFeedback: React.FC = () => {
 
       return haystack.includes(normalizedSearch);
     });
-  }, [deferredSearch, feedbacks, statusFilter, typeFilter]);
+  }, [dataset, deferredSearch, statusFilter, typeFilter]);
 
   const sortedFeedbacks = useMemo(
     () => [...filteredFeedbacks].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
@@ -184,21 +202,19 @@ export const AdminFeedback: React.FC = () => {
   );
 
   const updateStatus = useCallback(async (id: number, status: AdminFeedbackThread['status']) => {
-    const previous = feedbacks;
     setUpdatingStatusId(id);
-    setFeedbacks((current) => current.map((item) => (item.id === id ? { ...item, status } : item)));
 
     try {
       await adminService.updateFeedbackStatus(id, status);
+      await fetchFeedback();
       addToast('Status do feedback atualizado.', 'success');
     } catch (error) {
       console.error('Error updating feedback status:', error);
-      setFeedbacks(previous);
       addToast('Não foi possível atualizar o status do feedback.', 'error');
     } finally {
       setUpdatingStatusId(null);
     }
-  }, [addToast, feedbacks]);
+  }, [addToast, fetchFeedback]);
 
   const toggleExpand = useCallback(async (id: number) => {
     if (expandedId === id) {
@@ -232,6 +248,7 @@ export const AdminFeedback: React.FC = () => {
     try {
       await adminService.replyToFeedback(parentId, message);
       const updatedReplies = await adminService.getFeedbackReplies(parentId);
+      await fetchFeedback();
       setReplies((current) => ({ ...current, [parentId]: updatedReplies }));
       setReplyDrafts((current) => ({ ...current, [parentId]: '' }));
       setFeedbacks((current) => current.map((item) => (
@@ -246,7 +263,7 @@ export const AdminFeedback: React.FC = () => {
     } finally {
       setSendingReplyId(null);
     }
-  }, [addToast, replyDrafts]);
+  }, [addToast, fetchFeedback, replyDrafts]);
 
   const applyReplyTemplate = useCallback((threadId: number, message: string) => {
     setReplyDrafts((current) => ({ ...current, [threadId]: message }));
@@ -265,13 +282,15 @@ export const AdminFeedback: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h3 className="text-xl font-black text-slate-800 dark:text-white">Feedback e Suporte</h3>
+          <h3 className="text-xl font-black text-slate-800 dark:text-white">{mode === 'threads' ? 'Threads Operacionais' : 'Feedback e Suporte'}</h3>
           <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-            Central de triagem de mensagens, cancelamentos, bugs e solicitações do usuário.
+            {mode === 'threads'
+              ? 'Fila de conversas que ja tiveram resposta, retorno ou precisam de acompanhamento.'
+              : 'Central de triagem de mensagens, cancelamentos, bugs e solicitações do usuário.'}
           </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Total</p>
             <p className="mt-2 text-xl font-black text-slate-900 dark:text-slate-100">{feedbackStats.total}</p>
@@ -287,6 +306,14 @@ export const AdminFeedback: React.FC = () => {
           <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900/30 bg-emerald-50/70 dark:bg-emerald-900/10 px-4 py-3 shadow-sm">
             <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Resolvidos</p>
             <p className="mt-2 text-xl font-black text-emerald-700 dark:text-emerald-300">{feedbackStats.resolved}</p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 dark:border-amber-900/30 bg-amber-50/70 dark:bg-amber-900/10 px-4 py-3 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">Sem retorno</p>
+            <p className="mt-2 text-xl font-black text-amber-700 dark:text-amber-300">{withoutReplyCount}</p>
+          </div>
+          <div className="rounded-2xl border border-rose-200 dark:border-rose-900/30 bg-rose-50/70 dark:bg-rose-900/10 px-4 py-3 shadow-sm">
+            <p className="text-[10px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400">SLA estourado</p>
+            <p className="mt-2 text-xl font-black text-rose-700 dark:text-rose-300">{overdueCount}</p>
           </div>
         </div>
       </div>
@@ -325,7 +352,7 @@ export const AdminFeedback: React.FC = () => {
                 onChange={(event) => setTypeFilter(event.target.value)}
                 className="bg-transparent text-xs font-black uppercase tracking-widest text-slate-600 outline-none dark:text-slate-300"
               >
-                <option value="all">Todos os tipos</option>
+                <option value="all">{mode === 'threads' ? 'Todos os contextos' : 'Todos os tipos'}</option>
                 {Object.entries(TYPE_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
                 ))}
@@ -338,7 +365,7 @@ export const AdminFeedback: React.FC = () => {
       <div className="grid gap-4">
         {sortedFeedbacks.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-slate-400">
-            Nenhum feedback encontrado para os filtros atuais.
+            {mode === 'threads' ? 'Nenhuma thread encontrada para os filtros atuais.' : 'Nenhum feedback encontrado para os filtros atuais.'}
           </div>
         ) : (
           sortedFeedbacks.map((item) => {
@@ -411,6 +438,11 @@ export const AdminFeedback: React.FC = () => {
                         <MessageSquare size={16} />
                         {isExpanded ? 'Ocultar conversa' : `Ver conversa (${item.reply_count || 0})`}
                       </button>
+                      {Number(item.reply_count || 0) === 0 && item.status !== 'resolved' ? (
+                        <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-rose-600 dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300">
+                          Sem resposta
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </div>

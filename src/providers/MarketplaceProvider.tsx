@@ -458,15 +458,13 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const materialToDelete = materials.find((material) => material.id === id);
     if (!materialToDelete) return;
 
-    if (window.confirm(`Tem certeza que deseja excluir o material "${materialToDelete.title}"? Esta ação e irreversivel.`)) {
-      try {
-        await marketplaceService.deleteMaterial(id);
-        setMaterials((prev) => prev.filter((material) => material.id !== id));
-        addToast('Material removido com sucesso!', 'success');
-      } catch (error) {
-        console.error('Delete material error:', error);
-        addToast('Erro ao remover material.', 'error');
-      }
+    try {
+      await marketplaceService.deleteMaterial(id);
+      setMaterials((prev) => prev.filter((material) => material.id !== id));
+      addToast('Material removido com sucesso!', 'success');
+    } catch (error) {
+      console.error('Delete material error:', error);
+      addToast('Erro ao remover material.', 'error');
     }
   };
 

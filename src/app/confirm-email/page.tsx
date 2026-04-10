@@ -16,12 +16,33 @@ import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { authFlowService } from '@services/auth/authFlowService';
 import { readApiErrorMessage } from '@services/api/response';
+import { getCurrentUserSnapshot } from '@services/auth/session';
 
 const pageCopy = {
   loading: 'Verificando seu e-mail...',
   successFallback: 'E-mail verificado com sucesso!',
   missingToken: 'Token de verificacao invalido ou ausente da URL.',
   pendingConfirmation: 'Confirme seu e-mail para desbloquear todos os recursos.',
+  connectionFallback: 'Erro de conexao com o servidor. O link pode ter expirado.',
+};
+
+const resolvePostConfirmationPath = (): string => {
+  const redirectAfterLogin = sessionStorage.getItem('redirectAfterLogin');
+
+  if (redirectAfterLogin && redirectAfterLogin !== '/auth') {
+    sessionStorage.removeItem('redirectAfterLogin');
+    return redirectAfterLogin;
+  }
+
+  const currentUserSnapshot = getCurrentUserSnapshot();
+  return currentUserSnapshot ? '/' : '/auth?mode=login';
+};
+
+const navigateWithCanonicalExit = (navigate: ReturnType<typeof useNavigate>, path: string) => {
+  navigate(path, {
+    replace: true,
+    state: path === '/' ? { skipRouteRestore: true } : undefined,
+  });
 };
 
 const Page: React.FC = () => {
@@ -73,11 +94,13 @@ const Page: React.FC = () => {
         setStatus('success');
         setMessage(result.message || pageCopy.successFallback);
         setXpGained(result.newXp > 0 ? result.newXp : 50);
-        addToast('Conta ativada! Você ganhou bonus de XP.', 'success');
+        addToast('Conta ativada! Voce ganhou bonus de XP.', 'success');
 
         if (currentUser) {
           await refreshUser();
         }
+
+        const nextPath = resolvePostConfirmationPath();
 
         timer = setInterval(() => {
           setCountdown((previousCountdown) => {
@@ -86,7 +109,7 @@ const Page: React.FC = () => {
                 clearInterval(timer);
               }
 
-              navigate(currentUser ? '/' : '/auth');
+              navigateWithCanonicalExit(navigate, nextPath);
               return 0;
             }
 
@@ -98,8 +121,11 @@ const Page: React.FC = () => {
           return;
         }
 
+        const errorMessage = readApiErrorMessage(error, pageCopy.connectionFallback);
         setStatus('error');
-        setMessage(readApiErrorMessage(error, 'Erro de conexão com o servidor. O link pode ter expirado.'));
+        setMessage(errorMessage);
+        setCountdown(0);
+        addToast(errorMessage, 'error');
       }
     };
 
@@ -115,37 +141,37 @@ const Page: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
-      <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xl mb-8">
+      <div className="mb-8 flex items-center gap-2 text-xl font-bold text-indigo-600 dark:text-indigo-400">
         <BrainCircuit size={28} />
         <span className="tracking-tight">ConcursoMestre</span>
       </div>
 
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-[2rem] shadow-xl border border-slate-200 dark:border-slate-800 p-8 text-center animate-scale-in">
+      <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-slate-800 dark:bg-slate-900 animate-scale-in">
         {status === 'loading' && (
-          <div className="py-8 space-y-6 flex flex-col items-center">
+          <div className="flex flex-col items-center space-y-6 py-8">
             {!token && currentUser && !currentUser.emailVerified ? (
               <>
-                <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center ring-4 ring-indigo-100 dark:ring-indigo-900/30">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 ring-4 ring-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 dark:ring-indigo-900/30">
                   <CheckCircle2 size={40} />
                 </div>
                 <div className="space-y-2">
                   <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100">
                     Bem-vindo(a) ao Time!
                   </h2>
-                  <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed max-w-xs mx-auto">
-                    Enviamos um link de confirmacao para <strong>{currentUser.email}</strong>. Confirme para desbloquear questões, simulados e rankings.
+                  <p className="mx-auto max-w-xs text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                    Enviamos um link de confirmacao para <strong>{currentUser.email}</strong>. Confirme para desbloquear questoes, simulados e rankings.
                   </p>
                 </div>
                 <div className="w-full space-y-3 pt-2">
                   <button
-                    onClick={() => navigate('/')}
-                    className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black rounded-2xl text-xs uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"
+                    onClick={() => navigateWithCanonicalExit(navigate, '/')}
+                    className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-xs font-black uppercase tracking-widest text-white shadow-lg transition-all hover:bg-indigo-700 active:scale-95"
                   >
                     Ir para Dashboard <ArrowRight size={16} />
                   </button>
                   <button
-                    onClick={() => navigate('/')}
-                    className="w-full py-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-[10px] font-black uppercase tracking-widest transition-all"
+                    onClick={() => navigateWithCanonicalExit(navigate, '/')}
+                    className="w-full py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 transition-all hover:text-indigo-600 dark:hover:text-indigo-400"
                   >
                     Pular por enquanto
                   </button>
@@ -154,15 +180,15 @@ const Page: React.FC = () => {
             ) : (
               <>
                 <Loader2 size={48} className="animate-spin text-indigo-600 dark:text-indigo-400" />
-                <p className="text-slate-600 dark:text-slate-400 font-medium">{message}</p>
+                <p className="font-medium text-slate-600 dark:text-slate-400">{message}</p>
               </>
             )}
           </div>
         )}
 
         {status === 'success' && (
-          <div className="py-4 space-y-5 animate-fade-in flex flex-col items-center">
-            <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center ring-4 ring-emerald-100 dark:ring-emerald-900/30">
+          <div className="flex flex-col items-center space-y-5 py-4 animate-fade-in">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-4 ring-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:ring-emerald-900/30">
               <CheckCircle2 size={40} />
             </div>
 
@@ -170,34 +196,34 @@ const Page: React.FC = () => {
               Conta ativada!
             </h2>
 
-            <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed max-w-xs">
+            <p className="max-w-xs text-sm leading-relaxed text-slate-500 dark:text-slate-400">
               {message}
             </p>
 
             {xpGained > 0 && (
-              <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 px-4 py-2 rounded-xl text-sm font-bold shadow-sm">
+              <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-600 shadow-sm dark:border-amber-800 dark:bg-amber-900/10 dark:text-amber-400">
                 <Gift size={16} />
                 +{xpGained} XP de bonus recebido!
               </div>
             )}
 
             <div className="w-full space-y-3 pt-2">
-              <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+              <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
                 Redirecionando automaticamente em <span className="font-black text-indigo-500">{countdown}s</span>...
               </p>
               <button
-                onClick={() => navigate(currentUser ? '/' : '/auth')}
-                className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black rounded-2xl text-xs uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-2"
+                onClick={() => navigateWithCanonicalExit(navigate, resolvePostConfirmationPath())}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-xs font-black uppercase tracking-widest text-white shadow-lg transition-all hover:bg-indigo-700 active:scale-95"
               >
-                {currentUser ? 'Continuar na Plataforma' : 'Fazer Login'} <ArrowRight size={16} />
+                Continuar na Plataforma <ArrowRight size={16} />
               </button>
             </div>
           </div>
         )}
 
         {status === 'error' && (
-          <div className="py-4 space-y-5 animate-fade-in flex flex-col items-center">
-            <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center">
+          <div className="flex flex-col items-center space-y-5 py-4 animate-fade-in">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400">
               <XCircle size={40} />
             </div>
 
@@ -205,13 +231,17 @@ const Page: React.FC = () => {
               Ops, ocorreu um erro
             </h2>
 
-            <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed max-w-xs">
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="w-full rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left text-sm font-semibold leading-relaxed text-red-700 shadow-sm dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200"
+            >
               {message}
-            </p>
+            </div>
 
             <button
-              onClick={() => (currentUser ? navigate('/') : navigate('/auth?mode=login'))}
-              className="mt-4 w-full h-12 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-slate-100 font-black rounded-2xl text-xs uppercase tracking-widest transition-all shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-center"
+              onClick={() => navigateWithCanonicalExit(navigate, currentUser ? '/' : '/auth?mode=login')}
+              className="mt-4 flex h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 text-xs font-black uppercase tracking-widest text-slate-900 shadow-sm transition-all hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
             >
               {currentUser ? 'Voltar ao inicio' : 'Voltar para o login'}
             </button>

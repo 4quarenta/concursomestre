@@ -114,8 +114,17 @@ export const planService = {
    * Valida um cupom comercial contra valor/plano selecionado.
    * @since 1.0.0
    */
-  async validateCoupon(code: string, amount: number, planId?: number): Promise<any> {
-    return subscriptionsService.validateCoupon(code, amount, planId);
+  async validateCoupon(
+    code: string,
+    amount: number,
+    options: {
+      planId?: number;
+      itemId?: string | number;
+      targetType?: 'plan' | 'item';
+      targetId?: string | number;
+    } = {},
+  ): Promise<any> {
+    return subscriptionsService.validateCoupon(code, amount, options);
   },
 
   /**

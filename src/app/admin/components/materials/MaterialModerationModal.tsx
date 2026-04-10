@@ -13,6 +13,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import type { ErrorReport, Material } from '@types';
 import { AlertTriangle, CheckCircle2, Eye, FileText, Image as ImageIcon, Lock, ShieldAlert, X, XCircle } from 'lucide-react';
+import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 interface ModerationTemplate {
   label: string;
@@ -35,6 +36,10 @@ interface MaterialModerationModalProps {
   onApprove: () => void;
   onHide: () => void;
   onBlock: () => void;
+  pendingModerationAction: 'hide' | 'block' | null;
+  actionLoading: 'approve' | 'hide' | 'block' | null;
+  onCancelPendingAction: () => void;
+  onConfirmPendingAction: () => void;
 }
 
 const MaterialModerationModal = ({
@@ -53,10 +58,15 @@ const MaterialModerationModal = ({
   onApprove,
   onHide,
   onBlock,
+  pendingModerationAction,
+  actionLoading,
+  onCancelPendingAction,
+  onConfirmPendingAction,
 }: MaterialModerationModalProps) => {
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-white animate-in fade-in slide-in-from-bottom-4 duration-300 dark:bg-slate-950">
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-hidden p-8 no-scrollbar md:p-12">
+    <>
+      <div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-white animate-in fade-in slide-in-from-bottom-4 duration-300 dark:bg-slate-950">
+        <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-hidden p-8 no-scrollbar md:p-12">
         <header className="flex justify-between items-start">
           <div>
             <span className="mb-2 block w-fit rounded-md bg-indigo-50 px-2 py-1 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
@@ -259,15 +269,17 @@ const MaterialModerationModal = ({
               <button
                 type="button"
                 onClick={onApprove}
-                className="flex w-full items-center justify-center gap-3 rounded-[1.5rem] bg-emerald-500 py-5 text-[11px] font-black uppercase tracking-widest text-white shadow-xl shadow-emerald-500/10 transition-all hover:bg-emerald-600"
+                disabled={actionLoading !== null}
+                className="flex w-full items-center justify-center gap-3 rounded-[1.5rem] bg-emerald-500 py-5 text-[11px] font-black uppercase tracking-widest text-white shadow-xl shadow-emerald-500/10 transition-all hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <CheckCircle2 size={18} /> Aprovar / Manter Ativo
+                <CheckCircle2 size={18} /> {actionLoading === 'approve' ? 'Aprovando...' : 'Aprovar / Manter Ativo'}
               </button>
 
               <button
                 type="button"
                 onClick={onHide}
-                className="w-full rounded-[1.5rem] border border-slate-200 bg-white py-4 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+                disabled={actionLoading !== null}
+                className="w-full rounded-[1.5rem] border border-slate-200 bg-white py-4 text-[11px] font-black uppercase tracking-widest text-slate-600 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
               >
                 Ocultar Temporario
               </button>
@@ -275,15 +287,31 @@ const MaterialModerationModal = ({
               <button
                 type="button"
                 onClick={onBlock}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 py-3 text-xs font-black uppercase text-white shadow-lg shadow-red-200 transition-all hover:bg-red-600"
+                disabled={actionLoading !== null}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 py-3 text-xs font-black uppercase text-white shadow-lg shadow-red-200 transition-all hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <ShieldAlert size={16} /> Bloquear e Solicitar Contestacao
               </button>
             </div>
           </div>
         </div>
+        </div>
       </div>
-    </div>,
+
+      <AdminConfirmDialog
+        isOpen={pendingModerationAction !== null}
+        title={pendingModerationAction === 'hide' ? 'Ocultar material' : 'Bloquear material'}
+        description={
+          pendingModerationAction === 'hide'
+            ? 'O material sera retirado da vitrine e a denuncia sera resolvida com a justificativa preenchida.'
+            : 'O material sera bloqueado, o autor recebera a mensagem oficial e a denuncia sera concluida.'
+        }
+        confirmLabel={pendingModerationAction === 'hide' ? 'Ocultar material' : 'Bloquear material'}
+        loading={actionLoading === pendingModerationAction}
+        onCancel={onCancelPendingAction}
+        onConfirm={onConfirmPendingAction}
+      />
+    </>,
     document.body,
   );
 };

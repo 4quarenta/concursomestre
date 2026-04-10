@@ -9,36 +9,47 @@
 *
 */
 
+import { useState } from 'react';
 import type { SystemSettings } from '@types';
-import { useData } from '@providers/DataProvider';
 
 interface UseAdminImportSettingsBridgeOptions {
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => Promise<any> | any;
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<void> | void;
 }
 
 export const useAdminImportSettingsBridge = ({
   systemSettings,
   updateSystemSettings,
+  saveSystemSettingsNow,
 }: UseAdminImportSettingsBridgeOptions) => {
-  const { dispatch } = useData();
+  const [isSavingImportSettings, setIsSavingImportSettings] = useState(false);
 
   const handleGeminiApiKeyChange = (value: string) => {
-    dispatch({
-      type: 'UPDATE_SYSTEM_SETTINGS',
-      payload: {
-        ...systemSettings,
-        geminiApiKey: value,
-      },
+    updateSystemSettings({
+      ...systemSettings,
+      geminiApiKey: value,
     });
   };
 
-  const handleSaveImportSettings = () => {
-    return updateSystemSettings(systemSettings);
+  const handleSaveImportSettings = async () => {
+    if (isSavingImportSettings) {
+      return;
+    }
+
+    setIsSavingImportSettings(true);
+    try {
+      await saveSystemSettingsNow({
+        ...systemSettings,
+      });
+    } finally {
+      setIsSavingImportSettings(false);
+    }
   };
 
   return {
     handleGeminiApiKeyChange,
     handleSaveImportSettings,
+    isSavingImportSettings,
   };
 };

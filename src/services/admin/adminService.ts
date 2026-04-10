@@ -40,6 +40,11 @@ export interface CacheStatsPayload {
   expired_entries: number;
   total_size_mb: number;
   enabled: boolean;
+  default_ttl?: number;
+  table_name?: string | null;
+  source?: string;
+  supports_expiration?: boolean;
+  supports_size_estimate?: boolean;
 }
 
 export interface SystemLogsPayload {
@@ -113,6 +118,11 @@ export interface AdminDatabaseResetPayload {
 export interface AdminTwoFactorSetupPayload {
   secret: string;
   qrCodeUrl: string;
+}
+
+export interface AdminSettingsTestResult {
+  message: string;
+  data?: Record<string, any>;
 }
 
 export interface AdminQuestionListPayload {
@@ -212,6 +222,11 @@ export const adminService = {
       expired_entries: 0,
       total_size_mb: 0,
       enabled: true,
+      default_ttl: 300,
+      table_name: null,
+      source: 'unknown',
+      supports_expiration: false,
+      supports_size_estimate: false,
     });
   },
 
@@ -222,6 +237,15 @@ export const adminService = {
   async toggleCache(enabled: boolean): Promise<string> {
     const response = await apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=settings`, { enabled }) as any;
     return assertApiSuccess(response, 'Não foi possível atualizar o cache.').message || 'Configuração do cache atualizada.';
+  },
+
+  /**
+   * Persiste as configuracoes de cache com confirmacao do backend.
+   * @since v1.0.0
+   */
+  async saveCacheSettings(payload: { enabled: boolean; default_ttl: number }): Promise<string> {
+    const response = await apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=settings`, payload) as any;
+    return assertApiSuccess(response, 'Nao foi possivel salvar as configuracoes de cache.').message || 'Configuracoes do cache atualizadas.';
   },
 
   /**
@@ -408,6 +432,32 @@ export const adminService = {
   async resetDatabase(payload: AdminDatabaseResetPayload): Promise<void> {
     const response = await apiClient.post<ApiResponse>(ENDPOINTS.admin.resetDatabase, payload) as any;
     assertApiSuccess(response, 'Não foi possível resetar a base de dados.');
+  },
+
+  /**
+   * Dispara um teste real do SMTP com o endpoint oficial de settings.
+   * @since v1.0.0
+   */
+  async testSmtpSettings(payload: Record<string, any>): Promise<AdminSettingsTestResult> {
+    const response = await apiClient.post<ApiResponse>(`${ENDPOINTS.settings.update}?action=test_smtp`, payload) as any;
+    const result = assertApiSuccess(response, 'Nao foi possivel testar o SMTP.');
+    return {
+      message: result.message || 'SMTP validado com sucesso.',
+      data: result.data,
+    };
+  },
+
+  /**
+   * Executa uma checagem administrativa das integracoes configuradas.
+   * @since v1.0.0
+   */
+  async testIntegrations(payload: Record<string, any>): Promise<AdminSettingsTestResult> {
+    const response = await apiClient.post<ApiResponse>(`${ENDPOINTS.settings.update}?action=test_integrations`, payload) as any;
+    const result = assertApiSuccess(response, 'Nao foi possivel validar as integracoes.');
+    return {
+      message: result.message || 'Integracoes verificadas com sucesso.',
+      data: result.data,
+    };
   },
 
   /**

@@ -66,6 +66,23 @@ export const questionService = {
   },
 
   /**
+   * Carrega uma questao publica isolada pelo endpoint oficial de detalhe.
+   * @since v1.0.0
+   */
+  async getQuestionById(questionId: string | number): Promise<Question> {
+    const response = await apiClient.get<any>(
+      ENDPOINTS.questions.show,
+      {
+        params: {
+          id: String(questionId),
+        },
+      },
+    ) as any;
+
+    return readApiData<Question>(response, {} as Question);
+  },
+
+  /**
    * Persiste a resposta do usuário e devolve o snapshot de progressao
    * necessario para atualizar XP e nivel no frontend.
    * @since v1.0.0

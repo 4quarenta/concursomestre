@@ -167,7 +167,7 @@ const TaxonomyModal = ({
                 <textarea
                   value={filterDescription}
                   onChange={(event) => onFilterDescriptionChange(event.target.value)}
-                  placeholder="InformaÃ§Ãµes adicionais sobre esta banca..."
+                  placeholder="Informações adicionais sobre esta banca..."
                   className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800"
                 />
               </div>

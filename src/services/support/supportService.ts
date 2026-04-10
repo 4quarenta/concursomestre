@@ -35,14 +35,22 @@ type CreateSupportThreadInput = {
   parent_id?: number;
 };
 
+export type CreatedSupportThreadResult = {
+  id: number;
+  type: string;
+  parent_id: number | null;
+};
+
 /**
- * Centraliza o fluxo da central de suporte/feedback do usuário.
- * Essa camada e consumida pela pagina pública de suporte e pelo histórico de conversas.
+ * Centraliza o fluxo da central de suporte/feedback do usuario.
+ * Essa camada e consumida pela pagina publica de suporte e pelo historico de conversas.
+ *
  * @since 1.0.0
  */
 export const supportService = {
   /**
-   * Lista os chamados do usuário autenticado.
+   * Lista os chamados do usuario autenticado.
+   *
    * @since 1.0.0
    */
   async listThreads(): Promise<SupportThread[]> {
@@ -66,6 +74,7 @@ export const supportService = {
 
   /**
    * Carrega a conversa de um chamado especifico.
+   *
    * @since 1.0.0
    */
   async listReplies(threadId: number): Promise<SupportReply[]> {
@@ -85,26 +94,50 @@ export const supportService = {
 
   /**
    * Abre um novo chamado/sugestao para o suporte.
+   * Retorna o payload persistido para a UI materializar a thread sem depender do refresh imediato.
+   *
    * @since 1.0.0
    */
-  async createThread(input: CreateSupportThreadInput): Promise<void> {
+  async createThread(input: CreateSupportThreadInput): Promise<CreatedSupportThreadResult> {
     const response = await apiClient.post(ENDPOINTS.feedback.create, input) as any;
-    assertApiSuccess(response, 'Não foi possível enviar a solicitacao.');
+    assertApiSuccess(response, 'Nao foi possivel enviar a solicitacao.');
+
+    const payload = readApiData<any>(response, {});
+
+    return {
+      id: Number(payload?.id || 0),
+      type: String(payload?.type || input.type),
+      parent_id: payload?.parent_id === null || payload?.parent_id === undefined
+        ? null
+        : Number(payload.parent_id || 0),
+    };
   },
 
   /**
    * Responde uma thread existente da central de suporte.
+   * O retorno ajuda a auditar que a resposta foi persistida no backend oficial.
+   *
    * @since 1.0.0
    */
-  async replyToThread(parentId: number, type: string, details: string): Promise<void> {
+  async replyToThread(parentId: number, type: string, details: string): Promise<CreatedSupportThreadResult> {
     const response = await apiClient.post(ENDPOINTS.feedback.create, {
       parent_id: parentId,
       type,
-      reason: 'Resposta do usuário',
+      reason: 'Resposta do usuario',
       details,
     }) as any;
 
-    assertApiSuccess(response, 'Não foi possível enviar a solicitacao.');
+    assertApiSuccess(response, 'Nao foi possivel enviar a solicitacao.');
+
+    const payload = readApiData<any>(response, {});
+
+    return {
+      id: Number(payload?.id || 0),
+      type: String(payload?.type || type),
+      parent_id: payload?.parent_id === null || payload?.parent_id === undefined
+        ? null
+        : Number(payload.parent_id || parentId),
+    };
   },
 };
 

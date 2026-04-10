@@ -36,6 +36,7 @@ export const ENDPOINTS = {
 
     questions: {
         list: 'questionsList',
+        show: 'questions/show.php',
         create: 'questionsCreate',
         update: 'questionsUpdate',
         delete: 'questionsDelete',
@@ -216,6 +217,7 @@ export const ENDPOINTS = {
         platform: 'statistics/platform',
         xray: 'statistics/xray.php',
         bancaInfo: 'statistics/banca_info.php',
+        studySession: 'statistics/study-session.php',
     },
 
     system: {

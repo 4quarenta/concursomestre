@@ -20,8 +20,14 @@ const fixturesDir = path.join(repoRoot, 'scripts', 'checks', 'fixtures', 'stripe
 const backendRunner = path.join(backendRoot, 'tests', 'BillingStripeOperationalValidationTest.php');
 const webhookSimulator = path.join(repoRoot, 'scripts', 'checks', 'stripe-webhook-simulator.mjs');
 const renewalCheck = path.join(repoRoot, 'scripts', 'checks', 'billing-renewal-check.mjs');
-const jsonOutput = path.join(repoRoot, 'scripts', 'checks', 'billing-e2e-report.json');
-const mdOutput = path.join(repoRoot, 'scripts', 'checks', 'billing-e2e-report.md');
+const reportsRoot = path.join(repoRoot, 'scripts', 'checks', 'output');
+const docsReportsRoot = path.join(repoRoot, 'docs', 'reports');
+const jsonOutput = path.join(reportsRoot, 'billing-e2e-report.json');
+const mdOutput = path.join(docsReportsRoot, 'billing-e2e-report.md');
+const renewalCheckJson = path.join(reportsRoot, 'billing-renewal-check.json');
+const renewalCheckMd = path.join(docsReportsRoot, 'billing-renewal-check.md');
+fs.mkdirSync(reportsRoot, { recursive: true });
+fs.mkdirSync(docsReportsRoot, { recursive: true });
 
 /**
  * Extrai JSON mesmo com warnings anexados ao stdout.
@@ -160,8 +166,8 @@ try {
     counts: payload.counts,
     jsonOutput,
     mdOutput,
-    renewalCheckJson: path.join(repoRoot, 'billing-renewal-check.json'),
-    renewalCheckMd: path.join(repoRoot, 'billing-renewal-check.md'),
+    renewalCheckJson,
+    renewalCheckMd,
   }, null, 2));
 } catch (error) {
   const payload = {

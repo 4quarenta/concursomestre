@@ -144,12 +144,24 @@ export const subscriptionsService = {
    * Valida um cupom comercial para o valor e plano informados.
    * @since 1.0.0
    */
-  async validateCoupon(code: string, amount: number, planId?: number): Promise<any> {
+  async validateCoupon(
+    code: string,
+    amount: number,
+    options: {
+      planId?: number;
+      itemId?: string | number;
+      targetType?: 'plan' | 'item';
+      targetId?: string | number;
+    } = {},
+  ): Promise<any> {
     try {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.validateCoupon, {
         code,
         amount,
-        plan_id: planId,
+        plan_id: options.planId,
+        item_id: options.itemId,
+        target_type: options.targetType,
+        target_id: options.targetId,
       });
       const payload = readApiData<any>(response, {});
       return {

@@ -13,6 +13,7 @@
 export const PLAN_DETAILS = {
   Gratuito: {
     color: 'bg-slate-500',
+    enabled: true,
     features: [
       { text: '15 questões por dia', included: true },
       { text: 'Estatísticas básicas', included: true },
@@ -25,6 +26,7 @@ export const PLAN_DETAILS = {
   },
   Essencial: {
     color: 'bg-blue-500',
+    enabled: true,
     features: [
       { text: 'Questões Ilimitadas', included: true },
       { text: 'Estatísticas básicas', included: true },
@@ -38,6 +40,7 @@ export const PLAN_DETAILS = {
   Pro: {
     color: 'bg-indigo-600',
     popular: true,
+    enabled: true,
     features: [
       { text: 'Questões Ilimitadas', included: true },
       { text: 'Análise de Desempenho Detalhada', included: true },
@@ -49,6 +52,7 @@ export const PLAN_DETAILS = {
   },
   Elite: {
     color: 'bg-amber-500',
+    enabled: true,
     features: [
       { text: 'Tudo do plano Pro', included: true },
       { text: 'Chat Mentor Ilimitado', included: true },

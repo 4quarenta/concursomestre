@@ -13,14 +13,18 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@providers/AuthProvider';
+import { useData } from '@providers/DataProvider';
 import { Plan } from '@types';
 import { planService } from '@services/plans';
 import { PlanCard } from './components/PlanCard';
 import { useToast } from '@providers/ToastProvider';
 import { ArrowLeft, AlertTriangle, XCircle, CheckCircle2, ArrowRight } from 'lucide-react';
+import { isPlanEnabledByName } from '@services/plans';
+import { buildProfilePath } from '../profile/profileNavigation';
 
 export const PlansPage: React.FC = () => {
     const { currentUser } = useAuth();
+    const { systemSettings } = useData();
     const { addToast } = useToast();
     const navigate = useNavigate();
     const [plans, setPlans] = useState<Plan[]>([]);
@@ -83,6 +87,7 @@ export const PlansPage: React.FC = () => {
     };
 
     const filteredPlans = plans.filter(plan => {
+        if (!isPlanEnabledByName(plan.name, systemSettings.planDetails)) return false;
         if (plan.price === 0) return true; // Always show free plan
 
         const isMonthly = plan.interval_unit === 'month' && plan.interval_count === 1;
@@ -106,7 +111,7 @@ export const PlansPage: React.FC = () => {
     return (
         <div className="container mx-auto px-4 py-8 relative">
             <div className="text-center mb-12">
-                <Link to="/profile" className="absolute left-4 top-8 text-slate-400 hover:text-white flex items-center gap-2 uppercase text-xs font-bold tracking-widest">
+                <Link to={buildProfilePath('personal')} className="absolute left-4 top-8 text-slate-400 hover:text-white flex items-center gap-2 uppercase text-xs font-bold tracking-widest">
                     <ArrowLeft size={16} /> Voltar
                 </Link>
                 <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-4">Escolha o seu Plano</h1>

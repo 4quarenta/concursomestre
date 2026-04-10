@@ -22,9 +22,12 @@ const ConfirmEmailPage = React.lazy(() => import('../app/confirm-email/page'));
 const DashboardPage = React.lazy(() => import('../app/dashboard/page'));
 const FaqPage = React.lazy(() => import('../app/faq/page'));
 const LandingPage = React.lazy(() => import('../app/landing/page'));
+const MaterialPublicPage = React.lazy(() => import('../app/material/page'));
 const PlansPage = React.lazy(() => import('../app/plans/page'));
 const PrivacyPage = React.lazy(() => import('../app/privacy/page'));
 const PromoPage = React.lazy(() => import('../app/promo/page'));
+const QuestionPublicPage = React.lazy(() => import('../app/question/page'));
+const RankingDetailPage = React.lazy(() => import('../app/ranking-detail/page'));
 const ResetPasswordPage = React.lazy(() => import('../app/reset-password/page'));
 const TermsPage = React.lazy(() => import('../app/terms/page'));
 
@@ -70,6 +73,9 @@ export const PublicRoutes: React.FC<PublicRoutesProps> = ({ currentUser, login }
       />
       <Route path="/changelog" element={<PageTransition><ChangelogPage /></PageTransition>} />
       <Route path="/faq" element={renderLayoutPage(<FaqPage />)} />
+      <Route path="/question/:id/:slug?" element={renderLayoutPage(<QuestionPublicPage />)} />
+      <Route path="/ranking/:id/:slug?" element={renderLayoutPage(<RankingDetailPage />)} />
+      <Route path="/material/:id/:slug?" element={renderLayoutPage(<MaterialPublicPage />)} />
       <Route path="/" element={currentUser ? renderLayoutPage(<DashboardPage />) : <PageTransition><LandingPage /></PageTransition>} />
       <Route path="/promo/:slug" element={renderLayoutPage(<PromoPage />)} />
       <Route path="/plans" element={renderLayoutPage(<PlansPage />)} />

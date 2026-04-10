@@ -82,9 +82,12 @@ describe('supportService', () => {
   });
 
   it('creates a support thread through the official endpoint', async () => {
-    mockPost.mockResolvedValueOnce({ success: true });
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: { id: 9, type: 'support', parent_id: null },
+    });
 
-    await supportService.createThread({
+    const result = await supportService.createThread({
       type: 'support',
       reason: 'Ajuda',
       details: 'Preciso de ajuda',
@@ -95,18 +98,23 @@ describe('supportService', () => {
       reason: 'Ajuda',
       details: 'Preciso de ajuda',
     });
+    expect(result).toEqual({ id: 9, type: 'support', parent_id: null });
   });
 
   it('replies to an existing support thread through the official endpoint', async () => {
-    mockPost.mockResolvedValueOnce({ success: true });
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: { id: 22, type: 'bug', parent_id: 12 },
+    });
 
-    await supportService.replyToThread(12, 'bug', 'Tenho mais contexto para esse caso.');
+    const result = await supportService.replyToThread(12, 'bug', 'Tenho mais contexto para esse caso.');
 
     expect(mockPost).toHaveBeenCalledWith('feedback/create.php', {
       parent_id: 12,
       type: 'bug',
-      reason: 'Resposta do usuário',
+      reason: 'Resposta do usuario',
       details: 'Tenho mais contexto para esse caso.',
     });
+    expect(result).toEqual({ id: 22, type: 'bug', parent_id: 12 });
   });
 });

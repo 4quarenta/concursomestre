@@ -12,6 +12,7 @@
 import React from 'react';
 import { Bell, Moon, Sun } from 'lucide-react';
 import { NotificationDropdown } from './NotificationDropdown';
+import { buildProfilePath } from '../../../profile/profileNavigation';
 
 interface AdminTopBarProps {
   theme: string;
@@ -84,7 +85,7 @@ const AdminTopBar = ({
 
           <div className="mx-2 h-8 w-px bg-slate-200 dark:bg-slate-800" />
 
-          <div className="group flex cursor-pointer items-center gap-3" onClick={() => navigate('/profile')}>
+          <div className="group flex cursor-pointer items-center gap-3" onClick={() => navigate(buildProfilePath('personal'))}>
             <div className="hidden text-right sm:block">
               <p className="text-xs font-black text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100">
                 {currentUserName}

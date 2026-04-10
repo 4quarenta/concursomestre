@@ -66,9 +66,10 @@ export const transactionsService = {
    * Cria a transação local de compra de material no backend oficial.
    * @since 1.0.0
    */
-  async createMaterialPurchase(materialId: string | number): Promise<Transaction> {
+  async createMaterialPurchase(materialId: string | number, couponCode?: string): Promise<Transaction> {
     const response = await apiClient.post<any>(ENDPOINTS.transactions.create, {
       material_id: materialId,
+      coupon_code: couponCode,
     }) as any;
 
     const raw = assertApiSuccess(response, 'Não foi possível registrar a compra.').raw;

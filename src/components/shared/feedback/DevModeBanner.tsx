@@ -117,7 +117,7 @@ const QuickLoginButton: React.FC<{ role: string; email: string; icon: React.Reac
         // Salva credenciais de dev no sessionStorage para pré-preencher o formulário
         sessionStorage.setItem('dev_prefill_email', email);
         sessionStorage.setItem('dev_prefill_password', '123456');
-        window.location.hash = '/auth?mode=login&dev=1';
+        window.location.assign('/auth?mode=login&dev=1');
     };
 
     return (

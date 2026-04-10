@@ -12,12 +12,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle,
   Calendar,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Copy,
   Cpu,
   CreditCard,
@@ -26,14 +27,13 @@ import {
   Globe,
   Loader2,
   Lock,
-  Megaphone,
-  Palette,
-  Percent,
+  Plus,
   QrCode,
   RefreshCcw,
   Search,
   Save,
   ShieldAlert,
+  ShieldCheck,
   ShoppingBag,
   Tag,
   Terminal,
@@ -46,19 +46,21 @@ import {
 import { useData } from '@providers/DataProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useToast } from '@providers/ToastProvider';
-import type { AppPromotionTheme, PlanBenefitKey, SystemSettings, UserProfile } from '@types';
+import type { PlanBenefitKey, PlanName, PlanUsageLimitKey, SystemSettings, UserProfile } from '@types';
 import { adminService } from '@services/admin/adminService';
 import { subscriptionsService } from '@services/subscriptions';
-import { themeConfig } from '@constants/themes';
+import { PLAN_DETAILS, PRICING } from '@constants';
 import {
   DEFAULT_PLAN_ENTITLEMENTS,
+  DEFAULT_PLAN_USAGE_LIMITS,
   PLAN_BENEFIT_DEFINITIONS,
   PLAN_ORDER,
+  PLAN_USAGE_LIMIT_DEFINITIONS,
   normalizePlanEntitlements,
+  normalizePlanUsageLimits,
 } from '@constants/subscriptions/planEntitlements';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
-
-type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
+import AdminMarketing from './AdminMarketing';
 
 interface AdminFinanceProps {
   systemSettings: SystemSettings;
@@ -67,191 +69,50 @@ interface AdminFinanceProps {
   allUsers: UserProfile[];
   initialSection?: 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation' | 'balance' | 'prices' | 'marketing';
   onSectionChange?: (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation') => void;
-  addCoupon: (coupon: { code: string; discountPercentage: number; maxUses: number }) => void;
-  deleteCoupon: (couponCode: string) => void;
 }
 
-/**
- * Submódulo financeiro e de marketing do painel administrativo.
- * Mantém o domínio comercial isolado do arquivo principal do admin,
- * preservando filtros, pricing, automação e operação financeira.
- */
-const AdminMarketing = ({ systemSettings, updateSystemSettings, addCoupon, deleteCoupon }: Pick<AdminFinanceProps, 'systemSettings' | 'updateSystemSettings' | 'addCoupon' | 'deleteCoupon'>) => {
-  const { addToast } = useToast();
-  const [activeSection, setActiveSection] = useState<'coupons' | 'promo' | 'themes'>('coupons');
-  const [newCoupon, setNewCoupon] = useState({ code: '', discountPercentage: 10, maxUses: 100 });
+const clonePlanDetails = (source: any) => Object.fromEntries(
+  Object.entries(source || {}).map(([plan, config]: any) => [
+    plan,
+    {
+      ...config,
+      features: Array.isArray(config?.features)
+        ? config.features.map((feature: any) => ({ ...feature }))
+        : [],
+    },
+  ]),
+);
 
-  const themes: { value: AppPromotionTheme; label: string }[] = [
-    { value: 'default', label: 'Padrão (Azul/Slate)' },
-    { value: 'black-friday', label: 'Black Friday (Preto/Roxo)' },
-    { value: 'black-november', label: 'Black November' },
-    { value: 'estudante', label: 'Dia do Estudante' },
-    { value: 'sao-joao', label: 'São João' },
-    { value: 'carnaval', label: 'Carnaval' },
-    { value: 'ano-novo', label: 'Ano Novo' },
-    { value: 'pascoa', label: 'Páscoa' },
-    { value: 'consumidor', label: 'Semana do Consumidor' },
-  ];
+const mergePricingWithDefaults = (pricing: any) => Object.fromEntries(
+  Object.entries(PRICING).map(([plan, config]: any) => [
+    plan,
+    {
+      ...config,
+      ...(pricing?.[plan] || {}),
+    },
+  ]),
+);
 
-  return (
-    <div className="space-y-6 animate-slide-up">
-      <div className="flex gap-2 p-1 bg-white dark:bg-slate-900 rounded-xl w-fit border border-slate-200 dark:border-slate-800 shadow-sm transition-all overflow-hidden no-scrollbar">
-        <button
-          onClick={() => setActiveSection('coupons')}
-          className={`px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeSection === 'coupons' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-        >
-          <Percent size={14} /> Cupons de Desconto
-        </button>
-        <button
-          onClick={() => setActiveSection('promo')}
-          className={`px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeSection === 'promo' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-        >
-          <Megaphone size={14} /> Campanhas
-        </button>
-        <button
-          onClick={() => setActiveSection('themes')}
-          className={`px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeSection === 'themes' ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-md' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-        >
-          <Palette size={14} /> Temas Visuais
-        </button>
-      </div>
+const mergePlanDetailsWithDefaults = (planDetails: any) => {
+  const defaults = clonePlanDetails(PLAN_DETAILS);
+  const incoming = clonePlanDetails(planDetails);
 
-      {activeSection === 'coupons' && (
-        <div className="space-y-4">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-end gap-4 transition-colors">
-            <div className="flex-1 space-y-1"><label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Código</label><input type="text" value={newCoupon.code} onChange={e => setNewCoupon({ ...newCoupon, code: e.target.value.toUpperCase() })} className="w-full h-10 px-3 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 font-black uppercase bg-white dark:bg-slate-800 outline-none focus:border-indigo-500 transition-colors" placeholder="EX: APROVADO20" /></div>
-            <div className="w-32 space-y-1"><label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">Desconto (%)</label><input type="number" value={newCoupon.discountPercentage} onChange={e => setNewCoupon({ ...newCoupon, discountPercentage: Number(e.target.value) })} className="w-full h-10 px-3 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 outline-none focus:border-indigo-500 transition-colors" /></div>
-            <button onClick={() => { addCoupon(newCoupon); setNewCoupon({ code: '', discountPercentage: 10, maxUses: 100 }); }} className="h-10 px-6 bg-slate-900 dark:bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase hover:bg-slate-800 dark:hover:bg-indigo-700 transition-all">Criar Cupom</button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {systemSettings.coupons.map((coupon: any) => (
-              <div key={coupon.code} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex justify-between items-center transition-colors">
-                <div><h4 className="font-black text-slate-900 dark:text-slate-100">{coupon.code}</h4><p className="text-xs text-slate-500 dark:text-slate-400">{coupon.discountPercentage}% OFF ? {coupon.uses} usos</p></div>
-                <button onClick={() => deleteCoupon(coupon.code)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+  Object.keys(defaults).forEach((plan) => {
+    const current = incoming[plan] || {};
+    defaults[plan] = {
+      ...defaults[plan],
+      ...current,
+      enabled: typeof current.enabled === 'boolean' ? current.enabled : defaults[plan].enabled !== false,
+      features: Array.isArray(current.features) && current.features.length > 0
+        ? current.features.map((feature: any) => ({ ...feature }))
+        : defaults[plan].features,
+    };
+  });
 
-      {activeSection === 'promo' && (
-        <div className="space-y-6">
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm space-y-8 transition-colors">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Megaphone size={20} className="text-indigo-600 dark:text-indigo-400" /> Campanha Ativa
-                </h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Configure a campanha promocional global da plataforma.</p>
-              </div>
-              <button
-                onClick={() => updateSystemSettings({
-                  ...systemSettings,
-                  activePromotion: { ...systemSettings.activePromotion, isActive: !systemSettings.activePromotion.isActive }
-                })}
-                className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${systemSettings.activePromotion.isActive ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}
-              >
-                {systemSettings.activePromotion.isActive ? 'Ativada' : 'Desativada'}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome da Campanha</label>
-                <input
-                  type="text"
-                  value={systemSettings.activePromotion.name}
-                  onChange={e => updateSystemSettings({
-                    ...systemSettings,
-                    activePromotion: { ...systemSettings.activePromotion, name: e.target.value }
-                  })}
-                  className="w-full h-12 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Texto do Banner</label>
-                <input
-                  type="text"
-                  value={systemSettings.activePromotion.bannerText}
-                  onChange={e => updateSystemSettings({
-                    ...systemSettings,
-                    activePromotion: { ...systemSettings.activePromotion, bannerText: e.target.value }
-                  })}
-                  className="w-full h-12 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-            </div>
-
-            <div className="p-6 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-3xl space-y-4">
-              <h4 className="text-xs font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                <Zap size={14} /> Preview da Notificação
-              </h4>
-              <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-indigo-100 dark:border-indigo-900/40">
-                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{systemSettings.activePromotion.name}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{systemSettings.activePromotion.bannerText}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeSection === 'themes' && (
-        <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm space-y-8 transition-colors">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Palette size={20} className="text-indigo-600 dark:text-indigo-400" /> Temas Promocionais
-              </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Personalize a identidade visual da plataforma para eventos especiais.</p>
-            </div>
-            <div className="px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500">
-              Ativo: {systemSettings.activeTheme || 'default'}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Object.entries(themeConfig).map(([id, theme]) => (
-              <button
-                key={id}
-                onClick={() => updateSystemSettings({ ...systemSettings, activeTheme: id as any })}
-                className={`flex flex-col items-center gap-4 p-6 rounded-3xl border transition-all relative overflow-hidden group ${systemSettings.activeTheme === id
-                  ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-white dark:bg-slate-800'
-                  : 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 hover:border-slate-300 dark:hover:border-slate-700 hover:scale-[1.02]'}`}
-              >
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 ${id === 'default' ? 'text-slate-600 bg-slate-100 dark:bg-slate-800' : id === 'black-friday' ? 'text-white bg-black dark:bg-zinc-950' : id === 'black-november' ? 'text-amber-500 bg-zinc-900' : id === 'estudante' ? 'text-blue-700 bg-blue-50 dark:bg-blue-900/30' : id === 'sao-joao' ? 'text-orange-600 bg-orange-50 dark:bg-orange-900/30' : id === 'carnaval' ? 'text-fuchsia-600 bg-fuchsia-50 dark:bg-fuchsia-900/30' : id === 'ano-novo' ? 'text-amber-500 bg-indigo-950' : id === 'pascoa' ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30' : 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30'}`}>
-                  <theme.icon size={32} />
-                </div>
-                <div className="text-center">
-                  <h4 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">
-                    {id === 'default' ? 'Padrão (Modern)' : id === 'black-friday' ? 'Black Friday' : id === 'black-november' ? 'Black November' : id === 'estudante' ? 'Dia do Estudante' : id === 'sao-joao' ? 'São João' : id === 'carnaval' ? 'Carnaval' : id === 'ano-novo' ? 'Ano Novo' : id === 'pascoa' ? 'Páscoa' : 'Semana do Consumidor'}
-                  </h4>
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">{id}</p>
-                </div>
-                {systemSettings.activeTheme === id && (
-                  <div className="absolute top-4 right-4 text-indigo-600">
-                    <CheckCircle2 size={16} />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-
-          <div className="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl flex items-start gap-4">
-            <div className="p-2 bg-white dark:bg-amber-900/50 rounded-xl text-amber-600">
-              <AlertCircle size={20} />
-            </div>
-            <div className="flex-1">
-              <h4 className="text-sm font-black text-amber-800 dark:text-amber-400 uppercase">Impacto Visual Global</h4>
-              <p className="text-xs text-amber-700 dark:text-amber-500/80 font-medium leading-relaxed mt-1">
-                A alteração do tema impacta imediatamente a Landing Page e elementos decorativos em toda a plataforma (banners, badges e destaques). O sistema de cores light/dark continua funcionando de forma complementar ao tema selecionado.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  return defaults;
 };
+
+const planNames = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
 
 const AdminFinance = ({
   systemSettings,
@@ -260,8 +121,6 @@ const AdminFinance = ({
   allUsers,
   initialSection = 'subscriptions',
   onSectionChange,
-  addCoupon,
-  deleteCoupon,
 }: AdminFinanceProps) => {
   const { addToast } = useToast();
   const { saveSystemSettingsNow } = useData();
@@ -285,6 +144,13 @@ const AdminFinance = ({
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [automationHelper, setAutomationHelper] = useState<any | null>(null);
   const [automationHelperLoading, setAutomationHelperLoading] = useState(false);
+  const [draftPricing, setDraftPricing] = useState(() => mergePricingWithDefaults(systemSettings.pricing));
+  const [draftPlanDetails, setDraftPlanDetails] = useState(() => mergePlanDetailsWithDefaults(systemSettings.planDetails));
+  const [draftCoupons, setDraftCoupons] = useState<any[]>(() => Array.isArray(systemSettings.coupons) ? systemSettings.coupons : []);
+  const [draftPlanEntitlements, setDraftPlanEntitlements] = useState(() => normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
+  const [draftPlanUsageLimits, setDraftPlanUsageLimits] = useState(() => normalizePlanUsageLimits(systemSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
+  const [draftActiveTheme, setDraftActiveTheme] = useState(systemSettings.activeTheme || 'default');
+  const [draftActivePromotion, setDraftActivePromotion] = useState(systemSettings.activePromotion || undefined);
   const refundRequests = useMemo(() => allTransactions?.filter((t: any) => t.status === 'refund_requested') || [], [allTransactions]);
 
   const totalInDispute = useMemo(() => refundRequests.reduce((acc: number, t: any) => acc + t.amount, 0), [refundRequests]);
@@ -298,6 +164,34 @@ const AdminFinance = ({
   const automationDownloadUrl = automationHelper?.download_url || '';
   const automationCronUrl = automationHelper?.cron_url || '';
   const automationCronCommand = automationHelper?.linux_command || '';
+  const financeSettings = useMemo<SystemSettings>(() => ({
+    ...systemSettings,
+    pricing: draftPricing,
+    planDetails: draftPlanDetails,
+    coupons: draftCoupons as any,
+    planEntitlements: draftPlanEntitlements,
+    planUsageLimits: draftPlanUsageLimits,
+    activeTheme: draftActiveTheme,
+    activePromotion: draftActivePromotion,
+  }), [draftActivePromotion, draftActiveTheme, draftCoupons, draftPlanDetails, draftPlanEntitlements, draftPlanUsageLimits, draftPricing, systemSettings]);
+
+  useEffect(() => {
+    setDraftPricing(mergePricingWithDefaults(systemSettings.pricing));
+    setDraftPlanDetails(mergePlanDetailsWithDefaults(systemSettings.planDetails));
+    setDraftCoupons(Array.isArray(systemSettings.coupons) ? systemSettings.coupons : []);
+    setDraftPlanEntitlements(normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
+    setDraftPlanUsageLimits(normalizePlanUsageLimits(systemSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
+    setDraftActiveTheme(systemSettings.activeTheme || 'default');
+    setDraftActivePromotion(systemSettings.activePromotion || undefined);
+  }, [
+    systemSettings.activePromotion,
+    systemSettings.activeTheme,
+    systemSettings.coupons,
+    systemSettings.planDetails,
+    systemSettings.planEntitlements,
+    systemSettings.planUsageLimits,
+    systemSettings.pricing,
+  ]);
 
   useEffect(() => {
     setActiveSection(normalizeSection(initialSection));
@@ -306,6 +200,17 @@ const AdminFinance = ({
   const changeSection = (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation') => {
     setActiveSection(section);
     onSectionChange?.(section);
+  };
+
+  const applyPersistedFinanceSettings = (nextSettings: SystemSettings) => {
+    setDraftPricing(mergePricingWithDefaults(nextSettings.pricing));
+    setDraftPlanDetails(mergePlanDetailsWithDefaults(nextSettings.planDetails));
+    setDraftCoupons(Array.isArray(nextSettings.coupons) ? nextSettings.coupons : []);
+    setDraftPlanEntitlements(normalizePlanEntitlements(nextSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
+    setDraftPlanUsageLimits(normalizePlanUsageLimits(nextSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
+    setDraftActiveTheme(nextSettings.activeTheme || 'default');
+    setDraftActivePromotion(nextSettings.activePromotion || undefined);
+    updateSystemSettings(nextSettings);
   };
 
   useEffect(() => {
@@ -324,7 +229,7 @@ const AdminFinance = ({
           id: t.sellerId,
           name: seller?.name || 'Desconhecido',
           email: seller?.email || '-',
-          paymentDay: seller?.billing?.paymentDay || Math.floor(Math.random() * 28) + 1, // Mock se não existir
+          paymentDay: null,
           totalSales: 0,
           heldBalance: 0,
           availablePayout: 0,
@@ -593,7 +498,8 @@ const AdminFinance = ({
 
     setIsSavingPricing(true);
     try {
-      await saveSystemSettingsNow(systemSettings);
+      await saveSystemSettingsNow(financeSettings);
+      applyPersistedFinanceSettings(financeSettings);
       addToast('Planos e regras de acesso salvos com sucesso.', 'success');
     } catch (error) {
       console.error('Error saving pricing settings:', error);
@@ -605,36 +511,45 @@ const AdminFinance = ({
 
   // --- HANDLERS EXISTENTES ---
   const handleDescriptionChange = (plan: string, description: string) => {
-    const updatedPricing = { ...systemSettings.pricing };
+    const updatedPricing = { ...draftPricing };
     const planConfig = updatedPricing[plan];
     planConfig.description = description;
-    updateSystemSettings({ ...systemSettings, pricing: updatedPricing });
+    setDraftPricing(updatedPricing);
+  };
+
+  const handleTogglePlanEnabled = (plan: PlanName) => {
+    const updatedPlanDetails = clonePlanDetails(draftPlanDetails);
+    updatedPlanDetails[plan] = {
+      ...updatedPlanDetails[plan],
+      enabled: !(updatedPlanDetails[plan]?.enabled !== false),
+    };
+    setDraftPlanDetails(updatedPlanDetails);
   };
 
   const handlePriceChange = (plan: string, monthlyValue: number) => {
-    const updatedPricing = { ...systemSettings.pricing };
+    const updatedPricing = { ...draftPricing };
     const planConfig = updatedPricing[plan];
     planConfig.monthly = monthlyValue;
     const qDesc = planConfig.quarterlyDiscountPercent || 10;
     const aDesc = planConfig.annualDiscountPercent || 30;
     planConfig.quarterly = (monthlyValue * 3) * (1 - qDesc / 100);
     planConfig.annual = (monthlyValue * 12) * (1 - aDesc / 100);
-    updateSystemSettings({ ...systemSettings, pricing: updatedPricing });
+    setDraftPricing(updatedPricing);
   };
 
   const handleDiscountPercentChange = (plan: string, type: 'quarterly' | 'annual', percent: number) => {
-    const updatedPricing = { ...systemSettings.pricing };
+    const updatedPricing = { ...draftPricing };
     const planConfig = updatedPricing[plan];
     if (type === 'quarterly') planConfig.quarterlyDiscountPercent = percent;
     else planConfig.annualDiscountPercent = percent;
     planConfig.quarterly = (planConfig.monthly * 3) * (1 - (planConfig.quarterlyDiscountPercent || 0) / 100);
     planConfig.annual = (planConfig.monthly * 12) * (1 - (planConfig.annualDiscountPercent || 0) / 100);
-    updateSystemSettings({ ...systemSettings, pricing: updatedPricing });
+    setDraftPricing(updatedPricing);
   };
 
   const handleTogglePlanFeature = (plan: string, featureIndex: number) => {
-    const updatedPlanDetails = { ...systemSettings.planDetails };
-    const plans = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
+    const updatedPlanDetails = clonePlanDetails(draftPlanDetails);
+    const plans = planNames;
     const planIndex = plans.indexOf(plan as any);
     const newValue = !updatedPlanDetails[plan as keyof typeof updatedPlanDetails].features[featureIndex].included;
 
@@ -659,12 +574,12 @@ const AdminFinance = ({
       }
     });
 
-    updateSystemSettings({ ...systemSettings, planDetails: updatedPlanDetails });
+    setDraftPlanDetails(updatedPlanDetails);
   };
 
   const handleUpdatePlanFeatureText = (plan: string, featureIndex: number, text: string) => {
-    const updatedPlanDetails = { ...systemSettings.planDetails };
-    const plans = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
+    const updatedPlanDetails = clonePlanDetails(draftPlanDetails);
+    const plans = planNames;
 
     plans.forEach(p => {
       updatedPlanDetails[p] = {
@@ -675,12 +590,12 @@ const AdminFinance = ({
       };
     });
 
-    updateSystemSettings({ ...systemSettings, planDetails: updatedPlanDetails });
+    setDraftPlanDetails(updatedPlanDetails);
   };
 
   const handleAddPlanFeature = (plan: string) => {
-    const updatedPlanDetails = { ...systemSettings.planDetails };
-    const plans = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
+    const updatedPlanDetails = clonePlanDetails(draftPlanDetails);
+    const plans = planNames;
     const planIndex = plans.indexOf(plan as any);
     const featureName = 'Novo Recurso';
 
@@ -691,12 +606,12 @@ const AdminFinance = ({
       };
     });
 
-    updateSystemSettings({ ...systemSettings, planDetails: updatedPlanDetails });
+    setDraftPlanDetails(updatedPlanDetails);
   };
 
   const handleRemovePlanFeature = (plan: string, featureIndex: number) => {
-    const updatedPlanDetails = { ...systemSettings.planDetails };
-    const plans = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
+    const updatedPlanDetails = clonePlanDetails(draftPlanDetails);
+    const plans = planNames;
 
     plans.forEach(p => {
       updatedPlanDetails[p] = {
@@ -705,12 +620,12 @@ const AdminFinance = ({
       };
     });
 
-    updateSystemSettings({ ...systemSettings, planDetails: updatedPlanDetails });
+    setDraftPlanDetails(updatedPlanDetails);
   };
 
   const handleMovePlanFeature = (direction: 'up' | 'down', featureIndex: number) => {
-    const updatedPlanDetails = { ...systemSettings.planDetails };
-    const plans = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
+    const updatedPlanDetails = clonePlanDetails(draftPlanDetails);
+    const plans = planNames;
 
     const firstPlan = plans[0];
     const features = [...updatedPlanDetails[firstPlan].features];
@@ -742,25 +657,51 @@ const AdminFinance = ({
       };
     });
 
-    updateSystemSettings({ ...systemSettings, planDetails: updatedPlanDetails });
+    setDraftPlanDetails(updatedPlanDetails);
   };
 
   const handleTogglePlanEntitlement = (plan: typeof PLAN_ORDER[number], benefitKey: PlanBenefitKey) => {
-    const updatedEntitlements = normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS);
+    const updatedEntitlements = normalizePlanEntitlements(draftPlanEntitlements);
     const planIndex = PLAN_ORDER.indexOf(plan);
-    const nextValue = !updatedEntitlements[plan][benefitKey];
+    const nextValue = !updatedEntitlements[plan][benefitKey].enabled;
 
     PLAN_ORDER.forEach((planName, index) => {
       if (nextValue && index >= planIndex) {
-        updatedEntitlements[planName][benefitKey] = true;
+        updatedEntitlements[planName][benefitKey] = { enabled: true };
       }
 
       if (!nextValue && index <= planIndex) {
-        updatedEntitlements[planName][benefitKey] = false;
+        updatedEntitlements[planName][benefitKey] = { enabled: false };
       }
     });
 
-    updateSystemSettings({ ...systemSettings, planEntitlements: updatedEntitlements });
+    setDraftPlanEntitlements(updatedEntitlements);
+  };
+
+  const handlePlanUsageLimitModeChange = (
+    plan: PlanName,
+    limitKey: PlanUsageLimitKey,
+    mode: 'limited' | 'unlimited'
+  ) => {
+    const updatedLimits = normalizePlanUsageLimits(draftPlanUsageLimits);
+    updatedLimits[plan][limitKey] = {
+      mode,
+      value: mode === 'limited' ? Math.max(0, Number(updatedLimits[plan][limitKey].value || 0)) : null,
+    };
+    setDraftPlanUsageLimits(updatedLimits);
+  };
+
+  const handlePlanUsageLimitValueChange = (
+    plan: PlanName,
+    limitKey: PlanUsageLimitKey,
+    value: number
+  ) => {
+    const updatedLimits = normalizePlanUsageLimits(draftPlanUsageLimits);
+    updatedLimits[plan][limitKey] = {
+      mode: 'limited',
+      value: Math.max(0, Number.isFinite(value) ? value : 0),
+    };
+    setDraftPlanUsageLimits(updatedLimits);
   };
 
   // --- REEMBOLSOS ---
@@ -1689,10 +1630,24 @@ const AdminFinance = ({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {Object.entries(systemSettings.pricing).map(([plan, config]: any) => (
+            {Object.entries(draftPricing).map(([plan, config]: any) => (
               <div key={plan} className="p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-slate-100 dark:border-slate-700/50 space-y-6">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-lg font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-tight">{plan}</h4>
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-lg font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-tight">{plan}</h4>
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePlanEnabled(plan as PlanName)}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
+                        draftPlanDetails[plan as PlanName]?.enabled !== false
+                          ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
+                          : 'border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                      }`}
+                    >
+                      {draftPlanDetails[plan as PlanName]?.enabled !== false ? <Check size={11} /> : <X size={11} />}
+                      {draftPlanDetails[plan as PlanName]?.enabled !== false ? 'Ativo' : 'Desativado'}
+                    </button>
+                  </div>
                   <span className="text-[10px] font-black bg-white dark:bg-slate-700 px-3 py-1 rounded-full shadow-sm text-slate-400 uppercase">Valores em Reais</span>
                 </div>
 
@@ -1765,7 +1720,7 @@ const AdminFinance = ({
 
                   <div className="space-y-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Recursos do Plano</p>
-                    {systemSettings.planDetails[plan].features.map((feature: any, idx: number) => (
+                    {draftPlanDetails[plan].features.map((feature: any, idx: number) => (
                       <div key={idx} className="flex items-center gap-2 group/feature">
                         <button
                           onClick={() => handleTogglePlanFeature(plan, idx)}
@@ -1789,7 +1744,7 @@ const AdminFinance = ({
                           </button>
                           <button
                             onClick={() => handleMovePlanFeature('down', idx)}
-                            disabled={idx === systemSettings.planDetails[plan].features.length - 1}
+                            disabled={idx === draftPlanDetails[plan].features.length - 1}
                             className="p-1 text-slate-300 hover:text-indigo-500 disabled:opacity-30"
                           >
                             <ChevronDown size={12} />
@@ -1841,7 +1796,7 @@ const AdminFinance = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {PLAN_BENEFIT_DEFINITIONS.map((benefit) => {
-                    const resolvedEntitlements = normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS);
+                    const resolvedEntitlements = normalizePlanEntitlements(draftPlanEntitlements);
 
                     return (
                       <tr key={benefit.key} className="bg-white dark:bg-slate-900/40">
@@ -1853,7 +1808,7 @@ const AdminFinance = ({
                           {benefit.description}
                         </td>
                         {PLAN_ORDER.map((planName) => {
-                          const enabled = resolvedEntitlements[planName][benefit.key];
+                          const enabled = resolvedEntitlements[planName][benefit.key].enabled;
 
                           return (
                             <td key={`${benefit.key}-${planName}`} className="p-4 text-center align-top">
@@ -1877,26 +1832,119 @@ const AdminFinance = ({
                 </tbody>
               </table>
             </div>
+
+            <div className="border-t border-slate-100 bg-slate-50/40 p-6 dark:border-slate-800 dark:bg-slate-950/30">
+              <div className="mb-4">
+                <h5 className="text-sm font-black text-slate-900 dark:text-slate-100">Limites operacionais por plano</h5>
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Defina numeros maximos ou marque como ilimitado para controlar uso de questoes, comentarios, simulados e IA.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left">
+                  <thead className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+                    <tr>
+                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Limite</th>
+                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descricao</th>
+                      {PLAN_ORDER.map((planName) => (
+                        <th key={`limit-${planName}`} className="p-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                          {planName}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {PLAN_USAGE_LIMIT_DEFINITIONS.map((limitDefinition) => {
+                      const resolvedLimits = normalizePlanUsageLimits(draftPlanUsageLimits);
+
+                      return (
+                        <tr key={limitDefinition.key} className="bg-white dark:bg-slate-900/40">
+                          <td className="p-4 align-top">
+                            <div className="text-sm font-black text-slate-900 dark:text-slate-100">{limitDefinition.label}</div>
+                            <div className="mt-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">{limitDefinition.key}</div>
+                          </td>
+                          <td className="p-4 align-top text-xs font-medium text-slate-500 dark:text-slate-400">
+                            {limitDefinition.description}
+                          </td>
+                          {PLAN_ORDER.map((planName) => {
+                            const currentLimit = resolvedLimits[planName][limitDefinition.key];
+
+                            return (
+                              <td key={`${limitDefinition.key}-${planName}`} className="p-4 align-top">
+                                <div className="mx-auto flex max-w-[170px] flex-col gap-2">
+                                  <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePlanUsageLimitModeChange(planName, limitDefinition.key, 'limited')}
+                                      className={`flex-1 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                                        currentLimit.mode === 'limited'
+                                          ? 'bg-indigo-600 text-white shadow-sm'
+                                          : 'text-slate-500 dark:text-slate-400'
+                                      }`}
+                                    >
+                                      Limite
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePlanUsageLimitModeChange(planName, limitDefinition.key, 'unlimited')}
+                                      className={`flex-1 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                                        currentLimit.mode === 'unlimited'
+                                          ? 'bg-emerald-600 text-white shadow-sm'
+                                          : 'text-slate-500 dark:text-slate-400'
+                                      }`}
+                                    >
+                                      Ilimitado
+                                    </button>
+                                  </div>
+
+                                  {currentLimit.mode === 'limited' ? (
+                                    <div className="relative">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={currentLimit.value ?? 0}
+                                        onChange={(event) => handlePlanUsageLimitValueChange(planName, limitDefinition.key, Number(event.target.value))}
+                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-black text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                      />
+                                      <div className="mt-1 text-center text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
+                                        {limitDefinition.inputLabel}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300">
+                                      Sem teto
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
           <div className="mt-8 border-t border-slate-100 pt-8 dark:border-slate-800">
-            <AdminMarketing
-              systemSettings={systemSettings}
-              updateSystemSettings={updateSystemSettings}
-              addCoupon={addCoupon}
-              deleteCoupon={deleteCoupon}
-            />
+              <AdminMarketing
+                systemSettings={financeSettings}
+                updateSystemSettings={applyPersistedFinanceSettings}
+                saveSystemSettingsNow={saveSystemSettingsNow}
+              />
           </div>
         </div>
       )}
       
       {false && activeSection === 'marketing' && (
-        <AdminMarketing
-          systemSettings={systemSettings}
-          updateSystemSettings={updateSystemSettings}
-          addCoupon={addCoupon}
-          deleteCoupon={deleteCoupon}
-        />
+          <AdminMarketing
+            systemSettings={financeSettings}
+            updateSystemSettings={applyPersistedFinanceSettings}
+            saveSystemSettingsNow={saveSystemSettingsNow}
+          />
       )}
 
       {activeSection === 'automation' && (

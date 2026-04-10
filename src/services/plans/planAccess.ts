@@ -13,12 +13,17 @@ import {
   PlanBenefitKey,
   PlanBenefitMatrix,
   PlanEntitlements,
+  PlanName,
+  PlanUsageLimitKey,
+  PlanUsageLimits,
   UserProfile,
 } from '@types';
 import {
   DEFAULT_PLAN_ENTITLEMENTS,
+  DEFAULT_PLAN_USAGE_LIMITS,
   PLAN_ORDER,
   normalizePlanEntitlements,
+  normalizePlanUsageLimits,
 } from '@constants/subscriptions/planEntitlements';
 
 export type CanonicalPlanName = 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
@@ -114,6 +119,16 @@ export const getResolvedPlanEntitlements = (
   return normalizePlanEntitlements(configuredEntitlements);
 };
 
+export const getResolvedPlanUsageLimits = (
+  configuredLimits?: Partial<PlanUsageLimits> | null
+): PlanUsageLimits => {
+  if (!configuredLimits) {
+    return DEFAULT_PLAN_USAGE_LIMITS;
+  }
+
+  return normalizePlanUsageLimits(configuredLimits);
+};
+
 export const getPlanBenefits = (
   planName?: string | null,
   configuredEntitlements?: Partial<PlanEntitlements> | null
@@ -122,12 +137,27 @@ export const getPlanBenefits = (
   return resolvedEntitlements[getCanonicalPlanName(planName)];
 };
 
+export const getCanonicalPlanDetailsName = (planName?: string | null): PlanName => getCanonicalPlanName(planName);
+
+export const isPlanEnabledByName = (
+  planName: string | null | undefined,
+  configuredPlanDetails?: Partial<Record<PlanName, { enabled?: boolean }>> | null
+): boolean => {
+  const canonicalPlan = getCanonicalPlanDetailsName(planName);
+  const rawPlanConfig = configuredPlanDetails?.[canonicalPlan];
+  if (!rawPlanConfig || typeof rawPlanConfig.enabled !== 'boolean') {
+    return true;
+  }
+
+  return rawPlanConfig.enabled;
+};
+
 export const hasBenefitForPlanName = (
   planName: string | null | undefined,
   benefitKey: PlanBenefitKey,
   configuredEntitlements?: Partial<PlanEntitlements> | null
 ): boolean => {
-  return !!getPlanBenefits(planName, configuredEntitlements)[benefitKey];
+  return !!getPlanBenefits(planName, configuredEntitlements)[benefitKey]?.enabled;
 };
 
 export const hasPlanBenefit = (
@@ -144,9 +174,33 @@ export const getBenefitRequiredPlan = (
   configuredEntitlements?: Partial<PlanEntitlements> | null
 ): CanonicalPlanName => {
   const resolvedEntitlements = getResolvedPlanEntitlements(configuredEntitlements);
-  const matchedPlan = PLAN_ORDER.find((planName) => resolvedEntitlements[planName][benefitKey]);
+  const matchedPlan = PLAN_ORDER.find((planName) => resolvedEntitlements[planName][benefitKey]?.enabled);
 
   return matchedPlan || 'Elite';
+};
+
+export const getPlanUsageLimitForPlanName = (
+  planName: string | null | undefined,
+  limitKey: PlanUsageLimitKey,
+  configuredLimits?: Partial<PlanUsageLimits> | null
+): number | null => {
+  const resolvedLimits = getResolvedPlanUsageLimits(configuredLimits);
+  const limitValue = resolvedLimits[getCanonicalPlanName(planName)][limitKey];
+
+  if (limitValue.mode === 'unlimited') {
+    return null;
+  }
+
+  return Math.max(0, Number(limitValue.value || 0));
+};
+
+export const isPlanUsageUnlimitedForPlanName = (
+  planName: string | null | undefined,
+  limitKey: PlanUsageLimitKey,
+  configuredLimits?: Partial<PlanUsageLimits> | null
+): boolean => {
+  const resolvedLimits = getResolvedPlanUsageLimits(configuredLimits);
+  return resolvedLimits[getCanonicalPlanName(planName)][limitKey].mode === 'unlimited';
 };
 
 export const getBenefitPlanLabel = (

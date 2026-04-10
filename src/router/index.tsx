@@ -10,19 +10,20 @@
 */
 
 import React from 'react';
-import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { Hammer, Loader2, LogOut, ShieldAlert } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Hammer, LogOut, ShieldAlert } from 'lucide-react';
 import GlobalLoader from '../components/GlobalLoader';
 import DebugBanner from '../components/shared/feedback/debug/DebugBanner';
 import { useAuth } from '@providers/AuthProvider';
 import { canAccessAdminPanel } from '@services/auth';
 import { useData } from '@providers/DataProvider';
+import { StudyTrackerBridge } from '@providers/StudyTrackerProvider';
 import { AdminRoutes } from './adminRoutes';
 import { PrivateRoutes } from './privateRoutes';
 import { PublicRoutes } from './publicRoutes';
 import RouteSuspenseFallback from './RouteSuspenseFallback';
 import { useRoutePersistence } from './useRoutePersistence';
+import { buildProfilePath } from '../app/profile/profileNavigation';
 
 /**
  * Casca interna do roteamento oficial da plataforma.
@@ -34,7 +35,7 @@ const RoutedAppRouter: React.FC = () => {
   const [showLoginBypass, setShowLoginBypass] = React.useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  useRoutePersistence(location, navigate, isLoading);
+  const { isRestoringRoute, pendingPathname } = useRoutePersistence(location, navigate, isLoading);
   const canAccessAdmin = canAccessAdminPanel(currentUser);
 
   /**
@@ -46,12 +47,13 @@ const RoutedAppRouter: React.FC = () => {
     }
   }, [isLoading, currentUser, location]);
 
-  if (isLoading) {
+  if (isLoading || isRestoringRoute) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <Loader2 size={40} className="animate-spin text-indigo-600 mb-4" />
-        <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest animate-pulse">Autenticando...</p>
-      </div>
+      <RouteSuspenseFallback
+        pathnameOverride={pendingPathname}
+        currentUserOverride={currentUser}
+        preferAppLayoutAtRoot
+      />
     );
   }
 
@@ -97,7 +99,7 @@ const RoutedAppRouter: React.FC = () => {
 
   const isPastDueSubscription = currentUser?.subscription?.status === 'past_due';
   const isPaymentIssue = (currentUser?.paymentIssue || isPastDueSubscription) && !canAccessAdmin;
-  const isFixingPayment = location.pathname === '/profile' || location.pathname === '/plans' || location.pathname.startsWith('/checkout');
+  const isFixingPayment = location.pathname.startsWith('/profile') || location.pathname === '/plans' || location.pathname.startsWith('/checkout');
 
   if (isPaymentIssue && !isFixingPayment) {
     return (
@@ -116,7 +118,7 @@ const RoutedAppRouter: React.FC = () => {
           </div>
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => navigate('/profile')}
+              onClick={() => navigate(buildProfilePath('billing'))}
               className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20"
             >
               Atualizar Cartão Agora
@@ -137,15 +139,14 @@ const RoutedAppRouter: React.FC = () => {
     <>
       <GlobalLoader />
       <React.Suspense fallback={<RouteSuspenseFallback />}>
-        <AnimatePresence mode="wait">
-          <Routes location={location} key={location.pathname}>
-            {PublicRoutes({ currentUser, login })}
-            {PrivateRoutes({ currentUser, loginRequired })}
-            {AdminRoutes({ currentUser })}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </AnimatePresence>
+        <Routes location={location}>
+          {PublicRoutes({ currentUser, login })}
+          {PrivateRoutes({ currentUser, loginRequired, systemSettings })}
+          {AdminRoutes({ currentUser })}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </React.Suspense>
+      <StudyTrackerBridge />
       {import.meta.env.DEV && <DebugBanner />}
     </>
   );
@@ -157,9 +158,9 @@ const RoutedAppRouter: React.FC = () => {
  */
 export const AppRouter: React.FC = () => {
   return (
-    <HashRouter>
+    <BrowserRouter>
       <RoutedAppRouter />
-    </HashRouter>
+    </BrowserRouter>
   );
 };
 
