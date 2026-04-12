@@ -54,17 +54,22 @@ export interface SystemLogsPayload {
 
 export interface AdminStatsPayload {
   total_revenue: number;
+  available_total_revenue: number;
   platform_revenue: number;
   subscription_revenue: number;
   available_subscription_revenue: number;
   marketplace_revenue: number;
   active_subscriptions: number;
   cancelled_subscriptions: number;
+  expired_subscriptions: number;
+  trial_subscriptions: number;
   mrr: number;
   new_users: number;
   seller_payout: number;
   available_seller_payout: number;
   transactions_count: number;
+  refund_requests_count: number;
+  refund_requested_amount: number;
   total_refunded: number;
   held_balance: number;
   total_paid: number;
@@ -144,7 +149,11 @@ export const adminService = {
    * @since v1.0.0
    */
   async getSystemSettings(): Promise<Partial<SystemSettings>> {
-    const response = await apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.get) as any;
+    const response = await apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.get, {
+      params: {
+        _: Date.now(),
+      },
+    }) as any;
     return readApiData(response, {});
   },
 
@@ -152,9 +161,10 @@ export const adminService = {
    * Persiste as configurações globais alteradas pelo painel administrativo.
    * @since v1.0.0
    */
-  async saveSystemSettings(settings: SystemSettings): Promise<void> {
-    const response = await apiClient.post<ApiResponse>(ENDPOINTS.settings.update, settings) as any;
-    assertApiSuccess(response, 'Não foi possível salvar as configurações.');
+  async saveSystemSettings(settings: SystemSettings): Promise<Partial<SystemSettings>> {
+    const response = await apiClient.post<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.update, settings) as any;
+    const envelope = assertApiSuccess<Partial<SystemSettings>>(response, 'Não foi possível salvar as configurações.');
+    return readApiData<Partial<SystemSettings>>(envelope.raw, {});
   },
 
   /**
@@ -295,17 +305,22 @@ export const adminService = {
     const response = await apiClient.get<ApiResponse<AdminStatsPayload>>(`${ENDPOINTS.admin.stats}?${query.toString()}`) as any;
     return readApiData(response, {
       total_revenue: 0,
+      available_total_revenue: 0,
       platform_revenue: 0,
       subscription_revenue: 0,
       available_subscription_revenue: 0,
       marketplace_revenue: 0,
       active_subscriptions: 0,
       cancelled_subscriptions: 0,
+      expired_subscriptions: 0,
+      trial_subscriptions: 0,
       mrr: 0,
       new_users: 0,
       seller_payout: 0,
       available_seller_payout: 0,
       transactions_count: 0,
+      refund_requests_count: 0,
+      refund_requested_amount: 0,
       total_refunded: 0,
       held_balance: 0,
       total_paid: 0,

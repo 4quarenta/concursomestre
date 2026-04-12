@@ -342,16 +342,16 @@
 ## Stack auditado
 - Frontend: React 19 + Vite + TypeScript
 - Backend: PHP procedural com endpoints sob `api/`
-- AutenticaÃ§Ã£o: sessÃ£o/JWT centralizada + middleware/admin helpers
-- IntegraÃ§Ãµes principais do admin: usuÃ¡rios, denÃºncias, rankings, materiais, transaÃ§Ãµes, configuraÃ§Ãµes e feedback
+- Autenticação: sessão/JWT centralizada + middleware/admin helpers
+- Integrações principais do admin: usuários, denúncias, rankings, materiais, transações, configurações e feedback
 
 ## Inventario funcional do admin
 
 ### 1. Dashboard
 - Local: [C:\dev\concursomestre\pages\Admin.tsx](C:\dev\concursomestre\pages\Admin.tsx)
 - Funcoes:
-  - cards de receita, assinaturas, marketplace, usuÃ¡rios, feedback
-  - filtros por perÃ­odo
+  - cards de receita, assinaturas, marketplace, usuários, feedback
+  - filtros por período
   - navegacao rapida para subareas
 - Status antes:
   - funcionando parcialmente
@@ -359,17 +359,17 @@
 - Prioridade:
   - media
 
-### 2. Base de dados / QuestÃµes
+### 2. Base de dados / Questões
 - Local: [C:\dev\concursomestre\pages\Admin.tsx](C:\dev\concursomestre\pages\Admin.tsx)
 - Funcoes:
-  - listar questÃµes
-  - paginar questÃµes
-  - criar questÃ£o manual
-  - editar questÃ£o
-  - excluir questÃ£o
+  - listar questões
+  - paginar questões
+  - criar questão manual
+  - editar questão
+  - excluir questão
   - importador
 - Status antes:
-  - funcional, mas com integraÃ§Ãµes e erros pouco padronizados
+  - funcional, mas com integrações e erros pouco padronizados
 - Prioridade:
   - media
 
@@ -386,34 +386,34 @@
 - Prioridade:
   - alta
 
-### 4. UsuÃ¡rios
+### 4. Usuários
 - Local: [C:\dev\concursomestre\pages\Admin.tsx](C:\dev\concursomestre\pages\Admin.tsx)
 - Backend:
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\user_details.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\user_details.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\user_actions.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\user_actions.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\user_details.php](C:\xampp\htdocs\questão-pro-backend\api\admin\user_details.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\user_actions.php](C:\xampp\htdocs\questão-pro-backend\api\admin\user_actions.php)
 - Funcoes:
-  - listar usuÃ¡rios
+  - listar usuários
   - abrir perfil detalhado
   - atualizar perfil/status/plano
-  - aÃ§Ã£o administrativa sobre usuÃ¡rio
+  - ação administrativa sobre usuário
 - Status antes:
   - sensivel do ponto de vista de permissao
   - payloads e persistencia inconsistentes
 - Prioridade:
   - critica
 
-### 5. DenÃºncias
+### 5. Denúncias
 - Local: [C:\dev\concursomestre\pages\Admin.tsx](C:\dev\concursomestre\pages\Admin.tsx)
 - Backend:
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\reports\list.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\reports\list.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\report_actions.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\report_actions.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\reports\list.php](C:\xampp\htdocs\questão-pro-backend\api\reports\list.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\report_actions.php](C:\xampp\htdocs\questão-pro-backend\api\admin\report_actions.php)
 - Funcoes:
-  - listar denÃºncias
-  - abrir moderaÃ§Ã£o contextual
-  - resolver/ignorar denÃºncia
-  - notificar usuÃ¡rio afetado
+  - listar denúncias
+  - abrir moderação contextual
+  - resolver/ignorar denúncia
+  - notificar usuário afetado
 - Status antes:
-  - backend incompleto para a aÃ§Ã£o administrativa
+  - backend incompleto para a ação administrativa
   - resolucao na UI sem trilha auditavel
 - Prioridade:
   - critica
@@ -421,26 +421,26 @@
 ### 6. Materiais
 - Local: [C:\dev\concursomestre\pages\Admin.tsx](C:\dev\concursomestre\pages\Admin.tsx)
 - Backend:
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\materials\moderate.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\materials\moderate.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\materials\delete.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\materials\delete.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\materials\moderate.php](C:\xampp\htdocs\questão-pro-backend\api\materials\moderate.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\materials\delete.php](C:\xampp\htdocs\questão-pro-backend\api\materials\delete.php)
 - Funcoes:
   - listar materiais
   - moderar/aprovar/rejeitar
   - excluir administrativamente
   - abrir visualizacao autenticada
 - Status antes:
-  - moderaÃ§Ã£o sem trava de submit
+  - moderação sem trava de submit
   - exclusao sem endpoint administrativo real
-  - notificaÃ§Ãµes parcialmente duplicadas entre frontend e backend
+  - notificações parcialmente duplicadas entre frontend e backend
 - Prioridade:
   - critica
 
 ### 7. Rankings
 - Local: [C:\dev\concursomestre\pages\Admin.tsx](C:\dev\concursomestre\pages\Admin.tsx)
 - Backend:
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\moderate.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\moderate.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\update.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\update.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\delete.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\delete.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\rankings\moderate.php](C:\xampp\htdocs\questão-pro-backend\api\rankings\moderate.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\rankings\update.php](C:\xampp\htdocs\questão-pro-backend\api\rankings\update.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\rankings\delete.php](C:\xampp\htdocs\questão-pro-backend\api\rankings\delete.php)
 - Funcoes:
   - listar rankings
   - editar ranking
@@ -448,7 +448,7 @@
   - moderar status
 - Status antes:
   - UI editava localmente
-  - endpoints de update/delete nÃ£o existiam de forma funcional
+  - endpoints de update/delete não existiam de forma funcional
 - Prioridade:
   - alta
 
@@ -456,21 +456,21 @@
 - Local: [C:\dev\concursomestre\pages\Admin.tsx](C:\dev\concursomestre\pages\Admin.tsx)
 - Funcoes:
   - visao de vendedores
-  - transaÃ§Ãµes
+  - transações
   - reembolsos
-  - configuraÃ§Ã£o de planos/cupons
+  - configuração de planos/cupons
   - automacao/cron
 - Status antes:
-  - tabela de transaÃ§Ãµes tinha aÃ§Ãµes diretas com stub `loadTransactions`
+  - tabela de transações tinha ações diretas com stub `loadTransactions`
   - risco de clique repetido em aprovar/rejeitar reembolso
   - alguns estados so refletiam localmente
 - Prioridade:
   - critica
 
-### 9. ConfiguraÃ§Ãµes do sistema
+### 9. Configurações do sistema
 - Local: [C:\dev\concursomestre\pages\Admin.tsx](C:\dev\concursomestre\pages\Admin.tsx)
 - Backend:
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\settings.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\settings.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\settings.php](C:\xampp\htdocs\questão-pro-backend\api\settings.php)
 - Funcoes:
   - gateway de pagamento
   - checkout
@@ -488,8 +488,8 @@
 - Local:
   - [C:\dev\concursomestre\src\features\admin\components\AdminFeedback.tsx](C:\dev\concursomestre\src\features\admin\components\AdminFeedback.tsx)
 - Backend:
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\feedback.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\feedback.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\feedback\create.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\feedback\create.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\feedback.php](C:\xampp\htdocs\questão-pro-backend\api\admin\feedback.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\feedback\create.php](C:\xampp\htdocs\questão-pro-backend\api\feedback\create.php)
 - Funcoes:
   - listar threads
   - abrir conversa
@@ -497,7 +497,7 @@
   - responder no sistema
   - responder por email
 - Status antes:
-  - componente antigo, com `alert`, estado compartilhado de reply e comentÃ¡rios TODO
+  - componente antigo, com `alert`, estado compartilhado de reply e comentários TODO
   - endpoint de criacao usava auth legada e permitia reply sem controle de ownership robusto
 - Prioridade:
   - critica
@@ -506,73 +506,73 @@
 
 ### Problemas estruturais encontrados
 - Endpoints administrativos sem middleware/admin helper unificado.
-- Varias aÃ§Ãµes do admin dependiam de estado local e nÃ£o persistiam no backend.
-- Ausencia de trilha de auditoria em operaÃ§Ãµes criticas.
-- AÃ§Ãµes destrutivas sem idempotencia/trava de clique.
-- IntegraÃ§Ãµes duplicadas entre frontend e backend para notificaÃ§Ãµes.
+- Varias ações do admin dependiam de estado local e não persistiam no backend.
+- Ausencia de trilha de auditoria em operações criticas.
+- Ações destrutivas sem idempotencia/trava de clique.
+- Integrações duplicadas entre frontend e backend para notificações.
 - Componentes com UX incompleta: erro silencioso, `alert`, sem loading granular, sem drafts por item.
 
 ### Causas raiz
 - Crescimento organico do admin sem service layer unica.
 - Endpoints novos e antigos convivendo com contratos diferentes.
 - Logica critica concentrada no frontend em vez do servidor.
-- Falta de centralizacao em validaÃ§Ã£o, auth e auditoria.
+- Falta de centralizacao em validação, auth e auditoria.
 
 ## Correcoes implementadas
 
 ### Backend
 - Criado helper administrativo central:
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\utils\AdminSecurity.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\utils\AdminSecurity.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\utils\AdminSecurity.php](C:\xampp\htdocs\questão-pro-backend\api\utils\AdminSecurity.php)
 - Endpoints protegidos/refatorados:
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\settings.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\settings.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\cache\manage.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\cache\manage.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\stats.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\stats.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\list_tables.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\list_tables.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\reset_db.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\reset_db.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\user_details.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\user_details.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\user_actions.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\user_actions.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\reports\list.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\reports\list.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\filters\save.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\filters\save.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\filters\delete.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\filters\delete.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\report_actions.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\report_actions.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\feedback.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\feedback.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\moderate.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\moderate.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\update.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\update.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\delete.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\rankings\delete.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\transactions\reject_refund.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\transactions\reject_refund.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\materials\moderate.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\materials\moderate.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\materials\delete.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\materials\delete.php)
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\api\feedback\create.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\feedback\create.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\settings.php](C:\xampp\htdocs\questão-pro-backend\api\settings.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\cache\manage.php](C:\xampp\htdocs\questão-pro-backend\api\cache\manage.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\stats.php](C:\xampp\htdocs\questão-pro-backend\api\admin\stats.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\list_tables.php](C:\xampp\htdocs\questão-pro-backend\api\admin\list_tables.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\reset_db.php](C:\xampp\htdocs\questão-pro-backend\api\admin\reset_db.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\user_details.php](C:\xampp\htdocs\questão-pro-backend\api\admin\user_details.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\user_actions.php](C:\xampp\htdocs\questão-pro-backend\api\admin\user_actions.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\reports\list.php](C:\xampp\htdocs\questão-pro-backend\api\reports\list.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\filters\save.php](C:\xampp\htdocs\questão-pro-backend\api\filters\save.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\filters\delete.php](C:\xampp\htdocs\questão-pro-backend\api\filters\delete.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\report_actions.php](C:\xampp\htdocs\questão-pro-backend\api\admin\report_actions.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\admin\feedback.php](C:\xampp\htdocs\questão-pro-backend\api\admin\feedback.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\rankings\moderate.php](C:\xampp\htdocs\questão-pro-backend\api\rankings\moderate.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\rankings\update.php](C:\xampp\htdocs\questão-pro-backend\api\rankings\update.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\rankings\delete.php](C:\xampp\htdocs\questão-pro-backend\api\rankings\delete.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\transactions\reject_refund.php](C:\xampp\htdocs\questão-pro-backend\api\transactions\reject_refund.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\materials\moderate.php](C:\xampp\htdocs\questão-pro-backend\api\materials\moderate.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\materials\delete.php](C:\xampp\htdocs\questão-pro-backend\api\materials\delete.php)
+  - [C:\xampp\htdocs\questão-pro-backend\api\feedback\create.php](C:\xampp\htdocs\questão-pro-backend\api\feedback\create.php)
 - Router ajustado:
-  - [C:\xampp\htdocs\questÃ£o-pro-backend\router.php](C:\xampp\htdocs\questÃ£o-pro-backend\router.php)
+  - [C:\xampp\htdocs\questão-pro-backend\router.php](C:\xampp\htdocs\questão-pro-backend\router.php)
 
 ### Frontend
 - Service layer administrativa criada:
   - [C:\dev\concursomestre\src\features\admin\services\adminService.ts](C:\dev\concursomestre\src\features\admin\services\adminService.ts)
-- Persistencia debounced e confiavel das configuraÃ§Ãµes:
+- Persistencia debounced e confiavel das configurações:
   - [C:\dev\concursomestre\context\DataContext.tsx](C:\dev\concursomestre\context\DataContext.tsx)
-- Fluxos de moderaÃ§Ã£o e reembolso com trava de clique:
+- Fluxos de moderação e reembolso com trava de clique:
   - [C:\dev\concursomestre\pages\Admin.tsx](C:\dev\concursomestre\pages\Admin.tsx)
 - Feedback admin refeito:
   - [C:\dev\concursomestre\src\features\admin\components\AdminFeedback.tsx](C:\dev\concursomestre\src\features\admin\components\AdminFeedback.tsx)
-- Marketplace/admin alinhado para evitar duplicacao de notificaÃ§Ãµes:
+- Marketplace/admin alinhado para evitar duplicacao de notificações:
   - [C:\dev\concursomestre\context\MarketplaceContext.tsx](C:\dev\concursomestre\context\MarketplaceContext.tsx)
 
-## SeguranÃ§a
+## Segurança
 
 ### Vulnerabilidades corrigidas
 - Endpoints admin sem verificacao administrativa consistente.
-- AÃ§Ã£o administrativa de feedback respondendo por endpoint legado.
-- Risco de exclusao/moderaÃ§Ã£o sem trilha auditavel.
+- Ação administrativa de feedback respondendo por endpoint legado.
+- Risco de exclusao/moderação sem trilha auditavel.
 - Risco de IDOR em replies de feedback.
-- AÃ§Ãµes destrutivas/financeiras suscetiveis a multiplos cliques.
+- Ações destrutivas/financeiras suscetiveis a multiplos cliques.
 
 ### Protecoes adicionadas
 - `requireAdminSessionContext(...)` nos endpoints criticos do admin.
 - `AuthMiddleware::requireAuth()` no endpoint de feedback/reply.
 - Audit log para mudancas criticas.
-- NotificaÃ§Ã£o server-side em moderaÃ§Ã£o/reembolso.
-- Travas de submit e estados de carregamento por aÃ§Ã£o.
+- Notificação server-side em moderação/reembolso.
+- Travas de submit e estados de carregamento por ação.
 
 ## Testes adicionados
 
@@ -584,15 +584,15 @@
   - normalizacao de cache stats
 
 ### Backend
-- [C:\xampp\htdocs\questÃ£o-pro-backend\tests\AdminSecurityWiringTest.php](C:\xampp\htdocs\questÃ£o-pro-backend\tests\AdminSecurityWiringTest.php)
-  - garante wiring mÃ­nimo de auth/admin helpers nos endpoints administrativos endurecidos
+- [C:\xampp\htdocs\questão-pro-backend\tests\AdminSecurityWiringTest.php](C:\xampp\htdocs\questão-pro-backend\tests\AdminSecurityWiringTest.php)
+  - garante wiring mínimo de auth/admin helpers nos endpoints administrativos endurecidos
 
 ## Como validar
 - Frontend:
   - `npm run build`
   - `npm run test:admin`
 - Backend:
-  - `C:\xampp\php\php.exe C:\xampp\htdocs\questÃ£o-pro-backend\tests\AdminSecurityWiringTest.php`
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questão-pro-backend\tests\AdminSecurityWiringTest.php`
   - `C:\xampp\php\php.exe -l <arquivo.php>`
 
 ## Pendencias reais
@@ -608,20 +608,20 @@
 # Admin Cache Endpoint Formalization
 
 ## Objetivo
-Mover o endpoint oficial de gestÃ£o de cache para a area administrativa do backend e deixar `api/cache/manage.php` apenas como compatibilidade legada.
+Mover o endpoint oficial de gestão de cache para a area administrativa do backend e deixar `api/cache/manage.php` apenas como compatibilidade legada.
 
 ## Endpoint oficial
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\cache.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\admin\cache.php`
 
 ## Bridge legado
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\cache\manage.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\cache\manage.php`
 
 ## Alinhamentos realizados
 - frontend passou a usar `admin/cache.php`
 - alias `cacheManage` no roteamento legado agora aponta para `api/admin/cache.php`
 - `api/cache/manage.php` permanece vivo so como bridge
 
-## ValidaÃ§Ã£o executada
+## Validação executada
 - php lint dos endpoints e teste de wiring
 - `AdminCacheEndpointWiringTest.php`
 - `src/services/admin/__tests__/adminService.test.ts`
@@ -642,15 +642,15 @@ Mover o endpoint oficial de gestÃ£o de cache para a area administrativa do bac
 Consolidar `api/admin` como camada de compatibilidade fina para o modulo administrativo oficial.
 
 ## Formalizacoes desta rodada
-- endpoint oficial de logs em `C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\logs.php`
-- bridge legado `C:\xampp\htdocs\questÃ£o-pro-backend\api\system\logs.php`
+- endpoint oficial de logs em `C:\xampp\htdocs\questão-pro-backend\api\admin\logs.php`
+- bridge legado `C:\xampp\htdocs\questão-pro-backend\api\system\logs.php`
 - alias legado `settingsUpdate` alinhado para `api/admin/settings.php` em `.htaccess` e `router.php`
-- teste estrutural `C:\xampp\htdocs\questÃ£o-pro-backend\tests\AdminLegacyBridgesWiringTest.php`
+- teste estrutural `C:\xampp\htdocs\questão-pro-backend\tests\AdminLegacyBridgesWiringTest.php`
 
 ## Estado atual de `api/admin`
-Todos os arquivos da pasta delegam para `modules/admin/routes.php` e nÃ£o concentram regra de negocio.
+Todos os arquivos da pasta delegam para `modules/admin/routes.php` e não concentram regra de negocio.
 
-## ValidaÃ§Ã£o executada
+## Validação executada
 - `AdminLogsEndpointWiringTest.php`
 - `AdminSettingsWiringTest.php`
 - `AdminLegacyBridgesWiringTest.php`
@@ -670,13 +670,13 @@ Todos os arquivos da pasta delegam para `modules/admin/routes.php` e nÃ£o conc
 
 ## Objetivo
 
-Esta rodada adiciona envio automÃ¡tico de e-mails quando o admin:
+Esta rodada adiciona envio automático de e-mails quando o admin:
 
 - responde um feedback no painel
 - altera o status de um feedback para `read` ou `resolved`
-- conclui a moderaÃ§Ã£o de uma denÃºncia (`report`)
+- conclui a moderação de uma denúncia (`report`)
 
-TambÃ©m foram adicionados atalhos visuais no painel administrativo para acelerar a escrita dessas respostas, sem depender de `mailto:` manual.
+Também foram adicionados atalhos visuais no painel administrativo para acelerar a escrita dessas respostas, sem depender de `mailto:` manual.
 
 ## Backend
 
@@ -684,46 +684,46 @@ TambÃ©m foram adicionados atalhos visuais no painel administrativo para aceler
 
 Arquivos principais:
 
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\reports\controllers\ReportsController.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\reports\services\ReportsService.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\reports\repositories\ReportsRepository.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\reports\validators\ReportsValidator.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\reports\routes.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\reports\controllers\ReportsController.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\reports\services\ReportsService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\reports\repositories\ReportsRepository.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\reports\validators\ReportsValidator.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\reports\routes.php`
 
 Bridges legados:
 
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\reports\handle.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\reports\list.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\reports\handle.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\reports\list.php`
 
-### ServiÃ§o transversal de comunicacao com usuÃ¡rios
+### Serviço transversal de comunicacao com usuários
 
 Arquivo principal:
 
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\admin\services\AdminUserCommunicationService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\admin\services\AdminUserCommunicationService.php`
 
 Responsabilidades:
 
-- montar assunto, tÃ­tulo e corpo do e-mail para feedbacks
-- montar assunto, tÃ­tulo e corpo do e-mail para denÃºncias
+- montar assunto, título e corpo do e-mail para feedbacks
+- montar assunto, título e corpo do e-mail para denúncias
 - adaptar o texto automaticamente ao tipo do feedback ou do alvo denunciado
 - usar a infraestrutura oficial de envio em `Mailer.php`
 
-### Fluxo automÃ¡tico de feedback
+### Fluxo automático de feedback
 
 Arquivos envolvidos:
 
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\admin\services\AdminFeedbackService.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\admin\repositories\AdminFeedbackRepository.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\admin\controllers\AdminFeedbackController.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\admin\validators\AdminFeedbackValidator.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\admin\routes.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\admin\services\AdminFeedbackService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\admin\repositories\AdminFeedbackRepository.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\admin\controllers\AdminFeedbackController.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\admin\validators\AdminFeedbackValidator.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\admin\routes.php`
 
 Como funciona:
 
 1. O admin responde a thread em `admin/feedback.php` com `POST`.
 2. A resposta e persistida em `user_feedback`.
 3. A thread raiz e marcada como `read`.
-4. O backend dispara e-mail automÃ¡tico para o usuÃ¡rio.
+4. O backend dispara e-mail automático para o usuário.
 
 Tipos de feedback com copy dedicada:
 
@@ -733,22 +733,22 @@ Tipos de feedback com copy dedicada:
 - `report`
 - `support` / fallback
 
-### Fluxo automÃ¡tico de moderaÃ§Ã£o de denÃºncias
+### Fluxo automático de moderação de denúncias
 
 Arquivos envolvidos:
 
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\admin\services\AdminReportModerationService.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\admin\repositories\AdminReportModerationRepository.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\admin\routes.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\admin\services\AdminReportModerationService.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\admin\repositories\AdminReportModerationRepository.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\admin\routes.php`
 
 Como funciona:
 
-1. O admin resolve ou ignora a denÃºncia.
+1. O admin resolve ou ignora a denúncia.
 2. O backend atualiza `reports.status`, `admin_reason`, `evidence_url` e `handled_by`.
-3. O sistema cria notificaÃ§Ã£o in-app para o denunciante.
-4. O backend envia e-mail automÃ¡tico ao denunciante.
+3. O sistema cria notificação in-app para o denunciante.
+4. O backend envia e-mail automático ao denunciante.
 
-Alvos de denÃºncia com copy dedicada:
+Alvos de denúncia com copy dedicada:
 
 - `question`
 - `material`
@@ -773,7 +773,7 @@ Arquivos principais:
 Como funciona:
 
 - `commentsService.reportComment(...)` delega para `reportsService.createReport(...)`
-- `DataProvider.reportError(...)` persiste a denÃºncia no backend oficial
+- `DataProvider.reportError(...)` persiste a denúncia no backend oficial
 - a listagem administrativa de reports passa a sair da camada oficial de services
 
 ### Painel admin: feedback
@@ -786,14 +786,14 @@ Melhorias:
 
 - remove dependencia do `mailto:` no fluxo principal
 - adiciona respostas sugeridas por tipo
-- avisa explicitamente que enviar pelo painel dispara e-mail automÃ¡tico
+- avisa explicitamente que enviar pelo painel dispara e-mail automático
 
 Presets adicionados:
 
-- `bug`: bug em anÃ¡lise, correcao aplicada, precisamos de contexto
+- `bug`: bug em análise, correcao aplicada, precisamos de contexto
 - `suggestion`: sugestao recebida, sugestao aprovada, sugestao em estudo
-- `cancellation`: cancelamento em anÃ¡lise, cancelamento orientado, retencao amigavel
-- `report`: denÃºncia recebida, denÃºncia em validaÃ§Ã£o, precisamos de prova
+- `cancellation`: cancelamento em análise, cancelamento orientado, retencao amigavel
+- `report`: denúncia recebida, denúncia em validação, precisamos de prova
 - `support`: atendimento iniciado, orientacao enviada, aguardando retorno
 
 ### Painel admin: reports
@@ -805,15 +805,15 @@ Arquivo principal:
 Melhorias:
 
 - rotulo correto para `question`, `material` e `comment`
-- botao de aÃ§Ã£o unificado para abrir a moderaÃ§Ã£o
+- botao de ação unificado para abrir a moderação
 - presets de justificativa por tipo de alvo denunciado
 - resolucao rapida com motivo padrao melhor que `Resolvido via dashboard`
 
 Presets adicionados:
 
-- `question`: questÃ£o corrigida, questÃ£o mantida, aguardando evidencias
+- `question`: questão corrigida, questão mantida, aguardando evidencias
 - `material`: material ocultado, material mantido, ajuste solicitado
-- `comment`: comentÃ¡rio removido, comentÃ¡rio mantido, comentÃ¡rio em revisao
+- `comment`: comentário removido, comentário mantido, comentário em revisao
 
 ## Tabelas impactadas
 
@@ -822,24 +822,24 @@ Presets adicionados:
 - `users`
 - `notifications`
 
-## ValidaÃ§Ã£o executada
+## Validação executada
 
 - `php -l` nos arquivos alterados de `modules/admin` e bridges de `reports`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\tests\ReportsModuleWiringTest.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\tests\AuthModuleWiringTest.php`
+- `C:\xampp\htdocs\questão-pro-backend\tests\ReportsModuleWiringTest.php`
+- `C:\xampp\htdocs\questão-pro-backend\tests\AuthModuleWiringTest.php`
 - `npx vitest run src/services/reports/__tests__/reportsService.test.ts src/services/comments/__tests__/commentsService.test.ts src/services/admin/__tests__/adminService.test.ts`
 - `npm run build`
 - `npm run test:auth`
 - `npm run test:admin`
 - smoke `401` coerente em:
-  - `http://localhost/questÃ£o-pro-backend/api/reports/list.php`
-  - `http://localhost/questÃ£o-pro-backend/api/reports/handle.php`
-  - `http://localhost/questÃ£o-pro-backend/api/admin/feedback.php`
-  - `http://localhost/questÃ£o-pro-backend/api/admin/report_actions.php`
+  - `http://localhost/questão-pro-backend/api/reports/list.php`
+  - `http://localhost/questão-pro-backend/api/reports/handle.php`
+  - `http://localhost/questão-pro-backend/api/admin/feedback.php`
+  - `http://localhost/questão-pro-backend/api/admin/report_actions.php`
 
 ## Observacao
 
-Os arquivos historicos `audit-report.md` e `feature-report.md` antigos estÃ£o com encoding misto e precisam de uma passada de normalizacao antes de novas edicoes seguras com `apply_patch`. Este suplemento registra a rodada atual em UTF-8 limpo sem arriscar corromper os relatÃ³rios legados.
+Os arquivos historicos `audit-report.md` e `feature-report.md` antigos estão com encoding misto e precisam de uma passada de normalizacao antes de novas edicoes seguras com `apply_patch`. Este suplemento registra a rodada atual em UTF-8 limpo sem arriscar corromper os relatórios legados.
 
 ---
 
@@ -851,7 +851,7 @@ Os arquivos historicos `audit-report.md` e `feature-report.md` antigos estÃ£o 
 
 ## Objetivo
 
-Fechar a pend?ncia arquitetural do fluxo de configuraÃ§Ãµes do admin e remover artefatos tÃ©cnicos sensiveis que ainda poluiam a raiz operacional do backend.
+Fechar a pend?ncia arquitetural do fluxo de configurações do admin e remover artefatos técnicos sensiveis que ainda poluiam a raiz operacional do backend.
 
 ## O que mudou
 
@@ -863,30 +863,30 @@ Fechar a pend?ncia arquitetural do fluxo de configuraÃ§Ãµes do admin e remov
 
 ### Backend
 
-- O endpoint oficial [C:\xampp\htdocs\questÃ£o-pro-backend\api\settings.php](C:\xampp\htdocs\questÃ£o-pro-backend\api\settings.php) continua sendo o unico endpoint valido de configuraÃ§Ãµes.
-- O log tÃ©cnico de settings saiu de `api/settings_log.txt` e foi movido para `storage/logs/settings.log`.
-- O endpoint duplicado da raiz [C:\xampp\htdocs\questÃ£o-pro-backend\settings.php](C:\xampp\htdocs\questÃ£o-pro-backend\settings.php) foi removido.
+- O endpoint oficial [C:\xampp\htdocs\questão-pro-backend\api\settings.php](C:\xampp\htdocs\questão-pro-backend\api\settings.php) continua sendo o unico endpoint valido de configurações.
+- O log técnico de settings saiu de `api/settings_log.txt` e foi movido para `storage/logs/settings.log`.
+- O endpoint duplicado da raiz [C:\xampp\htdocs\questão-pro-backend\settings.php](C:\xampp\htdocs\questão-pro-backend\settings.php) foi removido.
 
 ## Arquivos removidos
 
-- `C:\xampp\htdocs\questÃ£o-pro-backend\settings.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\settings_debug.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\settings_ultra_debug.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\dump_settings.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\test_save.php`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\settings_debug.log`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\settings_log.txt`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\debug.log`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\keys.txt`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\keys_addr.txt`
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\admin\keys_ua.txt`
+- `C:\xampp\htdocs\questão-pro-backend\settings.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\settings_debug.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\settings_ultra_debug.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\dump_settings.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\test_save.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\settings_debug.log`
+- `C:\xampp\htdocs\questão-pro-backend\api\settings_log.txt`
+- `C:\xampp\htdocs\questão-pro-backend\api\debug.log`
+- `C:\xampp\htdocs\questão-pro-backend\api\admin\keys.txt`
+- `C:\xampp\htdocs\questão-pro-backend\api\admin\keys_addr.txt`
+- `C:\xampp\htdocs\questão-pro-backend\api\admin\keys_ua.txt`
 
 ## Impacto
 
-- O admin segue salvando configuraÃ§Ãµes sem mudar contrato funcional.
+- O admin segue salvando configurações sem mudar contrato funcional.
 - O save duplicado foi eliminado.
 - A raiz `api/` ficou menos exposta e menos poluida.
-- Os residuos de debug e chaves soltas deixaram de existir no cÃ³digo ativo.
+- Os residuos de debug e chaves soltas deixaram de existir no código ativo.
 
 ---
 
@@ -898,16 +898,16 @@ Fechar a pend?ncia arquitetural do fluxo de configuraÃ§Ãµes do admin e remov
 
 ## Objetivo
 
-Separar o contrato administrativo oficial de configuraÃ§Ãµes sistemicas do endpoint pÃºblico legado, sem quebrar o carregamento inicial da plataforma.
+Separar o contrato administrativo oficial de configurações sistemicas do endpoint público legado, sem quebrar o carregamento inicial da plataforma.
 
 ## Decisao adotada
 
-- `GET /api/settings.php` permanece como bridge de compatibilidade para leitura pÃºblica das configuraÃ§Ãµes saneadas.
-- `POST /api/admin/settings.php` passa a ser o entry point administrativo oficial para salvar configuraÃ§Ãµes.
+- `GET /api/settings.php` permanece como bridge de compatibilidade para leitura pública das configurações saneadas.
+- `POST /api/admin/settings.php` passa a ser o entry point administrativo oficial para salvar configurações.
 - O alias legado `settingsUpdate` continua existindo apenas como compatibilidade, mas agora delega para `admin/settings.php`.
 
 ## Impacto
 
-- O frontend administrativo salva configuraÃ§Ãµes pela rota oficial administrativa.
-- O carregamento inicial da plataforma continua usando o endpoint pÃºblico de leitura.
+- O frontend administrativo salva configurações pela rota oficial administrativa.
+- O carregamento inicial da plataforma continua usando o endpoint público de leitura.
 - A arquitetura fica menos ambigua sem quebrar clientes antigos.

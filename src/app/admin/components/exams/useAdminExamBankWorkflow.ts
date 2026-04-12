@@ -40,7 +40,7 @@ interface UseAdminExamBankWorkflowOptions {
   questions: Question[];
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => Promise<any> | any;
-  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<void> | void;
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings> | SystemSettings;
   onUpdateQuestion: (question: Question) => Promise<any> | any;
   filter: string;
   addToast: ToastHandler;
@@ -254,4 +254,3 @@ export const useAdminExamBankWorkflow = ({
     actionLoading,
   };
 };
-

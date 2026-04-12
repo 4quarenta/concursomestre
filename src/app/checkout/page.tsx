@@ -10,30 +10,52 @@
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
-import { planService } from '@services/plans';
-import { Plan } from '@types';
+import { getCanonicalPlanName, getConfiguredPlanDisplayName, planService, resolvePlanOffer } from '@services/plans';
+import { Plan, PlanConfig, PlanFeature, PlanName } from '@types';
 import { authFlowService } from '@services/auth';
 import { cardsService } from '@services/billing';
+import { getEnabledStripePaymentMethods } from '@services/payments/stripePaymentMethodsConfig';
+import LimitedOfferCountdown from '../../components/shared/marketing/LimitedOfferCountdown';
 import {
     CheckCircle2, ShieldCheck, ArrowRight, ArrowLeft, CreditCard,
     Lock, User, Mail, UserPlus, LogIn, ChevronRight, Calendar, ToggleRight, ToggleLeft, AlertTriangle, XCircle,
-    Award, Zap, Globe, Shield, Plus, History, Fingerprint, QrCode, FileText
+    Award, Zap, Globe, Shield, Plus, History, Fingerprint, QrCode, FileText, RotateCcw
 } from 'lucide-react';
 import ReCAPTCHA from 'react-google-recaptcha';
-import StripeCardElementForm from './components/StripeCardElementForm';
-import StripeSavedCardCvcForm from './components/StripeSavedCardCvcForm';
+import CheckoutHeader from './components/CheckoutHeader';
+import CheckoutPaymentStage from './components/CheckoutPaymentStage';
+import CheckoutStepTracker from './components/CheckoutStepTracker';
+import useCheckoutSummaryAction from './hooks/useCheckoutSummaryAction';
+import type { CheckoutAuthMode, CheckoutStep } from './types';
 import { buildProfilePath } from '../profile/profileNavigation';
 
-type CheckoutStep = 'identification' | 'payment' | 'success';
-type AuthMode = 'login' | 'register';
+const getActivePlanBenefits = (
+    plan: Plan | null,
+    configuredPlanDetails?: Partial<Record<PlanName, PlanConfig>> | null,
+): string[] => {
+    if (!plan) return [];
+
+    const canonicalPlan = getCanonicalPlanName(plan.name);
+    const configuredFeatures = configuredPlanDetails?.[canonicalPlan]?.features;
+    const sourceFeatures: PlanFeature[] = Array.isArray(configuredFeatures) && configuredFeatures.length > 0
+        ? configuredFeatures
+        : Array.isArray(plan.features)
+            ? plan.features
+            : [];
+
+    return sourceFeatures
+        .filter((feature) => feature?.included)
+        .map((feature) => String(feature?.text || '').trim())
+        .filter(Boolean);
+};
 
 const CheckoutPage: React.FC = () => {
     const { planId } = useParams<{ planId: string }>();
-    const { currentUser, login, refreshUser, updateUser } = useAuth();
+    const { currentUser, login, logout, refreshUser, updateUser } = useAuth();
     const { addToast } = useToast();
     const navigate = useNavigate();
     const location = useLocation();
@@ -47,13 +69,14 @@ const CheckoutPage: React.FC = () => {
 
     // Step State
     const [step, setStep] = useState<CheckoutStep>('identification');
-    const [authMode, setAuthMode] = useState<AuthMode>('register');
+    const [authMode, setAuthMode] = useState<CheckoutAuthMode>('register');
     const [autoRenew, setAutoRenew] = useState(true);
     const [saveCard, setSaveCard] = useState(false);
     const [countdown, setCountdown] = useState(10);
 
     // Auth Form State
     const [authLoading, setAuthLoading] = useState(false);
+    const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -94,6 +117,12 @@ const CheckoutPage: React.FC = () => {
     const cardVaultProvider = (systemSettings?.cardVaultProvider || 'stripe') as 'stripe';
     const isStripeInternalCheckout = stripeCheckoutMode === 'internal';
     const STRIPE_PUBLISHABLE_KEY = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
+    const checkoutEnabledPaymentMethodIds = useMemo(
+        () => getEnabledStripePaymentMethods(systemSettings?.stripePaymentMethods)
+            .filter((method) => method.checkoutSupported)
+            .map((method) => method.id),
+        [systemSettings?.stripePaymentMethods],
+    );
     const selectedMethod = 'credit_card' as const;
     const setSelectedMethod = (_value: string) => undefined;
     const [paymentData, setPaymentData] = useState({
@@ -128,7 +157,7 @@ const CheckoutPage: React.FC = () => {
     const setSavedCardSecurityError = (_value: string | null) => undefined;
     const requiresSavedCard = autoRenew && !isUsingSavedCard;
     const savedCardCheckoutSupported = false;
-    const savedCardCheckoutBlockedMessage = 'Cartões salvos legados foram desativados neste checkout.';
+    const savedCardCheckoutBlockedMessage = 'Cartoes salvos legados foram desativados neste checkout.';
     const savedCardMpRef = { current: null as any };
     const savedCardSecurityFieldRef = { current: null as any };
     const savedCardSecurityTouchedRef = { current: false };
@@ -162,10 +191,46 @@ const CheckoutPage: React.FC = () => {
     const [selectedStripeCardId, setSelectedStripeCardId] = useState<string | null>(null);
     const [pendingStripeSubscriptionId, setPendingStripeSubscriptionId] = useState<string | null>(null);
     const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
+    const [stripePixCapability, setStripePixCapability] = useState<any>(null);
 
     const selectedStripeCard = useMemo(() => {
         return stripeCards.find((card: any) => card.id === selectedStripeCardId) || null;
     }, [stripeCards, selectedStripeCardId]);
+
+    const formatCurrency = (value: number) => `R$ ${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const roundCurrency = (value: number) => Number(Number(value || 0).toFixed(2));
+
+    /**
+     * Replica o mesmo particionamento em centavos usado no backend Stripe para termos recorrentes.
+     * Isso evita divergência entre o valor exibido no checkout e a primeira cobrança efetiva.
+     * @since v1.0.0
+     */
+    const resolveStripeTermAmounts = (totalAmount: number, installmentCount: number) => {
+        const safeInstallmentCount = Math.max(1, installmentCount);
+        const totalCents = Math.max(0, Math.round(roundCurrency(totalAmount) * 100));
+
+        if (safeInstallmentCount <= 1) {
+            const singleAmount = roundCurrency(totalCents / 100);
+            return {
+                installments: 1,
+                first_charge_amount: singleAmount,
+                installment_amount: singleAmount,
+                total_amount: singleAmount,
+                first_charge_discount_amount: 0,
+            };
+        }
+
+        const cycleChargeCents = Math.max(1, Math.floor(totalCents / safeInstallmentCount));
+        const canonicalTermTotalCents = cycleChargeCents * safeInstallmentCount;
+
+        return {
+            installments: safeInstallmentCount,
+            first_charge_amount: roundCurrency(cycleChargeCents / 100),
+            installment_amount: roundCurrency(cycleChargeCents / 100),
+            total_amount: roundCurrency(canonicalTermTotalCents / 100),
+            first_charge_discount_amount: 0,
+        };
+    };
 
     const isUsingStripeSavedCard = Boolean(selectedStripeCard);
     const stripeRequiresSavedCard = autoRenew && !isUsingStripeSavedCard;
@@ -227,7 +292,7 @@ const CheckoutPage: React.FC = () => {
 
                     if (currentUser.subscription?.status === 'active') {
                         if (targetPlanTier <= currentPlanTier && targetPlanTimeScore <= currentTimeScore) {
-                            addToast(`Você já possui o plano ${currentUser.subscription.plan?.name || 'Premium'}. Não é possível assinar um plano inferior ou igual enquanto o atual estiver ativo.`, 'warning');
+      addToast(`Você já possui o plano ${currentUser.subscription.plan?.name || 'Premium'}. Não é possível assinar um plano inferior ou igual enquanto o atual estiver ativo.`, 'warning');
                             navigate(buildProfilePath('billing'));
                             return;
                         }
@@ -251,7 +316,7 @@ const CheckoutPage: React.FC = () => {
                     }
                 }
             } else {
-                addToast('Plano não encontrado', 'error');
+      addToast('Plano não encontrado', 'error');
                 navigate('/plans');
             }
         } catch (error) {
@@ -266,6 +331,25 @@ const CheckoutPage: React.FC = () => {
     const couponValidationAmount = useMemo(() => {
         return Math.max(0, Number(plan?.price || 0) - proRatedCredit);
     }, [plan?.price, proRatedCredit]);
+
+    const checkoutOffer = useMemo(() => {
+        if (!plan) return null;
+        const discount = appliedCoupon ? discountAmount : 0;
+        return resolvePlanOffer({
+            plan,
+            pricing: systemSettings.pricing,
+            planDetails: systemSettings.planDetails,
+            discountAmount: discount,
+        });
+    }, [appliedCoupon, discountAmount, plan, systemSettings.planDetails, systemSettings.pricing]);
+
+    const limitedOfferEndsAt = systemSettings.limitedOfferCountdown?.endsAt || '';
+    const hasActiveLimitedOfferCountdown = Boolean(
+        systemSettings.limitedOfferCountdown?.enabled
+        && limitedOfferEndsAt
+        && new Date(limitedOfferEndsAt).getTime() > Date.now(),
+    );
+    const showCheckoutCountdown = Boolean(checkoutOffer?.hasDiscount && hasActiveLimitedOfferCountdown);
 
     const resetAppliedCoupon = () => {
         setAppliedCoupon(null);
@@ -351,13 +435,14 @@ const CheckoutPage: React.FC = () => {
                 setSelectedStripeCardId(null);
                 return;
             }
+
             setSavedCards([]);
             setSelectedCard(null);
             setIsUsingSavedCard(false);
             setIssuerId(null);
             setIsLoadingStripeCards(true);
             try {
-                const res = await cardsService.listSavedCards(currentUser?.id);
+                const res = await cardsService.listSavedCards();
                 const nextCards = res.success ? (res.cards || []) : [];
                 setStripeCards(nextCards);
 
@@ -385,13 +470,13 @@ const CheckoutPage: React.FC = () => {
 
         if (!currentUser) return;
         try {
-            if (import.meta.env.DEV) console.log('💳 Fetching saved cards for user:', currentUser.id);
-            const res = await cardsService.listSavedCards(currentUser.id);
+            if (import.meta.env.DEV) console.log('ðŸ’³ Fetching saved cards for user:', currentUser.id);
+            const res = await cardsService.listSavedCards();
             
-            if (import.meta.env.DEV) console.log('💳 Cards API Response:', res);
+            if (import.meta.env.DEV) console.log('ðŸ’³ Cards API Response:', res);
 
             if (res.removed_stale_cards > 0) {
-                addToast('Removemos cartões salvos de uma integracao legada. Salve novamente o cartao para reutilizacao.', 'warning');
+          addToast('Removemos cartões salvos de uma integração legada. Salve novamente o cartão para reutilização.', 'warning');
             }
 
             if (res.success && res.cards && res.cards.length > 0) {
@@ -408,7 +493,7 @@ const CheckoutPage: React.FC = () => {
                     );
                 }
             } else {
-                if (import.meta.env.DEV) console.warn('💳 No saved cards found or error in response:', res);
+                if (import.meta.env.DEV) console.warn('ðŸ’³ No saved cards found or error in response:', res);
                 setSavedCards([]);
                 setSelectedCard(null);
                 setIsUsingSavedCard(false);
@@ -422,8 +507,12 @@ const CheckoutPage: React.FC = () => {
     useEffect(() => {
         if (currentUser) {
             loadSavedCards();
+            return;
         }
-    }, [currentUser, isStripeProvider, cardVaultProvider]);
+
+        setStripeCards([]);
+        setSelectedStripeCardId(null);
+    }, [currentUser?.id, isStripeProvider, cardVaultProvider]);
 
     useEffect(() => {
         if (step === 'success') {
@@ -445,12 +534,41 @@ const CheckoutPage: React.FC = () => {
     useEffect(() => {
         if (step === 'success') return;
         if (currentUser) {
-            setStep('payment');
             setPaymentData(prev => ({ ...prev, payerName: currentUser.name, cpf: currentUser.cpf || '' }));
-        } else {
-            setStep('identification');
+            if (step === 'identification') {
+                setStep('payment');
+            }
+            return;
         }
-    }, [currentUser]);
+
+        setStep('identification');
+    }, [currentUser, step]);
+
+    useEffect(() => {
+        if (!currentUser) {
+            setStripePixCapability(null);
+            return;
+        }
+
+        let mounted = true;
+        planService.getStripePixCapability()
+            .then((response) => {
+                if (mounted) setStripePixCapability(response);
+            })
+            .catch(() => {
+                if (mounted) {
+                    setStripePixCapability({
+                        status: 'unavailable',
+                        available: false,
+                        message: 'Não foi possível consultar o status PIX na Stripe agora.',
+                    });
+                }
+            });
+
+        return () => {
+            mounted = false;
+        };
+    }, [currentUser?.id]);
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -459,13 +577,19 @@ const CheckoutPage: React.FC = () => {
         try {
             if (authMode === 'register') {
                 if (formData.password !== formData.confirmPassword) {
-                    addToast('As senhas não coincidem.', 'error');
+        addToast('As senhas não coincidem.', 'error');
+                    setAuthLoading(false);
+                    return;
+                }
+
+                if (!acceptedCheckoutTerms) {
+                    addToast('Aceite os Termos de adesão para criar a conta e continuar.', 'error');
                     setAuthLoading(false);
                     return;
                 }
 
                 if (recaptchaEnabled && !captchaToken) {
-                    addToast('Por favor, complete o desafio de segurança.', 'error');
+      addToast('Por favor, complete o desafio de segurança.', 'error');
                     setAuthLoading(false);
                     return;
                 }
@@ -485,6 +609,7 @@ const CheckoutPage: React.FC = () => {
                     const { user, token } = result;
                     await login(user, token);
                     addToast('Conta criada com sucesso e login realizado!', 'success');
+                    setStep('payment');
                 } else {
                     addToast('Erro ao criar conta.', 'error');
                     if (recaptchaRef.current) recaptchaRef.current.reset();
@@ -493,7 +618,7 @@ const CheckoutPage: React.FC = () => {
 
             } else {
                 if (recaptchaEnabled && !captchaToken) {
-                    addToast('Por favor, complete o desafio de segurança.', 'error');
+        addToast('Por favor, complete o desafio de segurança.', 'error');
                     setAuthLoading(false);
                     return;
                 }
@@ -511,6 +636,7 @@ const CheckoutPage: React.FC = () => {
                     const { user, token } = result;
                     await login(user, token);
                     addToast('Login realizado com sucesso!', 'success');
+                    setStep('payment');
                 } else {
                     addToast('Credenciais inválidas.', 'error');
                     if (recaptchaRef.current) recaptchaRef.current.reset();
@@ -543,7 +669,7 @@ const CheckoutPage: React.FC = () => {
                 setAppliedCouponSource('manual');
                 addToast('Cupom aplicado com sucesso!', 'success');
             } else {
-                addToast(response.message || 'Cupom inválido ou expirado.', 'error');
+                addToast(response.message || 'Cupom invalido ou expirado.', 'error');
                 resetAppliedCoupon();
             }
         } catch (err) {
@@ -597,7 +723,7 @@ const CheckoutPage: React.FC = () => {
             });
 
             await refreshUser();
-            addToast('Perfil atualizado. Agora você já pode concluir a compra.', 'success');
+      addToast('Perfil atualizado. Agora você já pode concluir a compra.', 'success');
         } catch (error) {
             console.error('Failed to update checkout requirements', error);
         } finally {
@@ -611,9 +737,9 @@ const CheckoutPage: React.FC = () => {
         setIsResendingConfirmation(true);
         try {
             const message = await authFlowService.resendConfirmation(currentUser.email);
-            addToast(message || 'E-mail de confirmacao reenviado com sucesso.', 'success');
+      addToast(message || 'E-mail de confirmação reenviado com sucesso.', 'success');
         } catch (error: any) {
-            addToast(error.message || 'Erro ao reenviar o e-mail de confirmacao.', 'error');
+      addToast(error.message || 'Erro ao reenviar o e-mail de confirmação.', 'error');
         } finally {
             setIsResendingConfirmation(false);
         }
@@ -624,7 +750,7 @@ const CheckoutPage: React.FC = () => {
         if (!ensureCheckoutRequirements()) return;
 
         if (isStripeInternalCheckout) {
-            addToast('Use o formulario Stripe abaixo para concluir a assinatura.', 'info');
+      addToast('Use o formulário Stripe abaixo para concluir a assinatura.', 'info');
             return;
         }
 
@@ -640,7 +766,7 @@ const CheckoutPage: React.FC = () => {
 
             const redirectUrl = response?.data?.url || response?.url || response?.data?.redirect_url;
             if (!response?.success || !redirectUrl) {
-                throw new Error(response?.message || 'Nao foi possivel iniciar o checkout Stripe.');
+        throw new Error(response?.message || 'Não foi possível iniciar o checkout Stripe.');
             }
 
             window.location.href = redirectUrl;
@@ -670,7 +796,7 @@ const CheckoutPage: React.FC = () => {
             });
 
             if (!response?.success) {
-                throw new Error(response?.message || 'Não foi possível iniciar a assinatura Stripe.');
+      throw new Error(response?.message || 'Não foi possível iniciar a assinatura Stripe.');
             }
 
             const payload = response?.data || response;
@@ -707,7 +833,7 @@ const CheckoutPage: React.FC = () => {
 
         const subscriptionId = options?.subscriptionId || pendingStripeSubscriptionId;
         if (!subscriptionId) {
-            throw new Error('A assinatura Stripe não retornou um identificador para a confirmacao final.');
+      throw new Error('A assinatura Stripe não retornou um identificador para a confirmação final.');
         }
 
         const resolvedSaveCard = options?.saveCard ?? (saveCard || stripeRequiresSavedCard);
@@ -723,7 +849,7 @@ const CheckoutPage: React.FC = () => {
         });
 
         if (!response?.success) {
-            throw new Error(response?.message || 'Não foi possível finalizar a assinatura Stripe.');
+      throw new Error(response?.message || 'Não foi possível finalizar a assinatura Stripe.');
         }
 
         const payload = response?.data || response;
@@ -734,7 +860,7 @@ const CheckoutPage: React.FC = () => {
         setPendingStripePaymentMethodId(null);
 
         if (payload?.card_saved && !options?.savedCardId) {
-            addToast('Cartão salvo com sucesso para compras futuras.', 'success');
+        addToast('Cartão salvo com sucesso para compras futuras.', 'success');
         }
 
         if (payload?.card_save_warning) {
@@ -742,7 +868,7 @@ const CheckoutPage: React.FC = () => {
         }
 
         if (payload?.approved === false) {
-            addToast('O pagamento foi bloqueado pela validação antifraude da Stripe.', 'error');
+                addToast('O pagamento foi bloqueado pela validacao antifraude da Stripe.', 'error');
             return;
         }
 
@@ -756,7 +882,7 @@ const CheckoutPage: React.FC = () => {
 
     const handleStripeSavedCardPayment = async ({ stripe, cvcElement }: { stripe: any; cvcElement: any }) => {
         if (!plan || !currentUser || !selectedStripeCard) {
-            throw new Error('Selecione um cartão salvo para continuar.');
+      throw new Error('Selecione um cartão salvo para continuar.');
         }
         if (!ensureCheckoutRequirements()) {
             throw new Error('Complete seu perfil e confirme o e-mail antes de concluir a compra.');
@@ -775,7 +901,7 @@ const CheckoutPage: React.FC = () => {
             });
 
             if (!response?.success) {
-                throw new Error(response?.message || 'Não foi possível iniciar a cobrança com o cartão salvo.');
+      throw new Error(response?.message || 'Não foi possível iniciar a cobrança com o cartão salvo.');
             }
 
             const payload = response?.data || response;
@@ -783,7 +909,7 @@ const CheckoutPage: React.FC = () => {
 
             if (payload?.client_secret) {
                 if (!savedPaymentMethodId) {
-                    throw new Error('O cartão salvo selecionado não possui um metodo de pagamento Stripe valido.');
+      throw new Error('O cartão salvo selecionado não possui um método de pagamento Stripe válido.');
                 }
 
                 const confirmation =
@@ -801,7 +927,7 @@ const CheckoutPage: React.FC = () => {
                         });
 
                 if (confirmation.error) {
-                    throw new Error(confirmation.error.message || 'Não foi possível confirmar o código de segurança do cartão salvo.');
+      throw new Error(confirmation.error.message || 'Não foi possível confirmar o código de segurança do cartão salvo.');
                 }
 
                 await finalizeStripeInternalCheckout({
@@ -821,7 +947,7 @@ const CheckoutPage: React.FC = () => {
             }
         } catch (error: any) {
             console.error('Stripe saved card checkout error:', error);
-            const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar o cartão salvo.';
+    const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar o cartão salvo.';
             addToast(errorMsg, 'error');
             throw error;
         } finally {
@@ -829,14 +955,17 @@ const CheckoutPage: React.FC = () => {
         }
     };
 
-    const displayName = useMemo(() => {
+    const planDisplayLabel = useMemo(() => {
         if (!plan) return '';
-        return plan.name
+        const fallbackName = plan.name
             .replace(' - Mensal', '')
             .replace(' - Trimestral', '')
-            .replace(' - Anual', '')
-            .toUpperCase();
-    }, [plan]);
+            .replace(' - Anual', '');
+
+        return getConfiguredPlanDisplayName(plan.name, systemSettings.planDetails, fallbackName);
+    }, [plan, systemSettings.planDetails]);
+
+    const displayName = useMemo(() => planDisplayLabel.toUpperCase(), [planDisplayLabel]);
 
     const billingCycle = useMemo(() => {
         if (!plan) return '';
@@ -935,25 +1064,43 @@ const CheckoutPage: React.FC = () => {
         return false;
     };
 
+    const checkoutSubtotal = Number(plan?.price || 0);
+    const checkoutDiscountAmount = appliedCoupon ? Math.max(0, Number(discountAmount || 0)) : 0;
+    const checkoutFinalCycleAmount = Math.max(0, roundCurrency(checkoutSubtotal - proRatedCredit - checkoutDiscountAmount));
+    const activePlanBenefits = useMemo(
+        () => getActivePlanBenefits(plan, systemSettings.planDetails),
+        [plan, systemSettings.planDetails],
+    );
+    const displayedPlanBenefits = activePlanBenefits.slice(0, 8);
+
     const selectedInstallment = useMemo(() => {
-        if (!plan) return { installments: 1, installment_amount: 0, total_amount: 0 };
+        if (!plan) {
+            return {
+                installments: 1,
+                first_charge_amount: 0,
+                installment_amount: 0,
+                total_amount: 0,
+                first_charge_discount_amount: 0,
+            };
+        }
         if (isStripeProvider) {
             if (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1) {
-                const amount = Number((Number(plan.price) / selectedStripeInstallmentCount).toFixed(2));
-                return {
-                    installments: selectedStripeInstallmentCount,
-                    installment_amount: amount,
-                    total_amount: Number(plan.price),
-                };
+                return resolveStripeTermAmounts(checkoutFinalCycleAmount, selectedStripeInstallmentCount);
             }
 
-            return { installments: 1, installment_amount: Number(plan.price), total_amount: Number(plan.price) };
+            return resolveStripeTermAmounts(checkoutFinalCycleAmount, 1);
         }
         const installmentsNumber = Number(paymentData.installments) || 1;
 
         if (isRecurring) {
-            const amount = plan.price / maxInstallments;
-            return { installments: 1, installment_amount: amount, total_amount: amount };
+            const amount = roundCurrency(checkoutFinalCycleAmount / maxInstallments);
+            return {
+                installments: 1,
+                first_charge_amount: amount,
+                installment_amount: amount,
+                total_amount: amount,
+                first_charge_discount_amount: 0,
+            };
         }
 
         const marketplaceOpt = installmentOptions.find(
@@ -961,110 +1108,174 @@ const CheckoutPage: React.FC = () => {
         );
 
         if (marketplaceOpt) {
+            const marketplaceTotal = marketplaceOpt.total_amount ?? (marketplaceOpt.installment_amount * marketplaceOpt.installments);
+            const ratio = Number(plan.price || 0) > 0 ? checkoutFinalCycleAmount / Number(plan.price || 0) : 0;
+            const adjustedTotal = roundCurrency(Number(marketplaceTotal || 0) * ratio);
             return {
                 installments: marketplaceOpt.installments,
-                installment_amount: marketplaceOpt.installment_amount,
-                total_amount: marketplaceOpt.total_amount ?? (marketplaceOpt.installment_amount * marketplaceOpt.installments),
+                first_charge_amount: roundCurrency(adjustedTotal / Number(marketplaceOpt.installments || 1)),
+                installment_amount: roundCurrency(adjustedTotal / Number(marketplaceOpt.installments || 1)),
+                total_amount: adjustedTotal,
+                first_charge_discount_amount: 0,
             };
         }
 
         const rate = 0.0299; 
         const amount = installmentsNumber === 1
-            ? Number(plan.price)
-            : (Number(plan.price) * rate) / (1 - Math.pow(1 + rate, -installmentsNumber));
+            ? checkoutFinalCycleAmount
+            : (checkoutFinalCycleAmount * rate) / (1 - Math.pow(1 + rate, -installmentsNumber));
 
         return {
             installments: installmentsNumber,
-            installment_amount: amount,
-            total_amount: amount * installmentsNumber,
+            first_charge_amount: roundCurrency(amount),
+            installment_amount: roundCurrency(amount),
+            total_amount: roundCurrency(amount * installmentsNumber),
+            first_charge_discount_amount: 0,
         };
-    }, [plan, installmentOptions, paymentData.installments, isRecurring, isStripeProvider, maxInstallments, supportsStripeBillingChoices, selectedStripeInstallmentCount]);
+    }, [plan, installmentOptions, paymentData.installments, isRecurring, isStripeProvider, maxInstallments, supportsStripeBillingChoices, selectedStripeInstallmentCount, checkoutFinalCycleAmount]);
 
     const monetaryTotals = useMemo(() => {
-        if (!plan) return { firstCharge: 0, totalDue: 0 };
-        const discount = appliedCoupon ? discountAmount : 0;
-        
-        // Se for recorrente, baseamos no valor da parcela
-        // Caso contrário, usamos o total_amount do parcelamento selecionado (que já inclui juros se houver)
-        const baseAmount = isStripeProvider
-            ? (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
-                ? selectedInstallment.installment_amount
-                : Number(plan.price))
-            : isRecurring 
-            ? (plan.price / maxInstallments) 
-            : selectedInstallment.total_amount;
-
-        const totalDue = Math.max(0, baseAmount - proRatedCredit - discount);
-        return { firstCharge: baseAmount, totalDue };
-    }, [plan, isRecurring, isStripeProvider, maxInstallments, proRatedCredit, appliedCoupon, discountAmount, selectedInstallment.installment_amount, selectedInstallment.total_amount, supportsStripeBillingChoices, selectedStripeInstallmentCount]);
+        if (!plan) return { firstCharge: 0, totalDue: 0, contractTotal: 0 };
+        const baseAmount = selectedInstallment.first_charge_amount ?? selectedInstallment.installment_amount;
+        const totalDue = Math.max(0, baseAmount);
+        return { firstCharge: baseAmount, totalDue, contractTotal: selectedInstallment.total_amount };
+    }, [plan, selectedInstallment.first_charge_amount, selectedInstallment.installment_amount, selectedInstallment.total_amount]);
+    const checkoutDisplayedDiscountAmount = Math.max(
+        0,
+        roundCurrency(checkoutSubtotal - proRatedCredit - monetaryTotals.contractTotal)
+    );
 
     const paymentProviderLabel = 'Stripe';
-    const selectedMethodLabel = 'Cartão';
+  const selectedMethodLabel = 'Cartão';
     const renewalLabel = autoRenew ? 'Automática' : 'Manual';
     const paymentActionLabel = isStripeProvider
-        ? (isStripeInternalCheckout ? 'Finalize no formulário Stripe abaixo' : 'Continuar para pagamento')
+      ? (isStripeInternalCheckout ? 'Concluir assinatura com segurança' : 'Continuar para pagamento')
         : isRecurring
             ? 'Ativar assinatura'
             : 'Pagar agora';
     const processingLabel = isStripeProvider
         ? (isStripeInternalCheckout ? 'Processando assinatura Stripe...' : 'Abrindo checkout Stripe...')
-        : 'Processando Segurança...';
+    : 'Processando segurança...';
 
     const checkoutBillingLabel = isStripeProvider
         ? (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
-            ? `${selectedStripeInstallmentCount}x de R$ ${selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-            : `1x de R$ ${Number(plan?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)
+            ? `${selectedInstallment.installments}x de ${formatCurrency(monetaryTotals.totalDue)}`
+            : `1x de ${formatCurrency(monetaryTotals.totalDue)}`)
         : (!isRecurring && selectedInstallment.installments > 1
             ? `${selectedInstallment.installments}x de R$ ${selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
             : `1x de R$ ${Number(monetaryTotals.firstCharge || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
 
+    const billingCycleSuffix = billingCycle.toLowerCase().includes('mens')
+        ? '/mes'
+        : billingCycle.toLowerCase().includes('anual')
+            ? '/ano'
+            : billingCycle.toLowerCase().includes('trimes')
+                ? '/trimestre'
+                : '/ciclo';
+
+    const checkoutPlanHeroPriceLabel = `${formatCurrency(checkoutFinalCycleAmount)} ${billingCycleSuffix}`;
+
+    const checkoutDueLabel = formatCurrency(monetaryTotals.totalDue);
+    const siteName = systemSettings?.siteName || systemSettings?.appName || 'ConcursoMestre';
+    const checkoutPaymentBreakdownLabel = selectedInstallment.installments > 1
+        ? `${selectedInstallment.installments}x de ${formatCurrency(monetaryTotals.totalDue)}. TOTAL: ${formatCurrency(monetaryTotals.contractTotal)}.`
+        : `COBRANÇA ÚNICA. TOTAL: ${formatCurrency(monetaryTotals.contractTotal || monetaryTotals.totalDue)}.`;
+    const checkoutPaymentProtectionLabel = 'Pagamento protegido e acesso liberado assim que aprovado.';
+
+    const checkoutInstallmentOptions = useMemo(() => {
+        if (!supportsStripeBillingChoices) {
+            return [
+                {
+                    value: '1',
+                    label: `1x de ${formatCurrency(checkoutFinalCycleAmount)} sem juros`,
+                },
+            ];
+        }
+
+        return Array.from({ length: maxInstallments }, (_, index) => {
+            const installmentCount = index + 1;
+            const installmentPreview = resolveStripeTermAmounts(checkoutFinalCycleAmount, installmentCount);
+            return {
+                value: String(installmentCount),
+                label: installmentCount > 1
+                    ? `${installmentCount}x de ${formatCurrency(installmentPreview.installment_amount)} sem juros`
+                    : `1x de ${formatCurrency(installmentPreview.first_charge_amount)} sem juros`,
+            };
+        });
+    }, [checkoutFinalCycleAmount, maxInstallments, supportsStripeBillingChoices]);
+
+    const nextRenewalSummaryLabel = autoRenew && nextRenewalDate
+      ? nextRenewalDate
+      : 'Manual';
+
+    const checkoutLegalNotice = (
+        <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-semibold leading-relaxed text-slate-500 dark:border-slate-800 dark:bg-[#0f1020] dark:text-slate-400">
+      Ao realizar o pagamento, você aceita os{' '}
+            <Link
+                to="/checkout/termos-de-adesao"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-black text-indigo-600 underline decoration-indigo-300 underline-offset-4 transition-colors hover:text-indigo-700 dark:text-indigo-400"
+            >
+                            Termos de adesão
+            </Link>{' '}
+      do {siteName}
+        </p>
+    );
+
     const renderSuccessStep = () => (
-        <div className="overflow-hidden rounded-[2.25rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#1a1c2e]">
-            <div className="px-8 pb-6 pt-10 text-center md:px-12">
-                <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-emerald-500 text-white shadow-2xl shadow-emerald-500/30">
-                    <CheckCircle2 size={46} />
-                </div>
-                <div className="mt-6 space-y-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600 dark:text-emerald-400">Pagamento aprovado</p>
-                    <h2 className="text-3xl font-black leading-none text-slate-900 dark:text-white">Pagamento aprovado!</h2>
-                    <p className="mx-auto max-w-xl text-base font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                        Sua assinatura do plano <span className="font-black text-slate-900 dark:text-white">{displayName}</span> foi confirmada com sucesso e o acesso já esta pronto para uso.
-                    </p>
+        <div className="overflow-hidden rounded-[2.25rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/60 dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none">
+            <div className="relative overflow-hidden bg-slate-950 px-8 py-10 text-center text-white md:px-12">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.28),transparent_36%)]" />
+                <div className="relative z-10">
+                    <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[1.75rem] bg-emerald-500 text-white shadow-2xl shadow-emerald-500/30">
+                        <CheckCircle2 size={40} />
+                    </div>
+                    <div className="mt-6 space-y-3">
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200">Pagamento aprovado</p>
+                        <h2 className="text-3xl font-black leading-tight tracking-tight md:text-4xl">Parabéns pela aquisição</h2>
+                        <p className="mx-auto max-w-xl text-base font-semibold leading-relaxed text-slate-300">
+          O plano <span className="font-black text-white">{displayName}</span> foi confirmado e seu acesso já está pronto para uso.
+                        </p>
+                    </div>
                 </div>
             </div>
 
-            <div className="grid gap-4 border-y border-slate-100 bg-slate-50 px-8 py-6 dark:border-slate-800 dark:bg-[#121528] md:grid-cols-3 md:px-12">
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5 dark:border-slate-800 dark:bg-[#1a1c2e]">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Plano</p>
-                    <p className="mt-3 text-lg font-black leading-none text-slate-900 dark:text-white">{displayName}</p>
-                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">{billingCycle}</p>
-                </div>
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5 dark:border-slate-800 dark:bg-[#1a1c2e]">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Cobrança confirmada</p>
-                    <p className="mt-3 text-lg font-black leading-none text-slate-900 dark:text-white">R$ {monetaryTotals.totalDue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">{checkoutBillingLabel}</p>
-                </div>
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5 dark:border-slate-800 dark:bg-[#1a1c2e]">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Proximo passo</p>
-                    <p className="mt-3 text-lg font-black leading-none text-slate-900 dark:text-white">Ir para a assinatura</p>
-                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">Veja o status do plano, transações e renovação automática.</p>
-                </div>
+            <div className="grid border-b border-slate-100 dark:border-slate-800 md:grid-cols-3">
+                {[
+                    ['Plano', displayName, billingCycle],
+      ['Cobrança confirmada', formatCurrency(monetaryTotals.totalDue), checkoutBillingLabel],
+      ['Próximo passo', 'Minha assinatura', 'Status, transações e renovação.'],
+                ].map(([label, value, hint]) => (
+                    <div key={label} className="border-t border-slate-100 px-6 py-5 first:border-t-0 dark:border-slate-800 md:border-l md:border-t-0 md:first:border-l-0">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">{label}</p>
+                        <p className="mt-3 text-lg font-black leading-none text-slate-900 dark:text-white">{value}</p>
+                        <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">{hint}</p>
+                    </div>
+                ))}
             </div>
 
             <div className="px-8 py-8 text-center md:px-12">
                 <button
-                          onClick={() => navigate('/profile/billing')}
+                    onClick={() => navigate('/profile/billing')}
                     className="inline-flex h-14 items-center justify-center gap-3 rounded-2xl bg-indigo-600 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-indigo-700"
                 >
                     Ir para minha assinatura
                     <ArrowRight size={16} />
                 </button>
                 <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-                    Redirecionamento automático em {countdown} segundos
+                                Redirecionamento automático em {countdown} segundos
                 </p>
             </div>
         </div>
     );
+
+    const { handleSummaryPaymentAction, summaryConfirmLabel } = useCheckoutSummaryAction({
+        isStripeInternalCheckout,
+        isUsingStripeSavedCard,
+        paymentActionLabel,
+        handlePayment,
+    });
 
     if (loading) return (
         <div className="min-h-screen bg-slate-50 dark:bg-[#0f1020] flex items-center justify-center">
@@ -1088,8 +1299,28 @@ const CheckoutPage: React.FC = () => {
         }
     };
 
+    const handleUseDifferentAccount = async () => {
+        setAuthLoading(true);
+        try {
+            await logout();
+            setAuthMode('login');
+            setFormData({
+                name: '',
+                email: '',
+                password: '',
+                confirmPassword: '',
+            });
+            setAcceptedCheckoutTerms(false);
+            setStep('identification');
+        } catch (error: any) {
+            addToast(error?.message || 'Não foi possível trocar de conta agora.', 'error');
+        } finally {
+            setAuthLoading(false);
+        }
+    };
+
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-[#0f1020] py-12 px-4 relative overflow-hidden transition-colors duration-500">
+        <div className={`min-h-screen bg-zinc-50 px-4 py-8 transition-colors duration-500 dark:bg-[#0f1020] md:py-10 ${showCheckoutCountdown ? 'pb-44 md:pb-52' : ''}`}>
             <style>{`
                 #securityCodeSecureField_container {
                     width: 100%;
@@ -1103,768 +1334,253 @@ const CheckoutPage: React.FC = () => {
                     min-height: 56px;
                 }
             `}</style>
-            <div className="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-50 to-transparent dark:from-indigo-900/10 dark:to-transparent pointer-events-none"></div>
-            
-            <div className="container mx-auto max-w-5xl relative z-10">
-                <button onClick={handleBack} className="flex items-center gap-2 text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-white transition-all mb-8 group font-black text-[10px] uppercase tracking-[0.2em]">
-                    <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
-                    Voltar
-                </button>
+            <div className="pointer-events-none fixed inset-x-0 top-0 h-[240px] bg-[linear-gradient(to_bottom,rgba(255,255,255,0.88),transparent)] dark:bg-[linear-gradient(to_bottom,rgba(15,16,32,0.92),transparent)]" />
+             
+            <div className={`relative z-10 mx-auto ${step === 'payment' ? 'max-w-6xl' : 'max-w-7xl'}`}>
+                <CheckoutHeader />
+                {step !== 'success' ? (
+                    <div className="mb-4">
+                        <button
+                            type="button"
+                            onClick={handleBack}
+                            className="inline-flex items-center gap-2 text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-950"
+                        >
+                            <ArrowLeft size={16} />
+                            Voltar
+                        </button>
+                    </div>
+                ) : null}
+                <CheckoutStepTracker step={step} />
 
-                {/* Progress Indicator */}
-                <div className="flex items-center justify-center mb-12 gap-3 max-w-2xl mx-auto">
-                    {[
-                        { id: 'identification' as CheckoutStep, label: 'Identificação' },
-                        { id: 'payment' as CheckoutStep, label: 'Pagamento' },
-                        { id: 'success' as CheckoutStep, label: 'Confirmação' }
-                    ].map((s, idx, arr) => {
-                        const stepsOrder: CheckoutStep[] = ['identification', 'payment', 'success'];
-                        const currentIdx = stepsOrder.indexOf(step);
-                        const isPast = idx < currentIdx;
-                        const isCurrent = idx === currentIdx;
-                        
-                        return (
-                            <React.Fragment key={s.id}>
-                                <div className="flex flex-col items-center gap-2 flex-1 group">
-                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-xs transition-all duration-500 ${isCurrent ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-500/20 scale-110' : isPast ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-500'}`}>
-                                        {isPast ? <CheckCircle2 size={18} /> : idx + 1}
-                                    </div>
-                                    <span className={`font-black text-[9px] uppercase tracking-widest hidden md:block ${isCurrent ? 'text-indigo-600 dark:text-indigo-400' : isPast ? 'text-emerald-500' : 'text-slate-400'}`}>{s.label}</span>
-                                </div>
-                                {idx < arr.length - 1 && <div className={`w-full h-[2px] mt-5 transition-colors duration-700 ${isPast ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-800'}`}></div>}
-                            </React.Fragment>
-                        );
-                    })}
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-                    <div className={`${step === 'success' ? 'lg:col-span-3 max-w-2xl mx-auto' : 'lg:col-span-2'} space-y-6 transition-all duration-700`}>
+                <div className="grid grid-cols-1 items-start gap-8">
+                    <div className={`${step === 'success' ? 'mx-auto max-w-3xl' : ''} space-y-6 transition-all duration-700`}>
                         {step === 'identification' && (
-                            <div className="bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-[2rem] p-8 md:p-10 shadow-2xl animate-in zoom-in-95 duration-500">
-                                <div className="max-w-md mx-auto space-y-8">
-                                    <div className="text-center space-y-2">
-                                        <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center mx-auto text-indigo-600 dark:text-indigo-400 mb-4"><User size={32} /></div>
-                                        <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Identificação</h2>
-                                        <p className="text-sm text-slate-500">Acesse sua conta ou crie uma nova para continuar.</p>
-                                    </div>
-
-                                    <div className="flex bg-slate-100 dark:bg-[#0f1020] p-1.5 rounded-2xl">
-                                        <button onClick={() => setAuthMode('register')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'register' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Criar Conta</button>
-                                        <button onClick={() => setAuthMode('login')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'login' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Já tenho conta</button>
-                                    </div>
-
-                                    <form onSubmit={handleAuth} className="space-y-4">
-                                        {authMode === 'register' && (
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
-                                                <div className="relative">
-                                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                                    <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="Digite seu nome" />
+                            <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/60 animate-in zoom-in-95 duration-500 dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none">
+                                <div className="grid min-h-[560px] lg:grid-cols-[0.92fr_1.08fr]">
+                                    <div className="relative overflow-hidden bg-slate-950 p-7 text-white md:p-10">
+                                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.38),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.24),transparent_34%)]" />
+                                        <div className="relative z-10 flex h-full flex-col justify-between gap-10">
+                                            <div className="space-y-5">
+                                                <span className="inline-flex rounded-full bg-white/10 px-3 py-1 text-[9px] font-black uppercase tracking-[0.22em] text-indigo-100">
+                                                    Plano selecionado
+                                                </span>
+                                                <div>
+                    <p className="text-sm font-semibold text-slate-300">Você está a um passo de assinar</p>
+                                                    <h2 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">{planDisplayLabel}</h2>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    {displayedPlanBenefits.slice(0, 5).map((benefit) => (
+                                                        <div key={benefit} className="flex items-start gap-3">
+                                                            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-300" />
+                                                            <span className="text-sm font-bold leading-relaxed text-slate-100">{benefit}</span>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             </div>
-                                        )}
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">E-mail</label>
-                                            <div className="relative">
-                                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                                <input type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="seu@email.com" />
+
+                                            <div className="grid gap-3 text-[11px] font-bold text-slate-200">
+                                                <div className="flex items-center gap-3">
+                                                    <ShieldCheck size={16} className="text-emerald-300" />
+                                                    Pagamento seguro e dados protegidos
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <RotateCcw size={16} className="text-emerald-300" />
+                                                    Reembolso em até 7 dias em caso de arrependimento
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Senha</label>
-                                            <div className="relative">
-                                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                                <input type="password" required value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="••••••••" />
+                                    </div>
+
+                                    <div className="flex items-center justify-center p-6 md:p-8">
+                                        <div className="w-full max-w-sm space-y-6">
+                                            <div className="space-y-2">
+                                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"><User size={24} /></div>
+                                                <h2 className="text-xl font-black uppercase tracking-tight text-slate-900 dark:text-white">Identificação</h2>
+                                                <p className="text-sm font-semibold leading-relaxed text-slate-500 dark:text-slate-400">Entre ou crie uma conta para vincular a assinatura ao seu perfil.</p>
                                             </div>
+
+                                            {currentUser ? (
+                                                <div className="space-y-3">
+                                                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                                                                <CheckCircle2 size={16} />
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="text-[8px] font-black uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">Conta conectada</p>
+                                                                <h3 className="mt-0.5 truncate text-sm font-black text-slate-900 dark:text-white">{currentUser.name || 'Usuário logado'}</h3>
+                                                                <p className="truncate text-[11px] font-semibold text-slate-500 dark:text-slate-400">{currentUser.email}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-[#0f1020]">
+                                                        <p className="text-[11px] font-semibold leading-relaxed text-slate-600 dark:text-slate-300">
+                                                            A assinatura será vinculada a esta conta. Dados de cobrança só serão solicitados se estiverem faltando no cadastro.
+                                                        </p>
+                                                    </div>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setStep('payment')}
+                                                        className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:bg-indigo-700 active:scale-[0.98]"
+                                                    >
+                                                        Continuar para pagamento
+                                                        <ArrowRight size={18} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleUseDifferentAccount}
+                                                        disabled={authLoading}
+                                                        className="flex h-11 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white text-[10px] font-black uppercase tracking-widest text-slate-600 transition-all hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-[#121528] dark:text-slate-300"
+                                                    >
+                                                        Continuar com outra conta
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="flex rounded-2xl bg-slate-100 p-1.5 dark:bg-[#0f1020]">
+                                                        <button type="button" onClick={() => { setAuthMode('register'); setAcceptedCheckoutTerms(false); }} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'register' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Criar Conta</button>
+                                                        <button type="button" onClick={() => setAuthMode('login')} className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authMode === 'login' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}>Já tenho conta</button>
+                                                    </div>
+
+                                                    <form onSubmit={handleAuth} className="space-y-4">
+                                                {authMode === 'register' && (
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
+                                                        <div className="relative">
+                                                            <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                                            <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="Digite seu nome" />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">E-mail</label>
+                                                    <div className="relative">
+                                                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                                        <input type="email" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="seu@email.com" />
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Senha</label>
+                                                    <div className="relative">
+                                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                                        <input type="password" required value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="********" />
+                                                    </div>
+                                                </div>
+                                                {authMode === 'register' && (
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Confirmar Senha</label>
+                                                        <div className="relative">
+                                                            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                                            <input type="password" required value={formData.confirmPassword} onChange={e => setFormData({ ...formData, confirmPassword: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="Repita sua senha" />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {authMode === 'register' && (
+                                                    <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold leading-relaxed text-slate-600 dark:border-slate-800 dark:bg-[#0f1020] dark:text-slate-300">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={acceptedCheckoutTerms}
+                                                            onChange={(e) => setAcceptedCheckoutTerms(e.target.checked)}
+                                                            className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                        />
+                                                        <span>
+                                                            Li e aceito os{' '}
+                                                            <Link to="/checkout/termos-de-adesao" target="_blank" rel="noopener noreferrer" className="font-black text-indigo-600 underline decoration-indigo-300 underline-offset-4 transition-colors hover:text-indigo-700 dark:text-indigo-400">
+                                                                Termos de adesão
+                                                            </Link>
+                                                            {' '}para criar minha conta e seguir com a assinatura.
+                                                        </span>
+                                                    </label>
+                                                )}
+                                                {recaptchaEnabled && <div className="flex justify-center py-2"><ReCAPTCHA ref={recaptchaRef} sitekey={systemSettings?.recaptchaSiteKey || ''} onChange={setCaptchaToken} theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'} /></div>}
+                                                <button type="submit" disabled={authLoading} className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] rounded-2xl text-white font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-70">
+                                                    {authLoading ? <span className="animate-pulse">Aguarde...</span> : <>{authMode === 'register' ? 'Criar Minha Conta' : 'Acessar Minha Conta'} <ArrowRight size={18} /></>}
+                                                </button>
+                                                    </form>
+                                                </>
+                                            )}
                                         </div>
-                                        {recaptchaEnabled && <div className="flex justify-center py-2"><ReCAPTCHA ref={recaptchaRef} sitekey={systemSettings?.recaptchaSiteKey || ''} onChange={setCaptchaToken} theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'} /></div>}
-                                        <button type="submit" disabled={authLoading} className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] rounded-2xl text-white font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-70">
-                                            {authLoading ? <span className="animate-pulse">Aguarde...</span> : <>{authMode === 'register' ? 'Criar Minha Conta' : 'Acessar Minha Conta'} <ArrowRight size={18} /></>}
-                                        </button>
-                                    </form>
+                                    </div>
                                 </div>
                             </div>
                         )}
 
                         {step === 'payment' && (
                             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                <div className="bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-[2rem] p-8 md:p-10 shadow-2xl">
-                                    <div className="space-y-8">
-                                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                            <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-3 uppercase tracking-tight">
-                                                <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400"><CreditCard size={20} /></div>
-                                                Finalizar compra
-                                            </h2>
-                                            <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-full">
-                                                <ShieldCheck size={14} className="text-emerald-500" />
-                                                <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Checkout seguro</span>
-                                            </div>
-                                        </div>
-
-                                        {!isStripeProvider && (
-                                            <div className="space-y-2">
-                                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Forma de pagamento</p>
-                                            </div>
-                                        )}
-
-                                        {isStripeProvider ? (
-                                            <div className="grid grid-cols-1 gap-4">
-                                                <button className="p-5 rounded-2xl border-2 bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg flex items-center justify-between">
-                                                    <div className="flex items-center gap-4">
-                                                        <CreditCard size={24} />
-                                                        <div className="text-left">
-                                                            <p className="text-[10px] font-black uppercase tracking-[0.2em]">Cartão</p>
-                                                            <p className="text-[11px] font-medium mt-1">
-                                                                {isStripeInternalCheckout ? 'Pagamento direto nesta página' : 'Pagamento seguro com redirecionamento'}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <ShieldCheck size={16} />
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <button onClick={() => setSelectedMethod('credit_card')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'credit_card' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'}`}>
-                                                    <CreditCard size={28} />
-                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Cartão</span>
-                                                </button>
-                                                <button disabled={isRecurring || isStripeProvider} onClick={() => setSelectedMethod('pix')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'pix' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'} ${(isRecurring || isStripeProvider) ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                                                    <QrCode size={28} />
-                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">PIX</span>
-                                                </button>
-                                                <button disabled={isRecurring || isStripeProvider} onClick={() => setSelectedMethod('boleto')} className={`p-5 rounded-2xl border-2 flex flex-col items-center gap-4 transition-all duration-300 ${selectedMethod === 'boleto' ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500 text-indigo-700 dark:text-indigo-400 shadow-lg' : 'bg-slate-50 dark:bg-[#0f1020] border-slate-200 dark:border-slate-800 text-slate-400'} ${(isRecurring || isStripeProvider) ? 'opacity-40 cursor-not-allowed' : ''}`}>
-                                                    <FileText size={28} />
-                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Boleto</span>
-                                                </button>
-                                            </div>
-                                        )}
-
-                                        <div className="space-y-2">
-                                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Dados do pagamento</p>
-                                        </div>
-                                        <div className="bg-slate-100 dark:bg-[#0f1020] p-6 md:p-8 rounded-[2rem] border border-slate-200 dark:border-slate-800">
-                                            {isStripeProvider ? (
-                                                <div className="space-y-5">
-                                                    {isLoadingStripeCards ? (
-                                                        <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-4 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                                                            Carregando cartões salvos...
-                                                        </div>
-                                                    ) : stripeCards.length > 0 ? (
-                                                        <div className="space-y-3">
-                                                            <div className="flex items-center justify-between">
-                                                                <div>
-                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Cartões salvos</p>
-                                                                    <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                                                                        Escolha um cartão salvo ou use um cartão novo nesta compra.
-                                                                    </p>
-                                                                </div>
-                                                                <span className="px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
-                                                                    {stripeCards.length} salvo(s)
-                                                                </span>
-                                                            </div>
-
-                                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                                                {stripeCards.map((card: any) => {
-                                                                    const isSelected = selectedStripeCardId === card.id;
-                                                                    return (
-                                                                        <button
-                                                                            key={card.id}
-                                                                            type="button"
-                                                                            onClick={() => {
-                                                                                setSelectedStripeCardId(card.id);
-                                                                                setSaveCard(false);
-                                                                            }}
-                                                                            className={`rounded-2xl border p-4 text-left transition-all ${
-                                                                                isSelected
-                                                                                    ? 'border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-500/10'
-                                                                                    : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#121528]'
-                                                                            }`}
-                                                                        >
-                                                                            <div className="flex items-center justify-between gap-3">
-                                                                                <div>
-                                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">{String(card.brand || 'card').toUpperCase()}</p>
-                                                                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">•••• {card.last_four_digits}</p>
-                                                                                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">Expira em {String(card.exp_month).padStart(2, '0')}/{String(card.exp_year).slice(-2)}</p>
-                                                                                </div>
-                                                                                <div className="flex flex-col items-end gap-2">
-                                                                                    {Number(card.is_default) === 1 && (
-                                                                                        <span className="rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                                                                                            Padrão
-                                                                                        </span>
-                                                                                    )}
-                                                                                    {isSelected && <CheckCircle2 size={18} className="text-indigo-600 dark:text-indigo-400" />}
-                                                                                </div>
-                                                                            </div>
-                                                                        </button>
-                                                                    );
-                                                                })}
-
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => setSelectedStripeCardId(null)}
-                                                                    className={`rounded-2xl border border-dashed p-4 text-left transition-all ${
-                                                                        !isUsingStripeSavedCard
-                                                                            ? 'border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-500/10'
-                                                                            : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-[#121528]'
-                                                                    }`}
-                                                                >
-                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Novo cartão</p>
-                                                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">Informar novos dados</p>
-                                                                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">Use outro cartão e escolha se quer salvá-lo no seu perfil.</p>
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ) : null}
-
-                                                    <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#121528]">
-                                                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                                                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-                                                                Parcelamento:
-                                                            </label>
-                                                            <select
-                                                                value={String(selectedStripeInstallmentCount)}
-                                                                onChange={(event) => setPaymentData(prev => ({ ...prev, installments: event.target.value }))}
-                                                                className="h-11 min-w-[220px] rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white"
-                                                            >
-                                                                <option value="1">
-                                                                    1x de R$ {Number(plan.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                                </option>
-                                                                {supportsStripeBillingChoices && Array.from({ length: maxInstallments - 1 }, (_, index) => {
-                                                                    const installments = index + 2;
-                                                                    const installmentAmount = Number((Number(plan.price || 0) / installments).toFixed(2));
-                                                                    return (
-                                                                        <option key={installments} value={String(installments)}>
-                                                                            {installments}x de R$ {installmentAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                                        </option>
-                                                                    );
-                                                                })}
-                                                            </select>
-                                                        </div>
-                                                    </div>
-
-                                                    {isStripeInternalCheckout ? (
-                                                        isUsingStripeSavedCard ? (
-                                                            <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6 space-y-5">
-                                                                <div className="space-y-2">
-                                                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cartão selecionado</p>
-                                                                    <p className="text-base font-black text-slate-900 dark:text-white">
-                                                                        {String(selectedStripeCard?.brand || 'card').toUpperCase()} •••• {selectedStripeCard?.last_four_digits}
-                                                                    </p>
-                                                                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                                                                        O pagamento será confirmado com este cartão salvo. Se a Stripe solicitar autenticação adicional, você verá a confirmação segura logo em seguida.
-                                                                    </p>
-                                                                </div>
-
-                                                                <StripeSavedCardCvcForm
-                                                                    publishableKey={STRIPE_PUBLISHABLE_KEY}
-                                                                    cardBrand={selectedStripeCard?.brand}
-                                                                    last4={selectedStripeCard?.last_four_digits}
-                                                                    submitLabel={processing ? 'Confirmando cartão salvo...' : 'Pagar com cartão salvo'}
-                                                                    onConfirm={handleStripeSavedCardPayment}
-                                                                />
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => undefined}
-                                                                    disabled
-                                                                    className="hidden"
-                                                                >
-                                                                    {processing ? 'Processando pagamento...' : 'Pagar com cartão salvo'}
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6 space-y-5">
-                                                                <StripeCardElementForm
-                                                                    publishableKey={STRIPE_PUBLISHABLE_KEY}
-                                                                    billingName={currentUser.name}
-                                                                    billingEmail={currentUser.email}
-                                                                    billingAddress={currentUser.address}
-                                                                    submitLabel={processing ? 'Processando pagamento...' : 'Pagar com cartão'}
-                                                                    onPaymentMethodCreated={handleStripeInternalPayment}
-                                                                onPaymentFinalized={(step) => finalizeStripeInternalCheckout({
-                                                                    subscriptionId: step?.subscriptionId || null,
-                                                                    paymentMethodId: step?.paymentMethodId || null,
-                                                                    paymentIntentId: step?.paymentIntentId || null,
-                                                                    saveCard: step?.saveCard,
-                                                                })}
-                                                                />
-                                                            </div>
-                                                        )
-                                                    ) : (
-                                                        <div className="rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121528] p-6">
-                                                            <p className="text-sm font-bold text-slate-900 dark:text-white">Você será levado para a tela segura da Stripe para informar o cartão e concluir a compra.</p>
-                                                        </div>
-                                                    )}
-
-                                                    {!isUsingStripeSavedCard && (
-                                                    <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-xl cursor-pointer transition-all group">
-                                                        <div className="relative">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={saveCard || stripeRequiresSavedCard}
-                                                                disabled={stripeRequiresSavedCard}
-                                                                onChange={(e) => setSaveCard(e.target.checked)}
-                                                                className="sr-only peer"
-                                                            />
-                                                            <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-indigo-700 dark:group-hover:text-white transition-colors">
-                                                                Salvar este cartão para compras futuras
-                                                                {stripeRequiresSavedCard && <span className="ml-1 font-extrabold text-indigo-600 dark:text-indigo-400">(Necessário para renovação automática)</span>}
-                                                            </span>
-                                                            <span className="text-[10px] text-slate-500">
-                                                                Ele aparecerá em Dados Pessoais para reutilização rápida nas próximas compras.
-                                                            </span>
-                                                        </div>
-                                                    </label>
-                                                    )}
-
-                                                    <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-xl cursor-pointer transition-all group">
-                                                        <div className="relative">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={autoRenew}
-                                                                onChange={(e) => {
-                                                                    const enabled = e.target.checked;
-                                                                    setAutoRenew(enabled);
-                                                                    if (enabled && !isUsingStripeSavedCard) {
-                                                                        setSaveCard(true);
-                                                                    }
-                                                                }}
-                                                                className="sr-only peer"
-                                                            />
-                                                            <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-emerald-700 dark:group-hover:text-white transition-colors">Renovação automática</span>
-                                                            <span className="text-[10px] text-slate-500">
-                                                                {autoRenew ? 'Sua assinatura continuará ativa e a cobrança será renovada automaticamente.' : 'Sua assinatura será encerrada no fim do ciclo atual.'}
-                                                            </span>
-                                                        </div>
-                                                    </label>
-                                                </div>
-                                            ) : (
-                                                <>
-                                            {selectedMethod === 'credit_card' && (
-                                                <div className="space-y-6">
-                                                    {/* Premium Saved Cards Carousel */}
-                                                    {savedCards.length > 0 && (
-                                                        <div className="space-y-4">
-                                                            <div className="flex items-center justify-between px-1">
-                                                                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none">Cartões Salvos</h3>
-	                                                                <button onClick={() => {
-	                                                                    if (!savedCardCheckoutSupported && !isUsingSavedCard) {
-	                                                                        addToast(savedCardCheckoutBlockedMessage, 'info');
-	                                                                        return;
-	                                                                    }
-	                                                                    setIsUsingSavedCard(!isUsingSavedCard);
-	                                                                    if (isUsingSavedCard) {
-	                                                                        setSelectedCard(null);
-	                                                                        setIssuerId(null);
-	                                                                        setPaymentData((prev) => ({ ...prev, cardCvv: '' }));
-	                                                                    }
-	                                                                }} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline transition-all">
-                                                                    {isUsingSavedCard ? '+ Novo Cartão' : ' Meus Cartões'}
-                                                                </button>
-                                                            </div>
-
-                                                            {!savedCardCheckoutSupported && (
-                                                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-semibold leading-relaxed text-amber-800">
-                                                                    Cartoes salvos de uma integracao legada foram desativados neste checkout. Use um novo cartao ou um cartao ja sincronizado com a Stripe.
-                                                                </div>
-                                                            )}
-
-                                                            <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide -mx-1 px-1">
-                                                                {savedCards.map((card) => (
-	                                                                    <button key={card.id || card.stripe_payment_method_id} onClick={() => {
-	                                                                        if (!savedCardCheckoutSupported) {
-	                                                                            addToast(savedCardCheckoutBlockedMessage, 'info');
-	                                                                            return;
-	                                                                        }
-	                                                                        setSelectedCard(card);
-	                                                                        setIsUsingSavedCard(true);
-	                                                                        setPaymentMethodId(normalizePaymentMethodId(card.payment_method_id || card.brand));
-	                                                                        setIssuerId(card.issuer_id ? String(card.issuer_id) : null);
-	                                                                        setPaymentData((prev) => ({ ...prev, cardCvv: '' }));
-	                                                                        updateInstallments(card.first_six_digits || card.bin, card.payment_method_id || card.brand);
-	                                                                    }} disabled={!savedCardCheckoutSupported} className={`flex-shrink-0 w-64 p-5 rounded-[2rem] border-2 transition-all duration-300 relative overflow-hidden group ${selectedCard?.id === card.id && isUsingSavedCard ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-600/20' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-400'} ${!savedCardCheckoutSupported ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                                                                        {selectedCard?.id === card.id && isUsingSavedCard && <div className="absolute top-4 right-4"><CheckCircle2 size={18} className="text-white" /></div>}
-                                                                        
-                                                                        <div className="flex items-center gap-3 mb-6">
-                                                                            <div className={`w-10 h-6 rounded flex items-center justify-center ${selectedCard?.id === card.id && isUsingSavedCard ? 'bg-white/20' : 'bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600'}`}>
-                                                                                {getBrandIcon(card.brand) ? (
-                                                                                    <img src={getBrandIcon(card.brand)!} alt={card.brand} className="h-3 w-5 object-contain" />
-                                                                                ) : (
-                                                                                    <CreditCard size={14} />
-                                                                                )}
-                                                                            </div>
-                                                                            <span className="text-[10px] font-black uppercase tracking-widest">{card.brand}</span>
-                                                                        </div>
-
-                                                                        <div className="space-y-1">
-                                                                            <div className="text-sm font-black tracking-widest">•••• •••• •••• {card.last_four_digits}</div>
-                                                                            <div className="text-[9px] font-bold uppercase opacity-60">Expira em {String(card.exp_month).padStart(2, '0')}/{String(card.exp_year).slice(-2)}</div>
-                                                                        </div>
-                                                                    </button>
-                                                                ))}
-	                                                                <button onClick={() => {
-	                                                                    setIsUsingSavedCard(false);
-	                                                                    setSelectedCard(null);
-	                                                                    setIssuerId(null);
-	                                                                    setPaymentData((prev) => ({ ...prev, cardCvv: '' }));
-	                                                                }} className={`flex-shrink-0 w-32 p-5 rounded-[2rem] border-2 border-dashed transition-all flex flex-col items-center justify-center gap-3 group ${!isUsingSavedCard ? 'bg-indigo-50 dark:bg-indigo-500/5 border-indigo-400 text-indigo-600' : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-400'}`}>
-                                                                    <Plus size={24} />
-                                                                    <span className="text-[9px] font-black uppercase tracking-widest">Novo</span>
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {!isUsingSavedCard ? (
-                                                        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-                                                            <div className="space-y-2">
-                                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome no Cartão</label>
-                                                                <div className="relative">
-                                                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                                                    <input type="text" placeholder="COMO ESTÁ IMPRESSO" value={paymentData.cardHolder} onChange={e => setPaymentData({ ...paymentData, cardHolder: e.target.value.toUpperCase() })} className="w-full h-14 pl-12 pr-4 bg-white dark:bg-[#0f1020] border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400 uppercase tracking-widest text-xs" />
-                                                                </div>
-                                                            </div>
-                                                            
-                                                            <div className="space-y-2">
-                                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Dados do Cartão</label>
-                                                                <div className="relative">
-                                                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                                                                        {getBrandIcon(paymentMethodId) ? (
-                                                                            <img src={getBrandIcon(paymentMethodId)!} alt={paymentMethodId} className="h-4 w-6 object-contain" />
-                                                                        ) : (
-                                                                            <CreditCard className="text-slate-400" size={18} />
-                                                                        )}
-                                                                    </div>
-                                                                    <input type="text" placeholder="0000 0000 0000 0000" value={paymentData.cardNumber} onChange={e => {
-                                                                        let val = e.target.value.replace(/\D/g, '');
-                                                                        if (val.length > 16) val = val.slice(0, 16);
-                                                                        let formatted = val.match(/.{1,4}/g)?.join(' ') || val;
-                                                                        setPaymentData({ ...paymentData, cardNumber: formatted });
-                                                                    }} className="w-full h-14 pl-14 pr-4 bg-white dark:bg-[#0f1020] border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400 tracking-widest text-xs" />
-                                                                </div>
-                                                            </div>
-                                                            
-                                                            <div className="grid grid-cols-2 gap-4">
-                                                                <div className="space-y-1">
-                                                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Validade</label>
-                                                                    <div className="relative">
-                                                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                                                        <input type="text" placeholder="MM/AA" maxLength={5} value={paymentData.cardExpiry} onChange={e => handleExpiryChange(e.target.value)} className="w-full h-14 pl-12 pr-4 bg-white dark:bg-[#0f1020] border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400 tracking-widest text-xs" />
-                                                                    </div>
-                                                                </div>
-                                                                <div className="space-y-1">
-                                                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">CVV</label>
-                                                                    <div className="relative">
-                                                                        <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                                                        <input type="text" placeholder="123" maxLength={4} value={paymentData.cardCvv} onChange={e => setPaymentData({ ...paymentData, cardCvv: e.target.value.replace(/\D/g, '') })} className="w-full h-14 pl-12 pr-4 bg-white dark:bg-[#0f1020] border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400 tracking-widest text-xs" />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="space-y-2">
-                                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">CPF do Titular</label>
-                                                                <div className="relative">
-                                                                    <Fingerprint className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                                                    <input type="text" placeholder="000.000.000-00" value={paymentData.cpf} onChange={e => {
-                                                                        let val = e.target.value.replace(/\D/g, '');
-                                                                        if (val.length > 11) val = val.slice(0, 11);
-                                                                        let formatted = val;
-                                                                        if (val.length > 9) formatted = val.match(/(\d{3})(\d{3})(\d{3})(\d{2})/)?.slice(1).join('.') || val;
-                                                                        else if (val.length > 6) formatted = val.match(/(\d{3})(\d{3})(.*)/)?.slice(1).join('.') || val;
-                                                                        else if (val.length > 3) formatted = val.match(/(\d{3})(.*)/)?.slice(1).join('.') || val;
-                                                                        setPaymentData({ ...paymentData, cpf: formatted.replace(/\.(\d{2})$/, '-$1') });
-                                                                    }} className="w-full h-14 pl-12 pr-4 bg-white dark:bg-[#0f1020] border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400 tracking-widest text-xs" />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="p-8 bg-indigo-600/5 dark:bg-indigo-500/5 border border-dashed border-indigo-200 dark:border-indigo-500/30 rounded-[2rem] flex flex-col items-center gap-6 text-center animate-in zoom-in-95 duration-500">
-                                                            <div className="w-16 h-16 bg-white dark:bg-[#1a1c2e] rounded-3xl flex items-center justify-center shadow-2xl relative">
-                                                                <Lock className="text-indigo-600" size={24} />
-                                                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white dark:border-[#1a1c2e]"></div>
-                                                            </div>
-                                                            <div>
-                                                                <div className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.2em] mb-2">Confirmação de Segurança</div>
-                                                                <p className="text-[10px] text-slate-500 uppercase font-bold leading-relaxed max-w-[240px]">Para sua proteção, insira o CVV do cartão final <span className="text-indigo-600 font-black">{selectedCard?.last_four_digits}</span> para autorizar o pagamento.</p>
-                                                            </div>
-                                                            <div className="w-40 space-y-2">
-                                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Código CVV</label>
-                                                                <div className="relative h-14 bg-white dark:bg-[#0f1020] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none overflow-hidden">
-                                                                    <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10 pointer-events-none" size={18} />
-                                                                    <div
-                                                                        id="saved-card-security-code-container"
-                                                                        onClick={() => savedCardSecurityFieldRef.current?.focus?.()}
-                                                                        className="h-full w-full pl-12 pr-4 flex items-center cursor-text"
-                                                                    />
-                                                                </div>
-                                                                {savedCardSecurityError && <p className="text-[10px] text-rose-500 font-bold leading-tight">{savedCardSecurityError}</p>}
-                                                                {!savedCardSecurityError && <p className="text-[10px] text-slate-500 font-bold leading-tight">Digite o CVV do cartão salvo para confirmar esta compra.</p>}
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {!isUsingSavedCard && (
-                                                    <div className="pt-2">
-                                                        <label className="flex items-center gap-3 p-4 bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-slate-700 rounded-xl cursor-pointer transition-all group">
-                                                            <div className="relative">
-                                                                <input type="checkbox" checked={saveCard || requiresSavedCard} disabled={requiresSavedCard} onChange={(e) => setSaveCard(e.target.checked)} className="sr-only peer" />
-                                                                <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                                                            </div>
-                                                            <div className="flex flex-col">
-                                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-indigo-700 dark:group-hover:text-white transition-colors">Salvar este cartão para compras futuras {isRecurring && <span className="text-indigo-600 dark:text-indigo-400 font-extrabold ml-1">(Ativo na Recorrência)</span>}{!isRecurring && autoRenew && !isUsingSavedCard && <span className="text-indigo-600 dark:text-indigo-400 font-extrabold ml-1">(Necessário para renovação automática)</span>}</span>
-                                                                <span className="text-[10px] text-slate-500">Seus dados serão criptografados de ponta a ponta.</span>
-                                                            </div>
-                                                        </label>
-                                                    </div>
-                                                    )}
-
-                                                    <div className="pt-2">
-                                                        <label className="flex items-center gap-3 p-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-xl cursor-pointer transition-all group">
-                                                            <div className="relative">
-                                                                <input type="checkbox" checked={autoRenew} onChange={(e) => {
-                                                                    const enabled = e.target.checked;
-                                                                    setAutoRenew(enabled);
-                                                                    if (enabled && !isUsingSavedCard) {
-                                                                        setSaveCard(true);
-                                                                    }
-                                                                }} className="sr-only peer" />
-                                                                <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                                                            </div>
-                                                            <div className="flex flex-col">
-                                                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-emerald-700 dark:group-hover:text-white transition-colors">Renovação automática</span>
-                                                                <span className="text-[10px] text-slate-500">
-                                                                    {autoRenew
-                                                                        ? 'Quando sua assinatura vencer, tentaremos renovar usando o cartão salvo de forma segura.'
-                                                                        : 'Sua assinatura ficará com renovação manual. Você poderá contratar novamente depois.'}
-                                                                </span>
-                                                            </div>
-                                                        </label>
-                                                    </div>
-
-                                                    {systemSettings?.features?.recurringEnabled && maxInstallments > 1 && (
-                                                        <div className="pt-2">
-                                                            <div className={`p-4 rounded-xl border-2 transition-all ${isRecurring ? 'bg-indigo-50 dark:bg-indigo-600/10 border-indigo-600 dark:border-indigo-500' : 'bg-white dark:bg-[#1a1c2e] border-slate-200 dark:border-slate-800'}`}>
-                                                                <label className="flex items-start gap-4 cursor-pointer">
-                                                                    <div className="relative mt-1">
-                                                                        <input type="checkbox" checked={isRecurring} onChange={(e) => { const val = e.target.checked; setIsRecurring(val); if (val) { setSelectedMethod('credit_card'); setSaveCard(true); setAutoRenew(true); setPaymentData(p => ({ ...p, installments: '1' })); } }} className="sr-only peer" />
-                                                                        <div className="w-10 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                                                                    </div>
-                                                                    <div className="flex-1 space-y-1">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">Ativar Modo Recorrência</span>
-                                                                            <span className="px-2 py-0.5 bg-indigo-600 text-white text-[8px] font-black uppercase rounded-full">Recomendado</span>
-                                                                        </div>
-                                                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Pague apenas R$ {(plan.price / maxInstallments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} mensais sem comprometer o limite total do cartão.</p>
-                                                                    </div>
-                                                                </label>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    <div className="space-y-1">
-                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">{isRecurring ? 'Opções de Parcelamento (1x na Recorrência)' : 'Opções de Parcelamento'}</label>
-                                                        <select disabled={isRecurring} value={paymentData.installments} onChange={e => setPaymentData({ ...paymentData, installments: e.target.value })} className={`w-full h-12 px-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all ${isRecurring ? 'opacity-50' : ''}`}>
-                                                            {isRecurring ? (
-                                                                <option value="1">1x de R$ {(plan.price / maxInstallments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })} s/ juros (Assinatura)</option>
-                                                            ) : ( installmentOptions.length > 0 ? (
-                                                                installmentOptions.map((opt: any) => <option key={opt.installments} value={opt.installments}>{opt.recommended_message}</option>)
-                                                            ) : ( [1,2,3,4,5,6,7,8,9,10,11,12].slice(0, maxInstallments).map(n => <option key={n} value={n}>{n}x de R$ {(plan.price / n).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</option>) ) )}
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {(selectedMethod === 'pix' || selectedMethod === 'boleto') && (
-                                                <div className="space-y-6">
-                                                    <div className="space-y-1">
-                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
-                                                        <input type="text" placeholder="Seu nome completo" value={paymentData.payerName} onChange={e => setPaymentData({ ...paymentData, payerName: e.target.value })} className="w-full h-12 px-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500" />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">CPF</label>
-                                                        <input type="text" placeholder="000.000.000-00" value={paymentData.cpf} onChange={e => setPaymentData({ ...paymentData, cpf: e.target.value })} className="w-full h-12 px-4 bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500" />
-                                                    </div>
-                                                    <div className="p-5 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 rounded-2xl flex items-center gap-4">
-                                                        <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shrink-0">
-                                                            {selectedMethod === 'pix' ? <QrCode size={20} /> : <FileText size={20} />}
-                                                        </div>
-                                                        <p className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 leading-tight">
-                                                            {selectedMethod === 'pix' ? 'Pagamento instantâneo. A confirmação ocorre em poucos segundos via QR Code ou Copia e Cola.' : 'Boleto bancário. A compensação pode levar até 48h úteis.'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            )}
-                                                </>
-                                            )}
-                                        </div>
-
-                                        {/* Coupon Integration */}
-                                        <div className="pt-2">
-                                            <div className="flex flex-col md:flex-row gap-3">
-                                                <input type="text" value={couponCode} onChange={e => setCouponCode(e.target.value.toUpperCase())} placeholder="Cupom de desconto" className="flex-1 h-12 px-5 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-black text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" />
-                                                <button onClick={handleApplyCoupon} disabled={isApplyingCoupon || !couponCode} className="h-12 px-6 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-300 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all">
-                                                    {isApplyingCoupon ? 'Aplicando...' : 'Aplicar'}
-                                                </button>
-                                            </div>
-                                            {appliedCoupon && (
-                                                <div className="mt-3 flex items-center justify-between px-4 py-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-xl">
-                                                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                                                        <Award size={14} />
-                                                        <span className="text-[10px] font-black uppercase tracking-widest">
-                                                            Cupom "{appliedCoupon.code}" {appliedCouponSource === 'auto' ? 'auto aplicado!' : 'aplicado!'}
-                                                        </span>
-                                                    </div>
-                                                    {appliedCouponSource === 'manual' && (
-                                                        <button onClick={() => resetAppliedCoupon()} className="text-[8px] font-black text-rose-500 uppercase tracking-widest hover:underline">Remover</button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {currentUser && getMissingCheckoutRequirements().length > 0 && (
-                                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 dark:border-amber-500/20 dark:bg-amber-500/10">
-                                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                                    <div className="space-y-1">
-                                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700 dark:text-amber-300">Compra bloqueada</p>
-                                                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                                                            Complete seu perfil e confirme o e-mail antes de concluir o pagamento.
-                                                        </p>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowCheckoutRequirementsModal(true)}
-                                                        className="h-11 rounded-xl bg-slate-900 px-4 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-slate-800 dark:bg-amber-500 dark:text-slate-900"
-                                                    >
-                                                        Resolver agora
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Final Action */}
-                                        <div className="pt-6 border-t border-slate-200 dark:border-slate-800 space-y-4">
-                                            {!isStripeInternalCheckout && (
-                                                <button onClick={handlePayment} disabled={processing} className="w-full h-16 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] rounded-2xl text-white font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-3">
-                                                    {processing ? (
-                                                        <span className="flex items-center gap-2 animate-pulse">{processingLabel}</span>
-                                                    ) : (
-                                                        <>
-                                                            {paymentActionLabel}
-                                                            <ArrowRight size={20} />
-                                                        </>
-                                                    )}
-                                                </button>
-                                            )}
-
-                                            <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                                                <Shield size={14} />
-                                                <span>Pagamento protegido e acesso liberado assim que aprovado.</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
+                                <CheckoutPaymentStage
+                                    planName={planDisplayLabel}
+                                    billingCycle={billingCycle}
+                                    planBenefits={displayedPlanBenefits}
+                                    subtotalLabel={formatCurrency(checkoutSubtotal)}
+                                    discountLabel={checkoutDisplayedDiscountAmount > 0 ? formatCurrency(checkoutDisplayedDiscountAmount) : null}
+                                    totalLabel={formatCurrency(monetaryTotals.contractTotal)}
+                                    dueLabel={checkoutDueLabel}
+                                    couponCode={couponCode}
+                                    applyingCoupon={isApplyingCoupon}
+                                    appliedCouponCode={appliedCoupon?.code || null}
+                                    appliedCouponSource={appliedCouponSource}
+                                    couponSavingsLabel={checkoutDisplayedDiscountAmount > 0 ? formatCurrency(checkoutDisplayedDiscountAmount) : null}
+                                    autoRenew={autoRenew}
+                                    saveCard={saveCard}
+                                    stripeRequiresSavedCard={stripeRequiresSavedCard}
+                                    isStripeInternalCheckout={isStripeInternalCheckout}
+                                    isLoadingStripeCards={isLoadingStripeCards}
+                                    stripeCards={stripeCards}
+                                    selectedStripeCardId={selectedStripeCardId}
+                                    selectedStripeCard={selectedStripeCard}
+                                    stripePublishableKey={STRIPE_PUBLISHABLE_KEY}
+                                    currentUserName={currentUser?.name}
+                                    currentUserEmail={currentUser?.email}
+                                    currentUserCpf={currentUser?.cpf}
+                                    currentUserAddress={currentUser?.address}
+                                    emailVerified={currentUser?.emailVerified}
+                                    hasMissingRequirements={currentUser ? getMissingCheckoutRequirements().length > 0 : true}
+                                    nextRenewalLabel={nextRenewalSummaryLabel}
+                                    paymentBreakdownLabel={checkoutPaymentBreakdownLabel}
+                                    paymentProtectionLabel={checkoutPaymentProtectionLabel}
+                                    installmentOptions={checkoutInstallmentOptions}
+                                    selectedInstallmentValue={paymentData.installments}
+                                    processing={processing}
+                                    legalNotice={checkoutLegalNotice}
+                                    pixCapabilityStatus={stripePixCapability?.status}
+                                    pixCapabilityMessage={stripePixCapability?.message}
+                                    enabledPaymentMethodIds={checkoutEnabledPaymentMethodIds}
+                                    onCouponCodeChange={setCouponCode}
+                                    onApplyCoupon={handleApplyCoupon}
+                                    onRemoveCoupon={resetAppliedCoupon}
+                                    onAutoRenewChange={(enabled) => {
+                                        setAutoRenew(enabled);
+                                        if (enabled && !isUsingStripeSavedCard) {
+                                            setSaveCard(true);
+                                        }
+                                    }}
+                                    onSaveCardChange={setSaveCard}
+                                    onSelectSavedCard={(cardId) => {
+                                        setSelectedStripeCardId(cardId);
+                                        setSaveCard(false);
+                                    }}
+                                    onSelectNewCard={() => setSelectedStripeCardId(null)}
+                                    onConfirmSavedCard={handleStripeSavedCardPayment}
+                                    onPaymentMethodCreated={handleStripeInternalPayment}
+                                    onPaymentFinalized={(stripeStep) => finalizeStripeInternalCheckout({
+                                        subscriptionId: stripeStep?.subscriptionId || null,
+                                        paymentMethodId: stripeStep?.paymentMethodId || null,
+                                        paymentIntentId: stripeStep?.paymentIntentId || null,
+                                        saveCard: stripeStep?.saveCard,
+                                    })}
+                                    onConfirmClick={handleSummaryPaymentAction}
+                                    onInstallmentChange={(value) => setPaymentData((prev) => ({ ...prev, installments: value }))}
+                                    onEditBillingInfo={() => setShowCheckoutRequirementsModal(true)}
+                                    confirmLabel={summaryConfirmLabel}
+                                    processingLabel={processingLabel}
+                                />
                             </div>
                         )}
-
                         {step === 'success' && renderSuccessStep()}
-
-                        {false && step === 'success' && (
-                            <div className="bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-[2rem] p-12 shadow-2xl animate-in zoom-in-95 duration-700 text-center space-y-8">
-                                <div className="relative mx-auto w-32 h-32">
-                                    <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping"></div>
-                                    <div className="relative w-full h-full bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-2xl shadow-emerald-500/40 transform scale-110">
-                                        <CheckCircle2 size={64} />
-                                    </div>
-                                </div>
-                                <div className="space-y-3">
-                                    <h2 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Pagamento Aprovado!</h2>
-                                    <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto font-medium">Parabéns! Sua assinatura do plano <span className="text-indigo-600 dark:text-indigo-400 font-black">{displayName}</span> foi ativada com sucesso.</p>
-                                </div>
-                                <div className="pt-4 flex flex-col items-center gap-4">
-                        <button onClick={() => navigate('/profile/billing')} className="px-12 py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-[0.2em] text-[10px] rounded-2xl shadow-xl shadow-indigo-500/20 transition-all hover:-translate-y-1">Começar Agora</button>
-                                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-black flex items-center gap-2">
-                                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div>
-                                        Redirecionando automaticamente em {countdown} segundos...
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
 
-                    {step !== 'success' && (
-                        <div className="lg:col-span-1 space-y-6 animate-in fade-in slide-in-from-right-4 duration-1000">
-                            <div className="bg-white dark:bg-[#1a1c2e] border border-slate-200 dark:border-slate-800 rounded-[2rem] p-8 shadow-2xl sticky top-8 transition-all hover:shadow-indigo-500/10">
-                                <h2 className="text-sm font-black text-slate-900 dark:text-white mb-8 flex items-center gap-3 uppercase tracking-[0.2em] border-b border-slate-100 dark:border-slate-800 pb-4">
-                                    <div className="w-8 h-8 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg flex items-center justify-center text-emerald-600 dark:text-emerald-400"><Lock size={16} /></div>
-                                    Resumo do Pedido
-                                </h2>
-                                
-                                <div className="space-y-5 text-xs">
-                                    <div className="flex justify-between items-center group">
-                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Plano Selecionado</span>
-                                        <span className="text-slate-900 dark:text-white font-black">{displayName}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Ciclo</span>
-                                        <span className="px-3 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg font-black uppercase tracking-tighter">{billingCycle}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Pagamento</span>
-                                        <span className="text-slate-900 dark:text-white font-black">{selectedMethodLabel}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Cobrança</span>
-                                        <span className="text-right text-slate-900 dark:text-white font-black">{checkoutBillingLabel}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-slate-500 uppercase font-bold tracking-widest">Renovação</span>
-                                        <span className="text-slate-900 dark:text-white font-black">{renewalLabel}</span>
-                                    </div>
-                                    
-                                    <div className="h-px bg-slate-100 dark:bg-slate-800 my-2"></div>
-                                    
-                                    <div className="flex justify-between items-center"><span className="text-slate-500 font-medium">Subtotal</span><span className="text-slate-900 dark:text-white font-bold">R$ {plan.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>
-                                    
-                                    {!isStripeProvider && !isRecurring && selectedInstallment.installments > 1 && (
-                                        <div className="flex justify-between items-center text-slate-500 italic">
-                                            <span>Parcelamento ({selectedInstallment.installments}x)</span>
-                                            <span>R$ {selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês</span>
-                                        </div>
-                                    )}
-                                    
-                                    {proRatedCredit > 0 && <div className="flex justify-between items-center text-emerald-600 font-bold"><span>Crédito Migração</span><span>- R$ {proRatedCredit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>}
-                                    {discountAmount > 0 && <div className="flex justify-between items-center text-emerald-600 font-bold"><span>Desconto Aplicado</span><span>- R$ {discountAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>}
-                                    <div className="flex justify-between items-center text-slate-500">
-                                        <span>Gateway</span>
-                                        <span className="font-bold text-slate-900 dark:text-white">{paymentProviderLabel}</span>
-                                    </div>
-                                    
-                                    <div className="pt-6 mt-6 border-t border-slate-100 dark:border-slate-800 space-y-3">
-                                        <div className="flex justify-between items-end">
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{isStripeProvider && supportsStripeBillingChoices && selectedStripeInstallmentCount > 1 ? 'Primeira cobrança' : 'Total a pagar'}</span>
-                                                <span className="text-[9px] text-slate-400 italic">
-                                                    {isStripeProvider && supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
-                                                        ? `Cobrança ${selectedStripeInstallmentCount}x do plano contratado`
-                                                        : 'Valor final desta cobrança'}
-                                                </span>
-                                            </div>
-                                            <div className="flex flex-col items-end">
-                                                <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tighter">R$ {monetaryTotals.totalDue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div>
-                    )}
                 </div>
             </div>
 
@@ -1873,7 +1589,7 @@ const CheckoutPage: React.FC = () => {
                     <div className="bg-slate-900 w-full max-w-lg rounded-3xl p-8 border border-slate-800 text-center space-y-6">
                         <div className="w-20 h-20 bg-amber-500/10 rounded-2xl flex items-center justify-center mx-auto"><AlertTriangle size={40} className="text-amber-500" /></div>
                         <h3 className="text-xl font-black text-white uppercase tracking-tight">Aviso de Downgrade</h3>
-                        <p className="text-sm text-slate-400 leading-relaxed">Você está mudando para um plano inferior. Benefícios exclusivos do seu plano atual (<span className="text-indigo-400 font-bold">{currentUser?.subscription?.plan?.name}</span>) serão perdidos na próxima renovação.</p>
+                    <p className="text-sm text-slate-400 leading-relaxed">Você está mudando para um plano inferior. Benefícios exclusivos do seu plano atual (<span className="text-indigo-400 font-bold">{currentUser?.subscription?.plan?.name}</span>) serão perdidos na próxima renovação.</p>
                         <button onClick={() => setShowDowngradeModal(false)} className="w-full py-4 bg-white text-slate-900 rounded-xl font-black uppercase tracking-widest">Entendi e quero continuar</button>
                     </div>
                 </div>
@@ -1891,7 +1607,7 @@ const CheckoutPage: React.FC = () => {
                                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Checkout seguro</p>
                                 <h3 className="text-2xl font-black text-slate-900 dark:text-white">Complete seu cadastro para pagar</h3>
                                 <p className="max-w-2xl text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                                    Antes de concluir a compra, precisamos dos seus dados de cobrança e de uma conta com e-mail confirmado.
+                    Antes de concluir a compra, precisamos dos seus dados de cobrança e de uma conta com e-mail confirmado.
                                 </p>
                             </div>
                             <button
@@ -1907,9 +1623,9 @@ const CheckoutPage: React.FC = () => {
                             <div className={`rounded-[1.5rem] border px-5 py-4 ${currentUser.emailVerified ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10' : 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10'}`}>
                                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                     <div className="space-y-1">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Confirmacao de e-mail</p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Confirmação de e-mail</p>
                                         <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                                            {currentUser.emailVerified ? 'Seu e-mail já esta confirmado.' : 'Confirme seu e-mail para liberar o pagamento.'}
+                                            {currentUser.emailVerified ? 'Seu e-mail já está confirmado.' : 'Confirme seu e-mail para liberar o pagamento.'}
                                         </p>
                                         <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{currentUser.email}</p>
                                     </div>
@@ -1975,7 +1691,7 @@ const CheckoutPage: React.FC = () => {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Numero</label>
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Número</label>
                                     <input
                                         type="text"
                                         value={checkoutRequirementData.number}
@@ -2044,8 +1760,17 @@ const CheckoutPage: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {showCheckoutCountdown && (
+                <div className="fixed inset-x-0 bottom-3 z-40 px-4">
+                    <div className="mx-auto max-w-6xl">
+                        <LimitedOfferCountdown enabled endsAt={limitedOfferEndsAt} />
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
 export default CheckoutPage;
+

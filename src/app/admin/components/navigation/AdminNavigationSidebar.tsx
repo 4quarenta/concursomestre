@@ -13,6 +13,7 @@ import React from 'react';
 import { Home, LogOut, Shield } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@providers/AuthProvider';
+import LogoutConfirmButton from '../../../../components/shared/layout/LogoutConfirmButton';
 
 interface AdminNavigationSidebarProps {
   activeTab: string;
@@ -31,12 +32,7 @@ const AdminNavigationSidebar = ({
   onTabChange,
   tabs,
 }: AdminNavigationSidebarProps) => {
-  const { currentUser, logout } = useAuth();
-
-  const handleLogout = () => {
-    logout();
-    window.location.assign('/auth');
-  };
+  const { currentUser } = useAuth();
 
   return (
     <aside className="fixed left-0 top-0 z-50 flex h-screen w-72 flex-none flex-col overflow-hidden border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
@@ -105,13 +101,18 @@ const AdminNavigationSidebar = ({
             <Home size={14} />
             Inicio
           </Link>
-          <button
-            onClick={handleLogout}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-50 px-3 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-red-600 transition-all hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30"
-          >
-            <LogOut size={14} />
-            Sair
-          </button>
+          <LogoutConfirmButton>
+            {({ isLoggingOut, openConfirm }) => (
+              <button
+                onClick={openConfirm}
+                disabled={isLoggingOut}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-50 px-3 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-red-600 transition-all hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <LogOut size={14} />
+                {isLoggingOut ? 'Saindo...' : 'Sair'}
+              </button>
+            )}
+          </LogoutConfirmButton>
         </div>
       </div>
     </aside>

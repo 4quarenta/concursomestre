@@ -23,12 +23,15 @@ import { reputationService } from '@services/auth';
 import { commentService } from '@services/comments';
 import { questionService } from '@services/questions';
 import { userProgressService } from '@services/progress';
+import { DEFAULT_STRIPE_PAYMENT_METHODS_SETTINGS, normalizeStripePaymentMethodsSettings } from '@services/payments/stripePaymentMethodsConfig';
 import { adminService } from '@services/admin/adminService';
 import { filtersService } from '@services/filters';
 import { rankingsService } from '@services/rankings';
 import { reportsService } from '@services/reports';
 import { DEFAULT_PLAN_ENTITLEMENTS, DEFAULT_PLAN_USAGE_LIMITS } from '@constants/subscriptions/planEntitlements';
 import { buildAdminPath } from '../app/admin/config/adminPageNavigationConfig';
+import { createDefaultLandingPageContent, mergeLandingPageContent } from '../app/landing/landingContent';
+import { mergeMarketingLandingPages } from '@services/marketing/landingPages';
 
 import { useAuth } from './AuthProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -40,6 +43,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   paymentProvider: 'stripe',
   paymentCheckoutMode: 'internal',
   cardVaultProvider: 'stripe',
+  stripePaymentMethods: DEFAULT_STRIPE_PAYMENT_METHODS_SETTINGS,
   pricing: {
     Gratuito: { ...PRICING.Gratuito, quarterlyDiscountPercent: 0, annualDiscountPercent: 0 },
     Essencial: { ...PRICING.Essencial, quarterlyDiscountPercent: 10, annualDiscountPercent: 30 },
@@ -61,6 +65,12 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     landingPageSubheadline: 'Descontos imperdíveis nos planos Pro e Elite.',
     featuresHighlight: ['IA Ilimitada', 'Raio-X da Banca', 'Simulados']
   },
+  limitedOfferCountdown: {
+    enabled: false,
+    endsAt: '',
+  },
+  landingPageContent: createDefaultLandingPageContent(),
+  landingPages: mergeMarketingLandingPages(undefined, 'ConcursoMestre'),
   coupons: [
     { code: 'BEMVINDO10', discountPercentage: 10, uses: 15, maxUses: 100, autoApply: false, targetType: 'all', targetId: null },
   ],
@@ -125,7 +135,32 @@ const mergeSystemSettings = (
     ? payload.features
     : {}) as Partial<SystemSettings['features']>;
   const mergedFeatures = { ...base.features, ...incomingFeatures } as SystemSettings['features'];
-
+  const mergedLandingPageContent = mergeLandingPageContent(
+    (payload.landingPageContent as Partial<SystemSettings['landingPageContent']>) ?? base.landingPageContent,
+  );
+  const resolvedSiteName = typeof payload.siteName === 'string' && payload.siteName.trim() !== ''
+    ? payload.siteName.trim()
+    : (typeof base.siteName === 'string' && base.siteName.trim() !== '' ? base.siteName.trim() : 'ConcursoMestre');
+  const mergedLandingPages = mergeMarketingLandingPages(
+    (payload.landingPages as Partial<SystemSettings['landingPages']>) ?? base.landingPages,
+    resolvedSiteName,
+  );
+  const incomingLimitedOfferCountdown = (
+    payload.limitedOfferCountdown && typeof payload.limitedOfferCountdown === 'object'
+      ? payload.limitedOfferCountdown
+      : {}
+  ) as Partial<SystemSettings['limitedOfferCountdown']>;
+  const mergedLimitedOfferCountdown: SystemSettings['limitedOfferCountdown'] = {
+    ...base.limitedOfferCountdown,
+    ...incomingLimitedOfferCountdown,
+    enabled: normalizeFeatureFlag(incomingLimitedOfferCountdown.enabled, base.limitedOfferCountdown.enabled),
+    endsAt: typeof incomingLimitedOfferCountdown.endsAt === 'string'
+      ? incomingLimitedOfferCountdown.endsAt
+      : base.limitedOfferCountdown.endsAt,
+  };
+  const mergedStripePaymentMethods = normalizeStripePaymentMethodsSettings(
+    (payload.stripePaymentMethods as Partial<SystemSettings['stripePaymentMethods']>) ?? base.stripePaymentMethods,
+  );
   FEATURE_SETTING_KEYS.forEach((featureKey) => {
     const hasNestedValue = Object.prototype.hasOwnProperty.call(incomingFeatures, featureKey);
     const hasFlatValue = Object.prototype.hasOwnProperty.call(payload, featureKey);
@@ -139,7 +174,22 @@ const mergeSystemSettings = (
   return {
     ...nextSettings,
     features: mergedFeatures,
+    landingPageContent: mergedLandingPageContent,
+    landingPages: mergedLandingPages,
+    limitedOfferCountdown: mergedLimitedOfferCountdown,
+    stripePaymentMethods: mergedStripePaymentMethods,
   };
+};
+
+const resolvePersistedSystemSettings = (
+  fallback: SystemSettings,
+  persisted?: Partial<SystemSettings> | null,
+): SystemSettings => {
+  if (persisted && Object.keys(persisted).length > 0) {
+    return mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, persisted);
+  }
+
+  return mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, fallback);
 };
 
 interface DataState {
@@ -159,6 +209,7 @@ interface DataState {
   isRankingsLoaded: boolean;
   isTaxonomiesLoaded: boolean;
   isUserProgressLoaded: boolean;
+  isSystemSettingsLoaded: boolean;
 }
 
 
@@ -181,7 +232,8 @@ const initialState: DataState = {
   isReportsLoaded: false,
   isRankingsLoaded: false,
   isTaxonomiesLoaded: false,
-  isUserProgressLoaded: false
+  isUserProgressLoaded: false,
+  isSystemSettingsLoaded: false
 };
 
 
@@ -230,7 +282,7 @@ type DataAction =
   | { type: 'MODERATE_RANKING'; payload: { id: string; status: 'approved' | 'rejected' } }
   | { type: 'SET_TAXONOMIES'; payload: GlobalTaxonomies }
   | { type: 'SET_TOTAL_QUESTIONS'; payload: number }
-  | { type: 'MARK_LOADED'; payload: keyof Pick<DataState, 'isUsersLoaded' | 'isReportsLoaded' | 'isRankingsLoaded' | 'isTaxonomiesLoaded' | 'isUserProgressLoaded'> };
+  | { type: 'MARK_LOADED'; payload: keyof Pick<DataState, 'isUsersLoaded' | 'isReportsLoaded' | 'isRankingsLoaded' | 'isTaxonomiesLoaded' | 'isUserProgressLoaded' | 'isSystemSettingsLoaded'> };
 
 // --- REDUCER ---
 
@@ -405,7 +457,8 @@ function dataReducer(state: DataState, action: DataAction): DataState {
         userNotes: [],
         reports: [],
         rankings: [],
-        notifications: []
+        notifications: [],
+        isSystemSettingsLoaded: false
       };
 
     case 'UPDATE_SYSTEM_SETTINGS':
@@ -555,7 +608,7 @@ interface DataContextType extends DataState {
   likeComment: (qId: number, cId: string) => void;
   updateUserStatus: (userId: string, updates: Partial<UserProfile>) => void;
   updateSystemSettings: (settings: SystemSettings) => void;
-  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<void>;
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
   addCoupon: (coupon: DiscountCode) => void;
   deleteCoupon: (code: string) => void;
   resetProgress: () => void;
@@ -633,8 +686,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     isSavingSystemSettingsRef.current = true;
 
     try {
-      await adminService.saveSystemSettings(nextSettings);
-      lastSavedSystemSettingsRef.current = nextSettings;
+      const persistedSettings = await adminService.saveSystemSettings(nextSettings);
+      const officialSettings = resolvePersistedSystemSettings(nextSettings, persistedSettings);
+      lastSavedSystemSettingsRef.current = officialSettings;
+      dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: officialSettings });
     } catch (error) {
       console.error('Failed to persist system settings:', error);
 
@@ -777,7 +832,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: normalizedSettings });
         }
       })
-      .catch(err => console.error("Failed to load system settings:", err));
+      .catch(err => console.error("Failed to load system settings:", err))
+      .finally(() => {
+        dispatch({ type: 'MARK_LOADED', payload: 'isSystemSettingsLoaded' });
+      });
 
     // 2. Fetch Initial Questions (Home/Marketplace)
     const params = currentUser?.id ? { user_id: currentUser.id } : {};
@@ -1361,7 +1419,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const saveSystemSettingsNow = useCallback(async (payload?: SystemSettings) => {
     const requestedSettings = payload ?? pendingSystemSettingsRef.current ?? state.systemSettings;
     const nextSettings = mergeSystemSettings(state.systemSettings, requestedSettings);
-    if (!nextSettings) return;
+    if (!nextSettings) return state.systemSettings;
 
     if (settingsSaveTimerRef.current) {
       clearTimeout(settingsSaveTimerRef.current);
@@ -1373,14 +1431,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (isSavingSystemSettingsRef.current) {
       pendingSystemSettingsRef.current = nextSettings;
-      return;
+      while (isSavingSystemSettingsRef.current || pendingSystemSettingsRef.current) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+
+      return lastSavedSystemSettingsRef.current;
     }
 
     isSavingSystemSettingsRef.current = true;
 
     try {
-      await adminService.saveSystemSettings(nextSettings);
-      lastSavedSystemSettingsRef.current = nextSettings;
+      const persistedSettings = await adminService.saveSystemSettings(nextSettings);
+      const officialSettings = resolvePersistedSystemSettings(nextSettings, persistedSettings);
+      lastSavedSystemSettingsRef.current = officialSettings;
+      dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: officialSettings });
+      return officialSettings;
     } catch (error) {
       console.error('Failed to persist system settings immediately:', error);
       dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: lastSavedSystemSettingsRef.current });

@@ -58,6 +58,36 @@ interface AdminDashboardProps {
   onNavigate?: (tab: string, subTab?: string) => void;
 }
 
+const ADMIN_PAID_TRANSACTION_STATUSES = new Set(['completed', 'approved']);
+
+const isAdminPaidTransaction = (transaction: any) => ADMIN_PAID_TRANSACTION_STATUSES.has(String(transaction?.status || '').toLowerCase());
+
+const isAdminSubscriptionTransaction = (transaction: any) => {
+  const type = String(transaction?.type || '').toLowerCase();
+  return type === 'plan' || type === 'subscription' || (!type && !transaction?.material_id && !transaction?.materialId);
+};
+
+const readAdminTransactionAmount = (transaction: any) => Number(transaction?.amount || 0);
+
+const readAdminTransactionPlatformFee = (transaction: any) => {
+  const amount = readAdminTransactionAmount(transaction);
+  const fee = Number(transaction?.platformFee ?? transaction?.platform_fee);
+  return Number.isFinite(fee) && fee > 0 ? fee : amount * 0.20;
+};
+
+const isAdminHeldTransaction = (transaction: any) => {
+  const timestamp = Number(transaction?.timestamp || 0);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return true;
+
+  const now = new Date();
+  const transactionDate = new Date(timestamp);
+  const passedWarranty = (now.getTime() - timestamp) >= (7 * 24 * 60 * 60 * 1000);
+  const isPastDay1OfNextMonth = now.getFullYear() > transactionDate.getFullYear()
+    || (now.getFullYear() === transactionDate.getFullYear() && now.getMonth() > transactionDate.getMonth());
+
+  return !(passedWarranty && isPastDay1OfNextMonth);
+};
+
 /**
  * Painel executivo do admin.
  * Reúne KPIs, atalhos operacionais e a auditoria visual financeira sem
@@ -103,10 +133,11 @@ const AdminDashboard = ({
     }
 
     const now = new Date();
+    const nowTime = now.getTime();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay())).getTime();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const startOfYear = new Date(now.getFullYear(), 0, 1).getTime();
+    const startOfWeek = nowTime - (7 * 24 * 60 * 60 * 1000);
+    const startOfMonth = nowTime - (30 * 24 * 60 * 60 * 1000);
+    const startOfYear = nowTime - (365 * 24 * 60 * 60 * 1000);
 
     return items.filter((item: any) => {
       const itemDate = new Date(item[dateField] || item.timestamp).getTime();
@@ -121,53 +152,9 @@ const AdminDashboard = ({
   };
 
   const filteredTransactions = filterByPeriod(allTransactions, 'timestamp');
-  const filteredUsers = filterByPeriod(allUsers, 'createdAt'); // Assuming users have createdAt
-  const filteredMaterials = filterByPeriod(allMaterials, 'createdAt'); // Assuming materials have createdAt
-  const filteredQuestions = filterByPeriod(questions, 'createdAt'); // Assuming questions have createdAt
-
   // --- STATE FOR AVAILABLE VALUES TOGGLE ---
   const [showAvailableOnly, setShowAvailableOnly] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
-
-
-  /**
-   * Calcula a divisao financeira do marketplace para a visao resumida do admin.
-   * O resultado alimenta os cards de saldo retido, repasse e receita de materiais.
-   * @since v1.0.0
-   */
-  const calculateMaterialMetrics = () => {
-    const metrics = {
-      totalSales: 0,
-      platformRevenue: 0, // 20%
-      sellerPayout: 0,    // 80%
-      heldBalance: 0,     // < 7 days
-      availablePayout: 0  // >= 7 days
-    };
-
-    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-
-    if (filteredTransactions) {
-      filteredTransactions.forEach((t: any) => {
-        if (t.status !== 'completed') return;
-
-        metrics.totalSales += t.amount;
-        metrics.platformRevenue += t.amount * 0.20;
-
-        const sellerShare = t.amount * 0.80;
-        metrics.sellerPayout += sellerShare;
-
-        const isHeld = (now - t.timestamp) < SEVEN_DAYS_MS;
-        if (isHeld) {
-          metrics.heldBalance += sellerShare;
-        } else {
-          metrics.availablePayout += sellerShare;
-        }
-      });
-    }
-
-    return metrics;
-  };
 
   const [stats, setStats] = useState({
     total_revenue: 0,
@@ -176,10 +163,14 @@ const AdminDashboard = ({
     marketplace_revenue: 0,
     active_subscriptions: 0,
     cancelled_subscriptions: 0,
+    expired_subscriptions: 0,
+    trial_subscriptions: 0,
     mrr: 0,
     new_users: 0,
     seller_payout: 0,
     total_refunded: 0,
+    refund_requests_count: 0,
+    refund_requested_amount: 0,
     held_balance: 0,
     transactions_count: 0,
     questions_count: 0,
@@ -212,30 +203,7 @@ const AdminDashboard = ({
 
 
   // --- CALCULATE FINANCE OVERVIEW ---
-  // We keep this for the "Available Only" filter logic if needed, but primarily use server stats for the cards
   const financeOverview = useMemo(() => {
-    // Combine server stats with local filter logic if necessary
-    // For now, we use server stats for the main cards but calculate the breakdown locally where stats.php doesn't cover yet
-    let refundRequestsCount = 0;
-    let heldBalance = 0;
-    let availablePayout = 0;
-
-    if (filteredTransactions) {
-      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-      const now = Date.now();
-
-      filteredTransactions.forEach((t: any) => {
-        if (t.status === 'refund_requested') {
-          refundRequestsCount++;
-        } else if (t.status === 'completed' || t.status === 'approved') {
-          const isHeld = (now - t.timestamp) < SEVEN_DAYS_MS;
-          const sellerShare = t.amount * 0.80;
-          if (isHeld) heldBalance += sellerShare;
-          else availablePayout += sellerShare;
-        }
-      });
-    }
-
     return {
       totalRevenue: stats.total_revenue,
       platformTotalRevenue: stats.platform_revenue,
@@ -243,13 +211,9 @@ const AdminDashboard = ({
       activeSubscriptions: stats.active_subscriptions,
       subscriptionRevenue: stats.mrr, // Using MRR for the estimate display
       platformFees: stats.platform_revenue - stats.subscription_revenue,
-      refundRequestsCount,
-      heldBalance,
-      availablePayout
+      refundRequestsCount: stats.refund_requests_count,
     };
-  }, [stats, filteredTransactions]);
-
-  const matMetrics = calculateMaterialMetrics(); // Keep specifically for material breakdown if needed
+  }, [stats]);
 
 
   const filteredReports = filterByPeriod(allReports, 'createdAt');
@@ -365,6 +329,9 @@ const AdminDashboard = ({
             <span>Reembolsos</span>
             <button onClick={() => onNavigate && onNavigate('finance', 'refunds')} className="text-amber-600 hover:text-amber-700 transition-colors">Resolver &rarr;</button>
           </div>
+          <div className="mt-1 text-[10px] text-amber-500 font-black uppercase tracking-widest">
+            R$ {stats.refund_requested_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} em analise
+          </div>
         </div>
       </section>
 
@@ -400,7 +367,7 @@ const AdminDashboard = ({
               {showAvailableOnly ? 'Volume Disponível' : 'Receita Total Bruta (Assinatura e Materiais)'}
             </p>
             <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 relative z-10">
-              R$ {(showAvailableOnly ? stats.total_revenue - stats.held_balance : stats.total_revenue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              R$ {(showAvailableOnly ? Math.max(0, stats.total_revenue - stats.held_balance) : stats.total_revenue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </h3>
           </div>
 
@@ -693,7 +660,7 @@ const AdminDashboard = ({
                     <Search className="text-slate-400" /> Histórico de Transações do Período
                   </h3>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                    Total Liquidadas: {filteredTransactions?.filter((t: any) => t.status !== 'pending').length}
+                    Total Liquidadas: {filteredTransactions?.filter(isAdminPaidTransaction).length}
                   </p>
                 </div>
 
@@ -711,52 +678,43 @@ const AdminDashboard = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {(filteredTransactions || []).filter((t: any) => t.status !== 'pending' && t.status !== 'cancelled').sort((a: any, b: any) => b.timestamp - a.timestamp).map((t: any) => {
+                        {(filteredTransactions || []).filter((t: any) => isAdminPaidTransaction(t) || t.status === 'refunded' || t.status === 'refund_requested').sort((a: any, b: any) => b.timestamp - a.timestamp).map((t: any) => {
                           const isRefunded = t.status === 'refunded';
-                          const isSub = t.type === 'plan' || (!t.material_id && !t.type);
-                          const fee = isSub ? t.amount : (t.amount * 0.2);
-                          const seller = isSub ? 0 : (t.amount - fee);
-
-                          // --- MATCH BACKEND LOGIC (7 DAYS + DAY 1 OF NEXT MONTH) ---
-                          const now = new Date();
-                          const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-                          const transDate = new Date(t.timestamp);
-
-                          const passedWarranty = (now.getTime() - t.timestamp) >= SEVEN_DAYS_MS;
-                          const isPastDay1OfNextMonth =
-                            (now.getFullYear() > transDate.getFullYear()) ||
-                            (now.getFullYear() === transDate.getFullYear() && now.getMonth() > transDate.getMonth());
-
-                          const isHeld = !isRefunded && !(passedWarranty && isPastDay1OfNextMonth);
+                          const isRefundRequested = t.status === 'refund_requested';
+                          const isSub = isAdminSubscriptionTransaction(t);
+                          const amount = readAdminTransactionAmount(t);
+                          const fee = isSub ? amount : readAdminTransactionPlatformFee(t);
+                          const seller = isSub ? 0 : Math.max(0, amount - fee);
+                          const isHeld = isAdminPaidTransaction(t) && isAdminHeldTransaction(t);
 
                           return (
-                            <tr key={t.id} className={`group hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-all duration-300 ${isRefunded ? 'opacity-40 grayscale-[0.5]' : ''}`}>
+                            <tr key={t.id} className={`group hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-all duration-300 ${isRefunded || isRefundRequested ? 'opacity-40 grayscale-[0.5]' : ''}`}>
                               <td className="pl-10 pr-6 py-6">
                                 <div className="flex items-center gap-3">
-                                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all transform group-hover:rotate-6 ${isRefunded ? 'bg-slate-200 dark:bg-slate-800 text-slate-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:bg-indigo-500 group-hover:text-white'}`}>
-                                    {isRefunded ? <RefreshCcw size={18} /> : <Home size={18} />}
+                                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all transform group-hover:rotate-6 ${isRefunded || isRefundRequested ? 'bg-slate-200 dark:bg-slate-800 text-slate-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 group-hover:bg-indigo-500 group-hover:text-white'}`}>
+                                    {isRefunded || isRefundRequested ? <RefreshCcw size={18} /> : <Home size={18} />}
                                   </div>
                                   <div>
-                                    <p className={`text-[11px] font-black ${isRefunded ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-slate-100'}`}>#TR-{t.id}</p>
+                                    <p className={`text-[11px] font-black ${isRefunded || isRefundRequested ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-slate-100'}`}>#TR-{t.id}</p>
                                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{new Date(t.timestamp).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
                                   </div>
                                 </div>
                               </td>
                               <td className="px-6 py-6 text-center">
-                                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${isRefunded ? 'bg-slate-100 dark:bg-slate-800 text-slate-400' : isSub ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                                <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${isRefunded || isRefundRequested ? 'bg-slate-100 dark:bg-slate-800 text-slate-400' : isSub ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
                                   {isSub ? 'Assinatura' : 'Material'}
                                 </span>
                               </td>
                               <td className="px-6 py-6 text-right">
-                                <span className={`text-[13px] font-black ${isRefunded ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-slate-100'}`}>R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                <span className={`text-[13px] font-black ${isRefunded || isRefundRequested ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-slate-100'}`}>R$ {amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                               </td>
                               <td className="px-6 py-6 text-right">
-                                <span className={`text-[12px] font-bold ${isRefunded ? 'text-slate-400 line-through' : isSub ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 font-medium'}`}>
+                                <span className={`text-[12px] font-bold ${isRefunded || isRefundRequested ? 'text-slate-400 line-through' : isSub ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500 font-medium'}`}>
                                   R$ {fee.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                 </span>
                               </td>
                               <td className="px-6 py-6 text-right font-bold">
-                                <span className={`${isRefunded ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-300'}`}>
+                                <span className={`${isRefunded || isRefundRequested ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-300'}`}>
                                   {seller > 0 ? `R$ ${seller.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-'}
                                 </span>
                               </td>
@@ -765,6 +723,10 @@ const AdminDashboard = ({
                                   {t.status === 'refunded' ? (
                                     <div className="bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-rose-100 dark:border-rose-900/30 flex items-center gap-2">
                                       <XCircle size={12} /> Estornado
+                                    </div>
+                                  ) : isRefundRequested ? (
+                                    <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-amber-100 dark:border-amber-900/30 flex items-center gap-2">
+                                      <Clock size={12} /> Em analise
                                     </div>
                                   ) : isHeld ? (
                                     <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-amber-100 dark:border-amber-900/30 flex items-center gap-2">

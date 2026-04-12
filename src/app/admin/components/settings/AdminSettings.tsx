@@ -25,6 +25,8 @@ import AdminSettingsTabsBar from './AdminSettingsTabsBar';
 import { LogViewer } from './LogViewer';
 import AdminCacheManagement from './AdminCacheManagement';
 import AdminSeoSettingsSection from './AdminSeoSettingsSection';
+import AdminLandingContentSection from './AdminLandingContentSection';
+import StripePaymentMethodsSettings from './StripePaymentMethodsSettings';
 import { mergeSeoSettings } from './seoSettings';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
@@ -33,7 +35,7 @@ type AdminSettingsTab = 'general' | 'modules' | 'security' | 'integrations' | 'e
 interface AdminSettingsProps {
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => void;
-  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<void>;
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
   addToast: AdminToastFn;
   initialSection?: AdminSettingsTab;
   onSectionChange?: (section: AdminSettingsTab) => void;
@@ -41,6 +43,30 @@ interface AdminSettingsProps {
 
 const inputClassName = 'w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
 const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500';
+const RESET_TABLE_EXCLUSIONS = new Set(['settings', 'system_settings']);
+
+const toDateTimeLocalValue = (value?: string | null) => {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const timezoneOffset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
+};
+
+const toIsoDateTimeValue = (value: string) => {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+};
 
 const featureItems = [
   { id: 'practiceEnabled', label: 'Prática', icon: BookOpen },
@@ -81,7 +107,6 @@ const stripFeatureFlagAliases = (settings: SystemSettings): SystemSettings => {
 
 const AdminSettings = ({
   systemSettings,
-  updateSystemSettings,
   saveSystemSettingsNow,
   addToast,
   initialSection = 'general',
@@ -121,8 +146,12 @@ const AdminSettings = ({
   useEffect(() => {
     if (!isResetModalOpen) return;
     adminService.listResettableTables().then((tables) => {
-      setDbTables(tables);
-      setSelectedTables(new Set(tables));
+      const resettableTables = tables
+        .filter((table) => !RESET_TABLE_EXCLUSIONS.has(String(table).trim().toLowerCase()))
+        .sort((left, right) => left.localeCompare(right, 'pt-BR'));
+
+      setDbTables(resettableTables);
+      setSelectedTables(new Set(resettableTables));
     }).catch(() => addToast('Nao foi possivel carregar as tabelas do reset.', 'error'));
   }, [isResetModalOpen, addToast]);
 
@@ -151,6 +180,7 @@ const AdminSettings = ({
     paymentProvider: 'stripe',
     cardVaultProvider: 'stripe',
     paymentCheckoutMode: localSettings.paymentCheckoutMode || 'internal',
+    stripePaymentMethods: localSettings.stripePaymentMethods,
     siteName: localSettings.siteName || 'ConcursoMestre',
     platformFeePercent: Number(localSettings.platformFeePercent ?? 20),
     smtpPort: Number(localSettings.smtpPort || 587),
@@ -163,10 +193,20 @@ const AdminSettings = ({
   const handlePersistSettings = async () => {
     if (isSavingSettings) return;
     const nextSettings = buildSettingsPayload();
+    const limitedOfferCountdown = nextSettings.limitedOfferCountdown;
+    if (limitedOfferCountdown?.enabled) {
+      const endsAtTimestamp = new Date(limitedOfferCountdown.endsAt || '').getTime();
+      if (!limitedOfferCountdown.endsAt || Number.isNaN(endsAtTimestamp) || endsAtTimestamp <= Date.now()) {
+        addToast('Defina uma data final futura para ativar a oferta por tempo limitado.', 'error');
+        return;
+      }
+    }
+
     setIsSavingSettings(true);
     try {
-      await saveSystemSettingsNow(nextSettings);
-      updateSystemSettings(nextSettings);
+      const persistedSettings = await saveSystemSettingsNow(nextSettings);
+      setLocalSettings(persistedSettings);
+      setLocalSeoSettings(mergeSeoSettings(persistedSettings.seo));
       addToast('Configuracoes salvas com sucesso.', 'success');
     } catch {
       addToast('Nao foi possivel salvar as configuracoes.', 'error');
@@ -259,7 +299,7 @@ const AdminSettings = ({
   const stripeWebhookUrl = `${String(apiClient.defaults.baseURL || '').replace(/\/+$/, '')}/subscriptions/stripe_webhook.php`;
 
   return (
-    <div className="space-y-6 animate-slide-up">
+    <div className="space-y-6">
       <LogViewer isOpen={isLogViewerOpen} onClose={() => setIsLogViewerOpen(false)} />
       <AdminSettingsTabsBar
         tabs={[
@@ -280,31 +320,39 @@ const AdminSettings = ({
       />
 
       {activeTab === 'general' && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Terminal size={20} className="text-indigo-600 dark:text-indigo-400" /> Ambiente</h3>
-              <button type="button" onClick={() => setIsLogViewerOpen(true)} className="rounded-2xl border border-slate-200 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100">Visualizar logs</button>
-            </div>
-            <div className="space-y-4">
-              <div className="space-y-1.5"><label className={labelClassName}>Nome do site</label><input value={localSettings.siteName || ''} onChange={(e) => setField('siteName', e.target.value)} className={inputClassName} /></div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5"><label className={labelClassName}>WhatsApp</label><input value={localSettings.supportPhone || ''} onChange={(e) => setField('supportPhone', e.target.value)} className={inputClassName} /></div>
-                <div className="space-y-1.5"><label className={labelClassName}>Taxa (%)</label><input type="number" value={String(localSettings.platformFeePercent ?? 20)} onChange={(e) => setField('platformFeePercent', Number(e.target.value))} className={inputClassName} /></div>
+        <div className="grid gap-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Terminal size={20} className="text-indigo-600 dark:text-indigo-400" /> Ambiente</h3>
+                <button type="button" onClick={() => setIsLogViewerOpen(true)} className="rounded-2xl border border-slate-200 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100">Visualizar logs</button>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5"><label className={labelClassName}>PIX global</label><input value={localSettings.pixKey || ''} onChange={(e) => setField('pixKey', e.target.value)} className={inputClassName} /></div>
-                <div className="space-y-1.5"><label className={labelClassName}>Modo</label><select value={localSettings.appMode || 'development'} onChange={(e) => setField('appMode', e.target.value as 'development' | 'production')} className={inputClassName}><option value="development">development</option><option value="production">production</option></select></div>
+              <div className="space-y-4">
+                <div className="space-y-1.5"><label className={labelClassName}>Nome do site</label><input value={localSettings.siteName || ''} onChange={(e) => setField('siteName', e.target.value)} className={inputClassName} /></div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5"><label className={labelClassName}>WhatsApp</label><input value={localSettings.supportPhone || ''} onChange={(e) => setField('supportPhone', e.target.value)} className={inputClassName} /></div>
+                  <div className="space-y-1.5"><label className={labelClassName}>Taxa (%)</label><input type="number" value={String(localSettings.platformFeePercent ?? 20)} onChange={(e) => setField('platformFeePercent', Number(e.target.value))} className={inputClassName} /></div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5"><label className={labelClassName}>PIX global</label><input value={localSettings.pixKey || ''} onChange={(e) => setField('pixKey', e.target.value)} className={inputClassName} /></div>
+                  <div className="space-y-1.5"><label className={labelClassName}>Modo</label><select value={localSettings.appMode || 'development'} onChange={(e) => setField('appMode', e.target.value as 'development' | 'production')} className={inputClassName}><option value="development">development</option><option value="production">production</option></select></div>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-[2rem] border border-fuchsia-100 bg-fuchsia-50/40 p-6 dark:border-fuchsia-900/30 dark:bg-fuchsia-900/10">
+              <div className="mb-4 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-black text-fuchsia-700 dark:text-fuchsia-300"><Sparkles size={20} /> Motivacao diaria</h3><label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-fuchsia-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-600"><Upload size={14} /> Carregar .md<input type="file" accept=".md,text/markdown,text/plain" className="hidden" onChange={handleDailyMotivationFileUpload} /></label></div>
+              <div className="space-y-4">
+                <textarea value={localSettings.dailyMotivationMarkdown || ''} onChange={(e) => setField('dailyMotivationMarkdown', e.target.value)} className={`${inputClassName} min-h-[220px] resize-none font-mono text-xs`} />
+                <div className="rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Frases válidas</p><p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{parseDailyMotivationMarkdown(localSettings.dailyMotivationMarkdown || '').length}</p></div>
               </div>
             </div>
           </div>
-          <div className="rounded-[2rem] border border-fuchsia-100 bg-fuchsia-50/40 p-6 dark:border-fuchsia-900/30 dark:bg-fuchsia-900/10">
-            <div className="mb-4 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-black text-fuchsia-700 dark:text-fuchsia-300"><Sparkles size={20} /> Motivacao diaria</h3><label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-fuchsia-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-600"><Upload size={14} /> Carregar .md<input type="file" accept=".md,text/markdown,text/plain" className="hidden" onChange={handleDailyMotivationFileUpload} /></label></div>
-            <div className="space-y-4">
-              <textarea value={localSettings.dailyMotivationMarkdown || ''} onChange={(e) => setField('dailyMotivationMarkdown', e.target.value)} className={`${inputClassName} min-h-[220px] resize-none font-mono text-xs`} />
-              <div className="rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Frases válidas</p><p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{parseDailyMotivationMarkdown(localSettings.dailyMotivationMarkdown || '').length}</p></div>
-            </div>
-          </div>
+
+          <AdminLandingContentSection
+            siteName={localSettings.siteName || 'ConcursoMestre'}
+            content={localSettings.landingPageContent}
+            onChange={(content) => setField('landingPageContent', content)}
+          />
         </div>
       )}
 
@@ -334,6 +382,7 @@ const AdminSettings = ({
 
       {activeTab === 'ads' && <div className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 md:grid-cols-2"><input value={localSettings.adsenseClientId || ''} onChange={(e) => setField('adsenseClientId', e.target.value)} className={inputClassName} placeholder="AdSense Client ID" /><input value={localSettings.facebookAdsId || ''} onChange={(e) => setField('facebookAdsId', e.target.value)} className={inputClassName} placeholder="Facebook Ads ID" /><textarea value={localSettings.adBannerTop || ''} onChange={(e) => setField('adBannerTop', e.target.value)} className={`${inputClassName} min-h-[120px] resize-none font-mono text-xs md:col-span-2`} placeholder="Banner topo (HTML)" /><textarea value={localSettings.adBannerSidebar || ''} onChange={(e) => setField('adBannerSidebar', e.target.value)} className={`${inputClassName} min-h-[120px] resize-none font-mono text-xs`} placeholder="Banner lateral" /><textarea value={localSettings.adBannerBottom || ''} onChange={(e) => setField('adBannerBottom', e.target.value)} className={`${inputClassName} min-h-[120px] resize-none font-mono text-xs`} placeholder="Banner rodapé" /></div>}
 
+      {activeTab === 'integrations' && <StripePaymentMethodsSettings value={localSettings.stripePaymentMethods} onChange={(stripePaymentMethods) => setField('stripePaymentMethods', stripePaymentMethods)} />}
       {activeTab === 'seo' && <AdminSeoSettingsSection seoSettings={localSeoSettings} onChange={setLocalSeoSettings} />}
       {activeTab === 'performance' && <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900"><AdminCacheManagement /></div>}
       {activeTab === 'logs' && <div className="grid gap-4 lg:grid-cols-3">{['Webhook', 'Cron', 'Auditoria'].map((item) => <div key={item} className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{item}</p><p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">Abra o visualizador para validar o estado real após cada persistência crítica.</p></div>)}</div>}

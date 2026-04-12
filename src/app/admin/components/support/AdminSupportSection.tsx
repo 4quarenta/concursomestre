@@ -113,7 +113,7 @@ const AdminSupportSection = ({
   const activeSectionMeta = SUPPORT_SECTIONS.find((section) => section.key === activeSection);
 
   return (
-    <div className="space-y-6 animate-slide-up">
+    <div className="space-y-6">
       <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>

@@ -11,6 +11,8 @@
     "test:auth": "vitest run src/services/auth/__tests__/session.test.ts",
     "test:admin": "vitest run src/services/admin/__tests__/adminService.test.ts src/services/admin/__tests__/adminArchitecture.test.ts src/services/admin/__tests__/adminRouting.test.ts",
     "test:headers": "powershell -ExecutionPolicy Bypass -File scripts/checks/verify-standard-file-header.ps1",
+    "check:text-encoding": "node scripts/checks/check-mojibake.mjs",
+    "fix:text-encoding": "node scripts/checks/fix-mojibake.mjs",
     "check:billing-renewal": "node scripts/checks/billing-renewal-check.mjs",
     "check:billing-e2e": "node scripts/checks/run-billing-e2e-validation.mjs",
     "test:transition": "powershell -ExecutionPolicy Bypass -File scripts/checks/transition-readiness.ps1",

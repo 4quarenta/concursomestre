@@ -152,6 +152,19 @@ export const isPlanEnabledByName = (
   return rawPlanConfig.enabled;
 };
 
+export const getConfiguredPlanDisplayName = (
+  planName: string | null | undefined,
+  configuredPlanDetails?: Partial<Record<PlanName, { displayName?: string }>> | null,
+  fallbackName?: string | null,
+): string => {
+  const canonicalPlan = getCanonicalPlanDetailsName(planName);
+  const configuredName = configuredPlanDetails?.[canonicalPlan]?.displayName;
+  const normalizedConfiguredName = typeof configuredName === 'string' ? configuredName.trim() : '';
+  const normalizedFallback = typeof fallbackName === 'string' ? fallbackName.trim() : '';
+
+  return normalizedConfiguredName || normalizedFallback || canonicalPlan;
+};
+
 export const hasBenefitForPlanName = (
   planName: string | null | undefined,
   benefitKey: PlanBenefitKey,

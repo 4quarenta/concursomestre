@@ -148,7 +148,7 @@ const AdminPanelSection = ({
   ]);
 
   return (
-    <div className="space-y-6 animate-slide-up">
+    <div className="space-y-6">
       <div className="flex flex-wrap gap-2 rounded-3xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {PANEL_SECTIONS.map((section) => (
           <button

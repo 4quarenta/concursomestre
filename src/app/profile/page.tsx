@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -38,7 +38,7 @@ import {
     buildMaterialDownloadEndpoint,
     downloadAuthenticatedFile,
 } from '@services/api';
-import { cardsService } from '@services/billing';
+import { cardsService, formatMaskedCardLabelAscii } from '@services/billing';
 import { marketplaceService } from '@services/marketplace';
 import { profileService } from '@services/profile';
 import { transactionsService } from '@services/transactions';
@@ -50,6 +50,11 @@ import {
     PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
 import StripeSetupCardForm from './components/StripeSetupCardForm';
+import {
+    formatDateInSaoPaulo,
+    formatDateTimeInSaoPaulo,
+    resolveProfileSubscriptionTimeline,
+} from './components/subscriptionDateUtils';
 import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from '@services/plans/planAccess';
 import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileNavigation';
 
@@ -84,6 +89,7 @@ const Profile: React.FC = () => {
     const [userMaterials, setUserMaterials] = useState<any[]>([]);
     const [userCards, setUserCards] = useState<any[]>([]);
     const [isLoadingCards, setIsLoadingCards] = useState(false);
+    const [cardsLoadError, setCardsLoadError] = useState<string | null>(null);
     const [userTransactions, setUserTransactions] = useState<any[]>([]);
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
     const [referralStats, setReferralStats] = useState<any>(null);
@@ -103,11 +109,42 @@ const Profile: React.FC = () => {
     const cancelRequestInFlightRef = React.useRef(false);
     const renewalRequestInFlightRef = React.useRef(false);
 
+    const primarySavedCard = useMemo(() => {
+        return userCards.find((card: any) => Number(card.is_default) === 1) || userCards[0] || null;
+    }, [userCards]);
+
+    const formatSavedCardLabel = React.useCallback((card: any) => {
+        if (!card) return '';
+        return formatMaskedCardLabelAscii(card);
+    }, []);
+
+    const getCardExpiryState = React.useCallback((card: any) => {
+        if (!card?.exp_month || !card?.exp_year) {
+            return { isExpired: false, isExpiringSoon: false };
+        }
+
+        const now = new Date();
+        const currentMonthIndex = now.getFullYear() * 12 + now.getMonth();
+        const expiryMonthIndex = (Number(card.exp_year) * 12) + (Number(card.exp_month) - 1);
+        const remainingMonths = expiryMonthIndex - currentMonthIndex;
+
+        return {
+            isExpired: remainingMonths < 0,
+            isExpiringSoon: remainingMonths >= 0 && remainingMonths <= 1,
+        };
+    }, []);
+
     const changeActiveTab = React.useCallback((nextTab: ProfileTab, options?: { replace?: boolean }) => {
         const resolvedTab = resolveProfileTab(nextTab);
+        const nextPath = buildProfilePath(resolvedTab);
+
+        if (location.pathname !== nextPath || location.search) {
+            navigate(nextPath, { replace: options?.replace ?? false });
+            return;
+        }
+
         setActiveTab(resolvedTab);
-        navigate(buildProfilePath(resolvedTab), { replace: options?.replace ?? false });
-    }, [navigate]);
+    }, [location.pathname, location.search, navigate]);
 
     // Sincronizar aba com parâmetro da URL (?tab=)
     React.useEffect(() => {
@@ -124,28 +161,27 @@ const Profile: React.FC = () => {
     }, [location.pathname, location.search, navigate, params.tab]);
 
     // Handlers de API para Gerenciamento de Dados
+    const primarySavedCardExpiryState = useMemo(() => getCardExpiryState(primarySavedCard), [getCardExpiryState, primarySavedCard]);
+
     const fetchUserCards = async () => {
         if (!currentUser) return;
         setIsLoadingCards(true);
+        setCardsLoadError(null);
         try {
-            const res: any = await cardsService.listSavedCards(currentUser.id ? currentUser.id : undefined);
+            const res: any = await cardsService.listSavedCards();
             if (res.success) setUserCards(res.cards || []);
         } catch (err) {
             console.error('Failed to fetch cards', err);
+            setCardsLoadError('Nao foi possivel sincronizar seus cartoes salvos na Stripe agora.');
         } finally {
             setIsLoadingCards(false);
         }
     };
 
     const handleRemoveCard = async (cardId: string) => {
-        const card = userCards.find(c => c.id === cardId);
-        if (card?.locked_by_recurring === 1) {
-            return addToast('Este cartão não pode ser removido pois está vinculado a uma assinatura ativa.', 'warning');
-        }
-
         if (!window.confirm('Tem certeza que deseja remover este cartão?')) return;
         try {
-            const res: any = await cardsService.removeSavedCard(cardId, currentUser?.id);
+            const res: any = await cardsService.removeSavedCard(cardId);
             addToast(res.message || 'Cartão removido com sucesso!', 'success');
             fetchUserCards();
         } catch (err: any) {
@@ -155,7 +191,7 @@ const Profile: React.FC = () => {
 
     const handleSetDefaultCard = async (cardId: string) => {
         try {
-            const res: any = await cardsService.setDefaultSavedCard(cardId, currentUser?.id);
+            const res: any = await cardsService.setDefaultSavedCard(cardId);
             addToast(res.message || 'Cartão padrão atualizado!', 'success');
             fetchUserCards();
         } catch (err: any) {
@@ -411,19 +447,16 @@ const Profile: React.FC = () => {
         };
     };
 
-    const formatDateBR = (value?: string | number | null) => {
-        if (!value) return 'Indeterminado';
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return 'Indeterminado';
-        return date.toLocaleDateString('pt-BR');
-    };
+    const formatDateBR = (value?: string | number | null) => formatDateInSaoPaulo(value);
 
-    const formatDateTimeBR = (value?: string | number | null) => {
+    const legacyFormatDateTimeBR = (value?: string | number | null) => {
         if (!value) return 'Data não informada';
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return 'Data não informada';
         return date.toLocaleString('pt-BR');
     };
+
+    const formatDateTimeBR = (value?: string | number | null) => formatDateTimeInSaoPaulo(value);
 
     const stripPlanCycleSuffix = (value?: string | null) =>
         String(value || '')
@@ -440,39 +473,57 @@ const Profile: React.FC = () => {
         : false;
     const resolvedAutoRenew = optimisticAutoRenew ?? serverAutoRenewState;
     const subscriptionPlanName = stripPlanCycleSuffix(currentUser?.planDisplayName || activeSubscription?.plan?.name || effectivePlanDisplayName) || 'Plano Gratuito';
+    const subscriptionTimeline = resolveProfileSubscriptionTimeline({
+        billing: currentUser?.billing || null,
+        subscription: activeSubscription || null,
+    });
     const subscriptionCycleLabel = activeSubscription?.plan?.interval_unit === 'year'
         ? 'Anual'
         : activeSubscription?.plan?.interval_count === 3
             ? 'Trimestral'
             : 'Mensal';
     const showFreeInactiveSubscriptionState = !hasActiveSubscription && subscriptionPlanName.toLowerCase().includes('gratuito');
-    const subscriptionStartDate = activeSubscription?.current_period_start ? new Date(activeSubscription.current_period_start) : null;
-    const subscriptionEndDate = activeSubscription?.current_period_end ? new Date(activeSubscription.current_period_end) : null;
-    const subscriptionTotalCycleDays = subscriptionStartDate && subscriptionEndDate
-        ? Math.max(1, Math.round((subscriptionEndDate.getTime() - subscriptionStartDate.getTime()) / (1000 * 60 * 60 * 24)))
-        : 0;
-    const subscriptionRemainingDays = subscriptionEndDate
-        ? Math.max(0, Math.ceil((subscriptionEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-        : 0;
-    const subscriptionUsedDays = Math.max(0, subscriptionTotalCycleDays - subscriptionRemainingDays);
-    const subscriptionCycleProgress = subscriptionTotalCycleDays > 0
-        ? Math.min(100, Math.max(0, Math.round((subscriptionUsedDays / subscriptionTotalCycleDays) * 100)))
-        : 0;
+    const {
+        termStartAt: subscriptionStartDate,
+        termEndAt: subscriptionEndDate,
+        totalDays: subscriptionTotalCycleDays,
+        remainingDays: subscriptionRemainingDays,
+        usedDays: subscriptionUsedDays,
+        progressPercent: subscriptionCycleProgress,
+        nextChargeAt: subscriptionNextChargeAt,
+        daysSinceStart: subscriptionDaysSinceStart,
+    } = subscriptionTimeline;
     const hasPendingRefundRequest = userTransactions.some((transaction: any) => String(transaction.status || '').toLowerCase() === 'refund_requested');
-    const isWithinRefundWindow = activeSubscription?.current_period_start
-        ? (Date.now() - new Date(activeSubscription.current_period_start).getTime()) < (7 * 24 * 60 * 60 * 1000)
+    const isWithinRefundWindow = subscriptionDaysSinceStart !== null
+        ? subscriptionDaysSinceStart < 7
         : false;
     const installmentCount = Math.max(1, Number(activeSubscription?.total_installments || 1));
     const paidInstallments = Math.max(0, Number(activeSubscription?.paid_installments || 0));
+    const currentInstallment = installmentCount > 1
+        ? Math.min(Math.max(paidInstallments, 1), installmentCount)
+        : 1;
     const termCommitmentRemaining = installmentCount > 1 && paidInstallments < installmentCount;
     const recurringAmount = Number(activeSubscription?.recurring_amount || 0);
     const subscriptionChargeAmount = recurringAmount > 0 ? recurringAmount : Number(activeSubscription?.plan?.price || 0);
+    const nextChargeReferenceDate = subscriptionNextChargeAt || subscriptionEndDate;
     const subscriptionValueDescription = showFreeInactiveSubscriptionState
+        ? 'Plano gratuito ativo.'
+        : installmentCount > 1
+            ? `Parcela ${currentInstallment} de ${installmentCount} do termo contratado.`
+            : `Cobrança ${subscriptionCycleLabel.toLowerCase()}.`;
+    const subscriptionHeadline = hasActiveSubscription
+        ? (resolvedAutoRenew
+            ? `A renovação automática está ligada e a próxima cobrança está prevista para ${formatDateBR(nextChargeReferenceDate)}.`
+            : (termCommitmentRemaining
+                ? 'A renovação automática está desligada. O termo atual seguirá até a última parcela contratada e depois será encerrado.'
+                : `A renovação automática está desligada. Seu acesso fica ativo até ${formatDateBR(subscriptionEndDate)}.`))
+        : 'Sua assinatura não está ativa no momento.';
+    const legacySubscriptionValueDescription = showFreeInactiveSubscriptionState
         ? 'Plano gratuito ativo.'
         : installmentCount > 1
             ? `Cobrança ${paidInstallments > 0 ? `da parcela ${Math.min(paidInstallments, installmentCount)} de ${installmentCount}` : 'mensal do termo contratado'}.`
             : `Cobrança ${subscriptionCycleLabel.toLowerCase()}.`;
-    const subscriptionHeadline = hasActiveSubscription
+    const legacySubscriptionHeadline = hasActiveSubscription
         ? (resolvedAutoRenew
             ? `A renovação automática esta ligada e a proxima cobrança esta prevista para ${formatDateBR(activeSubscription?.current_period_end)}.`
             : (termCommitmentRemaining
@@ -486,6 +537,31 @@ const Profile: React.FC = () => {
                 ? 'A renovação esta desligada. As cobrancas atuais seguem ate o fim do termo contratado e depois param automaticamente.'
                 : 'A renovação esta desligada e o acesso termina no fim deste ciclo.'))
         : 'Ative um plano pago para controlar a renovação automática por aqui.';
+    const normalizedSubscriptionStatus = String(activeSubscription?.status || '').toLowerCase();
+    const hasSubscriptionRecord = Boolean(activeSubscription?.id);
+    const hasScheduledCancellation = Boolean(activeSubscription?.cancel_at_period_end);
+    const isCanceledStatus = normalizedSubscriptionStatus === 'canceled' || normalizedSubscriptionStatus === 'cancelled';
+    const isCanceledButStillActive = hasActiveSubscription && (hasScheduledCancellation || isCanceledStatus);
+    const renewalStateLabel = !hasSubscriptionRecord || !hasActiveSubscription
+        ? 'Inexistente'
+        : resolvedAutoRenew
+            ? 'Ativada'
+            : 'Desativada';
+    const renewalStateClassName = renewalStateLabel === 'Ativada'
+        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+        : renewalStateLabel === 'Desativada'
+            ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
+            : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300';
+    const cancellationImpactMessage = hasActiveSubscription
+        ? (termCommitmentRemaining
+            ? 'Ao cancelar, o acesso continua ate o fim do termo contratado.'
+            : `Ao cancelar, o acesso continua ate ${formatDateBR(subscriptionEndDate)}.`)
+        : 'Sem assinatura ativa para cancelamento.';
+    const billingStatusLabel = currentUser?.paymentIssue
+        ? 'Atencao no pagamento'
+        : hasActiveSubscription
+            ? 'Cobranca em dia'
+            : 'Sem cobranca ativa';
 
     React.useEffect(() => {
         setOptimisticAutoRenew(null);
@@ -525,16 +601,16 @@ const Profile: React.FC = () => {
     };
 
     const renderBillingTab = () => (
-        <div className="space-y-5 animate-fade-in">
+        <div className="space-y-5">
             {currentUser?.paymentIssue && (
-                <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50 px-4 py-4 dark:border-rose-500/20 dark:bg-rose-500/10">
+                <div className={`rounded-[1.5rem] border px-4 py-4 ${currentUser.paymentIssue.type === 'expiring_card' ? 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10' : 'border-rose-200 bg-rose-50 dark:border-rose-500/20 dark:bg-rose-500/10'}`}>
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div className="flex items-start gap-3">
-                            <div className="mt-0.5 rounded-2xl bg-rose-500 p-2.5 text-white shadow-lg shadow-rose-500/20">
+                            <div className={`mt-0.5 rounded-2xl p-2.5 text-white shadow-lg ${currentUser.paymentIssue.type === 'expiring_card' ? 'bg-amber-500 shadow-amber-500/20' : 'bg-rose-500 shadow-rose-500/20'}`}>
                                 <ShieldAlert size={16} />
                             </div>
                             <div className="space-y-1">
-                                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-rose-600 dark:text-rose-300">Atencao no pagamento</p>
+                                <p className={`text-[9px] font-black uppercase tracking-[0.18em] ${currentUser.paymentIssue.type === 'expiring_card' ? 'text-amber-700 dark:text-amber-300' : 'text-rose-600 dark:text-rose-300'}`}>Atencao no pagamento</p>
                                 <p className="text-xs font-semibold leading-5 text-slate-700 dark:text-slate-200">
                                     {currentUser.paymentIssue.message || 'Atualize sua forma de pagamento para evitar interrupcoes no acesso.'}
                                 </p>
@@ -600,7 +676,7 @@ const Profile: React.FC = () => {
                         <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Fim do ciclo</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
-                                {hasActiveSubscription ? formatDateBR(activeSubscription?.current_period_end) : 'Indeterminado'}
+                                {hasActiveSubscription ? formatDateBR(subscriptionEndDate) : 'Indeterminado'}
                             </p>
                             <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                 {hasActiveSubscription ? 'Período atual da assinatura.' : 'Sem ciclo de cobrança em andamento.'}
@@ -648,8 +724,8 @@ const Profile: React.FC = () => {
                                     />
                                 </div>
                                 <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-                                    <span>Inicio: {formatDateBR(activeSubscription?.current_period_start)}</span>
-                                    <span>Fim: {formatDateBR(activeSubscription?.current_period_end)}</span>
+                                    <span>Início: {formatDateBR(subscriptionStartDate)}</span>
+                                    <span>Fim: {formatDateBR(subscriptionEndDate)}</span>
                                 </div>
                             </div>
                         </div>
@@ -743,9 +819,45 @@ const Profile: React.FC = () => {
 
                         <div className="rounded-[1.1rem] bg-slate-50 px-4 py-2.5 text-right dark:bg-slate-800">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Cartoes</p>
-                            <p className="mt-1.5 text-xl font-black leading-none text-slate-900 dark:text-slate-100">{userCards.length}</p>
+                            <p className="mt-1.5 text-xl font-black leading-none text-slate-900 dark:text-slate-100">{cardsLoadError ? '--' : userCards.length}</p>
                         </div>
                     </div>
+
+                    {cardsLoadError ? (
+                        <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Sincronizacao Stripe</p>
+                            <p className="mt-1 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
+                                {cardsLoadError}
+                            </p>
+                        </div>
+                    ) : primarySavedCard ? (
+                        <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Cartao principal na Stripe</p>
+                                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{formatSavedCardLabel(primarySavedCard)}</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                                        Expira em {String(primarySavedCard.exp_month || '').padStart(2, '0')}/{primarySavedCard.exp_year}
+                                    </span>
+                                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-indigo-600 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
+                                        Stripe
+                                    </span>
+                                    {primarySavedCardExpiryState.isExpired && (
+                                        <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-rose-600 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+                                            Expirado
+                                        </span>
+                                    )}
+                                    {!primarySavedCardExpiryState.isExpired && primarySavedCardExpiryState.isExpiringSoon && (
+                                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                                            Vence em breve
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    ) : null}
 
                     <div className="mt-4">
                         <button
@@ -788,7 +900,7 @@ const Profile: React.FC = () => {
     );
 
     const renderBillingHistoryTab = () => (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                 <div className="space-y-1">
                     <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Histórico</p>
@@ -1209,7 +1321,7 @@ const Profile: React.FC = () => {
     );
 
     return (
-        <div className="max-w-6xl mx-auto animate-fade-in pb-20 space-y-6">
+        <div className="max-w-6xl mx-auto pb-20 space-y-6">
             <header>
                 <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
                     <User className="text-indigo-600 dark:text-indigo-400" /> Meu Perfil
@@ -1219,7 +1331,7 @@ const Profile: React.FC = () => {
 
             {/* Banner: Conteúdo Incompleto */}
             {currentUser && (!currentUser.cpf || !currentUser.address?.zipCode) && (
-                <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg animate-fade-in border border-indigo-400/30">
+                <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg border border-indigo-400/30">
                     <div className="flex items-center gap-4">
                         <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                             <User size={24} className="text-white" />
@@ -1311,7 +1423,7 @@ const Profile: React.FC = () => {
             <main className="lg:col-span-9 space-y-6">
 
                {activeTab === 'evolution' && (
-                  <div className="space-y-6 animate-fade-in">
+                  <div className="space-y-6">
                      {/* NOVO CABEÇALHO DE ESTUDOS */}
                      <div className="bg-white dark:bg-slate-900 px-6 py-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 transition-colors">
                         <div className="flex-1 space-y-3">
@@ -1481,7 +1593,7 @@ const Profile: React.FC = () => {
                )}
 
                {activeTab === 'notebook' && (
-                  <div className="space-y-6 animate-fade-in">
+                  <div className="space-y-6">
                      <div className="flex justify-between items-center">
                         <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Minhas Anotações</h2>
                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{userNotes.length} notas</span>
@@ -1509,7 +1621,7 @@ const Profile: React.FC = () => {
                )}
 
                {activeTab === 'materials' && (
-                   <div className="space-y-6 animate-fade-in">
+                   <div className="space-y-6">
                        <div className="flex justify-between items-center">
                            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Meus Materiais</h2>
                            <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{userMaterials.length} itens</span>
@@ -1595,7 +1707,7 @@ const Profile: React.FC = () => {
                )}
 
                {activeTab === 'personal' && (
-                  <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm animate-fade-in transition-colors">
+                  <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                       <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-6 transition-colors">Dados Pessoais</h2>
                       <form
                         onSubmit={async (e) => {
@@ -1755,6 +1867,15 @@ const Profile: React.FC = () => {
                         </div>
 
                         <div className="mt-6 space-y-4">
+                            {cardsLoadError && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Falha ao sincronizar com a Stripe</p>
+                                    <p className="mt-1 text-[11px] font-medium leading-5 text-slate-600 dark:text-slate-300">
+                                        {cardsLoadError}
+                                    </p>
+                                </div>
+                            )}
+
                             {isStripeBilling ? (
                                 <>
                                     {isAddingCard && (
@@ -1796,14 +1917,22 @@ const Profile: React.FC = () => {
                                                         <div>
                                                             <div className="flex flex-wrap items-center gap-2">
                                                                 <p className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">
-                                                                    {String(card.brand || 'card').toUpperCase()} •••• {card.last_four_digits}
+                                                                    {formatMaskedCardLabelAscii(card)}
                                                                 </p>
+                                                                <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">Stripe</span>
+                                                                {getCardExpiryState(card).isExpired && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-rose-600 dark:bg-rose-900/30 dark:text-rose-300">Expirado</span>}
+                                                                {!getCardExpiryState(card).isExpired && getCardExpiryState(card).isExpiringSoon && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Vence em breve</span>}
                                                                 {Number(card.is_default) === 1 && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">Padrão</span>}
                                                                 {Number(card.locked_by_recurring) === 1 && <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-white">Assinatura ativa</span>}
                                                             </div>
                                                             <p className="mt-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
                                                                 Expira em {String(card.exp_month).padStart(2, '0')}/{card.exp_year}
                                                             </p>
+                                                            {Number(card.locked_by_recurring) === 1 && (
+                                                                <p className="mt-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                                                                    Este cartao esta vinculado a renovacao atual. Defina outro como padrao para liberar a remocao.
+                                                                </p>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
@@ -1885,7 +2014,7 @@ const Profile: React.FC = () => {
                                                         </div>
                                                         <div>
                                                             <div className="flex flex-wrap items-center gap-2">
-                                                                <p className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">•••• {card.last_four_digits || card.last4 || '****'}</p>
+                                                                <p className="text-xs font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">{formatMaskedCardLabelAscii(card, { includeBrand: false })}</p>
                                                                 {Number(card.is_default) === 1 && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">Padrão</span>}
                                                             </div>
                                                             <p className="mt-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
@@ -1924,7 +2053,7 @@ const Profile: React.FC = () => {
                {activeTab === 'billing' && renderBillingTab()}
 
                {false && activeTab === 'billing' && (
-                  <div className="space-y-6 animate-fade-in">
+                  <div className="space-y-6">
                      {/* Alerta de Problema de Pagamento */}
                      {currentUser.paymentIssue && (
                         <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 p-5 rounded-2xl flex items-center gap-5 transition-all">
@@ -2220,7 +2349,7 @@ const Profile: React.FC = () => {
                                                         </div>
                                                         <div>
                                                             <div className="flex items-center gap-2 flex-wrap">
-                                                                <p className="font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest text-xs">{card.brand} •••• {card.last_four_digits}</p>
+                                                                <p className="font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest text-xs">{formatMaskedCardLabelAscii(card)}</p>
                                                                 {card.is_default == 1 && <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest">Padrão</span>}
                                                             </div>
                                                             <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">Expira em {String(card.exp_month).padStart(2, '0')}/{card.exp_year}</p>
@@ -2316,7 +2445,7 @@ const Profile: React.FC = () => {
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-widest">
-                                                        •••• {card.last_four_digits || card.last4 || '****'}
+                                                        {formatMaskedCardLabelAscii(card, { includeBrand: false })}
                                                     </span>
                                                     {card.is_default === 1 && <span className="text-[8px] font-black uppercase bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-200/50">Padrão</span>}
                                                     {card.locked_by_recurring === 1 && (
@@ -2385,7 +2514,7 @@ const Profile: React.FC = () => {
                {activeTab === 'billing-history' && renderBillingHistoryTab()}
 
                {false && activeTab === 'billing-history' && (
-                  <div className="space-y-6 animate-fade-in">
+                  <div className="space-y-6">
                       <div className="flex justify-between items-center">
                           <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Histórico de Transações</h2>
                           <button onClick={fetchUserTransactions} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><RotateCcw size={18} /></button>
@@ -2440,7 +2569,7 @@ const Profile: React.FC = () => {
                )}
 
                {activeTab === 'referral' && (
-                   <div className="space-y-6 animate-fade-in">
+                   <div className="space-y-6">
                        {/* Banner do Programa */}
                        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-200 dark:shadow-none">
                             <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
@@ -2518,7 +2647,7 @@ const Profile: React.FC = () => {
                )}
 
                {activeTab === 'security' && (
-                  <div className="space-y-6 animate-fade-in">
+                  <div className="space-y-6">
                       {/* Alteração de Senha */}
                       <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                           <div className="flex items-center gap-3 mb-6">
@@ -2777,3 +2906,4 @@ const Profile: React.FC = () => {
 };
 
 export default Profile;
+

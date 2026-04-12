@@ -9,7 +9,7 @@
 *
 */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   CardCvcElement,
   Elements,
@@ -27,7 +27,16 @@ interface StripeSavedCardCvcFormProps {
   publishableKey: string;
   cardBrand?: string;
   last4?: string;
+  formId?: string;
   submitLabel?: string;
+  label?: string;
+  legalNotice?: React.ReactNode;
+  hideDescription?: boolean;
+  hideLabel?: boolean;
+  hideTrustNote?: boolean;
+  hideFieldHint?: boolean;
+  hideSubmitButton?: boolean;
+  onReadyChange?: (ready: boolean) => void;
   onConfirm: (args: {
     stripe: Stripe;
     cvcElement: StripeCardCvcElement;
@@ -37,27 +46,41 @@ interface StripeSavedCardCvcFormProps {
 const elementOptions = {
   style: {
     base: {
-      color: '#0f172a',
-      fontSize: '16px',
+      color: '#18181b',
+      fontSize: '14px',
       fontFamily: 'Inter, sans-serif',
-      fontWeight: '600',
-      lineHeight: '24px',
+      fontWeight: '500',
+      lineHeight: '20px',
       '::placeholder': {
-        color: '#94a3b8',
+        color: '#a1a1aa',
       },
     },
     invalid: {
-      color: '#e11d48',
-      iconColor: '#e11d48',
+      color: '#dc2626',
+      iconColor: '#dc2626',
     },
   },
 };
 
 const fieldShellClassName =
-  'min-h-[56px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 transition-all focus-within:border-indigo-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 dark:border-slate-700 dark:bg-[#0f1020] dark:focus-within:border-indigo-400 dark:focus-within:bg-[#111428] dark:focus-within:ring-indigo-500/10';
+  'min-h-[50px] rounded-lg border border-zinc-200 bg-white px-4 py-3 transition-all focus-within:border-zinc-900 focus-within:ring-1 focus-within:ring-zinc-900 dark:border-slate-700 dark:bg-[#0f1020] dark:focus-within:border-indigo-400 dark:focus-within:bg-[#111428] dark:focus-within:ring-indigo-500/10';
 
+/**
+ * Formulário de CVV para cartão salvo da Stripe.
+ * O objetivo aqui é manter a confirmação oficial, mas no estilo mais seco do checkout.
+ * @since v1.0.0
+ */
 const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'publishableKey'>> = ({
-  submitLabel = 'Pagar com cartão salvo',
+  formId,
+  submitLabel = 'Confirmar cartão salvo',
+  label = 'CVV',
+  legalNotice,
+  hideDescription = false,
+  hideLabel = false,
+  hideTrustNote = false,
+  hideFieldHint = false,
+  hideSubmitButton = false,
+  onReadyChange,
   onConfirm,
 }) => {
   const stripe = useStripe();
@@ -66,12 +89,21 @@ const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'p
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
+  const stripeReady = Boolean(stripe && elements);
+
+  useEffect(() => {
+    onReadyChange?.(stripeReady);
+
+    return () => {
+      onReadyChange?.(false);
+    };
+  }, [onReadyChange, stripeReady]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
     if (!stripe || !elements) {
-      setError('O formulário seguro da Stripe ainda esta carregando. Tente novamente em alguns segundos.');
+      setError('O formulário seguro da Stripe ainda está carregando. Tente novamente em alguns segundos.');
       return;
     }
 
@@ -99,77 +131,113 @@ const StripeSavedCardCvcFormInner: React.FC<Omit<StripeSavedCardCvcFormProps, 'p
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-        Para sua segurança, confirme o código de segurança deste cartão salvo antes de concluir a compra.
-      </p>
-
-      <div className="space-y-2">
-        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
-          Código de segurança
-        </label>
-        <div className={fieldShellClassName}>
-          <CardCvcElement
-            options={{
-              ...elementOptions,
-              placeholder: '123',
-            }}
-            onChange={(event) => {
-              setFieldError(event.error?.message || null);
-              setIsComplete(Boolean(event.complete));
-            }}
-          />
-        </div>
-        {fieldError ? (
-          <p className="text-[11px] font-semibold text-rose-500">{fieldError}</p>
-        ) : (
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            O CVV não fica salvo na plataforma e sera usado apenas nesta confirmacao.
+    <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+      {!stripeReady ? (
+        <div className="flex min-h-[140px] flex-col items-center justify-center rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/70 px-6 py-8 text-center text-indigo-700 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-200">
+          <Loader2 size={24} className="animate-spin" />
+          <p className="mt-4 text-sm font-black uppercase tracking-[0.16em]">
+            Carregando validação segura
           </p>
-        )}
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-[#0f1020]">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
-            <Lock size={14} />
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs font-bold text-slate-900 dark:text-white">Confirmacao segura</p>
-            <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-              A Stripe recolhe o código de segurança novamente para confirmar que o titular esta presente nesta compra.
-            </p>
-          </div>
+          <p className="mt-2 max-w-sm text-xs font-semibold leading-relaxed text-indigo-500 dark:text-indigo-200/80">
+            Aguarde enquanto a Stripe prepara o campo protegido de CVV.
+          </p>
+          {error ? <p className="mt-3 text-[11px] font-medium text-rose-500">{error}</p> : null}
         </div>
-      </div>
+      ) : (
+        <>
+          {!hideDescription ? (
+            <p className="text-sm text-zinc-500">
+              Confirme o código de segurança deste cartão salvo para concluir a compra.
+            </p>
+          ) : null}
 
-      {error && <p className="text-[11px] font-bold text-rose-500">{error}</p>}
+          <div className="space-y-2">
+            {!hideLabel ? (
+              <label className="text-sm font-medium text-zinc-700">
+                {label}
+              </label>
+            ) : null}
+            <div className={fieldShellClassName}>
+              <CardCvcElement
+                options={{
+                  ...elementOptions,
+                  placeholder: '123',
+                }}
+                onChange={(event) => {
+                  setFieldError(event.error?.message || null);
+                  setIsComplete(Boolean(event.complete));
+                }}
+              />
+            </div>
+            {!hideFieldHint ? (
+              fieldError ? (
+                <p className="text-[11px] font-medium text-rose-500">{fieldError}</p>
+              ) : (
+                <p className="text-[11px] text-zinc-500">
+                  O CVV não fica salvo na plataforma e será usado apenas nesta confirmação.
+                </p>
+              )
+            ) : fieldError ? (
+              <p className="text-[11px] font-medium text-rose-500">{fieldError}</p>
+            ) : null}
+          </div>
 
-      <button
-        type="submit"
-        disabled={!stripe || !isComplete || submitting}
-        className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {submitting ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
-        {submitting ? 'Confirmando cartão salvo...' : submitLabel}
-      </button>
+          {!hideTrustNote ? (
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-600">
+                  <Lock size={14} />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-zinc-900">Confirmação segura</p>
+                  <p className="text-[11px] leading-relaxed text-zinc-500">
+                    A Stripe coleta o código de segurança novamente para confirmar a presença do titular.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {error ? <p className="text-[11px] font-medium text-rose-500">{error}</p> : null}
+
+          {legalNotice}
+
+          {!hideSubmitButton ? (
+            <button
+              type="submit"
+              disabled={!stripe || !isComplete || submitting}
+              className="flex h-[54px] w-full items-center justify-center gap-3 rounded-lg bg-emerald-600 text-sm font-black uppercase tracking-wide text-white shadow-lg shadow-emerald-500/25 transition-all hover:-translate-y-0.5 hover:bg-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />}
+              {submitting ? 'Confirmando cartão salvo...' : submitLabel}
+            </button>
+          ) : null}
+        </>
+      )}
     </form>
   );
 };
 
 const StripeSavedCardCvcForm: React.FC<StripeSavedCardCvcFormProps> = ({
   publishableKey,
+  onReadyChange,
   ...props
 }) => {
   const stripePromise = useMemo(() => loadStripe(publishableKey), [publishableKey]);
 
+  useEffect(() => {
+    if (!publishableKey) {
+      onReadyChange?.(false);
+    }
+  }, [onReadyChange, publishableKey]);
+
   if (!publishableKey) {
-    return <p className="text-[11px] font-bold text-rose-500">Stripe Publishable Key não configurada.</p>;
+    return <p className="text-[11px] font-medium text-rose-500">Stripe Publishable Key não configurada.</p>;
   }
 
   return (
     <Elements stripe={stripePromise}>
-      <StripeSavedCardCvcFormInner {...props} />
+      <StripeSavedCardCvcFormInner onReadyChange={onReadyChange} {...props} />
     </Elements>
   );
 };

@@ -11,12 +11,13 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, BrainCircuit, CheckCircle2, Gift, Loader2, XCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Gift, Loader2, XCircle } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { authFlowService } from '@services/auth/authFlowService';
 import { readApiErrorMessage } from '@services/api/response';
 import { getCurrentUserSnapshot } from '@services/auth/session';
+import PublicBrandLink from '../../components/shared/layout/PublicBrandLink';
 
 const pageCopy = {
   loading: 'Verificando seu e-mail...',
@@ -141,10 +142,11 @@ const Page: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
-      <div className="mb-8 flex items-center gap-2 text-xl font-bold text-indigo-600 dark:text-indigo-400">
-        <BrainCircuit size={28} />
-        <span className="tracking-tight">ConcursoMestre</span>
-      </div>
+      <PublicBrandLink
+        className="mb-8 flex items-center gap-2 text-xl font-bold text-indigo-600 dark:text-indigo-400 transition-opacity hover:opacity-90"
+        iconSize={28}
+        labelClassName="tracking-tight"
+      />
 
       <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-slate-800 dark:bg-slate-900 animate-scale-in">
         {status === 'loading' && (

@@ -39,7 +39,7 @@ interface MarketplaceContextType {
   fetchUserTransactions: () => void;
   deleteMaterial: (id: string) => Promise<void>;
   deleteMaterialComment: (materialId: string, commentId: string) => Promise<void>;
-  resolveRefund: (transactionId: string, resolution: 'approved' | 'rejected') => Promise<void>;
+  resolveRefund: (transactionId: string, resolution: 'approved' | 'retention_offer') => Promise<void>;
   uploadFile: (file: File, password?: string) => Promise<{ url: string; pageCount?: number } | null>;
   uploadProgress: number;
 }
@@ -69,6 +69,41 @@ const mapTransactionById = (
 ): Transaction[] => list.map((transaction) => (
   transaction.id === transactionId ? updater(transaction) : transaction
 ));
+
+const ADMIN_TRANSACTION_LIST_LIMIT = 100;
+
+/**
+ * Identifica papeis que podem auditar transacoes globais no painel.
+ * @since 1.0.0
+ */
+const isPrivilegedTransactionViewer = (
+  user?: { role?: string; isAdmin?: boolean } | null,
+): boolean => Boolean(user?.isAdmin || user?.role === 'admin' || user?.role === 'staff');
+
+/**
+ * Mescla consultas complementares de transacoes sem duplicar registros.
+ * @since 1.0.0
+ */
+const mergeTransactionsById = (transactionGroups: Transaction[][]): Transaction[] => {
+  const merged = new Map<string, Transaction>();
+
+  transactionGroups.flat().forEach((transaction, index) => {
+    const transactionLike = transaction as any;
+    const key = String(
+      transactionLike.id
+      || transactionLike.internalId
+      || transactionLike.providerTransactionId
+      || transactionLike.providerInvoiceId
+      || `transaction-${index}`,
+    );
+
+    merged.set(key, transaction);
+  });
+
+  return Array.from(merged.values()).sort((left, right) => (
+    Number((right as any).timestamp || 0) - Number((left as any).timestamp || 0)
+  ));
+};
 
 /**
  * Provider oficial do dominio de marketplace.
@@ -133,10 +168,17 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (currentUser) {
       setIsLoadingTransactions(true);
 
-      if (currentUser.role === 'admin' || currentUser.isAdmin) {
-        marketplaceService.listTransactions()
-          .then((transactionsList) => {
-            setTransactions(transactionsList);
+      if (isPrivilegedTransactionViewer(currentUser)) {
+        Promise.all([
+          marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
+          marketplaceService.listTransactions({
+            scope: 'all',
+            status: 'refund_requested',
+            limit: ADMIN_TRANSACTION_LIST_LIMIT,
+          }),
+        ])
+          .then(([latestTransactions, pendingRefundTransactions]) => {
+            setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
           })
           .catch((error) => console.error('Failed to load all transactions:', error))
           .finally(() => setIsLoadingTransactions(false));
@@ -325,30 +367,41 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
    * Quando aprovado, também remove o acesso local ao material comprado.
    * @since 1.0.0
    */
-  const resolveRefund = async (transactionId: string, resolution: 'approved' | 'rejected') => {
+  const resolveRefund = async (transactionId: string, resolution: 'approved' | 'retention_offer') => {
     const previousTransactions = [...transactions];
     try {
-      await marketplaceService.processRefund(transactionId, resolution === 'approved');
+      await marketplaceService.processRefund(transactionId, resolution);
       const transaction = previousTransactions.find((item) => item.id === transactionId);
       if (transaction && resolution === 'approved') {
         removeMaterialAccess?.(transaction.materialId);
       }
 
-      if (currentUser?.role === 'admin' || currentUser?.isAdmin) {
-        const refreshedTransactions = await marketplaceService.listTransactions();
-        setTransactions(refreshedTransactions);
+      if (isPrivilegedTransactionViewer(currentUser)) {
+        const [latestTransactions, pendingRefundTransactions] = await Promise.all([
+          marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
+          marketplaceService.listTransactions({
+            scope: 'all',
+            status: 'refund_requested',
+            limit: ADMIN_TRANSACTION_LIST_LIMIT,
+          }),
+        ]);
+        setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
       } else if (currentUser?.id) {
         const refreshedTransactions = await marketplaceService.getUserTransactions(currentUser.id);
         setTransactions(refreshedTransactions);
       } else {
         setTransactions((prev) => mapTransactionById(prev, transactionId, (currentTransaction) => ({
           ...currentTransaction,
-          status: resolution === 'approved' ? 'refunded' : 'approved',
-          refundReason: resolution === 'approved' ? currentTransaction.refundReason : undefined,
+          status: resolution === 'approved' ? 'refunded' : currentTransaction.status,
         })));
       }
 
-      addToast(`Reembolso ${resolution === 'approved' ? 'aprovado' : 'negado'} com sucesso!`, 'success');
+      addToast(
+        resolution === 'approved'
+          ? 'Reembolso aprovado com sucesso!'
+          : 'Proposta de permanencia enviada ao usuario.',
+        'success',
+      );
     } catch (error) {
       console.error('Resolve refund error:', error);
       setTransactions(previousTransactions);

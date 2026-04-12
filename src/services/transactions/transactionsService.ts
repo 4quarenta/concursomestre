@@ -116,7 +116,7 @@ export const transactionsService = {
    */
   async resolveRefund(
     transactionId: string,
-    resolution: 'approved' | 'rejected',
+    resolution: 'approved' | 'retention_offer',
     reason?: string,
   ): Promise<RefundMutationResponse> {
     const endpoint = resolution === 'approved'

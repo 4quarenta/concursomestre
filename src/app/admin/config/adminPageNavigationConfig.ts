@@ -15,10 +15,11 @@
  *
  * @since 1.0.0
  */
-export type AdminPageTab = 'panel' | 'operation' | 'finance' | 'support' | 'settings';
+export type AdminPageTab = 'panel' | 'operation' | 'finance' | 'marketing' | 'support' | 'settings';
 export type AdminPanelSection = 'dashboard' | 'alerts' | 'billing-health';
 export type AdminOperationSection = 'questions' | 'exams' | 'import' | 'filters' | 'users' | 'materials' | 'rankings';
 export type AdminFinanceSection = 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation';
+export type AdminMarketingSection = 'landing-pages';
 export type AdminSupportSection = 'feedback' | 'threads' | 'reports';
 export type AdminSettingsSection = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'ads' | 'seo' | 'performance' | 'logs';
 
@@ -39,6 +40,7 @@ export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
   panel: 'Visao executiva, alertas operacionais e saude do billing.',
   operation: 'Questoes, importacao, usuarios, materiais e rankings.',
   finance: 'Transacoes, assinaturas, reembolsos, planos e automacao.',
+  marketing: 'Landing pages, campanhas de aquisicao e ativos comerciais.',
   support: 'Feedbacks, denuncias e threads operacionais.',
   settings: 'Controles globais, integracoes, email, ads, SEO e logs.',
 };
@@ -46,6 +48,7 @@ export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
 export const PANEL_SECTION_KEYS = ['dashboard', 'alerts', 'billing-health'] as const;
 export const OPERATION_SECTION_KEYS = ['questions', 'exams', 'import', 'filters', 'users', 'materials', 'rankings'] as const;
 export const FINANCE_SECTION_KEYS = ['subscriptions', 'transactions', 'refunds', 'plans-coupons', 'automation'] as const;
+export const MARKETING_SECTION_KEYS = ['landing-pages'] as const;
 export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports'] as const;
 export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'security', 'integrations', 'email', 'ads', 'seo', 'performance', 'logs'] as const;
 
@@ -71,6 +74,13 @@ export const isOperationSection = (tab: string): tab is AdminOperationSection =>
 export const isFinanceSection = (tab: string): tab is AdminFinanceSection => FINANCE_SECTION_KEYS.includes(tab as AdminFinanceSection);
 
 /**
+ * Valida a secao do grupo Marketing.
+ *
+ * @since 1.0.0
+ */
+export const isMarketingSection = (tab: string): tab is AdminMarketingSection => MARKETING_SECTION_KEYS.includes(tab as AdminMarketingSection);
+
+/**
  * Valida a secao do grupo Suporte.
  *
  * @since 1.0.0
@@ -89,7 +99,7 @@ export const isSettingsSection = (tab: string): tab is AdminSettingsSection => S
  *
  * @since 1.0.0
  */
-export const isAdminPageTab = (tab: string): tab is AdminPageTab => ['panel', 'operation', 'finance', 'support', 'settings'].includes(tab);
+export const isAdminPageTab = (tab: string): tab is AdminPageTab => ['panel', 'operation', 'finance', 'marketing', 'support', 'settings'].includes(tab);
 
 /**
  * Mantem compatibilidade com links e atalhos legados do admin.
@@ -114,7 +124,8 @@ export const LEGACY_TAB_MAP: Record<string, { tab: AdminPageTab; section?: strin
   transactions: { tab: 'finance', section: 'transactions' },
   refunds: { tab: 'finance', section: 'refunds' },
   prices: { tab: 'finance', section: 'plans-coupons' },
-  marketing: { tab: 'finance', section: 'plans-coupons' },
+  marketing: { tab: 'marketing', section: 'landing-pages' },
+  'landing-pages': { tab: 'marketing', section: 'landing-pages' },
   automation: { tab: 'finance', section: 'automation' },
   feedback: { tab: 'support', section: 'feedback' },
   threads: { tab: 'support', section: 'threads' },
@@ -157,6 +168,9 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'plans-coupons', label: 'Planos e cupons' },
     { key: 'automation', label: 'Automacao' },
   ],
+  marketing: [
+    { key: 'landing-pages', label: 'Landing Pages' },
+  ],
   support: [
     { key: 'feedback', label: 'Feedback' },
     { key: 'reports', label: 'Denuncias' },
@@ -184,6 +198,7 @@ export const DEFAULT_SECTION_BY_TAB: Record<AdminPageTab, string> = {
   panel: 'dashboard',
   operation: 'questions',
   finance: 'subscriptions',
+  marketing: 'landing-pages',
   support: 'feedback',
   settings: 'general',
 };
@@ -204,6 +219,10 @@ const resolveSectionByTab = (tab: AdminPageTab, rawSection?: string | null) => {
 
   if (tab === 'finance') {
     return isFinanceSection(section) ? section : DEFAULT_SECTION_BY_TAB.finance;
+  }
+
+  if (tab === 'marketing') {
+    return isMarketingSection(section) ? section : DEFAULT_SECTION_BY_TAB.marketing;
   }
 
   if (tab === 'support') {

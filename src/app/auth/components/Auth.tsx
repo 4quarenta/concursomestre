@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Mail, Lock, User, Eye, EyeOff, Loader2, BrainCircuit, X, MessageSquare, Shield, CheckCircle2, ChevronRight, Github, Chrome, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft, KeyRound, Terminal, UserPlus
+  Mail, Lock, User, Eye, EyeOff, Loader2, X, MessageSquare, Shield, CheckCircle2, ChevronRight, Github, Chrome, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft, KeyRound, Terminal, UserPlus
 } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import ReCAPTCHA from 'react-google-recaptcha';
@@ -21,6 +21,7 @@ import { apiClient, ENDPOINTS } from '@services/api';
 import { canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from '@services/auth';
 import { useToast } from '@providers/ToastProvider';
 import { useTheme } from '@providers/ThemeProvider';
+import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 
 /** Modo de visualização da tela de autenticação */
 type AuthMode = 'login' | 'signup' | 'forgot' | 'forgot-success' | 'two-factor';
@@ -360,10 +361,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-white rounded-full -translate-x-1/2 -translate-y-1/2 opacity-5" />
         </div>
         <div className="relative text-white space-y-8 max-w-xs">
-          <div className="flex items-center gap-3">
-            <BrainCircuit size={40} className="opacity-90" />
-            <span className="text-2xl font-black tracking-tight">ConcursoMestre</span>
-          </div>
+          <PublicBrandLink
+            className="flex items-center gap-3 transition-opacity hover:opacity-90"
+            iconSize={40}
+            iconClassName="opacity-90"
+            labelClassName="text-2xl font-black tracking-tight"
+          />
           <h1 className="text-4xl font-black leading-tight">
             Prepare‑se para a <span className="text-indigo-200">aprovação</span>
           </h1>
@@ -388,8 +391,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         <div className="w-full max-w-md">
           {/* Logo mobile */}
           <div className="flex lg:hidden items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xl mb-10 justify-center">
-            <BrainCircuit size={28} />
-            <span className="tracking-tight">ConcursoMestre</span>
+            <PublicBrandLink />
           </div>
 
           {/* Card */}

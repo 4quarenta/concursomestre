@@ -218,8 +218,8 @@ export const marketplaceService = {
    * Resolve administrativamente uma solicitacao de estorno.
    * @since 1.0.0
    */
-  async processRefund(transactionId: string, approved: boolean): Promise<any> {
-    return transactionsService.resolveRefund(transactionId, approved ? 'approved' : 'rejected');
+  async processRefund(transactionId: string, resolution: 'approved' | 'retention_offer'): Promise<any> {
+    return transactionsService.resolveRefund(transactionId, resolution);
   },
 
   /**
@@ -228,7 +228,9 @@ export const marketplaceService = {
    * @since 1.0.0
    */
   async createMaterialPurchase(materialId: string | number, couponCode?: string): Promise<Transaction> {
-    return transactionsService.createMaterialPurchase(materialId, couponCode);
+    return couponCode
+      ? transactionsService.createMaterialPurchase(materialId, couponCode)
+      : transactionsService.createMaterialPurchase(materialId);
   },
 
   /**

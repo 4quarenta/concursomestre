@@ -109,13 +109,21 @@ describe('adminService', () => {
 
     const settings = await adminService.getSystemSettings();
 
-    expect(mockGet).toHaveBeenCalledWith('settings.php');
+    expect(mockGet).toHaveBeenCalledWith('settings.php', {
+      params: {
+        _: expect.any(Number),
+      },
+    });
     expect(settings.paymentProvider).toBe('stripe');
     expect(settings.recaptchaEnabled).toBe(true);
   });
 
   it('saves system settings through the official admin settings endpoint', async () => {
     mockPost.mockResolvedValueOnce({
+      data: {
+        paymentProvider: 'stripe',
+        activeTheme: 'default',
+      },
       success: true,
       message: 'Configurações salvas com sucesso!',
     });
@@ -123,7 +131,10 @@ describe('adminService', () => {
     await expect(adminService.saveSystemSettings({
       paymentProvider: 'stripe',
       activeTheme: 'default',
-    } as any)).resolves.toBeUndefined();
+    } as any)).resolves.toEqual({
+      paymentProvider: 'stripe',
+      activeTheme: 'default',
+    });
 
     expect(mockPost).toHaveBeenCalledWith('admin/settings.php', {
       paymentProvider: 'stripe',
@@ -400,17 +411,22 @@ describe('adminService', () => {
       success: true,
       data: {
         total_revenue: 120,
+        available_total_revenue: 110,
         platform_revenue: 40,
         subscription_revenue: 80,
         available_subscription_revenue: 50,
         marketplace_revenue: 40,
         active_subscriptions: 3,
         cancelled_subscriptions: 1,
+        expired_subscriptions: 2,
+        trial_subscriptions: 1,
         mrr: 33,
         new_users: 8,
         seller_payout: 20,
         available_seller_payout: 12,
         transactions_count: 6,
+        refund_requests_count: 1,
+        refund_requested_amount: 9,
         total_refunded: 4,
         held_balance: 10,
         total_paid: 116,
@@ -431,7 +447,10 @@ describe('adminService', () => {
 
     expect(mockGet).toHaveBeenCalledWith('admin/stats.php?period=custom&startDate=2026-04-01&endDate=2026-04-30');
     expect(stats.total_revenue).toBe(120);
+    expect(stats.available_total_revenue).toBe(110);
     expect(stats.feedback_count).toBe(2);
+    expect(stats.refund_requests_count).toBe(1);
+    expect(stats.refund_requested_amount).toBe(9);
   });
 
   it('replies to feedback through the official admin endpoint', async () => {

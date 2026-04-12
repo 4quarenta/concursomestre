@@ -12,6 +12,7 @@
 
 export const PLAN_DETAILS = {
   Gratuito: {
+    displayName: 'Gratuito',
     color: 'bg-slate-500',
     enabled: true,
     features: [
@@ -25,6 +26,7 @@ export const PLAN_DETAILS = {
     ]
   },
   Essencial: {
+    displayName: 'Essencial',
     color: 'bg-blue-500',
     enabled: true,
     features: [
@@ -38,6 +40,7 @@ export const PLAN_DETAILS = {
     ]
   },
   Pro: {
+    displayName: 'Pro',
     color: 'bg-indigo-600',
     popular: true,
     enabled: true,
@@ -51,6 +54,7 @@ export const PLAN_DETAILS = {
     ]
   },
   Elite: {
+    displayName: 'Elite',
     color: 'bg-amber-500',
     enabled: true,
     features: [

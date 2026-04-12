@@ -15,6 +15,7 @@ import type { SystemSettings, UserProfile } from '@types';
 import Layout from '../components/shared/layout/Layout';
 import ModuleAccessFallback from '../components/shared/feedback/ModuleAccessFallback';
 import PageTransition from '../components/PageTransition';
+import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { RequireAuth } from './guards';
 import { LayoutContentRouteFallback } from './RouteSuspenseFallback';
 import { buildProfilePath } from '../app/profile/profileNavigation';
@@ -47,6 +48,13 @@ interface PrivateRoutesProps {
  */
 export const PrivateRoutes: React.FC<PrivateRoutesProps> = ({ currentUser, loginRequired, systemSettings }) => {
   const isStrictAdmin = Boolean(currentUser?.isAdmin || currentUser?.role === 'admin');
+  const practiceEnabled = resolveSystemFeatureFlag(systemSettings, 'practiceEnabled');
+  const annotatedLawsEnabled = resolveSystemFeatureFlag(systemSettings, 'annotatedLawsEnabled');
+  const flashcardsEnabled = resolveSystemFeatureFlag(systemSettings, 'flashcardsEnabled');
+  const simulationsEnabled = resolveSystemFeatureFlag(systemSettings, 'simulationsEnabled');
+  const xRayEnabled = resolveSystemFeatureFlag(systemSettings, 'xRayEnabled');
+  const marketplaceEnabled = resolveSystemFeatureFlag(systemSettings, 'marketplaceEnabled');
+  const rankingsEnabled = resolveSystemFeatureFlag(systemSettings, 'rankingsEnabled');
 
   /**
    * Mantem o Layout oficial visivel enquanto a pagina interna lazy ainda esta resolvendo.
@@ -98,31 +106,31 @@ export const PrivateRoutes: React.FC<PrivateRoutesProps> = ({ currentUser, login
       />
       <Route
         path="/practice"
-        element={renderFeatureRoute(<PracticePage />, systemSettings.features.practiceEnabled, 'Questoes')}
+        element={renderFeatureRoute(<PracticePage />, practiceEnabled, 'Questoes')}
       />
       <Route
         path="/lei-comentada"
-        element={renderFeatureRoute(<AnnotatedLawsPage />, systemSettings.features.annotatedLawsEnabled, 'Lei comentada')}
+        element={renderFeatureRoute(<AnnotatedLawsPage />, annotatedLawsEnabled, 'Lei comentada')}
       />
       <Route
         path="/flashcards"
-        element={renderFeatureRoute(<FlashcardsPage />, systemSettings.features.flashcardsEnabled, 'Flashcards')}
+        element={renderFeatureRoute(<FlashcardsPage />, flashcardsEnabled, 'Flashcards')}
       />
       <Route
         path="/simulation"
-        element={renderFeatureRoute(<SimulationPage />, systemSettings.features.simulationsEnabled, 'Simulados')}
+        element={renderFeatureRoute(<SimulationPage />, simulationsEnabled, 'Simulados')}
       />
       <Route
         path="/x-ray"
-        element={renderFeatureRoute(<BankAnalysisPage />, systemSettings.features.xRayEnabled, 'Raio-X Banca')}
+        element={renderFeatureRoute(<BankAnalysisPage />, xRayEnabled, 'Raio-X Banca')}
       />
       <Route
         path="/marketplace"
-        element={renderFeatureRoute(<MarketplacePage />, systemSettings.features.marketplaceEnabled, 'Loja')}
+        element={renderFeatureRoute(<MarketplacePage />, marketplaceEnabled, 'Loja')}
       />
       <Route
         path="/ranking"
-        element={renderFeatureRoute(<RankingPage />, systemSettings.features.rankingsEnabled, 'Rankings')}
+        element={renderFeatureRoute(<RankingPage />, rankingsEnabled, 'Rankings')}
       />
       <Route path="/profile" element={currentUser ? <Navigate to={buildProfilePath('personal')} replace /> : <Navigate to="/auth" replace />} />
       <Route path="/profile/:tab" element={currentUser ? renderStableLayoutPage(<ProfilePage />) : <Navigate to="/auth" replace />} />

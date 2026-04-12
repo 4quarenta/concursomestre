@@ -15,7 +15,7 @@ import type { SystemSettings } from '@types';
 interface UseAdminImportSettingsBridgeOptions {
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => Promise<any> | any;
-  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<void> | void;
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings> | SystemSettings;
 }
 
 export const useAdminImportSettingsBridge = ({

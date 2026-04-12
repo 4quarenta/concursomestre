@@ -4,6 +4,15 @@
 - O fluxo oficial continua como credito proporcional local no backend, nao prorata nativo Stripe.
 - Relatorios executaveis atuais ficam em `docs/reports/` e `scripts/checks/output/`.
 
+## Origem dos cartoes salvos
+
+- A fonte de verdade dos cartoes salvos e a Stripe. O checkout e o perfil devem listar cartoes pelo service oficial `cardsService.listSavedCards()` sem enviar `user_id` manualmente; o backend resolve o usuario autenticado pela sessao.
+- A rota `api/users/list_cards.php` passa pelo modulo oficial `modules/users`, chama `UsersCardsService::listSavedCards()` e sincroniza o espelho local a partir da Stripe por `UsersCardsStripeSupport::syncStripeCardsForUser()`.
+- O campo interno `users.has_saved_card` e apenas um indicativo operacional para evitar chamadas desnecessarias. Ele nao substitui a listagem real de payment methods da Stripe.
+- Se a sincronizacao com a Stripe falhar, a UI deve exibir erro de sincronizacao em vez de mostrar `0` cartoes como se fosse estado real.
+- O cartao associado a renovacao de assinatura fica marcado no espelho local por `locked_by_recurring = 1`. Ele nao pode ser removido enquanto for o unico cartao da assinatura; o usuario deve adicionar outro cartao e defini-lo como padrao para mover o vinculo.
+- A verificacao de validade do cartao preferencial ocorre no payload autenticado do perfil e tambem pode ser executada periodicamente por `C:\xampp\htdocs\questao-pro-backend\scripts\checks\check_subscription_card_expiry.php`. Cartao vencido ou proximo do vencimento gera `paymentIssue` e uma notificacao deduplicada para orientar o usuario a atualizar o metodo de pagamento.
+
 ## Arquivos absorvidos
 
 - `C:\dev\concursomestre\ATUALIZACAO_CHECKLIST_RENOVACAO.md`
@@ -20,6 +29,8 @@
 - `C:\dev\concursomestre\VALIDACAO_FINAL_RODADA.md`
 - `C:\dev\concursomestre\docs\payment-flow-stripe-audit.md`
 - `C:\dev\concursomestre\docs\payments-module.md`
+- `C:\dev\concursomestre\docs\STRIPE_CARD_VAULT_OPERATIONS.md`
+- `C:\dev\concursomestre\docs\STRIPE_TESTING_MATRIX_ADMIN.md`
 - `C:\dev\concursomestre\docs\subscriptions-checkout-automation.md`
 - `C:\dev\concursomestre\docs\subscriptions-plan-sync.md`
 - `C:\dev\concursomestre\docs\transactions-refund-support-extraction.md`
@@ -504,7 +515,7 @@ Eventos tratados:
 ## Riscos remanescentes
 
 - renovacao ponta a ponta com atraso real de webhook: NAO COMPROVADO
-- reconciliaÃ§Ã£o total de todos os cenarios de falha de cobranca: NAO COMPROVADO
+- reconciliação total de todos os cenarios de falha de cobranca: NAO COMPROVADO
 - `proration_behavior` nativo da Stripe ainda nao foi adotado
 - checkout avulso de materiais Stripe ainda permanece pausado
 
@@ -1525,7 +1536,7 @@ Cancelamento dentro de 7 dias revoga acesso antes da confirmacao final do estorn
 
 ### Risco 5
 
-`cancelRefundRequest` nao recompÃµe a assinatura que ja foi cancelada localmente.
+`cancelRefundRequest` nao recompõe a assinatura que ja foi cancelada localmente.
 
 ### Risco 6
 
@@ -1711,10 +1722,10 @@ O endpoint `api/subscriptions/sync_plans_mp.php` responde `410`.
 Remover a regra de estorno do legado `api/utils/payment_refund_helper.php` e oficializar esse comportamento dentro do dominio `transactions`.
 
 ## Implementacao oficial
-- `C:\xampp\htdocs\questÃ£o-pro-backend\modules\transactions\services\TransactionsRefundSupport.php`
+- `C:\xampp\htdocs\questão-pro-backend\modules\transactions\services\TransactionsRefundSupport.php`
 
 ## Bridges legados
-- `C:\xampp\htdocs\questÃ£o-pro-backend\api\utils\payment_refund_helper.php`
+- `C:\xampp\htdocs\questão-pro-backend\api\utils\payment_refund_helper.php`
 
 ## Modulos consumidores alinhados
 - `modules/transactions/services/TransactionsService.php`
@@ -1724,15 +1735,15 @@ Remover a regra de estorno do legado `api/utils/payment_refund_helper.php` e ofi
 ## Regras consolidadas
 - processamento de estorno por gateway
 - resolucao de `PaymentIntent` Stripe para reembolso
-- persistencia do estado local de transaÃ§Ã£o reembolsada
+- persistencia do estado local de transação reembolsada
 - montagem de detalhes de reembolso para e-mail
-- selecao da ultima transaÃ§Ã£o de plano elegivel para reembolso
+- selecao da ultima transação de plano elegivel para reembolso
 
-## ValidaÃ§Ã£o executada
+## Validação executada
 - `C:\xampp\php\php.exe -l` nos arquivos alterados
-- `C:\xampp\php\php.exe C:\xampp\htdocs\questÃ£o-pro-backend\tests\TransactionsRefundSupportWiringTest.php`
-- `C:\xampp\php\php.exe C:\xampp\htdocs\questÃ£o-pro-backend\tests\SubscriptionsCheckoutWiringTest.php`
-- `C:\xampp\php\php.exe C:\xampp\htdocs\questÃ£o-pro-backend\tests\AdminSecurityWiringTest.php`
+- `C:\xampp\php\php.exe C:\xampp\htdocs\questão-pro-backend\tests\TransactionsRefundSupportWiringTest.php`
+- `C:\xampp\php\php.exe C:\xampp\htdocs\questão-pro-backend\tests\SubscriptionsCheckoutWiringTest.php`
+- `C:\xampp\php\php.exe C:\xampp\htdocs\questão-pro-backend\tests\AdminSecurityWiringTest.php`
 - `npx vitest run src/services/transactions/__tests__/transactionsService.test.ts src/services/admin/__tests__/adminService.test.ts src/services/subscriptions/__tests__/subscriptionsService.test.ts`
 - `npm run build`
 - smoke `401` em `api/transactions/approve_refund.php`

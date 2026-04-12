@@ -29,7 +29,11 @@ export const planService = {
    */
   async getPlans(): Promise<Plan[]> {
     try {
-      const response = await apiClient.get<any>(ENDPOINTS.plans.list);
+      const response = await apiClient.get<any>(ENDPOINTS.plans.list, {
+        params: {
+          _: Date.now(),
+        },
+      });
       const plans = readApiData<Plan[]>(response, []);
       return Array.isArray(plans) ? plans : [];
     } catch (error) {
@@ -108,6 +112,22 @@ export const planService = {
    */
   async createStripePortalSession(): Promise<any> {
     return subscriptionsService.createStripePortalSession();
+  },
+
+  /**
+   * Consulta a disponibilidade operacional de PIX via capability Stripe.
+   * @since 1.0.0
+   */
+  async getStripePixCapability(): Promise<any> {
+    return subscriptionsService.getStripePixCapability();
+  },
+
+  /**
+   * Solicita a ativação operacional de PIX na Stripe via backend oficial.
+   * @since 1.0.0
+   */
+  async requestStripePixCapability(): Promise<any> {
+    return subscriptionsService.requestStripePixCapability();
   },
 
   /**

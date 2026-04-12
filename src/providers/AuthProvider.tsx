@@ -149,7 +149,7 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
 
 interface AuthContextType extends AuthState {
   login: (user: UserProfile | null, token?: string | null) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateUser: (updates: Partial<UserProfile>) => Promise<void>;
   addXp: (amount: number) => void;
   toggleSavedQuestion: (id: string) => void;
@@ -209,8 +209,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * Inicia o logout remoto e local do usuário atual.
    * @since 1.0.0
    */
-  const logout = React.useCallback(() => {
-    void logoutAuthSession();
+  const logout = React.useCallback(async () => {
+    await logoutAuthSession();
   }, []);
 
   /**

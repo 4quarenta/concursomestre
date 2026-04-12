@@ -111,14 +111,15 @@ const PartnerDashboard: React.FC = () => {
 
   const { availableBalance, heldBalance, totalRevenue } = useMemo(() => {
     return myTransactions.reduce((acc, curr) => {
-      // Reembolsados não entram na contabilização de saldo
+      // Reembolsados não entram na contabilização de saldo.
       if (curr.status === 'refunded') return acc;
 
       const netAmount = curr.amount - curr.platformFee;
       const daysSincePurchase = (now - curr.timestamp) / msPerDay;
+      const isRefundUnderReview = curr.status === 'refund_requested';
 
       acc.totalRevenue += netAmount;
-      if (daysSincePurchase >= 7) {
+      if (!isRefundUnderReview && daysSincePurchase >= 7) {
         acc.availableBalance += netAmount;
       } else {
         acc.heldBalance += netAmount;

@@ -10,7 +10,7 @@
 */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Loader2, Megaphone, Palette, Percent, Trash2, Zap } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, Loader2, Megaphone, Palette, Percent, Trash2, Zap } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
 import type { AppPromotionTheme, DiscountCode, Plan, SystemSettings } from '@types';
 import { themeConfig } from '@constants/themes';
@@ -20,7 +20,7 @@ import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 interface AdminMarketingProps {
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => void;
-  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<void>;
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
 }
 
 type CouponTargetType = 'all' | 'plan' | 'item';
@@ -41,9 +41,57 @@ const createDefaultCouponDraft = (): CouponDraft => ({
   maxUses: 100,
   uses: 0,
   autoApply: false,
+  expiresAt: undefined,
   targetType: 'all',
   targetId: null,
 });
+
+const toDateTimeLocalValue = (value?: string | null) => {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  const timezoneOffset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
+};
+
+const toIsoDateTimeValue = (value: string) => {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+};
+
+const getCouponRuntimeStatus = (coupon: CouponDraft) => {
+  if (coupon.expiresAt) {
+    const expiresAtTimestamp = new Date(coupon.expiresAt).getTime();
+    if (!Number.isNaN(expiresAtTimestamp) && expiresAtTimestamp < Date.now()) {
+      return {
+        label: 'Expirado',
+        className: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-300',
+      };
+    }
+  }
+
+  if (coupon.maxUses > 0 && Number(coupon.uses || 0) >= coupon.maxUses) {
+    return {
+      label: 'Esgotado',
+      className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+    };
+  }
+
+  return {
+    label: 'Ativo',
+    className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+  };
+};
 
 const normalizeCouponDraft = (coupon?: Partial<DiscountCode> | null): CouponDraft => {
   const targetType = (() => {
@@ -85,6 +133,7 @@ const AdminMarketing = ({
   const [draftTheme, setDraftTheme] = useState<AppPromotionTheme>(systemSettings.activeTheme || 'default');
   const [draftCoupons, setDraftCoupons] = useState<CouponDraft[]>((systemSettings.coupons || []).map((coupon) => normalizeCouponDraft(coupon)));
   const [newCoupon, setNewCoupon] = useState<CouponDraft>(createDefaultCouponDraft());
+  const [limitedOfferCountdown, setLimitedOfferCountdown] = useState(systemSettings.limitedOfferCountdown);
   const [availablePlans, setAvailablePlans] = useState<Plan[]>([]);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [pendingDeleteCoupon, setPendingDeleteCoupon] = useState<CouponDraft | null>(null);
@@ -93,7 +142,8 @@ const AdminMarketing = ({
     setDraftPromotion(systemSettings.activePromotion);
     setDraftTheme(systemSettings.activeTheme || 'default');
     setDraftCoupons((systemSettings.coupons || []).map((coupon) => normalizeCouponDraft(coupon)));
-  }, [systemSettings.activePromotion, systemSettings.activeTheme, systemSettings.coupons]);
+    setLimitedOfferCountdown(systemSettings.limitedOfferCountdown);
+  }, [systemSettings.activePromotion, systemSettings.activeTheme, systemSettings.coupons, systemSettings.limitedOfferCountdown]);
 
   useEffect(() => {
     let active = true;
@@ -156,8 +206,8 @@ const AdminMarketing = ({
     setSavingKey(actionKey);
 
     try {
-      await saveSystemSettingsNow(nextSettings);
-      updateSystemSettings(nextSettings);
+      const persistedSettings = await saveSystemSettingsNow(nextSettings);
+      updateSystemSettings(persistedSettings);
       addToast(successMessage, 'success');
       return true;
     } catch (error) {
@@ -207,6 +257,7 @@ const AdminMarketing = ({
         maxUses: Number(newCoupon.maxUses),
         uses: 0,
         autoApply: Boolean(newCoupon.autoApply),
+        expiresAt: newCoupon.expiresAt || undefined,
         targetType: newCoupon.targetType,
         targetId: normalizedTargetId,
       }),
@@ -241,6 +292,11 @@ const AdminMarketing = ({
   const handleSaveTheme = async () => {
     const nextSettings = { ...systemSettings, activeTheme: draftTheme };
     await persistMarketingSettings(nextSettings, 'Tema promocional salvo com sucesso.', 'save-theme');
+  };
+
+  const handleSaveLimitedOfferCountdown = async () => {
+    const nextSettings = { ...systemSettings, limitedOfferCountdown };
+    await persistMarketingSettings(nextSettings, 'Oferta limitada atualizada.', 'save-limited-offer');
   };
 
   return (
@@ -286,7 +342,7 @@ const AdminMarketing = ({
       {activeSection === 'coupons' && (
         <div className="space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr),8rem,8rem,10rem,12rem,auto] xl:items-end">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Código</label>
                 <input
@@ -374,6 +430,20 @@ const AdminMarketing = ({
                   />
                 )}
               </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Expira em</label>
+                <input
+                  type="datetime-local"
+                  value={toDateTimeLocalValue(newCoupon.expiresAt)}
+                  onChange={(event) => setNewCoupon((current) => ({
+                    ...current,
+                    expiresAt: toIsoDateTimeValue(event.target.value) || undefined,
+                  }))}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
               <button
                 onClick={() => void handleCreateCoupon()}
                 disabled={savingKey === 'create-coupon'}
@@ -384,8 +454,80 @@ const AdminMarketing = ({
               </button>
             </div>
             <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-              Cupons podem ser manuais ou auto aplicados. Quando houver alvo definido, o backend restringe o uso ao tipo e ao ID configurados.
+              Cupons podem ser manuais ou auto aplicados. Voce pode limitar por usos, por data final, ou usar os dois ao mesmo tempo. Quando houver alvo definido, o backend restringe o uso ao tipo e ao ID configurados.
             </p>
+          </div>
+
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-6 shadow-sm transition-colors dark:border-amber-900/30 dark:bg-amber-900/10">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <h3 className="flex items-center gap-2 text-lg font-black text-amber-700 dark:text-amber-300"><Clock size={20} /> Oferta por tempo limitado</h3>
+                <p className="max-w-2xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                  Countdown exibido na home e no checkout quando houver desconto aplicado.
+                </p>
+              </div>
+              <label className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-white px-4 py-3 dark:border-amber-900/30 dark:bg-slate-900">
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Countdown ativo</span>
+                <input
+                  type="checkbox"
+                  checked={!!limitedOfferCountdown?.enabled}
+                  onChange={(event) => setLimitedOfferCountdown((current) => ({
+                    ...(current || { endsAt: '' }),
+                    enabled: event.target.checked,
+                  }))}
+                  className="h-5 w-5 rounded border-slate-300 text-amber-500"
+                />
+              </label>
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,280px),1fr]">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Data final da oferta</label>
+                <input
+                  type="datetime-local"
+                  value={toDateTimeLocalValue(limitedOfferCountdown?.endsAt)}
+                  onChange={(event) => setLimitedOfferCountdown((current) => ({
+                    ...(current || { enabled: false }),
+                    endsAt: toIsoDateTimeValue(event.target.value),
+                  }))}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-white/80 bg-white/80 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Status</p>
+                  <p className="mt-2 text-lg font-black text-slate-900 dark:text-slate-100">
+                    {limitedOfferCountdown?.enabled ? 'Ativo' : 'Desativado'}
+                  </p>
+                  <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    O contador so aparece com desconto ativo e data final futura.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/80 bg-white/80 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Encerramento</p>
+                  <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">
+                    {limitedOfferCountdown?.endsAt
+                      ? new Date(limitedOfferCountdown.endsAt).toLocaleString('pt-BR')
+                      : 'Nao definido'}
+                  </p>
+                  <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Defina uma data futura para sincronizar home e checkout.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => void handleSaveLimitedOfferCountdown()}
+                disabled={savingKey === 'save-limited-offer'}
+                className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {savingKey === 'save-limited-offer' ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
+                Salvar oferta limitada
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -394,6 +536,9 @@ const AdminMarketing = ({
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="font-black text-slate-900 dark:text-slate-100">{coupon.code}</h4>
+                    <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] ${getCouponRuntimeStatus(coupon).className}`}>
+                      {getCouponRuntimeStatus(coupon).label}
+                    </span>
                     {coupon.autoApply && (
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
                         Auto
@@ -402,6 +547,7 @@ const AdminMarketing = ({
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {coupon.discountPercentage}% OFF · {coupon.uses || 0}/{coupon.maxUses} usos
+                    {coupon.expiresAt ? ` · expira ${new Date(coupon.expiresAt).toLocaleDateString('pt-BR')}` : ''}
                   </p>
                   <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                     {describeCouponTarget(coupon)}

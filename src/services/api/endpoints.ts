@@ -161,9 +161,12 @@ export const ENDPOINTS = {
 
     subscriptions: {
         automationHelper: 'subscriptions/automation_helper.php',
+        stripeTestingMatrix: 'subscriptions/stripe_testing_matrix.php',
+        stripeTestingRuns: 'subscriptions/stripe_testing_runs.php',
         createStripeCheckout: 'subscriptions/create_stripe_checkout.php',
         createStripeSubscription: 'subscriptions/create_stripe_subscription.php',
         finalizeStripeSubscription: 'subscriptions/finalize_stripe_subscription.php',
+        stripePixCapability: 'subscriptions/stripe_pix_capability.php',
         validateCoupon: 'subscriptions/validate_coupon.php',
         createStripePortal: 'subscriptions/create_stripe_portal.php',
         updateRenewal: 'subscriptions/update_renewal.php',

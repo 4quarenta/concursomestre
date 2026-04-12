@@ -14,7 +14,6 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
     AlertCircle,
     ArrowLeft,
-    BrainCircuit,
     CheckCircle2,
     Eye,
     EyeOff,
@@ -25,6 +24,7 @@ import {
 import { readApiErrorMessage } from '@services/api';
 import { authFlowService } from '@services/auth';
 import { useAuth } from '@providers/AuthProvider';
+import PublicBrandLink from '../../components/shared/layout/PublicBrandLink';
 
 const ResetPasswordPage: React.FC = () => {
     const [searchParams] = useSearchParams();
@@ -107,10 +107,11 @@ const ResetPasswordPage: React.FC = () => {
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-950 dark:to-slate-900 p-6">
             <div className="w-full max-w-md">
-                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xl mb-10 justify-center">
-                    <BrainCircuit size={28} />
-                    <span className="tracking-tight text-slate-900 dark:text-white">ConcursoMestre</span>
-                </div>
+                <PublicBrandLink
+                    className="mb-10 flex items-center justify-center gap-2 text-xl font-bold text-indigo-600 dark:text-indigo-400 transition-opacity hover:opacity-90"
+                    iconSize={28}
+                    labelClassName="tracking-tight text-slate-900 dark:text-white"
+                />
 
                 <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 animate-scale-in">
                     <div className="mb-8">

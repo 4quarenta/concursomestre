@@ -14,54 +14,21 @@ import AdminPageContent from './components/shared/AdminPageContent';
 import AdminShellLayout from './components/shared/AdminShellLayout';
 import { useAdminPageController } from './components/shared/useAdminPageController';
 
-/**
- * Entrada oficial da area administrativa.
- * Esta pagina funciona apenas como casca final do painel, conectando o controller central ao shell visual e ao conteúdo por aba.
- */
+// Entrada oficial da area administrativa: casca fina entre controller, shell e conteudo por aba.
 const Admin: React.FC = () => {
-  const {
-    activeTab,
-    setActiveTab,
-    activeTabLabel,
-    activeTabDescription,
-    activeSectionLabel,
-    adminTabs,
-    topBarProps,
-    panelSectionProps,
-    panelSectionKey,
-    databaseSectionProps,
-    databaseSectionKey,
-    financeSectionProps,
-    financeSectionKey,
-    supportSectionProps,
-    supportSectionKey,
-    settingsSectionProps,
-    settingsSectionKey,
-  } = useAdminPageController();
+  const controller = useAdminPageController();
 
   return (
     <AdminShellLayout
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-      adminTabs={adminTabs}
-      pageTitle={activeTabLabel ?? 'Admin'}
-      pageDescription={activeTabDescription}
-      activeSectionLabel={activeSectionLabel}
-      topBarProps={topBarProps}
+      activeTab={controller.activeTab}
+      onTabChange={controller.setActiveTab}
+      adminTabs={controller.adminTabs}
+      pageTitle={controller.activeTabLabel ?? 'Admin'}
+      pageDescription={controller.activeTabDescription}
+      activeSectionLabel={controller.activeSectionLabel}
+      topBarProps={controller.topBarProps}
     >
-      <AdminPageContent
-        activeTab={activeTab}
-        panelSectionProps={panelSectionProps}
-        panelSectionKey={panelSectionKey}
-        databaseSectionProps={databaseSectionProps}
-        databaseSectionKey={databaseSectionKey}
-        financeSectionProps={financeSectionProps}
-        financeSectionKey={financeSectionKey}
-        supportSectionProps={supportSectionProps}
-        supportSectionKey={supportSectionKey}
-        settingsSectionProps={settingsSectionProps}
-        settingsSectionKey={settingsSectionKey}
-      />
+      <AdminPageContent {...controller} />
     </AdminShellLayout>
   );
 };

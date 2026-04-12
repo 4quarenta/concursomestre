@@ -468,6 +468,161 @@ export interface Promotion {
   featuresHighlight: string[];
 }
 
+export interface LimitedOfferCountdownSettings {
+  enabled: boolean;
+  endsAt: string;
+}
+
+export type LandingFeatureIconKey =
+  | 'ranking'
+  | 'materials'
+  | 'teacher-comments'
+  | 'filters'
+  | 'xray'
+  | 'community'
+  | 'simulations'
+  | 'performance';
+
+export interface LandingFeatureCard {
+  id: string;
+  title: string;
+  description: string;
+  iconKey: LandingFeatureIconKey;
+  enabled?: boolean;
+  order?: number;
+}
+
+export type LandingSocialIconKey =
+  | 'instagram'
+  | 'youtube'
+  | 'telegram'
+  | 'whatsapp'
+  | 'linkedin';
+
+export interface LandingSocialLink {
+  id: string;
+  label: string;
+  handle: string;
+  url: string;
+  iconKey: LandingSocialIconKey;
+  enabled: boolean;
+}
+
+export interface LandingPageContent {
+  featureCards: LandingFeatureCard[];
+  socialLinks: LandingSocialLink[];
+}
+
+export type MarketingLandingPageStatus = 'draft' | 'published';
+export type MarketingLandingPageType = 'plans';
+
+export interface MarketingLandingHero {
+  eyebrow: string;
+  title: string;
+  description: string;
+  primaryCtaLabel: string;
+  secondaryCtaLabel: string;
+  proof: string;
+}
+
+export interface MarketingLandingPlanCard {
+  id: string;
+  title: string;
+  planName: PlanName;
+  badge?: string;
+  description: string;
+  ctaLabel: string;
+  featured?: boolean;
+  summaryBenefits: string[];
+}
+
+export interface MarketingLandingContentBlockItem {
+  title: string;
+  description: string;
+}
+
+export interface MarketingLandingAuthoritySection {
+  eyebrow: string;
+  title: string;
+  description: string;
+  items: MarketingLandingContentBlockItem[];
+}
+
+export interface MarketingLandingValueMatrix {
+  eyebrow: string;
+  title: string;
+  whatYouDo: string[];
+  whatYouReceive: string[];
+  whatYouConquer: string[];
+}
+
+export interface MarketingLandingEliteSection {
+  eyebrow: string;
+  title: string;
+  description: string;
+  bullets: string[];
+  ctaLabel: string;
+}
+
+export interface MarketingLandingComparisonRow {
+  id: string;
+  label: string;
+  values: Partial<Record<PlanName, string>>;
+}
+
+export interface MarketingLandingObjectionItem {
+  title: string;
+  description: string;
+}
+
+export interface MarketingLandingGuaranteeSection {
+  title: string;
+  description: string;
+}
+
+export interface MarketingLandingFaqItem {
+  id: string;
+  question: string;
+  answer: string;
+}
+
+export interface MarketingLandingFinalCta {
+  title: string;
+  description: string;
+  primaryCtaLabel: string;
+  secondaryCtaLabel: string;
+}
+
+export interface MarketingLandingSeo {
+  title: string;
+  metaDescription: string;
+  canonicalUrl?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+}
+
+export interface MarketingLandingPage {
+  id: string;
+  title: string;
+  slug: string;
+  status: MarketingLandingPageStatus;
+  pageType: MarketingLandingPageType;
+  linkedPlanId?: number | null;
+  hero: MarketingLandingHero;
+  planCards: MarketingLandingPlanCard[];
+  authoritySection: MarketingLandingAuthoritySection;
+  valueMatrix: MarketingLandingValueMatrix;
+  eliteSection: MarketingLandingEliteSection;
+  comparisonRows: MarketingLandingComparisonRow[];
+  objections: MarketingLandingObjectionItem[];
+  guarantee: MarketingLandingGuaranteeSection;
+  faq: MarketingLandingFaqItem[];
+  finalCta: MarketingLandingFinalCta;
+  seo: MarketingLandingSeo;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PlanFeature {
   text: string;
   included: boolean;
@@ -538,6 +693,7 @@ export interface PlanUsageLimits {
 }
 
 export interface PlanConfig {
+  displayName?: string;
   color: string;
   popular?: boolean;
   enabled?: boolean;
@@ -567,11 +723,29 @@ export interface GlobalTaxonomies {
   modalities: string[];
 }
 
+export type StripePaymentMethodId = 'card' | 'pix' | 'boleto' | 'apple_pay' | 'google_pay' | string;
+
+export interface StripePaymentMethodSetting {
+  id: StripePaymentMethodId;
+  label: string;
+  stripeType: string;
+  enabled: boolean;
+  checkoutSupported: boolean;
+  recurringSupported: boolean;
+  removable?: boolean;
+  description?: string;
+}
+
+export interface StripePaymentMethodsSettings {
+  methods: StripePaymentMethodSetting[];
+}
+
 export interface SystemSettings {
   activeTheme: AppPromotionTheme;
   paymentProvider?: 'stripe';
   paymentCheckoutMode?: 'internal' | 'redirect';
   cardVaultProvider?: 'stripe';
+  stripePaymentMethods?: StripePaymentMethodsSettings;
   pricing: {
     Gratuito: PlanPricing;
     Essencial: PlanPricing;
@@ -587,6 +761,9 @@ export interface SystemSettings {
   planEntitlements?: PlanEntitlements;
   planUsageLimits?: PlanUsageLimits;
   activePromotion: Promotion;
+  limitedOfferCountdown: LimitedOfferCountdownSettings;
+  landingPageContent?: LandingPageContent;
+  landingPages?: MarketingLandingPage[];
   coupons: DiscountCode[];
   features: {
     practiceEnabled: boolean;
@@ -716,6 +893,9 @@ export interface UserSubscription {
   card_vault_provider?: 'local' | 'stripe';
   provider_subscription_id?: string | null;
   provider_customer_id?: string | null;
+  provider_current_period_start?: string | number | null;
+  provider_current_period_end?: string | number | null;
+  next_billing_at?: string | number | null;
   cancel_at_period_end?: boolean;
   current_period_start: string;
   current_period_end: string;

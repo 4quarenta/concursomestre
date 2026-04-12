@@ -19,11 +19,15 @@ import { LayoutContentRouteFallback } from './RouteSuspenseFallback';
 const AuthPage = React.lazy(() => import('../app/auth/page'));
 const ChangelogPage = React.lazy(() => import('../app/changelog/page'));
 const ConfirmEmailPage = React.lazy(() => import('../app/confirm-email/page'));
+const CheckoutAdhesionTermsPage = React.lazy(() => import('../app/checkout/terms-of-adhesion/page'));
 const DashboardPage = React.lazy(() => import('../app/dashboard/page'));
+const EliteLandingPage = React.lazy(() => import('../app/elite/page'));
 const FaqPage = React.lazy(() => import('../app/faq/page'));
 const LandingPage = React.lazy(() => import('../app/landing/page'));
+const LandingCampaignPage = React.lazy(() => import('../app/landing-campaign/page'));
 const MaterialPublicPage = React.lazy(() => import('../app/material/page'));
 const PlansPage = React.lazy(() => import('../app/plans/page'));
+const PlanosPage = React.lazy(() => import('../app/planos/page'));
 const PrivacyPage = React.lazy(() => import('../app/privacy/page'));
 const PromoPage = React.lazy(() => import('../app/promo/page'));
 const QuestionPublicPage = React.lazy(() => import('../app/question/page'));
@@ -57,6 +61,7 @@ export const PublicRoutes: React.FC<PublicRoutesProps> = ({ currentUser, login }
     <>
       <Route path="/reset-password" element={<PageTransition><ResetPasswordPage /></PageTransition>} />
       <Route path="/confirm-email" element={<PageTransition><ConfirmEmailPage /></PageTransition>} />
+      <Route path="/checkout/termos-de-adesao" element={<PageTransition><CheckoutAdhesionTermsPage /></PageTransition>} />
       <Route path="/terms" element={<PageTransition><TermsPage /></PageTransition>} />
       <Route path="/privacy" element={<PageTransition><PrivacyPage /></PageTransition>} />
       <Route
@@ -78,7 +83,10 @@ export const PublicRoutes: React.FC<PublicRoutesProps> = ({ currentUser, login }
       <Route path="/material/:id/:slug?" element={renderLayoutPage(<MaterialPublicPage />)} />
       <Route path="/" element={currentUser ? renderLayoutPage(<DashboardPage />) : <PageTransition><LandingPage /></PageTransition>} />
       <Route path="/promo/:slug" element={renderLayoutPage(<PromoPage />)} />
+      <Route path="/elite" element={<PageTransition><EliteLandingPage /></PageTransition>} />
       <Route path="/plans" element={renderLayoutPage(<PlansPage />)} />
+      <Route path="/planos" element={<PageTransition><PlanosPage /></PageTransition>} />
+      <Route path="/l/:slug" element={<PageTransition><LandingCampaignPage /></PageTransition>} />
     </>
   );
 };

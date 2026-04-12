@@ -25,7 +25,7 @@ import {
 const AdminDatabaseManager = (props: AdminDatabaseManagerControllerProps) => {
   const { navigationProps, sectionsProps, modalsProps } = useAdminDatabaseManagerController(props);
   return (
-    <div className="space-y-6 animate-slide-up relative">
+    <div className="relative space-y-6">
       <AdminDatabaseNavigation {...navigationProps} />
       <AdminDatabaseSections {...sectionsProps} />
       <AdminDatabaseModals {...modalsProps} />

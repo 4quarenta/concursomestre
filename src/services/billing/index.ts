@@ -13,3 +13,4 @@
  * Fachada oficial dos serviços de cobrança e cofre de cartoes.
  */
 export * from './cardsService';
+export * from './cardDisplay';

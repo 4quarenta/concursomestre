@@ -316,7 +316,7 @@ const updateSessionState = (
 
 /**
  * Inscreve um listener reativo para mudancas de sessão.
- * O retorno remove a inscriÃ§Ã£o, padrao usado por providers e hooks do app.
+ * O retorno remove a inscrição, padrao usado por providers e hooks do app.
  * @since 1.0.0
  */
 export const subscribeToAuthSession = (listener: SessionListener): (() => void) => {

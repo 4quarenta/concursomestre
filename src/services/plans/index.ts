@@ -14,3 +14,5 @@
  */
 export { planService } from './planService';
 export * from './planAccess';
+export * from './planAutoCoupon';
+export * from './planOffer';

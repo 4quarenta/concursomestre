@@ -27,6 +27,8 @@ import {
   Globe,
   Loader2,
   Lock,
+  MessageSquare,
+  Play,
   Plus,
   QrCode,
   RefreshCcw,
@@ -43,6 +45,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -102,6 +105,9 @@ const mergePlanDetailsWithDefaults = (planDetails: any) => {
     defaults[plan] = {
       ...defaults[plan],
       ...current,
+      displayName: typeof current.displayName === 'string' && current.displayName.trim() !== ''
+        ? current.displayName.trim()
+        : defaults[plan].displayName || plan,
       enabled: typeof current.enabled === 'boolean' ? current.enabled : defaults[plan].enabled !== false,
       features: Array.isArray(current.features) && current.features.length > 0
         ? current.features.map((feature: any) => ({ ...feature }))
@@ -113,15 +119,46 @@ const mergePlanDetailsWithDefaults = (planDetails: any) => {
 };
 
 const planNames = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
+const PAID_TRANSACTION_STATUSES = new Set(['completed', 'approved']);
+
+const isPaidTransactionStatus = (status: unknown) => PAID_TRANSACTION_STATUSES.has(String(status || '').toLowerCase());
+
+const readTransactionAmount = (transaction: any) => Number(transaction?.amount || 0);
+
+const readTransactionPlatformFee = (transaction: any) => {
+  const amount = readTransactionAmount(transaction);
+  const platformFee = Number(transaction?.platformFee ?? transaction?.platform_fee);
+  return Number.isFinite(platformFee) && platformFee > 0 ? platformFee : amount * 0.20;
+};
+
+const isMarketplaceTransaction = (transaction: any) => {
+  const type = String(transaction?.type || '').toLowerCase();
+  return type !== 'plan'
+    && type !== 'subscription'
+    && Boolean(transaction?.sellerId || transaction?.seller_id || transaction?.materialId || transaction?.material_id);
+};
+
+const isAdminTransactionHeld = (transaction: any) => {
+  const timestamp = Number(transaction?.timestamp || 0);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return true;
+
+  const transactionDate = new Date(timestamp);
+  const now = new Date();
+  const passedWarranty = (now.getTime() - timestamp) >= (7 * 24 * 60 * 60 * 1000);
+  const isPastNextMonth = now.getFullYear() > transactionDate.getFullYear()
+    || (now.getFullYear() === transactionDate.getFullYear() && now.getMonth() > transactionDate.getMonth());
+
+  return !(passedWarranty && isPastNextMonth);
+};
 
 const AdminFinance = ({
   systemSettings,
-  updateSystemSettings,
   allTransactions,
   allUsers,
   initialSection = 'subscriptions',
   onSectionChange,
 }: AdminFinanceProps) => {
+  const { currentUser } = useAuth();
   const { addToast } = useToast();
   const { saveSystemSettingsNow } = useData();
   const normalizeSection = (section: AdminFinanceProps['initialSection']) => {
@@ -139,11 +176,26 @@ const AdminFinance = ({
   const [refundActionKey, setRefundActionKey] = useState<string | null>(null);
   const [pendingRefundDecision, setPendingRefundDecision] = useState<{
     transactionId: string;
-    resolution: 'approved' | 'rejected';
+    resolution: 'approved' | 'retention_offer';
   } | null>(null);
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [automationHelper, setAutomationHelper] = useState<any | null>(null);
   const [automationHelperLoading, setAutomationHelperLoading] = useState(false);
+  const [stripeTestingMatrix, setStripeTestingMatrix] = useState<any | null>(null);
+  const [stripeTestingMatrixLoading, setStripeTestingMatrixLoading] = useState(false);
+  const [stripeTestingRuns, setStripeTestingRuns] = useState<any[]>([]);
+  const [stripeTestingRunsLoading, setStripeTestingRunsLoading] = useState(false);
+  const [stripeTestingRunSaving, setStripeTestingRunSaving] = useState(false);
+  const [stripeTestingRunScenario, setStripeTestingRunScenario] = useState<any | null>(null);
+  const [stripeTestingRunForm, setStripeTestingRunForm] = useState({
+    execution_result: 'passed' as 'passed' | 'failed' | 'blocked',
+    payment_intent_id: '',
+    subscription_id: '',
+    transaction_id: '',
+    evidence_url: '',
+    gateway_message: '',
+    notes: '',
+  });
   const [draftPricing, setDraftPricing] = useState(() => mergePricingWithDefaults(systemSettings.pricing));
   const [draftPlanDetails, setDraftPlanDetails] = useState(() => mergePlanDetailsWithDefaults(systemSettings.planDetails));
   const [draftCoupons, setDraftCoupons] = useState<any[]>(() => Array.isArray(systemSettings.coupons) ? systemSettings.coupons : []);
@@ -151,10 +203,16 @@ const AdminFinance = ({
   const [draftPlanUsageLimits, setDraftPlanUsageLimits] = useState(() => normalizePlanUsageLimits(systemSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
   const [draftActiveTheme, setDraftActiveTheme] = useState(systemSettings.activeTheme || 'default');
   const [draftActivePromotion, setDraftActivePromotion] = useState(systemSettings.activePromotion || undefined);
-  const refundRequests = useMemo(() => allTransactions?.filter((t: any) => t.status === 'refund_requested') || [], [allTransactions]);
+  const refundRequests = useMemo(
+    () => allTransactions?.filter((t: any) => String(t.status || '') === 'refund_requested') || [],
+    [allTransactions],
+  );
 
-  const totalInDispute = useMemo(() => refundRequests.reduce((acc: number, t: any) => acc + t.amount, 0), [refundRequests]);
-  const totalRefunded = useMemo(() => allTransactions?.filter((t: any) => t.status === 'refunded').reduce((acc: number, t: any) => acc + t.amount, 0) || 0, [allTransactions]);
+  const totalInDispute = useMemo(() => refundRequests.reduce((acc: number, t: any) => acc + readTransactionAmount(t), 0), [refundRequests]);
+  const totalRefunded = useMemo(
+    () => allTransactions?.filter((t: any) => String(t.status || '') === 'refunded').reduce((acc: number, t: any) => acc + readTransactionAmount(t), 0) || 0,
+    [allTransactions],
+  );
 
   // --- NOVOS CALCULOS POR VENDEDOR ---
   const [sellersMetrics, setSellersMetrics] = useState<any[]>([]);
@@ -164,6 +222,10 @@ const AdminFinance = ({
   const automationDownloadUrl = automationHelper?.download_url || '';
   const automationCronUrl = automationHelper?.cron_url || '';
   const automationCronCommand = automationHelper?.linux_command || '';
+  const stripeTestingCases = Array.isArray(stripeTestingMatrix?.cases) ? stripeTestingMatrix.cases : [];
+  const stripeTestingSummary = stripeTestingMatrix?.summary || { total: 0, supported: 0, partial: 0, not_supported: 0 };
+  const stripeTestingSources = Array.isArray(stripeTestingMatrix?.source) ? stripeTestingMatrix.source : [];
+  const isAdminViewer = String(currentUser?.role || '').toLowerCase() === 'admin';
   const financeSettings = useMemo<SystemSettings>(() => ({
     ...systemSettings,
     pricing: draftPricing,
@@ -210,23 +272,25 @@ const AdminFinance = ({
     setDraftPlanUsageLimits(normalizePlanUsageLimits(nextSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
     setDraftActiveTheme(nextSettings.activeTheme || 'default');
     setDraftActivePromotion(nextSettings.activePromotion || undefined);
-    updateSystemSettings(nextSettings);
   };
 
   useEffect(() => {
     if (!allTransactions || !allUsers) return;
 
     const metricsBySeller: Record<string, any> = {};
-    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
 
     // 1. Identificar todos os vendedores que têm transações
     allTransactions.forEach((t: any) => {
-      if (!metricsBySeller[t.sellerId]) {
-        const seller = allUsers.find((u: any) => u.id === t.sellerId);
+      if (!isPaidTransactionStatus(t.status) || !isMarketplaceTransaction(t)) return;
+
+      const sellerId = String(t.sellerId || t.seller_id);
+      if (!sellerId) return;
+
+      if (!metricsBySeller[sellerId]) {
+        const seller = allUsers.find((u: any) => String(u.id) === sellerId);
         const paymentDay = Number(seller?.billing?.paymentDay);
-        metricsBySeller[t.sellerId] = {
-          id: t.sellerId,
+        metricsBySeller[sellerId] = {
+          id: sellerId,
           name: seller?.name || 'Desconhecido',
           email: seller?.email || '-',
           paymentDay: null,
@@ -235,20 +299,18 @@ const AdminFinance = ({
           availablePayout: 0,
           transactions: []
         };
-        metricsBySeller[t.sellerId].paymentDay = Number.isFinite(paymentDay) && paymentDay > 0 ? paymentDay : null;
+        metricsBySeller[sellerId].paymentDay = Number.isFinite(paymentDay) && paymentDay > 0 ? paymentDay : null;
       }
 
-      if (t.status === 'completed') {
-        const sellerShare = t.amount * 0.80;
-        metricsBySeller[t.sellerId].totalSales += t.amount;
-        metricsBySeller[t.sellerId].transactions.push(t);
+      const amount = readTransactionAmount(t);
+      const sellerShare = Math.max(0, amount - readTransactionPlatformFee(t));
+      metricsBySeller[sellerId].totalSales += amount;
+      metricsBySeller[sellerId].transactions.push(t);
 
-        const isHeld = (now - t.timestamp) < SEVEN_DAYS_MS;
-        if (isHeld) {
-          metricsBySeller[t.sellerId].heldBalance += sellerShare;
-        } else {
-          metricsBySeller[t.sellerId].availablePayout += sellerShare;
-        }
+      if (isAdminTransactionHeld(t)) {
+        metricsBySeller[sellerId].heldBalance += sellerShare;
+      } else {
+        metricsBySeller[sellerId].availablePayout += sellerShare;
       }
     });
 
@@ -284,6 +346,63 @@ const AdminFinance = ({
     };
   }, [activeSection, automationHelper, automationHelperLoading, addToast]);
 
+  useEffect(() => {
+    if (activeSection !== 'automation' || stripeTestingMatrix || stripeTestingMatrixLoading) return;
+
+    let cancelled = false;
+    setStripeTestingMatrixLoading(true);
+
+    subscriptionsService.getStripeTestingMatrix()
+      .then((payload) => {
+        if (!cancelled) {
+          setStripeTestingMatrix(payload);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          addToast('Nao foi possivel carregar a matriz oficial de testes Stripe.', 'error');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStripeTestingMatrixLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, addToast, stripeTestingMatrix, stripeTestingMatrixLoading]);
+
+  useEffect(() => {
+    if (!isAdminViewer || activeSection !== 'automation' || stripeTestingRunsLoading) return;
+    if (stripeTestingRuns.length > 0) return;
+
+    let cancelled = false;
+    setStripeTestingRunsLoading(true);
+
+    subscriptionsService.getStripeTestingRuns(80)
+      .then((payload) => {
+        if (!cancelled) {
+          setStripeTestingRuns(Array.isArray(payload?.runs) ? payload.runs : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          addToast('Nao foi possivel carregar o historico de evidencias dos testes Stripe.', 'error');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStripeTestingRunsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, addToast, isAdminViewer, stripeTestingRuns.length, stripeTestingRunsLoading]);
+
   const sortedSellers = useMemo(() => {
     return [...sellersMetrics].sort((a, b) => {
       if (sortBy === 'available_desc') return b.availablePayout - a.availablePayout;
@@ -315,7 +434,7 @@ const AdminFinance = ({
       case 'scheduled':
         return 'Pré-aprovado';
       case 'refund_requested':
-        return 'Em disputa';
+        return 'Reembolso em analise';
       case 'refunded':
         return 'Reembolsado';
       case 'cancelled':
@@ -332,6 +451,12 @@ const AdminFinance = ({
 
     return allTransactions
       .filter((transaction: any) => {
+        const transactionStatus = String(transaction.status || '');
+
+        if (activeSection === 'refunds' && transactionStatus !== 'refund_requested') {
+          return false;
+        }
+
         if (financeFilters.search) {
           const searchLower = financeFilters.search.toLowerCase();
           const haystack = [
@@ -363,7 +488,7 @@ const AdminFinance = ({
           }
         }
 
-        if (financeFilters.status !== 'all' && transaction.status !== financeFilters.status) {
+        if (financeFilters.status !== 'all' && transactionStatus !== financeFilters.status) {
           return false;
         }
 
@@ -395,13 +520,15 @@ const AdminFinance = ({
         return true;
       })
       .sort((left: any, right: any) => Number(right.timestamp || 0) - Number(left.timestamp || 0));
-  }, [allTransactions, financeFilters]);
+  }, [activeSection, allTransactions, financeFilters]);
 
   const financeStats = useMemo(() => filteredTransactions.reduce((accumulator: any, transaction: any) => {
-    if (['completed', 'approved', 'refunded', 'refund_requested'].includes(transaction.status)) {
-      accumulator.totalRevenue += Number(transaction.amount || 0);
-      accumulator.totalFees += Number(transaction.platformFee || 0);
-      accumulator.netRevenue += Number(transaction.netAmount ?? (Number(transaction.amount || 0) - Number(transaction.platformFee || 0)));
+    if (isPaidTransactionStatus(transaction.status)) {
+      const amount = readTransactionAmount(transaction);
+      const fee = isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount;
+      accumulator.totalRevenue += amount;
+      accumulator.totalFees += fee;
+      accumulator.netRevenue += Number(transaction.netAmount ?? (amount - fee));
     }
 
     return accumulator;
@@ -467,9 +594,9 @@ const AdminFinance = ({
       provedor: transaction.paymentProvider || '',
       metodo: transaction.paymentMethodLabel || transaction.paymentMethod || '',
       referencia: transaction.providerTransactionId || transaction.referenceId || transaction.externalId || '',
-      valor: Number(transaction.amount || 0).toFixed(2),
-      taxa: Number(transaction.platformFee || 0).toFixed(2),
-      liquido: Number(transaction.netAmount ?? (Number(transaction.amount || 0) - Number(transaction.platformFee || 0))).toFixed(2),
+      valor: readTransactionAmount(transaction).toFixed(2),
+      taxa: (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : readTransactionAmount(transaction)).toFixed(2),
+      liquido: Number(transaction.netAmount ?? (readTransactionAmount(transaction) - (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : readTransactionAmount(transaction)))).toFixed(2),
       status: formatTransactionStatusLabel(transaction.status || ''),
       invoice: transaction.invoiceNumber || transaction.providerInvoiceId || '',
     }));
@@ -498,8 +625,8 @@ const AdminFinance = ({
 
     setIsSavingPricing(true);
     try {
-      await saveSystemSettingsNow(financeSettings);
-      applyPersistedFinanceSettings(financeSettings);
+      const persistedSettings = await saveSystemSettingsNow(financeSettings);
+      applyPersistedFinanceSettings(persistedSettings);
       addToast('Planos e regras de acesso salvos com sucesso.', 'success');
     } catch (error) {
       console.error('Error saving pricing settings:', error);
@@ -515,6 +642,15 @@ const AdminFinance = ({
     const planConfig = updatedPricing[plan];
     planConfig.description = description;
     setDraftPricing(updatedPricing);
+  };
+
+  const handlePlanDisplayNameChange = (plan: PlanName, displayName: string) => {
+    const updatedPlanDetails = clonePlanDetails(draftPlanDetails);
+    updatedPlanDetails[plan] = {
+      ...updatedPlanDetails[plan],
+      displayName,
+    };
+    setDraftPlanDetails(updatedPlanDetails);
   };
 
   const handleTogglePlanEnabled = (plan: PlanName) => {
@@ -706,7 +842,7 @@ const AdminFinance = ({
 
   // --- REEMBOLSOS ---
   const { resolveRefund } = useMarketplace();
-  const requestResolveRefund = (transactionId: string, resolution: 'approved' | 'rejected') => {
+  const requestResolveRefund = (transactionId: string, resolution: 'approved' | 'retention_offer') => {
     if (refundActionKey) return;
     setPendingRefundDecision({ transactionId, resolution });
   };
@@ -725,20 +861,69 @@ const AdminFinance = ({
     }
   };
 
+  const openStripeTestingRunModal = (testCase: any) => {
+    if (!isAdminViewer) return;
+    if (String(testCase?.platform_status || '').toLowerCase() !== 'supported') return;
+
+    setStripeTestingRunScenario(testCase);
+    setStripeTestingRunForm({
+      execution_result: 'passed',
+      payment_intent_id: '',
+      subscription_id: '',
+      transaction_id: '',
+      evidence_url: '',
+      gateway_message: '',
+      notes: '',
+    });
+  };
+
+  const closeStripeTestingRunModal = () => {
+    if (stripeTestingRunSaving) return;
+    setStripeTestingRunScenario(null);
+  };
+
+  const submitStripeTestingRun = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!stripeTestingRunScenario || !isAdminViewer) return;
+
+    setStripeTestingRunSaving(true);
+    try {
+      const payload = await subscriptionsService.createStripeTestingRun({
+        scenario_id: String(stripeTestingRunScenario.id),
+        execution_result: stripeTestingRunForm.execution_result,
+        payment_intent_id: stripeTestingRunForm.payment_intent_id,
+        subscription_id: stripeTestingRunForm.subscription_id,
+        transaction_id: stripeTestingRunForm.transaction_id,
+        evidence_url: stripeTestingRunForm.evidence_url,
+        gateway_message: stripeTestingRunForm.gateway_message,
+        notes: stripeTestingRunForm.notes,
+      });
+
+      addToast('Evidencia de teste registrada com sucesso.', 'success');
+      setStripeTestingRunScenario(null);
+      setStripeTestingRuns((prev) => [payload, ...prev].slice(0, 120));
+    } catch (error: any) {
+      const message = String(error?.response?.data?.message || error?.message || 'Nao foi possivel registrar a evidencia do teste.');
+      addToast(message, 'error');
+    } finally {
+      setStripeTestingRunSaving(false);
+    }
+  };
+
   const selectedSeller = viewingSellerDetails ? sellersMetrics.find(s => s.id === viewingSellerDetails) : null;
 
   return (
     <div className="space-y-6 animate-slide-up">
       <AdminConfirmDialog
         isOpen={pendingRefundDecision !== null}
-        title={pendingRefundDecision?.resolution === 'approved' ? 'Aprovar reembolso' : 'Rejeitar reembolso'}
+        title={pendingRefundDecision?.resolution === 'approved' ? 'Aprovar reembolso' : 'Enviar proposta para continuar'}
         description={
           pendingRefundDecision?.resolution === 'approved'
             ? 'A transacao selecionada sera marcada como reembolsada e o estado local sera recarregado pelo fluxo oficial.'
-            : 'A solicitacao sera rejeitada e a transacao voltara ao estado aprovado pelo fluxo oficial.'
+            : 'O usuario recebera um email com uma proposta de permanencia baseada no motivo informado. A solicitacao continuara em analise.'
         }
-        confirmLabel={pendingRefundDecision?.resolution === 'approved' ? 'Aprovar reembolso' : 'Rejeitar pedido'}
-        tone={pendingRefundDecision?.resolution === 'approved' ? 'primary' : 'danger'}
+        confirmLabel={pendingRefundDecision?.resolution === 'approved' ? 'Aprovar reembolso' : 'Enviar proposta'}
+        tone="primary"
         loading={refundActionKey !== null}
         onConfirm={() => void handleResolveRefund()}
         onCancel={() => {
@@ -746,6 +931,147 @@ const AdminFinance = ({
           setRefundActionKey(null);
         }}
       />
+
+      {stripeTestingRunScenario && isAdminViewer && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 px-4 py-8 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5 dark:border-slate-800">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Execucao guiada</p>
+                <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{String(stripeTestingRunScenario.scenario || '-')}</h3>
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Referencia Stripe: <span className="font-mono font-black text-indigo-600 dark:text-indigo-300">{String(stripeTestingRunScenario.stripe_reference || '-')}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeStripeTestingRunModal}
+                className="rounded-xl p-2 text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={(event) => void submitStripeTestingRun(event)} className="space-y-5 px-6 py-5">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Resultado esperado</p>
+                <p className="mt-1 text-xs font-medium text-slate-700 dark:text-slate-200">{String(stripeTestingRunScenario.expected_outcome || '-')}</p>
+              </div>
+
+              {Array.isArray(stripeTestingRunScenario.execution_steps) && stripeTestingRunScenario.execution_steps.length > 0 && (
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 dark:border-indigo-900/30 dark:bg-indigo-900/10">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700 dark:text-indigo-300">Passo a passo</p>
+                  <ul className="mt-2 list-decimal space-y-1.5 pl-4 text-xs font-medium text-indigo-700/90 dark:text-indigo-200">
+                    {stripeTestingRunScenario.execution_steps.map((step: string, index: number) => (
+                      <li key={`run-step-${index}`}>{step}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Resultado da execucao</label>
+                  <select
+                    value={stripeTestingRunForm.execution_result}
+                    onChange={(event) => setStripeTestingRunForm((prev) => ({ ...prev, execution_result: event.target.value as 'passed' | 'failed' | 'blocked' }))}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-black uppercase tracking-[0.1em] text-slate-700 outline-none transition-all focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    <option value="passed">Passou</option>
+                    <option value="failed">Falhou</option>
+                    <option value="blocked">Bloqueado</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">URL da evidencia (opcional)</label>
+                  <input
+                    type="text"
+                    value={stripeTestingRunForm.evidence_url}
+                    onChange={(event) => setStripeTestingRunForm((prev) => ({ ...prev, evidence_url: event.target.value }))}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    placeholder="https://..."
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">PaymentIntent</label>
+                  <input
+                    type="text"
+                    value={stripeTestingRunForm.payment_intent_id}
+                    onChange={(event) => setStripeTestingRunForm((prev) => ({ ...prev, payment_intent_id: event.target.value }))}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    placeholder="pi_..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Subscription</label>
+                  <input
+                    type="text"
+                    value={stripeTestingRunForm.subscription_id}
+                    onChange={(event) => setStripeTestingRunForm((prev) => ({ ...prev, subscription_id: event.target.value }))}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    placeholder="sub_..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Transaction local</label>
+                  <input
+                    type="text"
+                    value={stripeTestingRunForm.transaction_id}
+                    onChange={(event) => setStripeTestingRunForm((prev) => ({ ...prev, transaction_id: event.target.value }))}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-mono text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    placeholder="tx_..."
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Mensagem observada no gateway (opcional)</label>
+                <input
+                  type="text"
+                  value={stripeTestingRunForm.gateway_message}
+                  onChange={(event) => setStripeTestingRunForm((prev) => ({ ...prev, gateway_message: event.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  placeholder="Ex.: generic_decline, authentication_required..."
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Notas da execucao</label>
+                <textarea
+                  value={stripeTestingRunForm.notes}
+                  onChange={(event) => setStripeTestingRunForm((prev) => ({ ...prev, notes: event.target.value }))}
+                  rows={4}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none transition-all focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  placeholder="Resumo objetivo da execucao e resultado."
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={closeStripeTestingRunModal}
+                  disabled={stripeTestingRunSaving}
+                  className="h-11 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 transition-all hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={stripeTestingRunSaving}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-5 text-[10px] font-black uppercase tracking-[0.14em] text-white transition-all hover:bg-indigo-700 disabled:opacity-60"
+                >
+                  {stripeTestingRunSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Registrar evidencia
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -803,7 +1129,7 @@ const AdminFinance = ({
 
 
       {activeSection === 'subscriptions' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6">
           {/* LISTA DE REPASSES A VENDEDORES - Agora foco principal da aba "Vendedores" */}
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
             <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
@@ -906,20 +1232,21 @@ const AdminFinance = ({
                     <th className="p-6">Protocolo</th>
                     <th className="p-6">Material</th>
                     <th className="p-6 text-right">Valor Venda</th>
-                    <th className="p-6 text-right">Parte Vendedor (80%)</th>
+                    <th className="p-6 text-right">Parte Vendedor</th>
                     <th className="p-6 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800 text-slate-600 dark:text-slate-400">
                   {selectedSeller.transactions.map((t: any) => {
-                    const isHeld = (Date.now() - t.timestamp) < (7 * 24 * 60 * 60 * 1000);
+                    const isHeld = isAdminTransactionHeld(t);
+                    const amount = readTransactionAmount(t);
                     return (
                       <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                         <td className="p-6">{new Date(t.timestamp).toLocaleDateString()} <span className="text-[10px] text-slate-400 block">{new Date(t.timestamp).toLocaleTimeString()}</span></td>
                         <td className="p-6 font-mono text-[10px] text-slate-500">{t.id.substring(0, 12).toUpperCase()}...</td>
                         <td className="p-6 font-bold text-slate-800 dark:text-slate-200">{t.materialTitle}</td>
-                        <td className="p-6 text-right">R$ {t.amount.toFixed(2)}</td>
-                        <td className="p-6 text-right font-bold text-slate-900 dark:text-slate-100">R$ {(t.amount * 0.80).toFixed(2)}</td>
+                        <td className="p-6 text-right">R$ {amount.toFixed(2)}</td>
+                        <td className="p-6 text-right font-bold text-slate-900 dark:text-slate-100">R$ {Math.max(0, readTransactionAmount(t) - readTransactionPlatformFee(t)).toFixed(2)}</td>
                         <td className="p-6 text-center">
                           {t.status === 'refunded' ? (
                             <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase border border-slate-200 dark:border-slate-700">Reembolsado</span>
@@ -944,10 +1271,10 @@ const AdminFinance = ({
       )}
 
       {activeSection === 'refunds' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-red-50 dark:bg-red-900/10 p-6 rounded-3xl border border-red-100 dark:border-red-900/30">
-              <p className="text-[10px] font-black text-red-600 dark:text-red-400 uppercase tracking-widest mb-1">Em Disputa (Solicitados)</p>
+              <p className="text-[10px] font-black text-red-600 dark:text-red-400 uppercase tracking-widest mb-1">Em analise (solicitados)</p>
               <h3 className="text-2xl font-black text-red-700 dark:text-red-300">R$ {totalInDispute.toFixed(2)}</h3>
             </div>
             <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
@@ -992,18 +1319,18 @@ const AdminFinance = ({
                       <td className="p-6 text-center">
                         <div className="flex items-center justify-center gap-2">
                           <button
-                            onClick={() => handleResolveRefund(t.id, 'approved')}
+                            onClick={() => requestResolveRefund(t.id, 'approved')}
                             className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-lg transition-colors"
                             title="Aprovar Devolução"
                           >
                             <Check size={16} strokeWidth={3} />
                           </button>
                           <button
-                            onClick={() => handleResolveRefund(t.id, 'rejected')}
-                            className="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-colors"
-                            title="Rejeitar (Manter Venda)"
+                            onClick={() => requestResolveRefund(t.id, 'retention_offer')}
+                            className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-lg transition-colors"
+                            title="Enviar proposta"
                           >
-                            <X size={16} strokeWidth={3} />
+                            <MessageSquare size={16} strokeWidth={3} />
                           </button>
                         </div>
                       </td>
@@ -1017,7 +1344,7 @@ const AdminFinance = ({
       )}
 
       {activeSection === 'transactions' && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Volume filtrado</p>
@@ -1038,7 +1365,7 @@ const AdminFinance = ({
               <p className="mt-3 text-2xl font-black text-indigo-600 dark:text-indigo-400">
                 R$ {financeStats.netRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Inclui marketplace, assinaturas e reembolsos.</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Inclui apenas transacoes pagas e aprovadas.</p>
             </div>
           </div>
 
@@ -1147,8 +1474,8 @@ const AdminFinance = ({
                   ) : currentTransactions.map((transaction: any) => {
                     const referenceCode = transaction.providerTransactionId || transaction.referenceId || transaction.externalId || transaction.id;
                     const invoiceUrl = transaction.invoicePdfUrl || transaction.hostedInvoiceUrl || '';
-                    const amount = Number(transaction.amount || 0);
-                    const fee = Number(transaction.platformFee || 0);
+                    const amount = readTransactionAmount(transaction);
+                    const fee = isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount;
                     const net = Number(transaction.netAmount ?? (amount - fee));
                     const description = transaction.transactionName || transaction.materialTitle || transaction.planName || 'Plano de assinatura';
                     const statusLabel = formatTransactionStatusLabel(transaction.status || '');
@@ -1269,12 +1596,12 @@ const AdminFinance = ({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    requestResolveRefund(transaction.id, 'rejected');
+                                    requestResolveRefund(transaction.id, 'retention_offer');
                                   }}
                                   disabled={isRefundActionLocked}
-                                  className="text-[9px] font-black uppercase text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 underline disabled:opacity-50"
+                                  className="text-[9px] font-black uppercase text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-300 underline disabled:opacity-50"
                                 >
-                                  {refundActionKey === `${transaction.id}:rejected` ? 'Rejeitando...' : 'Rejeitar'}
+                                  {refundActionKey === `${transaction.id}:retention_offer` ? 'Enviando...' : 'Enviar proposta'}
                                 </button>
                               </div>
                             )}
@@ -1397,16 +1724,18 @@ const AdminFinance = ({
         const currentTransactions = filteredTransactions.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
         const financeStats = filteredTransactions.reduce((acc: any, t: any) => {
-          if (t.status === 'completed' || t.status === 'approved') {
-            acc.totalRevenue += t.amount;
-            acc.totalFees += t.amount * 0.20;
-            acc.netRevenue += t.amount * 0.80;
+          if (isPaidTransactionStatus(t.status)) {
+            const amount = readTransactionAmount(t);
+            const fee = isMarketplaceTransaction(t) ? readTransactionPlatformFee(t) : amount;
+            acc.totalRevenue += amount;
+            acc.totalFees += fee;
+            acc.netRevenue += Number(t.netAmount ?? (amount - fee));
           }
           return acc;
         }, { totalRevenue: 0, totalFees: 0, netRevenue: 0 });
 
         return (
-          <div className="space-y-6 animate-fade-in">
+        <div className="space-y-6">
             <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors duration-300">
               {/* Toolbar */}
               <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50/50 dark:bg-slate-800/50">
@@ -1478,9 +1807,10 @@ const AdminFinance = ({
                       <tr><td colSpan={12} className="p-12 text-center text-slate-400 dark:text-slate-600 italic">Nenhuma transação encontrada.</td></tr>
                     ) : (
                       currentTransactions.map((t: any) => {
-                        const isHeld = (Date.now() - t.timestamp) < (7 * 24 * 60 * 60 * 1000);
-                        const adminFee = t.amount * 0.20;
-                        const netAmount = t.amount - adminFee;
+                        const isHeld = isAdminTransactionHeld(t);
+                        const amount = readTransactionAmount(t);
+                        const adminFee = isMarketplaceTransaction(t) ? readTransactionPlatformFee(t) : amount;
+                        const netAmount = Number(t.netAmount ?? (amount - adminFee));
 
                         return (
                           <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
@@ -1519,7 +1849,7 @@ const AdminFinance = ({
                               <div className="font-bold">{t.sellerName}</div>
                               <div className="text-[10px] text-slate-400">{t.sellerEmail}</div>
                             </td>
-                            <td className="p-4 text-right font-black">R$ {t.amount.toFixed(2)}</td>
+                            <td className="p-4 text-right font-black">R$ {amount.toFixed(2)}</td>
                             <td className="p-4 text-right text-emerald-600 dark:text-emerald-400 font-bold text-[11px]">+ R$ {adminFee.toFixed(2)}</td>
                             <td className="p-4 text-right text-blue-600 dark:text-blue-400 font-bold">R$ {netAmount.toFixed(2)}</td>
                             <td className="p-4 text-center">
@@ -1545,12 +1875,12 @@ const AdminFinance = ({
                                    <button
                                      onClick={(e) => {
                                        e.stopPropagation();
-                                       requestResolveRefund(t.id, 'rejected');
+                                       requestResolveRefund(t.id, 'retention_offer');
                                      }}
                                      disabled={refundActionKey !== null}
-                                     className="text-[9px] font-black uppercase text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 underline disabled:opacity-50"
+                                     className="text-[9px] font-black uppercase text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-300 underline disabled:opacity-50"
                                    >
-                                     {refundActionKey === `${t.id}:rejected` ? 'Rejeitando...' : 'Rejeitar'}
+                                     {refundActionKey === `${t.id}:retention_offer` ? 'Enviando...' : 'Enviar proposta'}
                                    </button>
                                  </div>
                                ) : t.status === 'pending' ? (
@@ -1634,7 +1964,14 @@ const AdminFinance = ({
               <div key={plan} className="p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-slate-100 dark:border-slate-700/50 space-y-6">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
-                    <h4 className="text-lg font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-tight">{plan}</h4>
+                    <div>
+                      <h4 className="text-lg font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-tight">
+                        {draftPlanDetails[plan as PlanName]?.displayName || plan}
+                      </h4>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                        ID canonico: {plan}
+                      </p>
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleTogglePlanEnabled(plan as PlanName)}
@@ -1652,6 +1989,17 @@ const AdminFinance = ({
                 </div>
 
                 <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome exibido do plano</label>
+                    <input
+                      type="text"
+                      value={draftPlanDetails[plan as PlanName]?.displayName || ''}
+                      onChange={(e) => handlePlanDisplayNameChange(plan as PlanName, e.target.value)}
+                      placeholder="Nome comercial mostrado na vitrine"
+                      className="w-full h-11 px-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500 transition-all text-xs"
+                    />
+                  </div>
+
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Descrição Comercial</label>
                     <input
@@ -1948,7 +2296,7 @@ const AdminFinance = ({
       )}
 
       {activeSection === 'automation' && (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in transition-colors duration-300">
+        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors duration-300">
           <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
@@ -1998,11 +2346,232 @@ const AdminFinance = ({
               </div>
             )}
 
+            {stripeTestingMatrixLoading && (
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400">
+                <Loader2 size={14} className="animate-spin" /> Carregando matriz oficial Stripe...
+              </div>
+            )}
+
+            {stripeTestingMatrix && (
+              <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-5">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Stripe testing matrix</p>
+                    <h4 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">Cobertura de cenarios oficiais de teste</h4>
+                    <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Esta grade consolida os casos da documentacao Stripe e mostra o status real de cobertura no produto.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-3 text-right">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Total de cenarios</p>
+                    <p className="mt-1 text-2xl font-black text-slate-900 dark:text-slate-100">{stripeTestingSummary.total || stripeTestingCases.length}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 dark:border-emerald-500/20 dark:bg-emerald-500/10 px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">Supported</p>
+                    <p className="mt-1 text-xl font-black text-emerald-700 dark:text-emerald-200">{stripeTestingSummary.supported || 0}</p>
+                  </div>
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10 px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">Partial</p>
+                    <p className="mt-1 text-xl font-black text-amber-700 dark:text-amber-200">{stripeTestingSummary.partial || 0}</p>
+                  </div>
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 dark:border-rose-500/20 dark:bg-rose-500/10 px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-rose-700 dark:text-rose-300">Not supported</p>
+                    <p className="mt-1 text-xl font-black text-rose-700 dark:text-rose-200">{stripeTestingSummary.not_supported || 0}</p>
+                  </div>
+                </div>
+
+                {stripeTestingSources.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {stripeTestingSources.map((source: any, index: number) => (
+                      <a
+                        key={`stripe-source-${index}`}
+                        href={String(source.url || '#')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-between gap-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
+                      >
+                        <span>{String(source.title || 'Stripe docs')}</span>
+                        <ArrowRight size={12} />
+                      </a>
+                    ))}
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                  <div className="max-h-[420px] overflow-auto">
+                    <table className="w-full text-left min-w-[980px]">
+                      <thead className="bg-slate-100 dark:bg-slate-800 sticky top-0 z-10">
+                        <tr className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                          <th className="px-4 py-3">Categoria</th>
+                          <th className="px-4 py-3">Cenario</th>
+                          <th className="px-4 py-3">Referencia Stripe</th>
+                          <th className="px-4 py-3">Resultado esperado</th>
+                          <th className="px-4 py-3">Status plataforma</th>
+                          <th className="px-4 py-3">Fluxo</th>
+                          {isAdminViewer && <th className="px-4 py-3">Acao</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {stripeTestingCases.map((testCase: any) => {
+                          const status = String(testCase.platform_status || '').toLowerCase();
+                          const statusTone =
+                            status === 'supported'
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                              : status === 'partial'
+                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
+                                : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300';
+                          const statusIcon =
+                            status === 'supported'
+                              ? <CheckCircle2 size={12} />
+                              : status === 'partial'
+                                ? <AlertTriangle size={12} />
+                                : <XCircle size={12} />;
+
+                          return (
+                            <tr key={String(testCase.id)} className="align-top">
+                              <td className="px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-300">{String(testCase.category_id || '-')}</td>
+                              <td className="px-4 py-3">
+                                <p className="text-xs font-black text-slate-900 dark:text-slate-100">{String(testCase.scenario || '-')}</p>
+                                <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">{String(testCase.notes || '-')}</p>
+                              </td>
+                              <td className="px-4 py-3 text-xs font-mono text-indigo-600 dark:text-indigo-300">{String(testCase.stripe_reference || '-')}</td>
+                              <td className="px-4 py-3 text-xs font-medium text-slate-600 dark:text-slate-300">{String(testCase.expected_outcome || '-')}</td>
+                              <td className="px-4 py-3">
+                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${statusTone}`}>
+                                  {statusIcon}
+                                  {status || 'unknown'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">{String(testCase.platform_flow || '-')}</td>
+                              {isAdminViewer && (
+                                <td className="px-4 py-3">
+                                  {status === 'supported' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => openStripeTestingRunModal(testCase)}
+                                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 text-[9px] font-black uppercase tracking-[0.12em] text-indigo-700 transition-all hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
+                                    >
+                                      <Play size={11} />
+                                      Rodar teste
+                                    </button>
+                                  ) : (
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-300 dark:text-slate-600">-</span>
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isAdminViewer && (
+              <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Evidencias registradas</p>
+                    <h4 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">Historico de execucao guiada</h4>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    {stripeTestingRuns.length} registros
+                  </span>
+                </div>
+
+                {stripeTestingRunsLoading ? (
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400">
+                    <Loader2 size={14} className="animate-spin" />
+                    Carregando evidencias...
+                  </div>
+                ) : stripeTestingRuns.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-xs font-medium text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                    Nenhuma evidencia registrada ainda.
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                    <div className="max-h-[320px] overflow-auto">
+                      <table className="w-full text-left min-w-[920px]">
+                        <thead className="bg-slate-100 dark:bg-slate-800 sticky top-0 z-10">
+                          <tr className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                            <th className="px-4 py-3">Data</th>
+                            <th className="px-4 py-3">Cenario</th>
+                            <th className="px-4 py-3">Resultado</th>
+                            <th className="px-4 py-3">Evidencias</th>
+                            <th className="px-4 py-3">Admin</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {stripeTestingRuns.map((run: any) => {
+                            const runResult = String(run.execution_result || '').toLowerCase();
+                            const resultTone =
+                              runResult === 'passed'
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                : runResult === 'failed'
+                                  ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+                                  : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300';
+                            const evidence = run?.evidence || {};
+
+                            return (
+                              <tr key={String(run.run_id)} className="align-top">
+                                <td className="px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-300">
+                                  {run.created_at ? new Date(run.created_at).toLocaleString('pt-BR') : '-'}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <p className="text-xs font-black text-slate-900 dark:text-slate-100">{String(run.scenario_label || run.scenario_id || '-')}</p>
+                                  <p className="mt-1 font-mono text-[11px] font-bold text-indigo-600 dark:text-indigo-300">{String(run.stripe_reference || '-')}</p>
+                                  {String(run.notes || '').trim() !== '' && (
+                                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">{String(run.notes)}</p>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${resultTone}`}>
+                                    {runResult || 'unknown'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                                  <div className="space-y-1">
+                                    {evidence.payment_intent_id ? <p><span className="font-black">PI:</span> <span className="font-mono">{String(evidence.payment_intent_id)}</span></p> : null}
+                                    {evidence.subscription_id ? <p><span className="font-black">SUB:</span> <span className="font-mono">{String(evidence.subscription_id)}</span></p> : null}
+                                    {evidence.transaction_id ? <p><span className="font-black">TX:</span> <span className="font-mono">{String(evidence.transaction_id)}</span></p> : null}
+                                    {evidence.gateway_message ? <p><span className="font-black">Gateway:</span> {String(evidence.gateway_message)}</p> : null}
+                                    {evidence.evidence_url ? (
+                                      <a
+                                        href={String(evidence.evidence_url)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 font-black text-indigo-600 hover:underline dark:text-indigo-300"
+                                      >
+                                        Abrir evidencia <ArrowRight size={11} />
+                                      </a>
+                                    ) : null}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-xs font-bold text-slate-500 dark:text-slate-300">
+                                  <p>{String(run.executed_by_admin_name || run.executed_by_admin_email || run.executed_by_admin_id || '-')}</p>
+                                  <p className="mt-1 font-mono text-[10px] text-slate-400 dark:text-slate-500">{String(run.run_id || '-')}</p>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-700/50 space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-xl">
-                    <Database size={18} />
+                    <Cpu size={18} />
                   </div>
                   <h4 className="font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">Windows / XAMPP</h4>
                 </div>
@@ -2096,7 +2665,7 @@ const AdminFinance = ({
       )}
 
       {false && activeSection === 'automation-legacy' && (
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in transition-colors duration-300">
+        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors duration-300">
           <div className="p-8 border-b border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20">
             <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
               <Terminal size={20} className="text-indigo-600 dark:text-indigo-400" /> Automação de Cobrança (Subscription API)
@@ -2110,7 +2679,7 @@ const AdminFinance = ({
               <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-700/50 space-y-4">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="p-2 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-xl">
-                    <Database size={18} />
+                    <Cpu size={18} />
                   </div>
                   <h4 className="font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">Windows (XAMPP)</h4>
                 </div>

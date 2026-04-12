@@ -11,11 +11,20 @@
 - `PRODUTO_E_MODULOS.md`
 - `ADMIN_CONSOLIDADO.md`
 - `BILLING_E_VALIDACAO.md`
+- `ENCODING_E_TEXTO.md`
 - `reports/` para saidas automatizadas do billing
 
 ## Fonte principal
 
 - Este `README.md` e os 4 consolidados acima passam a ser a referencia oficial.
+  
+## Regra de integridade de texto
+
+- Toda alteracao textual deve respeitar UTF-8 e passar no check de mojibake.
+- Comandos oficiais:
+  - `npm run check:text-encoding`
+  - `npm run fix:text-encoding`
+- Regra detalhada: `docs/ENCODING_E_TEXTO.md`
 
 ## Arquivos absorvidos
 

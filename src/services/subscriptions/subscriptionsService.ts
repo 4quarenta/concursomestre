@@ -56,7 +56,58 @@ export const subscriptionsService = {
     const response = await apiClient.get<any>(ENDPOINTS.subscriptions.automationHelper);
     assertApiSuccess(
       response,
-      'NÃ£o foi possÃ­vel carregar as instrucoes de automacao.',
+      'Não foi possível carregar as instruções de automação.',
+    );
+
+    return mergeResponsePayload(response, {});
+  },
+
+  /**
+   * Busca a matriz oficial de cenarios de teste Stripe exibida no admin.
+   * @since 1.0.0
+   */
+  async getStripeTestingMatrix(): Promise<any> {
+    const response = await apiClient.get<any>(ENDPOINTS.subscriptions.stripeTestingMatrix);
+    assertApiSuccess(
+      response,
+      'Nao foi possivel carregar a matriz oficial de testes Stripe.',
+    );
+
+    return mergeResponsePayload(response, {});
+  },
+
+  /**
+   * Busca o historico de execucoes guiadas da matriz Stripe (admin).
+   * @since 1.0.0
+   */
+  async getStripeTestingRuns(limit = 80): Promise<any> {
+    const response = await apiClient.get<any>(`${ENDPOINTS.subscriptions.stripeTestingRuns}?limit=${Math.max(1, Math.min(300, limit))}`);
+    assertApiSuccess(
+      response,
+      'Nao foi possivel carregar o historico de execucoes da matriz Stripe.',
+    );
+
+    return mergeResponsePayload(response, {});
+  },
+
+  /**
+   * Registra uma execucao guiada da matriz Stripe (admin).
+   * @since 1.0.0
+   */
+  async createStripeTestingRun(payload: {
+    scenario_id: string;
+    execution_result: 'passed' | 'failed' | 'blocked';
+    payment_intent_id?: string;
+    subscription_id?: string;
+    transaction_id?: string;
+    evidence_url?: string;
+    gateway_message?: string;
+    notes?: string;
+  }): Promise<any> {
+    const response = await apiClient.post<any>(ENDPOINTS.subscriptions.stripeTestingRuns, payload);
+    assertApiSuccess(
+      response,
+      'Nao foi possivel registrar a execucao guiada da matriz Stripe.',
     );
 
     return mergeResponsePayload(response, {});
@@ -77,7 +128,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripeCheckout, payload);
       assertApiSuccess(
         response,
-        'NÃ£o foi possÃ­vel iniciar o checkout Stripe.',
+        'Não foi possível iniciar o checkout Stripe.',
       );
       return mergeResponsePayloadWithUrl(response, {});
     } catch (error) {
@@ -87,7 +138,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Cria uma assinatura Stripe pelo fluxo inline com cartÃ£o salvo ou novo.
+   * Cria uma assinatura Stripe pelo fluxo inline com cartão salvo ou novo.
    * @since 1.0.0
    */
   async createStripeSubscription(payload: {
@@ -104,7 +155,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripeSubscription, payload);
       assertApiSuccess(
         response,
-        'NÃ£o foi possÃ­vel criar a assinatura Stripe.',
+        'Não foi possível criar a assinatura Stripe.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -131,13 +182,45 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.finalizeStripeSubscription, payload);
       assertApiSuccess(
         response,
-        'NÃ£o foi possÃ­vel finalizar a assinatura Stripe.',
+        'Não foi possível finalizar a assinatura Stripe.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
       console.error('Error finalizing Stripe subscription:', error);
       throw error;
     }
+  },
+
+  /**
+   * Consulta a capability pix_payments da Stripe para exibição segura no checkout.
+   * A solicitação de ativação por API é um fluxo administrativo no backend.
+   * @since 1.0.0
+   */
+  async getStripePixCapability(): Promise<any> {
+    const response = await apiClient.get<any>(ENDPOINTS.subscriptions.stripePixCapability);
+    assertApiSuccess(
+      response,
+      'Não foi possível consultar a disponibilidade de PIX na Stripe.',
+    );
+
+    return mergeResponsePayload(response, {});
+  },
+
+  /**
+   * Solicita a capability pix_payments via API oficial de capabilities da Stripe.
+   * Deve ser usado apenas por contexto administrativo autorizado no backend.
+   * @since 1.0.0
+   */
+  async requestStripePixCapability(): Promise<any> {
+    const response = await apiClient.post<any>(ENDPOINTS.subscriptions.stripePixCapability, {
+      request: true,
+    });
+    assertApiSuccess(
+      response,
+      'Não foi possível solicitar a ativação do PIX na Stripe.',
+    );
+
+    return mergeResponsePayload(response, {});
   },
 
   /**
@@ -165,7 +248,7 @@ export const subscriptionsService = {
       });
       const payload = readApiData<any>(response, {});
       return {
-        ...assertApiSuccess(response, 'NÃ£o foi possÃ­vel validar o cupom.').raw,
+        ...assertApiSuccess(response, 'Não foi possível validar o cupom.').raw,
         coupon: payload?.coupon || response?.coupon || null,
       };
     } catch (error) {
@@ -175,7 +258,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Abre uma sessÃ£o do portal Stripe para gestÃ£o de billing do usuÃ¡rio.
+   * Abre uma sessão do portal Stripe para gestão de billing do usuário.
    * @since 1.0.0
    */
   async createStripePortalSession(): Promise<any> {
@@ -183,7 +266,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripePortal, {});
       assertApiSuccess(
         response,
-        'NÃ£o foi possÃ­vel abrir o portal Stripe.',
+        'Não foi possível abrir o portal Stripe.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -193,7 +276,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Atualiza a preferencia de renovaÃ§Ã£o automÃ¡tica da assinatura atual.
+   * Atualiza a preferência de renovação automática da assinatura atual.
    * @since 1.0.0
    */
   async updateRenewal(autoRenew: boolean): Promise<any> {
@@ -203,7 +286,7 @@ export const subscriptionsService = {
 
     assertApiSuccess(
       response,
-      'NÃ£o foi possÃ­vel atualizar a renovaÃ§Ã£o automÃ¡tica.',
+      'Não foi possível atualizar a renovação automática.',
     );
 
     return mergeResponsePayload(response, {});
@@ -222,7 +305,7 @@ export const subscriptionsService = {
       });
       const payload = readApiData<any>(response, {});
       return {
-        ...assertApiSuccess(response, 'NÃ£o foi possÃ­vel cancelar a assinatura.').raw,
+        ...assertApiSuccess(response, 'Não foi possível cancelar a assinatura.').raw,
         refund_processed: payload?.refund_processed ?? response?.refund_processed ?? false,
         refund_id: payload?.refund_id ?? response?.refund_id ?? null,
       };
@@ -233,7 +316,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Cancela uma solicitacao de reembolso/cancelamento ainda pendente.
+   * Cancela uma solicitação de reembolso/cancelamento ainda pendente.
    * @since 1.0.0
    */
   async cancelRefundRequest(): Promise<any> {
@@ -241,7 +324,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.cancelRefund, {});
       assertApiSuccess(
         response,
-        'NÃ£o foi possÃ­vel cancelar a solicitacao de reembolso.',
+        'Não foi possível cancelar a solicitação de reembolso.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {
@@ -251,7 +334,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Reverte uma solicitacao de cancelamento antes do fechamento final.
+   * Reverte uma solicitação de cancelamento antes do fechamento final.
    * @since 1.0.0
    */
   async undoCancellationRequest(): Promise<any> {
@@ -259,7 +342,7 @@ export const subscriptionsService = {
       const response = await apiClient.post<any>(ENDPOINTS.subscriptions.undoCancel, {});
       assertApiSuccess(
         response,
-        'NÃ£o foi possÃ­vel reverter a solicitacao de cancelamento.',
+        'Não foi possível reverter a solicitação de cancelamento.',
       );
       return mergeResponsePayload(response, {});
     } catch (error) {

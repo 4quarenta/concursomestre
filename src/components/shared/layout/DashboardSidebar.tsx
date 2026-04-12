@@ -11,7 +11,7 @@
 
 
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
     LayoutDashboard,
     Database,
@@ -30,6 +30,7 @@ import {
     LogOut
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
+import LogoutConfirmButton from './LogoutConfirmButton';
 
 interface SidebarItemProps {
     label: string;
@@ -68,8 +69,7 @@ interface DashboardSidebarProps {
 }
 
 export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ type, activeTab, onTabChange, tabs }) => {
-    const { currentUser, logout } = useAuth();
-    const location = useLocation();
+    const { currentUser } = useAuth();
 
     const groupedTabs = tabs.reduce<Array<{ group: string; items: DashboardSidebarProps['tabs'] }>>((acc, tab) => {
         const group = tab.group || 'Geral';
@@ -83,11 +83,6 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ type, active
         acc.push({ group, items: [tab] });
         return acc;
     }, []);
-
-    const handleLogout = () => {
-        logout();
-        window.location.assign('/auth');
-    };
 
     return (
         <aside className="fixed md:sticky top-0 left-0 w-64 h-screen flex-none bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col z-50 transition-all duration-300 overflow-hidden">
@@ -147,12 +142,17 @@ export const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ type, active
                         <Home size={14} className="group-hover:-translate-x-1 transition-transform" />
                         Início
                     </Link>
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center justify-center gap-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 hover:bg-red-50 dark:hover:hover:bg-red-900/20 rounded-xl transition-all"
-                    >
-                        <LogOut size={14} /> Sair
-                    </button>
+                    <LogoutConfirmButton>
+                        {({ isLoggingOut, openConfirm }) => (
+                            <button
+                                onClick={openConfirm}
+                                disabled={isLoggingOut}
+                                className="flex items-center justify-center gap-2 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 hover:bg-red-50 dark:hover:hover:bg-red-900/20 rounded-xl transition-all disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                                <LogOut size={14} /> {isLoggingOut ? 'Saindo...' : 'Sair'}
+                            </button>
+                        )}
+                    </LogoutConfirmButton>
                 </div>
             </div>
         </aside>

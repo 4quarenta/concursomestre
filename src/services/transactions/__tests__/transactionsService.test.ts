@@ -111,6 +111,21 @@ describe('transactionsService', () => {
     expect(response.message).toBe('Estorno realizado com sucesso.');
   });
 
+  it('routes retention offers through the dedicated admin refund endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      message: 'Proposta enviada ao usuario.',
+    });
+
+    const response = await transactionsService.resolveRefund('tx-2', 'retention_offer');
+
+    expect(mockPost).toHaveBeenCalledWith('transactions/reject_refund.php', {
+      transaction_id: 'tx-2',
+      reason: undefined,
+    });
+    expect(response.message).toBe('Proposta enviada ao usuario.');
+  });
+
   it('cancels refund requests through the official transactions facade', async () => {
     mockDelete.mockResolvedValueOnce({
       success: true,

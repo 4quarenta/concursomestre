@@ -35,10 +35,12 @@ describe('admin routing', () => {
       tab: 'finance',
       section: 'plans-coupons',
     });
+  });
 
+  it('maps the marketing tab to landing pages', () => {
     expect(resolveAdminRoute('marketing')).toEqual({
-      tab: 'finance',
-      section: 'plans-coupons',
+      tab: 'marketing',
+      section: 'landing-pages',
     });
   });
 });

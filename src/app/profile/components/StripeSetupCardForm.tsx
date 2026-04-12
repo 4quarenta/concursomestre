@@ -28,6 +28,7 @@ interface StripeSetupCardFormProps {
   billingEmail?: string;
   submitLabel?: string;
   onSaved: (paymentMethodId: string) => Promise<void> | void;
+  onSetupIntentConsumed?: () => Promise<void> | void;
 }
 
 const stripeElementOptions = {
@@ -58,6 +59,7 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
   billingEmail,
   submitLabel = 'Salvar cartão',
   onSaved,
+  onSetupIntentConsumed,
 }) => {
   const stripe = useStripe();
   const elements = useElements();

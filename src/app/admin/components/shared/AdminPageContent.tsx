@@ -12,6 +12,7 @@
 import React from 'react';
 import AdminDatabaseManager from '../database/AdminDatabaseManager';
 import AdminFinanceSection from '../finance/AdminFinance';
+import AdminMarketingSection from '../marketing/AdminMarketingSection';
 import AdminPanelSection from '../panel/AdminPanelSection';
 import AdminSettingsSection from '../settings/AdminSettings';
 import AdminSupportSection from '../support/AdminSupportSection';
@@ -25,51 +26,31 @@ interface AdminPageContentProps {
   databaseSectionKey: string;
   financeSectionProps: React.ComponentProps<typeof AdminFinanceSection>;
   financeSectionKey: string;
+  marketingSectionProps: React.ComponentProps<typeof AdminMarketingSection>;
+  marketingSectionKey: string;
   supportSectionProps: React.ComponentProps<typeof AdminSupportSection>;
   supportSectionKey: string;
   settingsSectionProps: React.ComponentProps<typeof AdminSettingsSection>;
   settingsSectionKey: string;
 }
 
-/**
- * Roteia o conteudo principal pelos cinco dominios oficiais do admin.
- *
- * @since 1.0.0
- */
-const AdminPageContent = ({
-  activeTab,
-  panelSectionProps,
-  panelSectionKey,
-  databaseSectionProps,
-  databaseSectionKey,
-  financeSectionProps,
-  financeSectionKey,
-  supportSectionProps,
-  supportSectionKey,
-  settingsSectionProps,
-  settingsSectionKey,
-}: AdminPageContentProps) => {
-  if (activeTab === 'panel') {
-    return <AdminPanelSection {...panelSectionProps} />;
+const AdminPageContent = (props: AdminPageContentProps) => {
+  switch (props.activeTab) {
+    case 'panel':
+      return <AdminPanelSection key={props.panelSectionKey} {...props.panelSectionProps} />;
+    case 'operation':
+      return <AdminDatabaseManager key={props.databaseSectionKey} {...props.databaseSectionProps} />;
+    case 'finance':
+      return <AdminFinanceSection key={props.financeSectionKey} {...props.financeSectionProps} />;
+    case 'marketing':
+      return <AdminMarketingSection key={props.marketingSectionKey} {...props.marketingSectionProps} />;
+    case 'support':
+      return <AdminSupportSection key={props.supportSectionKey} {...props.supportSectionProps} />;
+    case 'settings':
+      return <AdminSettingsSection key={props.settingsSectionKey} {...props.settingsSectionProps} />;
+    default:
+      return null;
   }
-
-  if (activeTab === 'operation') {
-    return <AdminDatabaseManager {...databaseSectionProps} />;
-  }
-
-  if (activeTab === 'finance') {
-    return <AdminFinanceSection {...financeSectionProps} />;
-  }
-
-  if (activeTab === 'support') {
-    return <AdminSupportSection {...supportSectionProps} />;
-  }
-
-  if (activeTab === 'settings') {
-    return <AdminSettingsSection {...settingsSectionProps} />;
-  }
-
-  return null;
 };
 
 export default AdminPageContent;

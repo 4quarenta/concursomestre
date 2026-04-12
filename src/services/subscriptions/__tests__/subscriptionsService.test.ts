@@ -27,6 +27,7 @@ vi.mock('@services/api', () => ({
       createStripeCheckout: 'subscriptions/create_stripe_checkout.php',
       createStripeSubscription: 'subscriptions/create_stripe_subscription.php',
       finalizeStripeSubscription: 'subscriptions/finalize_stripe_subscription.php',
+      stripePixCapability: 'subscriptions/stripe_pix_capability.php',
       validateCoupon: 'subscriptions/validate_coupon.php',
       createStripePortal: 'subscriptions/create_stripe_portal.php',
       updateRenewal: 'subscriptions/update_renewal.php',
@@ -152,6 +153,23 @@ describe('subscriptionsService', () => {
       save_card: true,
     });
     expect(response.success).toBe(true);
+  });
+
+  it('loads the Stripe PIX capability through the official subscriptions facade', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        available: false,
+        status: 'pending',
+        capability: 'pix_payments',
+      },
+    });
+
+    const response = await subscriptionsService.getStripePixCapability();
+
+    expect(mockGet).toHaveBeenCalledWith('subscriptions/stripe_pix_capability.php');
+    expect(response.capability).toBe('pix_payments');
+    expect(response.status).toBe('pending');
   });
 
   it('opens the stripe portal through the official endpoint', async () => {
