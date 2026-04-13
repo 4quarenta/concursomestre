@@ -348,7 +348,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-3">
-                <h2 className={PLATFORM_SECTION_TITLE_CLASS}>
+                <h2 className={`${PLATFORM_SECTION_TITLE_CLASS} text-slate-600 dark:text-slate-400`}>
                   Motivacao Diaria
                 </h2>
                 <p className="text-[11px] font-bold text-indigo-700 dark:text-indigo-200">{formattedToday}</p>
@@ -370,7 +370,7 @@ const Dashboard: React.FC = () => {
               <Flame size={18} />
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Sequencia de Estudos</h2>
+              <h2 className={`${PLATFORM_SECTION_TITLE_CLASS} text-slate-600 dark:text-slate-400`}>Sequencia de Estudos</h2>
               <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Zera quando um dia fica sem visita.</p>
             </div>
           </div>
@@ -396,7 +396,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-3">
-                <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Tempo de Estudos</h2>
+                <h2 className={`${PLATFORM_SECTION_TITLE_CLASS} text-slate-600 dark:text-slate-400`}>Tempo de Estudos</h2>
                 <span className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
                   {isStudyTimeLoading ? 'Sincronizando' : 'Ao vivo'}
                 </span>
@@ -407,7 +407,7 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-3 gap-2">
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div className="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-800/70">
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Leitura</p>
               <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.readingSeconds)}</p>
@@ -521,7 +521,7 @@ const Dashboard: React.FC = () => {
             hasData={accuracySummary.totalQuestions > 0}
           />
 
-          <div className="mt-6 grid grid-cols-3 gap-2 border-t border-slate-100 pt-5 dark:border-slate-800">
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-2 border-t border-slate-100 pt-5 dark:border-slate-800">
             <div className="rounded-xl bg-slate-50 px-3 py-2.5 text-center dark:bg-slate-800/70">
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Total</p>
               <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{accuracySummary.totalQuestions}</p>

@@ -35,26 +35,45 @@ const AdminShellLayout = ({
   activeSectionLabel,
   topBarProps,
   children,
-}: AdminShellLayoutProps) => (
-  <div className="flex h-[100dvh] max-h-screen w-full overflow-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950">
-    <div className="h-[100dvh] max-h-screen w-72 flex-none overflow-hidden md:fixed z-50">
+}: AdminShellLayoutProps) => {
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
+
+  return (
+    <div className="flex min-h-[100dvh] w-full overflow-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950">
       <AdminNavigationSidebar
         activeTab={activeTab}
         onTabChange={onTabChange}
         tabs={adminTabs}
+        isMobileOpen={isMobileSidebarOpen}
+        onRequestClose={() => setIsMobileSidebarOpen(false)}
       />
-    </div>
 
-    <div className="ml-0 flex min-w-0 flex-1 flex-col overflow-hidden transition-colors duration-300 md:ml-72">
-      <AdminTopBar {...topBarProps} />
+      <div className="hidden w-72 flex-none md:block" aria-hidden />
 
-      <div className={`no-scrollbar mx-auto flex-1 w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} overflow-y-auto px-4 py-8 md:px-8`}>
-        <AdminPageHeader title={pageTitle} description={pageDescription} activeSectionLabel={activeSectionLabel} />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden transition-colors duration-300">
+        <AdminTopBar
+          {...topBarProps}
+          showSidebarToggle
+          onToggleSidebar={() => setIsMobileSidebarOpen((previous) => !previous)}
+        />
 
-        <div className="min-h-[500px]">{children}</div>
+        <div className={`no-scrollbar mx-auto flex-1 w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} overflow-y-auto overflow-x-hidden px-3 py-5 sm:px-4 md:px-6 md:py-8 lg:px-8`}>
+          <AdminPageHeader title={pageTitle} description={pageDescription} activeSectionLabel={activeSectionLabel} />
+
+          <div className="min-h-[500px] pb-10">{children}</div>
+        </div>
       </div>
+
+      {isMobileSidebarOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-slate-950/50 md:hidden"
+          onClick={() => setIsMobileSidebarOpen(false)}
+          aria-label="Fechar menu admin"
+        />
+      ) : null}
     </div>
-  </div>
-);
+  );
+};
 
 export default AdminShellLayout;

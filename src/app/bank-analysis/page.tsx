@@ -150,14 +150,14 @@ const BankAnalysis: React.FC = () => {
 
    if (!hasXRayAccess) {
       return (
-         <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-8 animate-fade-in pb-20`}>
+         <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-8 animate-fade-in pb-20 px-3 sm:px-4 md:px-6`}>
             <header>
                <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
                   <Zap className="text-amber-500 dark:text-amber-400" size={24} /> Raio-X da Banca
                </h1>
                <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm font-medium transition-colors">Descubra os segredos da sua banca examinadora.</p>
             </header>
-            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden relative min-h-[350px] flex items-center justify-center p-8 transition-colors">
+            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden relative min-h-[320px] sm:min-h-[350px] flex items-center justify-center p-5 sm:p-8 transition-colors">
                <div className="relative z-20 text-center max-w-md space-y-5">
                   <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200/50 transition-colors"><Lock size={32} /></div>
                   <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight transition-colors">Recurso Exclusivo {xrayRequiredPlan}</h2>
@@ -191,7 +191,7 @@ const BankAnalysis: React.FC = () => {
    }
 
    return (
-      <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 animate-fade-in pb-20`}>
+      <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto space-y-6 animate-fade-in pb-20 px-3 sm:px-4 md:px-6`}>
          <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div>
                <div className="flex items-center gap-2 mb-1">
@@ -202,7 +202,7 @@ const BankAnalysis: React.FC = () => {
             </div>
          </header>
 
-         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4 transition-colors">
+         <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4 transition-colors">
             <div className="md:col-span-1 space-y-1.5">
                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 transition-colors"><Search size={12} /> Selecione a Banca</label>
                <select value={selectedAgency} onChange={e => { setSelectedAgency(e.target.value); setSelectedRole(''); setSelectedYear('All'); }} className="w-full h-11 px-3 text-sm font-bold text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/50 cursor-pointer transition-all">
@@ -228,7 +228,7 @@ const BankAnalysis: React.FC = () => {
 
          {selectedAgency ? (
             isAnalyzing ? (
-               <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-12 flex flex-col items-center justify-center text-center space-y-6 min-h-[400px] animate-fade-in shadow-xl transition-colors">
+               <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-6 sm:p-8 md:p-12 flex flex-col items-center justify-center text-center space-y-6 min-h-[320px] sm:min-h-[400px] animate-fade-in shadow-xl transition-colors">
                   <div className="relative">
                      <div className="w-24 h-24 bg-indigo-50 dark:bg-indigo-900/20 rounded-full flex items-center justify-center animate-pulse transition-colors">
                         <BrainCircuit size={48} className="text-indigo-600 dark:text-indigo-400" />
@@ -256,7 +256,7 @@ const BankAnalysis: React.FC = () => {
                      {/* Informações da Banca */}
                      {(bankDetails?.description || bankDetails?.website || bankScrapedInfo) && (
                         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-                           <div className="p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
+                           <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
                               <div className="flex items-center gap-3">
                                  <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl transition-colors">
                                     <Info size={20} />
@@ -273,7 +273,7 @@ const BankAnalysis: React.FC = () => {
                               )}
                            </div>
 
-                            <div className="p-6 space-y-8">
+                            <div className="p-4 sm:p-6 space-y-8">
                               {bankDetails?.description && (
                                  <div className="bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-100 dark:border-slate-800 transition-colors">
                                     <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium transition-colors">{bankDetails.description}</p>
@@ -289,7 +289,7 @@ const BankAnalysis: React.FC = () => {
                                        </h4>
                                        <span className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest">{stats.examList.length} Provas no Banco</span>
                                     </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                                        {stats.examList.map((exam: any) => (
                                           <div key={exam.id} className="flex items-center gap-3 p-3 bg-white dark:bg-slate-850 border border-slate-100 dark:border-slate-850 rounded-xl hover:border-indigo-200 dark:hover:border-indigo-800 transition-all group">
                                              <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-[10px] font-black group-hover:scale-110 transition-transform">
@@ -360,7 +360,7 @@ const BankAnalysis: React.FC = () => {
                         </div>
                      )}
 
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between h-full hover:border-indigo-200 dark:hover:border-indigo-600 transition-all">
                            <div>
                               <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-[10px] uppercase mb-2"><FileText size={14} /> Estilo da Prova</div>
@@ -382,18 +382,18 @@ const BankAnalysis: React.FC = () => {
                      </div>
 
                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm min-h-[300px] transition-colors">
+                        <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm min-h-[300px] transition-colors">
                            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase tracking-wide transition-colors"><PieIcon size={16} className="text-slate-400 dark:text-slate-500" /> Distribuição Geral</h3>
                            <div className="h-64"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={stats.subjectData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>{stats.subjectData.map((entry, index) => (<Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />))}</Pie><Tooltip contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: 'rgba(15, 23, 42, 0.9)', color: '#fff', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.3)', fontSize: '12px' }} /></PieChart></ResponsiveContainer></div>
                         </div>
-                        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm min-h-[300px] transition-colors">
+                        <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm min-h-[300px] transition-colors">
                            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase tracking-wide transition-colors"><BarChart3 size={16} className="text-slate-400 dark:text-slate-500" /> Nível de Dificuldade</h3>
                            <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={stats.difficultyData}><XAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 'bold', fill: '#94a3b8' }} axisLine={false} tickLine={false} /><YAxis hide /><Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: 'rgba(15, 23, 42, 0.9)', color: '#fff', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.3)', fontSize: '12px' }} /><Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={40} /></BarChart></ResponsiveContainer></div>
                         </div>
                      </div>
 
                      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
-                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex items-center justify-between transition-colors">
+                        <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-colors">
                            <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 uppercase tracking-wide transition-colors">
                               <Target size={16} className="text-red-500 dark:text-red-400" /> Raio-X Temático: O que mais cai?
                            </h3>
@@ -401,7 +401,7 @@ const BankAnalysis: React.FC = () => {
                         </div>
                         <div className="divide-y divide-slate-100 dark:divide-slate-800">
                            {stats.detailedBreakdown.map((item, index: number) => (
-                              <div key={item.subject} className="p-6 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                              <div key={item.subject} className="p-4 sm:p-6 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                                  <div className="flex items-center justify-between mb-5">
                                     <div className="flex items-center gap-3">
                                        <div className={`w-3 h-3 rounded-full shadow-sm`} style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
@@ -459,7 +459,7 @@ const BankAnalysis: React.FC = () => {
                                        <History size={14} /> Dados Atualizados
                                     </div>
                                     <div className="flex items-center gap-2 text-[10px] font-black opacity-60 uppercase tracking-widest">
-                                       <Zap size={14} /> Análise IA
+                          <Zap size={14} /> Análise detalhada
                                     </div>
                                  </div>
                               </div>

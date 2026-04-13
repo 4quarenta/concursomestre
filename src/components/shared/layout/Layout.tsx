@@ -11,7 +11,7 @@
 
 
 import React, { useState } from 'react';
-import { LayoutDashboard, BookOpen, User, Menu, X, BrainCircuit, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, DollarSign, Lock, HelpCircle, Rocket, Store, Crown, FileText, Layers } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, Menu, X, BrainCircuit, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
@@ -52,6 +52,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const canOpenAdminPanel = canAccessAdminPanel(user);
+  const simulationSearchParams = React.useMemo(
+    () => new URLSearchParams(location.search),
+    [location.search],
+  );
   const isStrictAdmin = Boolean(user?.isAdmin || user?.role === 'admin');
   const practiceEnabled = resolveSystemFeatureFlag(systemSettings, 'practiceEnabled');
   const annotatedLawsEnabled = resolveSystemFeatureFlag(systemSettings, 'annotatedLawsEnabled');
@@ -72,6 +76,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setShowVerificationModal(false);
     }
   }, [user]);
+
+  React.useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const closeVerificationModal = () => {
     sessionStorage.setItem('welcomeModalClosed', 'true');
@@ -277,6 +285,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   );
 
   const isDashboardPage = location.pathname.startsWith('/admin') || location.pathname === '/partner-dashboard';
+  const isSimulationFullscreenPage = location.pathname.startsWith('/simulation')
+    && simulationSearchParams.get('immersive') === '1';
+  const hasMobileTopHeader = !isDashboardPage && !isSimulationFullscreenPage;
 
   return (
     <div className={`min-h-screen ${theme === 'dark' ? 'dark text-slate-100' : 'text-slate-900'} bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-300`}>
@@ -318,10 +329,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       )}
 
-      <div className="flex flex-1 flex-col md:flex-row h-full overflow-hidden">
+      <div className="min-h-0 flex flex-1 flex-col overflow-hidden md:flex-row">
         {/* Mobile Header */}
-        {!isDashboardPage && (
-          <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 flex justify-between items-center sticky top-0 z-20">
+        {hasMobileTopHeader && (
+          <div className="fixed inset-x-0 top-0 z-20 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
+            <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xl">
               <BrainCircuit />
               <span>ConcursoMestre</span>
@@ -349,13 +361,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 {isMobileMenuOpen ? <X /> : <Menu />}
               </button>
             </div>
+            </div>
           </div>
         )}
 
         {/* Sidebar Navigation */}
-        {!isDashboardPage && (
+        {!isDashboardPage && !isSimulationFullscreenPage && (
           <aside className={`
-            fixed inset-y-0 left-0 z-30 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform transition-transform duration-200 ease-in-out flex flex-col
+            fixed inset-y-0 left-0 z-30 h-[100dvh] w-[84vw] max-w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform transition-transform duration-200 ease-in-out flex flex-col
             md:relative md:translate-x-0
             ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
           `}>
@@ -466,9 +479,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         )}
 
         {/* Main Content Area */}
-        <main className="flex-1 flex flex-col h-[calc(100vh-64px)] md:h-screen overflow-hidden">
+        <main className="min-h-0 flex flex-1 flex-col overflow-hidden">
           {/* Desktop Top Bar with Notifications */}
-          <div className="hidden md:flex justify-end items-center p-4 px-8 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur z-20">
+          <div className={`${isSimulationFullscreenPage ? 'hidden' : 'hidden md:flex'} z-20 items-center justify-end bg-slate-50/80 p-4 px-6 backdrop-blur transition-colors dark:bg-slate-950/80 lg:px-8`}>
             <div className="flex items-center gap-4">
               <button
                 onClick={toggleTheme}
@@ -513,12 +526,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
-            <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto pb-10`}>
-              <AdBanner type="top" className="mb-8" />
+          <div className={`no-scrollbar flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${isSimulationFullscreenPage ? 'p-3 sm:p-4 md:p-6' : 'p-3 pt-[84px] sm:p-4 sm:pt-[88px] md:p-6 md:pt-6 lg:p-8'} ${hasMobileTopHeader ? '' : 'pt-3 sm:pt-4 md:pt-6'}`}>
+            <div className={`${isSimulationFullscreenPage ? 'mx-auto w-full max-w-7xl pb-6' : `${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto pb-12`}`}>
+              {!isSimulationFullscreenPage && <AdBanner type="top" className="mb-8" />}
               {children}
-              <AdBanner type="bottom" className="mt-8" />
-              <Footer />
+              {!isSimulationFullscreenPage && <AdBanner type="bottom" className="mt-8" />}
+              {!isSimulationFullscreenPage && <Footer />}
             </div>
           </div>
         </main>

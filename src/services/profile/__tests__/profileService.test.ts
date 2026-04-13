@@ -25,6 +25,7 @@ vi.mock('@services/api', () => ({
     users: {
       referralStats: 'referrals/stats.php',
       uploadPhoto: 'users/upload_photo.php',
+      removePhoto: 'users/remove_photo.php',
       changePassword: 'users/change_password.php',
     },
   },
@@ -80,6 +81,18 @@ describe('profileService', () => {
 
     expect(mockPost).toHaveBeenCalledWith('users/upload_photo.php', expect.any(FormData));
     expect(result.message).toBe('Foto atualizada!');
+  });
+
+  it('removes the profile photo through the official facade', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      message: 'Foto removida!',
+    });
+
+    const result = await profileService.removeProfilePhoto();
+
+    expect(mockPost).toHaveBeenCalledWith('users/remove_photo.php', {});
+    expect(result.message).toBe('Foto removida!');
   });
 
   it('changes password through the official facade', async () => {

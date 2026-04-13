@@ -37,6 +37,7 @@ import {
     readApiErrorMessage,
     buildMaterialDownloadEndpoint,
     downloadAuthenticatedFile,
+    getAssetUrl,
 } from '@services/api';
 import { cardsService, formatMaskedCardLabelAscii } from '@services/billing';
 import { marketplaceService } from '@services/marketplace';
@@ -60,6 +61,17 @@ import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileN
 
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
 
+const parseFeatureFlag = (value: unknown): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+        if (['0', 'false', 'no', 'off', ''].includes(normalized)) return false;
+    }
+    return false;
+};
+
 const Profile: React.FC = () => {
     const { currentUser, logout, login, refreshUser, updateUser } = useAuth();
     const { questions, userNotes, userAnswers, systemSettings } = useData();
@@ -77,6 +89,8 @@ const Profile: React.FC = () => {
     const hasActiveSubscription = hasActivePlanAccess(currentUser);
     const effectivePlanDisplayName = getEffectivePlanDisplayName(currentUser);
     const isElitePlan = isPlanAtLeast(currentUser, 'Elite');
+    const referralEnabled = parseFeatureFlag(systemSettings?.features?.referralEnabled);
+    const canAccessReferralTab = referralEnabled;
 
     const [activeTab, setActiveTab] = useState<ProfileTab>('personal');
     const [selectedCycle, setSelectedCycle] = useState<BillingCycle>('monthly');
@@ -96,6 +110,8 @@ const Profile: React.FC = () => {
     const [isCopying, setIsCopying] = useState(false);
     const [isAddingCard, setIsAddingCard] = useState(false);
     const [isSavingCard, setIsSavingCard] = useState(false);
+    const [isRemovingProfilePhoto, setIsRemovingProfilePhoto] = useState(false);
+    const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
     const [cancelDetails, setCancelDetails] = useState('');
@@ -112,6 +128,12 @@ const Profile: React.FC = () => {
     const primarySavedCard = useMemo(() => {
         return userCards.find((card: any) => Number(card.is_default) === 1) || userCards[0] || null;
     }, [userCards]);
+
+    const profilePhotoUrl = useMemo(() => getAssetUrl(currentUser?.photoUrl || ''), [currentUser?.photoUrl]);
+
+    React.useEffect(() => {
+        setPhotoLoadFailed(false);
+    }, [profilePhotoUrl]);
 
     const formatSavedCardLabel = React.useCallback((card: any) => {
         if (!card) return '';
@@ -136,29 +158,31 @@ const Profile: React.FC = () => {
 
     const changeActiveTab = React.useCallback((nextTab: ProfileTab, options?: { replace?: boolean }) => {
         const resolvedTab = resolveProfileTab(nextTab);
-        const nextPath = buildProfilePath(resolvedTab);
+        const normalizedTab = resolvedTab === 'referral' && !canAccessReferralTab ? 'personal' : resolvedTab;
+        const nextPath = buildProfilePath(normalizedTab);
 
         if (location.pathname !== nextPath || location.search) {
             navigate(nextPath, { replace: options?.replace ?? false });
             return;
         }
 
-        setActiveTab(resolvedTab);
-    }, [location.pathname, location.search, navigate]);
+        setActiveTab(normalizedTab);
+    }, [canAccessReferralTab, location.pathname, location.search, navigate]);
 
     // Sincronizar aba com parâmetro da URL (?tab=)
     React.useEffect(() => {
         const legacyTab = new URLSearchParams(location.search).get('tab');
         const resolvedTab = resolveProfileTab(params.tab || legacyTab);
-        const canonicalPath = buildProfilePath(resolvedTab);
+        const normalizedTab = resolvedTab === 'referral' && !canAccessReferralTab ? 'personal' : resolvedTab;
+        const canonicalPath = buildProfilePath(normalizedTab);
 
         if (location.pathname !== canonicalPath || location.search) {
             navigate(canonicalPath, { replace: true });
             return;
         }
 
-        setActiveTab(resolvedTab);
-    }, [location.pathname, location.search, navigate, params.tab]);
+        setActiveTab(normalizedTab);
+    }, [canAccessReferralTab, location.pathname, location.search, navigate, params.tab]);
 
     // Handlers de API para Gerenciamento de Dados
     const primarySavedCardExpiryState = useMemo(() => getCardExpiryState(primarySavedCard), [getCardExpiryState, primarySavedCard]);
@@ -258,6 +282,23 @@ const Profile: React.FC = () => {
         window.setTimeout(() => {
             document.getElementById('saved-cards-personal-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 120);
+    };
+
+    const handleRemoveProfilePhoto = async () => {
+        if (isRemovingProfilePhoto) return;
+        if (!window.confirm('Tem certeza que deseja remover sua foto de perfil?')) return;
+
+        setIsRemovingProfilePhoto(true);
+        try {
+            const res = await profileService.removeProfilePhoto();
+            addToast(res.message || 'Foto de perfil removida!', 'success');
+            await refreshUser();
+            setPhotoLoadFailed(false);
+        } catch (err: any) {
+            addToast(readApiErrorMessage(err, 'Erro ao remover foto.'), 'error');
+        } finally {
+            setIsRemovingProfilePhoto(false);
+        }
     };
 
     const handleOpenStripePortal = async () => {
@@ -458,6 +499,72 @@ const Profile: React.FC = () => {
 
     const formatDateTimeBR = (value?: string | number | null) => formatDateTimeInSaoPaulo(value);
 
+    const resolveTransactionCycleLabel = (tx: any) => {
+        const explicitCycle = String(
+            tx.cycleLabel
+            || tx.planCycleLabel
+            || tx.billingCycleLabel
+            || tx.billingCycle
+            || tx.intervalLabel
+            || '',
+        ).trim();
+        const normalizedExplicitCycle = explicitCycle.toLowerCase();
+        if (
+            explicitCycle
+            && normalizedExplicitCycle !== 'não informado'
+            && normalizedExplicitCycle !== 'nao informado'
+            && normalizedExplicitCycle !== '-'
+        ) {
+            return explicitCycle;
+        }
+
+        const intervalUnit = String(tx.intervalUnit || tx.interval_unit || '').toLowerCase();
+        const intervalCount = Number(tx.intervalCount || tx.interval_count || 1);
+        const planLikeLabel = String(
+            tx.planName
+            || tx.transactionName
+            || tx.description
+            || '',
+        ).toLowerCase();
+
+        if (intervalUnit === 'year') return 'Anual';
+        if (intervalUnit === 'month' && intervalCount === 3) return 'Trimestral';
+        if (intervalUnit === 'month') return 'Mensal';
+        if (intervalUnit === 'week') return 'Semanal';
+        if (intervalUnit === 'day') return intervalCount > 1 ? `A cada ${intervalCount} dias` : 'Diário';
+        if (planLikeLabel.includes('anual')) return 'Anual';
+        if (planLikeLabel.includes('trimestral')) return 'Trimestral';
+        if (planLikeLabel.includes('mensal')) return 'Mensal';
+
+        return 'Não informado';
+    };
+
+    const resolveTransactionGatewayLabel = (tx: any) => {
+        const provider = String(
+            tx.paymentProvider
+            || tx.payment_provider
+            || tx.provider
+            || tx.gateway
+            || '',
+        ).trim();
+
+        if (!provider) return 'Não informado';
+        if (provider.toLowerCase() === 'stripe') return 'Stripe';
+        return provider;
+    };
+
+    const resolveTransactionMethodLabel = (tx: any) => {
+        const explicitMethod = String(tx.paymentMethodLabel || tx.paymentMethod || tx.payment_method || '').trim();
+        if (explicitMethod) return explicitMethod;
+
+        const fallbackMethod = String(tx.paymentMethodType || tx.method || '').toLowerCase();
+        if (fallbackMethod === 'card') return 'Cartão';
+        if (fallbackMethod === 'pix') return 'Pix';
+        if (fallbackMethod === 'boleto') return 'Boleto';
+
+        return 'Não informado';
+    };
+
     const stripPlanCycleSuffix = (value?: string | null) =>
         String(value || '')
             .replace(/\s*-\s*Mensal$/i, '')
@@ -556,7 +663,9 @@ const Profile: React.FC = () => {
         ? (termCommitmentRemaining
             ? 'Ao cancelar, o acesso continua ate o fim do termo contratado.'
             : `Ao cancelar, o acesso continua ate ${formatDateBR(subscriptionEndDate)}.`)
-        : 'Sem assinatura ativa para cancelamento.';
+        : (isCanceledStatus
+            ? 'Assinatura encerrada. Para voltar, ative um novo plano.'
+            : 'Sem assinatura ativa para cancelamento.');
     const billingStatusLabel = currentUser?.paymentIssue
         ? 'Atencao no pagamento'
         : hasActiveSubscription
@@ -640,7 +749,7 @@ const Profile: React.FC = () => {
                             </p>
                         </div>
 
-                        <div className="flex flex-wrap gap-2 md:max-w-[320px] md:justify-end">
+                        <div className="flex flex-wrap gap-2 md:max-w-[340px] md:justify-end">
                             <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-slate-500 dark:border-slate-700 dark:text-slate-300">
                                 <span className={`h-2 w-2 rounded-full ${hasActiveSubscription ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
                                 {hasActiveSubscription ? 'Assinatura ativa' : 'Assinatura'}
@@ -653,6 +762,14 @@ const Profile: React.FC = () => {
                                     {subscriptionCycleLabel}
                                 </span>
                             )}
+                            <button
+                                type="button"
+                                onClick={() => navigate('/plans')}
+                                className="inline-flex h-8 items-center justify-center gap-1.5 rounded-full bg-indigo-600 px-3 text-[9px] font-black uppercase tracking-[0.14em] text-white transition-all hover:bg-indigo-700"
+                            >
+                                {isElitePlan ? 'Gerenciar plano' : 'Upgrade'}
+                                <ChevronRight size={12} />
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -674,12 +791,12 @@ const Profile: React.FC = () => {
                         </div>
 
                         <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
-                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Fim do ciclo</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Ciclo / vigencia</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
                                 {hasActiveSubscription ? formatDateBR(subscriptionEndDate) : 'Indeterminado'}
                             </p>
                             <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                                {hasActiveSubscription ? 'Período atual da assinatura.' : 'Sem ciclo de cobrança em andamento.'}
+                                {hasActiveSubscription ? `${subscriptionRemainingDays} dias restantes no ciclo atual.` : 'Sem ciclo de cobranca em andamento.'}
                             </p>
                         </div>
 
@@ -733,9 +850,8 @@ const Profile: React.FC = () => {
                 </div>
             </section>
 
-            <div className="grid gap-4 md:grid-cols-2">
-                {!showFreeInactiveSubscriptionState && hasActiveSubscription && (
-                    <>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
+                <div className="space-y-4 xl:col-span-4">
                         <div className={`${PLATFORM_SURFACE_CARD_CLASS} px-4 py-4 md:px-5 md:py-4`}>
                             <div className="flex items-start justify-between gap-4">
                                 <div className="space-y-2.5">
@@ -744,21 +860,36 @@ const Profile: React.FC = () => {
                                     <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                         {renewalCardDescription}
                                     </p>
+                                    {resolvedAutoRenew && hasActiveSubscription && (
+                                        <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                            Proxima cobranca: {formatDateBR(nextChargeReferenceDate)}
+                                        </p>
+                                    )}
+                                    {hasActiveSubscription && !resolvedAutoRenew && (
+                                        <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                            Acesso ate: {formatDateBR(subscriptionEndDate)}
+                                        </p>
+                                    )}
                                 </div>
 
-                                <button
-                                    type="button"
-                                    onClick={handleRenewalToggle}
-                                    disabled={!hasActiveSubscription || isUpdatingRenewal}
-                                    role="switch"
-                                    aria-checked={resolvedAutoRenew}
-                                    aria-label={resolvedAutoRenew ? 'Desativar renovacao automatica' : 'Ativar renovacao automatica'}
-                                    className={`relative inline-flex h-7 w-12 items-center rounded-full border transition-all ${resolvedAutoRenew ? 'border-emerald-500 bg-emerald-500/90' : 'border-slate-200 bg-slate-200 dark:border-slate-700 dark:bg-slate-800'} ${(!hasActiveSubscription || isUpdatingRenewal) ? 'cursor-not-allowed opacity-60' : 'hover:scale-[1.02] active:scale-[0.98]'}`}
-                                >
-                                    <span className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white shadow transition-transform ${resolvedAutoRenew ? 'translate-x-6' : 'translate-x-1'}`}>
-                                        {isUpdatingRenewal ? <Loader2 size={11} className="animate-spin text-slate-400" /> : null}
+                                <div className="space-y-2">
+                                    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${renewalStateClassName}`}>
+                                        {renewalStateLabel}
                                     </span>
-                                </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleRenewalToggle}
+                                        disabled={!hasActiveSubscription || isUpdatingRenewal}
+                                        role="switch"
+                                        aria-checked={resolvedAutoRenew}
+                                        aria-label={resolvedAutoRenew ? 'Desativar renovacao automatica' : 'Ativar renovacao automatica'}
+                                        className={`relative inline-flex h-7 w-12 items-center rounded-full border transition-all ${resolvedAutoRenew ? 'border-emerald-500 bg-emerald-500/90' : 'border-slate-200 bg-slate-200 dark:border-slate-700 dark:bg-slate-800'} ${(!hasActiveSubscription || isUpdatingRenewal) ? 'cursor-not-allowed opacity-60' : 'hover:scale-[1.02] active:scale-[0.98]'}`}
+                                    >
+                                        <span className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white shadow transition-transform ${resolvedAutoRenew ? 'translate-x-6' : 'translate-x-1'}`}>
+                                            {isUpdatingRenewal ? <Loader2 size={11} className="animate-spin text-slate-400" /> : null}
+                                        </span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -767,12 +898,20 @@ const Profile: React.FC = () => {
                                 <div className="space-y-2.5">
                                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Cancelamento</p>
                                     <h3 className="text-base font-black leading-tight text-slate-900 dark:text-slate-100">
-                                        {isWithinRefundWindow ? 'Janela de reembolso aberta' : 'Gerenciar cancelamento'}
+                                        {isCanceledButStillActive
+                                            ? 'Assinatura cancelada e vigente'
+                                            : isWithinRefundWindow
+                                                ? 'Janela de reembolso aberta'
+                                                : hasActiveSubscription
+                                                    ? 'Gerenciar cancelamento'
+                                                    : isCanceledStatus
+                                                        ? 'Assinatura cancelada'
+                                                        : 'Sem assinatura ativa'}
                                     </h3>
                                     <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                         {isWithinRefundWindow
-                                            ? 'Voce ainda esta dentro dos 7 dias para cancelar a assinatura com reembolso.'
-                                            : 'Se decidir encerrar a assinatura, o acesso segue ate o fim do ciclo atual.'}
+                                            ? 'Voce ainda esta dentro dos 7 dias para cancelar com reembolso.'
+                                            : cancellationImpactMessage}
                                     </p>
                                 </div>
 
@@ -789,22 +928,37 @@ const Profile: React.FC = () => {
                                             Cancelar solicitacao
                                         </button>
                                     </div>
-                                ) : (
+                                ) : isCanceledButStillActive ? (
+                                    <button
+                                        type="button"
+                                        onClick={handleRenewalToggle}
+                                        disabled={isUpdatingRenewal}
+                                        className="h-10 rounded-xl bg-emerald-600 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-white transition-all hover:bg-emerald-700 disabled:opacity-60"
+                                    >
+                                        {isUpdatingRenewal ? 'Processando...' : 'Reativar assinatura'}
+                                    </button>
+                                ) : hasActiveSubscription ? (
                                     <button
                                         type="button"
                                         onClick={() => setShowCancelModal(true)}
-                                        disabled={!hasActiveSubscription}
                                         className="h-10 rounded-xl bg-rose-600 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-white transition-all hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         Cancelar assinatura
                                     </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate('/plans')}
+                                        className="h-10 rounded-xl border border-slate-200 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                    >
+                                        Reativar assinatura
+                                    </button>
                                 )}
                             </div>
                         </div>
-                    </>
-                )}
+                </div>
 
-                <div className={`${PLATFORM_SURFACE_CARD_CLASS} px-4 py-4 md:px-5 md:py-4`}>
+                <div className={`${PLATFORM_SURFACE_CARD_CLASS} px-4 py-4 md:px-5 md:py-4 xl:col-span-8`}>
                     <div className="flex items-start justify-between gap-4">
                         <div className="space-y-2.5">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Pagamento</p>
@@ -814,6 +968,9 @@ const Profile: React.FC = () => {
                             </p>
                             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
                                 Provedor atual: {billingProviderLabel}
+                            </p>
+                            <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                Status de cobranca: {billingStatusLabel}
                             </p>
                         </div>
 
@@ -866,35 +1023,82 @@ const Profile: React.FC = () => {
                             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-white transition-all hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900"
                         >
                             <CreditCard size={14} />
-                            Gerenciar cartoes
+                            Gerenciar pagamento
                         </button>
                     </div>
                 </div>
 
-                <div className="rounded-[1.7rem] border border-indigo-200 bg-gradient-to-r from-indigo-600 via-indigo-600 to-violet-600 px-4 py-4 text-white shadow-xl shadow-indigo-200 dark:border-indigo-500/20 dark:shadow-none md:px-5 md:py-5">
-                    <div className="space-y-3.5">
-                        <div className="space-y-2.5">
-                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-100">Upgrade</p>
-                            <h3 className="text-lg font-black leading-tight">
-                                {isElitePlan ? 'Seu plano ja esta no nivel maximo' : 'Veja outros planos'}
-                            </h3>
-                            <p className="text-xs font-medium leading-5 text-indigo-100/90">
-                                {isElitePlan
-                                    ? 'Compare beneficios e avalie se quer manter seu plano atual ou revisar outros ciclos.'
-                                    : 'Compare ciclos e beneficios antes de trocar o seu plano atual.'}
-                            </p>
+                {!isElitePlan && (
+                    <>
+                        <div className={`${PLATFORM_SURFACE_CARD_CLASS} px-4 py-4 md:px-5 md:py-4 xl:col-span-6`}>
+                            <div className="space-y-3">
+                                <div className="space-y-2">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Beneficios</p>
+                                    <h3 className="text-base font-black leading-tight text-slate-900 dark:text-slate-100">Plano atual x Plano premium</h3>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <div className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-800/40">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">Plano atual</p>
+                                        <ul className="mt-3 space-y-2">
+                                            {[
+                                                { label: 'Acesso premium ativo', enabled: hasActiveSubscription },
+                                                { label: 'Renovacao configuravel', enabled: hasActiveSubscription },
+                                                { label: 'Cartao salvo no cofre Stripe', enabled: userCards.length > 0 },
+                                                { label: 'Pacote completo Elite', enabled: isElitePlan },
+                                            ].map((item) => (
+                                                <li key={`current-${item.label}`} className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                                    {item.enabled
+                                                        ? <CheckCircle2 size={14} className="text-emerald-500" />
+                                                        : <XCircle size={14} className="text-slate-300 dark:text-slate-600" />}
+                                                    <span>{item.label}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+
+                                    <div className="rounded-[1.2rem] border border-indigo-200 bg-indigo-50 px-3 py-3 dark:border-indigo-500/30 dark:bg-indigo-500/10">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-300">Plano premium</p>
+                                        <ul className="mt-3 space-y-2">
+                                            {[
+                                                'Acesso premium ativo',
+                                                'Renovacao configuravel',
+                                                'Cartao salvo no cofre Stripe',
+                                                'Pacote completo Elite',
+                                            ].map((label) => (
+                                                <li key={`premium-${label}`} className="flex items-center gap-2 text-xs font-semibold text-indigo-700 dark:text-indigo-200">
+                                                    <CheckCircle2 size={14} className="text-indigo-500" />
+                                                    <span>{label}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={() => navigate('/plans')}
-                            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-[9px] font-black uppercase tracking-[0.14em] text-indigo-600 transition-all hover:bg-slate-100"
-                        >
-                            Ver planos
-                            <ChevronRight size={14} />
-                        </button>
-                    </div>
-                </div>
+                        <div className="rounded-[1.7rem] border border-indigo-200 bg-gradient-to-r from-indigo-600 via-indigo-600 to-violet-600 px-4 py-4 text-white shadow-xl shadow-indigo-200 dark:border-indigo-500/20 dark:shadow-none md:px-5 md:py-5 xl:col-span-6">
+                            <div className="space-y-3.5">
+                                <div className="space-y-2.5">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-100">Upgrade</p>
+                                    <h3 className="text-lg font-black leading-tight">Suba para o Plano Elite</h3>
+                                    <p className="text-xs font-medium leading-5 text-indigo-100/90">
+                                        Destrave o pacote premium completo para estudar com mais consistencia e direcao.
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/plans')}
+                                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-[9px] font-black uppercase tracking-[0.14em] text-indigo-600 transition-all hover:bg-slate-100"
+                                >
+                                    Quero upgrade
+                                    <ChevronRight size={14} />
+                                </button>
+                            </div>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );
@@ -931,6 +1135,9 @@ const Profile: React.FC = () => {
                                 <tr className="border-b border-slate-100 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
                                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">ID do gateway</th>
                                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Plano</th>
+                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Ciclo</th>
+                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Gateway</th>
+                                    <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Método</th>
                                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Data / hora</th>
                                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Status</th>
                                     <th className="px-5 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 text-right">Valor</th>
@@ -944,6 +1151,12 @@ const Profile: React.FC = () => {
                                     const referenceLabel = tx.providerTransactionLabel || 'ID Stripe';
                                     const invoiceUrl = tx.invoicePdfUrl || tx.hostedInvoiceUrl || null;
                                     const installmentLabel = tx.installmentCount > 1 ? `Parcela ${tx.installmentNumber || 1}/${tx.installmentCount}` : null;
+                                    const cycleLabel = resolveTransactionCycleLabel(tx);
+                                    const gatewayLabel = resolveTransactionGatewayLabel(tx);
+                                    const methodLabel = resolveTransactionMethodLabel(tx);
+                                    const resolvedPlanName = stripPlanCycleSuffix(
+                                        tx.planName || tx.transactionName || tx.description || 'Assinatura',
+                                    ) || 'Assinatura';
 
                                     return (
                                         <tr key={tx.id} className="align-top transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/30">
@@ -968,22 +1181,23 @@ const Profile: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-5 py-4">
-                                                <div className="space-y-2">
-                                                    <p className="text-sm font-black leading-[1.2] text-slate-900 dark:text-slate-100">
-                                                        {tx.planName || tx.transactionName || tx.description || 'Assinatura'}
-                                                    </p>
-                                                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-                                                        <span>Stripe</span>
-                                                        <span>?</span>
-                                                        <span>{tx.paymentMethodLabel || 'Cartão'}</span>
-                                                        {installmentLabel && (
-                                                            <>
-                                                                <span>?</span>
-                                                                <span>{installmentLabel}</span>
-                                                            </>
-                                                        )}
-                                                    </div>
+                                                <p className="text-sm font-black leading-[1.2] text-slate-900 dark:text-slate-100">
+                                                    {resolvedPlanName}
+                                                </p>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="space-y-1">
+                                                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{cycleLabel}</p>
+                                                    {installmentLabel && (
+                                                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{installmentLabel}</p>
+                                                    )}
                                                 </div>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{gatewayLabel}</p>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{methodLabel}</p>
                                             </td>
                                             <td className="px-5 py-4">
                                                 <div className="space-y-1">
@@ -1193,8 +1407,8 @@ const Profile: React.FC = () => {
         if (activeTab === 'billing' || activeTab === 'personal') fetchUserCards();
         if (activeTab === 'billing' || activeTab === 'billing-history') fetchUserTransactions();
         if (activeTab === 'materials') fetchUserMaterials();
-        if (activeTab === 'referral') fetchReferralStats();
-    }, [activeTab, isStripeBilling]);
+        if (activeTab === 'referral' && canAccessReferralTab) fetchReferralStats();
+    }, [activeTab, canAccessReferralTab, isStripeBilling]);
 
    const EXAM_AREAS = [
       { group: 'Carreiras', areas: ['Policial', 'Fiscal', 'Tribunais', 'Jurídico', 'Educação', 'Militar', 'Saúde', 'TI', 'Diplomata'] },
@@ -1321,9 +1535,9 @@ const Profile: React.FC = () => {
     );
 
     return (
-        <div className="max-w-6xl mx-auto pb-20 space-y-6">
+        <div className="mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6 pb-20 space-y-5 md:space-y-6">
             <header>
-                <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors">
                     <User className="text-indigo-600 dark:text-indigo-400" /> Meu Perfil
                 </h1>
                 <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-1 transition-colors">Gerencie seus dados, assinatura e acompanhe sua evolução.</p>
@@ -1331,7 +1545,7 @@ const Profile: React.FC = () => {
 
             {/* Banner: Conteúdo Incompleto */}
             {currentUser && (!currentUser.cpf || !currentUser.address?.zipCode) && (
-                <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg border border-indigo-400/30">
+                <div className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-4 sm:px-6 py-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg border border-indigo-400/30">
                     <div className="flex items-center gap-4">
                         <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm">
                             <User size={24} className="text-white" />
@@ -1347,11 +1561,11 @@ const Profile: React.FC = () => {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8">
                 {/* SIDEBAR DE NAVEGAÇÃO */}
-                <aside className="lg:col-span-3 space-y-6">
+                <aside className="lg:col-span-3 space-y-4 lg:space-y-6">
                     {/* Cartão do Usuário */}
-                    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center space-y-3 transition-colors">
+                    <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center space-y-3 transition-colors">
                         <div 
                             className="relative group cursor-pointer"
                             onClick={() => {
@@ -1364,7 +1578,8 @@ const Profile: React.FC = () => {
                                         try {
                                             const res = await profileService.uploadProfilePhoto(file);
                                             addToast(res.message || 'Foto de perfil atualizada!', 'success');
-                                            refreshUser();
+                                            await refreshUser();
+                                            setPhotoLoadFailed(false);
                                         } catch (err: any) {
                                             addToast(readApiErrorMessage(err, 'Erro ao enviar foto.'), 'error');
                                         }
@@ -1374,8 +1589,13 @@ const Profile: React.FC = () => {
                             }}
                         >
                             <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 transition-colors overflow-hidden relative">
-                                {currentUser.photoUrl ? (
-                                    <img src={currentUser.photoUrl} alt={currentUser.name} className="w-full h-full object-cover" />
+                                {currentUser.photoUrl && !photoLoadFailed ? (
+                                    <img
+                                        src={profilePhotoUrl}
+                                        alt={currentUser.name}
+                                        className="w-full h-full object-cover"
+                                        onError={() => setPhotoLoadFailed(true)}
+                                    />
                                 ) : (
                                     <span className="text-2xl font-black">{currentUser.name?.charAt(0) || 'U'}</span>
                                 )}
@@ -1383,6 +1603,21 @@ const Profile: React.FC = () => {
                                     <Camera size={20} className="text-white" />
                                 </div>
                             </div>
+                            {currentUser.photoUrl ? (
+                                <button
+                                    type="button"
+                                    onClick={async (event) => {
+                                        event.stopPropagation();
+                                        await handleRemoveProfilePhoto();
+                                    }}
+                                    disabled={isRemovingProfilePhoto}
+                                    className="absolute -top-1 -left-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-600 shadow-sm transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/40 dark:bg-slate-900 dark:text-rose-400 dark:hover:bg-rose-900/20"
+                                    title="Remover foto"
+                                    aria-label="Remover foto de perfil"
+                                >
+                                    {isRemovingProfilePhoto ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                </button>
+                            ) : null}
                             <div className="absolute -bottom-1 -right-1 bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-white dark:border-slate-900 shadow-sm">
                                 LVL {currentUser.level}
                             </div>
@@ -1399,7 +1634,7 @@ const Profile: React.FC = () => {
                     </div>
 
                     {/* Menu */}
-                    <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 transition-colors">
+                    <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 transition-colors">
                         <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Menu</div>
                         <SidebarItem id="notebook" label="Minhas Anotações" icon={StickyNote} />
                         <SidebarItem id="materials" label="Meus Materiais" icon={Package} />
@@ -1410,11 +1645,11 @@ const Profile: React.FC = () => {
                         <SidebarItem id="personal" label="Dados Pessoais" icon={User} />
                         <SidebarItem id="billing" label="Assinatura" icon={CreditCard} />
                         <SidebarItem id="billing-history" label="Transações" icon={BarChart3} />
-                        <SidebarItem id="referral" label="Indique e Ganhe" icon={Gift} />
+                        {canAccessReferralTab && <SidebarItem id="referral" label="Indique e Ganhe" icon={Gift} />}
                         <SidebarItem id="security" label="Privacidade" icon={ShieldCheck} />
                     </div>
 
-                    <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-3 text-red-500 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 font-bold text-xs rounded-xl transition-all border border-red-100 dark:border-red-900/30">
+                    <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-2.5 sm:py-3 text-red-500 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 font-bold text-xs rounded-xl transition-all border border-red-100 dark:border-red-900/30">
                         <LogOut size={14} /> Sair da Conta
                     </button>
                 </aside>
@@ -1734,15 +1969,37 @@ const Profile: React.FC = () => {
                                }
                            };
 
+                           const isValidCpf = (value: string) => {
+                               if (value.length !== 11) return false;
+                               if (/^(\d)\1{10}$/.test(value)) return false;
+
+                               const calcDigit = (base: string, factor: number) => {
+                                   const total = base.split('').reduce((sum, digit) => sum + (Number(digit) * factor--), 0);
+                                   const result = 11 - (total % 11);
+                                   return result > 9 ? 0 : result;
+                               };
+
+                               const d1 = calcDigit(value.slice(0, 9), 10);
+                               const d2 = calcDigit(value.slice(0, 10), 11);
+                               return d1 === Number(value[9]) && d2 === Number(value[10]);
+                           };
+
                            // Manual Validation for better feedback
                            if (!updates.name) { addToast('Nome é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!updates.cpf) { addToast('CPF é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!isValidCpf(updates.cpf)) { addToast('CPF inválido. Verifique e tente novamente.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!updates.address.zipCode) { addToast('CEP é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (updates.address.zipCode.length !== 8) { addToast('CEP inválido. Informe um CEP com 8 dígitos.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!updates.address.street) { addToast('Rua é obrigatória.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (updates.address.street.trim().length < 3) { addToast('Logradouro inválido. Informe um endereço válido.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!updates.address.number) { addToast('Número é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!/[0-9a-zA-Z]/.test(updates.address.number)) { addToast('Número inválido. Informe um número de endereço válido.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!updates.address.neighborhood) { addToast('Bairro é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (updates.address.neighborhood.trim().length < 2) { addToast('Bairro inválido. Informe um bairro válido.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!updates.address.city) { addToast('Cidade é obrigatória.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (updates.address.city.trim().length < 2) { addToast('Cidade inválida. Informe uma cidade válida.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!updates.address.state) { addToast('Estado (UF) é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!/^[A-Za-z]{2}$/.test(updates.address.state)) { addToast('UF inválida. Use a sigla com 2 letras (ex.: SP).', 'error'); setIsUpdatingProfile(false); return; }
 
                            try {
                                await updateUser(updates);
@@ -1759,7 +2016,7 @@ const Profile: React.FC = () => {
                         className="space-y-6 max-w-2xl"
                      >
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Nome Completo</label>
+                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Nome Completo <span className="text-rose-500">*</span></label>
                             <input name="name" type="text" defaultValue={currentUser.name} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                         </div>
                         <div className="space-y-1.5">
@@ -1768,7 +2025,7 @@ const Profile: React.FC = () => {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                            <div className="space-y-1.5">
-                               <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">CPF</label>
+                               <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">CPF <span className="text-rose-500">*</span></label>
                                <input name="cpf" type="text" defaultValue={currentUser.cpf || ''} placeholder="000.000.000-00" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans" />
                            </div>
                            <div className="space-y-1.5">
@@ -1787,15 +2044,15 @@ const Profile: React.FC = () => {
                             
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                <div className="col-span-1 space-y-1.5">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">CEP</label>
+                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">CEP <span className="text-rose-500">*</span></label>
                                    <input name="zipCode" type="text" defaultValue={currentUser.address?.zipCode || ''} placeholder="00000-000" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
                                <div className="col-span-2 space-y-1.5">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Logradouro / Rua</label>
+                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Logradouro / Rua <span className="text-rose-500">*</span></label>
                                    <input name="street" type="text" defaultValue={currentUser.address?.street || ''} placeholder="Ex: Av. Paulista" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
                                <div className="col-span-1 space-y-1.5">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Número</label>
+                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Número <span className="text-rose-500">*</span></label>
                                    <input name="number" type="text" defaultValue={currentUser.address?.number || ''} placeholder="123" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
                             </div>
@@ -1806,24 +2063,27 @@ const Profile: React.FC = () => {
                                      <input name="complement" type="text" defaultValue={currentUser.address?.complement || ''} placeholder="Ex: Apto 101, Bloco A" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                  </div>
                                  <div className="space-y-1.5">
-                                     <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Bairro</label>
+                                     <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Bairro <span className="text-rose-500">*</span></label>
                                      <input name="neighborhood" type="text" defaultValue={currentUser.address?.neighborhood || ''} placeholder="Ex: Centro" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                  </div>
                             </div>
 
-                            <div className="grid grid-cols-3 gap-4">
-                               <div className="col-span-2 space-y-1.5">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Cidade</label>
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                               <div className="space-y-1.5 sm:col-span-2">
+                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Cidade <span className="text-rose-500">*</span></label>
                                    <input name="city" type="text" defaultValue={currentUser.address?.city || ''} placeholder="Ex: São Paulo" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                                </div>
-                               <div className="col-span-1 space-y-1.5">
-                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Estado (UF)</label>
+                               <div className="space-y-1.5 sm:col-span-1">
+                                   <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase">Estado (UF) <span className="text-rose-500">*</span></label>
                                    <input name="state" type="text" defaultValue={currentUser.address?.state || ''} placeholder="SP" maxLength={2} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans uppercase" />
                                </div>
                             </div>
+                            <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                <span className="text-rose-500">*</span> Campos obrigatórios.
+                            </p>
                          </div>
 
-                         <div className="pt-4 flex items-center gap-4">
+                         <div className="pt-4 flex flex-wrap items-center gap-3 sm:gap-4">
                             <button 
                                 type="submit" 
                                 disabled={isUpdatingProfile}
@@ -2568,7 +2828,7 @@ const Profile: React.FC = () => {
                   </div>
                )}
 
-               {activeTab === 'referral' && (
+               {activeTab === 'referral' && canAccessReferralTab && (
                    <div className="space-y-6">
                        {/* Banner do Programa */}
                        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-200 dark:shadow-none">

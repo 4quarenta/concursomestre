@@ -181,10 +181,13 @@ const AdminFinance = ({
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [automationHelper, setAutomationHelper] = useState<any | null>(null);
   const [automationHelperLoading, setAutomationHelperLoading] = useState(false);
+  const [automationHelperRequested, setAutomationHelperRequested] = useState(false);
   const [stripeTestingMatrix, setStripeTestingMatrix] = useState<any | null>(null);
   const [stripeTestingMatrixLoading, setStripeTestingMatrixLoading] = useState(false);
+  const [stripeTestingMatrixRequested, setStripeTestingMatrixRequested] = useState(false);
   const [stripeTestingRuns, setStripeTestingRuns] = useState<any[]>([]);
   const [stripeTestingRunsLoading, setStripeTestingRunsLoading] = useState(false);
+  const [stripeTestingRunsRequested, setStripeTestingRunsRequested] = useState(false);
   const [stripeTestingRunSaving, setStripeTestingRunSaving] = useState(false);
   const [stripeTestingRunScenario, setStripeTestingRunScenario] = useState<any | null>(null);
   const [stripeTestingRunForm, setStripeTestingRunForm] = useState({
@@ -222,6 +225,9 @@ const AdminFinance = ({
   const automationDownloadUrl = automationHelper?.download_url || '';
   const automationCronUrl = automationHelper?.cron_url || '';
   const automationCronCommand = automationHelper?.linux_command || '';
+  const automationHelperUnavailable = automationHelperRequested && !automationHelperLoading && !automationHelper;
+  const automationCronUrlLabel = automationCronUrl || (automationHelperUnavailable ? 'URL oficial indisponivel no momento.' : 'Carregando URL oficial...');
+  const automationCronCommandLabel = automationCronCommand || (automationHelperUnavailable ? 'Comando oficial indisponivel no momento.' : 'Carregando comando oficial...');
   const stripeTestingCases = Array.isArray(stripeTestingMatrix?.cases) ? stripeTestingMatrix.cases : [];
   const stripeTestingSummary = stripeTestingMatrix?.summary || { total: 0, supported: 0, partial: 0, not_supported: 0 };
   const stripeTestingSources = Array.isArray(stripeTestingMatrix?.source) ? stripeTestingMatrix.source : [];
@@ -319,9 +325,10 @@ const AdminFinance = ({
   }, [allTransactions, allUsers]);
 
   useEffect(() => {
-    if (activeSection !== 'automation' || automationHelper || automationHelperLoading) return;
+    if (activeSection !== 'automation' || automationHelper || automationHelperLoading || automationHelperRequested) return;
 
     let cancelled = false;
+    setAutomationHelperRequested(true);
     setAutomationHelperLoading(true);
 
     subscriptionsService.getAutomationHelperInfo()
@@ -343,13 +350,16 @@ const AdminFinance = ({
 
     return () => {
       cancelled = true;
+      setAutomationHelperLoading(false);
+      setAutomationHelperRequested(false);
     };
-  }, [activeSection, automationHelper, automationHelperLoading, addToast]);
+  }, [activeSection, automationHelper, automationHelperLoading, automationHelperRequested, addToast]);
 
   useEffect(() => {
-    if (activeSection !== 'automation' || stripeTestingMatrix || stripeTestingMatrixLoading) return;
+    if (activeSection !== 'automation' || stripeTestingMatrix || stripeTestingMatrixLoading || stripeTestingMatrixRequested) return;
 
     let cancelled = false;
+    setStripeTestingMatrixRequested(true);
     setStripeTestingMatrixLoading(true);
 
     subscriptionsService.getStripeTestingMatrix()
@@ -371,14 +381,17 @@ const AdminFinance = ({
 
     return () => {
       cancelled = true;
+      setStripeTestingMatrixLoading(false);
+      setStripeTestingMatrixRequested(false);
     };
-  }, [activeSection, addToast, stripeTestingMatrix, stripeTestingMatrixLoading]);
+  }, [activeSection, addToast, stripeTestingMatrix, stripeTestingMatrixLoading, stripeTestingMatrixRequested]);
 
   useEffect(() => {
-    if (!isAdminViewer || activeSection !== 'automation' || stripeTestingRunsLoading) return;
+    if (!isAdminViewer || activeSection !== 'automation' || stripeTestingRunsLoading || stripeTestingRunsRequested) return;
     if (stripeTestingRuns.length > 0) return;
 
     let cancelled = false;
+    setStripeTestingRunsRequested(true);
     setStripeTestingRunsLoading(true);
 
     subscriptionsService.getStripeTestingRuns(80)
@@ -400,8 +413,10 @@ const AdminFinance = ({
 
     return () => {
       cancelled = true;
+      setStripeTestingRunsLoading(false);
+      setStripeTestingRunsRequested(false);
     };
-  }, [activeSection, addToast, isAdminViewer, stripeTestingRuns.length, stripeTestingRunsLoading]);
+  }, [activeSection, addToast, isAdminViewer, stripeTestingRuns.length, stripeTestingRunsLoading, stripeTestingRunsRequested]);
 
   const sortedSellers = useMemo(() => {
     return [...sellersMetrics].sort((a, b) => {
@@ -913,7 +928,7 @@ const AdminFinance = ({
   const selectedSeller = viewingSellerDetails ? sellersMetrics.find(s => s.id === viewingSellerDetails) : null;
 
   return (
-    <div className="space-y-6 animate-slide-up">
+    <div className="space-y-5 animate-slide-up md:space-y-6">
       <AdminConfirmDialog
         isOpen={pendingRefundDecision !== null}
         title={pendingRefundDecision?.resolution === 'approved' ? 'Aprovar reembolso' : 'Enviar proposta para continuar'}
@@ -935,7 +950,7 @@ const AdminFinance = ({
       {stripeTestingRunScenario && isAdminViewer && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 px-4 py-8 backdrop-blur-sm">
           <div className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5 dark:border-slate-800">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-4 py-4 dark:border-slate-800 sm:px-6 sm:py-5">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Execucao guiada</p>
                 <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{String(stripeTestingRunScenario.scenario || '-')}</h3>
@@ -952,7 +967,7 @@ const AdminFinance = ({
               </button>
             </div>
 
-            <form onSubmit={(event) => void submitStripeTestingRun(event)} className="space-y-5 px-6 py-5">
+            <form onSubmit={(event) => void submitStripeTestingRun(event)} className="space-y-5 px-4 py-4 sm:px-6 sm:py-5">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Resultado esperado</p>
                 <p className="mt-1 text-xs font-medium text-slate-700 dark:text-slate-200">{String(stripeTestingRunScenario.expected_outcome || '-')}</p>
@@ -1078,7 +1093,7 @@ const AdminFinance = ({
           {financeOverviewCards.map((card) => (
             <div
               key={card.label}
-              className={"rounded-[2rem] border p-5 shadow-sm transition-colors " + (card.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : card.tone === 'rose' ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10' : card.tone === 'amber' ? 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10' : card.tone === 'indigo' ? 'border-indigo-200 bg-indigo-50 dark:border-indigo-900/30 dark:bg-indigo-900/10' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900')}
+              className={"rounded-[2rem] border p-4 shadow-sm transition-colors sm:p-5 " + (card.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : card.tone === 'rose' ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10' : card.tone === 'amber' ? 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10' : card.tone === 'indigo' ? 'border-indigo-200 bg-indigo-50 dark:border-indigo-900/30 dark:bg-indigo-900/10' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900')}
             >
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{card.label}</p>
               <p className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">{card.value}</p>
@@ -1086,7 +1101,7 @@ const AdminFinance = ({
             </div>
           ))}
         </div>
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Dominio financeiro</p>
           <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Assinaturas, transacoes, reembolsos, planos e automacao</p>
           <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
@@ -1132,7 +1147,7 @@ const AdminFinance = ({
         <div className="space-y-6">
           {/* LISTA DE REPASSES A VENDEDORES - Agora foco principal da aba "Vendedores" */}
           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+            <div className="flex flex-col items-start justify-between gap-3 border-b border-slate-100 p-4 dark:border-slate-800 sm:flex-row sm:items-center sm:p-6 md:p-8">
               <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2"><Users size={20} className="text-indigo-500" /> Repasses a Vendedores</h3>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ordenar por:</span>
@@ -1149,11 +1164,11 @@ const AdminFinance = ({
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[900px] text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
                   <tr>
-                    <th className="p-6 pl-8">Vendedor</th>
-                    <th className="p-6 text-right">Saldo Preso</th>
+                    <th className="p-4 pl-4 sm:p-6 sm:pl-8">Vendedor</th>
+                    <th className="p-4 text-right sm:p-6">Saldo Preso</th>
                     <th className="p-6 text-right">Disponível</th>
                     <th className="p-6 text-center">Dia Pagamento</th>
                     <th className="p-6 text-center">Ações</th>
@@ -1161,26 +1176,26 @@ const AdminFinance = ({
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                   {sortedSellers.length === 0 ? (
-                    <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Nenhum vendedor com saldo encontrado.</td></tr>
+                    <tr><td colSpan={5} className="p-6 text-center text-slate-400 italic sm:p-8">Nenhum vendedor com saldo encontrado.</td></tr>
                   ) : (
                     sortedSellers.map((seller: any) => (
                       <tr key={seller.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
-                        <td className="p-6 pl-8">
+                        <td className="p-4 pl-4 sm:p-6 sm:pl-8">
                           <div className="font-bold text-slate-900 dark:text-slate-100">{seller.name}</div>
                           <div className="text-[10px] text-slate-400">{seller.email}</div>
                         </td>
-                        <td className="p-6 text-right font-medium text-amber-600 dark:text-amber-500">
+                        <td className="p-4 text-right font-medium text-amber-600 dark:text-amber-500 sm:p-6">
                           R$ {seller.heldBalance.toFixed(2)}
                         </td>
-                        <td className="p-6 text-right font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                        <td className="p-4 text-right font-black text-emerald-600 dark:text-emerald-400 text-sm sm:p-6">
                           R$ {seller.availablePayout.toFixed(2)}
                         </td>
-                        <td className="p-6 text-center">
+                        <td className="p-4 text-center sm:p-6">
                           <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-[10px] font-bold text-slate-600 dark:text-slate-400">
                             <Calendar size={12} /> {seller.paymentDay ? `Dia ${seller.paymentDay}` : 'Nao definido'}
                           </div>
                         </td>
-                        <td className="p-6 text-center">
+                        <td className="p-4 text-center sm:p-6">
                           <button
                             onClick={() => setViewingSellerDetails(seller.id)}
                             className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:border-indigo-200 transition-all shadow-sm"
@@ -1202,7 +1217,7 @@ const AdminFinance = ({
       {viewingSellerDetails && selectedSeller && createPortal(
         <div className="fixed inset-0 bg-white dark:bg-slate-950 z-[9999] flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300 overflow-hidden">
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-8 rounded-t-[2.4rem] border-b border-slate-100 dark:border-slate-800 flex justify-between items-start">
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-t-[2.4rem] border-b border-slate-100 dark:border-slate-800 flex justify-between items-start sm:p-6 md:p-8">
               <div>
                 <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded mb-2 block w-fit">Extrato do Vendedor</span>
                 <h3 className="text-2xl font-black text-slate-900 dark:text-slate-100">{selectedSeller.name}</h3>
@@ -1210,7 +1225,7 @@ const AdminFinance = ({
               </div>
               <button onClick={() => setViewingSellerDetails(null)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors text-slate-400"><X size={24} /></button>
             </div>
-            <div className="p-8 grid grid-cols-3 gap-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="grid grid-cols-1 gap-4 border-b border-slate-100 p-4 dark:border-slate-800 sm:grid-cols-2 sm:p-6 lg:grid-cols-3 md:p-8">
               <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
                 <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase mb-1">Disponível para Saque</p>
                 <p className="text-xl font-black text-emerald-700 dark:text-emerald-300">R$ {selectedSeller.availablePayout.toFixed(2)}</p>
@@ -1225,7 +1240,7 @@ const AdminFinance = ({
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-0">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[980px] text-left text-xs">
                 <thead className="bg-white dark:bg-slate-900 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800 sticky top-0">
                   <tr>
                     <th className="p-6">Data</th>
@@ -1262,7 +1277,7 @@ const AdminFinance = ({
                 </tbody>
               </table>
             </div>
-            <div className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end">
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end sm:p-6">
               <button onClick={() => setViewingSellerDetails(null)} className="px-8 py-3 bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl text-xs font-black uppercase hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors">Fechar</button>
             </div>
           </div>
@@ -2277,12 +2292,23 @@ const AdminFinance = ({
             </div>
           </div>
 
-          <div className="mt-8 border-t border-slate-100 pt-8 dark:border-slate-800">
+          <div className="mt-8 rounded-[2rem] border border-slate-200 dark:border-slate-800 overflow-hidden">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+              <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Tag size={18} className="text-indigo-600 dark:text-indigo-400" />
+                Configuracao de Cupons
+              </h4>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                Secao exclusiva para cupons, promocao ativa, countdown e temas comerciais.
+              </p>
+            </div>
+            <div className="p-6">
               <AdminMarketing
-                systemSettings={financeSettings}
-                updateSystemSettings={applyPersistedFinanceSettings}
-                saveSystemSettingsNow={saveSystemSettingsNow}
+                  systemSettings={financeSettings}
+                  updateSystemSettings={applyPersistedFinanceSettings}
+                  saveSystemSettingsNow={saveSystemSettingsNow}
               />
+            </div>
           </div>
         </div>
       )}
@@ -2335,7 +2361,7 @@ const AdminFinance = ({
               </div>
               <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-5 space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">URL monitorada</p>
-                <p className="break-all text-sm font-black text-indigo-600 dark:text-indigo-400">{automationCronUrl || 'Carregando URL oficial...'}</p>
+                <p className="break-all text-sm font-black text-indigo-600 dark:text-indigo-400">{automationCronUrlLabel}</p>
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use a URL oficial retornada pelo backend para testes manuais e agendamento no servidor.</p>
               </div>
             </div>
@@ -2608,7 +2634,7 @@ const AdminFinance = ({
                   Adicione este comando no gerenciador de cron jobs do servidor:
                 </p>
                 <div className="rounded-xl border border-emerald-900/30 bg-slate-900 p-3 font-mono text-[10px] text-emerald-400 break-all">
-                  {automationCronCommand}
+                  {automationCronCommandLabel}
                 </div>
                 <button
                   onClick={() => {

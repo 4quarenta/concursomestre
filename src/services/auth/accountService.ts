@@ -31,7 +31,18 @@ export const accountService = {
    * @since 1.0.0
    */
   async updateUserProfile(payload: UserProfileUpdatePayload): Promise<UpdateUserProfileResult> {
-    const response = await apiClient.post<any>(ENDPOINTS.users.update, payload) as any;
+    const sanitizedPayload = Object.fromEntries(
+      Object.entries(payload).filter(([, value]) => value !== undefined),
+    ) as UserProfileUpdatePayload;
+
+    if (Object.keys(sanitizedPayload).length === 0) {
+      return {
+        success: true,
+        message: 'Nenhuma alteracao pendente.',
+      };
+    }
+
+    const response = await apiClient.post<any>(ENDPOINTS.users.update, sanitizedPayload) as any;
     const envelope = assertApiSuccess(response, 'Erro ao atualizar perfil. Tente novamente.');
 
     return {

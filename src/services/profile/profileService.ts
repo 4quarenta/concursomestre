@@ -43,6 +43,18 @@ export const profileService = {
   },
 
   /**
+   * Remove a foto de perfil atual do usuario autenticado.
+   */
+  async removeProfilePhoto(): Promise<{ message: string }> {
+    const response = await apiClient.post<any>(ENDPOINTS.users.removePhoto, {}) as any;
+    const envelope = assertApiSuccess(response, 'Não foi possível remover a foto do perfil.');
+
+    return {
+      message: envelope.message || 'Foto de perfil removida com sucesso!',
+    };
+  },
+
+  /**
    * Altera a senha do usuário autenticado.
    */
   async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {

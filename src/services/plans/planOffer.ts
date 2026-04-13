@@ -106,7 +106,7 @@ const getCycleLabel = (cycleCount: number) => {
     return 'cada 3 meses';
   }
 
-  return 'mês';
+  return 'mes';
 };
 
 export const resolvePlanOffer = ({
@@ -126,15 +126,24 @@ export const resolvePlanOffer = ({
     configuredCycleAmount > 0 ? configuredCycleAmount : fallbackCycleAmount,
   );
   const originalAmounts = resolveCanonicalTermAmounts(originalCycleAmount, cycleCount);
-  const rawDiscountedCycleAmount = Math.max(0, Number(plan.price || 0) - Math.max(0, Number(discountAmount || 0)));
+
+  // Usa a mesma base do valor original para evitar "1% OFF" fantasma por mismatch de origem.
+  const safeDiscountAmount = Math.min(
+    originalCycleAmount,
+    Math.max(0, Number(discountAmount || 0)),
+  );
+  const rawDiscountedCycleAmount = Math.max(0, originalCycleAmount - safeDiscountAmount);
   const discountedAmounts = resolveCanonicalTermAmounts(rawDiscountedCycleAmount, cycleCount);
   const originalMonthlyAmount = originalAmounts.monthlyAmount;
   const discountedCycleAmount = discountedAmounts.cycleAmount;
   const discountedMonthlyAmount = discountedAmounts.monthlyAmount;
-  const hasDiscount = plan.price > 0 && originalCycleAmount > 0 && discountedCycleAmount < originalCycleAmount;
-  const effectiveDiscountPercent = hasDiscount
-    ? Math.max(1, Math.round(((originalCycleAmount - discountedCycleAmount) / originalCycleAmount) * 100))
+  const effectiveDiscountPercent = originalCycleAmount > 0
+    ? Math.max(0, Math.round(((originalCycleAmount - discountedCycleAmount) / originalCycleAmount) * 100))
     : 0;
+  const hasDiscount = safeDiscountAmount > 0
+    && originalCycleAmount > 0
+    && discountedCycleAmount < originalCycleAmount
+    && effectiveDiscountPercent > 0;
 
   return {
     hasDiscount,

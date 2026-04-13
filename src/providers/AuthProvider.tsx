@@ -38,6 +38,23 @@ const initialState: AuthState = {
   isLoading: true
 };
 
+/**
+ * Campos permitidos no endpoint de atualizacao de perfil.
+ * Campos de progresso (xp/level) devem ser apenas locais nesse fluxo.
+ * @since v1.0.0
+ */
+const EDITABLE_PROFILE_FIELDS: Array<keyof UserProfile> = [
+  'name',
+  'email',
+  'cpf',
+  'address',
+  'bankAccount',
+  'targetExam',
+  'preferences',
+  'photoUrl',
+  'role',
+];
+
 type AuthAction =
   | { type: 'LOGIN'; payload: UserProfile }
   | { type: 'LOGOUT' }
@@ -220,17 +237,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    */
   const updateUser = React.useCallback((payload: Partial<UserProfile>): Promise<void> => {
     return new Promise((resolve, reject) => {
-      dispatch({ type: 'UPDATE_USER', payload });
+      const sanitizedPayload = Object.fromEntries(
+        Object.entries(payload).filter(([, value]) => value !== undefined),
+      ) as Partial<UserProfile>;
+
+      dispatch({ type: 'UPDATE_USER', payload: sanitizedPayload });
 
       if (!state.currentUser) {
         resolve();
         return;
       }
 
-      const nextUser = { ...state.currentUser, ...payload };
+      const nextUser = { ...state.currentUser, ...sanitizedPayload };
       updateCurrentUserSnapshot(nextUser);
 
-      accountService.updateUserProfile(payload)
+      const editablePayload = Object.fromEntries(
+        Object.entries(sanitizedPayload).filter(([key]) =>
+          EDITABLE_PROFILE_FIELDS.includes(key as keyof UserProfile),
+        ),
+      ) as Partial<UserProfile>;
+
+      if (Object.keys(editablePayload).length === 0) {
+        resolve();
+        return;
+      }
+
+      accountService.updateUserProfile(editablePayload)
         .then((result) => {
           addToast(result.message || 'Perfil atualizado com sucesso!', 'success');
           resolve();

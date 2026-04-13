@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import { Home, LogOut, Shield } from 'lucide-react';
+import { Home, LogOut, Shield, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@providers/AuthProvider';
 import LogoutConfirmButton from '../../../../components/shared/layout/LogoutConfirmButton';
@@ -19,6 +19,8 @@ interface AdminNavigationSidebarProps {
   activeTab: string;
   onTabChange: (tab: any) => void;
   tabs: { key: string; label: string; icon: any; badge?: number; description: string }[];
+  isMobileOpen?: boolean;
+  onRequestClose?: () => void;
 }
 
 /**
@@ -31,22 +33,37 @@ const AdminNavigationSidebar = ({
   activeTab,
   onTabChange,
   tabs,
+  isMobileOpen = false,
+  onRequestClose,
 }: AdminNavigationSidebarProps) => {
   const { currentUser } = useAuth();
 
   return (
-    <aside className="fixed left-0 top-0 z-50 flex h-screen w-72 flex-none flex-col overflow-hidden border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <aside
+      className={`fixed left-0 top-0 z-50 flex h-[100dvh] w-[86vw] max-w-72 flex-none flex-col overflow-hidden border-r border-slate-200 bg-white transition-transform duration-200 ease-out dark:border-slate-800 dark:bg-slate-900 md:translate-x-0 ${
+        isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      }`}
+    >
       <div className="border-b border-slate-100 p-6 dark:border-slate-800">
-        <div className="mb-5 flex items-center gap-3">
-          <div className="rounded-2xl bg-rose-100 p-3 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
-            <Shield size={18} />
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-rose-100 p-3 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
+              <Shield size={18} />
+            </div>
+            <div>
+              <p className="text-sm font-black uppercase tracking-tight text-slate-900 dark:text-white">Painel Admin</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Navegacao por dominio</p>
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-black uppercase tracking-tight text-slate-900 dark:text-white">Painel Admin</p>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Navegacao por dominio</p>
-          </div>
+          <button
+            type="button"
+            onClick={onRequestClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 md:hidden"
+            aria-label="Fechar menu admin"
+          >
+            <X size={16} />
+          </button>
         </div>
-
         <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/60">
           <p className="truncate text-xs font-black text-slate-900 dark:text-slate-100">{currentUser?.name}</p>
           <p className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">{currentUser?.email}</p>
@@ -61,7 +78,10 @@ const AdminNavigationSidebar = ({
           return (
             <button
               key={tab.key}
-              onClick={() => onTabChange(tab.key)}
+              onClick={() => {
+                onTabChange(tab.key);
+                onRequestClose?.();
+              }}
               className={`w-full rounded-3xl border px-4 py-4 text-left transition-all ${
                 isActive
                   ? 'border-indigo-500 bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none'
@@ -96,6 +116,7 @@ const AdminNavigationSidebar = ({
         <div className="grid grid-cols-2 gap-2">
           <Link
             to="/"
+            onClick={() => onRequestClose?.()}
             className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-100 px-3 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 transition-all hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
           >
             <Home size={14} />

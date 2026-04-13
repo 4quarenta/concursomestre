@@ -78,6 +78,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     practiceEnabled: true,
     marketplaceEnabled: true,
     rankingsEnabled: true,
+    referralEnabled: true,
     annotatedLawsEnabled: false,
     flashcardsEnabled: false,
     communityEnabled: true,
@@ -91,7 +92,9 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     landingPagePromoEnabled: true,
     xRayEnabled: true,
     loginRequired: true,
-    partnerRegistrationEnabled: true
+    partnerRegistrationEnabled: true,
+    recurringEnabled: true,
+    sameTierCycleChangeEnabled: false,
   },
   geminiApiKey: '',
   recaptchaEnabled: false,
@@ -983,8 +986,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Persist to API
     if (currentUser) {
       questionService.submitUserAnswer(currentUser.id, payload).then((result) => {
-        if (result.success && result.newXp !== undefined) {
-          void updateUser({ xp: result.newXp, level: result.newLevel });
+        const progressPatch: Partial<UserProfile> = {
+          ...(result.newXp !== undefined ? { xp: result.newXp } : {}),
+          ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
+        };
+
+        if (result.success && Object.keys(progressPatch).length > 0) {
+          void updateUser(progressPatch);
         }
       }).catch(err => {
         console.error("Failed to save answer", err);

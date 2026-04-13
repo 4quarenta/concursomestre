@@ -266,6 +266,7 @@ export interface SimulationConfig {
   timerMinutes: number;
   feedbackMode: 'after_all' | 'instant';
   filters: {
+    careers: string[];
     agencies: string[];
     years: string[];
     organizations: string[];
@@ -769,6 +770,7 @@ export interface SystemSettings {
     practiceEnabled: boolean;
     marketplaceEnabled: boolean;
     rankingsEnabled: boolean;
+    referralEnabled: boolean;
     annotatedLawsEnabled: boolean;
     flashcardsEnabled: boolean;
     communityEnabled: boolean;
@@ -784,6 +786,7 @@ export interface SystemSettings {
     loginRequired: boolean;
     partnerRegistrationEnabled: boolean;
     recurringEnabled: boolean;
+    sameTierCycleChangeEnabled: boolean;
   };
   adsEnabled?: boolean;
   adsenseClientId?: string;

@@ -49,16 +49,16 @@ interface StripeCardElementFormProps {
   onPaymentFinalized?: (step?: StripePaymentStep) => Promise<void> | void;
 }
 
-const elementOptions = {
+const buildElementOptions = (isDarkMode: boolean) => ({
   style: {
     base: {
-      color: '#18181b',
+      color: isDarkMode ? '#e2e8f0' : '#0f172a',
       fontSize: '14px',
       fontFamily: 'Inter, sans-serif',
       fontWeight: '500',
       lineHeight: '20px',
       '::placeholder': {
-        color: '#a1a1aa',
+        color: isDarkMode ? '#64748b' : '#94a3b8',
       },
     },
     invalid: {
@@ -66,10 +66,10 @@ const elementOptions = {
       iconColor: '#dc2626',
     },
   },
-};
+});
 
 const fieldShellClassName =
-  'min-h-[50px] rounded-lg border border-zinc-200 bg-white px-4 py-3 transition-all focus-within:border-zinc-900 focus-within:ring-1 focus-within:ring-zinc-900 dark:border-slate-700 dark:bg-[#0f1020] dark:focus-within:border-indigo-400 dark:focus-within:bg-[#111428] dark:focus-within:ring-indigo-500/10';
+  'min-h-[50px] rounded-lg border border-slate-200 bg-white px-4 py-3 transition-all focus-within:border-slate-900 focus-within:ring-1 focus-within:ring-slate-900 dark:border-slate-700 dark:bg-[#0f1020] dark:focus-within:border-indigo-400 dark:focus-within:bg-[#111428] dark:focus-within:ring-indigo-500/10';
 
 const getCardBrandLabel = (brand?: string | null): string | null => {
   if (!brand || brand === 'unknown') return null;
@@ -121,7 +121,11 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
     cardExpiry: false,
     cardCvc: false,
   });
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() =>
+    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false,
+  );
   const stripeReady = Boolean(stripe && elements);
+  const elementOptions = useMemo(() => buildElementOptions(isDarkMode), [isDarkMode]);
 
   useEffect(() => {
     onReadyChange?.(stripeReady);
@@ -130,6 +134,21 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
       onReadyChange?.(false);
     };
   }, [onReadyChange, stripeReady]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const root = document.documentElement;
+    const updateTheme = () => setIsDarkMode(root.classList.contains('dark'));
+
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+
+    return () => observer.disconnect();
+  }, []);
 
   const setFieldState = (field: 'cardNumber' | 'cardExpiry' | 'cardCvc', event: any) => {
     setFieldErrors((prev) => {
@@ -262,17 +281,17 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
         <>
           {!hideHeader ? (
             <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                 Cartão
               </p>
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
                 Informe número, validade e código de segurança.
               </p>
             </div>
           ) : null}
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
               Nome no cartão
             </label>
             <input
@@ -281,17 +300,17 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
               onChange={(event) => setCardholderName(event.target.value)}
               placeholder="Nome como está no cartão"
               autoComplete="cc-name"
-              className="h-[50px] w-full rounded-lg border border-zinc-200 bg-white px-4 text-sm text-zinc-900 outline-none transition-all placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white dark:focus:border-indigo-400 dark:focus:bg-[#111428] dark:focus:ring-indigo-500/10"
+              className="h-[50px] w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 dark:border-slate-700 dark:bg-[#0f1020] dark:text-white dark:focus:border-indigo-400 dark:focus:bg-[#111428] dark:focus:ring-indigo-500/10"
             />
             {!hideNameHelper ? (
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Esse nome pode ser diferente do nome da conta.
               </p>
             ) : null}
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
               Número do cartão
             </label>
             <div className="relative">
@@ -305,7 +324,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
                 />
               </div>
               {getCardBrandLabel(cardBrand) ? (
-                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-600">
+                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600 dark:bg-slate-700 dark:text-slate-200">
                   {getCardBrandLabel(cardBrand)}
                 </div>
               ) : null}
@@ -317,7 +336,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
 
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
                 Validade
               </label>
               <div className={fieldShellClassName}>
@@ -335,7 +354,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-zinc-700">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
                 CVV
               </label>
               <div className={fieldShellClassName}>
@@ -354,18 +373,18 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
           </div>
 
           {!hideTrustNote ? (
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-700 dark:bg-[#111428]">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 rounded-full bg-emerald-100 p-2 text-emerald-600">
                   <Lock size={14} />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-xs font-medium text-zinc-900">Pagamento seguro</p>
-                  <p className="text-[11px] leading-relaxed text-zinc-500">
+                  <p className="text-xs font-medium text-slate-900 dark:text-slate-100">Pagamento seguro</p>
+                  <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
                     Os dados do cartão são tokenizados pela Stripe e não passam em texto puro pelo sistema.
                   </p>
                   {cardholderName || billingEmail ? (
-                    <p className="text-[11px] font-medium text-zinc-500">
+                    <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                       {cardholderName ? `Titular: ${cardholderName}` : null}
                       {cardholderName && billingEmail ? ' - ' : null}
                       {billingEmail ? `Email: ${billingEmail}` : null}

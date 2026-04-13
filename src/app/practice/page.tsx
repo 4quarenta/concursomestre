@@ -13,7 +13,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Subject, Difficulty, UserAnswer } from '../../types';
-import { ChevronRight, ChevronLeft, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp } from 'lucide-react';
 import QuestionCard from '../questions/components/QuestionCard';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
@@ -111,6 +111,9 @@ const Practice: React.FC = () => {
   const [lastFetchedPage, setLastFetchedPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loaderRef = useRef<HTMLDivElement>(null);
+  const pageRootRef = useRef<HTMLDivElement>(null);
+  const scrollTargetRef = useRef<HTMLElement | Window | null>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   const sanitizeFiltersForFocus = sanitizePracticeFiltersForFocus;
 
@@ -222,6 +225,55 @@ const Practice: React.FC = () => {
   useEffect(() => {
     ensureTaxonomiesLoaded();
   }, [ensureTaxonomiesLoaded]);
+
+  useEffect(() => {
+    const resolveScrollableParent = (element: HTMLElement | null): HTMLElement | Window => {
+      let parent = element?.parentElement ?? null;
+
+      while (parent) {
+        const style = window.getComputedStyle(parent);
+        const isScrollable = /(auto|scroll)/.test(style.overflowY);
+        if (isScrollable && parent.scrollHeight > parent.clientHeight + 4) {
+          return parent;
+        }
+        parent = parent.parentElement;
+      }
+
+      return window;
+    };
+
+    const target = resolveScrollableParent(pageRootRef.current);
+    scrollTargetRef.current = target;
+
+    const getScrollTop = () => {
+      if (target === window) return window.scrollY || document.documentElement.scrollTop || 0;
+      return (target as HTMLElement).scrollTop;
+    };
+
+    const onScroll = () => {
+      setShowBackToTop(getScrollTop() > 700);
+    };
+
+    onScroll();
+
+    if (target === window) {
+      window.addEventListener('scroll', onScroll, { passive: true });
+      return () => window.removeEventListener('scroll', onScroll);
+    }
+
+    (target as HTMLElement).addEventListener('scroll', onScroll, { passive: true });
+    return () => (target as HTMLElement).removeEventListener('scroll', onScroll);
+  }, []);
+
+  const handleBackToTop = useCallback(() => {
+    const target = scrollTargetRef.current;
+    if (!target || target === window) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    (target as HTMLElement).scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleAnswer = useCallback((ans: UserAnswer) => {
     if (!currentUser) {
@@ -432,19 +484,19 @@ const Practice: React.FC = () => {
     career: 'Foco',
     onlySaved: 'Salvas',
     hasTeacherComment: 'Com. Professor',
-    hasDetailedComment: 'Análise IA',
+    hasDetailedComment: 'Análise detalhada',
     excludeCanceled: 'Ocultar Anuladas',
     excludeOutdated: 'Ocultar Desatualizadas',
     excludeAnswered: 'Ocultar Resolvidas'
   };
 
   return (
-    <div className="space-y-6 pb-12 animate-fade-in">
+    <div ref={pageRootRef} className="space-y-5 px-3 pb-16 animate-fade-in sm:px-4 md:px-0 md:pb-12">
       {/* Back Button when viewing specific question */}
       {highlightedQuestionId && (
         <button
           onClick={() => setSearchParams({})}
-          className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold text-sm text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all shadow-sm"
+          className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm transition-all hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-400 sm:px-6 sm:py-3 sm:text-sm"
         >
           <ArrowLeft size={18} />
           Voltar para lista de questões
@@ -453,8 +505,8 @@ const Practice: React.FC = () => {
 
       {/* Painel de Filtros Principal - Hidden when viewing specific question */}
       {!highlightedQuestionId && (
-        <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors duration-300">
-          <div className="flex gap-2">
+        <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors duration-300">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={18} />
               <input
@@ -466,7 +518,7 @@ const Practice: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => {
                   setFilters(DEFAULT_FILTERS);
@@ -481,7 +533,7 @@ const Practice: React.FC = () => {
               <button
                 onClick={applyFilters}
                 disabled={isFiltering}
-                className="h-12 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider rounded-2xl shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2 whitespace-nowrap text-xs disabled:opacity-70 disabled:cursor-wait"
+                className="h-11 sm:h-12 px-5 sm:px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold uppercase tracking-wider rounded-2xl shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2 whitespace-nowrap text-xs disabled:opacity-70 disabled:cursor-wait"
               >
                 {isFiltering ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                 {isFiltering ? 'Filtrando...' : 'Filtrar'}
@@ -489,7 +541,7 @@ const Practice: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <FilterSelect label="Foco" value={pendingFilters.career} onChange={(v: any) => handleFilterChange('career', v)} options={uniqueCareers} />
             <FilterSelect
               label="Matéria"
@@ -573,7 +625,7 @@ const Practice: React.FC = () => {
                   colorClass="amber"
                 />
                 <CheckboxFilter
-                  label="Análise Detalhada (IA)"
+                    label="Análise detalhada"
                   checked={pendingFilters.hasDetailedComment}
                   onChange={(v: boolean) => handleFilterChange('hasDetailedComment', v)}
                   icon={Sparkles}
@@ -584,7 +636,7 @@ const Practice: React.FC = () => {
           </div>
 
           {/* Visualização de Filtros Ativos e Resultados */}
-          <div className="pt-4 border-t border-slate-50 dark:border-slate-800/50 flex flex-wrap items-center justify-between gap-4">
+          <div className="pt-4 border-t border-slate-50 dark:border-slate-800/50 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="flex flex-wrap gap-2 items-center min-h-[32px]">
               <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mr-1">Filtros:</span>
               {Object.entries(pendingFilters).filter(([k, v]) => v !== 'All' && v !== '' && v !== false).length > 0 ? (
@@ -605,7 +657,7 @@ const Practice: React.FC = () => {
               )}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-black text-[10px] uppercase tracking-wider">
                 <CheckCircle size={14} />
                 {totalQuestions > filteredQuestions.length ? `${filteredQuestions.length} de ${totalQuestions}` : filteredQuestions.length} Questões
@@ -708,14 +760,14 @@ const Practice: React.FC = () => {
                   currentUserId={currentUser?.id || ''}
                   currentUserName={currentUser?.name || 'Visitante'}
                 />
-                <div className="flex justify-between mt-6 items-center px-2">
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 px-0 sm:px-2">
                   <button
                     onClick={() => {
                       setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1));
                       window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                     disabled={currentQuestionIndex === 0}
-                    className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-all shadow-sm"
+                    className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold text-[10px] sm:text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-all shadow-sm"
                   >
                     <ChevronLeft size={16} /> Anterior
                   </button>
@@ -726,7 +778,7 @@ const Practice: React.FC = () => {
                       window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                     disabled={currentQuestionIndex === filteredQuestions.length - 1}
-                    className="flex items-center gap-2 px-6 py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-lg shadow-slate-200 dark:shadow-none"
+                    className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl font-bold text-[10px] sm:text-xs uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-lg shadow-slate-200 dark:shadow-none"
                   >
                     Próxima <ChevronRight size={16} />
                   </button>
@@ -735,7 +787,7 @@ const Practice: React.FC = () => {
 
             </div>
           ) : (
-            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-800 p-20 text-center space-y-4 transition-colors duration-300">
+            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-800 p-10 sm:p-14 md:p-20 text-center space-y-4 transition-colors duration-300">
               <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-full w-fit mx-auto text-slate-300 dark:text-slate-600"><Search size={48} /></div>
               <h3 className="text-xl font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Nenhuma questão encontrada</h3>
               <p className="text-sm text-slate-400 dark:text-slate-600 max-w-xs mx-auto mb-6">Tente ajustar seus filtros para encontrar o que procura.</p>
@@ -829,6 +881,16 @@ const Practice: React.FC = () => {
         title={authModalConfig.title}
         description={authModalConfig.description}
       />
+
+      <button
+        type="button"
+        onClick={handleBackToTop}
+        aria-label="Voltar ao topo"
+        className={`fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/95 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-indigo-700 shadow-lg shadow-indigo-200/60 transition-all duration-300 dark:border-indigo-900/40 dark:bg-slate-900/95 dark:text-indigo-300 dark:shadow-none sm:bottom-6 sm:right-6 sm:px-4 sm:text-[11px] ${showBackToTop ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}
+      >
+        <ArrowUp size={14} />
+        Topo
+      </button>
     </div >
   );
 };

@@ -16,7 +16,8 @@ import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import type { Plan } from '@types';
 import { planService } from '@services/plans';
-import { getConfiguredPlanDisplayName, isPlanEnabledByName, resolvePlanAutoCouponsById, resolvePlanDiscountBadgesByCycle, resolvePlanOffer } from '@services/plans';
+import { calculateSubscriptionProRatedCredit, getConfiguredPlanDisplayName, isPlanEnabledByName, resolvePlanAutoCouponsById, resolvePlanDiscountBadgesByCycle, resolvePlanOffer } from '@services/plans';
+import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { PlanCard } from './components/PlanCard';
 import { useToast } from '@providers/ToastProvider';
 import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
@@ -107,24 +108,13 @@ export const PlansPage: React.FC = () => {
         })
     ), [plans, systemSettings.coupons, systemSettings.planDetails, systemSettings.pricing]);
 
-    const globalProRatedCredit = useMemo(() => {
-        if (!currentUser?.subscription || currentUser.subscription.status !== 'active') return 0;
-        const currentPlan = plans.find((plan) => plan.id === currentUser.subscription?.plan_id);
-        if (!currentPlan || currentPlan.price <= 0) return 0;
-        if (!currentUser.subscription.current_period_start || !currentUser.subscription.current_period_end) return 0;
-
-        const start = new Date(currentUser.subscription.current_period_start).getTime();
-        const end = new Date(currentUser.subscription.current_period_end).getTime();
-        const now = Date.now();
-
-        if (end <= now || end <= start) return 0;
-
-        const totalDuration = end - start;
-        const remaining = Math.max(0, Math.min(totalDuration, end - now));
-        const credit = (currentPlan.price * remaining) / totalDuration;
-
-        return Math.round(Math.min(currentPlan.price, credit) * 100) / 100;
-    }, [currentUser?.subscription, plans]);
+    const globalProRatedCredit = useMemo(() => (
+        calculateSubscriptionProRatedCredit({
+            subscription: currentUser?.subscription,
+            plans,
+        })
+    ), [currentUser?.subscription, plans]);
+    const allowSameTierCycleChangeEnabled = resolveSystemFeatureFlag(systemSettings, 'sameTierCycleChangeEnabled', false);
 
     const handleSubscribe = async (plan: Plan) => {
         if (plan.price === 0) {
@@ -144,9 +134,27 @@ export const PlansPage: React.FC = () => {
                 if (normalized.includes('essencial')) return 1;
                 return 0;
             };
+            const getTimeScore = (currentPlan: Plan) => {
+                if (currentPlan.interval_unit === 'year') return 12;
+                if (currentPlan.interval_unit === 'month') return currentPlan.interval_count || 1;
+                return 1;
+            };
 
             const currentTier = getTier(currentUser.subscription?.plan?.name || '');
             const targetTier = getTier(plan.name);
+            const currentPlanInList = plans.find((currentPlan) => currentPlan.id === currentUser?.subscription?.plan_id);
+            const currentTimeScore = currentPlanInList ? getTimeScore(currentPlanInList) : 0;
+            const targetTimeScore = getTimeScore(plan);
+
+            if (currentUser.subscription?.plan_id === plan.id) {
+                addToast('Esse já é o plano ativo da sua assinatura.', 'info');
+                return;
+            }
+
+            if (!allowSameTierCycleChangeEnabled && targetTier === currentTier) {
+                addToast('A troca de ciclo no mesmo tier está desativada no painel admin.', 'warning');
+                return;
+            }
 
             if (targetTier < currentTier) {
                 setPendingDowngradePlan(plan);
@@ -168,21 +176,21 @@ export const PlansPage: React.FC = () => {
     }
 
     return (
-        <div className="container mx-auto relative px-4 py-8">
-            <div className="mb-12 text-center">
+        <div className="relative mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+            <div className="relative mb-10 text-center md:mb-12">
                 <Link
                     to={buildProfilePath('personal')}
-                    className="absolute left-4 top-8 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-white"
+                    className="mb-5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 transition-colors hover:text-slate-700 dark:hover:text-white md:absolute md:left-0 md:top-2 md:mb-0"
                 >
                     <ArrowLeft size={16} />
                     Voltar
                 </Link>
-                <h1 className="mb-4 text-4xl font-bold text-slate-900 dark:text-white">Escolha o seu Plano</h1>
-                <p className="mx-auto mb-8 max-w-2xl text-lg text-slate-600 dark:text-slate-400">
+                <h1 className="mb-4 text-3xl font-bold text-slate-900 dark:text-white md:text-4xl">Escolha o seu Plano</h1>
+                <p className="mx-auto mb-8 max-w-2xl text-base text-slate-600 dark:text-slate-400 md:text-lg">
                     Desbloqueie todo o potencial dos seus estudos com nossos planos premium.
                 </p>
 
-                <div className="inline-flex rounded-xl bg-slate-200 p-1 transition-colors dark:bg-slate-800">
+                <div className="inline-flex flex-wrap items-center justify-center gap-1 rounded-xl bg-slate-200 p-1 transition-colors dark:bg-slate-800">
                     {BILLING_CYCLE_OPTIONS.map((option) => (
                         <button
                             key={option.key}
@@ -208,7 +216,7 @@ export const PlansPage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <div className="mx-auto grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                     {filteredPlans.map((plan) => {
                         const getTier = (name: string) => {
                             const normalized = name.toLowerCase();
@@ -232,7 +240,14 @@ export const PlansPage: React.FC = () => {
                         const planTier = getTier(plan.name);
                         const planTimeScore = getTimeScore(plan);
                         const isCurrent = currentUser?.subscription?.plan_id === plan.id && activeSub;
-                        const isLower = !isCurrent && activeSub && planTier <= currentTier && planTimeScore <= currentTimeScore;
+                        const blocksSameTierCycleChange = (
+                            !allowSameTierCycleChangeEnabled
+                            && planTier === currentTier
+                        );
+                        const isLower = !isCurrent && activeSub && (
+                            (planTier < currentTier && planTimeScore <= currentTimeScore)
+                            || blocksSameTierCycleChange
+                        );
 
                         return (
                             <PlanCard

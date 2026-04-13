@@ -14,7 +14,8 @@ import { Link, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
-import { getCanonicalPlanName, getConfiguredPlanDisplayName, planService, resolvePlanOffer } from '@services/plans';
+import { calculateSubscriptionProRatedCredit, getCanonicalPlanName, getConfiguredPlanDisplayName, planService, resolvePlanOffer } from '@services/plans';
+import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { Plan, PlanConfig, PlanFeature, PlanName } from '@types';
 import { authFlowService } from '@services/auth';
 import { cardsService } from '@services/billing';
@@ -117,6 +118,7 @@ const CheckoutPage: React.FC = () => {
     const cardVaultProvider = (systemSettings?.cardVaultProvider || 'stripe') as 'stripe';
     const isStripeInternalCheckout = stripeCheckoutMode === 'internal';
     const STRIPE_PUBLISHABLE_KEY = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
+    const allowSameTierCycleChangeEnabled = resolveSystemFeatureFlag(systemSettings, 'sameTierCycleChangeEnabled', false);
     const checkoutEnabledPaymentMethodIds = useMemo(
         () => getEnabledStripePaymentMethods(systemSettings?.stripePaymentMethods)
             .filter((method) => method.checkoutSupported)
@@ -291,7 +293,19 @@ const CheckoutPage: React.FC = () => {
                     const targetPlanTimeScore = getTimeScore(found);
 
                     if (currentUser.subscription?.status === 'active') {
-                        if (targetPlanTier <= currentPlanTier && targetPlanTimeScore <= currentTimeScore) {
+                        if (currentUser.subscription?.plan_id === found.id) {
+                            addToast(`Voce ja possui o plano ${currentUser.subscription.plan?.name || 'Premium'} ativo.`, 'warning');
+                            navigate(buildProfilePath('billing'));
+                            return;
+                        }
+
+                        if (
+                            (targetPlanTier < currentPlanTier && targetPlanTimeScore <= currentTimeScore)
+                            || (
+                                !allowSameTierCycleChangeEnabled
+                                && targetPlanTier === currentPlanTier
+                            )
+                        ) {
       addToast(`Você já possui o plano ${currentUser.subscription.plan?.name || 'Premium'}. Não é possível assinar um plano inferior ou igual enquanto o atual estiver ativo.`, 'warning');
                             navigate(buildProfilePath('billing'));
                             return;
@@ -300,20 +314,16 @@ const CheckoutPage: React.FC = () => {
                         if (targetPlanTier < currentPlanTier) {
                             setShowDowngradeModal(true);
                         }
-
-                        const currentPlan = plans.find(p => p.id === currentUser.subscription?.plan_id);
-                        if (currentPlan && currentPlan.price > 0 && currentUser.subscription.current_period_start && currentUser.subscription.current_period_end) {
-                            const start = new Date(currentUser.subscription.current_period_start).getTime();
-                            const end = new Date(currentUser.subscription.current_period_end).getTime();
-                            const now = Date.now();
-                            if (end > now && end > start) {
-                                const totalDuration = end - start;
-                                const remaining = end - now;
-                                const credit = (currentPlan.price * remaining) / totalDuration;
-                                setProRatedCredit(Math.round(credit * 100) / 100);
-                            }
-                        }
                     }
+
+                    setProRatedCredit(
+                        calculateSubscriptionProRatedCredit({
+                            subscription: currentUser.subscription,
+                            plans,
+                        }),
+                    );
+                } else {
+                    setProRatedCredit(0);
                 }
             } else {
       addToast('Plano não encontrado', 'error');
@@ -328,9 +338,19 @@ const CheckoutPage: React.FC = () => {
         }
     };
 
+    const checkoutBaseOffer = useMemo(() => {
+        if (!plan) return null;
+        return resolvePlanOffer({
+            plan,
+            pricing: systemSettings.pricing,
+            planDetails: systemSettings.planDetails,
+            discountAmount: 0,
+        });
+    }, [plan, systemSettings.planDetails, systemSettings.pricing]);
+
     const couponValidationAmount = useMemo(() => {
-        return Math.max(0, Number(plan?.price || 0) - proRatedCredit);
-    }, [plan?.price, proRatedCredit]);
+        return Math.max(0, Number(checkoutBaseOffer?.originalCycleAmount || plan?.price || 0));
+    }, [checkoutBaseOffer?.originalCycleAmount, plan?.price]);
 
     const checkoutOffer = useMemo(() => {
         if (!plan) return null;
@@ -686,6 +706,64 @@ const CheckoutPage: React.FC = () => {
         }));
     };
 
+    /**
+     * Valida CPF no formato oficial brasileiro.
+     * @since v1.0.0
+     */
+    const isValidCpf = (value: string) => {
+        const digits = value.replace(/\D/g, '');
+        if (digits.length !== 11) return false;
+        if (/^(\d)\1{10}$/.test(digits)) return false;
+
+        const calcCheckDigit = (base: string, factor: number) => {
+            const total = base
+                .split('')
+                .reduce((sum, digit) => sum + (Number(digit) * factor--), 0);
+            const result = 11 - (total % 11);
+            return result > 9 ? 0 : result;
+        };
+
+        const digit1 = calcCheckDigit(digits.slice(0, 9), 10);
+        const digit2 = calcCheckDigit(digits.slice(0, 10), 11);
+        return digit1 === Number(digits[9]) && digit2 === Number(digits[10]);
+    };
+
+    /**
+     * Regras mínimas para validar endereço antes de salvar.
+     * @since v1.0.0
+     */
+    const validateCheckoutAddress = () => {
+        const zipCodeDigits = checkoutRequirementData.zipCode.replace(/\D/g, '');
+        const state = checkoutRequirementData.state.trim().toUpperCase();
+        const street = checkoutRequirementData.street.trim();
+        const number = checkoutRequirementData.number.trim();
+        const neighborhood = checkoutRequirementData.neighborhood.trim();
+        const city = checkoutRequirementData.city.trim();
+
+        if (!isValidCpf(checkoutRequirementData.cpf)) {
+            return { valid: false, message: 'CPF inválido. Verifique e tente novamente.' };
+        }
+        if (zipCodeDigits.length !== 8) {
+            return { valid: false, message: 'CEP inválido. Informe um CEP com 8 dígitos.' };
+        }
+        if (street.length < 3) {
+            return { valid: false, message: 'Logradouro inválido. Informe um endereço válido.' };
+        }
+        if (number.length < 1 || !/[0-9a-zA-Z]/.test(number)) {
+            return { valid: false, message: 'Número inválido. Informe um número de endereço válido.' };
+        }
+        if (neighborhood.length < 2) {
+            return { valid: false, message: 'Bairro inválido. Informe um bairro válido.' };
+        }
+        if (city.length < 2) {
+            return { valid: false, message: 'Cidade inválida. Informe uma cidade válida.' };
+        }
+        if (!/^[A-Z]{2}$/.test(state)) {
+            return { valid: false, message: 'UF inválida. Use a sigla com 2 letras (ex.: SP).' };
+        }
+        return { valid: true as const };
+    };
+
     const handleSaveCheckoutRequirements = async () => {
         if (!currentUser) return;
 
@@ -703,6 +781,12 @@ const CheckoutPage: React.FC = () => {
         const missing = requiredFields.find(([, value]) => !String(value || '').trim());
         if (missing) {
             addToast('Preencha todos os dados obrigatorios para concluir a compra.', 'warning');
+            return;
+        }
+
+        const addressValidation = validateCheckoutAddress();
+        if (!addressValidation.valid) {
+            addToast(addressValidation.message, 'warning');
             return;
         }
 
@@ -1064,9 +1148,18 @@ const CheckoutPage: React.FC = () => {
         return false;
     };
 
-    const checkoutSubtotal = Number(plan?.price || 0);
+    const checkoutSubtotal = Number(checkoutBaseOffer?.originalCycleAmount || plan?.price || 0);
     const checkoutDiscountAmount = appliedCoupon ? Math.max(0, Number(discountAmount || 0)) : 0;
-    const checkoutFinalCycleAmount = Math.max(0, roundCurrency(checkoutSubtotal - proRatedCredit - checkoutDiscountAmount));
+    const checkoutCouponSavingsAmount = Math.max(
+        0,
+        roundCurrency(
+            Number(checkoutOffer?.originalCycleAmount || checkoutSubtotal)
+            - Number(checkoutOffer?.discountedCycleAmount || checkoutSubtotal),
+        ),
+    );
+    const checkoutResidualCreditAmount = Math.max(0, roundCurrency(Number(proRatedCredit || 0)));
+    const checkoutDiscountedCycleAmount = Number(checkoutOffer?.discountedCycleAmount || Math.max(0, checkoutSubtotal - checkoutDiscountAmount));
+    const checkoutFinalCycleAmount = Math.max(0, roundCurrency(checkoutDiscountedCycleAmount - checkoutResidualCreditAmount));
     const activePlanBenefits = useMemo(
         () => getActivePlanBenefits(plan, systemSettings.planDetails),
         [plan, systemSettings.planDetails],
@@ -1140,10 +1233,6 @@ const CheckoutPage: React.FC = () => {
         const totalDue = Math.max(0, baseAmount);
         return { firstCharge: baseAmount, totalDue, contractTotal: selectedInstallment.total_amount };
     }, [plan, selectedInstallment.first_charge_amount, selectedInstallment.installment_amount, selectedInstallment.total_amount]);
-    const checkoutDisplayedDiscountAmount = Math.max(
-        0,
-        roundCurrency(checkoutSubtotal - proRatedCredit - monetaryTotals.contractTotal)
-    );
 
     const paymentProviderLabel = 'Stripe';
   const selectedMethodLabel = 'Cartão';
@@ -1320,7 +1409,7 @@ const CheckoutPage: React.FC = () => {
     };
 
     return (
-        <div className={`min-h-screen bg-zinc-50 px-4 py-8 transition-colors duration-500 dark:bg-[#0f1020] md:py-10 ${showCheckoutCountdown ? 'pb-44 md:pb-52' : ''}`}>
+        <div className={`min-h-[100dvh] overflow-x-hidden bg-zinc-50 px-3 py-6 transition-colors duration-500 dark:bg-[#0f1020] sm:px-4 md:py-10 ${showCheckoutCountdown ? 'pb-44 md:pb-52' : ''}`}>
             <style>{`
                 #securityCodeSecureField_container {
                     width: 100%;
@@ -1334,7 +1423,7 @@ const CheckoutPage: React.FC = () => {
                     min-height: 56px;
                 }
             `}</style>
-            <div className="pointer-events-none fixed inset-x-0 top-0 h-[240px] bg-[linear-gradient(to_bottom,rgba(255,255,255,0.88),transparent)] dark:bg-[linear-gradient(to_bottom,rgba(15,16,32,0.92),transparent)]" />
+            <div className="pointer-events-none fixed inset-x-0 top-0 hidden h-[240px] bg-[linear-gradient(to_bottom,rgba(255,255,255,0.88),transparent)] dark:bg-[linear-gradient(to_bottom,rgba(15,16,32,0.92),transparent)] md:block" />
              
             <div className={`relative z-10 mx-auto ${step === 'payment' ? 'max-w-6xl' : 'max-w-7xl'}`}>
                 <CheckoutHeader />
@@ -1343,7 +1432,7 @@ const CheckoutPage: React.FC = () => {
                         <button
                             type="button"
                             onClick={handleBack}
-                            className="inline-flex items-center gap-2 text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-950"
+                            className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-950 dark:text-slate-300 dark:hover:text-slate-100"
                         >
                             <ArrowLeft size={16} />
                             Voltar
@@ -1514,14 +1603,15 @@ const CheckoutPage: React.FC = () => {
                                     billingCycle={billingCycle}
                                     planBenefits={displayedPlanBenefits}
                                     subtotalLabel={formatCurrency(checkoutSubtotal)}
-                                    discountLabel={checkoutDisplayedDiscountAmount > 0 ? formatCurrency(checkoutDisplayedDiscountAmount) : null}
+                                    couponDiscountLabel={checkoutCouponSavingsAmount > 0 ? formatCurrency(checkoutCouponSavingsAmount) : null}
+                                    residualCreditDiscountLabel={checkoutResidualCreditAmount > 0 ? formatCurrency(checkoutResidualCreditAmount) : null}
                                     totalLabel={formatCurrency(monetaryTotals.contractTotal)}
                                     dueLabel={checkoutDueLabel}
                                     couponCode={couponCode}
                                     applyingCoupon={isApplyingCoupon}
                                     appliedCouponCode={appliedCoupon?.code || null}
                                     appliedCouponSource={appliedCouponSource}
-                                    couponSavingsLabel={checkoutDisplayedDiscountAmount > 0 ? formatCurrency(checkoutDisplayedDiscountAmount) : null}
+                                    couponSavingsLabel={checkoutCouponSavingsAmount > 0 ? formatCurrency(checkoutCouponSavingsAmount) : null}
                                     autoRenew={autoRenew}
                                     saveCard={saveCard}
                                     stripeRequiresSavedCard={stripeRequiresSavedCard}
@@ -1655,7 +1745,7 @@ const CheckoutPage: React.FC = () => {
 
                             <div className="grid gap-4 md:grid-cols-2">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Nome completo</label>
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Nome completo <span className="text-rose-500">*</span></label>
                                     <input
                                         type="text"
                                         value={checkoutRequirementData.name}
@@ -1664,7 +1754,7 @@ const CheckoutPage: React.FC = () => {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">CPF</label>
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">CPF <span className="text-rose-500">*</span></label>
                                     <input
                                         type="text"
                                         value={checkoutRequirementData.cpf}
@@ -1673,7 +1763,7 @@ const CheckoutPage: React.FC = () => {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">CEP</label>
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">CEP <span className="text-rose-500">*</span></label>
                                     <input
                                         type="text"
                                         value={checkoutRequirementData.zipCode}
@@ -1682,7 +1772,7 @@ const CheckoutPage: React.FC = () => {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Logradouro</label>
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Logradouro <span className="text-rose-500">*</span></label>
                                     <input
                                         type="text"
                                         value={checkoutRequirementData.street}
@@ -1709,7 +1799,7 @@ const CheckoutPage: React.FC = () => {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Bairro</label>
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Bairro <span className="text-rose-500">*</span></label>
                                     <input
                                         type="text"
                                         value={checkoutRequirementData.neighborhood}
@@ -1718,7 +1808,7 @@ const CheckoutPage: React.FC = () => {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cidade</label>
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cidade <span className="text-rose-500">*</span></label>
                                     <input
                                         type="text"
                                         value={checkoutRequirementData.city}
@@ -1728,8 +1818,12 @@ const CheckoutPage: React.FC = () => {
                                 </div>
                             </div>
 
+                            <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                <span className="text-rose-500">*</span> Campos obrigatórios.
+                            </p>
+
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">UF</label>
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">UF <span className="text-rose-500">*</span></label>
                                 <input
                                     type="text"
                                     maxLength={2}

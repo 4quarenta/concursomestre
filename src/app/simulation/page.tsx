@@ -11,6 +11,7 @@
 
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Subject, SimulationSession, SimulationConfig, Difficulty, Question } from '../../types';
 import {
    PlayCircle, Clock, ChevronRight, BrainCircuit, Filter, Target, RotateCcw, LayoutGrid,
@@ -25,6 +26,15 @@ import { useStudyTrackerActions } from '@providers/StudyTrackerProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import AdBanner from '../../components/shared/feedback/AdBanner';
+import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+import {
+   ENEM_FOCUS_NAME,
+   ENEM_SUBJECT_AREA_OPTIONS,
+   getEnemSubjectAreasForQuestion,
+   injectEnemFocusOption,
+   isEnemQuestion,
+   normalizeCareerSelectorLabel,
+} from '@services/filters';
 
 const SearchableMultiSelect: React.FC<{
    label: string;
@@ -33,12 +43,16 @@ const SearchableMultiSelect: React.FC<{
    onChange: (values: string[]) => void;
    placeholder?: string;
    icon: any;
-}> = ({ label, options, selected, onChange, placeholder, icon: Icon }) => {
+   disabled?: boolean;
+}> = ({ label, options, selected, onChange, placeholder, icon: Icon, disabled = false }) => {
    const [isOpen, setIsOpen] = useState(false);
    const [search, setSearch] = useState('');
    const containerRef = useRef<HTMLDivElement>(null);
    const filteredOptions = options.filter(opt => opt.toLowerCase().includes(search.toLowerCase()) && !selected.includes(opt));
-   const toggleOption = (opt: string) => { onChange(selected.includes(opt) ? selected.filter(i => i !== opt) : [...selected, opt]); };
+   const toggleOption = (opt: string) => {
+      if (disabled) return;
+      onChange(selected.includes(opt) ? selected.filter(i => i !== opt) : [...selected, opt]);
+   };
 
    useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => { if (containerRef.current && !containerRef.current.contains(event.target as Node)) setIsOpen(false); };
@@ -49,7 +63,7 @@ const SearchableMultiSelect: React.FC<{
       <div className="space-y-1.5 flex-1" ref={containerRef}>
          <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 transition-colors"><Icon size={12} className="text-indigo-500 dark:text-indigo-400" /> {label}</label>
          <div className="relative">
-            <div onClick={() => setIsOpen(!isOpen)} className="min-h-[44px] w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-1.5 flex flex-wrap gap-2 items-center cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500 transition-all shadow-sm">
+            <div onClick={() => { if (!disabled) setIsOpen(!isOpen); }} className={`min-h-[44px] w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-1.5 flex flex-wrap gap-2 items-center transition-all shadow-sm ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500'}`}>
                {selected.length === 0 ? <span className="text-slate-400 dark:text-slate-500 text-xs font-medium transition-colors">{placeholder || 'Selecionar...'}</span> : selected.map(item => (
                   <span key={item} className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 border border-indigo-100 dark:border-indigo-800/30 animate-scale-in transition-colors">
                      {item} <X size={10} className="hover:text-indigo-900 dark:hover:text-indigo-200" onClick={(e) => { e.stopPropagation(); toggleOption(item); }} />
@@ -57,7 +71,7 @@ const SearchableMultiSelect: React.FC<{
                ))}
                <ChevronDown size={14} className={`ml-auto text-slate-300 dark:text-slate-600 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </div>
-            {isOpen && (
+            {isOpen && !disabled && (
                <div className="absolute z-50 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-4 space-y-3 animate-slide-down transition-colors">
                   <div className="relative">
                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600" size={14} />
@@ -107,6 +121,7 @@ const Simulation: React.FC = () => {
    const [showAuthModal, setShowAuthModal] = useState(false);
    const [authModalConfig, setAuthModalConfig] = useState({ title: '', description: '' });
    const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+   const [searchParams, setSearchParams] = useSearchParams();
 
    const [viewMode, setViewMode] = useState<'focus' | 'list'>('focus');
 
@@ -119,13 +134,98 @@ const Simulation: React.FC = () => {
    const [config, setConfig] = useState<SimulationConfig>({
       id: '', name: 'Treino de Performance', questionCount: 10, subjects: [], difficulty: 'All',
       timerEnabled: true, timerMinutes: 20, feedbackMode: 'after_all',
-      filters: { agencies: [], years: [], organizations: [], roles: [], levels: [], topics: [] }
+      filters: { careers: [], agencies: [], years: [], organizations: [], roles: [], levels: [], topics: [] }
    });
 
    const allTopics = useMemo(() => {
       const relevantQuestions = config.subjects.length > 0 ? questions.filter(q => q.assuntos?.some(a => config.subjects.includes(a.nome as any))) : questions;
       return Array.from(new Set(relevantQuestions.flatMap(q => q.assuntos?.map(a => a.nome) || []).filter(Boolean))).sort();
    }, [questions, config.subjects]);
+
+   const isEnemFocus = useMemo(
+      () => config.filters.careers.some((career) => normalizeCareerSelectorLabel(career) === ENEM_FOCUS_NAME),
+      [config.filters.careers],
+   );
+
+   const enemQuestions = useMemo(() => questions.filter(isEnemQuestion), [questions]);
+
+   const simulationCareers = useMemo(() => {
+      const baseCareers = systemSettings.taxonomies?.careers?.length
+         ? systemSettings.taxonomies.careers.map((career: any) => normalizeCareerSelectorLabel(career.name))
+         : Array.from(new Set(questions.flatMap((question) => question.carreiras?.map((career) => normalizeCareerSelectorLabel(career.nome)) || []).filter(Boolean)));
+
+      return injectEnemFocusOption(baseCareers as string[]);
+   }, [questions, systemSettings.taxonomies?.careers]);
+
+   const simulationSubjects = useMemo(() => {
+      if (isEnemFocus) return [...ENEM_SUBJECT_AREA_OPTIONS] as string[];
+
+      if (systemSettings.taxonomies?.subjects?.length) {
+         return systemSettings.taxonomies.subjects.map((subject: any) => subject.name).filter(Boolean).sort();
+      }
+
+      return Array.from(new Set(
+         questions.flatMap((question) => question.assuntos?.filter((assunto) => assunto.materia).map((assunto) => assunto.nome) || []).filter(Boolean),
+      )).sort();
+   }, [isEnemFocus, questions, systemSettings.taxonomies?.subjects]);
+
+   const simulationAgencies = useMemo(() => {
+      if (systemSettings.taxonomies?.agencies?.length) {
+         return systemSettings.taxonomies.agencies.map((agency: any) => agency.sigla || agency.name).filter(Boolean).sort();
+      }
+      return allAgencies;
+   }, [allAgencies, systemSettings.taxonomies?.agencies]);
+
+   const simulationOrgs = useMemo(() => {
+      if (systemSettings.taxonomies?.organizations?.length) {
+         return systemSettings.taxonomies.organizations.map((organization: any) => organization.sigla || organization.name).filter(Boolean).sort();
+      }
+      return allOrgs;
+   }, [allOrgs, systemSettings.taxonomies?.organizations]);
+
+   const simulationRoles = useMemo(() => {
+      if (systemSettings.taxonomies?.roles?.length) {
+         return systemSettings.taxonomies.roles.map((role: any) => role.descricao || role['descriÃ§Ã£o'] || role.name).filter(Boolean).sort();
+      }
+      return allRoles;
+   }, [allRoles, systemSettings.taxonomies?.roles]);
+
+   const simulationYears = useMemo(() => {
+      if (!isEnemFocus && systemSettings.taxonomies?.years?.length) {
+         return systemSettings.taxonomies.years.map(String).sort().reverse();
+      }
+      const sourceQuestions = isEnemFocus ? enemQuestions : questions;
+      return Array.from(new Set(sourceQuestions.flatMap((question) => question.anos || []).map(String).filter(Boolean))).sort().reverse();
+   }, [isEnemFocus, questions, enemQuestions, systemSettings.taxonomies?.years]);
+
+   const simulationTopics = useMemo(() => {
+      if (isEnemFocus) {
+         const scopedEnemQuestions = config.subjects.length > 0
+            ? enemQuestions.filter((question) =>
+               getEnemSubjectAreasForQuestion(question).some((area) => config.subjects.includes(area as Subject)),
+            )
+            : enemQuestions;
+
+         return Array.from(new Set(
+            scopedEnemQuestions.flatMap((question) => question.assuntos?.filter((assunto) => !assunto.materia).map((assunto) => assunto.nome) || []).filter(Boolean),
+         )).sort();
+      }
+
+      if (systemSettings.taxonomies?.topics?.length) {
+         let availableTopics = systemSettings.taxonomies.topics;
+         if (config.subjects.length > 0) {
+            const subjectIds = new Set(
+               (systemSettings.taxonomies.subjects || [])
+                  .filter((subject: any) => config.subjects.includes(subject.name))
+                  .map((subject: any) => subject.id),
+            );
+            availableTopics = availableTopics.filter((topic: any) => !topic.parentId || subjectIds.has(topic.parentId));
+         }
+         return availableTopics.map((topic: any) => topic.name).filter(Boolean).sort();
+      }
+
+      return allTopics;
+   }, [isEnemFocus, config.subjects, enemQuestions, allTopics, systemSettings.taxonomies?.topics, systemSettings.taxonomies?.subjects]);
 
    useEffect(() => {
       let timer: any;
@@ -137,6 +237,26 @@ const Simulation: React.FC = () => {
    useEffect(() => {
       ensureTaxonomiesLoaded();
    }, [ensureTaxonomiesLoaded]);
+
+   const isImmersiveEnabled = searchParams.get('immersive') === '1';
+
+   const updateImmersiveMode = React.useCallback((enabled: boolean) => {
+      setSearchParams((prev) => {
+         const next = new URLSearchParams(prev);
+         if (enabled) {
+            next.set('immersive', '1');
+         } else {
+            next.delete('immersive');
+         }
+         return next;
+      }, { replace: true });
+   }, [setSearchParams]);
+
+   useEffect(() => {
+      if (step === 'config' && isImmersiveEnabled) {
+         updateImmersiveMode(false);
+      }
+   }, [step, isImmersiveEnabled, updateImmersiveMode]);
 
    // Verificar se o usuário pode criar sim personalizado (apenas Pro ou Elite)
    const canCreateCustomSim = currentUser && (currentUser as any).plan && (currentUser as any).plan !== 'Gratuito' && (currentUser as any).plan !== 'Essencial';
@@ -151,21 +271,32 @@ const Simulation: React.FC = () => {
          return;
       }
       let filtered = questions.filter(q => {
-         const matchSubject = config.subjects.length === 0 || q.assuntos?.some(a => config.subjects.includes(a.nome as any));
-         const matchAgency = config.filters.agencies.length === 0 || q.bancas?.some(b => config.filters.agencies.includes(b.sigla || b.nome));
+         const matchSubject = config.subjects.length === 0 || (
+            isEnemFocus
+               ? getEnemSubjectAreasForQuestion(q).some((area) => config.subjects.includes(area as Subject))
+               : q.assuntos?.some(a => config.subjects.includes(a.nome as any))
+         );
+         const matchAgency = isEnemFocus || config.filters.agencies.length === 0 || q.bancas?.some(b => config.filters.agencies.includes(b.sigla || b.nome));
          const matchYear = config.filters.years.length === 0 || (q.anos && q.anos.some(y => config.filters.years.includes(String(y))));
-         const matchOrg = config.filters.organizations.length === 0 || q.orgaos?.some(o => config.filters.organizations.includes(o.sigla || o.nome));
-         const matchRole = config.filters.roles.length === 0 || q.cargos?.some(c => config.filters.roles.includes(c.descrição || (c as any).nome));
-         const matchLevel = config.filters.levels.length === 0 || config.filters.levels.includes(q.nivel || (q as any).level);
+         const matchOrg = isEnemFocus || config.filters.organizations.length === 0 || q.orgaos?.some(o => config.filters.organizations.includes(o.sigla || o.nome));
+         const matchRole = isEnemFocus || config.filters.roles.length === 0 || q.cargos?.some(c => config.filters.roles.includes((c as any).descricao || (c as any)['descrição'] || (c as any).nome));
+         const matchLevel = isEnemFocus || config.filters.levels.length === 0 || config.filters.levels.includes(q.nivel || (q as any).level);
          const matchTopic = config.filters.topics.length === 0 || q.assuntos?.some(a => config.filters.topics.includes(a.nome as any));
+         const matchCareer = config.filters.careers.length === 0
+            || (
+               isEnemFocus
+                  ? isEnemQuestion(q)
+                  : q.carreiras?.some((career) => config.filters.careers.includes(normalizeCareerSelectorLabel(career?.nome)))
+            );
 
-         return matchSubject && matchAgency && matchYear && matchOrg && matchRole && matchLevel && matchTopic;
+         return matchSubject && matchAgency && matchYear && matchOrg && matchRole && matchLevel && matchTopic && matchCareer;
       });
 
       if (filtered.length === 0) return addToast("`Nenhuma questão encontrada com esses filtros.", "warning");
       const finalQs = filtered.sort(() => Math.random() - 0.5).slice(0, config.questionCount);
       setActiveSession({ id: `sim-${Date.now()}`, config, questions: finalQs, answers: {}, startTime: Date.now(), status: 'in_progress' });
       setTimeLeft(config.timerMinutes * 60); setCurrentIdx(0); setStep('active');
+      updateImmersiveMode(true);
    };
 
    const handleFinish = () => {
@@ -216,6 +347,26 @@ const Simulation: React.FC = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
    };
 
+   const handleBackToConfig = React.useCallback(() => {
+      setStep('config');
+      updateImmersiveMode(false);
+   }, [updateImmersiveMode]);
+
+   const renderExitFullscreenButton = () => {
+      if (!isImmersiveEnabled) return null;
+
+      return (
+         <button
+            onClick={() => updateImmersiveMode(false)}
+            className="fixed top-4 right-4 z-[70] inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 text-slate-600 dark:text-slate-300 text-[10px] font-black uppercase tracking-wider shadow-lg hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+            title="Sair da tela cheia"
+         >
+            <X size={14} />
+            Sair da tela cheia
+         </button>
+      );
+   };
+
    const renderModals = () => (
       <>
          <AuthModal
@@ -237,27 +388,51 @@ const Simulation: React.FC = () => {
 
    if (step === 'config') {
       return (
-         <div className="w-full space-y-8 animate-fade-in py-6">
+         <div className="w-full space-y-6 px-2 py-4 animate-fade-in sm:px-3 md:space-y-8 md:px-0 md:py-6">
             <header className="text-center space-y-2">
                <div className="flex items-center justify-center gap-2 mb-2">
                   <div className="p-2 bg-indigo-600 dark:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 dark:shadow-none transition-colors"><Timer size={20} /></div>
-                  <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Novo Simulado</h1>
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Novo Simulado</h1>
                </div>
                <p className="text-slate-400 dark:text-slate-500 text-sm font-medium max-w-sm mx-auto transition-colors">Configure seu ambiente de treino e teste seus conhecimentos.</p>
             </header>
 
-            <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-8 transition-colors">
+            <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-7 md:space-y-8 transition-colors">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <SearchableMultiSelect label="Matérias" icon={Target} options={Object.values(Subject)} selected={config.subjects} onChange={v => setConfig({ ...config, subjects: v as Subject[] })} placeholder="Todas as matérias..." />
-                  <SearchableMultiSelect label="Bancas" icon={Filter} options={allAgencies} selected={config.filters.agencies} onChange={v => setConfig({ ...config, filters: { ...config.filters, agencies: v } })} placeholder="Todas as bancas..." />
-                  <SearchableMultiSelect label="Anos" icon={Calendar} options={allYears} selected={config.filters.years} onChange={v => setConfig({ ...config, filters: { ...config.filters, years: v } })} placeholder="Todos os anos..." />
-                  <SearchableMultiSelect label="Órgãos" icon={Building2} options={allOrgs} selected={config.filters.organizations} onChange={v => setConfig({ ...config, filters: { ...config.filters, organizations: v } })} placeholder="Todos os órgãos..." />
-                  <SearchableMultiSelect label="Cargos" icon={Briefcase} options={allRoles} selected={config.filters.roles} onChange={v => setConfig({ ...config, filters: { ...config.filters, roles: v } })} placeholder="Todos os cargos..." />
-                  <SearchableMultiSelect label="Níveis" icon={GraduationCap} options={allLevels} selected={config.filters.levels} onChange={v => setConfig({ ...config, filters: { ...config.filters, levels: v } })} placeholder="Todos os níveis..." />
-                  <SearchableMultiSelect label="Assuntos (Tópicos)" icon={BookOpen} options={allTopics} selected={config.filters.topics} onChange={v => setConfig({ ...config, filters: { ...config.filters, topics: v } })} placeholder="Todos os tópicos..." />
+                  <SearchableMultiSelect
+                     label="Foco"
+                     icon={Target}
+                     options={simulationCareers}
+                     selected={config.filters.careers}
+                     onChange={(values) => {
+                        const hasEnem = values.includes(ENEM_FOCUS_NAME);
+                        setConfig((prev) => ({
+                           ...prev,
+                           subjects: hasEnem
+                              ? prev.subjects.filter((subject) => ENEM_SUBJECT_AREA_OPTIONS.includes(subject as any))
+                              : prev.subjects.filter((subject) => !ENEM_SUBJECT_AREA_OPTIONS.includes(subject as any)),
+                           filters: {
+                              ...prev.filters,
+                              careers: hasEnem ? [ENEM_FOCUS_NAME] : values.map((value) => normalizeCareerSelectorLabel(value)),
+                              agencies: hasEnem ? [] : prev.filters.agencies,
+                              organizations: hasEnem ? [] : prev.filters.organizations,
+                              roles: hasEnem ? [] : prev.filters.roles,
+                              levels: hasEnem ? [] : prev.filters.levels,
+                           },
+                        }));
+                     }}
+                     placeholder="Selecione o foco..."
+                  />
+                  <SearchableMultiSelect label="Matérias" icon={Target} options={simulationSubjects} selected={config.subjects} onChange={v => setConfig({ ...config, subjects: v as Subject[] })} placeholder={isEnemFocus ? 'Áreas do ENEM...' : 'Todas as matérias...'} />
+                  <SearchableMultiSelect label="Bancas" icon={Filter} options={simulationAgencies} selected={config.filters.agencies} onChange={v => setConfig({ ...config, filters: { ...config.filters, agencies: v } })} placeholder={isEnemFocus ? 'Desativado para ENEM' : 'Todas as bancas...'} disabled={isEnemFocus} />
+                  <SearchableMultiSelect label="Anos" icon={Calendar} options={simulationYears} selected={config.filters.years} onChange={v => setConfig({ ...config, filters: { ...config.filters, years: v } })} placeholder="Todos os anos..." />
+                  <SearchableMultiSelect label="Órgãos" icon={Building2} options={simulationOrgs} selected={config.filters.organizations} onChange={v => setConfig({ ...config, filters: { ...config.filters, organizations: v } })} placeholder={isEnemFocus ? 'Desativado para ENEM' : 'Todos os órgãos...'} disabled={isEnemFocus} />
+                  <SearchableMultiSelect label="Cargos" icon={Briefcase} options={simulationRoles} selected={config.filters.roles} onChange={v => setConfig({ ...config, filters: { ...config.filters, roles: v } })} placeholder={isEnemFocus ? 'Desativado para ENEM' : 'Todos os cargos...'} disabled={isEnemFocus} />
+                  <SearchableMultiSelect label="Níveis" icon={GraduationCap} options={allLevels} selected={config.filters.levels} onChange={v => setConfig({ ...config, filters: { ...config.filters, levels: v } })} placeholder={isEnemFocus ? 'Desativado para ENEM' : 'Todos os níveis...'} disabled={isEnemFocus} />
+                  <SearchableMultiSelect label="Assuntos (Tópicos)" icon={BookOpen} options={simulationTopics} selected={config.filters.topics} onChange={v => setConfig({ ...config, filters: { ...config.filters, topics: v } })} placeholder="Todos os tópicos..." />
                </div>
 
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-6 border-t border-slate-50 dark:border-slate-800 transition-colors">
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 pt-6 border-t border-slate-50 dark:border-slate-800 transition-colors">
                   <div className="space-y-1.5">
                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">Questões</label>
                      <select value={config.questionCount} onChange={e => setConfig({ ...config, questionCount: Number(e.target.value) })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all cursor-pointer">
@@ -288,7 +463,7 @@ const Simulation: React.FC = () => {
                   }
 
                   // Feature Gating para simulados personalizados
-                  const hasCustomFilters = config.subjects.length > 0 || config.filters.agencies.length > 0 || config.filters.years.length > 0;
+                  const hasCustomFilters = config.subjects.length > 0 || config.filters.careers.length > 0 || config.filters.agencies.length > 0 || config.filters.years.length > 0;
                   if (hasCustomFilters && !canCreateCustomSim) {
                      setShowUpgradeModal(true);
                      return;
@@ -307,9 +482,10 @@ const Simulation: React.FC = () => {
    if (step === 'active' && activeSession) {
       const q = activeSession.questions[currentIdx];
       return (
-         <div className="w-full pb-32 animate-fade-in">
-            <div className="sticky top-4 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-8 flex justify-between items-center shadow-lg transition-colors">
-               <div className="flex items-center gap-4">
+         <div className="w-full pb-36 md:pb-32 animate-fade-in">
+            {renderExitFullscreenButton()}
+            <div className="sticky top-2 md:top-4 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 mb-6 md:mb-8 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center shadow-lg transition-colors">
+               <div className="flex w-full sm:w-auto items-center justify-between sm:justify-start gap-3 sm:gap-4">
                   <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
                      <button
                         onClick={() => setViewMode('focus')}
@@ -329,23 +505,23 @@ const Simulation: React.FC = () => {
                   <button onClick={() => setShowPalette(!showPalette)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${showPalette ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors'}`}>
                      <LayoutGrid size={18} />
                   </button>
-                  <div className="hidden sm:block">
+                  <div className="hidden md:block">
                      <h2 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Simulado</h2>
                      <p className="text-xs font-bold text-slate-800 dark:text-slate-200 transition-colors">{viewMode === 'focus' ? `${currentIdx + 1} / ${activeSession.questions.length}` : 'Todos os itens'}</p>
                   </div>
                </div>
-               <div className="flex items-center gap-4">
-                  <div className={`px-5 py-2 rounded-xl font-mono font-black text-lg shadow-inner flex items-center gap-2 transition-colors ${timeLeft < 300 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 animate-pulse' : 'bg-slate-900 dark:bg-slate-800 text-white dark:text-slate-100'}`}>
+               <div className="flex w-full sm:w-auto items-center justify-between gap-3 sm:gap-4">
+                  <div className={`px-4 sm:px-5 py-2 rounded-xl font-mono font-black text-base sm:text-lg shadow-inner flex items-center gap-2 transition-colors ${timeLeft < 300 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 animate-pulse' : 'bg-slate-900 dark:bg-slate-800 text-white dark:text-slate-100'}`}>
                      <Clock size={16} className={timeLeft < 300 ? 'text-red-500 dark:text-red-400' : 'text-indigo-400 dark:text-indigo-500'} />
                      {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
                   </div>
-                  <button onClick={() => { if (confirm("Deseja finalizar o simulado agora?")) handleFinish(); }} className="px-5 py-2 bg-indigo-600 dark:bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-emerald-600 dark:hover:bg-emerald-500 shadow-md transition-all">Finalizar</button>
+                  <button onClick={() => { if (confirm("Deseja finalizar o simulado agora?")) handleFinish(); }} className="px-4 sm:px-5 py-2 bg-indigo-600 dark:bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-emerald-600 dark:hover:bg-emerald-500 shadow-md transition-all">Finalizar</button>
                </div>
             </div>
 
             {showPalette && (
                <div className="fixed inset-0 z-50 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowPalette(false)}>
-                  <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-2xl p-8 w-full max-w-md animate-scale-in transition-colors" onClick={e => e.stopPropagation()}>
+                  <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-5 shadow-2xl transition-colors animate-scale-in dark:border-slate-800 dark:bg-slate-900 sm:p-8" onClick={e => e.stopPropagation()}>
                      <div className="flex justify-between items-center mb-6">
                         <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Navegação da Prova</h4>
                         <button onClick={() => setShowPalette(false)} className="text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"><X size={20} /></button>
@@ -365,7 +541,7 @@ const Simulation: React.FC = () => {
                </div>
             )}
 
-            <div className="animate-slide-up w-full space-y-12">
+            <div className="animate-slide-up w-full space-y-8 px-2 sm:px-3 md:space-y-12 md:px-0">
                {viewMode === 'focus' ? (
                   <>
                      <QuestionCard
@@ -392,11 +568,11 @@ const Simulation: React.FC = () => {
                         userPlan={(currentUser as any)?.plan || 'Gratuito'}
                      />
 
-                     <div className="flex justify-between mt-8 px-2">
-                        <button onClick={() => { setCurrentIdx(Math.max(0, currentIdx - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={currentIdx === 0} className="px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-all flex items-center gap-2 transition-colors">
+                     <div className="mt-8 flex flex-wrap items-center justify-between gap-3 px-0 sm:px-2">
+                        <button onClick={() => { setCurrentIdx(Math.max(0, currentIdx - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={currentIdx === 0} className="px-4 sm:px-6 py-2.5 sm:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-all flex items-center gap-2 transition-colors">
                            <ChevronLeft size={16} /> Anterior
                         </button>
-                        <button onClick={() => { currentIdx === activeSession.questions.length - 1 ? handleFinish() : setCurrentIdx(currentIdx + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="px-10 py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200 dark:shadow-none hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all flex items-center gap-2">
+                        <button onClick={() => { currentIdx === activeSession.questions.length - 1 ? handleFinish() : setCurrentIdx(currentIdx + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="px-6 sm:px-10 py-2.5 sm:py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200 dark:shadow-none hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all flex items-center gap-2">
                            {currentIdx === activeSession.questions.length - 1 ? 'Entregar Prova' : 'Próxima'} <ChevronRight size={16} />
                         </button>
                      </div>
@@ -431,7 +607,7 @@ const Simulation: React.FC = () => {
                         </div>
                      ))}
                      <div className="flex justify-center pt-8">
-                        <button onClick={() => { if (confirm("Deseja finalizar o simulado agora?")) handleFinish(); }} className="px-12 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all transform hover:scale-105">
+                        <button onClick={() => { if (confirm("Deseja finalizar o simulado agora?")) handleFinish(); }} className="px-6 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all transform hover:scale-105 sm:px-12">
                            Finalizar e Ver Resultado
                         </button>
                      </div>
@@ -446,24 +622,25 @@ const Simulation: React.FC = () => {
    if (step === 'result' && activeSession) {
       const accuracy = Math.round((activeSession.score! / activeSession.questions.length) * 100);
       return (
-         <div className="w-full space-y-8 animate-fade-in py-6">
-            <header className="flex justify-between items-end">
+         <div className="w-full space-y-6 px-2 py-4 animate-fade-in sm:px-3 md:space-y-8 md:px-0 md:py-6">
+            {renderExitFullscreenButton()}
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                <div>
                   <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Resultado Final</h1>
                   <p className="text-slate-400 dark:text-slate-500 text-xs font-medium transition-colors">Confira seu desempenho detalhado neste simulado.</p>
                </div>
-               <button onClick={() => setStep('config')} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all">
+               <button onClick={handleBackToConfig} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all">
                   <RotateCcw size={14} /> Novo Treino
                </button>
             </header>
 
-            <div className="bg-white dark:bg-slate-900 p-10 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-10 transition-colors">
+            <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 md:p-10 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-8 md:gap-10 transition-colors">
                <div className={`w-32 h-32 rounded-full border-[8px] flex flex-col items-center justify-center relative transition-colors ${accuracy >= 70 ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-amber-500 text-amber-600 dark:text-amber-400'}`}>
                   <div className="absolute inset-0 bg-current opacity-5 rounded-full" />
                   <span className="text-3xl font-black">{accuracy}%</span>
                   <span className="text-[8px] font-black uppercase tracking-widest opacity-60">Acertos</span>
                </div>
-               <div className="flex-1 grid grid-cols-2 gap-8">
+               <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
                   <div className="space-y-1">
                      <p className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest transition-colors">Geral</p>
                      <p className="text-2xl font-black text-slate-800 dark:text-slate-100 transition-colors">{activeSession.score} / {activeSession.questions.length}</p>
@@ -491,7 +668,7 @@ const Simulation: React.FC = () => {
                      <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`} title="Modo Lista"><LayoutGrid size={14} /></button>
                   </div>
                </div>
-               <div className={`space-y-3 ${viewMode === 'list' ? 'grid grid-cols-1 md:grid-cols-2 gap-4 space-y-0' : ''}`}>
+               <div className={`space-y-3 ${viewMode === 'list' ? 'grid grid-cols-1 lg:grid-cols-2 gap-4 space-y-0' : ''}`}>
                   {activeSession.questions.map((q, i) => {
                      // Correctly find if answer is right
                      const selectedIndexOrObj = activeSession.answers[q.id];
@@ -507,7 +684,7 @@ const Simulation: React.FC = () => {
                            <div className="flex items-center gap-4">
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs transition-colors ${selectedIndex === undefined ? 'bg-slate-100 dark:bg-slate-800 text-slate-400' : isCorrect ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>{i + 1}</div>
                               <div className="flex-1 min-w-0">
-                                 <div className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" dangerouslySetInnerHTML={{ __html: q.enunciado_clean || q.enunciado || 'Questão sem enunciado...' }} />
+                                 <div className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(q.enunciado_clean || q.enunciado || 'Questao sem enunciado...') }} />
                                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium transition-colors truncate">{(q.assuntos && q.assuntos.length > 0) ? q.assuntos[0].nome : 'Geral'} ? {q.topic || 'Geral'}</p>
                               </div>
                            </div>
@@ -528,22 +705,23 @@ const Simulation: React.FC = () => {
    if (step === 'review' && activeSession) {
       const q = activeSession.questions[reviewIdx];
       return (
-         <div className="w-full pb-32 animate-fade-in">
-            <div className="sticky top-4 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-8 flex justify-between items-center shadow-lg transition-colors">
-               <button onClick={() => setStep('result')} className="flex items-center gap-2 px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-[10px] font-black uppercase transition-all">
+         <div className="w-full px-2 pb-36 animate-fade-in sm:px-3 md:px-0 md:pb-32">
+            {renderExitFullscreenButton()}
+            <div className="sticky top-2 md:top-4 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 mb-6 md:mb-8 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center shadow-lg transition-colors">
+               <button onClick={() => setStep('result')} className="flex items-center gap-2 px-3 sm:px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-[10px] font-black uppercase transition-all">
                   <ArrowLeft size={16} /> Voltar ao Resumo
                </button>
-               <div className="flex items-center gap-2">
+               <div className="flex items-center gap-2 sm:justify-center">
                   <span className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest transition-colors">Revisão</span>
                   <span className="text-xs font-bold text-slate-800 dark:text-slate-200 transition-colors">{reviewIdx + 1} / {activeSession.questions.length}</span>
                </div>
-               <div className="flex gap-2">
+               <div className="flex gap-2 sm:justify-end">
                   <button onClick={() => setReviewIdx(Math.max(0, reviewIdx - 1))} disabled={reviewIdx === 0} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-colors"><ChevronLeft size={18} /></button>
                   <button onClick={() => setReviewIdx(Math.min(activeSession.questions.length - 1, reviewIdx + 1))} disabled={reviewIdx === activeSession.questions.length - 1} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-colors"><ChevronRight size={18} /></button>
                </div>
             </div>
 
-            <div className="animate-slide-up w-full">
+            <div className="animate-slide-up w-full px-2 sm:px-3 md:px-0">
                <QuestionCard
                   question={q}
                   indexDisplay={reviewIdx + 1}
@@ -560,7 +738,7 @@ const Simulation: React.FC = () => {
                />
             </div>
 
-            <div className="mt-8 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 rounded-3xl p-8 flex items-center gap-6 transition-colors">
+            <div className="mt-8 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 rounded-3xl p-5 sm:p-6 md:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 transition-colors">
                <div className="w-14 h-14 bg-white dark:bg-slate-900 rounded-2xl shadow-sm flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0 transition-colors"><Zap size={28} /></div>
                <div>
                   <h4 className="text-sm font-black text-indigo-900 dark:text-indigo-100 uppercase mb-1 transition-colors">Dica de Estudo</h4>

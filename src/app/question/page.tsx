@@ -14,6 +14,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, Building2, Calendar, FileQuestion, GraduationCap, Loader2, ShieldCheck, Tag } from 'lucide-react';
 import type { Question } from '@types';
 import { questionService } from '@services/questions';
+import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import {
   PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -138,7 +139,7 @@ const QuestionPublicPage: React.FC = () => {
   return (
     <section className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-6 px-4 py-8 sm:px-6 lg:px-8`}>
       <div className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
-        <div className="border-b border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-sky-50 p-6 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950">
+        <div className="border-b border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-sky-50 p-4 sm:p-5 md:p-6 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Questao publica</p>
           <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-3">
@@ -156,7 +157,7 @@ const QuestionPublicPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="space-y-6 p-6">
+        <div className="space-y-6 p-4 sm:p-5 md:p-6">
           {metadataItems.length > 0 && (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {metadataItems.map((item) => (
@@ -169,14 +170,14 @@ const QuestionPublicPage: React.FC = () => {
           )}
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr),360px]">
-            <article className="space-y-6 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <article className="space-y-6 rounded-[2rem] border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
                 <FileQuestion size={14} />
                 Questao #{question.id}
               </div>
               <div
                 className="prose prose-slate max-w-none text-sm leading-7 dark:prose-invert"
-                dangerouslySetInnerHTML={{ __html: question.enunciado || question.enunciado_clean || '' }}
+                dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(question.enunciado || question.enunciado_clean || '') }}
               />
 
               {Array.isArray(question.itens) && question.itens.length > 0 ? (
@@ -190,7 +191,7 @@ const QuestionPublicPage: React.FC = () => {
                         </span>
                         <div
                           className="prose prose-slate max-w-none text-sm leading-7 dark:prose-invert"
-                          dangerouslySetInnerHTML={{ __html: item.corpo || item.corpo_clean || '' }}
+                          dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(item.corpo || item.corpo_clean || '') }}
                         />
                       </div>
                     </div>
@@ -255,4 +256,3 @@ const QuestionPublicPage: React.FC = () => {
 };
 
 export default QuestionPublicPage;
-

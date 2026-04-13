@@ -78,7 +78,7 @@ export const PlanCard: React.FC<PlanCardProps> = ({
 
   const cycleDivisor = offer?.cycleCount || (plan.interval_unit === 'year' ? 12 : (plan.interval_count || 1));
   const finalPrice = Math.max(0, totalPrice - proRatedCredit);
-  const hasUpgradeDiscount = proRatedCredit > 0 && !isCurrent;
+  const hasUpgradeDiscount = proRatedCredit > 0 && !isCurrent && !isDisabled;
   const displayMonthlyPrice = hasUpgradeDiscount ? finalPrice / cycleDivisor : monthlyPrice;
 
   return (

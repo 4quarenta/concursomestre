@@ -6,6 +6,58 @@ export interface ResolvedPlanAutoCoupon {
   discountAmount: number;
 }
 
+const toNumber = (value: unknown, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const toBoolean = (value: unknown) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off', ''].includes(normalized)) return false;
+  }
+
+  return Boolean(value);
+};
+
+const getCouponExpiresAt = (coupon?: DiscountCode | null) => {
+  const rawCoupon = (coupon || {}) as DiscountCode & Record<string, unknown>;
+  const expiresAt = rawCoupon.expiresAt ?? rawCoupon.expires_at;
+  return typeof expiresAt === 'string' ? expiresAt : '';
+};
+
+const getCouponMaxUses = (coupon?: DiscountCode | null) => {
+  const rawCoupon = (coupon || {}) as DiscountCode & Record<string, unknown>;
+  const maxUses = rawCoupon.maxUses ?? rawCoupon.max_uses;
+  const normalized = toNumber(maxUses, 0);
+  return normalized > 0 ? normalized : 0;
+};
+
+const getCouponUses = (coupon?: DiscountCode | null) => {
+  const rawCoupon = (coupon || {}) as DiscountCode & Record<string, unknown>;
+  const uses = rawCoupon.uses ?? rawCoupon.used_count;
+  return Math.max(0, toNumber(uses, 0));
+};
+
+const getCouponAutoApply = (coupon?: DiscountCode | null) => {
+  const rawCoupon = (coupon || {}) as DiscountCode & Record<string, unknown>;
+  const autoApply = rawCoupon.autoApply ?? rawCoupon.auto_apply;
+  return toBoolean(autoApply);
+};
+
+const getCouponDiscountPercentage = (coupon?: DiscountCode | null) => {
+  const rawCoupon = (coupon || {}) as DiscountCode & Record<string, unknown>;
+  return Math.max(0, toNumber(rawCoupon.discountPercentage ?? rawCoupon.discount_percentage, 0));
+};
+
+const getCouponDiscountAmount = (coupon?: DiscountCode | null) => {
+  const rawCoupon = (coupon || {}) as DiscountCode & Record<string, unknown>;
+  return Math.max(0, toNumber(rawCoupon.discountAmount ?? rawCoupon.discount_amount, 0));
+};
+
 /**
  * Verifica se o cupom automatico ainda pode ser exibido/aplicado no frontend.
  * @since v1.0.0
@@ -15,11 +67,14 @@ export const isPlanAutoCouponActive = (coupon?: DiscountCode | null) => {
     return false;
   }
 
-  if (coupon.expiresAt && new Date(coupon.expiresAt).getTime() < Date.now()) {
+  const expiresAt = getCouponExpiresAt(coupon);
+  if (expiresAt && new Date(expiresAt).getTime() < Date.now()) {
     return false;
   }
 
-  if (typeof coupon.maxUses === 'number' && coupon.maxUses > 0 && Number(coupon.uses || 0) >= coupon.maxUses) {
+  const maxUses = getCouponMaxUses(coupon);
+  const uses = getCouponUses(coupon);
+  if (maxUses > 0 && uses >= maxUses) {
     return false;
   }
 
@@ -27,11 +82,15 @@ export const isPlanAutoCouponActive = (coupon?: DiscountCode | null) => {
 };
 
 const normalizeCouponTargetType = (coupon?: DiscountCode | null) => {
-  const targetType = String(coupon?.targetType || 'all').trim().toLowerCase();
+  const rawCoupon = (coupon || {}) as DiscountCode & Record<string, unknown>;
+  const targetType = String(rawCoupon.targetType ?? rawCoupon.target_type ?? 'all').trim().toLowerCase();
   return targetType === 'plan' || targetType === 'item' ? targetType : 'all';
 };
 
-const normalizeCouponTargetId = (coupon?: DiscountCode | null) => String(coupon?.targetId || '').trim().toLowerCase();
+const normalizeCouponTargetId = (coupon?: DiscountCode | null) => {
+  const rawCoupon = (coupon || {}) as DiscountCode & Record<string, unknown>;
+  return String(rawCoupon.targetId ?? rawCoupon.target_id ?? '').trim().toLowerCase();
+};
 
 const roundCurrency = (value: number) => Number(Number(value || 0).toFixed(2));
 
@@ -41,8 +100,8 @@ const roundCurrency = (value: number) => Number(Number(value || 0).toFixed(2));
  */
 export const calculatePlanAutoCouponDiscount = (coupon: DiscountCode, amount: number) => {
   const normalizedAmount = Math.max(0, Number(amount || 0));
-  const percentageDiscount = Math.max(0, Number(coupon.discountPercentage || 0));
-  const fixedDiscount = Math.max(0, Number(coupon.discountAmount || 0));
+  const percentageDiscount = getCouponDiscountPercentage(coupon);
+  const fixedDiscount = getCouponDiscountAmount(coupon);
 
   if (percentageDiscount > 0) {
     return Math.min(normalizedAmount, roundCurrency(normalizedAmount * (percentageDiscount / 100)));
@@ -97,7 +156,7 @@ const getCouponSpecificityScore = (coupon: DiscountCode) => {
  */
 export const resolveBestPlanAutoCoupon = (coupons: DiscountCode[], plan: Plan) => {
   const matchingCoupons = coupons
-    .filter((coupon) => Boolean(coupon.autoApply))
+    .filter((coupon) => getCouponAutoApply(coupon))
     .filter((coupon) => isPlanAutoCouponActive(coupon))
     .filter((coupon) => couponMatchesPlan(coupon, plan));
 

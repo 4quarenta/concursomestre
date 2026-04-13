@@ -17,13 +17,15 @@ import {
 } from 'lucide-react';
 import { getAssetUrl } from '@services/api';
 import { questionService } from '@services/questions';
+import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import ReactMarkdown from 'react-markdown';
 
 const fixHtmlImages = (html: string) => {
-  if (!html) return html;
+  const normalizedHtml = normalizeQuestionRichHtml(html);
+  if (!normalizedHtml) return normalizedHtml;
   // This regex finds <img> tags and captures the src attribute
   // It replaces relative paths like 'uploads/questions/...' with absolute ones using getAssetUrl
-  return html.replace(/<img[^>]+src=(['"])([^'"]+)\1[^>]*>/gi, (match, quote, src) => {
+  return normalizedHtml.replace(/<img[^>]+src=(['"])([^'"]+)\1[^>]*>/gi, (match, quote, src) => {
     if (src.startsWith('http')) return match;
     const absoluteUrl = getAssetUrl(src);
     return match.replace(src, absoluteUrl);
@@ -657,7 +659,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                           <img src={item.corpo} className="w-full h-auto" alt="" />
                         </div>
                       ) : (
-                        <div className={`text-sm font-medium leading-relaxed ${textClass}`} dangerouslySetInnerHTML={{ __html: item.corpo }} />
+                        <div
+                          className={`text-sm font-medium leading-relaxed ${textClass}`}
+                          dangerouslySetInnerHTML={{ __html: fixHtmlImages(item.corpo || item.corpo_clean || '') }}
+                        />
                       )}
                       {showResult && isCorrect && <CheckCircle2 className="ml-auto text-emerald-500" size={20} />}
                       {showResult && isSelected && !isCorrect && <XCircle className="ml-auto text-red-500" size={20} />}

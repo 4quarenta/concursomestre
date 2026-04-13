@@ -125,6 +125,7 @@ export const ENDPOINTS = {
         materials: 'users/materials.php',
         referralStats: 'referrals/stats.php',
         uploadPhoto: 'users/upload_photo.php',
+        removePhoto: 'users/remove_photo.php',
         changePassword: 'users/change_password.php',
         listCards: 'users/list_cards.php',
         removeCard: 'users/remove_card.php',

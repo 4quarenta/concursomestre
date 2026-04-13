@@ -73,6 +73,7 @@ const featureItems = [
   { id: 'simulationsEnabled', label: 'Simulados', icon: Clock },
   { id: 'marketplaceEnabled', label: 'Marketplace', icon: ShoppingCart },
   { id: 'rankingsEnabled', label: 'Rankings', icon: Trophy },
+  { id: 'referralEnabled', label: 'Indique e ganhe', icon: Users },
   { id: 'xRayEnabled', label: 'Raio-X', icon: Zap },
   { id: 'landingPagePromoEnabled', label: 'Promo na home', icon: Megaphone },
   { id: 'communityEnabled', label: 'Comunidade', icon: MessageSquare },
@@ -85,6 +86,7 @@ const featureItems = [
   { id: 'loginRequired', label: 'Login obrigatório', icon: Lock },
   { id: 'partnerRegistrationEnabled', label: 'Cadastro parceiro', icon: ShoppingBag },
   { id: 'recurringEnabled', label: 'Recorrência', icon: Repeat },
+  { id: 'sameTierCycleChangeEnabled', label: 'Troca de ciclo no mesmo tier', icon: RefreshCcw },
   { id: 'autoRefundEnabled', label: 'Auto refund', icon: RefreshCcw },
 ];
 
@@ -299,7 +301,7 @@ const AdminSettings = ({
   const stripeWebhookUrl = `${String(apiClient.defaults.baseURL || '').replace(/\/+$/, '')}/subscriptions/stripe_webhook.php`;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 md:space-y-6">
       <LogViewer isOpen={isLogViewerOpen} onClose={() => setIsLogViewerOpen(false)} />
       <AdminSettingsTabsBar
         tabs={[
@@ -321,8 +323,8 @@ const AdminSettings = ({
 
       {activeTab === 'general' && (
         <div className="grid gap-6">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+          <div className="grid gap-5 md:gap-6 lg:grid-cols-2">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-4 sm:p-5 md:p-6 dark:border-slate-800 dark:bg-slate-900">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Terminal size={20} className="text-indigo-600 dark:text-indigo-400" /> Ambiente</h3>
                 <button type="button" onClick={() => setIsLogViewerOpen(true)} className="rounded-2xl border border-slate-200 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100">Visualizar logs</button>
@@ -339,7 +341,7 @@ const AdminSettings = ({
                 </div>
               </div>
             </div>
-            <div className="rounded-[2rem] border border-fuchsia-100 bg-fuchsia-50/40 p-6 dark:border-fuchsia-900/30 dark:bg-fuchsia-900/10">
+            <div className="rounded-[2rem] border border-fuchsia-100 bg-fuchsia-50/40 p-4 sm:p-5 md:p-6 dark:border-fuchsia-900/30 dark:bg-fuchsia-900/10">
               <div className="mb-4 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-black text-fuchsia-700 dark:text-fuchsia-300"><Sparkles size={20} /> Motivacao diaria</h3><label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-fuchsia-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-600"><Upload size={14} /> Carregar .md<input type="file" accept=".md,text/markdown,text/plain" className="hidden" onChange={handleDailyMotivationFileUpload} /></label></div>
               <div className="space-y-4">
                 <textarea value={localSettings.dailyMotivationMarkdown || ''} onChange={(e) => setField('dailyMotivationMarkdown', e.target.value)} className={`${inputClassName} min-h-[220px] resize-none font-mono text-xs`} />
@@ -359,15 +361,15 @@ const AdminSettings = ({
       {activeTab === 'modules' && <div className="grid gap-4 md:grid-cols-2">{featureItems.map((feature) => <button key={feature.id} type="button" onClick={() => setFeature(feature.id, !localSettings.features?.[feature.id])} className="flex items-center justify-between rounded-[2rem] border border-slate-200 bg-white p-5 text-left dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center gap-3"><feature.icon size={18} className="text-indigo-500" /><div><p className="text-sm font-black text-slate-900 dark:text-slate-100">{feature.label}</p><p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{feature.id}</p></div></div><div className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${localSettings.features?.[feature.id] ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{localSettings.features?.[feature.id] ? 'Ativo' : 'Inativo'}</div></button>)}</div>}
 
       {activeTab === 'security' && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <div className="grid gap-5 md:gap-6 lg:grid-cols-2">
+          <div className="rounded-[2rem] border border-slate-200 bg-white p-4 sm:p-5 md:p-6 dark:border-slate-800 dark:bg-slate-900">
             <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><ShieldCheck size={20} className="text-indigo-500" /> 2FA</h3>
             <p className="mb-4 text-xs font-medium text-slate-500 dark:text-slate-400">Status atual: {currentUser?.twoFactorEnabled ? 'ativo' : 'inativo'}.</p>
             {twoFactorStep === 'status' && !currentUser?.twoFactorEnabled && <button type="button" onClick={initiate2FASetup} className="rounded-xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">Configurar 2FA</button>}
             {twoFactorStep === 'setup' && twoFactorData && <div className="space-y-4"><img src={twoFactorData.qrCodeUrl} alt="QR 2FA" className="h-40 w-40 rounded-2xl border border-slate-200 bg-white p-3" /><code className="block rounded-xl bg-slate-100 px-4 py-3 text-sm font-black dark:bg-slate-950 dark:text-slate-100">{twoFactorData.secret}</code><button type="button" onClick={() => setTwoFactorStep('verify')} className="rounded-xl bg-slate-900 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white dark:bg-indigo-600">Já escaneei</button></div>}
             {twoFactorStep === 'verify' && <div className="space-y-4"><input type="text" maxLength={6} value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value)} placeholder="000000" className={`${inputClassName} text-center text-2xl font-black tracking-widest`} /><button type="button" onClick={verifyAndEnable2FA} className="rounded-xl bg-emerald-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">Ativar 2FA</button></div>}
           </div>
-          <div className="rounded-[2rem] border border-rose-100 bg-rose-50/50 p-6 dark:border-rose-900/30 dark:bg-rose-900/10">
+          <div className="rounded-[2rem] border border-rose-100 bg-rose-50/50 p-4 sm:p-5 md:p-6 dark:border-rose-900/30 dark:bg-rose-900/10">
             <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-rose-700 dark:text-rose-300"><Trash2 size={20} /> Reset geral</h3>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Apaga conteúdo operacional com autenticação forte.</p>
             <button type="button" onClick={() => setIsResetModalOpen(true)} className="mt-5 rounded-2xl bg-rose-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">Resetar conteúdo</button>

@@ -9,7 +9,7 @@
 *
 */
 
-import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
 import type { Question, QuestionStats, UserAnswer } from 'types';
 
 type QuestionListResult = {
@@ -96,9 +96,26 @@ export const questionService = {
         selected_option: answer.selectedOptionIndex,
         is_correct: answer.isCorrect,
         time_taken: answer.timeTaken || 0,
-        simulation_id: answer.simulationId || null,
+        simulation_id: (() => {
+          const rawSimulationId = answer.simulationId;
+          if (typeof rawSimulationId === 'number') return rawSimulationId;
+          if (typeof rawSimulationId === 'string' && /^\d+$/.test(rawSimulationId.trim())) {
+            return Number(rawSimulationId.trim());
+          }
+          return null;
+        })(),
       },
     ) as any;
+    const backendErrorMessage = readApiErrorMessage(response);
+    if (
+      typeof backendErrorMessage === 'string'
+      && backendErrorMessage.toLowerCase().includes('nenhum campo editavel foi enviado')
+    ) {
+      return {
+        success: true,
+        message: 'Resposta ja registrada.',
+      };
+    }
 
     const envelope = assertApiSuccess(response, 'Não foi possível salvar a resposta.');
     const payload = readApiData<any>(response, {});

@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Mail, Lock, User, Eye, EyeOff, Loader2, X, MessageSquare, Shield, CheckCircle2, ChevronRight, Github, Chrome, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft, KeyRound, Terminal, UserPlus
+  Mail, Lock, User, Eye, EyeOff, Loader2, X, MessageSquare, Shield, CheckCircle2, ChevronRight, Github, Chrome, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft, KeyRound, UserPlus
 } from 'lucide-react';
 import { useSearchParams, Link } from 'react-router-dom';
 import ReCAPTCHA from 'react-google-recaptcha';
@@ -85,7 +85,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const isDevMode = systemSettings?.appMode !== 'production';
   const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
 
   // Cambia para o modo correto se o query param mudar
@@ -94,17 +93,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     if (m === 'signup') setMode('signup');
     else if (m === 'login') setMode('login');
   }, [searchParams]);
-
-  // Preenche email/senha a partir do DevModeBanner via sessionStorage
-  useEffect(() => {
-    const prefillEmail = sessionStorage.getItem('dev_prefill_email');
-    const prefillPass = sessionStorage.getItem('dev_prefill_password');
-    if (prefillEmail && prefillPass) {
-      setFormData(prev => ({ ...prev, email: prefillEmail, password: prefillPass }));
-      sessionStorage.removeItem('dev_prefill_email');
-      sessionStorage.removeItem('dev_prefill_password');
-    }
-  }, []);
 
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const recaptchaRef = useRef<ReCAPTCHA>(null);
@@ -352,9 +340,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const isForgot = mode === 'forgot';
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-950 dark:to-slate-900 transition-colors">
+    <div className="min-h-[100dvh] flex bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-950 dark:to-slate-900 transition-colors">
       {/* Painel esquerdo decorativo (visível apenas em telas grandes) */}
-      <div className="hidden lg:flex lg:w-5/12 bg-indigo-600 dark:bg-indigo-700 flex-col items-center justify-center p-16 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-5/12 bg-indigo-600 dark:bg-indigo-700 flex-col items-center justify-center p-12 xl:p-16 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 left-0 w-96 h-96 bg-white rounded-full -translate-x-40 -translate-y-40" />
           <div className="absolute bottom-0 right-0 w-80 h-80 bg-white rounded-full translate-x-32 translate-y-32" />
@@ -387,15 +375,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       </div>
 
       {/* Formulário direito */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-8 lg:p-12">
         <div className="w-full max-w-md">
           {/* Logo mobile */}
-          <div className="flex lg:hidden items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xl mb-10 justify-center">
+          <div className="flex lg:hidden items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xl mb-6 sm:mb-8 md:mb-10 justify-center">
             <PublicBrandLink />
           </div>
 
           {/* Card */}
-          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 transition-colors animate-scale-in">
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] sm:rounded-[2.5rem] shadow-xl border border-slate-200 dark:border-slate-800 p-5 sm:p-8 md:p-10 transition-colors animate-scale-in">
 
             {/* Cabeçalho */}
             <div className="mb-8">
@@ -633,67 +621,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               </div>
             )}
 
-            {/* Painel de acesso rápido dev — apenas no modo login + dev */}
-            {!isForgot && !isSignup && isDevMode && (
-              <DevQuickLogin onLogin={onLogin} />
-            )}
           </div>
         </div>
-      </div>
-    </div>
-  );
-};
-
-/**
- * Painel de login rápido para contas de desenvolvimento.
- * Visível apenas quando appMode !== 'production'.
- */
-export const DevQuickLogin: React.FC<{ onLogin: (user: any, token?: string | null) => Promise<void> }> = ({ onLogin }) => {
-  const { systemSettings } = useData();
-  const [loading, setLoading] = useState<string | null>(null);
-
-  if (systemSettings?.appMode === 'production') return null;
-
-  const accounts = [
-    { label: 'Aluno', email: 'aluno@email.com', color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300' },
-    { label: 'Admin', email: 'admin@concursomestre.com', color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300' },
-    { label: 'Parceiro', email: 'prof@concursomestre.com', color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300' },
-  ];
-
-  const quickLogin = async (email: string) => {
-    setLoading(email);
-    try {
-      const result: any = await apiClient.post(ENDPOINTS.auth.login, { email, password: '123456' });
-      if (result.success && result.data) {
-        const { user, token } = result.data;
-        await onLogin(buildUserProfile(user), token);
-      }
-    } catch (e) {
-      console.error('[DEV] Quick login failed:', e);
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  return (
-    <div className="mt-5 p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-2xl space-y-2">
-      <p className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest flex items-center gap-1">
-        <Terminal size={11} /> DEV — Acesso Rápido
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {accounts.map(acc => (
-          <button
-            key={acc.email}
-            disabled={loading === acc.email}
-            onClick={() => quickLogin(acc.email)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-xs font-bold transition-all hover:opacity-80 disabled:opacity-50 ${acc.color}`}
-          >
-            {loading === acc.email
-              ? <Loader2 size={12} className="animate-spin" />
-              : acc.label
-            }
-          </button>
-        ))}
       </div>
     </div>
   );
