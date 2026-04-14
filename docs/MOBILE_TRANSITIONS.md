@@ -356,7 +356,7 @@ Toda transicao mobile deve registrar:
 
 ## 2026-04-14 - Questoes salvas no mobile
 
-- commit: `PENDING_HASH Add mobile saved questions parity`
+- commit: `d6c0d29 Add mobile saved questions parity`
 - origem web/plataforma:
   - `src/app/practice/page.tsx`
   - `src/app/questions/components/QuestionCard.tsx`
