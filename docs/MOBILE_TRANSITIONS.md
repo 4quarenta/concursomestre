@@ -328,7 +328,7 @@ Toda transicao mobile deve registrar:
 
 ## 2026-04-14 - Questoes pool local e filtros avancados
 
-- commit: `PENDING_HASH Add mobile questions local filter pool`
+- commit: `86b3dc0 Add mobile questions local filter pool`
 - origem web/plataforma:
   - `src/app/practice/page.tsx`
   - `src/services/questions/questionService.ts`
