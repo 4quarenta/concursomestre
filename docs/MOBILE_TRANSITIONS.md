@@ -414,7 +414,7 @@ Toda transicao mobile deve registrar:
 
 ## 2026-04-14 - Questoes anotacoes locais no app
 
-- commit: `PENDING_HASH Add mobile question notes flow`
+- commit: `196d2b8 Add mobile question notes flow`
 - origem web/plataforma:
   - `src/app/practice/page.tsx`
   - `src/app/questions/components/QuestionCard.tsx`
