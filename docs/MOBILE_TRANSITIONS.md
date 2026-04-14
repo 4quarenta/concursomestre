@@ -384,7 +384,7 @@ Toda transicao mobile deve registrar:
 
 ## 2026-04-14 - Questoes comentarios da comunidade
 
-- commit: `PENDING_HASH Add mobile question comments flow`
+- commit: `672415b Add mobile question comments flow`
 - origem web/plataforma:
   - `src/app/practice/page.tsx`
   - `src/app/questions/components/QuestionCard.tsx`
