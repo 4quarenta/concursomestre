@@ -137,3 +137,27 @@ Toda transicao mobile deve registrar:
 - pendencias conhecidas:
   - ranking detail ainda usa a listagem oficial como fonte porque nao ha endpoint mobile dedicado para detalhe por id.
   - status de aprovacao/classificacao por vaga ainda segue apenas como exibicao simples de colocacoes.
+
+## 2026-04-14 - Simulados resultado e revisao
+
+- commit: `04dcfc1 Add mobile simulation result review`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - tipo `SimulationSession`
+  - fluxo de resultado/revisao apos `handleFinish`
+- destino mobile:
+  - `mobile/src/screens/SimulationRunScreen.tsx`
+  - `mobile/src/types/simulation.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - resultado mobile mantem o resumo de score, aproveitamento e tempo total
+  - resultado passa a carregar os resultados por questao
+  - revisao por questao exibe enunciado resumido, status correta/incorreta/em branco, resposta do usuario e gabarito
+  - roadmap mobile passou a tratar `Simulados com filtros avancados/taxonomias` como pendencia especifica
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - configuracao mobile ainda nao replica os filtros avancados/taxonomias da web.
+  - revisao detalhada ainda nao abre uma tela dedicada por questao com comentarios e notas.
