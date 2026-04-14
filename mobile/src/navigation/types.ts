@@ -31,5 +31,6 @@ export type MainTabParamList = {
   Planos: undefined;
   Simulados: undefined;
   Ranking: undefined;
+  Marketplace: undefined;
   Perfil: undefined;
 };

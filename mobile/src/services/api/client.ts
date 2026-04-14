@@ -9,8 +9,8 @@ type RetryConfig = InternalAxiosRequestConfig & {
 
 const resolveApiBaseUrl = (): string => {
   const expoBaseUrl =
-    (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined)
-    || process.env.EXPO_PUBLIC_API_BASE_URL
+    process.env.EXPO_PUBLIC_API_BASE_URL
+    || (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined)
     || 'http://localhost/questao-pro-backend/api/';
 
   return expoBaseUrl.endsWith('/') ? expoBaseUrl : `${expoBaseUrl}/`;

@@ -19,7 +19,9 @@
       }
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-asset",
+      "expo-font"
     ],
     "extra": {
       "apiBaseUrl": "http://localhost/questao-pro-backend/api/"
