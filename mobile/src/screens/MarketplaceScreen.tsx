@@ -11,9 +11,18 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AppStackParamList, MainTabParamList } from '@/navigation/types';
 import { marketplaceService } from '@/services/marketplace/marketplaceService';
 import { colors } from '@/theme/colors';
 import type { Material } from '@/types/materials';
+
+type MarketplaceNavigation = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Marketplace'>,
+  NativeStackNavigationProp<AppStackParamList>
+>;
 
 const formatCurrency = (value: number | string | undefined): string => {
   return new Intl.NumberFormat('pt-BR', {
@@ -47,6 +56,7 @@ const isRemoteImageUrl = (url?: string): boolean => {
  * @since v1.0.0
  */
 export const MarketplaceScreen: React.FC = () => {
+  const navigation = useNavigation<MarketplaceNavigation>();
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [materials, setMaterials] = React.useState<Material[]>([]);
@@ -144,6 +154,18 @@ export const MarketplaceScreen: React.FC = () => {
     );
   };
 
+  const handleOpenDetail = (material: Material) => {
+    if (!material.id) {
+      Alert.alert('Material invalido', 'Nao foi possivel identificar este material.');
+      return;
+    }
+
+    navigation.navigate('MaterialDetail', {
+      materialId: String(material.id),
+      material,
+    });
+  };
+
   const renderMaterial = ({ item }: { item: Material }) => {
     const materialKey = String(item.id);
     const isPurchasing = purchasingId === materialKey;
@@ -198,21 +220,32 @@ export const MarketplaceScreen: React.FC = () => {
           <Text style={styles.authorText}>Autor: {item.authorName}</Text>
         )}
 
-        <Pressable
-          onPress={() => handlePurchase(item)}
-          disabled={isPurchasing}
-          style={({ pressed }) => [
-            styles.purchaseButton,
-            pressed && !isPurchasing && styles.purchaseButtonPressed,
-            isPurchasing && styles.purchaseButtonDisabled,
-          ]}
-        >
-          {isPurchasing ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.purchaseButtonText}>Comprar material</Text>
-          )}
-        </Pressable>
+        <View style={styles.cardActions}>
+          <Pressable
+            onPress={() => handleOpenDetail(item)}
+            style={({ pressed }) => [
+              styles.detailButton,
+              pressed && styles.detailButtonPressed,
+            ]}
+          >
+            <Text style={styles.detailButtonText}>Detalhes</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => handlePurchase(item)}
+            disabled={isPurchasing}
+            style={({ pressed }) => [
+              styles.purchaseButton,
+              pressed && !isPurchasing && styles.purchaseButtonPressed,
+              isPurchasing && styles.purchaseButtonDisabled,
+            ]}
+          >
+            {isPurchasing ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.purchaseButtonText}>Comprar</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
     );
   };
@@ -477,7 +510,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  cardActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  detailButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailButtonPressed: {
+    borderColor: colors.primary,
+    backgroundColor: '#EEF2FF',
+  },
+  detailButtonText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
   purchaseButton: {
+    flex: 1,
     height: 44,
     borderRadius: 12,
     backgroundColor: colors.primary,

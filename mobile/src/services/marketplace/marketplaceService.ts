@@ -27,6 +27,11 @@ export const marketplaceService = {
     return rows as Material[];
   },
 
+  async getMaterialById(materialId: string | number): Promise<Material | null> {
+    const rows = await this.listMaterials();
+    return rows.find((material) => String(material.id) === String(materialId)) || null;
+  },
+
   async createMaterialPurchase(materialId: string | number, couponCode?: string): Promise<{ transactionId: string }> {
     const response: any = await apiClient.post<any>(ENDPOINTS.transactions.create, {
       material_id: materialId,

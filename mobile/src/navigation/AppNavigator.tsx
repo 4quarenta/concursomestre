@@ -12,6 +12,7 @@ import { SimulationRunScreen } from '@/screens/SimulationRunScreen';
 import { NotificationsScreen } from '@/screens/NotificationsScreen';
 import { RankingDetailScreen } from '@/screens/RankingDetailScreen';
 import { PerformanceSubjectsScreen } from '@/screens/PerformanceSubjectsScreen';
+import { MaterialDetailScreen } from '@/screens/MaterialDetailScreen';
 import { colors } from '@/theme/colors';
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -39,6 +40,7 @@ const linking: LinkingOptions<AppStackParamList> = {
       RankingDetail: 'ranking/:rankingId',
       SimulationConfig: 'simulados/novo',
       PerformanceSubjects: 'desempenho/materias',
+      MaterialDetail: 'material/:materialId',
     },
   },
 };
@@ -92,6 +94,11 @@ export const AppNavigator: React.FC = () => {
             name="PerformanceSubjects"
             component={PerformanceSubjectsScreen}
             options={{ title: 'Materias' }}
+          />
+          <Stack.Screen
+            name="MaterialDetail"
+            component={MaterialDetailScreen}
+            options={{ title: 'Material' }}
           />
         </Stack.Navigator>
       ) : (

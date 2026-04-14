@@ -74,6 +74,37 @@ Toda transicao mobile deve registrar:
   - dashboard mobile ainda nao replica graficos historicos, motivacao diaria e filtros de periodo da web.
   - a tela mobile usa o agregado oficial de `statistics/user`; nao reprocessa localmente o historico completo de respostas.
 
+## 2026-04-14 - Marketplace detalhe de material
+
+- commit: `TBD`
+- origem web/plataforma:
+  - `src/app/marketplace/page.tsx`
+  - `src/app/material/page.tsx`
+  - `src/app/reader/page.tsx`
+  - `src/services/marketplace/marketplaceService.ts`
+  - `src/services/transactions/transactionsService.ts`
+- destino mobile:
+  - `mobile/src/screens/MarketplaceScreen.tsx`
+  - `mobile/src/screens/MaterialDetailScreen.tsx`
+  - `mobile/src/services/marketplace/marketplaceService.ts`
+  - `mobile/src/services/api/client.ts`
+  - rota stack `MaterialDetail`
+  - deep link `concursomestre://material/:materialId`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - vitrine mobile abre detalhe publico de material
+  - detalhe exibe capa, preco, descricao, materia, topico, autor, avaliacao, vendas e status do arquivo
+  - compra tambem pode ser iniciada pelo detalhe
+  - acesso de leitura considera transacao aprovada/concluida, autor do material ou admin
+  - arquivo do material pode ser aberto em visualizador externo quando houver URL disponivel
+  - caminhos relativos do backend passaram a ser normalizados para URL absoluta no mobile
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - leitor PDF embutido no app ainda nao foi migrado; por enquanto o arquivo abre fora do app.
+  - detalhe ainda usa a listagem oficial como fonte porque nao ha endpoint mobile dedicado por id.
+
 ## 2026-04-14 - Marketplace
 
 - commit: `931e8ef Add mobile marketplace parity screen`

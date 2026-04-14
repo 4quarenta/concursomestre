@@ -16,6 +16,8 @@ const resolveApiBaseUrl = (): string => {
   return expoBaseUrl.endsWith('/') ? expoBaseUrl : `${expoBaseUrl}/`;
 };
 
+const resolveBackendRoot = (): string => resolveApiBaseUrl().replace(/\/api\/?$/, '');
+
 const parseJsonLikePayload = <T>(payload: T): T => {
   if (typeof payload !== 'string') return payload;
   const normalized = payload.trim();
@@ -45,6 +47,18 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+/**
+ * Converte caminhos relativos do backend em URLs absolutas para abertura externa no mobile.
+ * @since v1.0.0
+ */
+export const getAssetUrl = (resourcePath?: string | null): string => {
+  if (!resourcePath) return '';
+  if (/^https?:\/\//i.test(resourcePath)) return resourcePath;
+
+  const cleanPath = String(resourcePath).replace(/^\/+/, '');
+  return `${resolveBackendRoot()}/${cleanPath}`;
+};
 
 /**
  * Refresh de token usado pelos interceptors do app mobile.

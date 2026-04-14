@@ -1,5 +1,9 @@
 export interface MobileTransaction {
   id: string;
+  materialId?: string | number;
+  material_id?: string | number;
+  buyerId?: string | number;
+  buyer_id?: string | number;
   amount?: number;
   status?: string;
   type?: string;

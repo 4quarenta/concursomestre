@@ -1,4 +1,5 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { Material } from '@/types/materials';
 import type { MobileSimulationSeed } from '@/types/simulation';
 
 export type AuthStackParamList = {
@@ -29,6 +30,10 @@ export type AppStackParamList = {
     rankingId: string;
   };
   PerformanceSubjects: undefined;
+  MaterialDetail: {
+    materialId: string;
+    material?: Material;
+  };
 };
 
 export type MainTabParamList = {
