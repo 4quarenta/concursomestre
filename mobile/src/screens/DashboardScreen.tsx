@@ -8,14 +8,20 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { CompositeNavigationProp, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { MainTabParamList } from '@/navigation/types';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AppStackParamList, MainTabParamList } from '@/navigation/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { formatStudyDuration } from '@/services/statistics/studyTimeFormatting';
 import { statisticsService } from '@/services/statistics/statisticsService';
 import { colors } from '@/theme/colors';
 import type { SubjectStatistics, UserStatistics } from '@/types/statistics';
+
+type DashboardNavigation = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Dashboard'>,
+  NativeStackNavigationProp<AppStackParamList>
+>;
 
 const EMPTY_STATS: UserStatistics = {
   userId: '',
@@ -44,7 +50,7 @@ const clampPercent = (value: number) => {
  * @since v1.0.0
  */
 export const DashboardScreen: React.FC = () => {
-  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
+  const navigation = useNavigation<DashboardNavigation>();
   const { user } = useAuth();
   const [stats, setStats] = React.useState<UserStatistics>(EMPTY_STATS);
   const [loading, setLoading] = React.useState(true);
@@ -201,6 +207,9 @@ export const DashboardScreen: React.FC = () => {
           </Pressable>
           <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Planos')}>
             <Text style={styles.actionButtonText}>Ver planos</Text>
+          </Pressable>
+          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Notifications')}>
+            <Text style={styles.actionButtonText}>Notificacoes</Text>
           </Pressable>
         </View>
       </View>

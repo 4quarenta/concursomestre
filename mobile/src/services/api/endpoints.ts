@@ -29,6 +29,13 @@ export const ENDPOINTS = {
   materials: {
     list: 'materialsList',
   },
+  notifications: {
+    list: 'notificationsList',
+    markRead: 'notificationsMarkRead',
+    markAllRead: 'notificationsMarkAllRead',
+    delete: 'notificationsDelete',
+    clearAll: 'notificationsClearAll',
+  },
   profile: {
     update: 'users/update.php',
   },

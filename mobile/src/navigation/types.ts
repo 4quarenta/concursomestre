@@ -1,3 +1,4 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import type { MobileSimulationSeed } from '@/types/simulation';
 
 export type AuthStackParamList = {
@@ -15,7 +16,7 @@ export type CheckoutRoutePlan = {
 };
 
 export type AppStackParamList = {
-  MainTabs: undefined;
+  MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   Checkout: {
     plan: CheckoutRoutePlan;
   };
@@ -23,6 +24,7 @@ export type AppStackParamList = {
   SimulationRun: {
     seed: MobileSimulationSeed;
   };
+  Notifications: undefined;
 };
 
 export type MainTabParamList = {

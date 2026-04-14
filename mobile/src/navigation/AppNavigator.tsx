@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { LinkingOptions, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '@/providers/AuthProvider';
 import { AuthNavigator } from '@/navigation/AuthNavigator';
@@ -9,9 +9,35 @@ import { AppStackParamList } from '@/navigation/types';
 import { CheckoutScreen } from '@/screens/CheckoutScreen';
 import { SimulationConfigScreen } from '@/screens/SimulationConfigScreen';
 import { SimulationRunScreen } from '@/screens/SimulationRunScreen';
+import { NotificationsScreen } from '@/screens/NotificationsScreen';
 import { colors } from '@/theme/colors';
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
+
+const linking: LinkingOptions<AppStackParamList> = {
+  prefixes: [
+    'concursomestre://',
+    'https://concursomestre.com.br',
+    'https://www.concursomestre.com.br',
+  ],
+  config: {
+    screens: {
+      MainTabs: {
+        screens: {
+          Dashboard: 'dashboard',
+          Questoes: 'questoes',
+          Planos: 'planos',
+          Simulados: 'simulados',
+          Ranking: 'ranking',
+          Marketplace: 'materiais',
+          Perfil: 'perfil',
+        },
+      },
+      Notifications: 'notificacoes',
+      SimulationConfig: 'simulados/novo',
+    },
+  },
+};
 
 export const AppNavigator: React.FC = () => {
   const { user, isBootstrapped } = useAuth();
@@ -25,7 +51,7 @@ export const AppNavigator: React.FC = () => {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       {user ? (
         <Stack.Navigator>
           <Stack.Screen
@@ -47,6 +73,11 @@ export const AppNavigator: React.FC = () => {
             name="SimulationRun"
             component={SimulationRunScreen}
             options={{ title: 'Simulado em andamento' }}
+          />
+          <Stack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{ title: 'Notificacoes' }}
           />
         </Stack.Navigator>
       ) : (

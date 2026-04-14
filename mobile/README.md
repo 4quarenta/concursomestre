@@ -47,6 +47,11 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - aviso de cartao expirado/expirando
   - atalho para portal Stripe (adicionar/gerenciar cartoes)
   - historico de transacoes da conta (plano, ciclo, metodo, gateway, status, valor)
+- Central de notificacoes mobile:
+  - listagem via endpoint oficial
+  - marcar uma/todas como lidas
+  - remocao/limpeza de notificacoes
+  - deep links para abas principais via `concursomestre://`
 
 ## Estrutura
 
