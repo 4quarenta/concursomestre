@@ -8,15 +8,20 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { RouteProp, useRoute } from '@react-navigation/native';
 import { AppStackParamList } from '@/navigation/types';
+import { useAuth } from '@/providers/AuthProvider';
 import { rankingsService } from '@/services/rankings/rankingsService';
 import { colors } from '@/theme/colors';
 import type { RankingEntry, RankingListItem } from '@/types/rankings';
 
 type RankingDetailRoute = RouteProp<AppStackParamList, 'RankingDetail'>;
+type RankingCategory = 'AC' | 'Afro' | 'PCD';
+
+const CATEGORY_OPTIONS: RankingCategory[] = ['AC', 'Afro', 'PCD'];
 
 /**
  * Converte datas unix/string usadas pelo ranking para objeto Date seguro.
@@ -73,17 +78,110 @@ const sortRankingEntries = (entries?: RankingEntry[]): RankingEntry[] => {
 };
 
 /**
+ * Mantem somente alternativas validas para o cartao-resposta mobile.
+ * @since v1.0.0
+ */
+const sanitizeAnswers = (value: string, totalQuestions?: number): string => {
+  const normalized = String(value || '').toUpperCase().replace(/[^A-E]/g, '');
+  const limit = Number(totalQuestions || 0);
+  return limit > 0 ? normalized.slice(0, limit) : normalized;
+};
+
+/**
+ * Calcula o gabarito colaborativo usado quando o oficial ainda esta pendente.
+ * @since v1.0.0
+ */
+const buildConsensusKey = (entries: RankingEntry[], totalQuestions?: number): string => {
+  const limit = Number(totalQuestions || 0);
+  let consensusKey = '';
+
+  for (let index = 0; index < limit; index += 1) {
+    const counts: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+
+    entries.forEach((entry) => {
+      const answer = String(entry.userAnswers || '')[index];
+      if (counts[answer] !== undefined) {
+        counts[answer] += 1;
+      }
+    });
+
+    let maxAnswer = 'X';
+    let maxCount = -1;
+    Object.entries(counts).forEach(([answer, count]) => {
+      if (count > maxCount) {
+        maxAnswer = answer;
+        maxCount = count;
+        return;
+      }
+
+      if (count === maxCount && count > 0) {
+        maxAnswer = 'X';
+      }
+    });
+
+    consensusKey += maxCount > 0 ? maxAnswer : 'X';
+  }
+
+  return consensusKey;
+};
+
+const resolveActiveKey = (ranking: RankingListItem): string => {
+  if (String(ranking.keyStatus || '').toLowerCase() === 'official') {
+    return String(ranking.correctKey || '').toUpperCase();
+  }
+
+  return buildConsensusKey(ranking.entries || [], ranking.totalQuestions);
+};
+
+const calculateScore = (key: string, userAnswers: string): number => {
+  let score = 0;
+
+  for (let index = 0; index < Math.min(key.length, userAnswers.length); index += 1) {
+    if (key[index] !== 'X' && key[index] === userAnswers[index]) {
+      score += 1;
+    }
+  }
+
+  return score;
+};
+
+/**
  * Detalhe mobile de ranking publico.
  * @since v1.0.0
  */
 export const RankingDetailScreen: React.FC = () => {
   const route = useRoute<RankingDetailRoute>();
+  const { user } = useAuth();
   const { rankingId } = route.params;
   const [ranking, setRanking] = React.useState<RankingListItem | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [registration, setRegistration] = React.useState('');
+  const [examType, setExamType] = React.useState('');
+  const [category, setCategory] = React.useState<RankingCategory>('AC');
+  const [answers, setAnswers] = React.useState('');
+  const [discursiveScore, setDiscursiveScore] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
 
-  const entries = React.useMemo(() => sortRankingEntries(ranking?.entries).slice(0, 50), [ranking?.entries]);
+  const questionTotal = Number(ranking?.totalQuestions || 0);
+  const rankingEntries = React.useMemo(() => ranking?.entries || [], [ranking?.entries]);
+  const activeKey = React.useMemo(() => ranking ? resolveActiveKey(ranking) : '', [ranking]);
+  const currentUserEntry = React.useMemo(
+    () => rankingEntries.find((entry) => String(entry.userId || '') === String(user?.id || '')) || null,
+    [rankingEntries, user?.id],
+  );
+  const examTypeOptions = React.useMemo(() => {
+    const options = (ranking?.examTypes || []).map(String).filter(Boolean);
+    return options.length ? options : ['Geral'];
+  }, [ranking?.examTypes]);
+  const entries = React.useMemo(() => {
+    const scoredEntries = rankingEntries.map((entry) => ({
+      ...entry,
+      score: activeKey ? calculateScore(activeKey, String(entry.userAnswers || '')) : Number(entry.score || 0),
+    }));
+
+    return sortRankingEntries(scoredEntries).slice(0, 50);
+  }, [activeKey, rankingEntries]);
 
   const loadRanking = React.useCallback(async (useRefresh = false) => {
     if (useRefresh) {
@@ -113,6 +211,27 @@ export const RankingDetailScreen: React.FC = () => {
     void loadRanking(false);
   }, [loadRanking]);
 
+  React.useEffect(() => {
+    if (!ranking) return;
+
+    if (currentUserEntry) {
+      setRegistration(currentUserEntry.registrationNumber || '');
+      setExamType(currentUserEntry.examType || examTypeOptions[0] || 'Geral');
+      setCategory(CATEGORY_OPTIONS.includes(currentUserEntry.category as RankingCategory)
+        ? currentUserEntry.category as RankingCategory
+        : 'AC');
+      setAnswers(sanitizeAnswers(currentUserEntry.userAnswers || '', ranking.totalQuestions));
+      setDiscursiveScore(currentUserEntry.discursiveScore !== undefined ? String(currentUserEntry.discursiveScore) : '');
+      return;
+    }
+
+    setRegistration('');
+    setExamType(examTypeOptions[0] || 'Geral');
+    setCategory('AC');
+    setAnswers('');
+    setDiscursiveScore('');
+  }, [currentUserEntry, examTypeOptions, ranking]);
+
   const openOfficialKey = async () => {
     const target = ranking?.officialKeyPdfUrl || ranking?.preliminaryKeyPdfUrl;
     if (!target || !/^https?:\/\//i.test(target)) {
@@ -121,6 +240,91 @@ export const RankingDetailScreen: React.FC = () => {
     }
 
     await Linking.openURL(target);
+  };
+
+  const handleAnswersChange = (value: string) => {
+    setAnswers(sanitizeAnswers(value, ranking?.totalQuestions));
+  };
+
+  const upsertEntry = (entriesToUpdate: RankingEntry[], entry: RankingEntry): RankingEntry[] => {
+    const entryUserId = String(entry.userId || '');
+    const exists = entriesToUpdate.some((item) => String(item.userId || '') === entryUserId);
+
+    if (exists) {
+      return entriesToUpdate.map((item) => String(item.userId || '') === entryUserId ? entry : item);
+    }
+
+    return [...entriesToUpdate, entry];
+  };
+
+  const handleSubmitAnswers = async () => {
+    if (!ranking) return;
+
+    if (!user?.id) {
+      Alert.alert('Faca login', 'Entre na sua conta para registrar sua nota no ranking.');
+      return;
+    }
+
+    const registrationNumber = registration.trim();
+    const normalizedAnswers = sanitizeAnswers(answers, ranking.totalQuestions);
+    const finalExamType = examType.trim() || examTypeOptions[0] || 'Geral';
+
+    if (!registrationNumber) {
+      Alert.alert('Inscricao obrigatoria', 'Informe seu numero de inscricao antes de enviar.');
+      return;
+    }
+
+    if (questionTotal > 0 && normalizedAnswers.length !== questionTotal) {
+      Alert.alert('Cartao incompleto', `Informe ${questionTotal} respostas antes de enviar.`);
+      return;
+    }
+
+    if (!normalizedAnswers) {
+      Alert.alert('Cartao vazio', 'Informe ao menos uma resposta antes de enviar.');
+      return;
+    }
+
+    const normalizedDiscursiveScore = discursiveScore.replace(',', '.').trim();
+    const parsedDiscursiveScore = normalizedDiscursiveScore ? Number(normalizedDiscursiveScore) : 0;
+    if (ranking.hasDiscursive && !Number.isFinite(parsedDiscursiveScore)) {
+      Alert.alert('Nota discursiva invalida', 'Informe uma nota discursiva numerica.');
+      return;
+    }
+
+    const entry: RankingEntry = {
+      id: currentUserEntry?.id || `u-${Date.now()}`,
+      userId: user.id,
+      userName: user.name || user.email || 'Candidato',
+      registrationNumber,
+      examType: finalExamType,
+      category,
+      userAnswers: normalizedAnswers,
+      score: activeKey ? calculateScore(activeKey, normalizedAnswers) : 0,
+      discursiveScore: ranking.hasDiscursive ? parsedDiscursiveScore : undefined,
+      timestamp: Date.now(),
+      status: 'active',
+    };
+
+    setSubmitting(true);
+    try {
+      const entryId = await rankingsService.join(ranking.id, user.id, entry);
+      const savedEntry = { ...entry, id: entryId || entry.id };
+
+      setRanking((current) => {
+        if (!current || String(current.id) !== String(ranking.id)) return current;
+        return {
+          ...current,
+          entries: upsertEntry(current.entries || [], savedEntry),
+        };
+      });
+      setAnswers(normalizedAnswers);
+      setExamType(finalExamType);
+      Alert.alert('Gabarito enviado', 'Sua participacao foi registrada no ranking.');
+    } catch (error: any) {
+      Alert.alert('Erro ao enviar', error?.message || 'Nao foi possivel enviar seu gabarito.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const renderEntry = ({ item, index }: { item: RankingEntry; index: number }) => (
@@ -186,7 +390,7 @@ export const RankingDetailScreen: React.FC = () => {
               <Text style={styles.eyebrow}>Ranking publico</Text>
               <Text style={styles.title}>{ranking.name || 'Ranking sem nome'}</Text>
               <Text style={styles.description}>
-                {ranking.institution || 'Instituicao nao informada'} | {formatNumber(ranking.totalQuestions)} questoes | {entries.length} participacoes.
+                {ranking.institution || 'Instituicao nao informada'} | {formatNumber(ranking.totalQuestions)} questoes | {rankingEntries.length} participacoes.
               </Text>
             </View>
 
@@ -236,6 +440,94 @@ export const RankingDetailScreen: React.FC = () => {
               </Text>
               <Pressable style={styles.secondaryAction} onPress={() => void openOfficialKey()}>
                 <Text style={styles.secondaryActionText}>Abrir PDF do gabarito</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>{currentUserEntry ? 'Atualizar participacao' : 'Participar do ranking'}</Text>
+              <Text style={styles.description}>
+                Envie seu cartao-resposta para calcular a nota objetiva e entrar nas colocacoes publicas.
+              </Text>
+              {!!currentUserEntry && (
+                <Text style={styles.helperText}>Suas respostas anteriores foram carregadas para edicao.</Text>
+              )}
+
+              <TextInput
+                value={registration}
+                onChangeText={setRegistration}
+                placeholder="Numero de inscricao"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+              />
+
+              <TextInput
+                value={examType}
+                onChangeText={setExamType}
+                placeholder="Caderno ou tipo de prova"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+              />
+              <View style={styles.inlineChips}>
+                {examTypeOptions.map((option) => (
+                  <Pressable
+                    key={option}
+                    onPress={() => setExamType(option)}
+                    style={[styles.chip, examType === option && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipText, examType === option && styles.chipTextActive]}>{option}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <View style={styles.inlineChips}>
+                {CATEGORY_OPTIONS.map((option) => (
+                  <Pressable
+                    key={option}
+                    onPress={() => setCategory(option)}
+                    style={[styles.categoryChip, category === option && styles.categoryChipActive]}
+                  >
+                    <Text style={[styles.categoryChipText, category === option && styles.categoryChipTextActive]}>
+                      {option}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {ranking.hasDiscursive && (
+                <TextInput
+                  value={discursiveScore}
+                  onChangeText={setDiscursiveScore}
+                  placeholder="Nota discursiva"
+                  placeholderTextColor={colors.muted}
+                  keyboardType="decimal-pad"
+                  style={styles.input}
+                />
+              )}
+
+              <TextInput
+                value={answers}
+                onChangeText={handleAnswersChange}
+                placeholder="Exemplo: ABCDEABCDE"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={questionTotal > 0 ? questionTotal : undefined}
+                style={[styles.input, styles.answersInput]}
+              />
+              <Text style={styles.answerCounter}>
+                {answers.length} / {questionTotal > 0 ? questionTotal : 'sem limite'} respostas
+              </Text>
+
+              <Pressable
+                style={[styles.primaryAction, submitting && styles.buttonDisabled]}
+                onPress={() => void handleSubmitAnswers()}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.primaryActionText}>Enviar gabarito</Text>
+                )}
               </Pressable>
             </View>
 
@@ -367,6 +659,99 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
+  },
+  helperText: {
+    color: colors.primary,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '800',
+  },
+  input: {
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 12,
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  answersInput: {
+    letterSpacing: 0,
+  },
+  inlineChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  chipActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#EEF2FF',
+  },
+  chipText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  chipTextActive: {
+    color: colors.primary,
+  },
+  categoryChip: {
+    flex: 1,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  categoryChipText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  categoryChipTextActive: {
+    color: '#FFFFFF',
+  },
+  answerCounter: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  primaryAction: {
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryActionText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   entryCard: {
     borderWidth: 1,

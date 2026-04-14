@@ -25,6 +25,7 @@ export const ENDPOINTS = {
   },
   rankings: {
     list: 'rankingsList',
+    join: 'rankingsJoin',
   },
   materials: {
     list: 'materialsList',

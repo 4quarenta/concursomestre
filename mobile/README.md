@@ -32,7 +32,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - redirecionamento seguro para URL retornada pelo backend
 - Modulos em leitura real:
   - `Simulados` (listagem)
-  - `Ranking` (listagem + detalhe publico)
+  - `Ranking` (listagem + detalhe publico + envio de gabarito)
   - `Marketplace` (vitrine de materiais, filtros e compra)
 - Fluxo de simulado em execucao:
   - configuracao (questoes + timer)
@@ -91,5 +91,4 @@ Padrao local:
   - Simulados
   - Lei comentada
   - Flashcards
-  - Ranking participacao/envio de gabarito
   - Checkout/assinaturas/transacoes

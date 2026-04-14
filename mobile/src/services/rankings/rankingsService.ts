@@ -1,7 +1,7 @@
 import { apiClient } from '@/services/api/client';
 import { ENDPOINTS } from '@/services/api/endpoints';
-import { readApiData } from '@/services/api/response';
-import type { RankingListItem } from '@/types/rankings';
+import { assertApiSuccess, readApiData } from '@/services/api/response';
+import type { RankingEntry, RankingListItem } from '@/types/rankings';
 
 const normalizeRankings = (payload: unknown): RankingListItem[] => {
   if (Array.isArray(payload)) {
@@ -37,6 +37,21 @@ export const rankingsService = {
   async getById(rankingId: string): Promise<RankingListItem | null> {
     const rankings = await this.list();
     return rankings.find((ranking) => String(ranking.id) === String(rankingId)) || null;
+  },
+
+  /**
+   * Envia a participacao do candidato usando o mesmo contrato da plataforma web.
+   * @since v1.0.0
+   */
+  async join(rankingId: string, userId: string, entry: RankingEntry): Promise<string> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.rankings.join, {
+      rankingId,
+      userId,
+      entry,
+    });
+    const raw = assertApiSuccess(response, 'Nao foi possivel enviar o gabarito.').raw;
+
+    return raw?.data?.id ?? raw?.id ?? entry.id ?? '';
   },
 };
 
