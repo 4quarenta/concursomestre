@@ -180,3 +180,30 @@ Toda transicao mobile deve registrar:
   - verificacao no emulador Android apos o alerta 404 observado
 - pendencias conhecidas:
   - ainda falta definir um endpoint oficial de historico/detalhe de simulados se a plataforma quiser listar tentativas persistidas no mobile.
+
+## 2026-04-14 - Simulados filtros iniciais
+
+- commit: `31e03d8 Add mobile simulation setup filters`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - `src/app/practice/page.tsx`
+  - endpoint `questionsList`
+  - filtros web de palavra-chave, materia e dificuldade usados na pratica/simulado
+- destino mobile:
+  - `mobile/src/screens/SimulationConfigScreen.tsx`
+  - `mobile/src/screens/SimulationRunScreen.tsx`
+  - `mobile/src/types/simulation.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - configuracao mobile de simulado passou a aceitar palavra-chave, dificuldade e materia
+  - amostra de questoes carrega com debounce e exibe total disponivel para os filtros
+  - materias sao derivadas da taxonomia `assuntos` retornada pelo payload de questoes
+  - inicio do simulado usa os filtros selecionados para montar a prova
+  - execucao persiste o contexto de filtros na seed/config salva
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - filtros completos de banca, ano, orgao e cargo ainda dependem de mapear taxonomias adicionais no mobile.
+  - ainda falta uma tela dedicada para escolher taxonomias longas com busca.
