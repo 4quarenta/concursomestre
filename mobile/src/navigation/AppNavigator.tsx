@@ -13,6 +13,8 @@ import { NotificationsScreen } from '@/screens/NotificationsScreen';
 import { RankingDetailScreen } from '@/screens/RankingDetailScreen';
 import { PerformanceSubjectsScreen } from '@/screens/PerformanceSubjectsScreen';
 import { MaterialDetailScreen } from '@/screens/MaterialDetailScreen';
+import { AnnotatedLawsScreen } from '@/screens/AnnotatedLawsScreen';
+import { FlashcardsScreen } from '@/screens/FlashcardsScreen';
 import { colors } from '@/theme/colors';
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -41,6 +43,8 @@ const linking: LinkingOptions<AppStackParamList> = {
       SimulationConfig: 'simulados/novo',
       PerformanceSubjects: 'desempenho/materias',
       MaterialDetail: 'material/:materialId',
+      AnnotatedLaws: 'lei-comentada',
+      Flashcards: 'flashcards',
     },
   },
 };
@@ -99,6 +103,16 @@ export const AppNavigator: React.FC = () => {
             name="MaterialDetail"
             component={MaterialDetailScreen}
             options={{ title: 'Material' }}
+          />
+          <Stack.Screen
+            name="AnnotatedLaws"
+            component={AnnotatedLawsScreen}
+            options={{ title: 'Lei comentada' }}
+          />
+          <Stack.Screen
+            name="Flashcards"
+            component={FlashcardsScreen}
+            options={{ title: 'Flashcards' }}
           />
         </Stack.Navigator>
       ) : (

@@ -36,6 +36,9 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - `Simulados` (listagem)
   - `Ranking` (listagem + detalhe publico + envio de gabarito)
   - `Marketplace` (vitrine de materiais, detalhe publico, filtros, compra e abertura externa de arquivo)
+- Modulos beta com shell mobile:
+  - `Lei comentada`
+  - `Flashcards`
 - Fluxo de simulado em execucao:
   - configuracao (questoes + timer)
   - filtros iniciais por palavra-chave, dificuldade e materia
@@ -93,8 +96,8 @@ Padrao local:
   - Dashboard completo com graficos, motivacao diaria e recortes de periodo
   - Questoes/practice com taxonomias avancadas, comentarios, notas e favoritos
   - Simulados com taxonomias completas (banca, ano, orgao, cargo)
-  - Lei comentada
-  - Flashcards
+  - Lei comentada com conteudo real
+  - Flashcards com revisao ativa real
   - Checkout/assinaturas/transacoes
 
 ## Backlog pos-mobile

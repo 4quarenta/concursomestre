@@ -218,6 +218,12 @@ export const DashboardScreen: React.FC = () => {
           <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Notifications')}>
             <Text style={styles.actionButtonText}>Notificacoes</Text>
           </Pressable>
+          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('AnnotatedLaws')}>
+            <Text style={styles.actionButtonText}>Lei comentada</Text>
+          </Pressable>
+          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Flashcards')}>
+            <Text style={styles.actionButtonText}>Flashcards</Text>
+          </Pressable>
         </View>
       </View>
 

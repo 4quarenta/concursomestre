@@ -34,6 +34,8 @@ export type AppStackParamList = {
     materialId: string;
     material?: Material;
   };
+  AnnotatedLaws: undefined;
+  Flashcards: undefined;
 };
 
 export type MainTabParamList = {

@@ -105,6 +105,34 @@ Toda transicao mobile deve registrar:
   - leitor PDF embutido no app ainda nao foi migrado; por enquanto o arquivo abre fora do app.
   - detalhe ainda usa a listagem oficial como fonte porque nao ha endpoint mobile dedicado por id.
 
+## 2026-04-14 - Modulos beta Lei comentada e Flashcards
+
+- commit: `TBD`
+- origem web/plataforma:
+  - `src/app/lei-comentada/page.tsx`
+  - `src/app/flashcards/page.tsx`
+  - `src/components/shared/feedback/BetaFeaturePage`
+  - feature flags `annotatedLawsEnabled` e `flashcardsEnabled`
+- destino mobile:
+  - `mobile/src/screens/AnnotatedLawsScreen.tsx`
+  - `mobile/src/screens/FlashcardsScreen.tsx`
+  - `mobile/src/screens/ModulePlaceholderScreen.tsx`
+  - rotas stack `AnnotatedLaws` e `Flashcards`
+  - deep links `concursomestre://lei-comentada` e `concursomestre://flashcards`
+  - atalhos no dashboard mobile
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - superficies beta da web passaram a existir tambem no mobile
+  - dashboard mobile expoe atalhos para Lei comentada e Flashcards
+  - telas comunicam migracao em andamento sem prometer fluxo inexistente
+  - deep links internos foram registrados para os dois modulos
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - a regra de feature flag ainda nao esta exposta no bootstrap mobile.
+  - conteudo real de lei comentada, flashcards, repeticao espacada e trilhas depende de implementacao futura dos modulos.
+
 ## 2026-04-14 - Marketplace
 
 - commit: `931e8ef Add mobile marketplace parity screen`
