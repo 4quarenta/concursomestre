@@ -28,6 +28,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - envio de resposta do usuario
   - salvar/remover favorito com sincronizacao otimista
   - comentarios da comunidade com leitura, novo topico, resposta e curtida
+  - anotacoes com hidratacao remota e persistencia local no app
   - modo foco por questao e modo lista
 - Modulo `Planos` com catalogo oficial
 - Fluxo `Checkout` mobile (sessao Stripe hospedada):
@@ -97,7 +98,7 @@ Padrao local:
 
 - Migracao de modulos com paridade:
   - Dashboard completo com graficos, motivacao diaria e recortes de periodo
-  - Questoes/practice com notas e refinamentos de paridade fina
+  - Questoes/practice com refinamentos finais de paridade fina
   - Simulados com taxonomias completas (banca, ano, orgao, cargo)
   - Lei comentada com conteudo real
   - Flashcards com revisao ativa real

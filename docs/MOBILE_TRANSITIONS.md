@@ -411,3 +411,34 @@ Toda transicao mobile deve registrar:
   - push para `origin/master`
 - pendencias conhecidas:
   - anotacoes de questao ainda nao foram migradas para o fluxo mobile.
+
+## 2026-04-14 - Questoes anotacoes locais no app
+
+- commit: `PENDING_HASH Add mobile question notes flow`
+- origem web/plataforma:
+  - `src/app/practice/page.tsx`
+  - `src/app/questions/components/QuestionCard.tsx`
+  - `src/providers/DataProvider.tsx`
+  - `src/services/progress/userProgressService.ts`
+  - endpoint `users/notes.php`
+  - endpoint legado `users/delete_note.php`
+- destino mobile:
+  - `mobile/src/screens/QuestionsScreen.tsx`
+  - `mobile/src/components/questions/QuestionNotePanel.tsx`
+  - `mobile/src/services/questions/questionNotesService.ts`
+  - `mobile/src/services/api/endpoints.ts`
+  - `mobile/src/types/notes.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - pratica mobile passou a hidratar anotacoes remotas existentes do usuario autenticado
+  - anotacoes novas e edicoes passam a persistir localmente no app via `AsyncStorage`
+  - notas remotas antigas podem ser removidas usando o endpoint oficial de exclusao
+  - questao ganha badge de anotacao e painel dedicado para editar/limpar a nota
+- compatibilidade observada:
+  - o backend atual nao expoe rota oficial para gravar anotacao de questao, entao a escrita mobile segue local por enquanto, espelhando a limitacao pratica do fluxo web atual
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - ainda falta uma rota oficial de escrita para sincronizar anotacoes de questao entre dispositivos.

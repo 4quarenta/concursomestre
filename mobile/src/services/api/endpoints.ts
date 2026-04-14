@@ -48,6 +48,8 @@ export const ENDPOINTS = {
     update: 'users/update.php',
   },
   users: {
+    notes: 'users/notes.php',
+    deleteNote: 'users/delete_note.php',
     listCards: 'users/list_cards.php',
     removeCard: 'users/remove_card.php',
     setDefaultCard: 'users/set_default_card.php',

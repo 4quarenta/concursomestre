@@ -10,11 +10,14 @@ import {
   View,
 } from 'react-native';
 import { QuestionCommentsPanel } from '@/components/questions/QuestionCommentsPanel';
+import { QuestionNotePanel } from '@/components/questions/QuestionNotePanel';
 import { useAuth } from '@/providers/AuthProvider';
 import { commentsService } from '@/services/comments/commentsService';
+import { questionNotesService } from '@/services/questions/questionNotesService';
 import { questionService } from '@/services/questions/questionService';
 import { colors } from '@/theme/colors';
 import type { QuestionComment } from '@/types/comments';
+import type { QuestionNote } from '@/types/notes';
 import type { Question } from '@/types/questions';
 
 type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
@@ -94,6 +97,11 @@ export const QuestionsScreen: React.FC = () => {
   const [commentsLoadingMap, setCommentsLoadingMap] = React.useState<Record<string, boolean>>({});
   const [commentDraftMap, setCommentDraftMap] = React.useState<Record<string, string>>({});
   const [commentSubmittingMap, setCommentSubmittingMap] = React.useState<Record<string, boolean>>({});
+  const [notesByQuestion, setNotesByQuestion] = React.useState<Record<string, QuestionNote>>({});
+  const [noteDraftMap, setNoteDraftMap] = React.useState<Record<string, string>>({});
+  const [visibleNotesMap, setVisibleNotesMap] = React.useState<Record<string, boolean>>({});
+  const [notesLoading, setNotesLoading] = React.useState(false);
+  const [noteSavingMap, setNoteSavingMap] = React.useState<Record<string, boolean>>({});
 
   const loadQuestions = React.useCallback(async () => {
     setLoading(true);
@@ -123,6 +131,46 @@ export const QuestionsScreen: React.FC = () => {
   const getQuestionStateKey = React.useCallback((questionId?: string | number | null) => (
     questionId === undefined || questionId === null ? '' : String(questionId)
   ), []);
+
+  const hydrateQuestionNotes = React.useCallback(async () => {
+    if (!user?.id) {
+      setNotesByQuestion({});
+      setNoteDraftMap({});
+      setVisibleNotesMap({});
+      return;
+    }
+
+    setNotesLoading(true);
+    try {
+      const [remoteNotes, localNotes] = await Promise.all([
+        questionNotesService.listRemoteNotes(user.id).catch(() => []),
+        questionNotesService.listLocalNotes(user.id),
+      ]);
+
+      const mergedNotes = questionNotesService.mergeNotes(remoteNotes, localNotes);
+      const nextNotesByQuestion: Record<string, QuestionNote> = {};
+      const nextDraftMap: Record<string, string> = {};
+
+      mergedNotes.forEach((note) => {
+        const questionKey = getQuestionStateKey(note.questionId);
+        if (!questionKey) return;
+
+        nextNotesByQuestion[questionKey] = note;
+        nextDraftMap[questionKey] = note.text;
+      });
+
+      setNotesByQuestion(nextNotesByQuestion);
+      setNoteDraftMap(nextDraftMap);
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel carregar anotacoes.');
+    } finally {
+      setNotesLoading(false);
+    }
+  }, [getQuestionStateKey, user?.id]);
+
+  React.useEffect(() => {
+    void hydrateQuestionNotes();
+  }, [hydrateQuestionNotes]);
 
   const subjectOptions = React.useMemo(() => {
     const values = new Set<string>();
@@ -430,6 +478,89 @@ export const QuestionsScreen: React.FC = () => {
     }
   };
 
+  const handleToggleNote = (question: Question) => {
+    if (!question.id) return;
+
+    const questionKey = getQuestionStateKey(question.id);
+    setVisibleNotesMap((previous) => ({ ...previous, [questionKey]: !previous[questionKey] }));
+    setNoteDraftMap((previous) => ({
+      ...previous,
+      [questionKey]: previous[questionKey] ?? notesByQuestion[questionKey]?.text ?? '',
+    }));
+  };
+
+  const handleSaveNote = async (question: Question) => {
+    if (!question.id) {
+      return;
+    }
+
+    if (!user?.id) {
+      Alert.alert('Login necessario', 'Entre na sua conta para anotar nesta questao.');
+      return;
+    }
+
+    const questionKey = getQuestionStateKey(question.id);
+    const trimmedNote = (noteDraftMap[questionKey] || '').trim();
+    if (!trimmedNote) {
+      Alert.alert('Anotacao vazia', 'Escreva algo antes de salvar.');
+      return;
+    }
+
+    setNoteSavingMap((previous) => ({ ...previous, [questionKey]: true }));
+    try {
+      const previousNote = notesByQuestion[questionKey];
+      const nextNote: QuestionNote = {
+        id: previousNote?.id || `local-${user.id}-${question.id}`,
+        questionId: question.id,
+        text: trimmedNote,
+        timestamp: Date.now(),
+        remoteId: previousNote?.remoteId ?? null,
+        source: previousNote?.remoteId ? 'local_override' : 'local',
+      };
+
+      await questionNotesService.upsertLocalNote(user.id, nextNote);
+      setNotesByQuestion((previous) => ({ ...previous, [questionKey]: nextNote }));
+      setNoteDraftMap((previous) => ({ ...previous, [questionKey]: trimmedNote }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel salvar a anotacao.');
+    } finally {
+      setNoteSavingMap((previous) => ({ ...previous, [questionKey]: false }));
+    }
+  };
+
+  const handleClearNote = async (question: Question) => {
+    if (!question.id) {
+      return;
+    }
+
+    if (!user?.id) {
+      Alert.alert('Login necessario', 'Entre na sua conta para gerenciar anotacoes.');
+      return;
+    }
+
+    const questionKey = getQuestionStateKey(question.id);
+    const currentNote = notesByQuestion[questionKey];
+
+    setNoteSavingMap((previous) => ({ ...previous, [questionKey]: true }));
+    try {
+      if (currentNote?.remoteId) {
+        await questionNotesService.deleteRemoteNote(currentNote.remoteId);
+      }
+
+      await questionNotesService.removeLocalNote(user.id, question.id);
+      setNotesByQuestion((previous) => {
+        const next = { ...previous };
+        delete next[questionKey];
+        return next;
+      });
+      setNoteDraftMap((previous) => ({ ...previous, [questionKey]: '' }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel limpar a anotacao.');
+    } finally {
+      setNoteSavingMap((previous) => ({ ...previous, [questionKey]: false }));
+    }
+  };
+
   const getCorrectIndex = (question: Question): number => {
     const options = question.itens || [];
     const answerId = Number(question.resposta || -1);
@@ -504,6 +635,10 @@ export const QuestionsScreen: React.FC = () => {
     const selected = item.id ? answeredMap[item.id] : undefined;
     const correctIndex = getCorrectIndex(item);
     const isSaved = item.id !== undefined && savedQuestionIdSet.has(String(item.id));
+    const currentNote = notesByQuestion[questionStateKey];
+    const noteVisible = Boolean(visibleNotesMap[questionStateKey]);
+    const noteDraft = noteDraftMap[questionStateKey] ?? currentNote?.text ?? '';
+    const noteSaving = Boolean(noteSavingMap[questionStateKey]);
     const comments = commentsByQuestion[questionStateKey] || [];
     const commentsVisible = Boolean(visibleCommentsMap[questionStateKey]);
     const commentsLoading = Boolean(commentsLoadingMap[questionStateKey]);
@@ -563,6 +698,11 @@ export const QuestionsScreen: React.FC = () => {
               <Text style={[styles.infoBadgeText, styles.savedBadgeText]}>Salva</Text>
             </View>
           ) : null}
+          {currentNote?.text ? (
+            <View style={[styles.infoBadge, styles.noteBadge]}>
+              <Text style={[styles.infoBadgeText, styles.noteBadgeText]}>Anotada</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.questionActionsRow}>
@@ -572,6 +712,14 @@ export const QuestionsScreen: React.FC = () => {
           >
             <Text style={[styles.secondaryActionButtonText, commentsVisible && styles.secondaryActionButtonTextActive]}>
               {commentsVisible ? `Ocultar comentarios (${commentsCount})` : `Comentarios (${commentsCount})`}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => handleToggleNote(item)}
+            style={[styles.secondaryActionButton, noteVisible && styles.secondaryActionButtonActive]}
+          >
+            <Text style={[styles.secondaryActionButtonText, noteVisible && styles.secondaryActionButtonTextActive]}>
+              {currentNote?.text ? 'Anotacao' : 'Anotar'}
             </Text>
           </Pressable>
         </View>
@@ -613,6 +761,18 @@ export const QuestionsScreen: React.FC = () => {
             onChangeDraft={(value) => setCommentDraftMap((previous) => ({ ...previous, [questionStateKey]: value }))}
             onSubmitComment={(content, parentId) => handleSubmitComment(item, content, parentId)}
             onLikeComment={(commentId) => handleLikeComment(item, commentId)}
+          />
+        ) : null}
+
+        {noteVisible ? (
+          <QuestionNotePanel
+            note={currentNote}
+            draft={noteDraft}
+            loading={notesLoading}
+            saving={noteSaving}
+            onChangeDraft={(value) => setNoteDraftMap((previous) => ({ ...previous, [questionStateKey]: value }))}
+            onSave={() => handleSaveNote(item)}
+            onClear={() => handleClearNote(item)}
           />
         ) : null}
       </View>
@@ -1085,6 +1245,12 @@ const styles = StyleSheet.create({
   },
   savedBadgeText: {
     color: '#047857',
+  },
+  noteBadge: {
+    backgroundColor: '#FEF3C7',
+  },
+  noteBadgeText: {
+    color: '#92400E',
   },
   questionActionsRow: {
     flexDirection: 'row',
