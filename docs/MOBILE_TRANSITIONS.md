@@ -107,7 +107,7 @@ Toda transicao mobile deve registrar:
 
 ## 2026-04-14 - Modulos beta Lei comentada e Flashcards
 
-- commit: `TBD`
+- commit: `9722c90 Add mobile beta module shells`
 - origem web/plataforma:
   - `src/app/lei-comentada/page.tsx`
   - `src/app/flashcards/page.tsx`
