@@ -15,6 +15,37 @@ Toda transicao mobile deve registrar:
 - commit de referencia
 - pendencias conhecidas
 
+## Backlog pos-extracao mobile
+
+- Depois de concluir a paridade mobile, iniciar a migracao web progressiva para Next.
+- Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
+- A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
+
+## 2026-04-14 - Questoes modo foco/lista
+
+- commit: `42a1393 Add mobile questions focus mode`
+- origem web/plataforma:
+  - `src/app/practice/page.tsx`
+  - `src/services/questions/questionService.ts`
+  - endpoint `questionsList`
+  - endpoint de envio de resposta de questoes
+- destino mobile:
+  - `mobile/src/screens/QuestionsScreen.tsx`
+  - `mobile/src/services/questions/questionService.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - pratica mobile passou a ter modo foco com uma questao por vez
+  - modo lista foi preservado para revisao/varredura rapida
+  - navegacao anterior/proxima controla o indice atual sem perder respostas ja enviadas
+  - proxima questao carrega a pagina seguinte quando o usuario chega ao fim do lote atual
+  - filtros continuam reiniciando a pratica no primeiro item do novo resultado
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - filtros completos de banca, ano, orgao, cargo e carreira ainda precisam ser mapeados no mobile.
+  - comentarios, notas e favoritos da pratica ainda precisam de transicao propria.
+
 ## 2026-04-14 - Marketplace
 
 - commit: `931e8ef Add mobile marketplace parity screen`

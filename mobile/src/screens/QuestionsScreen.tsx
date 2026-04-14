@@ -15,6 +15,7 @@ import { questionService } from '@/services/questions/questionService';
 import type { Question } from '@/types/questions';
 
 type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
+type PracticeViewMode = 'card' | 'list';
 
 const PAGE_SIZE = 10;
 
@@ -45,6 +46,8 @@ export const QuestionsScreen: React.FC = () => {
   const [selectedSubject, setSelectedSubject] = React.useState<string>('all');
   const [answeringKey, setAnsweringKey] = React.useState<string | null>(null);
   const [answeredMap, setAnsweredMap] = React.useState<Record<number, number>>({});
+  const [viewMode, setViewMode] = React.useState<PracticeViewMode>('card');
+  const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
 
   const subjectOptions = React.useMemo(() => {
     const values = new Set<string>();
@@ -73,7 +76,7 @@ export const QuestionsScreen: React.FC = () => {
     return filters;
   }, [difficulty, keyword, selectedSubject]);
 
-  const fetchPage = React.useCallback(async (targetPage: number, append = false) => {
+  const fetchPage = React.useCallback(async (targetPage: number, append = false): Promise<number> => {
     if (append) {
       setLoadingMore(true);
     } else {
@@ -85,8 +88,13 @@ export const QuestionsScreen: React.FC = () => {
       setTotal(result.total);
       setPage(targetPage);
       setQuestions((prev) => append ? [...prev, ...result.rows] : result.rows);
+      if (!append) {
+        setCurrentQuestionIndex(0);
+      }
+      return result.rows.length;
     } catch (error: any) {
       Alert.alert('Erro', error?.message || 'Nao foi possivel carregar questoes.');
+      return 0;
     } finally {
       if (append) {
         setLoadingMore(false);
@@ -108,6 +116,34 @@ export const QuestionsScreen: React.FC = () => {
     if (loading || loadingMore) return;
     if (questions.length >= total) return;
     void fetchPage(page + 1, true);
+  };
+
+  const currentQuestion = questions[currentQuestionIndex] || null;
+
+  React.useEffect(() => {
+    if (currentQuestionIndex >= questions.length && questions.length > 0) {
+      setCurrentQuestionIndex(questions.length - 1);
+    }
+  }, [currentQuestionIndex, questions.length]);
+
+  const handleNextQuestion = async () => {
+    const nextIndex = currentQuestionIndex + 1;
+
+    if (nextIndex < questions.length) {
+      setCurrentQuestionIndex(nextIndex);
+      return;
+    }
+
+    if (questions.length < total && !loadingMore) {
+      const loadedCount = await fetchPage(page + 1, true);
+      if (loadedCount > 0) {
+        setCurrentQuestionIndex(nextIndex);
+      }
+    }
+  };
+
+  const handlePreviousQuestion = () => {
+    setCurrentQuestionIndex((current) => Math.max(0, current - 1));
   };
 
   const getCorrectIndex = (question: Question): number => {
@@ -248,6 +284,20 @@ export const QuestionsScreen: React.FC = () => {
           ))}
         </View>
 
+        <View style={styles.modeToggleRow}>
+          {(['card', 'list'] as PracticeViewMode[]).map((option) => (
+            <Pressable
+              key={option}
+              onPress={() => setViewMode(option)}
+              style={[styles.modeButton, viewMode === option && styles.modeButtonActive]}
+            >
+              <Text style={[styles.modeButtonText, viewMode === option && styles.modeButtonTextActive]}>
+                {option === 'card' ? 'Modo foco' : 'Lista'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
         <Pressable onPress={handleApplyFilters} style={styles.applyButton}>
           <Text style={styles.applyButtonText}>Aplicar filtros</Text>
         </Pressable>
@@ -259,13 +309,43 @@ export const QuestionsScreen: React.FC = () => {
         </View>
       ) : (
         <FlatList
-          data={questions}
+          data={viewMode === 'card' ? (currentQuestion ? [currentQuestion] : []) : questions}
           keyExtractor={(item, index) => String(item.id || index)}
           renderItem={renderQuestion}
           contentContainerStyle={styles.listContent}
-          onEndReached={handleLoadMore}
+          onEndReached={viewMode === 'list' ? handleLoadMore : undefined}
           onEndReachedThreshold={0.35}
-          ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+          ListFooterComponent={viewMode === 'card' && questions.length > 0 ? (
+            <View style={styles.focusFooter}>
+              <Text style={styles.focusProgress}>
+                {questions.length > 0 ? currentQuestionIndex + 1 : 0} / {total || questions.length}
+              </Text>
+              <View style={styles.focusActions}>
+                <Pressable
+                  style={[styles.focusButton, currentQuestionIndex === 0 && styles.focusButtonDisabled]}
+                  onPress={handlePreviousQuestion}
+                  disabled={currentQuestionIndex === 0}
+                >
+                  <Text style={styles.focusButtonText}>Anterior</Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.focusButton,
+                    styles.focusButtonPrimary,
+                    (loadingMore || (questions.length >= total && currentQuestionIndex >= questions.length - 1)) && styles.focusButtonDisabled,
+                  ]}
+                  onPress={() => void handleNextQuestion()}
+                  disabled={loadingMore || (questions.length >= total && currentQuestionIndex >= questions.length - 1)}
+                >
+                  {loadingMore ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={[styles.focusButtonText, styles.focusButtonPrimaryText]}>Proxima</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          ) : loadingMore ? <ActivityIndicator size="small" color={colors.primary} /> : null}
           ListEmptyComponent={(
             <View style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>Nenhuma questão encontrada</Text>
@@ -315,6 +395,34 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  modeToggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modeButton: {
+    flex: 1,
+    height: 40,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#EEF2FF',
+  },
+  modeButtonText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  modeButtonTextActive: {
+    color: colors.primary,
+  },
   chip: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -358,6 +466,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 24,
     gap: 10,
+  },
+  focusFooter: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.card,
+    padding: 12,
+    gap: 10,
+  },
+  focusProgress: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '900',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  focusActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  focusButton: {
+    flex: 1,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  focusButtonPrimary: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  focusButtonDisabled: {
+    opacity: 0.55,
+  },
+  focusButtonText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  focusButtonPrimaryText: {
+    color: '#FFFFFF',
   },
   questionCard: {
     borderWidth: 1,

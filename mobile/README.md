@@ -24,6 +24,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - filtros basicos (keyword, dificuldade, materia)
   - paginação/load more
   - envio de resposta do usuario
+  - modo foco por questao e modo lista
 - Modulo `Planos` com catalogo oficial
 - Fluxo `Checkout` mobile (sessao Stripe hospedada):
   - resumo do plano
@@ -89,8 +90,14 @@ Padrao local:
 
 - Migracao de modulos com paridade:
   - Dashboard completo
-  - Questoes/practice
+  - Questoes/practice com taxonomias avancadas, comentarios, notas e favoritos
   - Simulados com taxonomias completas (banca, ano, orgao, cargo)
   - Lei comentada
   - Flashcards
   - Checkout/assinaturas/transacoes
+
+## Backlog pos-mobile
+
+- Iniciar migracao web progressiva para Next apos fechar a extracao mobile.
+- Escopo inicial da migracao Next: rotas publicas/indexaveis, SEO server-rendered/static, metadata por rota, sitemap/robots nativos e redirects/canonicals preservando URLs atuais.
+- Manter a area logada/admin como Vite SPA enquanto SEO nao for requisito dessas telas.
