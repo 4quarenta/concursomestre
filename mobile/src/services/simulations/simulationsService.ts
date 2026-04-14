@@ -25,9 +25,17 @@ const normalizeSimulationRows = (payload: unknown): SimulationListItem[] => {
  */
 export const simulationsService = {
   async list(): Promise<SimulationListItem[]> {
-    const response: any = await apiClient.get<any>(ENDPOINTS.simulations.list);
-    const payload = readApiData<any>(response, []);
-    return normalizeSimulationRows(payload);
+    try {
+      const response: any = await apiClient.get<any>(ENDPOINTS.simulations.list);
+      const payload = readApiData<any>(response, []);
+      return normalizeSimulationRows(payload);
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        return [];
+      }
+
+      throw error;
+    }
   },
 
   async saveSimulation(simulation: Record<string, any>): Promise<{ success: boolean; id?: string; message?: string }> {
