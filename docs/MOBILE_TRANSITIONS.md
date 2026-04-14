@@ -48,7 +48,7 @@ Toda transicao mobile deve registrar:
 
 ## 2026-04-14 - Dashboard desempenho por materia
 
-- commit: `TBD`
+- commit: `41705df Add mobile subject performance detail`
 - origem web/plataforma:
   - `src/app/dashboard/page.tsx`
   - `src/app/performance-subjects/page.tsx`
