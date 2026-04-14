@@ -79,3 +79,33 @@ Toda transicao mobile deve registrar:
   - Notificacoes e deep links sairam da lista de proxima fase depois de entrar na Fase 2.
 - validacoes:
   - `git diff --check`
+
+## 2026-04-14 - Ranking detalhe publico
+
+- commit: `80164e8 Add mobile ranking detail screen`
+- origem web/plataforma:
+  - `src/app/ranking/page.tsx`
+  - `src/app/ranking-detail/page.tsx`
+  - `src/services/rankings/rankingsService.ts`
+  - endpoint `rankingsList`
+- destino mobile:
+  - `mobile/src/screens/RankingsScreen.tsx`
+  - `mobile/src/screens/RankingDetailScreen.tsx`
+  - `mobile/src/services/rankings/rankingsService.ts`
+  - rota stack `RankingDetail`
+  - deep link `concursomestre://ranking/:rankingId`
+- paridade entregue:
+  - abertura de detalhe a partir da listagem mobile
+  - resumo publico do ranking
+  - leitura de status de gabarito, discursiva, datas e vagas
+  - exibicao de tipos de prova
+  - top colocacoes ordenadas por score
+  - atalho para abrir PDF de gabarito quando houver URL publica
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - bundle no Expo Go via Metro na porta `8081`
+  - verificacao visual no emulador Android apos reiniciar o Metro com `--clear`
+- pendencias conhecidas:
+  - participacao/envio de gabarito do candidato ainda precisa de transicao propria.
+  - ranking detail usa a listagem oficial como fonte porque ainda nao ha endpoint mobile dedicado para detalhe por id.
