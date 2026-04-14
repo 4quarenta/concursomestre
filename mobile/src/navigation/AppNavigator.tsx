@@ -10,6 +10,7 @@ import { CheckoutScreen } from '@/screens/CheckoutScreen';
 import { SimulationConfigScreen } from '@/screens/SimulationConfigScreen';
 import { SimulationRunScreen } from '@/screens/SimulationRunScreen';
 import { NotificationsScreen } from '@/screens/NotificationsScreen';
+import { RankingDetailScreen } from '@/screens/RankingDetailScreen';
 import { colors } from '@/theme/colors';
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -34,6 +35,7 @@ const linking: LinkingOptions<AppStackParamList> = {
         },
       },
       Notifications: 'notificacoes',
+      RankingDetail: 'ranking/:rankingId',
       SimulationConfig: 'simulados/novo',
     },
   },
@@ -78,6 +80,11 @@ export const AppNavigator: React.FC = () => {
             name="Notifications"
             component={NotificationsScreen}
             options={{ title: 'Notificacoes' }}
+          />
+          <Stack.Screen
+            name="RankingDetail"
+            component={RankingDetailScreen}
+            options={{ title: 'Ranking' }}
           />
         </Stack.Navigator>
       ) : (

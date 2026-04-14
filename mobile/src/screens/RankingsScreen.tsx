@@ -9,15 +9,25 @@ import {
   Text,
   View,
 } from 'react-native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { rankingsService } from '@/services/rankings/rankingsService';
+import { AppStackParamList, MainTabParamList } from '@/navigation/types';
 import { colors } from '@/theme/colors';
 import type { RankingListItem } from '@/types/rankings';
+
+type RankingsNavigation = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Ranking'>,
+  NativeStackNavigationProp<AppStackParamList>
+>;
 
 /**
  * Tela mobile de listagem de rankings.
  * @since v1.0.0
  */
 export const RankingsScreen: React.FC = () => {
+  const navigation = useNavigation<RankingsNavigation>();
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [items, setItems] = React.useState<RankingListItem[]>([]);
@@ -82,7 +92,10 @@ export const RankingsScreen: React.FC = () => {
           </View>
         )}
         renderItem={({ item }) => (
-          <Pressable style={styles.card}>
+          <Pressable
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            onPress={() => navigation.navigate('RankingDetail', { rankingId: String(item.id) })}
+          >
             <Text style={styles.cardTitle}>{item.name || 'Ranking sem nome'}</Text>
             <Text style={styles.cardSubtitle}>{item.institution || 'Instituicao nao informada'}</Text>
             <View style={styles.metaRow}>
@@ -148,6 +161,9 @@ const styles = StyleSheet.create({
     padding: 14,
     backgroundColor: colors.card,
     gap: 4,
+  },
+  cardPressed: {
+    opacity: 0.82,
   },
   cardTitle: {
     color: colors.text,

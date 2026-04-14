@@ -25,6 +25,9 @@ export type AppStackParamList = {
     seed: MobileSimulationSeed;
   };
   Notifications: undefined;
+  RankingDetail: {
+    rankingId: string;
+  };
 };
 
 export type MainTabParamList = {

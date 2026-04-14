@@ -29,6 +29,15 @@ export const rankingsService = {
     const payload = readApiData<any>(response, []);
     return normalizeRankings(payload);
   },
+
+  /**
+   * Resolve o detalhe publico de um ranking usando a listagem oficial disponivel no backend.
+   * @since v1.0.0
+   */
+  async getById(rankingId: string): Promise<RankingListItem | null> {
+    const rankings = await this.list();
+    return rankings.find((ranking) => String(ranking.id) === String(rankingId)) || null;
+  },
 };
 
 export default rankingsService;
