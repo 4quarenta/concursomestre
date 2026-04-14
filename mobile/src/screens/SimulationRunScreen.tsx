@@ -57,6 +57,13 @@ const formatAnswerLabel = (value?: number): string => {
   return String.fromCharCode(65 + value);
 };
 
+const mapSimulationDifficulty = (value?: string): string => {
+  if (value === 'easy') return 'Facil';
+  if (value === 'medium') return 'Medio';
+  if (value === 'hard') return 'Dificil';
+  return 'All';
+};
+
 /**
  * Tela mobile de execucao do simulado.
  * @since v1.0.0
@@ -124,8 +131,8 @@ export const SimulationRunScreen: React.FC = () => {
           id: 'mobile',
           name: 'Simulado mobile',
           questionCount: seed.questions.length,
-          subjects: [],
-          difficulty: 'All',
+          subjects: seed.config.subject && seed.config.subject !== 'all' ? [seed.config.subject] : [],
+          difficulty: mapSimulationDifficulty(seed.config.difficulty),
           timerEnabled: seed.config.timerEnabled,
           timerMinutes: seed.config.timerMinutes,
           feedbackMode: 'after_all',
@@ -137,6 +144,7 @@ export const SimulationRunScreen: React.FC = () => {
             roles: [],
             levels: [],
             topics: [],
+            keyword: seed.config.keyword || undefined,
           },
         },
         questions: seed.questions,

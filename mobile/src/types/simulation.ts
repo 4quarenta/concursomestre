@@ -1,9 +1,14 @@
 import type { Question } from '@/types/questions';
 
+export type MobileSimulationDifficulty = 'all' | 'easy' | 'medium' | 'hard';
+
 export interface MobileSimulationConfig {
   questionCount: number;
   timerEnabled: boolean;
   timerMinutes: number;
+  keyword?: string;
+  subject?: string;
+  difficulty?: MobileSimulationDifficulty;
 }
 
 export interface MobileSimulationSeed {

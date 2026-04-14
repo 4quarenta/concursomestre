@@ -36,6 +36,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - `Marketplace` (vitrine de materiais, filtros e compra)
 - Fluxo de simulado em execucao:
   - configuracao (questoes + timer)
+  - filtros iniciais por palavra-chave, dificuldade e materia
   - execucao com navegacao por questao
   - finalizacao com score
   - resultado detalhado com revisao por questao
@@ -89,7 +90,7 @@ Padrao local:
 - Migracao de modulos com paridade:
   - Dashboard completo
   - Questoes/practice
-  - Simulados com filtros avancados/taxonomias
+  - Simulados com taxonomias completas (banca, ano, orgao, cargo)
   - Lei comentada
   - Flashcards
   - Checkout/assinaturas/transacoes
