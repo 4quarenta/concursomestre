@@ -52,6 +52,11 @@ const getQuestionKey = (question: Question, index: number): string => {
   return `idx-${index}`;
 };
 
+const formatAnswerLabel = (value?: number): string => {
+  if (value === undefined || value < 0) return '--';
+  return String.fromCharCode(65 + value);
+};
+
 /**
  * Tela mobile de execucao do simulado.
  * @since v1.0.0
@@ -94,6 +99,7 @@ export const SimulationRunScreen: React.FC = () => {
           selectedIndex,
           answered,
           isCorrect: answered && selectedIndex === correctIndex,
+          correctIndex,
         };
       });
 
@@ -149,6 +155,7 @@ export const SimulationRunScreen: React.FC = () => {
         score,
         total: seed.questions.length,
         elapsedSeconds,
+        questionResults,
       });
     } catch (error: any) {
       Alert.alert('Erro', error?.message || 'Nao foi possivel finalizar o simulado.');
@@ -204,6 +211,31 @@ export const SimulationRunScreen: React.FC = () => {
           <Text style={styles.resultMeta}>
             Tempo total: {formatRemainingTime(result.elapsedSeconds)}
           </Text>
+        </View>
+
+        <View style={styles.reviewCard}>
+          <Text style={styles.reviewTitle}>Revisao por questao</Text>
+          <Text style={styles.reviewDescription}>Confira onde acertou, errou ou deixou em branco.</Text>
+          {result.questionResults.map((entry, index) => (
+            <View
+              key={`${getQuestionKey(entry.question, index)}-review`}
+              style={[styles.reviewRow, entry.isCorrect ? styles.reviewRowCorrect : styles.reviewRowWrong]}
+            >
+              <View style={styles.reviewRowHeader}>
+                <Text style={styles.reviewQuestionNumber}>Questao {index + 1}</Text>
+                <Text style={[styles.reviewStatus, entry.isCorrect ? styles.reviewStatusCorrect : styles.reviewStatusWrong]}>
+                  {entry.isCorrect ? 'Correta' : entry.answered ? 'Incorreta' : 'Em branco'}
+                </Text>
+              </View>
+              <Text numberOfLines={3} style={styles.reviewQuestionText}>
+                {stripHtml(entry.question.enunciado_clean || entry.question.enunciado || 'Questao sem enunciado')}
+              </Text>
+              <View style={styles.reviewAnswerRow}>
+                <Text style={styles.reviewAnswerText}>Sua resposta: {formatAnswerLabel(entry.selectedIndex)}</Text>
+                <Text style={styles.reviewAnswerText}>Gabarito: {formatAnswerLabel(entry.correctIndex)}</Text>
+              </View>
+            </View>
+          ))}
         </View>
 
         <Pressable style={styles.mainButton} onPress={handleLeave}>
@@ -449,6 +481,82 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     fontWeight: '700',
+  },
+  reviewCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.card,
+    padding: 14,
+    gap: 10,
+  },
+  reviewTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  reviewDescription: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  reviewRow: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    gap: 8,
+  },
+  reviewRowCorrect: {
+    borderColor: '#BBF7D0',
+    backgroundColor: '#F0FDF4',
+  },
+  reviewRowWrong: {
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  reviewRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  reviewQuestionNumber: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  reviewStatus: {
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  reviewStatusCorrect: {
+    color: colors.success,
+  },
+  reviewStatusWrong: {
+    color: colors.danger,
+  },
+  reviewQuestionText: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+  reviewAnswerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reviewAnswerText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '800',
   },
 });
 

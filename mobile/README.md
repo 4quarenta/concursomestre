@@ -38,6 +38,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - configuracao (questoes + timer)
   - execucao com navegacao por questao
   - finalizacao com score
+  - resultado detalhado com revisao por questao
   - persistencia da sessao via `simulationsCreate`
   - envio das respostas no endpoint oficial de questoes
 - Perfil mobile com billing Stripe:
@@ -88,7 +89,7 @@ Padrao local:
 - Migracao de modulos com paridade:
   - Dashboard completo
   - Questoes/practice
-  - Simulados
+  - Simulados com filtros avancados/taxonomias
   - Lei comentada
   - Flashcards
   - Checkout/assinaturas/transacoes

@@ -12,8 +12,17 @@ export interface MobileSimulationSeed {
   startedAt: number;
 }
 
+export interface MobileSimulationQuestionResult {
+  question: Question;
+  selectedIndex?: number;
+  answered: boolean;
+  isCorrect: boolean;
+  correctIndex: number;
+}
+
 export interface MobileSimulationResult {
   score: number;
   total: number;
   elapsedSeconds: number;
+  questionResults: MobileSimulationQuestionResult[];
 }
