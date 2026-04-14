@@ -23,7 +23,7 @@ Toda transicao mobile deve registrar:
 
 ## 2026-04-14 - Questoes modo foco/lista
 
-- commit: `42a1393 Add mobile questions focus mode`
+- commit: `7f0e33c Add mobile questions focus mode`
 - origem web/plataforma:
   - `src/app/practice/page.tsx`
   - `src/services/questions/questionService.ts`
