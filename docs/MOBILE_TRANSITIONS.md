@@ -109,3 +109,31 @@ Toda transicao mobile deve registrar:
 - pendencias conhecidas:
   - participacao/envio de gabarito do candidato ainda precisa de transicao propria.
   - ranking detail usa a listagem oficial como fonte porque ainda nao ha endpoint mobile dedicado para detalhe por id.
+
+## 2026-04-14 - Ranking participacao e envio de gabarito
+
+- commit: `450a9f0 Add mobile ranking answer submission`
+- origem web/plataforma:
+  - `src/app/ranking/page.tsx`
+  - `src/services/rankings/rankingsService.ts`
+  - endpoint `rankingsJoin`
+- destino mobile:
+  - `mobile/src/screens/RankingDetailScreen.tsx`
+  - `mobile/src/services/rankings/rankingsService.ts`
+  - `mobile/src/services/api/endpoints.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - formulario mobile de participacao no detalhe do ranking
+  - preenchimento de inscricao, caderno/tipo de prova, categoria e nota discursiva
+  - sanitizacao do cartao-resposta com alternativas A-E e limite de questoes
+  - reaproveitamento de participacao anterior do usuario autenticado
+  - calculo local da nota objetiva por gabarito oficial ou consenso colaborativo
+  - envio da participacao para o backend via `rankingsJoin`
+  - atualizacao otimista da lista local de colocacoes apos envio bem-sucedido
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - ranking detail ainda usa a listagem oficial como fonte porque nao ha endpoint mobile dedicado para detalhe por id.
+  - status de aprovacao/classificacao por vaga ainda segue apenas como exibicao simples de colocacoes.
