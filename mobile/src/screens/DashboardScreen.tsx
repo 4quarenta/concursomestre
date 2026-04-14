@@ -184,7 +184,14 @@ export const DashboardScreen: React.FC = () => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Desempenho por materia</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Desempenho por materia</Text>
+          {subjectTop5.length > 0 ? (
+            <Pressable style={styles.linkButton} onPress={() => navigation.navigate('PerformanceSubjects')}>
+              <Text style={styles.linkButtonText}>Ver todas</Text>
+            </Pressable>
+          ) : null}
+        </View>
         {subjectTop5.length === 0 ? (
           <Text style={styles.emptyText}>
             Sem dados por materia ainda. Continue praticando para preencher este bloco.
@@ -311,6 +318,29 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
     fontWeight: '900',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  linkButton: {
+    minHeight: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkButtonText: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   studyRow: {
     flexDirection: 'row',

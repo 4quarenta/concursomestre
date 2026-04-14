@@ -46,6 +46,34 @@ Toda transicao mobile deve registrar:
   - filtros completos de banca, ano, orgao, cargo e carreira ainda precisam ser mapeados no mobile.
   - comentarios, notas e favoritos da pratica ainda precisam de transicao propria.
 
+## 2026-04-14 - Dashboard desempenho por materia
+
+- commit: `TBD`
+- origem web/plataforma:
+  - `src/app/dashboard/page.tsx`
+  - `src/app/performance-subjects/page.tsx`
+  - `src/services/dashboard/dashboardInsightsService.ts`
+  - `src/services/statistics/studyTimeFormatting.ts`
+- destino mobile:
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - `mobile/src/screens/PerformanceSubjectsScreen.tsx`
+  - `mobile/src/services/statistics/statisticsService.ts`
+  - rota stack `PerformanceSubjects`
+  - deep link `concursomestre://desempenho/materias`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - dashboard mobile ganhou acesso ao detalhamento completo de materias
+  - tela detalhada lista todas as materias consolidadas por volume de questoes
+  - cada materia exibe questoes respondidas, acertos, erros, precisao e leitura de revisao
+  - pull-to-refresh recarrega as estatisticas oficiais do usuario
+  - deep link interno para desempenho por materias foi registrado
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - dashboard mobile ainda nao replica graficos historicos, motivacao diaria e filtros de periodo da web.
+  - a tela mobile usa o agregado oficial de `statistics/user`; nao reprocessa localmente o historico completo de respostas.
+
 ## 2026-04-14 - Marketplace
 
 - commit: `931e8ef Add mobile marketplace parity screen`

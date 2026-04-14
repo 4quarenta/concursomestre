@@ -16,6 +16,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - streak atual e melhor streak
   - tempo de estudo total / questoes / leitura
   - desempenho por materia (top 5)
+  - detalhe completo de desempenho por materia
 
 ## Fase 2 (em andamento)
 
@@ -89,7 +90,7 @@ Padrao local:
 ## Proxima fase
 
 - Migracao de modulos com paridade:
-  - Dashboard completo
+  - Dashboard completo com graficos, motivacao diaria e recortes de periodo
   - Questoes/practice com taxonomias avancadas, comentarios, notas e favoritos
   - Simulados com taxonomias completas (banca, ano, orgao, cargo)
   - Lei comentada

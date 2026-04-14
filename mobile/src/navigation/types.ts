@@ -28,6 +28,7 @@ export type AppStackParamList = {
   RankingDetail: {
     rankingId: string;
   };
+  PerformanceSubjects: undefined;
 };
 
 export type MainTabParamList = {
