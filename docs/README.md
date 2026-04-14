@@ -12,6 +12,7 @@
 - `ADMIN_CONSOLIDADO.md`
 - `BILLING_E_VALIDACAO.md`
 - `ENCODING_E_TEXTO.md`
+- `MOBILE_TRANSITIONS.md`
 - `reports/` para saidas automatizadas do billing
 
 ## Fonte principal
