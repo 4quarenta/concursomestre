@@ -93,5 +93,3 @@ Padrao local:
   - Flashcards
   - Ranking
   - Checkout/assinaturas/transacoes
-  - Marketplace
-  - Notificacoes e deep links
