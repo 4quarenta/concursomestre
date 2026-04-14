@@ -76,7 +76,7 @@ Toda transicao mobile deve registrar:
 
 ## 2026-04-14 - Marketplace detalhe de material
 
-- commit: `TBD`
+- commit: `24fef91 Add mobile material detail screen`
 - origem web/plataforma:
   - `src/app/marketplace/page.tsx`
   - `src/app/material/page.tsx`
