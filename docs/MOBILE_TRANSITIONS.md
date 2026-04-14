@@ -161,3 +161,22 @@ Toda transicao mobile deve registrar:
 - pendencias conhecidas:
   - configuracao mobile ainda nao replica os filtros avancados/taxonomias da web.
   - revisao detalhada ainda nao abre uma tela dedicada por questao com comentarios e notas.
+
+## 2026-04-14 - Simulados compatibilidade de listagem
+
+- commit: `8d7cfbb Handle missing mobile simulations list`
+- origem web/plataforma:
+  - `src/services/simulations/simulationsService.ts`
+  - fluxo web persiste simulados via `simulationsCreate`, sem depender de uma listagem publica equivalente
+- destino mobile:
+  - `mobile/src/services/simulations/simulationsService.ts`
+- paridade/compatibilidade entregue:
+  - a listagem mobile aceita `simulationsList` quando o backend expuser o contrato
+  - quando o backend local responde 404 para a listagem, o app exibe estado vazio em vez de alerta bloqueante
+  - o fluxo de criar novo simulado permanece disponivel
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - verificacao no emulador Android apos o alerta 404 observado
+- pendencias conhecidas:
+  - ainda falta definir um endpoint oficial de historico/detalhe de simulados se a plataforma quiser listar tentativas persistidas no mobile.
