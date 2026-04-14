@@ -10,8 +10,8 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '@/providers/AuthProvider';
-import { colors } from '@/theme/colors';
 import { questionService } from '@/services/questions/questionService';
+import { colors } from '@/theme/colors';
 import type { Question } from '@/types/questions';
 
 type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
@@ -20,126 +20,259 @@ type PracticeViewMode = 'card' | 'list';
 const PAGE_SIZE = 10;
 
 const mapDifficultyLabel = (value?: number): string => {
-  if (value === 1 || value === 2) return 'Fácil';
-  if (value === 3) return 'Médio';
-  if (value === 4 || value === 5) return 'Difícil';
-  return 'Não informado';
+  if (value === 1 || value === 2) return 'Facil';
+  if (value === 3) return 'Medio';
+  if (value === 4 || value === 5) return 'Dificil';
+  return 'Nao informado';
 };
 
-const normalizeQuestionText = (question: Question): string => {
-  return (question.enunciado_clean || question.enunciado || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+const normalizeQuestionText = (question: Question): string => (
+  (question.enunciado_clean || question.enunciado || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+);
+
+const normalizeItemText = (item?: { corpo?: string; corpo_clean?: string }): string => (
+  (item?.corpo_clean || item?.corpo || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+);
+
+const getEntityLabel = (item?: { nome?: string; sigla?: string }): string => (
+  String(item?.sigla || item?.nome || '').trim()
+);
+
+const getRoleLabel = (item?: { descricao?: string; ['descrição']?: string; nome?: string }): string => (
+  String(item?.descricao || item?.['descrição'] || item?.nome || '').trim()
+);
+
+const getQuestionYear = (question: Question): string => {
+  const value = Array.isArray(question.anos) && question.anos.length > 0 ? question.anos[0] : '';
+  return String(value || '').trim();
 };
 
-const normalizeItemText = (item?: { corpo?: string; corpo_clean?: string }): string => {
-  return (item?.corpo_clean || item?.corpo || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+const buildAnsweredMapFromQuestions = (rows: Question[]): Record<number, number> => {
+  const map: Record<number, number> = {};
+
+  rows.forEach((question) => {
+    if (!question.id || question.userAnswer?.selectedOptionIndex === undefined || question.userAnswer?.selectedOptionIndex === null) {
+      return;
+    }
+
+    map[question.id] = Number(question.userAnswer.selectedOptionIndex);
+  });
+
+  return map;
 };
 
+/**
+ * Tela mobile de pratica com filtros locais reais sobre o pool oficial de questoes.
+ * O app carrega a listagem completa paginada do backend, filtra no dispositivo e preserva modo foco/lista.
+ * @since v1.0.0
+ */
 export const QuestionsScreen: React.FC = () => {
   const { user, refreshProfile } = useAuth();
-  const [questions, setQuestions] = React.useState<Question[]>([]);
-  const [total, setTotal] = React.useState(0);
-  const [page, setPage] = React.useState(1);
+  const [questionPool, setQuestionPool] = React.useState<Question[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const [loadingMore, setLoadingMore] = React.useState(false);
   const [keyword, setKeyword] = React.useState('');
   const [difficulty, setDifficulty] = React.useState<DifficultyFilter>('all');
   const [selectedSubject, setSelectedSubject] = React.useState<string>('all');
+  const [selectedAgency, setSelectedAgency] = React.useState<string>('all');
+  const [selectedOrganization, setSelectedOrganization] = React.useState<string>('all');
+  const [selectedRole, setSelectedRole] = React.useState<string>('all');
+  const [selectedYear, setSelectedYear] = React.useState<string>('all');
+  const [onlyTeacherComment, setOnlyTeacherComment] = React.useState(false);
+  const [onlyDetailedComment, setOnlyDetailedComment] = React.useState(false);
+  const [excludeAnswered, setExcludeAnswered] = React.useState(false);
   const [answeringKey, setAnsweringKey] = React.useState<string | null>(null);
   const [answeredMap, setAnsweredMap] = React.useState<Record<number, number>>({});
   const [viewMode, setViewMode] = React.useState<PracticeViewMode>('card');
   const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
+  const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
+
+  const loadQuestions = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await questionService.getAllQuestions();
+      setQuestionPool(rows);
+      setAnsweredMap((previous) => ({
+        ...buildAnsweredMapFromQuestions(rows),
+        ...previous,
+      }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel carregar questoes.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadQuestions();
+  }, [loadQuestions]);
 
   const subjectOptions = React.useMemo(() => {
     const values = new Set<string>();
-    questions.forEach((question) => {
+    questionPool.forEach((question) => {
       (question.assuntos || []).forEach((subject) => {
-        if (subject?.nome) values.add(subject.nome);
+        if (subject?.materia && subject?.nome) values.add(subject.nome);
       });
     });
 
-    return ['all', ...Array.from(values).sort()];
-  }, [questions]);
+    return ['all', ...Array.from(values).sort((left, right) => left.localeCompare(right, 'pt-BR'))];
+  }, [questionPool]);
 
-  const buildFilters = React.useCallback((targetPage: number) => {
-    const filters: Record<string, any> = {
-      page: targetPage,
-      perPage: PAGE_SIZE,
-    };
+  const agencyOptions = React.useMemo(() => {
+    const values = new Set<string>();
+    questionPool.forEach((question) => {
+      (question.bancas || []).forEach((agency) => {
+        const label = getEntityLabel(agency);
+        if (label) values.add(label);
+      });
+    });
 
-    if (keyword.trim()) filters.keyword = keyword.trim();
-    if (selectedSubject !== 'all') filters.subject = selectedSubject;
+    return ['all', ...Array.from(values).sort((left, right) => left.localeCompare(right, 'pt-BR'))];
+  }, [questionPool]);
 
-    if (difficulty === 'easy') filters.difficulty = 2;
-    if (difficulty === 'medium') filters.difficulty = 3;
-    if (difficulty === 'hard') filters.difficulty = 4;
+  const organizationOptions = React.useMemo(() => {
+    const values = new Set<string>();
+    questionPool.forEach((question) => {
+      (question.orgaos || []).forEach((organization) => {
+        const label = getEntityLabel(organization);
+        if (label) values.add(label);
+      });
+    });
 
-    return filters;
-  }, [difficulty, keyword, selectedSubject]);
+    return ['all', ...Array.from(values).sort((left, right) => left.localeCompare(right, 'pt-BR'))];
+  }, [questionPool]);
 
-  const fetchPage = React.useCallback(async (targetPage: number, append = false): Promise<number> => {
-    if (append) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
+  const roleOptions = React.useMemo(() => {
+    const values = new Set<string>();
+    questionPool.forEach((question) => {
+      (question.cargos || []).forEach((role) => {
+        const label = getRoleLabel(role);
+        if (label) values.add(label);
+      });
+    });
 
-    try {
-      const result = await questionService.getQuestionPage(buildFilters(targetPage));
-      setTotal(result.total);
-      setPage(targetPage);
-      setQuestions((prev) => append ? [...prev, ...result.rows] : result.rows);
-      if (!append) {
-        setCurrentQuestionIndex(0);
-      }
-      return result.rows.length;
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Nao foi possivel carregar questoes.');
-      return 0;
-    } finally {
-      if (append) {
-        setLoadingMore(false);
-      } else {
-        setLoading(false);
-      }
-    }
-  }, [buildFilters]);
+    return ['all', ...Array.from(values).sort((left, right) => left.localeCompare(right, 'pt-BR'))];
+  }, [questionPool]);
+
+  const yearOptions = React.useMemo(() => {
+    const values = new Set<string>();
+    questionPool.forEach((question) => {
+      const year = getQuestionYear(question);
+      if (year) values.add(year);
+    });
+
+    return ['all', ...Array.from(values).sort((left, right) => Number(right) - Number(left))];
+  }, [questionPool]);
+
+  const filteredQuestions = React.useMemo(() => {
+    const keywordNeedle = keyword.trim().toLowerCase();
+
+    return questionPool.filter((question) => {
+      const statement = normalizeQuestionText(question).toLowerCase();
+      const matchesKeyword = keywordNeedle === '' || statement.includes(keywordNeedle);
+
+      const matchesDifficulty = (
+        difficulty === 'all'
+        || (difficulty === 'easy' && [1, 2].includes(Number(question.dificuldade || 0)))
+        || (difficulty === 'medium' && Number(question.dificuldade || 0) === 3)
+        || (difficulty === 'hard' && [4, 5].includes(Number(question.dificuldade || 0)))
+      );
+
+      const matchesSubject = (
+        selectedSubject === 'all'
+        || (question.assuntos || []).some((subject) => subject?.materia && subject?.nome === selectedSubject)
+      );
+
+      const matchesAgency = (
+        selectedAgency === 'all'
+        || (question.bancas || []).some((agency) => getEntityLabel(agency) === selectedAgency)
+      );
+
+      const matchesOrganization = (
+        selectedOrganization === 'all'
+        || (question.orgaos || []).some((organization) => getEntityLabel(organization) === selectedOrganization)
+      );
+
+      const matchesRole = (
+        selectedRole === 'all'
+        || (question.cargos || []).some((role) => getRoleLabel(role) === selectedRole)
+      );
+
+      const matchesYear = selectedYear === 'all' || getQuestionYear(question) === selectedYear;
+      const matchesTeacherComment = !onlyTeacherComment || Boolean(question.hasTeacherComment || question.teacherComment);
+      const matchesDetailedComment = !onlyDetailedComment || Boolean(question.hasDetailedComment || question.detailedComment);
+      const matchesAnswered = !excludeAnswered || !question.id || answeredMap[question.id] === undefined;
+
+      return (
+        matchesKeyword
+        && matchesDifficulty
+        && matchesSubject
+        && matchesAgency
+        && matchesOrganization
+        && matchesRole
+        && matchesYear
+        && matchesTeacherComment
+        && matchesDetailedComment
+        && matchesAnswered
+      );
+    });
+  }, [
+    answeredMap,
+    difficulty,
+    excludeAnswered,
+    keyword,
+    onlyDetailedComment,
+    onlyTeacherComment,
+    questionPool,
+    selectedAgency,
+    selectedOrganization,
+    selectedRole,
+    selectedSubject,
+    selectedYear,
+  ]);
+
+  const currentQuestion = filteredQuestions[currentQuestionIndex] || null;
+  const visibleListQuestions = React.useMemo(
+    () => filteredQuestions.slice(0, visibleCount),
+    [filteredQuestions, visibleCount],
+  );
 
   React.useEffect(() => {
-    void fetchPage(1, false);
-  }, [fetchPage]);
+    if (currentQuestionIndex >= filteredQuestions.length && filteredQuestions.length > 0) {
+      setCurrentQuestionIndex(filteredQuestions.length - 1);
+    }
+
+    if (filteredQuestions.length === 0) {
+      setCurrentQuestionIndex(0);
+    }
+  }, [currentQuestionIndex, filteredQuestions.length]);
 
   const handleApplyFilters = () => {
-    void fetchPage(1, false);
+    setCurrentQuestionIndex(0);
+    setVisibleCount(PAGE_SIZE);
+  };
+
+  const handleClearFilters = () => {
+    setKeyword('');
+    setDifficulty('all');
+    setSelectedSubject('all');
+    setSelectedAgency('all');
+    setSelectedOrganization('all');
+    setSelectedRole('all');
+    setSelectedYear('all');
+    setOnlyTeacherComment(false);
+    setOnlyDetailedComment(false);
+    setExcludeAnswered(false);
+    setCurrentQuestionIndex(0);
+    setVisibleCount(PAGE_SIZE);
   };
 
   const handleLoadMore = () => {
-    if (loading || loadingMore) return;
-    if (questions.length >= total) return;
-    void fetchPage(page + 1, true);
+    if (visibleCount >= filteredQuestions.length) return;
+    setVisibleCount((current) => Math.min(current + PAGE_SIZE, filteredQuestions.length));
   };
 
-  const currentQuestion = questions[currentQuestionIndex] || null;
-
-  React.useEffect(() => {
-    if (currentQuestionIndex >= questions.length && questions.length > 0) {
-      setCurrentQuestionIndex(questions.length - 1);
-    }
-  }, [currentQuestionIndex, questions.length]);
-
-  const handleNextQuestion = async () => {
-    const nextIndex = currentQuestionIndex + 1;
-
-    if (nextIndex < questions.length) {
-      setCurrentQuestionIndex(nextIndex);
-      return;
-    }
-
-    if (questions.length < total && !loadingMore) {
-      const loadedCount = await fetchPage(page + 1, true);
-      if (loadedCount > 0) {
-        setCurrentQuestionIndex(nextIndex);
-      }
-    }
+  const handleNextQuestion = () => {
+    setCurrentQuestionIndex((current) => Math.min(filteredQuestions.length - 1, current + 1));
   };
 
   const handlePreviousQuestion = () => {
@@ -184,7 +317,7 @@ export const QuestionsScreen: React.FC = () => {
         return;
       }
 
-      setAnsweredMap((prev) => ({ ...prev, [question.id as number]: optionIndex }));
+      setAnsweredMap((previous) => ({ ...previous, [question.id as number]: optionIndex }));
       if (result.newXp || result.newLevel) {
         await refreshProfile();
       }
@@ -193,19 +326,68 @@ export const QuestionsScreen: React.FC = () => {
     }
   };
 
+  const renderFilterChips = (
+    options: string[],
+    selectedValue: string,
+    onSelect: (value: string) => void,
+    allLabel: string,
+  ) => (
+    <View style={styles.inlineFilters}>
+      {options.map((option) => (
+        <Pressable
+          key={option}
+          onPress={() => onSelect(option)}
+          style={[styles.chip, selectedValue === option && styles.chipActive]}
+        >
+          <Text style={[styles.chipText, selectedValue === option && styles.chipTextActive]}>
+            {option === 'all' ? allLabel : option}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+
   const renderQuestion = ({ item, index }: { item: Question; index: number }) => {
     const questionId = item.id || index;
     const selected = item.id ? answeredMap[item.id] : undefined;
     const correctIndex = getCorrectIndex(item);
+    const metaParts = [
+      (item.bancas || []).map((agency) => getEntityLabel(agency)).filter(Boolean)[0],
+      (item.orgaos || []).map((organization) => getEntityLabel(organization)).filter(Boolean)[0],
+      (item.cargos || []).map((role) => getRoleLabel(role)).filter(Boolean)[0],
+      getQuestionYear(item),
+    ].filter(Boolean);
 
     return (
       <View style={styles.questionCard}>
         <View style={styles.questionHeader}>
-          <Text style={styles.questionTag}>Questão #{questionId}</Text>
+          <Text style={styles.questionTag}>Questao #{questionId}</Text>
           <Text style={styles.questionDifficulty}>{mapDifficultyLabel(item.dificuldade)}</Text>
         </View>
 
-        <Text style={styles.questionText}>{normalizeQuestionText(item) || 'Questão sem enunciado.'}</Text>
+        {metaParts.length > 0 ? (
+          <Text style={styles.questionMeta}>{metaParts.join(' | ')}</Text>
+        ) : null}
+
+        <Text style={styles.questionText}>{normalizeQuestionText(item) || 'Questao sem enunciado.'}</Text>
+
+        <View style={styles.badgeRow}>
+          {item.hasTeacherComment ? (
+            <View style={[styles.infoBadge, styles.teacherBadge]}>
+              <Text style={[styles.infoBadgeText, styles.teacherBadgeText]}>Professor</Text>
+            </View>
+          ) : null}
+          {item.hasDetailedComment ? (
+            <View style={[styles.infoBadge, styles.detailBadge]}>
+              <Text style={[styles.infoBadgeText, styles.detailBadgeText]}>Analise detalhada</Text>
+            </View>
+          ) : null}
+          {selected !== undefined ? (
+            <View style={[styles.infoBadge, styles.answeredBadge]}>
+              <Text style={[styles.infoBadgeText, styles.answeredBadgeText]}>Respondida</Text>
+            </View>
+          ) : null}
+        </View>
 
         <View style={styles.optionsContainer}>
           {(item.itens || []).map((option, optionIndex) => {
@@ -238,10 +420,29 @@ export const QuestionsScreen: React.FC = () => {
     );
   };
 
+  const activeFilterCount = [
+    keyword.trim() !== '',
+    difficulty !== 'all',
+    selectedSubject !== 'all',
+    selectedAgency !== 'all',
+    selectedOrganization !== 'all',
+    selectedRole !== 'all',
+    selectedYear !== 'all',
+    onlyTeacherComment,
+    onlyDetailedComment,
+    excludeAnswered,
+  ].filter(Boolean).length;
+
   return (
     <View style={styles.screen}>
       <View style={styles.filtersCard}>
-        <Text style={styles.filtersTitle}>Filtros</Text>
+        <View style={styles.filtersHeaderRow}>
+          <Text style={styles.filtersTitle}>Filtros</Text>
+          <Text style={styles.filtersSummary}>
+            {filteredQuestions.length} de {questionPool.length}
+          </Text>
+        </View>
+
         <TextInput
           value={keyword}
           onChangeText={setKeyword}
@@ -250,38 +451,48 @@ export const QuestionsScreen: React.FC = () => {
           style={styles.input}
         />
 
-        <View style={styles.inlineFilters}>
-          {(['all', 'easy', 'medium', 'hard'] as DifficultyFilter[]).map((option) => (
-            <Pressable
-              key={option}
-              onPress={() => setDifficulty(option)}
-              style={[
-                styles.chip,
-                difficulty === option && styles.chipActive,
-              ]}
-            >
-              <Text style={[styles.chipText, difficulty === option && styles.chipTextActive]}>
-                {option === 'all' ? 'Todas' : option === 'easy' ? 'Fácil' : option === 'medium' ? 'Médio' : 'Difícil'}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        {renderFilterChips(
+          ['all', 'easy', 'medium', 'hard'],
+          difficulty,
+          (value) => setDifficulty(value as DifficultyFilter),
+          'Todas',
+        )}
 
+        <Text style={styles.filterLabel}>Materia</Text>
+        {renderFilterChips(subjectOptions, selectedSubject, setSelectedSubject, 'Todas materias')}
+
+        <Text style={styles.filterLabel}>Banca</Text>
+        {renderFilterChips(agencyOptions, selectedAgency, setSelectedAgency, 'Todas bancas')}
+
+        <Text style={styles.filterLabel}>Orgao</Text>
+        {renderFilterChips(organizationOptions, selectedOrganization, setSelectedOrganization, 'Todos orgaos')}
+
+        <Text style={styles.filterLabel}>Cargo</Text>
+        {renderFilterChips(roleOptions, selectedRole, setSelectedRole, 'Todos cargos')}
+
+        <Text style={styles.filterLabel}>Ano</Text>
+        {renderFilterChips(yearOptions, selectedYear, setSelectedYear, 'Todos anos')}
+
+        <Text style={styles.filterLabel}>Recursos</Text>
         <View style={styles.inlineFilters}>
-          {subjectOptions.slice(0, 6).map((subject) => (
-            <Pressable
-              key={subject}
-              onPress={() => setSelectedSubject(subject)}
-              style={[
-                styles.chip,
-                selectedSubject === subject && styles.chipActive,
-              ]}
-            >
-              <Text style={[styles.chipText, selectedSubject === subject && styles.chipTextActive]}>
-                {subject === 'all' ? 'Todas matérias' : subject}
-              </Text>
-            </Pressable>
-          ))}
+          <Pressable
+            onPress={() => setOnlyTeacherComment((current) => !current)}
+            style={[styles.chip, onlyTeacherComment && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, onlyTeacherComment && styles.chipTextActive]}>Professor</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setOnlyDetailedComment((current) => !current)}
+            style={[styles.chip, onlyDetailedComment && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, onlyDetailedComment && styles.chipTextActive]}>Analise detalhada</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setExcludeAnswered((current) => !current)}
+            style={[styles.chip, excludeAnswered && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, excludeAnswered && styles.chipTextActive]}>Ocultar respondidas</Text>
+          </Pressable>
         </View>
 
         <View style={styles.modeToggleRow}>
@@ -298,9 +509,16 @@ export const QuestionsScreen: React.FC = () => {
           ))}
         </View>
 
-        <Pressable onPress={handleApplyFilters} style={styles.applyButton}>
-          <Text style={styles.applyButtonText}>Aplicar filtros</Text>
-        </Pressable>
+        <View style={styles.filterActionsRow}>
+          <Pressable onPress={handleApplyFilters} style={styles.applyButton}>
+            <Text style={styles.applyButtonText}>
+              {activeFilterCount > 0 ? `Aplicar (${activeFilterCount})` : 'Aplicar filtros'}
+            </Text>
+          </Pressable>
+          <Pressable onPress={handleClearFilters} style={styles.clearButton}>
+            <Text style={styles.clearButtonText}>Limpar</Text>
+          </Pressable>
+        </View>
       </View>
 
       {loading ? (
@@ -309,16 +527,16 @@ export const QuestionsScreen: React.FC = () => {
         </View>
       ) : (
         <FlatList
-          data={viewMode === 'card' ? (currentQuestion ? [currentQuestion] : []) : questions}
+          data={viewMode === 'card' ? (currentQuestion ? [currentQuestion] : []) : visibleListQuestions}
           keyExtractor={(item, index) => String(item.id || index)}
           renderItem={renderQuestion}
           contentContainerStyle={styles.listContent}
           onEndReached={viewMode === 'list' ? handleLoadMore : undefined}
           onEndReachedThreshold={0.35}
-          ListFooterComponent={viewMode === 'card' && questions.length > 0 ? (
+          ListFooterComponent={viewMode === 'card' && filteredQuestions.length > 0 ? (
             <View style={styles.focusFooter}>
               <Text style={styles.focusProgress}>
-                {questions.length > 0 ? currentQuestionIndex + 1 : 0} / {total || questions.length}
+                {filteredQuestions.length > 0 ? currentQuestionIndex + 1 : 0} / {filteredQuestions.length}
               </Text>
               <View style={styles.focusActions}>
                 <Pressable
@@ -332,24 +550,27 @@ export const QuestionsScreen: React.FC = () => {
                   style={[
                     styles.focusButton,
                     styles.focusButtonPrimary,
-                    (loadingMore || (questions.length >= total && currentQuestionIndex >= questions.length - 1)) && styles.focusButtonDisabled,
+                    currentQuestionIndex >= filteredQuestions.length - 1 && styles.focusButtonDisabled,
                   ]}
-                  onPress={() => void handleNextQuestion()}
-                  disabled={loadingMore || (questions.length >= total && currentQuestionIndex >= questions.length - 1)}
+                  onPress={handleNextQuestion}
+                  disabled={currentQuestionIndex >= filteredQuestions.length - 1}
                 >
-                  {loadingMore ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={[styles.focusButtonText, styles.focusButtonPrimaryText]}>Proxima</Text>
-                  )}
+                  <Text style={[styles.focusButtonText, styles.focusButtonPrimaryText]}>Proxima</Text>
                 </Pressable>
               </View>
             </View>
-          ) : loadingMore ? <ActivityIndicator size="small" color={colors.primary} /> : null}
+          ) : (
+            viewMode === 'list' && visibleListQuestions.length < filteredQuestions.length
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : null
+          )}
           ListEmptyComponent={(
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>Nenhuma questão encontrada</Text>
+              <Text style={styles.emptyTitle}>Nenhuma questao encontrada</Text>
               <Text style={styles.emptyText}>Ajuste os filtros e tente novamente.</Text>
+              <Pressable style={styles.retryOutlineButton} onPress={handleClearFilters}>
+                <Text style={styles.retryOutlineButtonText}>Limpar filtros</Text>
+              </Pressable>
             </View>
           )}
         />
@@ -372,12 +593,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     gap: 10,
   },
+  filtersHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   filtersTitle: {
     fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 0.7,
     textTransform: 'uppercase',
     color: colors.muted,
+    letterSpacing: 0,
+  },
+  filtersSummary: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  filterLabel: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   input: {
     height: 44,
@@ -394,6 +633,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  chipActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#EEF2FF',
+  },
+  chipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.muted,
+  },
+  chipTextActive: {
+    color: colors.primary,
   },
   modeToggleRow: {
     flexDirection: 'row',
@@ -423,27 +682,12 @@ const styles = StyleSheet.create({
   modeButtonTextActive: {
     color: colors.primary,
   },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#FFFFFF',
-  },
-  chipActive: {
-    borderColor: colors.primary,
-    backgroundColor: '#EEF2FF',
-  },
-  chipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.muted,
-  },
-  chipTextActive: {
-    color: colors.primary,
+  filterActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
   applyButton: {
+    flex: 1,
     height: 42,
     borderRadius: 12,
     backgroundColor: colors.primary,
@@ -454,8 +698,25 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 12,
-    letterSpacing: 0.5,
     textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  clearButton: {
+    minWidth: 96,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearButtonText: {
+    color: colors.muted,
+    fontWeight: '800',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   loaderBlock: {
     flex: 1,
@@ -531,7 +792,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 0,
     color: colors.muted,
   },
   questionDifficulty: {
@@ -539,11 +800,50 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.primary,
   },
+  questionMeta: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
   questionText: {
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,
     fontWeight: '600',
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  infoBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  infoBadgeText: {
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  teacherBadge: {
+    backgroundColor: '#FEF3C7',
+  },
+  teacherBadgeText: {
+    color: '#B45309',
+  },
+  detailBadge: {
+    backgroundColor: '#EDE9FE',
+  },
+  detailBadgeText: {
+    color: '#6D28D9',
+  },
+  answeredBadge: {
+    backgroundColor: '#ECFDF5',
+  },
+  answeredBadgeText: {
+    color: colors.success,
   },
   optionsContainer: {
     gap: 8,
@@ -600,7 +900,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     padding: 16,
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   emptyTitle: {
     fontSize: 15,
@@ -610,5 +910,25 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 13,
     color: colors.muted,
+    textAlign: 'center',
+  },
+  retryOutlineButton: {
+    height: 38,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryOutlineButtonText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
 });
+
+export default QuestionsScreen;

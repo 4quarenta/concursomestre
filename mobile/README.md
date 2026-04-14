@@ -21,9 +21,10 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
 ## Fase 2 (em andamento)
 
 - Modulo `Questoes` com:
-  - lista real via API
-  - filtros basicos (keyword, dificuldade, materia)
-  - paginação/load more
+  - pool oficial carregado via API paginada
+  - filtros locais por keyword, dificuldade, materia, banca, orgao, cargo e ano
+  - filtros por comentario de professor, analise detalhada e ocultar respondidas
+  - paginação/load more local no modo lista
   - envio de resposta do usuario
   - modo foco por questao e modo lista
 - Modulo `Planos` com catalogo oficial
@@ -94,7 +95,7 @@ Padrao local:
 
 - Migracao de modulos com paridade:
   - Dashboard completo com graficos, motivacao diaria e recortes de periodo
-  - Questoes/practice com taxonomias avancadas, comentarios, notas e favoritos
+  - Questoes/practice com leitura de comentarios, notas, favoritos e refinamentos de paridade fina
   - Simulados com taxonomias completas (banca, ano, orgao, cargo)
   - Lei comentada com conteudo real
   - Flashcards com revisao ativa real

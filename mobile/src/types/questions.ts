@@ -12,6 +12,32 @@ export interface QuestionSubject {
   materia?: boolean;
 }
 
+export interface QuestionAgency {
+  id?: number;
+  nome?: string;
+  sigla?: string;
+}
+
+export interface QuestionOrganization {
+  id?: number;
+  nome?: string;
+  sigla?: string;
+}
+
+export interface QuestionRole {
+  id?: number;
+  nome?: string;
+  descricao?: string;
+  ['descrição']?: string;
+}
+
+export interface QuestionUserAnswer {
+  questionId?: number;
+  selectedOptionIndex?: number;
+  isCorrect?: boolean;
+  timestamp?: number;
+}
+
 export interface Question {
   id?: number;
   enunciado?: string;
@@ -20,6 +46,15 @@ export interface Question {
   resposta?: number;
   dificuldade?: number;
   assuntos?: QuestionSubject[];
+  bancas?: QuestionAgency[];
+  orgaos?: QuestionOrganization[];
+  cargos?: QuestionRole[];
+  anos?: Array<number | string>;
+  hasTeacherComment?: boolean;
+  hasDetailedComment?: boolean;
+  teacherComment?: string | null;
+  detailedComment?: string | null;
+  userAnswer?: QuestionUserAnswer | null;
 }
 
 export interface UserAnswerInput {

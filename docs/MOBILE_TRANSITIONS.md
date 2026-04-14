@@ -325,3 +325,31 @@ Toda transicao mobile deve registrar:
 - pendencias conhecidas:
   - filtros completos de banca, ano, orgao e cargo ainda dependem de mapear taxonomias adicionais no mobile.
   - ainda falta uma tela dedicada para escolher taxonomias longas com busca.
+
+## 2026-04-14 - Questoes pool local e filtros avancados
+
+- commit: `PENDING_HASH Add mobile questions local filter pool`
+- origem web/plataforma:
+  - `src/app/practice/page.tsx`
+  - `src/services/questions/questionService.ts`
+  - endpoint `questionsList`
+  - payload de questoes com taxonomias de banca, orgao, cargo, ano e comentarios
+- destino mobile:
+  - `mobile/src/screens/QuestionsScreen.tsx`
+  - `mobile/src/services/questions/questionService.ts`
+  - `mobile/src/types/questions.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - pratica mobile passou a carregar o pool oficial completo de questoes via paginacao do backend
+  - filtros agora rodam localmente por keyword, dificuldade, materia, banca, orgao, cargo e ano
+  - pratica ganhou filtros para questoes com comentario de professor, analise detalhada e opcao de ocultar respondidas
+  - modo foco e modo lista passaram a navegar sobre o mesmo conjunto filtrado localmente
+  - cada questao exibe metadados resumidos e badges de comentario/respondida para aproximar a leitura da web
+- compatibilidade observada:
+  - backend local atualmente ignora filtros em `questionsList` e aceita apenas paginacao, entao o mobile consolidou a filtragem no cliente para manter a experiencia coerente
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - comentarios completos, notas e favoritos ainda nao foram migrados para a experiencia de pratica mobile.

@@ -27,6 +27,30 @@ export const questionService = {
     return { rows, total };
   },
 
+  async getAllQuestions(pageSize = 200): Promise<Question[]> {
+    const allRows: Question[] = [];
+    let page = 1;
+    let total = Number.POSITIVE_INFINITY;
+
+    while (allRows.length < total) {
+      const result = await this.getQuestionPage({
+        page,
+        limit: pageSize,
+      });
+
+      allRows.push(...result.rows);
+      total = Number(result.total || allRows.length || 0);
+
+      if (result.rows.length === 0 || result.rows.length < pageSize) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    return allRows;
+  },
+
   async submitUserAnswer(userId: string, answer: UserAnswerInput): Promise<{ success: boolean; message?: string; newXp?: number; newLevel?: number }> {
     try {
       const response: any = await apiClient.post<any>(ENDPOINTS.questions.submit, {
