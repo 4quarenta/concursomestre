@@ -1,3 +1,5 @@
+import type { QuestionComment } from '@/types/comments';
+
 export interface QuestionItem {
   id?: number;
   ordem?: number;
@@ -55,6 +57,8 @@ export interface Question {
   teacherComment?: string | null;
   detailedComment?: string | null;
   userAnswer?: QuestionUserAnswer | null;
+  comments?: QuestionComment[] | null;
+  commentsCount?: number;
 }
 
 export interface UserAnswerInput {

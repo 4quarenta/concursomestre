@@ -381,3 +381,33 @@ Toda transicao mobile deve registrar:
   - push para `origin/master`
 - pendencias conhecidas:
   - comentarios da comunidade e anotacoes de questao ainda nao foram migrados para o fluxo mobile.
+
+## 2026-04-14 - Questoes comentarios da comunidade
+
+- commit: `PENDING_HASH Add mobile question comments flow`
+- origem web/plataforma:
+  - `src/app/practice/page.tsx`
+  - `src/app/questions/components/QuestionCard.tsx`
+  - `src/services/comments/commentsService.ts`
+  - endpoints `commentsList`, `commentsHandle` e `commentsLike`
+- destino mobile:
+  - `mobile/src/screens/QuestionsScreen.tsx`
+  - `mobile/src/components/questions/QuestionCommentsPanel.tsx`
+  - `mobile/src/services/comments/commentsService.ts`
+  - `mobile/src/services/api/endpoints.ts`
+  - `mobile/src/types/comments.ts`
+  - `mobile/src/types/questions.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - pratica mobile passou a abrir comentarios sob demanda por questao
+  - painel mobile permite criar novo topico, responder comentarios e curtir respostas
+  - contagem de comentarios aproveita o payload oficial e se atualiza localmente apos novas publicacoes
+  - thread aninhada foi adaptada para leitura mobile sem depender do `QuestionCard` web completo
+- compatibilidade observada:
+  - backend local pode responder `commentsList` sem `data` quando nao ha comentarios, entao o mobile trata isso como estado vazio valido
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - anotacoes de questao ainda nao foram migradas para o fluxo mobile.

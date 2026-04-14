@@ -20,6 +20,12 @@ export const ENDPOINTS = {
     submit: 'questionsAnswer',
     toggleSave: 'questionsToggleSave',
   },
+  comments: {
+    list: 'commentsList',
+    create: 'commentsHandle',
+    handle: 'commentsHandle',
+    like: 'commentsLike',
+  },
   simulations: {
     list: 'simulationsList',
     create: 'simulationsCreate',

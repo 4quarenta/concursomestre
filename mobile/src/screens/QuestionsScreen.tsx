@@ -9,9 +9,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { QuestionCommentsPanel } from '@/components/questions/QuestionCommentsPanel';
 import { useAuth } from '@/providers/AuthProvider';
+import { commentsService } from '@/services/comments/commentsService';
 import { questionService } from '@/services/questions/questionService';
 import { colors } from '@/theme/colors';
+import type { QuestionComment } from '@/types/comments';
 import type { Question } from '@/types/questions';
 
 type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
@@ -86,6 +89,11 @@ export const QuestionsScreen: React.FC = () => {
   const [viewMode, setViewMode] = React.useState<PracticeViewMode>('card');
   const [currentQuestionIndex, setCurrentQuestionIndex] = React.useState(0);
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
+  const [visibleCommentsMap, setVisibleCommentsMap] = React.useState<Record<string, boolean>>({});
+  const [commentsByQuestion, setCommentsByQuestion] = React.useState<Record<string, QuestionComment[]>>({});
+  const [commentsLoadingMap, setCommentsLoadingMap] = React.useState<Record<string, boolean>>({});
+  const [commentDraftMap, setCommentDraftMap] = React.useState<Record<string, string>>({});
+  const [commentSubmittingMap, setCommentSubmittingMap] = React.useState<Record<string, boolean>>({});
 
   const loadQuestions = React.useCallback(async () => {
     setLoading(true);
@@ -111,6 +119,10 @@ export const QuestionsScreen: React.FC = () => {
     () => new Set((user?.savedQuestionIds || []).map((item) => String(item))),
     [user?.savedQuestionIds],
   );
+
+  const getQuestionStateKey = React.useCallback((questionId?: string | number | null) => (
+    questionId === undefined || questionId === null ? '' : String(questionId)
+  ), []);
 
   const subjectOptions = React.useMemo(() => {
     const values = new Set<string>();
@@ -303,6 +315,121 @@ export const QuestionsScreen: React.FC = () => {
     }
   };
 
+  const updateQuestionCommentsCount = React.useCallback((questionId: number, delta: number) => {
+    if (delta === 0) return;
+
+    setQuestionPool((previous) => previous.map((item) => (
+      item.id === questionId
+        ? { ...item, commentsCount: Math.max(0, Number(item.commentsCount || 0) + delta) }
+        : item
+    )));
+  }, []);
+
+  const loadQuestionComments = React.useCallback(async (question: Question) => {
+    if (!question.id) return;
+
+    const questionKey = getQuestionStateKey(question.id);
+    if (!questionKey || commentsLoadingMap[questionKey] || commentsByQuestion[questionKey] !== undefined) {
+      return;
+    }
+
+    setCommentsLoadingMap((previous) => ({ ...previous, [questionKey]: true }));
+    try {
+      const rows = await commentsService.getComments(questionKey, user?.id);
+      setCommentsByQuestion((previous) => ({ ...previous, [questionKey]: rows }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel carregar comentarios.');
+    } finally {
+      setCommentsLoadingMap((previous) => ({ ...previous, [questionKey]: false }));
+    }
+  }, [commentsByQuestion, commentsLoadingMap, getQuestionStateKey, user?.id]);
+
+  const handleToggleComments = async (question: Question) => {
+    if (!question.id) return;
+
+    const questionKey = getQuestionStateKey(question.id);
+    const nextVisible = !visibleCommentsMap[questionKey];
+    setVisibleCommentsMap((previous) => ({ ...previous, [questionKey]: nextVisible }));
+
+    if (nextVisible) {
+      await loadQuestionComments(question);
+    }
+  };
+
+  const handleSubmitComment = async (question: Question, content: string, parentId?: string) => {
+    if (!question.id) {
+      return;
+    }
+
+    if (!user?.id || !user.name) {
+      Alert.alert('Login necessario', 'Entre na sua conta para comentar nesta questao.');
+      return;
+    }
+
+    const nextContent = content.trim();
+    if (!nextContent) {
+      return;
+    }
+
+    const questionKey = getQuestionStateKey(question.id);
+    setCommentSubmittingMap((previous) => ({ ...previous, [questionKey]: true }));
+
+    try {
+      const createdComment = await commentsService.addComment({
+        questionId: questionKey,
+        content: nextContent,
+        userId: user.id,
+        userName: user.name,
+        parentId,
+        targetType: 'question',
+      });
+
+      setCommentsByQuestion((previous) => {
+        const currentComments = previous[questionKey] || [];
+        const nextComments = parentId
+          ? commentsService.addReplyToComments(currentComments, parentId, createdComment)
+          : [createdComment, ...currentComments];
+
+        return {
+          ...previous,
+          [questionKey]: nextComments,
+        };
+      });
+
+      if (!parentId) {
+        updateQuestionCommentsCount(question.id, 1);
+      }
+
+      setCommentDraftMap((previous) => ({ ...previous, [questionKey]: '' }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel publicar o comentario.');
+    } finally {
+      setCommentSubmittingMap((previous) => ({ ...previous, [questionKey]: false }));
+    }
+  };
+
+  const handleLikeComment = async (question: Question, commentId: string) => {
+    if (!question.id) {
+      return;
+    }
+
+    if (!user?.id) {
+      Alert.alert('Login necessario', 'Entre na sua conta para curtir comentarios.');
+      return;
+    }
+
+    const questionKey = getQuestionStateKey(question.id);
+    try {
+      await commentsService.likeComment(commentId, user.id);
+      setCommentsByQuestion((previous) => ({
+        ...previous,
+        [questionKey]: commentsService.likeCommentInTree(previous[questionKey] || [], commentId),
+      }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel curtir o comentario.');
+    }
+  };
+
   const getCorrectIndex = (question: Question): number => {
     const options = question.itens || [];
     const answerId = Number(question.resposta || -1);
@@ -373,9 +500,18 @@ export const QuestionsScreen: React.FC = () => {
 
   const renderQuestion = ({ item, index }: { item: Question; index: number }) => {
     const questionId = item.id || index;
+    const questionStateKey = getQuestionStateKey(item.id);
     const selected = item.id ? answeredMap[item.id] : undefined;
     const correctIndex = getCorrectIndex(item);
     const isSaved = item.id !== undefined && savedQuestionIdSet.has(String(item.id));
+    const comments = commentsByQuestion[questionStateKey] || [];
+    const commentsVisible = Boolean(visibleCommentsMap[questionStateKey]);
+    const commentsLoading = Boolean(commentsLoadingMap[questionStateKey]);
+    const commentDraft = commentDraftMap[questionStateKey] || '';
+    const commentsSubmitting = Boolean(commentSubmittingMap[questionStateKey]);
+    const commentsCount = commentsByQuestion[questionStateKey] !== undefined
+      ? comments.length
+      : Number(item.commentsCount || 0);
     const metaParts = [
       (item.bancas || []).map((agency) => getEntityLabel(agency)).filter(Boolean)[0],
       (item.orgaos || []).map((organization) => getEntityLabel(organization)).filter(Boolean)[0],
@@ -429,6 +565,17 @@ export const QuestionsScreen: React.FC = () => {
           ) : null}
         </View>
 
+        <View style={styles.questionActionsRow}>
+          <Pressable
+            onPress={() => void handleToggleComments(item)}
+            style={[styles.secondaryActionButton, commentsVisible && styles.secondaryActionButtonActive]}
+          >
+            <Text style={[styles.secondaryActionButtonText, commentsVisible && styles.secondaryActionButtonTextActive]}>
+              {commentsVisible ? `Ocultar comentarios (${commentsCount})` : `Comentarios (${commentsCount})`}
+            </Text>
+          </Pressable>
+        </View>
+
         <View style={styles.optionsContainer}>
           {(item.itens || []).map((option, optionIndex) => {
             const isSelected = selected === optionIndex;
@@ -456,6 +603,18 @@ export const QuestionsScreen: React.FC = () => {
             );
           })}
         </View>
+
+        {commentsVisible ? (
+          <QuestionCommentsPanel
+            comments={comments}
+            loading={commentsLoading}
+            draft={commentDraft}
+            submitting={commentsSubmitting}
+            onChangeDraft={(value) => setCommentDraftMap((previous) => ({ ...previous, [questionStateKey]: value }))}
+            onSubmitComment={(content, parentId) => handleSubmitComment(item, content, parentId)}
+            onLikeComment={(commentId) => handleLikeComment(item, commentId)}
+          />
+        ) : null}
       </View>
     );
   };
@@ -926,6 +1085,34 @@ const styles = StyleSheet.create({
   },
   savedBadgeText: {
     color: '#047857',
+  },
+  questionActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  secondaryActionButton: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryActionButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#EEF2FF',
+  },
+  secondaryActionButtonText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  secondaryActionButtonTextActive: {
+    color: colors.primary,
   },
   optionsContainer: {
     gap: 8,
