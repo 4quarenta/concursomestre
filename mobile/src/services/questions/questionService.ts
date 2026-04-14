@@ -82,6 +82,29 @@ export const questionService = {
       };
     }
   },
+
+  async toggleSavedQuestion(userId: string, questionId: string | number): Promise<{ success: boolean; isSaved?: boolean; message?: string }> {
+    try {
+      const response: any = await apiClient.post<any>(ENDPOINTS.questions.toggleSave, {
+        user_id: userId,
+        question_id: questionId,
+      });
+
+      const envelope = assertApiSuccess(response, 'Nao foi possivel atualizar as questoes salvas.');
+      const payload = readApiData<any>(response, {});
+
+      return {
+        success: true,
+        isSaved: payload?.isSaved ?? envelope.raw?.isSaved,
+        message: envelope.message,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: readApiErrorMessage(error, 'Nao foi possivel atualizar as questoes salvas.'),
+      };
+    }
+  },
 };
 
 export default questionService;

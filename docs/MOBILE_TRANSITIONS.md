@@ -353,3 +353,31 @@ Toda transicao mobile deve registrar:
   - push para `origin/master`
 - pendencias conhecidas:
   - comentarios completos, notas e favoritos ainda nao foram migrados para a experiencia de pratica mobile.
+
+## 2026-04-14 - Questoes salvas no mobile
+
+- commit: `PENDING_HASH Add mobile saved questions parity`
+- origem web/plataforma:
+  - `src/app/practice/page.tsx`
+  - `src/app/questions/components/QuestionCard.tsx`
+  - `src/providers/AuthProvider.tsx`
+  - `src/services/questions/questionService.ts`
+  - endpoint `questionsToggleSave`
+- destino mobile:
+  - `mobile/src/providers/AuthProvider.tsx`
+  - `mobile/src/screens/QuestionsScreen.tsx`
+  - `mobile/src/services/questions/questionService.ts`
+  - `mobile/src/services/api/endpoints.ts`
+  - `mobile/src/types/auth.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - sessao mobile passou a normalizar e persistir `savedQuestionIds`
+  - pratica mobile ganhou toggle otimista para salvar/remover questoes favoritas
+  - card de questao agora indica o estado salvo e permite favoritar direto na pratica
+  - filtros de recursos agora incluem recorte por questoes salvas
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - comentarios da comunidade e anotacoes de questao ainda nao foram migrados para o fluxo mobile.

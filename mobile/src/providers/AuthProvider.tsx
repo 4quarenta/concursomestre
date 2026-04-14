@@ -2,6 +2,7 @@ import React from 'react';
 import { authFlowService } from '@/services/auth/authFlowService';
 import { sessionStore } from '@/services/auth/sessionStore';
 import { readApiErrorMessage } from '@/services/api/response';
+import { questionService } from '@/services/questions/questionService';
 import type { UserProfile } from '@/types/auth';
 
 type LoginInput = {
@@ -23,9 +24,21 @@ type AuthContextValue = {
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  toggleSavedQuestion: (questionId: string | number) => Promise<boolean>;
 };
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
+
+const normalizeUserProfile = (user: UserProfile | null | undefined): UserProfile | null => {
+  if (!user) return null;
+
+  return {
+    ...user,
+    savedQuestionIds: Array.isArray(user.savedQuestionIds)
+      ? user.savedQuestionIds.map((item) => String(item))
+      : [],
+  };
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = React.useState<UserProfile | null>(null);
@@ -45,16 +58,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Fluxo 2FA ainda nao mapeado no app mobile. Faça login no web para concluir.');
     }
 
-    setUser(sessionUser as UserProfile);
-    await sessionStore.setSession(token, sessionUser as UserProfile);
+    const normalizedUser = normalizeUserProfile(sessionUser as UserProfile);
+
+    setUser(normalizedUser);
+    await sessionStore.setSession(token, normalizedUser);
   }, []);
 
   const refreshProfile = React.useCallback(async () => {
     if (!sessionStore.getAccessToken()) return;
 
     const profile = await authFlowService.me();
-    setUser(profile);
-    await sessionStore.setSession(sessionStore.getAccessToken(), profile);
+    const normalizedProfile = normalizeUserProfile(profile);
+
+    setUser(normalizedProfile);
+    await sessionStore.setSession(sessionStore.getAccessToken(), normalizedProfile);
   }, []);
 
   const login = React.useCallback(async (input: LoginInput) => {
@@ -94,19 +111,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const toggleSavedQuestion = React.useCallback(async (questionId: string | number) => {
+    if (!user?.id) {
+      throw new Error('Sessao expirada. Faca login novamente.');
+    }
+
+    const questionKey = String(questionId);
+    const previousUser = normalizeUserProfile(user) as UserProfile;
+    const previousSaved = previousUser.savedQuestionIds || [];
+    const isCurrentlySaved = previousSaved.includes(questionKey);
+    const nextUser = normalizeUserProfile({
+      ...previousUser,
+      savedQuestionIds: isCurrentlySaved
+        ? previousSaved.filter((item) => item !== questionKey)
+        : [...previousSaved, questionKey],
+    }) as UserProfile;
+
+    setUser(nextUser);
+    await sessionStore.setSession(sessionStore.getAccessToken(), nextUser);
+
+    const saveResult = await questionService.toggleSavedQuestion(user.id, questionKey);
+    if (!saveResult.success) {
+      setUser(previousUser);
+      await sessionStore.setSession(sessionStore.getAccessToken(), previousUser);
+      throw new Error(saveResult.message || 'Nao foi possivel atualizar as questoes salvas.');
+    }
+
+    return !isCurrentlySaved;
+  }, [user]);
+
   React.useEffect(() => {
     const bootstrap = async () => {
       try {
         const snapshot = await sessionStore.hydrate();
         if (snapshot.user) {
-          setUser(snapshot.user);
+          setUser(normalizeUserProfile(snapshot.user));
         }
 
         if (snapshot.accessToken) {
           try {
             const profile = await authFlowService.me();
-            setUser(profile);
-            await sessionStore.setSession(snapshot.accessToken, profile);
+            const normalizedProfile = normalizeUserProfile(profile);
+
+            setUser(normalizedProfile);
+            await sessionStore.setSession(snapshot.accessToken, normalizedProfile);
           } catch {
             await sessionStore.clearSession();
             setUser(null);
@@ -128,7 +176,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     register,
     logout,
     refreshProfile,
-  }), [isBootstrapped, isLoading, login, logout, refreshProfile, register, user]);
+    toggleSavedQuestion,
+  }), [isBootstrapped, isLoading, login, logout, refreshProfile, register, toggleSavedQuestion, user]);
 
   return (
     <AuthContext.Provider value={value}>

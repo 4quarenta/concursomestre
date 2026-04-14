@@ -39,6 +39,7 @@ export interface UserProfile {
   plan?: string;
   billing?: UserBilling;
   subscription?: UserSubscription;
+  savedQuestionIds?: string[];
 }
 
 export interface AuthFlowPayload {

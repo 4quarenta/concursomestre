@@ -18,6 +18,7 @@ export const ENDPOINTS = {
   questions: {
     list: 'questionsList',
     submit: 'questionsAnswer',
+    toggleSave: 'questionsToggleSave',
   },
   simulations: {
     list: 'simulationsList',

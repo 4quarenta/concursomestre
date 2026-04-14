@@ -67,7 +67,7 @@ const buildAnsweredMapFromQuestions = (rows: Question[]): Record<number, number>
  * @since v1.0.0
  */
 export const QuestionsScreen: React.FC = () => {
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, toggleSavedQuestion } = useAuth();
   const [questionPool, setQuestionPool] = React.useState<Question[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [keyword, setKeyword] = React.useState('');
@@ -77,6 +77,7 @@ export const QuestionsScreen: React.FC = () => {
   const [selectedOrganization, setSelectedOrganization] = React.useState<string>('all');
   const [selectedRole, setSelectedRole] = React.useState<string>('all');
   const [selectedYear, setSelectedYear] = React.useState<string>('all');
+  const [onlySaved, setOnlySaved] = React.useState(false);
   const [onlyTeacherComment, setOnlyTeacherComment] = React.useState(false);
   const [onlyDetailedComment, setOnlyDetailedComment] = React.useState(false);
   const [excludeAnswered, setExcludeAnswered] = React.useState(false);
@@ -105,6 +106,11 @@ export const QuestionsScreen: React.FC = () => {
   React.useEffect(() => {
     void loadQuestions();
   }, [loadQuestions]);
+
+  const savedQuestionIdSet = React.useMemo(
+    () => new Set((user?.savedQuestionIds || []).map((item) => String(item))),
+    [user?.savedQuestionIds],
+  );
 
   const subjectOptions = React.useMemo(() => {
     const values = new Set<string>();
@@ -198,6 +204,7 @@ export const QuestionsScreen: React.FC = () => {
       );
 
       const matchesYear = selectedYear === 'all' || getQuestionYear(question) === selectedYear;
+      const matchesSaved = !onlySaved || (question.id !== undefined && savedQuestionIdSet.has(String(question.id)));
       const matchesTeacherComment = !onlyTeacherComment || Boolean(question.hasTeacherComment || question.teacherComment);
       const matchesDetailedComment = !onlyDetailedComment || Boolean(question.hasDetailedComment || question.detailedComment);
       const matchesAnswered = !excludeAnswered || !question.id || answeredMap[question.id] === undefined;
@@ -210,6 +217,7 @@ export const QuestionsScreen: React.FC = () => {
         && matchesOrganization
         && matchesRole
         && matchesYear
+        && matchesSaved
         && matchesTeacherComment
         && matchesDetailedComment
         && matchesAnswered
@@ -220,9 +228,11 @@ export const QuestionsScreen: React.FC = () => {
     difficulty,
     excludeAnswered,
     keyword,
+    onlySaved,
     onlyDetailedComment,
     onlyTeacherComment,
     questionPool,
+    savedQuestionIdSet,
     selectedAgency,
     selectedOrganization,
     selectedRole,
@@ -259,6 +269,7 @@ export const QuestionsScreen: React.FC = () => {
     setSelectedOrganization('all');
     setSelectedRole('all');
     setSelectedYear('all');
+    setOnlySaved(false);
     setOnlyTeacherComment(false);
     setOnlyDetailedComment(false);
     setExcludeAnswered(false);
@@ -277,6 +288,19 @@ export const QuestionsScreen: React.FC = () => {
 
   const handlePreviousQuestion = () => {
     setCurrentQuestionIndex((current) => Math.max(0, current - 1));
+  };
+
+  const handleToggleSavedQuestion = async (question: Question) => {
+    if (!question.id) {
+      Alert.alert('Questao indisponivel', 'Nao foi possivel identificar a questao para salvar.');
+      return;
+    }
+
+    try {
+      await toggleSavedQuestion(question.id);
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel atualizar as questoes salvas.');
+    }
   };
 
   const getCorrectIndex = (question: Question): number => {
@@ -351,6 +375,7 @@ export const QuestionsScreen: React.FC = () => {
     const questionId = item.id || index;
     const selected = item.id ? answeredMap[item.id] : undefined;
     const correctIndex = getCorrectIndex(item);
+    const isSaved = item.id !== undefined && savedQuestionIdSet.has(String(item.id));
     const metaParts = [
       (item.bancas || []).map((agency) => getEntityLabel(agency)).filter(Boolean)[0],
       (item.orgaos || []).map((organization) => getEntityLabel(organization)).filter(Boolean)[0],
@@ -361,8 +386,18 @@ export const QuestionsScreen: React.FC = () => {
     return (
       <View style={styles.questionCard}>
         <View style={styles.questionHeader}>
-          <Text style={styles.questionTag}>Questao #{questionId}</Text>
-          <Text style={styles.questionDifficulty}>{mapDifficultyLabel(item.dificuldade)}</Text>
+          <View style={styles.questionHeaderText}>
+            <Text style={styles.questionTag}>Questao #{questionId}</Text>
+            <Text style={styles.questionDifficulty}>{mapDifficultyLabel(item.dificuldade)}</Text>
+          </View>
+          <Pressable
+            onPress={() => void handleToggleSavedQuestion(item)}
+            style={[styles.saveButton, isSaved && styles.saveButtonActive]}
+          >
+            <Text style={[styles.saveButtonText, isSaved && styles.saveButtonTextActive]}>
+              {isSaved ? 'Salva' : 'Salvar'}
+            </Text>
+          </Pressable>
         </View>
 
         {metaParts.length > 0 ? (
@@ -385,6 +420,11 @@ export const QuestionsScreen: React.FC = () => {
           {selected !== undefined ? (
             <View style={[styles.infoBadge, styles.answeredBadge]}>
               <Text style={[styles.infoBadgeText, styles.answeredBadgeText]}>Respondida</Text>
+            </View>
+          ) : null}
+          {isSaved ? (
+            <View style={[styles.infoBadge, styles.savedBadge]}>
+              <Text style={[styles.infoBadgeText, styles.savedBadgeText]}>Salva</Text>
             </View>
           ) : null}
         </View>
@@ -428,6 +468,7 @@ export const QuestionsScreen: React.FC = () => {
     selectedOrganization !== 'all',
     selectedRole !== 'all',
     selectedYear !== 'all',
+    onlySaved,
     onlyTeacherComment,
     onlyDetailedComment,
     excludeAnswered,
@@ -475,6 +516,12 @@ export const QuestionsScreen: React.FC = () => {
 
         <Text style={styles.filterLabel}>Recursos</Text>
         <View style={styles.inlineFilters}>
+          <Pressable
+            onPress={() => setOnlySaved((current) => !current)}
+            style={[styles.chip, onlySaved && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, onlySaved && styles.chipTextActive]}>Salvas</Text>
+          </Pressable>
           <Pressable
             onPress={() => setOnlyTeacherComment((current) => !current)}
             style={[styles.chip, onlyTeacherComment && styles.chipActive]}
@@ -788,6 +835,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  questionHeaderText: {
+    flex: 1,
+    gap: 4,
+  },
   questionTag: {
     fontSize: 11,
     fontWeight: '800',
@@ -799,6 +850,31 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: colors.primary,
+  },
+  saveButton: {
+    minWidth: 76,
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonActive: {
+    borderColor: '#059669',
+    backgroundColor: '#ECFDF5',
+  },
+  saveButtonText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  saveButtonTextActive: {
+    color: '#047857',
   },
   questionMeta: {
     color: colors.muted,
@@ -844,6 +920,12 @@ const styles = StyleSheet.create({
   },
   answeredBadgeText: {
     color: colors.success,
+  },
+  savedBadge: {
+    backgroundColor: '#ECFDF5',
+  },
+  savedBadgeText: {
+    color: '#047857',
   },
   optionsContainer: {
     gap: 8,
