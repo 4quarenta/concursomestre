@@ -21,6 +21,29 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Parcelamento Stripe no checkout mobile
+
+- commit: `587a95d Add mobile checkout installment billing parity`
+- origem web/plataforma:
+  - `src/app/checkout/page.tsx`
+  - `src/services/plans/planService.ts`
+  - endpoints `subscriptions/create_stripe_checkout.php`, `subscriptions/create_stripe_subscription.php` e `subscriptions/finalize_stripe_subscription.php`
+- destino mobile:
+  - `mobile/src/screens/CheckoutScreen.tsx`
+  - `mobile/src/services/plans/planService.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - checkout mobile passou a suportar escolha de parcelamento por ciclo para planos elegiveis (1x, 3x ou 12x sem juros)
+  - modo de cobranca Stripe (`single_installment` vs `term_recurring`) agora e resolvido no app a partir da quantidade de parcelas selecionada
+  - payloads mobile de checkout hospedado e cobranca com cartao salvo passaram a enviar `billing_mode` e `installment_count`
+  - fluxo de finalizacao da assinatura com cartao salvo passou a enviar `billing_mode` para manter consistencia com o contrato web
+  - resumo de compra mobile passou a exibir o formato de cobranca ativo (ex.: `12x de ... sem juros`)
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - o modal rico de requisitos de checkout (CPF/endereco/confirmacao de e-mail) ainda permanece exclusivo da experiencia web.
+
 ## 2026-04-15 - Cancelamento de assinatura no mobile
 
 - commit: `f302280 Add mobile subscription cancel and undo-cancel actions`

@@ -41,10 +41,12 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - estatisticas agregadas e historico de resolucoes por questao com carregamento sob demanda
   - modo foco por questao e modo lista
 - Modulo `Planos` com catalogo oficial
-- Fluxo `Checkout` mobile (sessao Stripe hospedada):
+- Fluxo `Checkout` mobile (sessao Stripe hospedada + cartao salvo):
   - resumo do plano
   - cupom
+  - modo de cobranca Stripe por ciclo (1x, 3x ou 12x sem juros conforme plano)
   - toggle de renovacao automatica
+  - envio de `billing_mode` e `installment_count` no checkout hospedado e no fluxo com cartao salvo
   - redirecionamento seguro para URL retornada pelo backend
 - Modulos em leitura real:
   - `Simulados` (listagem com merge remoto/local de historico + detalhe por tentativa)
