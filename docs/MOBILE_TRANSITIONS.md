@@ -21,6 +21,28 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Regras de renovacao no billing mobile
+
+- commit: `b05d149 Align mobile renewal rules with web billing flow`
+- origem web/plataforma:
+  - `src/app/profile/page.tsx` (logica de toggle de renovacao e mensagens de termo parcelado)
+  - `src/services/subscriptions/subscriptionsService.ts`
+  - endpoint `subscriptions/update_renewal.php`
+- destino mobile:
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - ativacao de renovacao automatica no mobile agora exige cartao salvo no cofre Stripe
+  - quando faltar cartao salvo, o app mostra bloqueio explicito e oferece atalho para abrir o portal Stripe
+  - mensagens de sucesso ao desativar renovacao passaram a diferenciar fim de ciclo comum vs fim de termo parcelado
+  - card de assinatura ganhou contexto de parcelas (`parcela atual de total`) quando houver compromisso em andamento
+  - status de cancelamento passou a sinalizar solicitacao de reembolso pendente dentro da secao de assinatura
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - confirmacao anti-automacao (reCAPTCHA) para mutacoes sensiveis de billing continua apenas no web.
+
 ## 2026-04-15 - Motivo de cancelamento no perfil mobile
 
 - commit: `8d3ff45 Add mobile cancellation reason flow in profile`
