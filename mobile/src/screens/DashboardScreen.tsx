@@ -88,6 +88,16 @@ const formatDashboardDate = (date: Date): string => (
   })
 );
 
+const formatTimelineLabel = (value: string): string => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '--';
+  if (normalized.includes(':')) {
+    const hour = normalized.slice(0, 2);
+    return `${hour}h`;
+  }
+  return normalized.length <= 5 ? normalized : normalized.slice(0, 5);
+};
+
 const getRangeStartTimestamp = (range: DashboardTimeRange, now: Date): number => {
   if (range === 'today') {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -435,6 +445,27 @@ export const DashboardScreen: React.FC = () => {
                 <Text style={styles.timelineSummaryValue}>{timelineSummary.accuracy}%</Text>
               </View>
             </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.timelineChartContent}
+            >
+              {filteredTimelineRows.map((row, index) => {
+                const questionsPercent = clampPercent((Number(row.questions || 0) / timelineMax) * 100);
+                const correctPercent = clampPercent((Number(row.correct || 0) / timelineMax) * 100);
+                return (
+                  <View key={`chart-${row.label}-${index}`} style={styles.timelineChartColumn}>
+                    <View style={styles.timelineChartTrack}>
+                      <View style={[styles.timelineChartQuestionsBar, { height: `${questionsPercent}%` }]} />
+                      {showCorrectTimeline ? (
+                        <View style={[styles.timelineChartCorrectBar, { height: `${correctPercent}%` }]} />
+                      ) : null}
+                    </View>
+                    <Text style={styles.timelineChartLabel}>{formatTimelineLabel(row.label)}</Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
             <View style={styles.timelineList}>
               {filteredTimelineRows.map((row, index) => {
                 const questionsPercent = clampPercent((Number(row.questions || 0) / timelineMax) * 100);
@@ -768,6 +799,43 @@ const styles = StyleSheet.create({
   },
   timelineBlock: {
     gap: 10,
+  },
+  timelineChartContent: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 4,
+  },
+  timelineChartColumn: {
+    width: 28,
+    gap: 6,
+    alignItems: 'center',
+  },
+  timelineChartTrack: {
+    width: '100%',
+    height: 84,
+    borderRadius: 8,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+    position: 'relative',
+  },
+  timelineChartQuestionsBar: {
+    width: '100%',
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  timelineChartCorrectBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 8,
+    backgroundColor: '#0F766E',
+  },
+  timelineChartLabel: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: '700',
   },
   timelineLegendRow: {
     flexDirection: 'row',

@@ -23,6 +23,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - toggle para mostrar/ocultar faixa de acertos na evolucao
   - progresso de nivel por XP (nivel atual, barra e XP restante)
   - KPIs de questoes/acuracia alinhados ao recorte de periodo quando houver timeline
+  - visual de evolucao em colunas para questoes/acertos com rolagem horizontal
 
 ## Fase 2 (em andamento)
 
