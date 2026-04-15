@@ -1060,7 +1060,22 @@ export const ProfileScreen: React.FC = () => {
               const methodLabel = resolveTransactionMethodLabel(transaction);
               const amountLabel = formatCurrency(transaction.amount || 0);
               const eventAt = transaction.updatedAt || transaction.createdAt || transaction.timestamp;
+              const eventLabel = String(transaction.dateTimeFormatted || '').trim()
+                || formatDateTime(eventAt);
               const transactionId = String(transaction.id || '--');
+              const referenceId = String(
+                transaction.providerTransactionId
+                || transaction.referenceId
+                || transaction.id
+                || '--',
+              ).trim();
+              const referenceLabel = String(transaction.providerTransactionLabel || 'ID Stripe').trim();
+              const installmentCount = Math.max(0, Number(transaction.installmentCount || 0));
+              const installmentNumber = Math.max(1, Number(transaction.installmentNumber || 1));
+              const installmentLabel = installmentCount > 1
+                ? `Parcela ${Math.min(installmentNumber, installmentCount)}/${installmentCount}`
+                : null;
+              const scheduleLabel = String(transaction.scheduleLabel || '').trim();
               const canRequestRefund = canRequestRefundForStatus(transaction.status);
               const canCancelRefund = canCancelRefundForStatus(transaction.status);
               const hasInvoice = Boolean(resolveTransactionInvoiceUrl(transaction));
@@ -1068,6 +1083,11 @@ export const ProfileScreen: React.FC = () => {
 
               return (
                 <View key={String(transaction.id)} style={styles.transactionRow}>
+                  <View style={styles.transactionReferenceBlock}>
+                    <Text style={styles.transactionReferenceLabel}>{referenceLabel}</Text>
+                    <Text numberOfLines={1} style={styles.transactionReferenceValue}>{referenceId || '--'}</Text>
+                  </View>
+
                   <View style={styles.transactionTop}>
                     <Text numberOfLines={1} style={styles.transactionPlan}>
                       {planName}
@@ -1077,6 +1097,7 @@ export const ProfileScreen: React.FC = () => {
 
                   <View style={styles.transactionTags}>
                     <Text style={styles.transactionTag}>Ciclo: {cycleLabel}</Text>
+                    {installmentLabel && <Text style={styles.transactionTag}>{installmentLabel}</Text>}
                     <Text style={styles.transactionTag}>Gateway: {gatewayLabel}</Text>
                     <Text style={styles.transactionTag}>Metodo: {methodLabel}</Text>
                   </View>
@@ -1092,8 +1113,12 @@ export const ProfileScreen: React.FC = () => {
                         {statusMeta.label}
                       </Text>
                     </View>
-                    <Text style={styles.transactionDate}>{formatDateTime(eventAt)}</Text>
+                    <Text style={styles.transactionDate}>{eventLabel}</Text>
                   </View>
+
+                  {scheduleLabel ? (
+                    <Text style={styles.transactionScheduleLabel}>{scheduleLabel}</Text>
+                  ) : null}
 
                   {!!transaction.providerRefundId && (
                     <Text style={styles.transactionRefundId}>
@@ -1727,6 +1752,27 @@ const styles = StyleSheet.create({
     padding: 10,
     gap: 7,
   },
+  transactionReferenceBlock: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 2,
+  },
+  transactionReferenceLabel: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.35,
+  },
+  transactionReferenceValue: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '900',
+  },
   transactionTop: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1782,6 +1828,12 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 11,
     fontWeight: '700',
+  },
+  transactionScheduleLabel: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 16,
   },
   transactionId: {
     color: '#94A3B8',
