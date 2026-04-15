@@ -472,3 +472,28 @@ Toda transicao mobile deve registrar:
   - push para `origin/master`
 - pendencias conhecidas:
   - ainda falta expor no card mobile o conteudo completo de comentario de professor e analise detalhada da questao.
+
+## 2026-04-14 - Questoes comentario do professor e analise detalhada
+
+- commit: `acac048 Add mobile question insight panels`
+- origem web/plataforma:
+  - `src/app/questions/components/QuestionCard.tsx`
+  - campos `teacherComment` e `detailedComment` no payload oficial de questoes
+- destino mobile:
+  - `mobile/src/screens/QuestionsScreen.tsx`
+  - `mobile/src/components/questions/QuestionInsightPanel.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - pratica mobile ganhou toggles dedicados para abrir comentario do professor e analise detalhada
+  - os dois paineis agora leem o conteudo oficial da questao direto no card mobile
+  - o render mobile normaliza HTML/markdown simples para leitura confortavel sem depender de biblioteca extra
+  - abrir uma dessas visoes fecha a outra para evitar empilhar dois blocos longos no mesmo card
+- compatibilidade observada:
+  - quando o backend sinaliza disponibilidade via flag mas ainda nao envia texto, o painel mobile mostra estado vazio explicito em vez de parecer quebrado
+  - a analise detalhada ainda usa uma normalizacao leve de rich text; renderizacao markdown completa continua opcional para uma fatia futura, se necessario
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - ainda faltam refinamentos finais de paridade no fluxo de pratica, sobretudo acabamento fino de interacoes e alguns estados ricos do card web.

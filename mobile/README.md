@@ -27,6 +27,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - paginação/load more local no modo lista
   - envio de resposta do usuario
   - salvar/remover favorito com sincronizacao otimista
+  - comentario do professor e analise detalhada com leitura inline no card
   - comentarios da comunidade com leitura, novo topico, resposta e curtida
   - anotacoes com hidratacao remota e persistencia local no app
   - estatisticas agregadas e historico de resolucoes por questao com carregamento sob demanda
