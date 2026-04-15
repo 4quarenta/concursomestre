@@ -21,6 +21,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - evolucao recente por timeline quando a API disponibiliza pontos temporais
   - recorte da evolucao por periodo (hoje/semana/mes/tudo)
   - toggle para mostrar/ocultar faixa de acertos na evolucao
+  - progresso de nivel por XP (nivel atual, barra e XP restante)
 
 ## Fase 2 (em andamento)
 

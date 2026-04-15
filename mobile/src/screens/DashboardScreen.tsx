@@ -48,6 +48,8 @@ const clampPercent = (value: number) => {
   return value;
 };
 
+const XP_PER_LEVEL = 1000;
+
 const DAILY_MOTIVATIONS: string[] = [
   'Seu foco de hoje constroi a aprovacao de amanha.',
   'Cada questao resolvida reduz a distancia ate sua vaga.',
@@ -100,6 +102,22 @@ const getRangeStartTimestamp = (range: DashboardTimeRange, now: Date): number =>
   }
 
   return 0;
+};
+
+const calculateLevelProgress = (xp: number | undefined, level: number | undefined) => {
+  const currentXp = Math.max(0, Number(xp || 0));
+  const currentLevel = Math.max(1, Number(level || 1));
+  const xpIntoLevel = currentXp % XP_PER_LEVEL;
+  const xpToNextLevel = XP_PER_LEVEL - xpIntoLevel;
+  const levelProgressPercent = clampPercent(Math.round((xpIntoLevel / XP_PER_LEVEL) * 100));
+
+  return {
+    currentLevel,
+    currentXp,
+    xpIntoLevel,
+    xpToNextLevel,
+    levelProgressPercent,
+  };
 };
 
 /**
@@ -161,6 +179,10 @@ export const DashboardScreen: React.FC = () => {
   }, [filteredTimelineRows]);
   const dailyMotivation = React.useMemo(() => getDailyMotivation(today), [today]);
   const formattedToday = React.useMemo(() => formatDashboardDate(today), [today]);
+  const levelProgress = React.useMemo(
+    () => calculateLevelProgress(user?.xp, user?.level),
+    [user?.level, user?.xp],
+  );
 
   const loadStats = React.useCallback(async (useRefresh = false) => {
     if (!user?.id) {
@@ -275,6 +297,20 @@ export const DashboardScreen: React.FC = () => {
           <Text style={styles.kpiLabel}>Melhor streak</Text>
           <Text style={styles.kpiValue}>{stats.bestStreak}</Text>
           <Text style={styles.kpiHint}>recorde pessoal</Text>
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.levelHeaderRow}>
+          <Text style={styles.sectionTitle}>Nivel do usuario</Text>
+          <Text style={styles.levelBadge}>Nivel {levelProgress.currentLevel}</Text>
+        </View>
+        <View style={styles.levelMetaRow}>
+          <Text style={styles.levelMetaText}>{levelProgress.currentXp} XP acumulados</Text>
+          <Text style={styles.levelMetaText}>Faltam {levelProgress.xpToNextLevel} XP</Text>
+        </View>
+        <View style={styles.levelTrack}>
+          <View style={[styles.levelFill, { width: `${levelProgress.levelProgressPercent}%` }]} />
         </View>
       </View>
 
@@ -555,6 +591,42 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     padding: 14,
     gap: 10,
+  },
+  levelHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  levelBadge: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  levelMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  levelMetaText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  levelTrack: {
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  levelFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: colors.primary,
   },
   sectionTitle: {
     color: colors.text,
