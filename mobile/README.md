@@ -96,6 +96,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - toggle de renovacao automatica da assinatura
   - ativacao de renovacao automatica bloqueada sem cartao salvo (atalho direto para Stripe)
   - mensagens de renovacao alinhadas ao termo parcelado quando houver parcelas restantes
+  - resumo visual de ciclo com progresso (dias usados/restantes, inicio/fim e proxima cobranca)
   - cancelamento de assinatura (fim de ciclo) com solicitacao dentro da janela de garantia
   - captura opcional de motivo e detalhes no fluxo de cancelamento
   - desfazer solicitacao de cancelamento pendente

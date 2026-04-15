@@ -21,6 +21,27 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Timeline de ciclo da assinatura no mobile
+
+- commit: `5987e6b Add mobile subscription cycle progress summary`
+- origem web/plataforma:
+  - `src/app/profile/page.tsx` (bloco de timeline de assinatura/ciclo)
+  - utilitarios de datas de assinatura no perfil
+- destino mobile:
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - perfil mobile ganhou resumo de ciclo com progresso da assinatura (dias usados x dias totais)
+  - card mostra barra de progresso do ciclo atual com percentual calculado no app
+  - bloco exibe inicio/fim do ciclo, dias restantes e proxima cobranca
+  - headline de assinatura passou a refletir contexto de renovacao ligada/desligada e termo parcelado
+  - descricao de valor do ciclo passou a diferenciar assinatura por parcela vs ciclo recorrente
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - visual premium completo do web (cards animados e layout expandido) ainda esta simplificado no app mobile.
+
 ## 2026-04-15 - Regras de renovacao no billing mobile
 
 - commit: `b05d149 Align mobile renewal rules with web billing flow`
