@@ -524,3 +524,29 @@ Toda transicao mobile deve registrar:
   - push para `origin/master`
 - pendencias conhecidas:
   - ainda faltam outros refinamentos de paridade do modulo Simulados, como taxonomias adicionais mais profundas e acabamento fino da experiencia de configuracao/revisao.
+
+## 2026-04-14 - Simulados topicos e feedback imediato
+
+- commit: `726e2ac Add mobile simulation feedback and topic filters`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - seletor de `feedbackMode` e filtro `topics` no contrato web de simulados
+- destino mobile:
+  - `mobile/src/screens/SimulationConfigScreen.tsx`
+  - `mobile/src/screens/SimulationRunScreen.tsx`
+  - `mobile/src/types/simulation.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - configurador mobile agora permite filtrar questoes por topicos alem de materia, banca, ano, orgao e cargo
+  - topicos ficam escopados pelas materias selecionadas para evitar combinacoes incoerentes
+  - seed do simulado passou a carregar `feedbackMode` e `topics`
+  - execucao mobile ganhou modo de feedback imediato, com travamento da questao atual apos responder e exibicao de acerto/gabarito na hora
+- compatibilidade observada:
+  - o feedback imediato foi implementado localmente no runner mobile, sem depender do `QuestionCard` web
+  - no modo `after_all`, o comportamento anterior do mobile foi preservado
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - ainda faltam refinamentos de revisao mais rica no resultado final do simulado e outras taxonomias profundas do configurador.
