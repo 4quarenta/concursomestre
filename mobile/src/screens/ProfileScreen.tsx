@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '@/providers/AuthProvider';
@@ -271,9 +272,11 @@ export const ProfileScreen: React.FC = () => {
   const [updatingRenewal, setUpdatingRenewal] = React.useState(false);
   const [updatingRefundId, setUpdatingRefundId] = React.useState<string | null>(null);
   const [updatingSubscriptionAction, setUpdatingSubscriptionAction] = React.useState(false);
+  const [copiedReferenceId, setCopiedReferenceId] = React.useState<string | null>(null);
   const [showCancelForm, setShowCancelForm] = React.useState(false);
   const [cancelReason, setCancelReason] = React.useState('');
   const [cancelDetails, setCancelDetails] = React.useState('');
+  const copiedReferenceResetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeSubscription = hasActiveSubscriptionStatus(user?.subscription?.status);
   const hasCancelAtPeriodEndFlag = typeof user?.subscription?.cancel_at_period_end === 'boolean';
@@ -684,11 +687,37 @@ export const ProfileScreen: React.FC = () => {
     );
   };
 
+  const handleCopyTransactionReference = async (referenceId: string) => {
+    const normalized = String(referenceId || '').trim();
+    if (!normalized || normalized === '--') return;
+
+    try {
+      await Clipboard.setStringAsync(normalized);
+      setCopiedReferenceId(normalized);
+      if (copiedReferenceResetTimerRef.current) {
+        clearTimeout(copiedReferenceResetTimerRef.current);
+      }
+      copiedReferenceResetTimerRef.current = setTimeout(() => {
+        setCopiedReferenceId((current) => (current === normalized ? null : current));
+      }, 1800);
+    } catch (error: any) {
+      Alert.alert('Erro', readApiErrorMessage(error, 'Nao foi possivel copiar a referencia agora.'));
+    }
+  };
+
   React.useEffect(() => {
     if (!activeSubscription || subscriptionCancelPending) {
       resetCancelForm();
     }
   }, [activeSubscription, subscriptionCancelPending]);
+
+  React.useEffect(() => {
+    return () => {
+      if (copiedReferenceResetTimerRef.current) {
+        clearTimeout(copiedReferenceResetTimerRef.current);
+      }
+    };
+  }, []);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -1115,7 +1144,18 @@ export const ProfileScreen: React.FC = () => {
                 <View key={String(transaction.id)} style={styles.transactionRow}>
                   <View style={styles.transactionReferenceBlock}>
                     <Text style={styles.transactionReferenceLabel}>{referenceLabel}</Text>
-                    <Text numberOfLines={1} style={styles.transactionReferenceValue}>{referenceId || '--'}</Text>
+                    <View style={styles.transactionReferenceRow}>
+                      <Text numberOfLines={1} style={styles.transactionReferenceValue}>{referenceId || '--'}</Text>
+                      <Pressable
+                        style={styles.transactionReferenceCopyButton}
+                        onPress={() => void handleCopyTransactionReference(referenceId)}
+                        disabled={!referenceId || referenceId === '--'}
+                      >
+                        <Text style={styles.transactionReferenceCopyButtonText}>
+                          {copiedReferenceId === referenceId ? 'Copiado' : 'Copiar'}
+                        </Text>
+                      </Pressable>
+                    </View>
                   </View>
 
                   <View style={styles.transactionTop}>
@@ -1850,10 +1890,31 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.35,
   },
+  transactionReferenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   transactionReferenceValue: {
     color: colors.text,
     fontSize: 11,
     fontWeight: '900',
+    flex: 1,
+  },
+  transactionReferenceCopyButton: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  transactionReferenceCopyButtonText: {
+    color: '#475569',
+    fontSize: 9,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.35,
   },
   transactionTop: {
     flexDirection: 'row',
