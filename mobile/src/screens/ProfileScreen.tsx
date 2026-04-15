@@ -312,6 +312,10 @@ export const ProfileScreen: React.FC = () => {
   const subscriptionProgressPercent = subscriptionTotalDays > 0
     ? Math.max(0, Math.min(100, Math.round((subscriptionUsedDays / subscriptionTotalDays) * 100)))
     : 0;
+  const recurringAmount = Number(user?.subscription?.recurring_amount || 0);
+  const subscriptionChargeAmount = recurringAmount > 0
+    ? recurringAmount
+    : Number(user?.subscription?.plan?.price || 0);
   const subscriptionValueDescription = totalInstallments > 1
     ? `Parcela ${currentInstallment} de ${totalInstallments} do termo contratado.`
     : 'Cobranca recorrente por ciclo ativo.';
@@ -326,6 +330,22 @@ export const ProfileScreen: React.FC = () => {
     () => transactions.some((transaction) => String(transaction.status || '').toLowerCase() === 'refund_requested'),
     [transactions],
   );
+  const billingStatusLabel = hasPendingRefundRequest
+    ? 'Reembolso em analise'
+    : activeSubscription
+      ? 'Acesso liberado'
+      : 'Assinatura inativa';
+  const billingStatusDescription = hasPendingRefundRequest
+    ? 'Sua solicitacao esta em andamento e atualizaremos o historico apos retorno do gateway.'
+    : activeSubscription
+      ? 'Seu acesso premium esta liberado e o ciclo atual segue normalmente.'
+      : 'Sua assinatura nao esta ativa no momento.';
+  const cycleSummaryLabel = activeSubscription
+    ? formatDate(subscriptionEndAt?.getTime())
+    : 'Indeterminado';
+  const cycleSummaryDescription = activeSubscription
+    ? `${subscriptionRemainingDays} dias restantes no ciclo atual.`
+    : 'Sem ciclo de cobranca em andamento.';
   const paymentIssueMessage = String(user?.paymentIssue?.message || '').trim();
   const paymentIssueCode = String(user?.paymentIssue?.type || user?.paymentIssue?.code || '').toLowerCase();
   const hasPaymentIssue = Boolean(paymentIssueMessage || paymentIssueCode);
@@ -713,6 +733,26 @@ export const ProfileScreen: React.FC = () => {
 
         <Text style={styles.label}>Status</Text>
         <Text style={styles.value}>{activeSubscription ? 'Assinatura ativa' : 'Plano gratuito/inativo'}</Text>
+
+        <View style={styles.subscriptionSummaryGrid}>
+          <View style={styles.subscriptionSummaryItem}>
+            <Text style={styles.subscriptionSummaryEyebrow}>Status</Text>
+            <Text style={styles.subscriptionSummaryValue}>{billingStatusLabel}</Text>
+            <Text style={styles.subscriptionSummaryHint}>{billingStatusDescription}</Text>
+          </View>
+          <View style={styles.subscriptionSummaryItem}>
+            <Text style={styles.subscriptionSummaryEyebrow}>Ciclo / vigencia</Text>
+            <Text style={styles.subscriptionSummaryValue}>{cycleSummaryLabel}</Text>
+            <Text style={styles.subscriptionSummaryHint}>{cycleSummaryDescription}</Text>
+          </View>
+          <View style={styles.subscriptionSummaryItem}>
+            <Text style={styles.subscriptionSummaryEyebrow}>Valor</Text>
+            <Text style={styles.subscriptionSummaryValue}>
+              {activeSubscription ? formatCurrency(subscriptionChargeAmount) : formatCurrency(0)}
+            </Text>
+            <Text style={styles.subscriptionSummaryHint}>{subscriptionValueDescription}</Text>
+          </View>
+        </View>
 
         <Text style={styles.label}>Renovacao automatica</Text>
         <Text style={styles.value}>{renewalEnabled ? 'Ativada' : 'Desativada'}</Text>
@@ -1217,6 +1257,36 @@ const styles = StyleSheet.create({
   },
   valueHint: {
     marginTop: 2,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  subscriptionSummaryGrid: {
+    marginTop: 10,
+    gap: 8,
+  },
+  subscriptionSummaryItem: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    gap: 4,
+  },
+  subscriptionSummaryEyebrow: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.45,
+  },
+  subscriptionSummaryValue: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  subscriptionSummaryHint: {
     color: colors.muted,
     fontSize: 11,
     fontWeight: '700',
