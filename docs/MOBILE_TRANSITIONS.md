@@ -21,6 +21,29 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Dashboard timeline pronto para API
+
+- commit: `a849a3c Add dashboard timeline support for mobile`
+- origem web/plataforma:
+  - `src/app/dashboard/page.tsx`
+  - bloco de evolucao temporal de questoes/acertos por periodo
+- destino mobile:
+  - `mobile/src/types/statistics.ts`
+  - `mobile/src/services/statistics/statisticsService.ts`
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - `mobile/src/screens/PerformanceSubjectsScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - contrato mobile de estatisticas passou a aceitar `timeline` opcional com pontos de evolucao
+  - service mobile agora normaliza timeline vindo de `timeline`, `timelineData` ou `questionTimeline`
+  - dashboard ganhou bloco "Evolucao recente" com barras quando os pontos existem
+  - quando a API ainda nao envia timeline, o app mostra fallback explicito sem quebrar a tela
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - filtros de periodo e grafico completo do dashboard web ainda dependem de contrato temporal consolidado no backend.
+
 ## 2026-04-14 - Dashboard motivacao diaria no mobile
 
 - commit: `b66b040 Add daily motivation card to mobile dashboard`
