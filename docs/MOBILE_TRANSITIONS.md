@@ -21,6 +21,27 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Copiar referencia de transacao no mobile
+
+- commit: `34f460a Add mobile transaction reference copy action`
+- origem web/plataforma:
+  - `src/app/profile/page.tsx` (acao `Copiar` para referencia de gateway nas transacoes)
+- destino mobile:
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - `mobile/package.json`
+  - `mobile/package-lock.json`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - card de transacao mobile ganhou botao `Copiar` ao lado da referencia do gateway
+  - quando copiado, o botao mostra feedback temporario `Copiado` no proprio card
+  - payload de referencia invalida (`--`) nao dispara acao de copia
+  - app passou a usar `expo-clipboard` para escrita segura na area de transferencia no iOS/Android
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - telemetria de clique/copia da referencia ainda nao foi instrumentada no mobile.
+
 ## 2026-04-15 - Badges de assinatura e CTA de plano no mobile
 
 - commit: `b407065 Add mobile subscription badges and plans CTA`

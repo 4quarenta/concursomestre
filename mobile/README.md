@@ -105,6 +105,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - desfazer solicitacao de cancelamento pendente
   - historico de transacoes da conta (plano, ciclo, metodo, gateway, status, valor)
   - referencia da transacao (ID do gateway) exibida no card com label dinamica
+  - acao de copiar referencia da transacao direto no card
   - detalhes de parcelamento/agendamento exibidos quando o payload vier do backend
   - abertura de fatura da transacao quando a URL estiver disponivel
   - solicitacao e cancelamento de reembolso por transacao
