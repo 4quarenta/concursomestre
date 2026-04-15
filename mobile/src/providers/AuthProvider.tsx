@@ -1,5 +1,6 @@
 import React from 'react';
 import { authFlowService } from '@/services/auth/authFlowService';
+import { accountService } from '@/services/auth/accountService';
 import { sessionStore } from '@/services/auth/sessionStore';
 import { readApiErrorMessage } from '@/services/api/response';
 import { questionService } from '@/services/questions/questionService';
@@ -18,6 +19,8 @@ type RegisterInput = {
   password: string;
 };
 
+type UpdateUserInput = Partial<UserProfile>;
+
 type AuthContextValue = {
   user: UserProfile | null;
   systemSettings: MobileSystemSettings;
@@ -26,6 +29,7 @@ type AuthContextValue = {
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
+  updateUser: (input: UpdateUserInput) => Promise<void>;
   refreshProfile: () => Promise<void>;
   refreshSystemSettings: () => Promise<void>;
   isFeatureEnabled: (feature: MobileFeatureKey) => boolean;
@@ -132,6 +136,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const updateUser = React.useCallback(async (input: UpdateUserInput) => {
+    if (!user) {
+      throw new Error('Sessao expirada. Faca login novamente.');
+    }
+
+    const sanitizedInput = Object.fromEntries(
+      Object.entries(input).filter(([, value]) => value !== undefined),
+    ) as UpdateUserInput;
+
+    if (Object.keys(sanitizedInput).length === 0) {
+      return;
+    }
+
+    const previousUser = normalizeUserProfile(user) as UserProfile;
+    const optimisticUser = normalizeUserProfile({
+      ...previousUser,
+      ...sanitizedInput,
+    }) as UserProfile;
+
+    setUser(optimisticUser);
+    await sessionStore.setSession(sessionStore.getAccessToken(), optimisticUser);
+
+    try {
+      await accountService.updateUserProfile(sanitizedInput);
+      await refreshProfile();
+    } catch (error) {
+      setUser(previousUser);
+      await sessionStore.setSession(sessionStore.getAccessToken(), previousUser);
+      throw new Error(readApiErrorMessage(error, 'Nao foi possivel atualizar o perfil.'));
+    }
+  }, [refreshProfile, user]);
+
   const toggleSavedQuestion = React.useCallback(async (questionId: string | number) => {
     if (!user?.id) {
       throw new Error('Sessao expirada. Faca login novamente.');
@@ -209,6 +245,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     login,
     register,
     logout,
+    updateUser,
     refreshProfile,
     refreshSystemSettings,
     isFeatureEnabled,
@@ -219,6 +256,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading,
     login,
     logout,
+    updateUser,
     refreshProfile,
     refreshSystemSettings,
     register,

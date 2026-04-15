@@ -16,6 +16,8 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppStackParamList } from '@/navigation/types';
 import { useAuth } from '@/providers/AuthProvider';
+import { readApiErrorMessage } from '@/services/api/response';
+import { authFlowService } from '@/services/auth/authFlowService';
 import { cardsService } from '@/services/billing/cardsService';
 import { formatMaskedCardLabelAscii } from '@/services/billing/cardDisplay';
 import { planService } from '@/services/plans/planService';
@@ -25,6 +27,28 @@ import type { SavedCard } from '@/types/billing';
 
 type CheckoutRoute = RouteProp<AppStackParamList, 'Checkout'>;
 type PaymentMode = 'hosted' | 'saved-card';
+type CheckoutRequirementKey =
+  | 'name'
+  | 'cpf'
+  | 'zipCode'
+  | 'street'
+  | 'number'
+  | 'neighborhood'
+  | 'city'
+  | 'state'
+  | 'emailVerified';
+
+const checkoutRequirementLabelMap: Record<CheckoutRequirementKey, string> = {
+  name: 'nome',
+  cpf: 'CPF',
+  zipCode: 'CEP',
+  street: 'logradouro',
+  number: 'numero',
+  neighborhood: 'bairro',
+  city: 'cidade',
+  state: 'UF',
+  emailVerified: 'confirmacao de e-mail',
+};
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', {
@@ -65,12 +89,30 @@ const toBoolean = (value: unknown): boolean => {
   return Boolean(value);
 };
 
+const isValidCpf = (value: string) => {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+
+  const calcCheckDigit = (base: string, factor: number) => {
+    const total = base
+      .split('')
+      .reduce((sum, digit) => sum + (Number(digit) * factor--), 0);
+    const result = 11 - (total % 11);
+    return result > 9 ? 0 : result;
+  };
+
+  const digit1 = calcCheckDigit(digits.slice(0, 9), 10);
+  const digit2 = calcCheckDigit(digits.slice(0, 10), 11);
+  return digit1 === Number(digits[9]) && digit2 === Number(digits[10]);
+};
+
 /**
  * Checkout mobile com suporte a sessão hospedada e cartão salvo.
  * @since v1.0.0
  */
 export const CheckoutScreen: React.FC = () => {
-  const { user, refreshProfile } = useAuth();
+  const { user, refreshProfile, updateUser } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const route = useRoute<CheckoutRoute>();
   const { plan } = route.params;
@@ -96,6 +138,19 @@ export const CheckoutScreen: React.FC = () => {
   const [cardsError, setCardsError] = React.useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = React.useState<string | null>(null);
   const [openingStripePortal, setOpeningStripePortal] = React.useState(false);
+  const [isSavingCheckoutRequirements, setIsSavingCheckoutRequirements] = React.useState(false);
+  const [isResendingConfirmation, setIsResendingConfirmation] = React.useState(false);
+  const [checkoutRequirementData, setCheckoutRequirementData] = React.useState({
+    name: '',
+    cpf: '',
+    zipCode: '',
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: '',
+    state: '',
+  });
 
   const cycleLabel = resolveCycleLabel(Number(plan.interval_count || 1), String(plan.interval_unit || 'month'));
   const subtotal = Number(plan.price || 0);
@@ -126,6 +181,35 @@ export const CheckoutScreen: React.FC = () => {
     () => savedCards.find((card) => String(card.id) === String(selectedCardId)) || null,
     [savedCards, selectedCardId],
   );
+  const missingCheckoutRequirements = React.useMemo<CheckoutRequirementKey[]>(() => {
+    if (!user) return ['name'];
+
+    const missing: CheckoutRequirementKey[] = [];
+    const address = user.address || {};
+
+    if (!String(user.name || '').trim()) missing.push('name');
+    if (!String(user.cpf || '').trim()) missing.push('cpf');
+    if (!String(address.zipCode || '').trim()) missing.push('zipCode');
+    if (!String(address.street || '').trim()) missing.push('street');
+    if (!String(address.number || '').trim()) missing.push('number');
+    if (!String(address.neighborhood || '').trim()) missing.push('neighborhood');
+    if (!String(address.city || '').trim()) missing.push('city');
+    if (!String(address.state || '').trim()) missing.push('state');
+    if (!toBoolean(user.emailVerified)) missing.push('emailVerified');
+
+    return missing;
+  }, [
+    user?.address?.city,
+    user?.address?.neighborhood,
+    user?.address?.number,
+    user?.address?.state,
+    user?.address?.street,
+    user?.address?.zipCode,
+    user?.cpf,
+    user?.emailVerified,
+    user?.name,
+  ]);
+  const hasPendingCheckoutRequirements = missingCheckoutRequirements.length > 0;
 
   const openExternalUrl = React.useCallback(async (url: string) => {
     const canOpen = await Linking.canOpenURL(url);
@@ -164,6 +248,33 @@ export const CheckoutScreen: React.FC = () => {
   }, [user?.id]);
 
   React.useEffect(() => {
+    if (!user) return;
+
+    setCheckoutRequirementData({
+      name: user.name || '',
+      cpf: user.cpf || '',
+      zipCode: user.address?.zipCode || '',
+      street: user.address?.street || '',
+      number: user.address?.number || '',
+      complement: user.address?.complement || '',
+      neighborhood: user.address?.neighborhood || '',
+      city: user.address?.city || '',
+      state: user.address?.state || '',
+    });
+  }, [
+    user?.address?.city,
+    user?.address?.complement,
+    user?.address?.neighborhood,
+    user?.address?.number,
+    user?.address?.state,
+    user?.address?.street,
+    user?.address?.zipCode,
+    user?.cpf,
+    user?.id,
+    user?.name,
+  ]);
+
+  React.useEffect(() => {
     void loadSavedCards();
   }, [loadSavedCards]);
 
@@ -176,6 +287,127 @@ export const CheckoutScreen: React.FC = () => {
   React.useEffect(() => {
     setInstallmentCount(String(maxInstallments > 1 ? maxInstallments : 1));
   }, [plan.id, maxInstallments]);
+
+  const handleCheckoutRequirementFieldChange = (
+    field: keyof typeof checkoutRequirementData,
+    value: string,
+  ) => {
+    setCheckoutRequirementData((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
+  };
+
+  const validateCheckoutAddress = () => {
+    const zipCodeDigits = checkoutRequirementData.zipCode.replace(/\D/g, '');
+    const state = checkoutRequirementData.state.trim().toUpperCase();
+    const street = checkoutRequirementData.street.trim();
+    const number = checkoutRequirementData.number.trim();
+    const neighborhood = checkoutRequirementData.neighborhood.trim();
+    const city = checkoutRequirementData.city.trim();
+
+    if (!isValidCpf(checkoutRequirementData.cpf)) {
+      return { valid: false, message: 'CPF invalido. Verifique e tente novamente.' };
+    }
+    if (zipCodeDigits.length !== 8) {
+      return { valid: false, message: 'CEP invalido. Informe um CEP com 8 digitos.' };
+    }
+    if (street.length < 3) {
+      return { valid: false, message: 'Logradouro invalido. Informe um endereco valido.' };
+    }
+    if (number.length < 1 || !/[0-9a-zA-Z]/.test(number)) {
+      return { valid: false, message: 'Numero invalido. Informe um numero de endereco valido.' };
+    }
+    if (neighborhood.length < 2) {
+      return { valid: false, message: 'Bairro invalido. Informe um bairro valido.' };
+    }
+    if (city.length < 2) {
+      return { valid: false, message: 'Cidade invalida. Informe uma cidade valida.' };
+    }
+    if (!/^[A-Z]{2}$/.test(state)) {
+      return { valid: false, message: 'UF invalida. Use a sigla com 2 letras (ex.: SP).' };
+    }
+
+    return { valid: true as const };
+  };
+
+  const handleSaveCheckoutRequirements = async () => {
+    if (!user) return;
+
+    const requiredFields = [
+      ['name', checkoutRequirementData.name],
+      ['cpf', checkoutRequirementData.cpf],
+      ['zipCode', checkoutRequirementData.zipCode],
+      ['street', checkoutRequirementData.street],
+      ['number', checkoutRequirementData.number],
+      ['neighborhood', checkoutRequirementData.neighborhood],
+      ['city', checkoutRequirementData.city],
+      ['state', checkoutRequirementData.state],
+    ] as const;
+
+    const missingField = requiredFields.find(([, value]) => !String(value || '').trim());
+    if (missingField) {
+      Alert.alert('Campos obrigatorios', 'Preencha todos os dados obrigatorios para concluir a compra.');
+      return;
+    }
+
+    const addressValidation = validateCheckoutAddress();
+    if (!addressValidation.valid) {
+      Alert.alert('Dados invalidos', addressValidation.message);
+      return;
+    }
+
+    setIsSavingCheckoutRequirements(true);
+    try {
+      await updateUser({
+        name: checkoutRequirementData.name.trim(),
+        cpf: checkoutRequirementData.cpf.replace(/\D/g, ''),
+        address: {
+          zipCode: checkoutRequirementData.zipCode.replace(/\D/g, ''),
+          street: checkoutRequirementData.street.trim(),
+          number: checkoutRequirementData.number.trim(),
+          complement: checkoutRequirementData.complement.trim(),
+          neighborhood: checkoutRequirementData.neighborhood.trim(),
+          city: checkoutRequirementData.city.trim(),
+          state: checkoutRequirementData.state.trim().toUpperCase(),
+        },
+      });
+
+      await refreshProfile();
+      Alert.alert('Dados atualizados', 'Perfil atualizado. Agora voce ja pode concluir a compra.');
+    } catch (error: any) {
+      Alert.alert('Erro', readApiErrorMessage(error, 'Nao foi possivel atualizar os dados do checkout.'));
+    } finally {
+      setIsSavingCheckoutRequirements(false);
+    }
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!user?.email) return;
+
+    setIsResendingConfirmation(true);
+    try {
+      const message = await authFlowService.resendConfirmation(user.email);
+      Alert.alert('Confirmacao de e-mail', message || 'E-mail de confirmacao reenviado com sucesso.');
+    } catch (error: any) {
+      Alert.alert('Erro', readApiErrorMessage(error, 'Nao foi possivel reenviar o e-mail de confirmacao.'));
+    } finally {
+      setIsResendingConfirmation(false);
+    }
+  };
+
+  const ensureCheckoutRequirements = () => {
+    if (!hasPendingCheckoutRequirements) return true;
+
+    const missingLabels = missingCheckoutRequirements
+      .map((key) => checkoutRequirementLabelMap[key])
+      .join(', ');
+    Alert.alert(
+      'Complete seu perfil',
+      `Antes de concluir a compra, atualize: ${missingLabels}.`,
+    );
+    return false;
+  };
 
   const handleOpenStripePortal = async () => {
     setOpeningStripePortal(true);
@@ -312,6 +544,10 @@ export const CheckoutScreen: React.FC = () => {
   };
 
   const handleProceed = async () => {
+    if (!ensureCheckoutRequirements()) {
+      return;
+    }
+
     if (paymentMode === 'saved-card') {
       await handleProceedSavedCard();
       return;
@@ -360,6 +596,122 @@ export const CheckoutScreen: React.FC = () => {
           <Text style={styles.totalStrongValue}>{formatCurrency(total)}</Text>
         </View>
       </View>
+
+      {hasPendingCheckoutRequirements && (
+        <View style={styles.requirementsCard}>
+          <Text style={styles.requirementsTitle}>Requisitos para concluir a compra</Text>
+          <Text style={styles.requirementsDescription}>
+            Complete os dados de cadastro e confirme seu e-mail antes de prosseguir.
+          </Text>
+
+          <View style={styles.requirementStatusList}>
+            {missingCheckoutRequirements.includes('emailVerified') ? (
+              <View style={[styles.requirementStatusRow, styles.requirementStatusPending]}>
+                <Text style={styles.requirementStatusText}>Confirmacao de e-mail pendente</Text>
+                <Pressable
+                  style={[styles.requirementActionButton, isResendingConfirmation && styles.buttonDisabled]}
+                  onPress={() => void handleResendConfirmation()}
+                  disabled={isResendingConfirmation}
+                >
+                  {isResendingConfirmation ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.requirementActionButtonText}>Reenviar</Text>
+                  )}
+                </Pressable>
+              </View>
+            ) : (
+              <View style={[styles.requirementStatusRow, styles.requirementStatusDone]}>
+                <Text style={styles.requirementStatusTextDone}>E-mail confirmado</Text>
+              </View>
+            )}
+          </View>
+
+          <TextInput
+            value={checkoutRequirementData.name}
+            onChangeText={(value) => handleCheckoutRequirementFieldChange('name', value)}
+            placeholder="Nome completo"
+            placeholderTextColor={colors.muted}
+            style={styles.requirementInput}
+          />
+          <TextInput
+            value={checkoutRequirementData.cpf}
+            onChangeText={(value) => handleCheckoutRequirementFieldChange('cpf', value)}
+            placeholder="CPF (somente numeros)"
+            placeholderTextColor={colors.muted}
+            style={styles.requirementInput}
+            keyboardType="number-pad"
+          />
+          <TextInput
+            value={checkoutRequirementData.zipCode}
+            onChangeText={(value) => handleCheckoutRequirementFieldChange('zipCode', value)}
+            placeholder="CEP"
+            placeholderTextColor={colors.muted}
+            style={styles.requirementInput}
+            keyboardType="number-pad"
+          />
+          <TextInput
+            value={checkoutRequirementData.street}
+            onChangeText={(value) => handleCheckoutRequirementFieldChange('street', value)}
+            placeholder="Logradouro"
+            placeholderTextColor={colors.muted}
+            style={styles.requirementInput}
+          />
+          <View style={styles.requirementGrid}>
+            <TextInput
+              value={checkoutRequirementData.number}
+              onChangeText={(value) => handleCheckoutRequirementFieldChange('number', value)}
+              placeholder="Numero"
+              placeholderTextColor={colors.muted}
+              style={[styles.requirementInput, styles.requirementHalfInput]}
+            />
+            <TextInput
+              value={checkoutRequirementData.complement}
+              onChangeText={(value) => handleCheckoutRequirementFieldChange('complement', value)}
+              placeholder="Complemento"
+              placeholderTextColor={colors.muted}
+              style={[styles.requirementInput, styles.requirementHalfInput]}
+            />
+          </View>
+          <TextInput
+            value={checkoutRequirementData.neighborhood}
+            onChangeText={(value) => handleCheckoutRequirementFieldChange('neighborhood', value)}
+            placeholder="Bairro"
+            placeholderTextColor={colors.muted}
+            style={styles.requirementInput}
+          />
+          <View style={styles.requirementGrid}>
+            <TextInput
+              value={checkoutRequirementData.city}
+              onChangeText={(value) => handleCheckoutRequirementFieldChange('city', value)}
+              placeholder="Cidade"
+              placeholderTextColor={colors.muted}
+              style={[styles.requirementInput, styles.requirementCityInput]}
+            />
+            <TextInput
+              value={checkoutRequirementData.state}
+              onChangeText={(value) => handleCheckoutRequirementFieldChange('state', value.toUpperCase())}
+              placeholder="UF"
+              placeholderTextColor={colors.muted}
+              style={[styles.requirementInput, styles.requirementStateInput]}
+              autoCapitalize="characters"
+              maxLength={2}
+            />
+          </View>
+
+          <Pressable
+            style={[styles.requirementSaveButton, isSavingCheckoutRequirements && styles.buttonDisabled]}
+            onPress={() => void handleSaveCheckoutRequirements()}
+            disabled={isSavingCheckoutRequirements}
+          >
+            {isSavingCheckoutRequirements ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.requirementSaveButtonText}>Salvar dados do checkout</Text>
+            )}
+          </Pressable>
+        </View>
+      )}
 
       <View style={styles.blockCard}>
         <Text style={styles.blockTitle}>Metodo de pagamento</Text>
@@ -621,6 +973,115 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 24,
     fontWeight: '900',
+  },
+  requirementsCard: {
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+    backgroundColor: '#FFFBEB',
+    borderRadius: 14,
+    padding: 14,
+    gap: 8,
+  },
+  requirementsTitle: {
+    color: '#92400E',
+    fontSize: 15,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  requirementsDescription: {
+    color: '#78350F',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 17,
+  },
+  requirementStatusList: {
+    gap: 8,
+  },
+  requirementStatusRow: {
+    borderWidth: 1,
+    borderRadius: 10,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  requirementStatusPending: {
+    borderColor: '#F59E0B',
+    backgroundColor: '#FEF3C7',
+  },
+  requirementStatusDone: {
+    borderColor: '#86EFAC',
+    backgroundColor: '#DCFCE7',
+  },
+  requirementStatusText: {
+    color: '#B45309',
+    fontSize: 12,
+    fontWeight: '800',
+    flex: 1,
+  },
+  requirementStatusTextDone: {
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: '800',
+    flex: 1,
+  },
+  requirementActionButton: {
+    minWidth: 84,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: '#B45309',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  requirementActionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  requirementInput: {
+    height: 42,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  requirementGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  requirementHalfInput: {
+    flex: 1,
+  },
+  requirementCityInput: {
+    flex: 1,
+  },
+  requirementStateInput: {
+    width: 64,
+    textAlign: 'center',
+  },
+  requirementSaveButton: {
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requirementSaveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   blockCard: {
     borderWidth: 1,

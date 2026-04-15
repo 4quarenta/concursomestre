@@ -42,6 +42,12 @@ export const authFlowService = {
     return data.user || (response?.user as UserProfile);
   },
 
+  async resendConfirmation(email: string): Promise<string> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.auth.resendConfirmation, { email });
+    const envelope = assertApiSuccess(response, 'Nao foi possivel reenviar o e-mail de confirmacao.');
+    return envelope.message || 'E-mail de confirmacao reenviado com sucesso.';
+  },
+
   async logout(): Promise<void> {
     await apiClient.post<any>(ENDPOINTS.auth.logout, undefined);
   },

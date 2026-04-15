@@ -27,6 +27,16 @@ export interface UserBilling {
   cardLast4?: string;
 }
 
+export interface UserAddress {
+  zipCode?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -34,6 +44,8 @@ export interface UserProfile {
   role?: UserRole;
   isAdmin?: boolean;
   emailVerified?: boolean;
+  cpf?: string;
+  address?: UserAddress;
   level?: number;
   xp?: number;
   plan?: string;
