@@ -50,6 +50,17 @@ const resolveFeatureFlag = (
 };
 
 const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): MobileSystemSettings => {
+  const normalizePixKey = () => {
+    const rawValue = typeof payload.pixKey === 'string'
+      ? payload.pixKey
+      : typeof payload.pix_key === 'string'
+        ? payload.pix_key
+        : '';
+
+    const value = rawValue.trim();
+    return value || undefined;
+  };
+
   const features: MobileFeatureFlags = {
     practiceEnabled: resolveFeatureFlag(
       payload,
@@ -88,7 +99,10 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
     ),
   };
 
-  return { features };
+  return {
+    features,
+    pixKey: normalizePixKey(),
+  };
 };
 
 const pickSettingsPayload = (response: any): Record<string, unknown> => {
@@ -118,6 +132,7 @@ export const systemSettingsService = {
   createDefaultSystemSettings(): MobileSystemSettings {
     return {
       features: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.features },
+      pixKey: DEFAULT_MOBILE_SYSTEM_SETTINGS.pixKey,
     };
   },
 };

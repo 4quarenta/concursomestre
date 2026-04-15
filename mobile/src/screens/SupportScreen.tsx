@@ -16,12 +16,12 @@ import { readApiErrorMessage } from '@/services/api/response';
 import { colors } from '@/theme/colors';
 import type { SupportReply, SupportThread, SupportThreadStatus } from '@/types/support';
 
-type SupportTab = 'bug' | 'feedback' | 'info';
+type SupportTab = 'bug' | 'feedback' | 'info' | 'donation';
 
 type SupportCategory = {
   id: SupportTab;
   label: string;
-  type: string;
+  type: string | null;
   title: string;
   description: string;
   subjectPlaceholder: string;
@@ -56,7 +56,18 @@ const SUPPORT_CATEGORIES: SupportCategory[] = [
     subjectPlaceholder: 'Ex: duvida sobre renovacao',
     detailPlaceholder: 'Explique sua duvida com contexto.',
   },
+  {
+    id: 'donation',
+    label: 'Doacao',
+    type: null,
+    title: 'Apoiar o projeto',
+    description: 'Contribua para manter a plataforma evoluindo continuamente.',
+    subjectPlaceholder: '',
+    detailPlaceholder: '',
+  },
 ];
+
+const DEFAULT_SUPPORT_CATEGORY = SUPPORT_CATEGORIES[0];
 
 const STATUS_META: Record<SupportThreadStatus, { label: string; color: string; bg: string }> = {
   new: {
@@ -85,6 +96,10 @@ const filterThreadsByTab = (threads: SupportThread[], tab: SupportTab): SupportT
     return threads.filter((thread) => thread.type === 'suggestion' || thread.type === 'other');
   }
 
+  if (tab === 'donation') {
+    return threads;
+  }
+
   return threads.filter((thread) => thread.type === 'support');
 };
 
@@ -93,7 +108,7 @@ const filterThreadsByTab = (threads: SupportThread[], tab: SupportTab): SupportT
  * @since v1.0.0
  */
 export const SupportScreen: React.FC = () => {
-  const { user } = useAuth();
+  const { user, systemSettings } = useAuth();
   const [activeTab, setActiveTab] = React.useState<SupportTab>('bug');
   const [subject, setSubject] = React.useState('');
   const [details, setDetails] = React.useState('');
@@ -107,11 +122,16 @@ export const SupportScreen: React.FC = () => {
   const [loadingRepliesId, setLoadingRepliesId] = React.useState<number | null>(null);
   const [sendingReplyId, setSendingReplyId] = React.useState<number | null>(null);
   const [replyDrafts, setReplyDrafts] = React.useState<Record<number, string>>({});
+  const pixKey = React.useMemo(
+    () => String(systemSettings.pixKey || '').trim() || 'pix@concursomestre.com.br',
+    [systemSettings.pixKey],
+  );
 
   const activeCategory = React.useMemo(
-    () => SUPPORT_CATEGORIES.find((category) => category.id === activeTab) ?? SUPPORT_CATEGORIES[0],
+    () => SUPPORT_CATEGORIES.find((category) => category.id === activeTab) ?? DEFAULT_SUPPORT_CATEGORY,
     [activeTab],
   );
+  const isDonationTab = activeTab === 'donation';
 
   const loadThreads = React.useCallback(async (useRefresh = false) => {
     if (useRefresh) {
@@ -154,6 +174,11 @@ export const SupportScreen: React.FC = () => {
   }), [threads]);
 
   const handleSubmit = async () => {
+    if (!activeCategory.type) {
+      setError('A aba de doacao nao abre chamado. Use as categorias de suporte para enviar solicitacao.');
+      return;
+    }
+
     if (!subject.trim()) {
       setError('Preencha um resumo curto para o chamado.');
       return;
@@ -289,7 +314,7 @@ export const SupportScreen: React.FC = () => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Nova solicitacao</Text>
+        <Text style={styles.sectionTitle}>{isDonationTab ? 'Apoio ao projeto' : 'Nova solicitacao'}</Text>
         <View style={styles.tabsRow}>
           {SUPPORT_CATEGORIES.map((category) => {
             const selected = activeCategory.id === category.id;
@@ -307,37 +332,57 @@ export const SupportScreen: React.FC = () => {
           })}
         </View>
 
-        <Text style={styles.formTitle}>{activeCategory.title}</Text>
-        <Text style={styles.formDescription}>{activeCategory.description}</Text>
+        {isDonationTab ? (
+          <View style={styles.donationCard}>
+            <Text style={styles.donationTitle}>Apoie o ConcursoMestre</Text>
+            <Text style={styles.donationDescription}>
+              Sua contribuicao ajuda na infraestrutura, manutencao de bugs e evolucao continua da plataforma.
+            </Text>
+            <View style={styles.pixBox}>
+              <Text style={styles.pixLabel}>PIX oficial</Text>
+              <Text selectable style={styles.pixValue}>{pixKey}</Text>
+            </View>
+            <View style={styles.donationList}>
+              <Text style={styles.donationItem}>Infraestrutura e custo de servidor.</Text>
+              <Text style={styles.donationItem}>Correcao de bugs e manutencao critica.</Text>
+              <Text style={styles.donationItem}>Melhorias continuas no produto.</Text>
+            </View>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.formTitle}>{activeCategory.title}</Text>
+            <Text style={styles.formDescription}>{activeCategory.description}</Text>
 
-        <TextInput
-          value={subject}
-          onChangeText={setSubject}
-          placeholder={activeCategory.subjectPlaceholder}
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-        />
-        <TextInput
-          value={details}
-          onChangeText={setDetails}
-          placeholder={activeCategory.detailPlaceholder}
-          placeholderTextColor={colors.muted}
-          style={[styles.input, styles.textArea]}
-          multiline
-          textAlignVertical="top"
-        />
+            <TextInput
+              value={subject}
+              onChangeText={setSubject}
+              placeholder={activeCategory.subjectPlaceholder}
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
+            <TextInput
+              value={details}
+              onChangeText={setDetails}
+              placeholder={activeCategory.detailPlaceholder}
+              placeholderTextColor={colors.muted}
+              style={[styles.input, styles.textArea]}
+              multiline
+              textAlignVertical="top"
+            />
 
-        <Pressable
-          style={[styles.mainButton, submitting && styles.mainButtonDisabled]}
-          onPress={() => void handleSubmit()}
-          disabled={submitting}
-        >
-          {submitting ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.mainButtonText}>Enviar solicitacao</Text>
-          )}
-        </Pressable>
+            <Pressable
+              style={[styles.mainButton, submitting && styles.mainButtonDisabled]}
+              onPress={() => void handleSubmit()}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.mainButtonText}>Enviar solicitacao</Text>
+              )}
+            </Pressable>
+          </>
+        )}
       </View>
 
       {!!error && (
@@ -557,6 +602,53 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     lineHeight: 18,
+    fontWeight: '600',
+  },
+  donationCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    backgroundColor: '#ECFDF5',
+    padding: 12,
+    gap: 10,
+  },
+  donationTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  donationDescription: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  pixBox: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#34D399',
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    gap: 4,
+  },
+  pixLabel: {
+    color: '#047857',
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  pixValue: {
+    color: '#065F46',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  donationList: {
+    gap: 4,
+  },
+  donationItem: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: '600',
   },
   input: {

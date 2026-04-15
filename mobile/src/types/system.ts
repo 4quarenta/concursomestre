@@ -19,6 +19,7 @@ export interface MobileFeatureFlags {
 
 export interface MobileSystemSettings {
   features: MobileFeatureFlags;
+  pixKey?: string;
 }
 
 export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
@@ -33,4 +34,5 @@ export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
 
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
   features: { ...DEFAULT_MOBILE_FEATURE_FLAGS },
+  pixKey: undefined,
 };
