@@ -273,7 +273,10 @@ export const ProfileScreen: React.FC = () => {
   const [cancelDetails, setCancelDetails] = React.useState('');
 
   const activeSubscription = hasActiveSubscriptionStatus(user?.subscription?.status);
-  const renewalEnabled = toBoolean(user?.subscription?.auto_renew);
+  const hasCancelAtPeriodEndFlag = typeof user?.subscription?.cancel_at_period_end === 'boolean';
+  const renewalEnabled = hasCancelAtPeriodEndFlag
+    ? !toBoolean(user?.subscription?.cancel_at_period_end)
+    : toBoolean(user?.subscription?.auto_renew);
   const cancelAtPeriodEnd = toBoolean(user?.subscription?.cancel_at_period_end);
   const subscriptionCancelPending = activeSubscription && cancelAtPeriodEnd;
   const subscriptionDaysSinceStart = getSubscriptionDaysSinceStart(user?.subscription?.current_period_start);
@@ -323,6 +326,10 @@ export const ProfileScreen: React.FC = () => {
     () => transactions.some((transaction) => String(transaction.status || '').toLowerCase() === 'refund_requested'),
     [transactions],
   );
+  const paymentIssueMessage = String(user?.paymentIssue?.message || '').trim();
+  const paymentIssueCode = String(user?.paymentIssue?.type || user?.paymentIssue?.code || '').toLowerCase();
+  const hasPaymentIssue = Boolean(paymentIssueMessage || paymentIssueCode);
+  const isExpiringCardIssue = paymentIssueCode.includes('expir') || paymentIssueCode.includes('card');
 
   const primaryCard = React.useMemo(
     () => cards.find((card) => toBoolean(card?.is_default)) || cards[0] || null,
@@ -669,6 +676,28 @@ export const ProfileScreen: React.FC = () => {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Perfil</Text>
+
+      {hasPaymentIssue && (
+        <View style={[styles.card, isExpiringCardIssue ? styles.paymentIssueWarningCard : styles.paymentIssueDangerCard]}>
+          <Text style={styles.paymentIssueTitle}>Atencao no pagamento</Text>
+          <Text style={styles.paymentIssueMessage}>
+            {paymentIssueMessage || 'Atualize sua forma de pagamento para evitar interrupcao no acesso.'}
+          </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.paymentIssueButton,
+              pressed && !openingPortal && styles.paymentIssueButtonPressed,
+              openingPortal && styles.paymentIssueButtonDisabled,
+            ]}
+            onPress={() => void handleManageOnStripe()}
+            disabled={openingPortal}
+          >
+            <Text style={styles.paymentIssueButtonText}>
+              {openingPortal ? 'Abrindo Stripe...' : 'Resolver na Stripe'}
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Assinatura</Text>
@@ -1120,6 +1149,50 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     padding: 14,
     gap: 6,
+  },
+  paymentIssueWarningCard: {
+    borderColor: '#FCD34D',
+    backgroundColor: '#FFFBEB',
+  },
+  paymentIssueDangerCard: {
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+  },
+  paymentIssueTitle: {
+    color: '#92400E',
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  paymentIssueMessage: {
+    color: '#7C2D12',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  paymentIssueButton: {
+    marginTop: 6,
+    minHeight: 36,
+    borderRadius: 10,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+  },
+  paymentIssueButtonPressed: {
+    opacity: 0.92,
+  },
+  paymentIssueButtonDisabled: {
+    opacity: 0.65,
+  },
+  paymentIssueButtonText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   sectionTitle: {
     fontSize: 11,

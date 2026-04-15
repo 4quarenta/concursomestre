@@ -8,7 +8,8 @@ export interface UserPlan {
 }
 
 export interface UserSubscription {
-  status?: 'active' | 'trialing' | 'canceled' | 'expired' | string;
+  id?: number;
+  status?: 'active' | 'trialing' | 'past_due' | 'incomplete' | 'canceled' | 'expired' | string;
   plan_id?: number;
   plan?: UserPlan;
   auto_renew?: boolean;
@@ -18,6 +19,7 @@ export interface UserSubscription {
   cancel_at_period_end?: boolean;
   total_installments?: number;
   paid_installments?: number;
+  recurring_amount?: number;
 }
 
 export interface UserBilling {
@@ -50,6 +52,11 @@ export interface UserProfile {
   xp?: number;
   plan?: string;
   billing?: UserBilling;
+  paymentIssue?: {
+    message?: string;
+    code?: string;
+    type?: string;
+  };
   subscription?: UserSubscription;
   savedQuestionIds?: string[];
 }
