@@ -18,6 +18,8 @@ export const ENDPOINTS = {
   questions: {
     list: 'questionsList',
     submit: 'questionsAnswer',
+    stats: 'questionsStats',
+    history: 'questionsHistory',
     toggleSave: 'questionsToggleSave',
   },
   comments: {

@@ -10,7 +10,9 @@ import {
   View,
 } from 'react-native';
 import { QuestionCommentsPanel } from '@/components/questions/QuestionCommentsPanel';
+import { QuestionHistoryPanel } from '@/components/questions/QuestionHistoryPanel';
 import { QuestionNotePanel } from '@/components/questions/QuestionNotePanel';
+import { QuestionStatsPanel } from '@/components/questions/QuestionStatsPanel';
 import { useAuth } from '@/providers/AuthProvider';
 import { commentsService } from '@/services/comments/commentsService';
 import { questionNotesService } from '@/services/questions/questionNotesService';
@@ -18,7 +20,7 @@ import { questionService } from '@/services/questions/questionService';
 import { colors } from '@/theme/colors';
 import type { QuestionComment } from '@/types/comments';
 import type { QuestionNote } from '@/types/notes';
-import type { Question } from '@/types/questions';
+import type { Question, QuestionHistoryEntry, QuestionStats } from '@/types/questions';
 
 type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
 type PracticeViewMode = 'card' | 'list';
@@ -51,6 +53,13 @@ const getRoleLabel = (item?: { descricao?: string; ['descrição']?: string; nom
 const getQuestionYear = (question: Question): string => {
   const value = Array.isArray(question.anos) && question.anos.length > 0 ? question.anos[0] : '';
   return String(value || '').trim();
+};
+
+const getQuestionAccuracyRate = (stats?: QuestionStats | null): number => {
+  const totalAttempts = Number(stats?.totalAttempts || 0);
+  if (totalAttempts <= 0) return 0;
+
+  return Math.round((Number(stats?.correctCount || 0) / totalAttempts) * 100);
 };
 
 const buildAnsweredMapFromQuestions = (rows: Question[]): Record<number, number> => {
@@ -97,6 +106,12 @@ export const QuestionsScreen: React.FC = () => {
   const [commentsLoadingMap, setCommentsLoadingMap] = React.useState<Record<string, boolean>>({});
   const [commentDraftMap, setCommentDraftMap] = React.useState<Record<string, string>>({});
   const [commentSubmittingMap, setCommentSubmittingMap] = React.useState<Record<string, boolean>>({});
+  const [visibleStatsMap, setVisibleStatsMap] = React.useState<Record<string, boolean>>({});
+  const [statsByQuestion, setStatsByQuestion] = React.useState<Record<string, QuestionStats>>({});
+  const [statsLoadingMap, setStatsLoadingMap] = React.useState<Record<string, boolean>>({});
+  const [visibleHistoryMap, setVisibleHistoryMap] = React.useState<Record<string, boolean>>({});
+  const [historyByQuestion, setHistoryByQuestion] = React.useState<Record<string, QuestionHistoryEntry[]>>({});
+  const [historyLoadingMap, setHistoryLoadingMap] = React.useState<Record<string, boolean>>({});
   const [notesByQuestion, setNotesByQuestion] = React.useState<Record<string, QuestionNote>>({});
   const [noteDraftMap, setNoteDraftMap] = React.useState<Record<string, string>>({});
   const [visibleNotesMap, setVisibleNotesMap] = React.useState<Record<string, boolean>>({});
@@ -131,6 +146,19 @@ export const QuestionsScreen: React.FC = () => {
   const getQuestionStateKey = React.useCallback((questionId?: string | number | null) => (
     questionId === undefined || questionId === null ? '' : String(questionId)
   ), []);
+
+  const getQuestionHistoryFallback = React.useCallback((question: Question): QuestionHistoryEntry[] => {
+    if (!question.id || question.userAnswer?.selectedOptionIndex === undefined || question.userAnswer?.selectedOptionIndex === null) {
+      return [];
+    }
+
+    return [{
+      questionId: Number(question.userAnswer.questionId || question.id),
+      selectedOptionIndex: Number(question.userAnswer.selectedOptionIndex),
+      isCorrect: Boolean(question.userAnswer.isCorrect),
+      timestamp: Number(question.userAnswer.timestamp || Date.now()),
+    }];
+  }, []);
 
   const hydrateQuestionNotes = React.useCallback(async () => {
     if (!user?.id) {
@@ -363,6 +391,76 @@ export const QuestionsScreen: React.FC = () => {
     }
   };
 
+  const loadQuestionStats = React.useCallback(async (question: Question) => {
+    if (!question.id) return;
+
+    const questionKey = getQuestionStateKey(question.id);
+    if (!questionKey || statsLoadingMap[questionKey] || statsByQuestion[questionKey] !== undefined) {
+      return;
+    }
+
+    setStatsLoadingMap((previous) => ({ ...previous, [questionKey]: true }));
+    try {
+      const stats = await questionService.getQuestionStats(question.id);
+      setStatsByQuestion((previous) => ({ ...previous, [questionKey]: stats }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel carregar estatisticas.');
+    } finally {
+      setStatsLoadingMap((previous) => ({ ...previous, [questionKey]: false }));
+    }
+  }, [getQuestionStateKey, statsByQuestion, statsLoadingMap]);
+
+  const handleToggleStats = async (question: Question) => {
+    if (!question.id) return;
+
+    const questionKey = getQuestionStateKey(question.id);
+    const nextVisible = !visibleStatsMap[questionKey];
+    setVisibleStatsMap((previous) => ({ ...previous, [questionKey]: nextVisible }));
+
+    if (nextVisible) {
+      await loadQuestionStats(question);
+    }
+  };
+
+  const loadQuestionHistory = React.useCallback(async (question: Question) => {
+    if (!question.id) return;
+
+    const questionKey = getQuestionStateKey(question.id);
+    if (!questionKey || historyLoadingMap[questionKey] || historyByQuestion[questionKey] !== undefined) {
+      return;
+    }
+
+    setHistoryLoadingMap((previous) => ({ ...previous, [questionKey]: true }));
+    try {
+      const history = await questionService.getQuestionHistory(question.id, user?.id);
+      setHistoryByQuestion((previous) => ({
+        ...previous,
+        [questionKey]: history.length > 0 ? history : getQuestionHistoryFallback(question),
+      }));
+    } catch (error: any) {
+      const fallbackHistory = getQuestionHistoryFallback(question);
+      if (fallbackHistory.length > 0) {
+        setHistoryByQuestion((previous) => ({ ...previous, [questionKey]: fallbackHistory }));
+      } else {
+        Alert.alert('Erro', error?.message || 'Nao foi possivel carregar o historico.');
+      }
+    } finally {
+      setHistoryLoadingMap((previous) => ({ ...previous, [questionKey]: false }));
+    }
+  }, [getQuestionHistoryFallback, getQuestionStateKey, historyByQuestion, historyLoadingMap, user?.id]);
+
+  const handleToggleHistory = async (question: Question) => {
+    if (!question.id) return;
+
+    const questionKey = getQuestionStateKey(question.id);
+    const nextVisible = !visibleHistoryMap[questionKey];
+    setVisibleHistoryMap((previous) => ({ ...previous, [questionKey]: nextVisible }));
+
+    if (nextVisible) {
+      await loadQuestionHistory(question);
+    }
+  };
+
   const updateQuestionCommentsCount = React.useCallback((questionId: number, delta: number) => {
     if (delta === 0) return;
 
@@ -585,6 +683,13 @@ export const QuestionsScreen: React.FC = () => {
     const correctIndex = getCorrectIndex(question);
     const isCorrect = optionIndex === correctIndex;
     const answerKey = `${question.id}:${optionIndex}`;
+    const answeredTimestamp = Date.now();
+    const nextUserAnswer = {
+      questionId: question.id,
+      selectedOptionIndex: optionIndex,
+      isCorrect,
+      timestamp: answeredTimestamp,
+    };
 
     setAnsweringKey(answerKey);
     try {
@@ -600,6 +705,46 @@ export const QuestionsScreen: React.FC = () => {
       }
 
       setAnsweredMap((previous) => ({ ...previous, [question.id as number]: optionIndex }));
+      setQuestionPool((previous) => previous.map((item) => (
+        item.id === question.id
+          ? { ...item, userAnswer: nextUserAnswer }
+          : item
+      )));
+
+      const questionKey = getQuestionStateKey(question.id);
+      if (questionKey) {
+        setHistoryByQuestion((previous) => {
+          const currentHistory = previous[questionKey];
+          if (!currentHistory) return previous;
+
+          return {
+            ...previous,
+            [questionKey]: [nextUserAnswer, ...currentHistory],
+          };
+        });
+
+        setStatsByQuestion((previous) => {
+          const currentStats = previous[questionKey];
+          if (!currentStats) return previous;
+
+          const optionDistribution = {
+            ...(currentStats.optionDistribution || {}),
+            [String(optionIndex)]: Number(currentStats.optionDistribution?.[String(optionIndex)] || 0) + 1,
+          };
+
+          return {
+            ...previous,
+            [questionKey]: {
+              ...currentStats,
+              totalAttempts: Number(currentStats.totalAttempts || 0) + 1,
+              correctCount: Number(currentStats.correctCount || 0) + (isCorrect ? 1 : 0),
+              wrongCount: Number(currentStats.wrongCount || 0) + (isCorrect ? 0 : 1),
+              optionDistribution,
+            },
+          };
+        });
+      }
+
       if (result.newXp || result.newLevel) {
         await refreshProfile();
       }
@@ -647,6 +792,13 @@ export const QuestionsScreen: React.FC = () => {
     const commentsCount = commentsByQuestion[questionStateKey] !== undefined
       ? comments.length
       : Number(item.commentsCount || 0);
+    const statsVisible = Boolean(visibleStatsMap[questionStateKey]);
+    const questionStats = statsByQuestion[questionStateKey] || item.stats || null;
+    const statsLoading = Boolean(statsLoadingMap[questionStateKey]);
+    const historyVisible = Boolean(visibleHistoryMap[questionStateKey]);
+    const history = historyByQuestion[questionStateKey] || [];
+    const historyLoading = Boolean(historyLoadingMap[questionStateKey]);
+    const accuracyRate = getQuestionAccuracyRate(questionStats);
     const metaParts = [
       (item.bancas || []).map((agency) => getEntityLabel(agency)).filter(Boolean)[0],
       (item.orgaos || []).map((organization) => getEntityLabel(organization)).filter(Boolean)[0],
@@ -673,6 +825,12 @@ export const QuestionsScreen: React.FC = () => {
 
         {metaParts.length > 0 ? (
           <Text style={styles.questionMeta}>{metaParts.join(' | ')}</Text>
+        ) : null}
+
+        {Number(questionStats?.totalAttempts || 0) > 0 ? (
+          <Text style={styles.questionStatsSummary}>
+            {accuracyRate}% de acerto em {Number(questionStats?.totalAttempts || 0)} respostas
+          </Text>
         ) : null}
 
         <Text style={styles.questionText}>{normalizeQuestionText(item) || 'Questao sem enunciado.'}</Text>
@@ -722,6 +880,24 @@ export const QuestionsScreen: React.FC = () => {
               {currentNote?.text ? 'Anotacao' : 'Anotar'}
             </Text>
           </Pressable>
+          <Pressable
+            onPress={() => void handleToggleStats(item)}
+            style={[styles.secondaryActionButton, statsVisible && styles.secondaryActionButtonActive]}
+          >
+            <Text style={[styles.secondaryActionButtonText, statsVisible && styles.secondaryActionButtonTextActive]}>
+              Estatisticas
+            </Text>
+          </Pressable>
+          {selected !== undefined ? (
+            <Pressable
+              onPress={() => void handleToggleHistory(item)}
+              style={[styles.secondaryActionButton, historyVisible && styles.secondaryActionButtonActive]}
+            >
+              <Text style={[styles.secondaryActionButtonText, historyVisible && styles.secondaryActionButtonTextActive]}>
+                Historico
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={styles.optionsContainer}>
@@ -751,6 +927,22 @@ export const QuestionsScreen: React.FC = () => {
             );
           })}
         </View>
+
+        {statsVisible ? (
+          <QuestionStatsPanel
+            question={item}
+            stats={questionStats}
+            loading={statsLoading}
+          />
+        ) : null}
+
+        {historyVisible ? (
+          <QuestionHistoryPanel
+            question={item}
+            history={history}
+            loading={historyLoading}
+          />
+        ) : null}
 
         {commentsVisible ? (
           <QuestionCommentsPanel
@@ -1200,6 +1392,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  questionStatsSummary: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+  },
   questionText: {
     fontSize: 14,
     color: colors.text,
@@ -1254,11 +1451,15 @@ const styles = StyleSheet.create({
   },
   questionActionsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   secondaryActionButton: {
-    minHeight: 38,
+    flexBasis: '48%',
+    flexGrow: 1,
+    minHeight: 42,
     paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1276,6 +1477,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 0,
+    textAlign: 'center',
   },
   secondaryActionButtonTextActive: {
     color: colors.primary,

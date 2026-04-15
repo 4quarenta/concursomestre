@@ -40,6 +40,20 @@ export interface QuestionUserAnswer {
   timestamp?: number;
 }
 
+export interface QuestionStats {
+  totalAttempts: number;
+  correctCount: number;
+  wrongCount: number;
+  optionDistribution?: Record<string, number>;
+}
+
+export interface QuestionHistoryEntry {
+  questionId: number;
+  selectedOptionIndex: number;
+  isCorrect: boolean;
+  timestamp: number;
+}
+
 export interface Question {
   id?: number;
   enunciado?: string;
@@ -57,6 +71,7 @@ export interface Question {
   teacherComment?: string | null;
   detailedComment?: string | null;
   userAnswer?: QuestionUserAnswer | null;
+  stats?: QuestionStats | null;
   comments?: QuestionComment[] | null;
   commentsCount?: number;
 }

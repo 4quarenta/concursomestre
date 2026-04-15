@@ -1,7 +1,7 @@
 import { apiClient } from '@/services/api/client';
 import { ENDPOINTS } from '@/services/api/endpoints';
 import { assertApiSuccess, readApiData, readApiErrorMessage } from '@/services/api/response';
-import type { Question, UserAnswerInput } from '@/types/questions';
+import type { Question, QuestionHistoryEntry, QuestionStats, UserAnswerInput } from '@/types/questions';
 
 type QuestionPageResult = {
   rows: Question[];
@@ -104,6 +104,33 @@ export const questionService = {
         message: readApiErrorMessage(error, 'Nao foi possivel atualizar as questoes salvas.'),
       };
     }
+  },
+
+  async getQuestionStats(questionId: string | number): Promise<QuestionStats> {
+    const response: any = await apiClient.get<any>(ENDPOINTS.questions.stats, {
+      params: {
+        question_id: String(questionId),
+      },
+    });
+
+    return readApiData<QuestionStats>(response, {
+      totalAttempts: 0,
+      correctCount: 0,
+      wrongCount: 0,
+      optionDistribution: {},
+    });
+  },
+
+  async getQuestionHistory(questionId: string | number, userId?: string): Promise<QuestionHistoryEntry[]> {
+    const response: any = await apiClient.get<any>(ENDPOINTS.questions.history, {
+      params: {
+        question_id: String(questionId),
+        user_id: userId || '',
+      },
+    });
+
+    const payload = readApiData<any>(response, []);
+    return Array.isArray(payload) ? payload : [];
   },
 };
 
