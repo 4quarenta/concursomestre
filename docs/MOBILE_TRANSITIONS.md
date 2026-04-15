@@ -21,6 +21,26 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Dashboard evolucao com recorte de periodo
+
+- commit: `b2aaed7 Add dashboard timeline range filters on mobile`
+- origem web/plataforma:
+  - `src/app/dashboard/page.tsx`
+  - toggles de periodo para leitura temporal de desempenho
+- destino mobile:
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - bloco de evolucao recente ganhou recorte por periodo (`Hoje`, `Semana`, `Mes`, `Tudo`)
+  - resumo do recorte agora mostra questoes, acertos, erros e precisao antes das barras
+  - quando a timeline nao traz `timestamp`, o app aplica fallback por quantidade de pontos para manter leitura util
+  - arquitetura do bloco ficou pronta para absorver periodos mais ricos sem alterar o layout principal
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - grafico avancado do dashboard web (estilo area chart) ainda nao foi migrado para o mobile.
+
 ## 2026-04-14 - Dashboard timeline pronto para API
 
 - commit: `a849a3c Add dashboard timeline support for mobile`
