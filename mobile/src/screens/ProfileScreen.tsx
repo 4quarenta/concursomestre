@@ -55,6 +55,11 @@ const parseDate = (rawValue?: string | number): Date | null => {
   return parsed;
 };
 
+const diffInDays = (start: Date, end: Date): number => {
+  const diffMs = end.getTime() - start.getTime();
+  return Math.max(0, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+};
+
 const formatDate = (rawValue?: string | number): string => {
   const parsed = parseDate(rawValue);
   if (!parsed) return '--';
@@ -280,6 +285,40 @@ export const ProfileScreen: React.FC = () => {
     ? Math.min(Math.max(paidInstallments, 1), totalInstallments)
     : 1;
   const termCommitmentRemaining = totalInstallments > 1 && paidInstallments < totalInstallments;
+  const subscriptionStartAt = parseDate(user?.subscription?.current_period_start);
+  const subscriptionEndAt = parseDate(user?.subscription?.current_period_end);
+  const subscriptionNextChargeAt = parseDate(user?.subscription?.next_billing_at) || subscriptionEndAt;
+  const subscriptionTotalDays = (
+    subscriptionStartAt
+    && subscriptionEndAt
+    && subscriptionEndAt.getTime() > subscriptionStartAt.getTime()
+  )
+    ? diffInDays(subscriptionStartAt, subscriptionEndAt)
+    : 0;
+  const subscriptionUsedDays = (
+    subscriptionStartAt
+    && subscriptionEndAt
+    && subscriptionEndAt.getTime() > subscriptionStartAt.getTime()
+  )
+    ? Math.min(
+      subscriptionTotalDays,
+      Math.max(0, diffInDays(subscriptionStartAt, new Date())),
+    )
+    : 0;
+  const subscriptionRemainingDays = Math.max(0, subscriptionTotalDays - subscriptionUsedDays);
+  const subscriptionProgressPercent = subscriptionTotalDays > 0
+    ? Math.max(0, Math.min(100, Math.round((subscriptionUsedDays / subscriptionTotalDays) * 100)))
+    : 0;
+  const subscriptionValueDescription = totalInstallments > 1
+    ? `Parcela ${currentInstallment} de ${totalInstallments} do termo contratado.`
+    : 'Cobranca recorrente por ciclo ativo.';
+  const subscriptionHeadline = activeSubscription
+    ? (renewalEnabled
+      ? `Renovacao automatica ligada. Proxima cobranca prevista para ${formatDate(subscriptionNextChargeAt?.getTime())}.`
+      : (termCommitmentRemaining
+        ? 'Renovacao desligada. O termo atual segue ate a ultima parcela contratada.'
+        : `Renovacao desligada. Seu acesso segue ativo ate ${formatDate(subscriptionEndAt?.getTime())}.`))
+    : 'Sem assinatura ativa no momento.';
   const hasPendingRefundRequest = React.useMemo(
     () => transactions.some((transaction) => String(transaction.status || '').toLowerCase() === 'refund_requested'),
     [transactions],
@@ -641,6 +680,7 @@ export const ProfileScreen: React.FC = () => {
 
         <Text style={styles.label}>Plano atual</Text>
         <Text style={styles.value}>{subscriptionPlanName}</Text>
+        <Text style={styles.valueHint}>{subscriptionHeadline}</Text>
 
         <Text style={styles.label}>Status</Text>
         <Text style={styles.value}>{activeSubscription ? 'Assinatura ativa' : 'Plano gratuito/inativo'}</Text>
@@ -793,6 +833,29 @@ export const ProfileScreen: React.FC = () => {
 
         <Text style={styles.label}>Fim do ciclo</Text>
         <Text style={styles.value}>{formatDate(user?.subscription?.current_period_end)}</Text>
+
+        {activeSubscription && subscriptionTotalDays > 0 && (
+          <View style={styles.timelineCard}>
+            <Text style={styles.timelineTitle}>Andamento do ciclo</Text>
+            <Text style={styles.timelineValue}>
+              {subscriptionUsedDays} de {subscriptionTotalDays} dias utilizados
+            </Text>
+            <Text style={styles.timelineHint}>{subscriptionValueDescription}</Text>
+
+            <View style={styles.timelineProgressTrack}>
+              <View style={[styles.timelineProgressFill, { width: `${subscriptionProgressPercent}%` }]} />
+            </View>
+
+            <View style={styles.timelineMetaRow}>
+              <Text style={styles.timelineMetaText}>Restantes: {subscriptionRemainingDays} dias</Text>
+              <Text style={styles.timelineMetaText}>Proxima cobranca: {formatDate(subscriptionNextChargeAt?.getTime())}</Text>
+            </View>
+            <View style={styles.timelineMetaRow}>
+              <Text style={styles.timelineMetaText}>Inicio: {formatDate(subscriptionStartAt?.getTime())}</Text>
+              <Text style={styles.timelineMetaText}>Fim: {formatDate(subscriptionEndAt?.getTime())}</Text>
+            </View>
+          </View>
+        )}
       </View>
 
       {(primaryCardExpiry.isExpired || primaryCardExpiry.isExpiringSoon) && (
@@ -1085,6 +1148,56 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     lineHeight: 16,
+  },
+  timelineCard: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    gap: 6,
+  },
+  timelineTitle: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  timelineValue: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  timelineHint: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  timelineProgressTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  timelineProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+  },
+  timelineMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  timelineMetaText: {
+    flex: 1,
+    color: '#475569',
+    fontSize: 10,
+    fontWeight: '700',
   },
   renewalButton: {
     marginTop: 8,
