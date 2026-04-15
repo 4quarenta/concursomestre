@@ -42,6 +42,18 @@ const resolveCycleLabel = (count: number, unit: string) => {
   return 'periodico';
 };
 
+const resolveMaxInstallments = (count: number, unit: string, planName: string) => {
+  const normalizedUnit = String(unit || '').toLowerCase();
+  const normalizedName = String(planName || '').toLowerCase();
+  if (normalizedUnit === 'year' || normalizedName.includes('anual') || normalizedName.includes('annual')) {
+    return 12;
+  }
+  if ((normalizedUnit === 'month' && count === 3) || normalizedName.includes('trimestral')) {
+    return 3;
+  }
+  return 1;
+};
+
 const toBoolean = (value: unknown): boolean => {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value !== 0;
@@ -62,6 +74,14 @@ export const CheckoutScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const route = useRoute<CheckoutRoute>();
   const { plan } = route.params;
+  const defaultInstallments = React.useMemo(
+    () => resolveMaxInstallments(
+      Number(plan.interval_count || 1),
+      String(plan.interval_unit || 'month'),
+      String(plan.name || ''),
+    ),
+    [plan.interval_count, plan.interval_unit, plan.name],
+  );
 
   const [couponCode, setCouponCode] = React.useState('');
   const [couponLoading, setCouponLoading] = React.useState(false);
@@ -69,6 +89,7 @@ export const CheckoutScreen: React.FC = () => {
   const [couponDiscount, setCouponDiscount] = React.useState(0);
   const [autoRenew, setAutoRenew] = React.useState(true);
   const [processing, setProcessing] = React.useState(false);
+  const [installmentCount, setInstallmentCount] = React.useState(String(defaultInstallments));
   const [paymentMode, setPaymentMode] = React.useState<PaymentMode>('hosted');
   const [savedCards, setSavedCards] = React.useState<SavedCard[]>([]);
   const [loadingCards, setLoadingCards] = React.useState(false);
@@ -79,6 +100,28 @@ export const CheckoutScreen: React.FC = () => {
   const cycleLabel = resolveCycleLabel(Number(plan.interval_count || 1), String(plan.interval_unit || 'month'));
   const subtotal = Number(plan.price || 0);
   const total = Math.max(0, subtotal - couponDiscount);
+  const maxInstallments = React.useMemo(
+    () => resolveMaxInstallments(
+      Number(plan.interval_count || 1),
+      String(plan.interval_unit || 'month'),
+      String(plan.name || ''),
+    ),
+    [plan.interval_count, plan.interval_unit, plan.name],
+  );
+  const supportsStripeBillingChoices = maxInstallments > 1;
+  const selectedInstallmentCount = React.useMemo(() => {
+    if (!supportsStripeBillingChoices) return 1;
+    const parsed = Number.parseInt(installmentCount, 10);
+    if (!Number.isFinite(parsed) || parsed <= 1) return 1;
+    return Math.min(maxInstallments, parsed);
+  }, [installmentCount, maxInstallments, supportsStripeBillingChoices]);
+  const selectedStripeBillingMode: 'single_installment' | 'term_recurring' = selectedInstallmentCount > 1
+    ? 'term_recurring'
+    : 'single_installment';
+  const installmentAmount = Math.max(0, total / selectedInstallmentCount);
+  const installmentLabel = selectedInstallmentCount > 1
+    ? `${selectedInstallmentCount}x de ${formatCurrency(installmentAmount)} sem juros`
+    : `1x de ${formatCurrency(total)} sem juros`;
   const selectedCard = React.useMemo(
     () => savedCards.find((card) => String(card.id) === String(selectedCardId)) || null,
     [savedCards, selectedCardId],
@@ -130,6 +173,10 @@ export const CheckoutScreen: React.FC = () => {
     }
   }, [loadingCards, paymentMode, savedCards.length]);
 
+  React.useEffect(() => {
+    setInstallmentCount(String(maxInstallments > 1 ? maxInstallments : 1));
+  }, [plan.id, maxInstallments]);
+
   const handleOpenStripePortal = async () => {
     setOpeningStripePortal(true);
     try {
@@ -179,6 +226,8 @@ export const CheckoutScreen: React.FC = () => {
         plan_id: plan.id,
         auto_renew: autoRenew,
         coupon_code: couponCode.trim() || undefined,
+        billing_mode: selectedStripeBillingMode,
+        installment_count: selectedInstallmentCount,
       });
 
       await openExternalUrl(result.url);
@@ -203,6 +252,8 @@ export const CheckoutScreen: React.FC = () => {
         coupon_code: couponCode.trim() || undefined,
         saved_card_id: selectedCardId,
         save_card: true,
+        billing_mode: selectedStripeBillingMode,
+        installment_count: selectedInstallmentCount,
       });
 
       const payload = response?.data || response;
@@ -218,6 +269,8 @@ export const CheckoutScreen: React.FC = () => {
           plan_id: plan.id,
           auto_renew: autoRenew,
           coupon_code: couponCode.trim() || undefined,
+          billing_mode: selectedStripeBillingMode,
+          installment_count: selectedInstallmentCount,
         });
         await openExternalUrl(fallback.url);
         return;
@@ -232,6 +285,7 @@ export const CheckoutScreen: React.FC = () => {
           payment_intent_id: payload?.payment_intent_id || undefined,
           saved_card_id: selectedCardId,
           save_card: true,
+          billing_mode: selectedStripeBillingMode,
         });
 
         const finalizePayload = finalizeResponse?.data || finalizeResponse;
@@ -285,6 +339,10 @@ export const CheckoutScreen: React.FC = () => {
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Forma de pagamento</Text>
           <Text style={styles.totalValue}>{paymentMode === 'saved-card' ? 'Cartao salvo' : 'Checkout Stripe'}</Text>
+        </View>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Cobranca</Text>
+          <Text style={[styles.totalValue, styles.totalValueCompact]}>{installmentLabel}</Text>
         </View>
 
         <View style={styles.totalRow}>
@@ -409,6 +467,36 @@ export const CheckoutScreen: React.FC = () => {
         )}
       </View>
 
+      {supportsStripeBillingChoices && (
+        <View style={styles.blockCard}>
+          <Text style={styles.blockTitle}>Parcelamento sem juros</Text>
+          <Text style={styles.switchDescription}>
+            Escolha em quantas parcelas voce quer dividir este ciclo.
+          </Text>
+          <View style={styles.installmentGrid}>
+            {Array.from({ length: maxInstallments }, (_, index) => {
+              const count = index + 1;
+              const isSelected = count === selectedInstallmentCount;
+              const amount = Math.max(0, total / count);
+              return (
+                <Pressable
+                  key={`installment-${count}`}
+                  style={[styles.installmentChip, isSelected && styles.installmentChipActive]}
+                  onPress={() => setInstallmentCount(String(count))}
+                >
+                  <Text style={[styles.installmentChipTitle, isSelected && styles.installmentChipTitleActive]}>
+                    {count}x
+                  </Text>
+                  <Text style={[styles.installmentChipAmount, isSelected && styles.installmentChipAmountActive]}>
+                    {formatCurrency(amount)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      )}
+
       <View style={styles.blockCard}>
         <View style={styles.switchRow}>
           <View style={styles.switchTextBlock}>
@@ -513,6 +601,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
+  totalValueCompact: {
+    flex: 1,
+    textAlign: 'right',
+    fontSize: 12,
+  },
   discountValue: {
     color: colors.success,
     fontSize: 16,
@@ -571,6 +664,43 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   modeChipTextActive: {
+    color: colors.primary,
+  },
+  installmentGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  installmentChip: {
+    width: '31%',
+    minHeight: 54,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    gap: 2,
+  },
+  installmentChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#EEF2FF',
+  },
+  installmentChipTitle: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  installmentChipTitleActive: {
+    color: colors.primary,
+  },
+  installmentChipAmount: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  installmentChipAmountActive: {
     color: colors.primary,
   },
   couponRow: {

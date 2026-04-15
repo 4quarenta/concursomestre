@@ -3,10 +3,14 @@ import { ENDPOINTS } from '@/services/api/endpoints';
 import { assertApiSuccess, readApiData } from '@/services/api/response';
 import type { CouponValidationResult, Plan } from '@/types/plans';
 
+type StripeBillingMode = 'single_installment' | 'term_recurring';
+
 type StripeCheckoutPayload = {
   plan_id: number;
   auto_renew?: boolean;
   coupon_code?: string;
+  billing_mode?: StripeBillingMode;
+  installment_count?: number;
 };
 
 type StripeInlineSubscriptionPayload = {
@@ -16,6 +20,8 @@ type StripeInlineSubscriptionPayload = {
   payment_method_id?: string;
   saved_card_id?: string;
   save_card?: boolean;
+  billing_mode?: StripeBillingMode;
+  installment_count?: number;
 };
 
 type StripeFinalizePayload = {
@@ -26,6 +32,7 @@ type StripeFinalizePayload = {
   payment_intent_id?: string;
   saved_card_id?: string;
   save_card?: boolean;
+  billing_mode?: StripeBillingMode;
 };
 
 /**
