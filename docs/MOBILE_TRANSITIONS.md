@@ -21,6 +21,27 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Simulados revisao em foco por questao
+
+- commit: `c71bc80 Add focused review mode for mobile simulations`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - passo `review` com navegacao dedicada entre questoes do resultado
+- destino mobile:
+  - `mobile/src/screens/SimulationRunScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - resultado mobile ganhou modo de revisao em foco por questao dentro do fluxo de simulado
+  - usuario pode abrir revisao dedicada a partir da lista de resultado e navegar com anterior/proxima
+  - revisao em foco mostra status da questao, enunciado completo, resposta marcada, gabarito e alternativas destacadas
+  - revisao em lista foi mantida com acao rapida para abrir o modo focado sem perder os filtros ativos
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - comentarios/notas da questao ainda nao foram acoplados ao modo focado da revisao de simulado.
+  - sincronizacao de historico local com endpoint oficial de detalhe ainda depende de contrato backend dedicado.
+
 ## 2026-04-14 - Simulados historico local com merge remoto
 
 - commit: `c274764 Add local fallback for mobile simulations history`
