@@ -29,6 +29,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - salvar/remover favorito com sincronizacao otimista
   - comentarios da comunidade com leitura, novo topico, resposta e curtida
   - anotacoes com hidratacao remota e persistencia local no app
+  - estatisticas agregadas e historico de resolucoes por questao com carregamento sob demanda
   - modo foco por questao e modo lista
 - Modulo `Planos` com catalogo oficial
 - Fluxo `Checkout` mobile (sessao Stripe hospedada):

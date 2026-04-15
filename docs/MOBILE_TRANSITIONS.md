@@ -442,3 +442,33 @@ Toda transicao mobile deve registrar:
   - push para `origin/master`
 - pendencias conhecidas:
   - ainda falta uma rota oficial de escrita para sincronizar anotacoes de questao entre dispositivos.
+
+## 2026-04-14 - Questoes estatisticas e historico de resolucoes
+
+- commit: `cf021b4 Add mobile question stats and history`
+- origem web/plataforma:
+  - `src/app/questions/components/QuestionCard.tsx`
+  - `src/services/questions/questionService.ts`
+  - endpoints `questionsStats` e `questionsHistory`
+- destino mobile:
+  - `mobile/src/screens/QuestionsScreen.tsx`
+  - `mobile/src/components/questions/QuestionStatsPanel.tsx`
+  - `mobile/src/components/questions/QuestionHistoryPanel.tsx`
+  - `mobile/src/services/questions/questionService.ts`
+  - `mobile/src/services/api/endpoints.ts`
+  - `mobile/src/types/questions.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - pratica mobile passou a abrir estatisticas sob demanda por questao
+  - painel mostra totais, acertos, erros, taxa de acerto e distribuicao por alternativa
+  - pratica mobile ganhou historico de resolucoes por questao usando a API oficial
+  - respostas recem enviadas atualizam o fallback local de historico e estatisticas para manter a UI coerente
+- compatibilidade observada:
+  - `questionsHistory` depende de sessao autenticada valida no backend; quando o endpoint nao devolve linhas, o mobile reaproveita a ultima resposta conhecida da questao como fallback local
+  - a distribuicao por alternativa aceita payload legado que pode vir por indice ou por id da opcao
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - ainda falta expor no card mobile o conteudo completo de comentario de professor e analise detalhada da questao.
