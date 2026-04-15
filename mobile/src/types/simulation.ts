@@ -7,8 +7,12 @@ export interface MobileSimulationConfig {
   timerEnabled: boolean;
   timerMinutes: number;
   keyword?: string;
-  subject?: string;
   difficulty?: MobileSimulationDifficulty;
+  subjects?: string[];
+  agencies?: string[];
+  years?: string[];
+  organizations?: string[];
+  roles?: string[];
 }
 
 export interface MobileSimulationSeed {

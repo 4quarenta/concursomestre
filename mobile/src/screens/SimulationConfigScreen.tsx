@@ -30,11 +30,24 @@ const getDifficultyLabel = (value: MobileSimulationDifficulty): string => {
   return 'Todas';
 };
 
-const getDifficultyParam = (value: MobileSimulationDifficulty): number | undefined => {
-  if (value === 'easy') return 2;
-  if (value === 'medium') return 3;
-  if (value === 'hard') return 4;
-  return undefined;
+const normalizeQuestionText = (question: Question): string => (
+  String(question.enunciado_clean || question.enunciado || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+);
+
+const getEntityLabel = (item?: { nome?: string; sigla?: string }): string => (
+  String(item?.sigla || item?.nome || '').trim()
+);
+
+const getRoleLabel = (item?: { descricao?: string; ['descriÃ§Ã£o']?: string; nome?: string }): string => (
+  String(item?.descricao || item?.['descriÃ§Ã£o'] || item?.nome || '').trim()
+);
+
+const getQuestionYear = (question: Question): string => {
+  const value = Array.isArray(question.anos) && question.anos.length > 0 ? question.anos[0] : '';
+  return String(value || '').trim();
 };
 
 const shuffleQuestions = (rows: Question[]): Question[] => {
@@ -59,73 +72,187 @@ export const SimulationConfigScreen: React.FC = () => {
   const [timerMinutes, setTimerMinutes] = React.useState(20);
   const [keyword, setKeyword] = React.useState('');
   const [difficulty, setDifficulty] = React.useState<MobileSimulationDifficulty>('all');
-  const [selectedSubject, setSelectedSubject] = React.useState('all');
-  const [previewQuestions, setPreviewQuestions] = React.useState<Question[]>([]);
-  const [previewTotal, setPreviewTotal] = React.useState(0);
-  const [loadingPreview, setLoadingPreview] = React.useState(false);
+  const [questionPool, setQuestionPool] = React.useState<Question[]>([]);
+  const [loadingPool, setLoadingPool] = React.useState(true);
+  const [selectedSubjects, setSelectedSubjects] = React.useState<string[]>([]);
+  const [selectedAgencies, setSelectedAgencies] = React.useState<string[]>([]);
+  const [selectedYears, setSelectedYears] = React.useState<string[]>([]);
+  const [selectedOrganizations, setSelectedOrganizations] = React.useState<string[]>([]);
+  const [selectedRoles, setSelectedRoles] = React.useState<string[]>([]);
   const [starting, setStarting] = React.useState(false);
+
+  const toggleSelection = React.useCallback((values: string[], value: string): string[] => (
+    values.includes(value)
+      ? values.filter((item) => item !== value)
+      : [...values, value]
+  ), []);
+
+  const loadQuestionPool = React.useCallback(async () => {
+    setLoadingPool(true);
+    try {
+      const rows = await questionService.getAllQuestions();
+      setQuestionPool(rows);
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel carregar a base de questoes do simulado.');
+      setQuestionPool([]);
+    } finally {
+      setLoadingPool(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadQuestionPool();
+  }, [loadQuestionPool]);
 
   const subjectOptions = React.useMemo(() => {
     const values = new Set<string>();
-    previewQuestions.forEach((question) => {
+    questionPool.forEach((question) => {
       (question.assuntos || []).forEach((subject) => {
-        if (subject?.nome) values.add(subject.nome);
+        if (subject?.materia && subject?.nome) values.add(subject.nome);
       });
     });
 
-    if (selectedSubject !== 'all') {
-      values.add(selectedSubject);
-    }
+    return Array.from(values).sort((left, right) => left.localeCompare(right, 'pt-BR'));
+  }, [questionPool]);
 
-    return ['all', ...Array.from(values).sort()].slice(0, 10);
-  }, [previewQuestions, selectedSubject]);
+  const agencyOptions = React.useMemo(() => {
+    const values = new Set<string>();
+    questionPool.forEach((question) => {
+      (question.bancas || []).forEach((agency) => {
+        const label = getEntityLabel(agency);
+        if (label) values.add(label);
+      });
+    });
 
-  const buildQuestionFilters = React.useCallback((perPage: number) => {
-    const filters: Record<string, any> = {
-      page: 1,
-      perPage,
-    };
+    return Array.from(values).sort((left, right) => left.localeCompare(right, 'pt-BR'));
+  }, [questionPool]);
 
-    if (keyword.trim()) filters.keyword = keyword.trim();
-    if (selectedSubject !== 'all') filters.subject = selectedSubject;
+  const yearOptions = React.useMemo(() => {
+    const values = new Set<string>();
+    questionPool.forEach((question) => {
+      const year = getQuestionYear(question);
+      if (year) values.add(year);
+    });
 
-    const difficultyParam = getDifficultyParam(difficulty);
-    if (difficultyParam) filters.difficulty = difficultyParam;
+    return Array.from(values).sort((left, right) => Number(right) - Number(left));
+  }, [questionPool]);
 
-    return filters;
-  }, [difficulty, keyword, selectedSubject]);
+  const organizationOptions = React.useMemo(() => {
+    const values = new Set<string>();
+    questionPool.forEach((question) => {
+      (question.orgaos || []).forEach((organization) => {
+        const label = getEntityLabel(organization);
+        if (label) values.add(label);
+      });
+    });
 
-  const loadPreview = React.useCallback(async () => {
-    setLoadingPreview(true);
-    try {
-      const result = await questionService.getQuestionPage(buildQuestionFilters(PREVIEW_PAGE_SIZE));
-      setPreviewQuestions(result.rows || []);
-      setPreviewTotal(result.total);
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Nao foi possivel carregar a amostra de questoes.');
-      setPreviewQuestions([]);
-      setPreviewTotal(0);
-    } finally {
-      setLoadingPreview(false);
-    }
-  }, [buildQuestionFilters]);
+    return Array.from(values).sort((left, right) => left.localeCompare(right, 'pt-BR'));
+  }, [questionPool]);
 
-  React.useEffect(() => {
-    const previewTimer = setTimeout(() => {
-      void loadPreview();
-    }, 350);
+  const roleOptions = React.useMemo(() => {
+    const values = new Set<string>();
+    questionPool.forEach((question) => {
+      (question.cargos || []).forEach((role) => {
+        const label = getRoleLabel(role);
+        if (label) values.add(label);
+      });
+    });
 
-    return () => clearTimeout(previewTimer);
-  }, [loadPreview]);
+    return Array.from(values).sort((left, right) => left.localeCompare(right, 'pt-BR'));
+  }, [questionPool]);
 
-  const handleStartSimulation = async () => {
+  const filteredQuestions = React.useMemo(() => {
+    const keywordNeedle = keyword.trim().toLowerCase();
+
+    return questionPool.filter((question) => {
+      const statement = normalizeQuestionText(question).toLowerCase();
+      const matchesKeyword = keywordNeedle === '' || statement.includes(keywordNeedle);
+      const matchesDifficulty = (
+        difficulty === 'all'
+        || (difficulty === 'easy' && [1, 2].includes(Number(question.dificuldade || 0)))
+        || (difficulty === 'medium' && Number(question.dificuldade || 0) === 3)
+        || (difficulty === 'hard' && [4, 5].includes(Number(question.dificuldade || 0)))
+      );
+      const matchesSubject = (
+        selectedSubjects.length === 0
+        || (question.assuntos || []).some((subject) => subject?.materia && subject?.nome && selectedSubjects.includes(subject.nome))
+      );
+      const matchesAgency = (
+        selectedAgencies.length === 0
+        || (question.bancas || []).some((agency) => selectedAgencies.includes(getEntityLabel(agency)))
+      );
+      const matchesYear = selectedYears.length === 0 || selectedYears.includes(getQuestionYear(question));
+      const matchesOrganization = (
+        selectedOrganizations.length === 0
+        || (question.orgaos || []).some((organization) => selectedOrganizations.includes(getEntityLabel(organization)))
+      );
+      const matchesRole = (
+        selectedRoles.length === 0
+        || (question.cargos || []).some((role) => selectedRoles.includes(getRoleLabel(role)))
+      );
+
+      return (
+        matchesKeyword
+        && matchesDifficulty
+        && matchesSubject
+        && matchesAgency
+        && matchesYear
+        && matchesOrganization
+        && matchesRole
+      );
+    });
+  }, [
+    difficulty,
+    keyword,
+    questionPool,
+    selectedAgencies,
+    selectedOrganizations,
+    selectedRoles,
+    selectedSubjects,
+    selectedYears,
+  ]);
+
+  const previewQuestions = React.useMemo(
+    () => filteredQuestions.slice(0, PREVIEW_PAGE_SIZE),
+    [filteredQuestions],
+  );
+
+  const renderMultiSelectChips = (
+    options: string[],
+    selectedValues: string[],
+    onChange: (values: string[]) => void,
+    allLabel: string,
+  ) => (
+    <View style={styles.optionsRow}>
+      <Pressable
+        onPress={() => onChange([])}
+        style={[styles.optionChip, selectedValues.length === 0 && styles.optionChipActive]}
+      >
+        <Text style={[styles.optionChipText, selectedValues.length === 0 && styles.optionChipTextActive]}>
+          {allLabel}
+        </Text>
+      </Pressable>
+      {options.map((option) => {
+        const selected = selectedValues.includes(option);
+        return (
+          <Pressable
+            key={option}
+            onPress={() => onChange(toggleSelection(selectedValues, option))}
+            style={[styles.optionChip, selected && styles.optionChipActive]}
+          >
+            <Text style={[styles.optionChipText, selected && styles.optionChipTextActive]}>
+              {option}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
+  const handleStartSimulation = () => {
     setStarting(true);
     try {
-      const result = await questionService.getQuestionPage({
-        ...buildQuestionFilters(Math.max(questionCount * 3, questionCount)),
-      });
-
-      const randomized = shuffleQuestions(result.rows || []);
+      const randomized = shuffleQuestions(filteredQuestions);
       const selected = randomized.slice(0, questionCount);
       if (selected.length === 0) {
         Alert.alert('Sem questoes', 'Nao encontramos questoes para iniciar o simulado com esses filtros.');
@@ -139,15 +266,17 @@ export const SimulationConfigScreen: React.FC = () => {
             timerEnabled,
             timerMinutes,
             keyword: keyword.trim() || undefined,
-            subject: selectedSubject,
             difficulty,
+            subjects: selectedSubjects,
+            agencies: selectedAgencies,
+            years: selectedYears,
+            organizations: selectedOrganizations,
+            roles: selectedRoles,
           },
           questions: selected,
           startedAt: Date.now(),
         },
       });
-    } catch (error: any) {
-      Alert.alert('Erro', error?.message || 'Nao foi possivel iniciar o simulado.');
     } finally {
       setStarting(false);
     }
@@ -156,7 +285,11 @@ export const SimulationConfigScreen: React.FC = () => {
   const clearFilters = () => {
     setKeyword('');
     setDifficulty('all');
-    setSelectedSubject('all');
+    setSelectedSubjects([]);
+    setSelectedAgencies([]);
+    setSelectedYears([]);
+    setSelectedOrganizations([]);
+    setSelectedRoles([]);
   };
 
   return (
@@ -187,10 +320,10 @@ export const SimulationConfigScreen: React.FC = () => {
       <View style={styles.card}>
         <View style={styles.cardTitleRow}>
           <Text style={styles.cardTitle}>Filtros da prova</Text>
-          {loadingPreview ? (
+          {loadingPool ? (
             <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <Text style={styles.previewCount}>{previewTotal} questoes</Text>
+            <Text style={styles.previewCount}>{filteredQuestions.length} questoes</Text>
           )}
         </View>
 
@@ -216,26 +349,38 @@ export const SimulationConfigScreen: React.FC = () => {
           ))}
         </View>
 
-        <View style={styles.optionsRow}>
-          {subjectOptions.map((subject) => (
-            <Pressable
-              key={subject}
-              onPress={() => setSelectedSubject(subject)}
-              style={[styles.optionChip, selectedSubject === subject && styles.optionChipActive]}
-            >
-              <Text style={[styles.optionChipText, selectedSubject === subject && styles.optionChipTextActive]}>
-                {subject === 'all' ? 'Todas materias' : subject}
-              </Text>
-            </Pressable>
-          ))}
+        <Text style={styles.filterLabel}>Materias</Text>
+        {renderMultiSelectChips(subjectOptions, selectedSubjects, setSelectedSubjects, 'Todas materias')}
+
+        <Text style={styles.filterLabel}>Bancas</Text>
+        {renderMultiSelectChips(agencyOptions, selectedAgencies, setSelectedAgencies, 'Todas bancas')}
+
+        <Text style={styles.filterLabel}>Anos</Text>
+        {renderMultiSelectChips(yearOptions, selectedYears, setSelectedYears, 'Todos os anos')}
+
+        <Text style={styles.filterLabel}>Orgaos</Text>
+        {renderMultiSelectChips(organizationOptions, selectedOrganizations, setSelectedOrganizations, 'Todos os orgaos')}
+
+        <Text style={styles.filterLabel}>Cargos</Text>
+        {renderMultiSelectChips(roleOptions, selectedRoles, setSelectedRoles, 'Todos os cargos')}
+
+        <View style={styles.previewCard}>
+          <Text style={styles.previewTitle}>
+            Amostra local: {previewQuestions.length} de {filteredQuestions.length} questoes elegiveis
+          </Text>
+          <Text style={styles.previewText}>
+            O configurador usa o pool oficial completo no app para aplicar materia, banca, ano, orgao e cargo sem depender dos filtros do endpoint legado.
+          </Text>
+          {filteredQuestions.length > 0 && filteredQuestions.length < questionCount ? (
+            <Text style={styles.previewNotice}>
+              Ha menos questoes do que o total pedido; o simulado vai iniciar com {filteredQuestions.length}.
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.filterActions}>
-          <Pressable style={styles.secondaryButton} onPress={() => void loadPreview()} disabled={loadingPreview}>
-            <Text style={styles.secondaryButtonText}>Atualizar amostra</Text>
-          </Pressable>
           <Pressable style={styles.secondaryButton} onPress={clearFilters}>
-            <Text style={styles.secondaryButtonText}>Limpar</Text>
+            <Text style={styles.secondaryButtonText}>Limpar filtros</Text>
           </Pressable>
         </View>
       </View>
@@ -274,9 +419,9 @@ export const SimulationConfigScreen: React.FC = () => {
       </View>
 
       <Pressable
-        style={[styles.mainButton, starting && styles.mainButtonDisabled]}
-        onPress={() => void handleStartSimulation()}
-        disabled={starting}
+        style={[styles.mainButton, (starting || loadingPool || filteredQuestions.length === 0) && styles.mainButtonDisabled]}
+        onPress={handleStartSimulation}
+        disabled={starting || loadingPool || filteredQuestions.length === 0}
       >
         {starting ? (
           <ActivityIndicator size="small" color="#FFFFFF" />
@@ -350,6 +495,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0,
   },
+  filterLabel: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
   input: {
     height: 44,
     borderRadius: 12,
@@ -385,6 +537,30 @@ const styles = StyleSheet.create({
   },
   optionChipTextActive: {
     color: colors.primary,
+  },
+  previewCard: {
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#EEF2FF',
+    gap: 6,
+  },
+  previewTitle: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  previewText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  previewNotice: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
   },
   filterActions: {
     flexDirection: 'row',
