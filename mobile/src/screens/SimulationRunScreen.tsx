@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { QuestionInsightPanel } from '@/components/questions/QuestionInsightPanel';
 import { useAuth } from '@/providers/AuthProvider';
 import { questionService } from '@/services/questions/questionService';
 import { simulationsService } from '@/services/simulations/simulationsService';
@@ -65,6 +66,7 @@ const mapSimulationDifficulty = (value?: string): string => {
 };
 
 type ReviewFilter = 'all' | 'correct' | 'wrong' | 'blank';
+type ReviewInsightMode = 'none' | 'teacher' | 'detailed';
 
 const getReviewStatus = (
   entry: MobileSimulationResult['questionResults'][number],
@@ -104,6 +106,7 @@ export const SimulationRunScreen: React.FC = () => {
   const [reviewFilter, setReviewFilter] = React.useState<ReviewFilter>('all');
   const [expandedReviewMap, setExpandedReviewMap] = React.useState<Record<string, boolean>>({});
   const [focusedReviewIndex, setFocusedReviewIndex] = React.useState<number | null>(null);
+  const [reviewInsightMode, setReviewInsightMode] = React.useState<ReviewInsightMode>('none');
   const [showPalette, setShowPalette] = React.useState(false);
 
   const currentQuestion = seed.questions[currentIndex];
@@ -197,6 +200,7 @@ export const SimulationRunScreen: React.FC = () => {
       setReviewFilter('all');
       setExpandedReviewMap({});
       setFocusedReviewIndex(null);
+      setReviewInsightMode('none');
       setResult({
         score,
         total: seed.questions.length,
@@ -353,26 +357,75 @@ export const SimulationRunScreen: React.FC = () => {
                 );
               })}
             </View>
+
+            <View style={styles.reviewInsightActions}>
+              <Pressable
+                onPress={() => setReviewInsightMode((current) => (current === 'teacher' ? 'none' : 'teacher'))}
+                style={[styles.reviewActionButton, reviewInsightMode === 'teacher' && styles.reviewActionButtonPrimary]}
+              >
+                <Text style={[styles.reviewActionText, reviewInsightMode === 'teacher' && styles.reviewActionTextPrimary]}>
+                  Comentario do professor
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setReviewInsightMode((current) => (current === 'detailed' ? 'none' : 'detailed'))}
+                style={[styles.reviewActionButton, reviewInsightMode === 'detailed' && styles.reviewActionButtonPrimary]}
+              >
+                <Text style={[styles.reviewActionText, reviewInsightMode === 'detailed' && styles.reviewActionTextPrimary]}>
+                  Analise detalhada
+                </Text>
+              </Pressable>
+            </View>
+
+            {reviewInsightMode === 'teacher' ? (
+              <QuestionInsightPanel
+                title="Comentario do professor"
+                content={focusEntry.question.teacherComment}
+                emptyText="Comentario do professor ainda nao disponivel para esta questao."
+                variant="teacher"
+              />
+            ) : null}
+
+            {reviewInsightMode === 'detailed' ? (
+              <QuestionInsightPanel
+                title="Analise detalhada"
+                content={focusEntry.question.detailedComment}
+                emptyText="Analise detalhada ainda nao disponivel para esta questao."
+                variant="detailed"
+              />
+            ) : null}
           </View>
 
           <View style={styles.actionsRow}>
             <Pressable
               style={[styles.secondaryButton, focusedReviewIndex === 0 && styles.buttonDisabled]}
-              onPress={() => setFocusedReviewIndex((current) => Math.max(0, Number(current || 0) - 1))}
+              onPress={() => {
+                setFocusedReviewIndex((current) => Math.max(0, Number(current || 0) - 1));
+                setReviewInsightMode('none');
+              }}
               disabled={focusedReviewIndex === 0}
             >
               <Text style={styles.secondaryButtonText}>Anterior</Text>
             </Pressable>
             <Pressable
               style={[styles.secondaryButton, focusedReviewIndex === reviewRows.length - 1 && styles.buttonDisabled]}
-              onPress={() => setFocusedReviewIndex((current) => Math.min(reviewRows.length - 1, Number(current || 0) + 1))}
+              onPress={() => {
+                setFocusedReviewIndex((current) => Math.min(reviewRows.length - 1, Number(current || 0) + 1));
+                setReviewInsightMode('none');
+              }}
               disabled={focusedReviewIndex === reviewRows.length - 1}
             >
               <Text style={styles.secondaryButtonText}>Proxima</Text>
             </Pressable>
           </View>
 
-          <Pressable style={styles.mainButton} onPress={() => setFocusedReviewIndex(null)}>
+          <Pressable
+            style={styles.mainButton}
+            onPress={() => {
+              setFocusedReviewIndex(null);
+              setReviewInsightMode('none');
+            }}
+          >
             <Text style={styles.mainButtonText}>Voltar ao resumo</Text>
           </Pressable>
         </ScrollView>
@@ -470,7 +523,10 @@ export const SimulationRunScreen: React.FC = () => {
                     </Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => setFocusedReviewIndex(index)}
+                    onPress={() => {
+                      setFocusedReviewIndex(index);
+                      setReviewInsightMode('none');
+                    }}
                     style={[styles.reviewActionButton, styles.reviewActionButtonPrimary]}
                   >
                     <Text style={[styles.reviewActionText, styles.reviewActionTextPrimary]}>
@@ -1128,6 +1184,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   reviewRowActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reviewInsightActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
