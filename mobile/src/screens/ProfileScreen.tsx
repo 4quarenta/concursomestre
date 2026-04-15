@@ -10,8 +10,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '@/providers/AuthProvider';
+import { AppStackParamList } from '@/navigation/types';
 import { readApiErrorMessage } from '@/services/api/response';
 import { cardsService } from '@/services/billing/cardsService';
 import { formatMaskedCardLabelAscii } from '@/services/billing/cardDisplay';
@@ -257,6 +259,7 @@ const getCardExpiryState = (card?: SavedCard | null) => {
  */
 export const ProfileScreen: React.FC = () => {
   const { user, logout, isLoading, refreshProfile } = useAuth();
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const [cards, setCards] = React.useState<SavedCard[]>([]);
   const [transactions, setTransactions] = React.useState<MobileTransaction[]>([]);
   const [loadingCards, setLoadingCards] = React.useState(false);
@@ -346,6 +349,14 @@ export const ProfileScreen: React.FC = () => {
   const cycleSummaryDescription = activeSubscription
     ? `${subscriptionRemainingDays} dias restantes no ciclo atual.`
     : 'Sem ciclo de cobranca em andamento.';
+  const isElitePlan = subscriptionPlanName.toLowerCase().includes('elite');
+  const subscriptionCycleLabel = user?.subscription?.plan?.interval_unit === 'year'
+    ? 'Anual'
+    : user?.subscription?.plan?.interval_count === 3
+      ? 'Trimestral'
+      : user?.subscription?.plan?.interval_unit === 'month'
+        ? 'Mensal'
+        : 'Ciclo';
   const paymentIssueMessage = String(user?.paymentIssue?.message || '').trim();
   const paymentIssueCode = String(user?.paymentIssue?.type || user?.paymentIssue?.code || '').toLowerCase();
   const hasPaymentIssue = Boolean(paymentIssueMessage || paymentIssueCode);
@@ -721,6 +732,25 @@ export const ProfileScreen: React.FC = () => {
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Assinatura</Text>
+        <View style={styles.subscriptionBadgeRow}>
+          <View style={[styles.subscriptionBadge, activeSubscription ? styles.subscriptionBadgeActive : styles.subscriptionBadgeInactive]}>
+            <Text style={[styles.subscriptionBadgeText, activeSubscription ? styles.subscriptionBadgeTextActive : styles.subscriptionBadgeTextInactive]}>
+              {activeSubscription ? 'Assinatura ativa' : 'Assinatura inativa'}
+            </Text>
+          </View>
+          <View style={styles.subscriptionBadge}>
+            <Text style={styles.subscriptionBadgeText}>{subscriptionCycleLabel}</Text>
+          </View>
+          <Pressable
+            style={({ pressed }) => [styles.subscriptionPlanButton, pressed && styles.subscriptionPlanButtonPressed]}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Planos' })}
+          >
+            <Text style={styles.subscriptionPlanButtonText}>
+              {isElitePlan ? 'Gerenciar plano' : 'Upgrade'}
+            </Text>
+          </Pressable>
+        </View>
+
         <Text style={styles.label}>Nome</Text>
         <Text style={styles.value}>{user?.name || '-'}</Text>
 
@@ -1266,6 +1296,58 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
     textTransform: 'uppercase',
     marginBottom: 2,
+  },
+  subscriptionBadgeRow: {
+    marginTop: 2,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  subscriptionBadge: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 999,
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  subscriptionBadgeActive: {
+    borderColor: '#A7F3D0',
+    backgroundColor: '#ECFDF3',
+  },
+  subscriptionBadgeInactive: {
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  subscriptionBadgeText: {
+    color: '#475569',
+    fontSize: 9,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.35,
+  },
+  subscriptionBadgeTextActive: {
+    color: '#047857',
+  },
+  subscriptionBadgeTextInactive: {
+    color: '#475569',
+  },
+  subscriptionPlanButton: {
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  subscriptionPlanButtonPressed: {
+    opacity: 0.9,
+  },
+  subscriptionPlanButtonText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.35,
   },
   label: {
     marginTop: 8,
