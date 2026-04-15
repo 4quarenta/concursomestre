@@ -6,6 +6,14 @@ export interface SubjectStatistics {
   accuracyRate: number;
 }
 
+export interface StatisticsTimelinePoint {
+  label: string;
+  questions: number;
+  correct: number;
+  wrong: number;
+  timestamp?: number;
+}
+
 export interface UserStatistics {
   userId: string;
   totalQuestionsAnswered: number;
@@ -19,4 +27,5 @@ export interface UserStatistics {
   totalStudyTime: number;
   lastActivity: string;
   subjectBreakdown: SubjectStatistics[];
+  timeline: StatisticsTimelinePoint[];
 }

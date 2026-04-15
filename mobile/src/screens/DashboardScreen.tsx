@@ -36,6 +36,7 @@ const EMPTY_STATS: UserStatistics = {
   totalStudyTime: 0,
   lastActivity: '',
   subjectBreakdown: [],
+  timeline: [],
 };
 
 const clampPercent = (value: number) => {
@@ -90,6 +91,11 @@ export const DashboardScreen: React.FC = () => {
   const [error, setError] = React.useState<string | null>(null);
 
   const subjectTop5 = React.useMemo(() => stats.subjectBreakdown.slice(0, 5), [stats.subjectBreakdown]);
+  const timelineRows = React.useMemo(() => stats.timeline.slice(-7), [stats.timeline]);
+  const timelineMax = React.useMemo(
+    () => Math.max(1, ...timelineRows.map((row) => Number(row.questions || 0))),
+    [timelineRows],
+  );
   const today = React.useMemo(() => new Date(), []);
   const dailyMotivation = React.useMemo(() => getDailyMotivation(today), [today]);
   const formattedToday = React.useMemo(() => formatDashboardDate(today), [today]);
@@ -224,6 +230,30 @@ export const DashboardScreen: React.FC = () => {
           <Text style={styles.studyLabel}>Leitura</Text>
           <Text style={styles.studyValue}>{formatStudyDuration(stats.readingStudyTime)}</Text>
         </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Evolucao recente</Text>
+        {timelineRows.length === 0 ? (
+          <Text style={styles.emptyText}>
+            O timeline da API ainda nao veio preenchido para este usuario.
+          </Text>
+        ) : (
+          <View style={styles.timelineList}>
+            {timelineRows.map((row, index) => {
+              const widthPercent = clampPercent((Number(row.questions || 0) / timelineMax) * 100);
+              return (
+                <View key={`${row.label}-${index}`} style={styles.timelineRow}>
+                  <Text style={styles.timelineLabel}>{row.label}</Text>
+                  <View style={styles.timelineTrack}>
+                    <View style={[styles.timelineFill, { width: `${widthPercent}%` }]} />
+                  </View>
+                  <Text style={styles.timelineValue}>{row.questions}</Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       <View style={styles.card}>
@@ -441,6 +471,39 @@ const styles = StyleSheet.create({
   },
   subjectList: {
     gap: 8,
+  },
+  timelineList: {
+    gap: 10,
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timelineLabel: {
+    minWidth: 56,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  timelineTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  timelineFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: colors.primary,
+  },
+  timelineValue: {
+    minWidth: 22,
+    textAlign: 'right',
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
   },
   subjectRow: {
     gap: 6,

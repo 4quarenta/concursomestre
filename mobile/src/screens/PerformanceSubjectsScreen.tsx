@@ -31,6 +31,7 @@ const EMPTY_STATS: UserStatistics = {
   totalStudyTime: 0,
   lastActivity: '',
   subjectBreakdown: [],
+  timeline: [],
 };
 
 const clampPercent = (value: number) => {

@@ -24,6 +24,13 @@ export const statisticsService = {
       : Array.isArray(payload?.subject_breakdown)
         ? payload.subject_breakdown
         : [];
+    const timelineRows = Array.isArray(payload?.timeline)
+      ? payload.timeline
+      : Array.isArray(payload?.timelineData)
+        ? payload.timelineData
+        : Array.isArray(payload?.questionTimeline)
+          ? payload.questionTimeline
+          : [];
 
     return {
       userId: String(payload?.userId || payload?.user_id || userId),
@@ -43,6 +50,13 @@ export const statisticsService = {
         correctAnswers: toNumber(row?.correctAnswers ?? row?.correct_answers, 0),
         wrongAnswers: toNumber(row?.wrongAnswers ?? row?.wrong_answers, 0),
         accuracyRate: toNumber(row?.accuracyRate ?? row?.accuracy_rate, 0),
+      })),
+      timeline: timelineRows.map((row: any) => ({
+        label: String(row?.label || row?.date || row?.name || '--'),
+        questions: toNumber(row?.questions ?? row?.totalQuestions ?? row?.total_questions, 0),
+        correct: toNumber(row?.correct ?? row?.correctAnswers ?? row?.correct_answers, 0),
+        wrong: toNumber(row?.wrong ?? row?.wrongAnswers ?? row?.wrong_answers, 0),
+        timestamp: toNumber(row?.timestamp, 0) || undefined,
       })),
     };
   },
