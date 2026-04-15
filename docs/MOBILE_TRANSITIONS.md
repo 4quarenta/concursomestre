@@ -21,6 +21,29 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Simulados historico local com merge remoto
+
+- commit: `c274764 Add local fallback for mobile simulations history`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - fluxo web persiste simulados e exibe historico consolidado para o usuario
+- destino mobile:
+  - `mobile/src/services/simulations/simulationsService.ts`
+  - `mobile/src/screens/SimulationsScreen.tsx`
+  - `mobile/src/types/simulations.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - simulados finalizados no app passam a entrar em cache local persistente (AsyncStorage)
+  - listagem mobile agora combina dados remotos com historico local sem duplicar ids
+  - quando `simulationsList` responde vazio/404/instavel, o app usa fallback local e evita tela vazia apos novas provas
+  - historico passou a exibir badge de origem local e total de questoes quando disponivel
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - revisao detalhada ainda nao abre tela dedicada por questao com comentarios e notas.
+  - sincronizacao de historico local com endpoint oficial de detalhe ainda depende de contrato backend dedicado.
+
 ## 2026-04-14 - Simulados navegacao por paleta e finalizacao antecipada
 
 - commit: `8eb9773 Add mobile simulation navigation palette`
