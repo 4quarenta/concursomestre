@@ -45,6 +45,38 @@ const clampPercent = (value: number) => {
   return value;
 };
 
+const DAILY_MOTIVATIONS: string[] = [
+  'Seu foco de hoje constroi a aprovacao de amanha.',
+  'Cada questao resolvida reduz a distancia ate sua vaga.',
+  'Consistencia vence intensidade quando o projeto e longo.',
+  'Revise com calma: clareza vale mais que velocidade.',
+  'Pequenos blocos de estudo tambem mudam seu resultado final.',
+  'Disciplina diaria transforma inseguranca em preparo real.',
+  'Nao espere perfeicao para continuar: avance com metodo.',
+  'Erros de hoje viram acertos de prova quando voce revisa.',
+  'Seu ritmo importa mais que comparacoes com outras pessoas.',
+  'O proximo acerto comeca no proximo minuto de estudo.',
+];
+
+const getDayOfYear = (date: Date): number => {
+  const startOfYear = new Date(date.getFullYear(), 0, 0);
+  const diff = date.getTime() - startOfYear.getTime();
+  return Math.floor(diff / 86400000);
+};
+
+const getDailyMotivation = (date: Date): string => {
+  const dayIndex = (getDayOfYear(date) - 1) % DAILY_MOTIVATIONS.length;
+  return DAILY_MOTIVATIONS[dayIndex] || DAILY_MOTIVATIONS[0];
+};
+
+const formatDashboardDate = (date: Date): string => (
+  date.toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
+);
+
 /**
  * Dashboard mobile com estatisticas reais do usuario.
  * @since v1.0.0
@@ -58,6 +90,9 @@ export const DashboardScreen: React.FC = () => {
   const [error, setError] = React.useState<string | null>(null);
 
   const subjectTop5 = React.useMemo(() => stats.subjectBreakdown.slice(0, 5), [stats.subjectBreakdown]);
+  const today = React.useMemo(() => new Date(), []);
+  const dailyMotivation = React.useMemo(() => getDailyMotivation(today), [today]);
+  const formattedToday = React.useMemo(() => formatDashboardDate(today), [today]);
 
   const loadStats = React.useCallback(async (useRefresh = false) => {
     if (!user?.id) {
@@ -140,6 +175,14 @@ export const DashboardScreen: React.FC = () => {
         <Text style={styles.heroText}>
           Este painel usa dados reais de estudo para voce ajustar ritmo, revisao e foco.
         </Text>
+      </View>
+
+      <View style={styles.motivationCard}>
+        <View style={styles.motivationHeader}>
+          <Text style={styles.motivationEyebrow}>Motivacao diaria</Text>
+          <Text style={styles.motivationDate}>{formattedToday}</Text>
+        </View>
+        <Text style={styles.motivationQuote}>"{dailyMotivation}"</Text>
       </View>
 
       <View style={styles.kpiGrid}>
@@ -280,6 +323,39 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '600',
+  },
+  motivationCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    backgroundColor: '#EEF2FF',
+    padding: 14,
+    gap: 8,
+  },
+  motivationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  motivationEyebrow: {
+    color: colors.primaryDark,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  motivationDate: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  motivationQuote: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '700',
+    fontStyle: 'italic',
   },
   kpiGrid: {
     flexDirection: 'row',

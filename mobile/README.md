@@ -17,6 +17,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - tempo de estudo total / questoes / leitura
   - desempenho por materia (top 5)
   - detalhe completo de desempenho por materia
+  - motivacao diaria por data
 
 ## Fase 2 (em andamento)
 
