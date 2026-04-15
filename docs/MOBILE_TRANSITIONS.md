@@ -21,6 +21,26 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Dashboard KPIs sensiveis ao recorte temporal
+
+- commit: `2614626 Align mobile dashboard KPIs with selected range`
+- origem web/plataforma:
+  - `src/app/dashboard/page.tsx`
+  - cards principais refletem recorte ativo de analise no dashboard
+- destino mobile:
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - KPIs de questoes/acuracia no mobile passaram a usar o recorte de periodo quando a timeline estiver disponivel
+  - card de acuracia agora mostra acertos e erros do recorte selecionado
+  - quando timeline nao existe no payload, os KPIs mantem fallback para agregados globais sem quebrar a leitura
+  - o mesmo seletor de periodo da evolucao passou a orientar os numeros resumidos de topo
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - grafico avancado do dashboard web (estilo area chart) ainda nao foi migrado para o mobile.
+
 ## 2026-04-14 - Dashboard progresso de nivel (XP)
 
 - commit: `529245f Add level progress card to mobile dashboard`
