@@ -39,7 +39,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - toggle de renovacao automatica
   - redirecionamento seguro para URL retornada pelo backend
 - Modulos em leitura real:
-  - `Simulados` (listagem com merge remoto/local de historico)
+  - `Simulados` (listagem com merge remoto/local de historico + detalhe por tentativa)
   - `Ranking` (listagem + detalhe publico + envio de gabarito)
   - `Marketplace` (vitrine de materiais, detalhe publico, filtros, compra e abertura externa de arquivo)
 - Modulos beta com shell mobile:
@@ -60,6 +60,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - comentarios da comunidade e anotacoes pessoais disponiveis no modo de revisao em foco
   - persistencia da sessao via `simulationsCreate`
   - cache local do historico para fallback quando a listagem remota estiver indisponivel
+  - tela de detalhe de historico com revisao por questao para tentativas salvas
   - envio das respostas no endpoint oficial de questoes
 - Perfil mobile com billing Stripe:
   - listagem de cartoes do cofre
@@ -84,6 +85,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
 - `src/screens/*`: telas iniciais (dashboard, perfil e placeholders)
 - `src/screens/PlansScreen.tsx`: catalogo de planos no mobile
 - `src/screens/CheckoutScreen.tsx`: entrada de checkout mobile
+- `src/screens/SimulationDetailScreen.tsx`: detalhe de tentativa salva no historico
 - `src/services/plans/planService.ts`: fachada mobile de planos/checkout
 
 ## Como rodar

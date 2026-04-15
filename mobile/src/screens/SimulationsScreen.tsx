@@ -106,7 +106,12 @@ export const SimulationsScreen: React.FC = () => {
           </View>
         )}
         renderItem={({ item }) => (
-          <Pressable style={styles.card}>
+          <Pressable
+            style={styles.card}
+            onPress={() => navigation.navigate('SimulationDetail', {
+              simulationId: String(item.id),
+            })}
+          >
             <View style={styles.cardHeaderRow}>
               <Text style={styles.cardTitle}>{item.name || `Simulado ${item.id}`}</Text>
               {item.source === 'local' ? (
@@ -133,6 +138,7 @@ export const SimulationsScreen: React.FC = () => {
                 <Text style={styles.metaValue}>{item.questionCount}</Text>
               </View>
             ) : null}
+            <Text style={styles.detailHint}>Toque para abrir o detalhe</Text>
           </Pressable>
         )}
       />
@@ -248,6 +254,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
     fontWeight: '700',
+  },
+  detailHint: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   emptyCard: {
     borderWidth: 1,

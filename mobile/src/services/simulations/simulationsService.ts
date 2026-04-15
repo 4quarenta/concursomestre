@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '@/services/api/client';
 import { ENDPOINTS } from '@/services/api/endpoints';
 import { assertApiSuccess, readApiData, readApiErrorMessage } from '@/services/api/response';
-import type { SimulationListItem } from '@/types/simulations';
+import type { SimulationDetail, SimulationListItem } from '@/types/simulations';
 
 const LOCAL_SIMULATIONS_KEY = 'cm_simulations_history_v1';
 const LOCAL_SIMULATIONS_LIMIT = 120;
@@ -27,7 +27,10 @@ const parseTimestamp = (rawValue: unknown): number => {
   return 0;
 };
 
-const normalizeSimulationItem = (item: any): SimulationListItem | null => {
+const normalizeSimulationDetail = (
+  item: any,
+  preferredSource: 'remote' | 'local' = 'local',
+): SimulationDetail | null => {
   if (!item || typeof item !== 'object') return null;
 
   const resolvedId = String(item.id || item.simulationId || item.uuid || '').trim();
@@ -42,23 +45,46 @@ const normalizeSimulationItem = (item: any): SimulationListItem | null => {
     ?? (Array.isArray(item.questions) ? item.questions.length : undefined),
   );
 
+  const createdAt = item.createdAt ?? item.created_at ?? item.startTime ?? Date.now();
+  const updatedAt = item.updatedAt ?? item.updated_at ?? item.endTime ?? createdAt;
+
   return {
     id: resolvedId,
     name: String(item.name || item.title || 'Simulado mobile'),
     status: String(item.status || 'completed'),
     score: Number.isFinite(numericScore) ? numericScore : undefined,
     questionCount: Number.isFinite(numericQuestionCount) ? numericQuestionCount : undefined,
-    source: item.source === 'remote' ? 'remote' : 'local',
-    createdAt: item.createdAt ?? item.created_at ?? item.startTime ?? Date.now(),
-    updatedAt: item.updatedAt ?? item.updated_at ?? item.endTime ?? item.createdAt ?? Date.now(),
+    source: item.source === 'remote' ? 'remote' : preferredSource,
+    createdAt,
+    updatedAt,
+    config: item.config && typeof item.config === 'object' ? item.config : undefined,
+    questions: Array.isArray(item.questions) ? item.questions : undefined,
+    answers: item.answers && typeof item.answers === 'object' ? item.answers : undefined,
+    startTime: Number.isFinite(Number(item.startTime)) ? Number(item.startTime) : undefined,
+    endTime: Number.isFinite(Number(item.endTime)) ? Number(item.endTime) : undefined,
   };
 };
 
-const normalizeSimulationRows = (payload: unknown): SimulationListItem[] => {
+const toListItem = (detail: SimulationDetail): SimulationListItem => ({
+  id: detail.id,
+  name: detail.name,
+  status: detail.status,
+  score: detail.score,
+  questionCount: detail.questionCount,
+  source: detail.source,
+  createdAt: detail.createdAt,
+  updatedAt: detail.updatedAt,
+});
+
+const normalizeSimulationRows = (
+  payload: unknown,
+  preferredSource: 'remote' | 'local',
+): SimulationListItem[] => {
   const normalizeRows = (rows: unknown[]): SimulationListItem[] => (
     rows
-      .map((item) => normalizeSimulationItem(item))
-      .filter((item): item is SimulationListItem => item !== null)
+      .map((item) => normalizeSimulationDetail(item, preferredSource))
+      .filter((item): item is SimulationDetail => item !== null)
+      .map((item) => toListItem(item))
   );
 
   if (Array.isArray(payload)) {
@@ -84,7 +110,7 @@ const sortSimulationRows = (rows: SimulationListItem[]): SimulationListItem[] =>
   })
 );
 
-const readLocalRows = async (): Promise<SimulationListItem[]> => {
+const readLocalDetails = async (): Promise<SimulationDetail[]> => {
   const rawValue = await AsyncStorage.getItem(LOCAL_SIMULATIONS_KEY);
   if (!rawValue) return [];
 
@@ -94,15 +120,20 @@ const readLocalRows = async (): Promise<SimulationListItem[]> => {
 
     return sortSimulationRows(
       parsed
-        .map((item) => normalizeSimulationItem({ ...item, source: 'local' }))
-        .filter((item): item is SimulationListItem => item !== null),
-    );
+        .map((item) => normalizeSimulationDetail({ ...item, source: 'local' }, 'local'))
+        .filter((item): item is SimulationDetail => item !== null)
+        .map((item) => toListItem(item)),
+    ).map((item) => {
+      const original = parsed.find((entry: any) => String(entry?.id || entry?.simulationId || entry?.uuid || '') === String(item.id));
+      const detail = normalizeSimulationDetail({ ...original, ...item, source: 'local' }, 'local');
+      return detail || { ...item, source: 'local' };
+    });
   } catch {
     return [];
   }
 };
 
-const saveLocalRows = async (rows: SimulationListItem[]): Promise<void> => {
+const saveLocalDetails = async (rows: SimulationDetail[]): Promise<void> => {
   if (rows.length === 0) {
     await AsyncStorage.removeItem(LOCAL_SIMULATIONS_KEY);
     return;
@@ -110,14 +141,24 @@ const saveLocalRows = async (rows: SimulationListItem[]): Promise<void> => {
 
   await AsyncStorage.setItem(
     LOCAL_SIMULATIONS_KEY,
-    JSON.stringify(sortSimulationRows(rows).slice(0, LOCAL_SIMULATIONS_LIMIT)),
+    JSON.stringify(
+      sortSimulationRows(rows.map((item) => toListItem(item)))
+        .map((item) => rows.find((row) => String(row.id) === String(item.id)))
+        .filter((item): item is SimulationDetail => Boolean(item))
+        .slice(0, LOCAL_SIMULATIONS_LIMIT),
+    ),
   );
 };
 
+const readLocalRows = async (): Promise<SimulationListItem[]> => {
+  const details = await readLocalDetails();
+  return sortSimulationRows(details.map((item) => toListItem(item)));
+};
+
 const appendLocalSimulation = async (simulation: Record<string, any>, resolvedId: string): Promise<void> => {
-  const existingRows = await readLocalRows();
+  const existingRows = await readLocalDetails();
   const fallbackNow = Date.now();
-  const nextItem = normalizeSimulationItem({
+  const nextItem = normalizeSimulationDetail({
     id: resolvedId,
     name: simulation?.config?.name || simulation?.name || 'Simulado mobile',
     status: simulation?.status || 'completed',
@@ -125,8 +166,13 @@ const appendLocalSimulation = async (simulation: Record<string, any>, resolvedId
     questionCount: simulation?.config?.questionCount || simulation?.questions?.length,
     createdAt: simulation?.startTime || fallbackNow,
     updatedAt: simulation?.endTime || fallbackNow,
+    config: simulation?.config,
+    questions: simulation?.questions,
+    answers: simulation?.answers,
+    startTime: simulation?.startTime,
+    endTime: simulation?.endTime,
     source: 'local',
-  });
+  }, 'local');
 
   if (!nextItem) return;
 
@@ -135,7 +181,7 @@ const appendLocalSimulation = async (simulation: Record<string, any>, resolvedId
     ...existingRows.filter((item) => String(item.id) !== String(nextItem.id)),
   ];
 
-  await saveLocalRows(nextRows);
+  await saveLocalDetails(nextRows);
 };
 
 const mergeRows = (remoteRows: SimulationListItem[], localRows: SimulationListItem[]): SimulationListItem[] => {
@@ -171,7 +217,7 @@ export const simulationsService = {
     try {
       const response: any = await apiClient.get<any>(ENDPOINTS.simulations.list);
       const payload = readApiData<any>(response, []);
-      const remoteRows = normalizeSimulationRows(payload).map((item) => ({ ...item, source: 'remote' as const }));
+      const remoteRows = normalizeSimulationRows(payload, 'remote').map((item) => ({ ...item, source: 'remote' as const }));
 
       if (remoteRows.length === 0) {
         return localRows;
@@ -188,6 +234,26 @@ export const simulationsService = {
       }
 
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel carregar simulados.'));
+    }
+  },
+
+  async getDetail(id: string): Promise<SimulationDetail | null> {
+    const targetId = String(id).trim();
+    if (!targetId) return null;
+
+    const localRows = await readLocalDetails();
+    const localMatch = localRows.find((item) => String(item.id) === targetId);
+    if (localMatch) return localMatch;
+
+    try {
+      const response: any = await apiClient.get<any>(ENDPOINTS.simulations.list);
+      const payload = readApiData<any>(response, []);
+      const remoteRows = normalizeSimulationRows(payload, 'remote');
+      const remoteMatch = remoteRows.find((item) => String(item.id) === targetId);
+      return remoteMatch ? { ...remoteMatch, source: 'remote' } : null;
+    } catch (error: any) {
+      if (error?.response?.status === 404) return null;
+      throw new Error(readApiErrorMessage(error, 'Nao foi possivel carregar o detalhe do simulado.'));
     }
   },
 

@@ -8,6 +8,7 @@ import { MainTabs } from '@/navigation/MainTabs';
 import { AppStackParamList } from '@/navigation/types';
 import { CheckoutScreen } from '@/screens/CheckoutScreen';
 import { SimulationConfigScreen } from '@/screens/SimulationConfigScreen';
+import { SimulationDetailScreen } from '@/screens/SimulationDetailScreen';
 import { SimulationRunScreen } from '@/screens/SimulationRunScreen';
 import { NotificationsScreen } from '@/screens/NotificationsScreen';
 import { RankingDetailScreen } from '@/screens/RankingDetailScreen';
@@ -41,6 +42,7 @@ const linking: LinkingOptions<AppStackParamList> = {
       Notifications: 'notificacoes',
       RankingDetail: 'ranking/:rankingId',
       SimulationConfig: 'simulados/novo',
+      SimulationDetail: 'simulados/historico/:simulationId',
       PerformanceSubjects: 'desempenho/materias',
       MaterialDetail: 'material/:materialId',
       AnnotatedLaws: 'lei-comentada',
@@ -83,6 +85,11 @@ export const AppNavigator: React.FC = () => {
             name="SimulationRun"
             component={SimulationRunScreen}
             options={{ title: 'Simulado em andamento' }}
+          />
+          <Stack.Screen
+            name="SimulationDetail"
+            component={SimulationDetailScreen}
+            options={{ title: 'Detalhe do simulado' }}
           />
           <Stack.Screen
             name="Notifications"

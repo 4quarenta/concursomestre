@@ -25,6 +25,9 @@ export type AppStackParamList = {
   SimulationRun: {
     seed: MobileSimulationSeed;
   };
+  SimulationDetail: {
+    simulationId: string;
+  };
   Notifications: undefined;
   RankingDetail: {
     rankingId: string;
