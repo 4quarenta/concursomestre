@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '@/providers/AuthProvider';
+import { readApiErrorMessage } from '@/services/api/response';
 import { cardsService } from '@/services/billing/cardsService';
 import { formatMaskedCardLabelAscii } from '@/services/billing/cardDisplay';
 import { subscriptionsService } from '@/services/subscriptions/subscriptionsService';
@@ -140,6 +141,19 @@ const resolveTransactionMethodLabel = (tx: MobileTransaction): string => {
   return 'Nao informado';
 };
 
+const canRequestRefundForStatus = (status?: string): boolean => {
+  const normalized = String(status || '').toLowerCase();
+  return normalized === 'approved' || normalized === 'completed';
+};
+
+const canCancelRefundForStatus = (status?: string): boolean => (
+  String(status || '').toLowerCase() === 'refund_requested'
+);
+
+const resolveTransactionInvoiceUrl = (tx: MobileTransaction): string => (
+  String(tx.invoicePdfUrl || tx.hostedInvoiceUrl || '').trim()
+);
+
 const getTransactionStatusMeta = (status?: string) => {
   const normalized = String(status || '').toLowerCase();
 
@@ -226,6 +240,8 @@ export const ProfileScreen: React.FC = () => {
   const [transactionsError, setTransactionsError] = React.useState<string | null>(null);
   const [updatingCardId, setUpdatingCardId] = React.useState<string | null>(null);
   const [openingPortal, setOpeningPortal] = React.useState(false);
+  const [updatingRenewal, setUpdatingRenewal] = React.useState(false);
+  const [updatingRefundId, setUpdatingRefundId] = React.useState<string | null>(null);
 
   const activeSubscription = hasActiveSubscriptionStatus(user?.subscription?.status);
   const renewalEnabled = toBoolean(user?.subscription?.auto_renew);
@@ -347,6 +363,121 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  const handleRenewalToggle = async () => {
+    if (!activeSubscription) {
+      Alert.alert('Assinatura inativa', 'Ative um plano para usar a renovacao automatica.');
+      return;
+    }
+
+    const nextAutoRenew = !renewalEnabled;
+    setUpdatingRenewal(true);
+    try {
+      const result = await subscriptionsService.updateRenewal(nextAutoRenew);
+      Alert.alert(
+        'Renovacao atualizada',
+        result.message || (nextAutoRenew ? 'Renovacao automatica ativada.' : 'Renovacao automatica desativada.'),
+      );
+      await refreshProfile();
+    } catch (error: any) {
+      Alert.alert(
+        'Erro',
+        readApiErrorMessage(error, 'Nao foi possivel atualizar a renovacao automatica.'),
+      );
+    } finally {
+      setUpdatingRenewal(false);
+    }
+  };
+
+  const handleOpenInvoice = async (transaction: MobileTransaction) => {
+    const invoiceUrl = resolveTransactionInvoiceUrl(transaction);
+    if (!invoiceUrl) {
+      Alert.alert('Fatura indisponivel', 'Esta transacao nao possui URL de fatura no momento.');
+      return;
+    }
+
+    try {
+      const canOpen = await Linking.canOpenURL(invoiceUrl);
+      if (!canOpen) {
+        throw new Error('Nao foi possivel abrir a fatura neste dispositivo.');
+      }
+
+      await Linking.openURL(invoiceUrl);
+    } catch (error: any) {
+      Alert.alert('Erro', readApiErrorMessage(error, 'Nao foi possivel abrir a fatura agora.'));
+    }
+  };
+
+  const handleRequestRefund = (transaction: MobileTransaction) => {
+    const transactionId = String(transaction.id || '').trim();
+    if (!transactionId) {
+      Alert.alert('Transacao invalida', 'Nao foi possivel identificar esta transacao.');
+      return;
+    }
+
+    Alert.alert(
+      'Solicitar reembolso',
+      'Deseja abrir uma solicitacao de reembolso para esta transacao?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Solicitar',
+          onPress: async () => {
+            setUpdatingRefundId(transactionId);
+            try {
+              const result = await transactionsService.requestRefund(
+                transactionId,
+                'Solicitacao via app mobile',
+              );
+              Alert.alert('Solicitacao enviada', result.message || 'Reembolso solicitado com sucesso.');
+              await loadTransactions();
+              await refreshProfile();
+            } catch (error: any) {
+              Alert.alert('Erro', readApiErrorMessage(error, 'Nao foi possivel solicitar o reembolso.'));
+            } finally {
+              setUpdatingRefundId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleCancelRefundRequest = (transaction: MobileTransaction) => {
+    const transactionId = String(transaction.id || '').trim();
+    if (!transactionId) {
+      Alert.alert('Transacao invalida', 'Nao foi possivel identificar esta transacao.');
+      return;
+    }
+
+    Alert.alert(
+      'Cancelar reembolso',
+      'Deseja realmente cancelar esta solicitacao de reembolso?',
+      [
+        { text: 'Voltar', style: 'cancel' },
+        {
+          text: 'Cancelar solicitacao',
+          style: 'destructive',
+          onPress: async () => {
+            setUpdatingRefundId(transactionId);
+            try {
+              const result = await transactionsService.cancelRefundRequest(transactionId);
+              Alert.alert('Solicitacao cancelada', result.message || 'Solicitacao de reembolso cancelada.');
+              await loadTransactions();
+              await refreshProfile();
+            } catch (error: any) {
+              Alert.alert(
+                'Erro',
+                readApiErrorMessage(error, 'Nao foi possivel cancelar a solicitacao de reembolso.'),
+              );
+            } finally {
+              setUpdatingRefundId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   useFocusEffect(
     React.useCallback(() => {
       void refreshProfile();
@@ -381,6 +512,25 @@ export const ProfileScreen: React.FC = () => {
 
         <Text style={styles.label}>Renovacao automatica</Text>
         <Text style={styles.value}>{renewalEnabled ? 'Ativada' : 'Desativada'}</Text>
+        {activeSubscription ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.renewalButton,
+              pressed && !updatingRenewal && styles.renewalButtonPressed,
+              updatingRenewal && styles.renewalButtonDisabled,
+            ]}
+            onPress={() => void handleRenewalToggle()}
+            disabled={updatingRenewal}
+          >
+            {updatingRenewal ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.renewalButtonText}>
+                {renewalEnabled ? 'Desativar renovacao' : 'Ativar renovacao'}
+              </Text>
+            )}
+          </Pressable>
+        ) : null}
 
         <Text style={styles.label}>Proxima cobranca</Text>
         <Text style={styles.value}>{formatDate(user?.subscription?.next_billing_at || user?.billing?.nextBilling)}</Text>
@@ -522,6 +672,11 @@ export const ProfileScreen: React.FC = () => {
               const methodLabel = resolveTransactionMethodLabel(transaction);
               const amountLabel = formatCurrency(transaction.amount || 0);
               const eventAt = transaction.updatedAt || transaction.createdAt || transaction.timestamp;
+              const transactionId = String(transaction.id || '--');
+              const canRequestRefund = canRequestRefundForStatus(transaction.status);
+              const canCancelRefund = canCancelRefundForStatus(transaction.status);
+              const hasInvoice = Boolean(resolveTransactionInvoiceUrl(transaction));
+              const isRefundMutationRunning = updatingRefundId === String(transaction.id || '');
 
               return (
                 <View key={String(transaction.id)} style={styles.transactionRow}>
@@ -552,7 +707,56 @@ export const ProfileScreen: React.FC = () => {
                     <Text style={styles.transactionDate}>{formatDateTime(eventAt)}</Text>
                   </View>
 
-                  <Text style={styles.transactionId}>ID: {String(transaction.id || '--')}</Text>
+                  {!!transaction.providerRefundId && (
+                    <Text style={styles.transactionRefundId}>
+                      Refund: {transaction.providerRefundId}
+                    </Text>
+                  )}
+
+                  <View style={styles.transactionActions}>
+                    {hasInvoice ? (
+                      <Pressable
+                        style={styles.transactionActionButton}
+                        onPress={() => void handleOpenInvoice(transaction)}
+                      >
+                        <Text style={styles.transactionActionText}>Fatura</Text>
+                      </Pressable>
+                    ) : null}
+
+                    {canRequestRefund ? (
+                      <Pressable
+                        style={[styles.transactionActionButton, styles.transactionActionWarn]}
+                        onPress={() => handleRequestRefund(transaction)}
+                        disabled={isRefundMutationRunning}
+                      >
+                        {isRefundMutationRunning ? (
+                          <ActivityIndicator size="small" color="#B45309" />
+                        ) : (
+                          <Text style={[styles.transactionActionText, styles.transactionActionWarnText]}>
+                            Solicitar reembolso
+                          </Text>
+                        )}
+                      </Pressable>
+                    ) : null}
+
+                    {canCancelRefund ? (
+                      <Pressable
+                        style={[styles.transactionActionButton, styles.transactionActionDanger]}
+                        onPress={() => handleCancelRefundRequest(transaction)}
+                        disabled={isRefundMutationRunning}
+                      >
+                        {isRefundMutationRunning ? (
+                          <ActivityIndicator size="small" color={colors.danger} />
+                        ) : (
+                          <Text style={[styles.transactionActionText, styles.transactionActionDangerText]}>
+                            Cancelar reembolso
+                          </Text>
+                        )}
+                      </Pressable>
+                    ) : null}
+                  </View>
+
+                  <Text style={styles.transactionId}>ID: {transactionId}</Text>
                 </View>
               );
             })}
@@ -618,6 +822,29 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
     fontWeight: '700',
+  },
+  renewalButton: {
+    marginTop: 8,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+  },
+  renewalButtonPressed: {
+    opacity: 0.92,
+  },
+  renewalButtonDisabled: {
+    opacity: 0.65,
+  },
+  renewalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   secondaryButton: {
     marginTop: 10,
@@ -881,6 +1108,48 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 10,
     fontWeight: '700',
+  },
+  transactionRefundId: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  transactionActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  transactionActionButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    minHeight: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transactionActionText: {
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  transactionActionWarn: {
+    borderColor: '#FCD34D',
+    backgroundColor: '#FFFBEB',
+  },
+  transactionActionWarnText: {
+    color: '#B45309',
+  },
+  transactionActionDanger: {
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  transactionActionDangerText: {
+    color: colors.danger,
   },
   logoutButton: {
     marginTop: 6,

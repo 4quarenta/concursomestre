@@ -30,6 +30,17 @@ export interface MobileTransaction {
   payment_method?: string;
   paymentMethodType?: string;
   method?: string;
+  providerTransactionId?: string;
+  referenceId?: string;
+  providerTransactionLabel?: string;
+  providerRefundId?: string;
+  invoicePdfUrl?: string;
+  hostedInvoiceUrl?: string;
+  installmentCount?: number;
+  installmentNumber?: number;
+  scheduleLabel?: string;
+  dateTimeFormatted?: string;
+  dueDate?: string | number;
 }
 
 export interface TransactionListParams {

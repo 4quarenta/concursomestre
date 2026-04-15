@@ -17,6 +17,34 @@ export const subscriptionsService = {
     }
     return { url };
   },
+
+  async updateRenewal(autoRenew: boolean): Promise<{ autoRenew: boolean; message?: string }> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.subscriptions.updateRenewal, {
+      auto_renew: autoRenew,
+    });
+
+    const envelope = assertApiSuccess(response, 'Nao foi possivel atualizar a renovacao automatica.');
+    const payload = readApiData<any>(response, {});
+    const resolvedAutoRenew = typeof payload?.auto_renew === 'boolean'
+      ? payload.auto_renew
+      : typeof response?.auto_renew === 'boolean'
+        ? response.auto_renew
+        : autoRenew;
+
+    return {
+      autoRenew: resolvedAutoRenew,
+      message: payload?.message || envelope.message || response?.message,
+    };
+  },
+
+  async cancelRefundRequest(): Promise<{ message?: string }> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.subscriptions.cancelRefund, {});
+    const envelope = assertApiSuccess(response, 'Nao foi possivel cancelar a solicitacao de reembolso.');
+    const payload = readApiData<any>(response, {});
+    return {
+      message: payload?.message || envelope.message || response?.message,
+    };
+  },
 };
 
 export default subscriptionsService;

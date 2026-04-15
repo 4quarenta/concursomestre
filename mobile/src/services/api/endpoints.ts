@@ -66,10 +66,13 @@ export const ENDPOINTS = {
     finalizeStripeSubscription: 'subscriptions/finalize_stripe_subscription.php',
     validateCoupon: 'subscriptions/validate_coupon.php',
     createStripePortal: 'subscriptions/create_stripe_portal.php',
+    updateRenewal: 'subscriptions/update_renewal.php',
+    cancelRefund: 'subscriptions/cancel_refund.php',
   },
   transactions: {
     list: 'transactionsList',
     create: 'transactions/create.php',
+    refund: 'transactions/refund.php',
   },
   statistics: {
     user: 'statistics/user',
