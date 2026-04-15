@@ -39,7 +39,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - toggle de renovacao automatica
   - redirecionamento seguro para URL retornada pelo backend
 - Modulos em leitura real:
-  - `Simulados` (listagem)
+  - `Simulados` (listagem com merge remoto/local de historico)
   - `Ranking` (listagem + detalhe publico + envio de gabarito)
   - `Marketplace` (vitrine de materiais, detalhe publico, filtros, compra e abertura externa de arquivo)
 - Modulos beta com shell mobile:
@@ -56,6 +56,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - resultado detalhado com revisao por questao, filtros por status e resumo de acertos/erros/em branco
   - revisao expandida de alternativas com destaque de gabarito e resposta marcada
   - persistencia da sessao via `simulationsCreate`
+  - cache local do historico para fallback quando a listagem remota estiver indisponivel
   - envio das respostas no endpoint oficial de questoes
 - Perfil mobile com billing Stripe:
   - listagem de cartoes do cofre

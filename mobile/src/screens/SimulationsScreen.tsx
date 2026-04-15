@@ -89,7 +89,7 @@ export const SimulationsScreen: React.FC = () => {
             <View style={styles.headerCard}>
               <Text style={styles.eyebrow}>Simulados</Text>
               <Text style={styles.title}>Historico de simulados</Text>
-              <Text style={styles.description}>Lista sincronizada com sua conta na plataforma.</Text>
+              <Text style={styles.description}>Lista sincronizada com sua conta e fallback local do app.</Text>
             </View>
             <Pressable
               style={styles.startButton}
@@ -107,7 +107,14 @@ export const SimulationsScreen: React.FC = () => {
         )}
         renderItem={({ item }) => (
           <Pressable style={styles.card}>
-            <Text style={styles.cardTitle}>{item.name || `Simulado ${item.id}`}</Text>
+            <View style={styles.cardHeaderRow}>
+              <Text style={styles.cardTitle}>{item.name || `Simulado ${item.id}`}</Text>
+              {item.source === 'local' ? (
+                <View style={styles.localBadge}>
+                  <Text style={styles.localBadgeText}>Local</Text>
+                </View>
+              ) : null}
+            </View>
             <View style={styles.metaRow}>
               <Text style={styles.metaLabel}>Status: </Text>
               <Text style={styles.metaValue}>{item.status || 'nao informado'}</Text>
@@ -120,6 +127,12 @@ export const SimulationsScreen: React.FC = () => {
               <Text style={styles.metaLabel}>Atualizado: </Text>
               <Text style={styles.metaValue}>{formatDate(item.updatedAt || item.createdAt)}</Text>
             </View>
+            {item.questionCount ? (
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Questoes: </Text>
+                <Text style={styles.metaValue}>{item.questionCount}</Text>
+              </View>
+            ) : null}
           </Pressable>
         )}
       />
@@ -193,10 +206,32 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     gap: 6,
   },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   cardTitle: {
+    flex: 1,
     color: colors.text,
     fontSize: 17,
     fontWeight: '900',
+  },
+  localBadge: {
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    borderRadius: 999,
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  localBadgeText: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   metaRow: {
     flexDirection: 'row',
