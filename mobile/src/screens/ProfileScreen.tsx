@@ -58,6 +58,17 @@ const formatDateTime = (rawValue?: string | number): string => {
   return parsed.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 };
 
+const getSubscriptionDaysSinceStart = (rawValue?: string | number): number | null => {
+  const start = parseDate(rawValue);
+  if (!start) return null;
+
+  const now = Date.now();
+  const diffMs = now - start.getTime();
+  if (diffMs < 0) return 0;
+
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000));
+};
+
 const formatCurrency = (value: number | string): string => {
   const amount = typeof value === 'number' ? value : Number(value || 0);
   return new Intl.NumberFormat('pt-BR', {
@@ -242,9 +253,14 @@ export const ProfileScreen: React.FC = () => {
   const [openingPortal, setOpeningPortal] = React.useState(false);
   const [updatingRenewal, setUpdatingRenewal] = React.useState(false);
   const [updatingRefundId, setUpdatingRefundId] = React.useState<string | null>(null);
+  const [updatingSubscriptionAction, setUpdatingSubscriptionAction] = React.useState(false);
 
   const activeSubscription = hasActiveSubscriptionStatus(user?.subscription?.status);
   const renewalEnabled = toBoolean(user?.subscription?.auto_renew);
+  const cancelAtPeriodEnd = toBoolean(user?.subscription?.cancel_at_period_end);
+  const subscriptionCancelPending = activeSubscription && cancelAtPeriodEnd;
+  const subscriptionDaysSinceStart = getSubscriptionDaysSinceStart(user?.subscription?.current_period_start);
+  const withinRefundWindow = subscriptionDaysSinceStart !== null && subscriptionDaysSinceStart <= 7;
   const subscriptionPlanName = user?.subscription?.plan?.name || user?.plan || 'Gratuito';
 
   const primaryCard = React.useMemo(
@@ -388,6 +404,61 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  const handleCancelSubscription = () => {
+    if (!activeSubscription) {
+      Alert.alert('Assinatura inativa', 'Nao existe assinatura ativa para cancelar.');
+      return;
+    }
+
+    Alert.alert(
+      'Cancelar assinatura',
+      withinRefundWindow
+        ? 'Voce ainda esta no periodo de garantia. Deseja seguir com o cancelamento?'
+        : 'Deseja cancelar a assinatura ao final do ciclo atual?',
+      [
+        { text: 'Voltar', style: 'cancel' },
+        {
+          text: 'Confirmar',
+          style: 'destructive',
+          onPress: async () => {
+            setUpdatingSubscriptionAction(true);
+            try {
+              const reason = withinRefundWindow ? 'arrependimento' : 'user_request';
+              const result = await subscriptionsService.cancelSubscription(reason, 'Solicitacao via app mobile');
+              Alert.alert(
+                'Solicitacao enviada',
+                result.message || 'Cancelamento registrado com sucesso.',
+              );
+              await refreshProfile();
+              await loadTransactions();
+            } catch (error: any) {
+              Alert.alert('Erro', readApiErrorMessage(error, 'Nao foi possivel cancelar a assinatura.'));
+            } finally {
+              setUpdatingSubscriptionAction(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleUndoCancellation = async () => {
+    setUpdatingSubscriptionAction(true);
+    try {
+      const result = await subscriptionsService.undoCancellationRequest();
+      Alert.alert(
+        'Assinatura reativada',
+        result.message || 'Cancelamento revertido com sucesso.',
+      );
+      await refreshProfile();
+      await loadTransactions();
+    } catch (error: any) {
+      Alert.alert('Erro', readApiErrorMessage(error, 'Nao foi possivel reverter o cancelamento.'));
+    } finally {
+      setUpdatingSubscriptionAction(false);
+    }
+  };
+
   const handleOpenInvoice = async (transaction: MobileTransaction) => {
     const invoiceUrl = resolveTransactionInvoiceUrl(transaction);
     if (!invoiceUrl) {
@@ -520,7 +591,7 @@ export const ProfileScreen: React.FC = () => {
               updatingRenewal && styles.renewalButtonDisabled,
             ]}
             onPress={() => void handleRenewalToggle()}
-            disabled={updatingRenewal}
+            disabled={updatingRenewal || updatingSubscriptionAction}
           >
             {updatingRenewal ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -530,6 +601,48 @@ export const ProfileScreen: React.FC = () => {
               </Text>
             )}
           </Pressable>
+        ) : null}
+
+        <Text style={styles.label}>Cancelamento</Text>
+        <Text style={styles.value}>
+          {subscriptionCancelPending ? 'Cancelamento agendado para o fim do ciclo' : 'Sem solicitacao pendente'}
+        </Text>
+        {activeSubscription ? (
+          subscriptionCancelPending ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.undoCancelButton,
+                pressed && !updatingSubscriptionAction && styles.undoCancelButtonPressed,
+                updatingSubscriptionAction && styles.undoCancelButtonDisabled,
+              ]}
+              onPress={() => void handleUndoCancellation()}
+              disabled={updatingSubscriptionAction}
+            >
+              {updatingSubscriptionAction ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.undoCancelButtonText}>Desfazer cancelamento</Text>
+              )}
+            </Pressable>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [
+                styles.cancelButton,
+                pressed && !updatingSubscriptionAction && styles.cancelButtonPressed,
+                updatingSubscriptionAction && styles.cancelButtonDisabled,
+              ]}
+              onPress={handleCancelSubscription}
+              disabled={updatingSubscriptionAction}
+            >
+              {updatingSubscriptionAction ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.cancelButtonText}>
+                  {withinRefundWindow ? 'Cancelar e solicitar reembolso' : 'Cancelar ao fim do ciclo'}
+                </Text>
+              )}
+            </Pressable>
+          )
         ) : null}
 
         <Text style={styles.label}>Proxima cobranca</Text>
@@ -845,6 +958,52 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  cancelButton: {
+    marginTop: 8,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+  },
+  cancelButtonPressed: {
+    opacity: 0.92,
+  },
+  cancelButtonDisabled: {
+    opacity: 0.65,
+  },
+  cancelButtonText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.45,
+  },
+  undoCancelButton: {
+    marginTop: 8,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+  },
+  undoCancelButtonPressed: {
+    opacity: 0.92,
+  },
+  undoCancelButtonDisabled: {
+    opacity: 0.65,
+  },
+  undoCancelButtonText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.45,
   },
   secondaryButton: {
     marginTop: 10,

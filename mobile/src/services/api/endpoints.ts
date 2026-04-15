@@ -67,7 +67,9 @@ export const ENDPOINTS = {
     validateCoupon: 'subscriptions/validate_coupon.php',
     createStripePortal: 'subscriptions/create_stripe_portal.php',
     updateRenewal: 'subscriptions/update_renewal.php',
+    cancel: 'subscriptions/cancel.php',
     cancelRefund: 'subscriptions/cancel_refund.php',
+    undoCancel: 'subscriptions/undo_cancel.php',
   },
   transactions: {
     list: 'transactionsList',

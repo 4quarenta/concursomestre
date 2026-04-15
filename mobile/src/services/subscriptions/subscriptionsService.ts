@@ -45,6 +45,27 @@ export const subscriptionsService = {
       message: payload?.message || envelope.message || response?.message,
     };
   },
+
+  async cancelSubscription(reason?: string, details?: string): Promise<{ message?: string }> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.subscriptions.cancel, {
+      reason,
+      details,
+    });
+    const envelope = assertApiSuccess(response, 'Nao foi possivel cancelar a assinatura.');
+    const payload = readApiData<any>(response, {});
+    return {
+      message: payload?.message || envelope.message || response?.message,
+    };
+  },
+
+  async undoCancellationRequest(): Promise<{ message?: string }> {
+    const response: any = await apiClient.post<any>(ENDPOINTS.subscriptions.undoCancel, {});
+    const envelope = assertApiSuccess(response, 'Nao foi possivel reativar a assinatura.');
+    const payload = readApiData<any>(response, {});
+    return {
+      message: payload?.message || envelope.message || response?.message,
+    };
+  },
 };
 
 export default subscriptionsService;
