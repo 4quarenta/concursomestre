@@ -21,6 +21,39 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Raio-X da banca no mobile
+
+- commit: `938d312 Extract mobile bank analysis module with feature-flag gate`
+- origem web/plataforma:
+  - `src/app/bank-analysis/page.tsx`
+  - `src/services/bank-analysis/bankAnalysisService.ts`
+  - endpoint `statistics/xray.php`
+  - feature flag `xRayEnabled`
+- destino mobile:
+  - `mobile/src/types/bankAnalysis.ts`
+  - `mobile/src/services/bank-analysis/bankAnalysisService.ts`
+  - `mobile/src/screens/BankAnalysisScreen.tsx`
+  - `mobile/src/navigation/types.ts`
+  - `mobile/src/navigation/AppNavigator.tsx`
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - `mobile/src/screens/NotificationsScreen.tsx`
+  - `mobile/src/services/api/endpoints.ts`
+  - `mobile/src/types/system.ts`
+  - `mobile/src/services/system/systemSettingsService.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - modulo Raio-X passou a existir no app com leitura real do endpoint oficial de xray por banca/cargo/periodo
+  - rota stack e deep link interno `concursomestre://x-ray` foram adicionados no mobile
+  - dashboard ganhou atalho direto para o Raio-X
+  - notificacoes passaram a abrir o modulo quando o destino aponta para `x-ray`/`raio-x`
+  - gate por feature flag `xRayEnabled` foi conectado ao bootstrap de `settings.php` com fallback seguro
+  - quando o modulo estiver desativado, a navegacao exibe fallback explicito de indisponibilidade
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - visualizacoes graficas avancadas da tela web de Raio-X (charts dedicados e blocos enriquecidos) ainda nao foram totalmente replicadas no mobile.
+
 ## 2026-04-14 - Feature flags beta no bootstrap mobile
 
 - commit: `1e04da0 Wire mobile beta modules to system feature flags`
