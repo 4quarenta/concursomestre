@@ -46,6 +46,9 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - cupom
   - modo de cobranca Stripe por ciclo (1x, 3x ou 12x sem juros conforme plano)
   - toggle de renovacao automatica
+  - validacao de requisitos antes do pagamento (nome, CPF, endereco e e-mail confirmado)
+  - formulario inline para atualizar dados de checkout direto no app
+  - reenvio do e-mail de confirmacao quando a conta estiver pendente
   - envio de `billing_mode` e `installment_count` no checkout hospedado e no fluxo com cartao salvo
   - redirecionamento seguro para URL retornada pelo backend
 - Modulos em leitura real:

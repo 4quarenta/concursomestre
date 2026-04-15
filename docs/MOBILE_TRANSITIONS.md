@@ -21,6 +21,34 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Requisitos de perfil no checkout mobile
+
+- commit: `1a6f20a Add mobile checkout requirements and profile sync`
+- origem web/plataforma:
+  - `src/app/checkout/page.tsx`
+  - `src/providers/AuthProvider.tsx`
+  - `src/services/auth/accountService.ts`
+  - `src/services/auth/authFlowService.ts`
+  - endpoints `users/update.php` e `auth/resend-confirmation.php`
+- destino mobile:
+  - `mobile/src/screens/CheckoutScreen.tsx`
+  - `mobile/src/providers/AuthProvider.tsx`
+  - `mobile/src/services/auth/accountService.ts`
+  - `mobile/src/services/auth/authFlowService.ts`
+  - `mobile/src/types/auth.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - checkout mobile agora bloqueia a conclusao do pagamento quando faltarem requisitos basicos de perfil
+  - app passou a validar nome, CPF, CEP/logradouro/numero/bairro/cidade/UF e confirmacao de e-mail antes da compra
+  - checkout ganhou formulario inline para salvar dados obrigatorios de perfil sem sair da tela
+  - contexto de autenticacao mobile ganhou acao `updateUser` com persistencia no endpoint oficial `users/update.php` e rollback otimista em caso de erro
+  - fluxo mobile passou a suportar reenvio de confirmacao de e-mail via endpoint oficial `auth/resend-confirmation.php`
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - o modal rico de requisitos do checkout web (com estado dedicado em camada separada) ainda nao foi replicado 1:1 no mobile; o app usa card inline na propria tela de checkout.
+
 ## 2026-04-15 - Parcelamento Stripe no checkout mobile
 
 - commit: `587a95d Add mobile checkout installment billing parity`
