@@ -21,6 +21,30 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Simulados revisao em foco com comunidade e anotacoes
+
+- commit: `1389155 Add community and notes to simulation focus review`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - `QuestionCard` com comentarios da comunidade e anotacoes no contexto de revisao
+- destino mobile:
+  - `mobile/src/screens/SimulationRunScreen.tsx`
+  - `mobile/src/components/questions/QuestionCommentsPanel.tsx` (reuso)
+  - `mobile/src/components/questions/QuestionNotePanel.tsx` (reuso)
+  - `mobile/src/services/comments/commentsService.ts` (reuso)
+  - `mobile/src/services/questions/questionNotesService.ts` (reuso)
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - revisao em foco do simulado agora abre comentarios da comunidade por questao, com publicacao, resposta e curtida
+  - modo foco tambem permite criar/editar/limpar anotacoes da questao usando persistencia local ja existente
+  - hidratacao de notas remotas+locais passou a ser reaproveitada dentro do fluxo de revisao de simulado
+  - quando a questao nao possui id valido, a UI sinaliza indisponibilidade dos recursos em vez de quebrar o fluxo
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - sincronizacao de historico local com endpoint oficial de detalhe ainda depende de contrato backend dedicado.
+
 ## 2026-04-14 - Simulados revisao em foco com insights
 
 - commit: `3e6397f Add simulation focus insights on mobile`
