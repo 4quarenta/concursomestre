@@ -103,6 +103,7 @@ export const SimulationRunScreen: React.FC = () => {
   const [result, setResult] = React.useState<MobileSimulationResult | null>(null);
   const [reviewFilter, setReviewFilter] = React.useState<ReviewFilter>('all');
   const [expandedReviewMap, setExpandedReviewMap] = React.useState<Record<string, boolean>>({});
+  const [showPalette, setShowPalette] = React.useState(false);
 
   const currentQuestion = seed.questions[currentIndex];
   const currentQuestionKey = currentQuestion ? getQuestionKey(currentQuestion, currentIndex) : '';
@@ -114,6 +115,12 @@ export const SimulationRunScreen: React.FC = () => {
   const currentCorrectIndex = currentQuestion ? getCorrectIndex(currentQuestion) : -1;
   const currentSelectedIndex = currentQuestion ? answers[currentQuestionKey] : undefined;
   const currentAnswerIsCorrect = currentSelectedIndex !== undefined && currentSelectedIndex === currentCorrectIndex;
+  const answeredCount = React.useMemo(
+    () => seed.questions.reduce((total, question, index) => (
+      answers[getQuestionKey(question, index)] !== undefined ? total + 1 : total
+    ), 0),
+    [answers, seed.questions],
+  );
 
   const handleFinishSimulation = React.useCallback(async () => {
     if (finishing || result) return;
@@ -235,6 +242,25 @@ export const SimulationRunScreen: React.FC = () => {
 
   const handleLeave = () => {
     navigation.replace('MainTabs');
+  };
+
+  const handleRequestEarlyFinish = () => {
+    if (finishing || result) return;
+
+    Alert.alert(
+      'Finalizar simulado agora?',
+      'Voce pode encerrar antes da ultima questao e revisar o resultado em seguida.',
+      [
+        { text: 'Continuar prova', style: 'cancel' },
+        {
+          text: 'Finalizar',
+          style: 'destructive',
+          onPress: () => {
+            void handleFinishSimulation();
+          },
+        },
+      ],
+    );
   };
 
   if (result) {
@@ -401,6 +427,53 @@ export const SimulationRunScreen: React.FC = () => {
         </Text>
       </View>
 
+      <View style={styles.paletteCard}>
+        <View style={styles.paletteHeaderRow}>
+          <Text style={styles.paletteTitle}>Respondidas {answeredCount} / {seed.questions.length}</Text>
+          <Pressable
+            onPress={() => setShowPalette((current) => !current)}
+            style={styles.paletteToggleButton}
+          >
+            <Text style={styles.paletteToggleText}>
+              {showPalette ? 'Ocultar navegacao' : 'Abrir navegacao'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {showPalette ? (
+          <View style={styles.paletteGrid}>
+            {seed.questions.map((question, index) => {
+              const answered = answers[getQuestionKey(question, index)] !== undefined;
+              const current = index === currentIndex;
+              return (
+                <Pressable
+                  key={`${getQuestionKey(question, index)}-palette`}
+                  onPress={() => {
+                    setCurrentIndex(index);
+                    setShowPalette(false);
+                  }}
+                  style={[
+                    styles.paletteItem,
+                    answered && styles.paletteItemAnswered,
+                    current && styles.paletteItemCurrent,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.paletteItemText,
+                      answered && styles.paletteItemTextAnswered,
+                      current && styles.paletteItemTextCurrent,
+                    ]}
+                  >
+                    {index + 1}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
+
       {isInstantFeedback && hasSelectedAnswer ? (
         <View style={[styles.feedbackCard, currentAnswerIsCorrect ? styles.feedbackCardCorrect : styles.feedbackCardWrong]}>
           <Text style={[styles.feedbackTitle, currentAnswerIsCorrect ? styles.feedbackTitleCorrect : styles.feedbackTitleWrong]}>
@@ -462,6 +535,16 @@ export const SimulationRunScreen: React.FC = () => {
         </Pressable>
       </View>
 
+      {!isLastQuestion ? (
+        <Pressable
+          style={[styles.exitButton, styles.finishNowButton]}
+          onPress={handleRequestEarlyFinish}
+          disabled={finishing}
+        >
+          <Text style={[styles.exitButtonText, styles.finishNowButtonText]}>Finalizar agora</Text>
+        </Pressable>
+      ) : null}
+
       <Pressable style={styles.exitButton} onPress={handleLeave} disabled={finishing}>
         <Text style={styles.exitButtonText}>Sair do simulado</Text>
       </Pressable>
@@ -515,6 +598,74 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     fontWeight: '700',
+  },
+  paletteCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.card,
+    padding: 10,
+    gap: 8,
+  },
+  paletteHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  paletteTitle: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  paletteToggleButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  paletteToggleText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  paletteGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  paletteItem: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paletteItemAnswered: {
+    borderColor: '#CBD5E1',
+    backgroundColor: '#0F172A',
+  },
+  paletteItemCurrent: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  paletteItemText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  paletteItemTextAnswered: {
+    color: '#FFFFFF',
+  },
+  paletteItemTextCurrent: {
+    color: '#FFFFFF',
   },
   feedbackCard: {
     borderWidth: 1,
@@ -645,6 +796,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
+  },
+  finishNowButton: {
+    backgroundColor: '#FEF2F2',
+  },
+  finishNowButtonText: {
+    color: colors.danger,
   },
   buttonDisabled: {
     opacity: 0.6,

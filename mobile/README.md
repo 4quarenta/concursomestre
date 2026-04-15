@@ -50,6 +50,8 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - filtros locais por palavra-chave, dificuldade, materia, banca, ano, orgao, cargo e topicos
   - modo de resposta com resultado final ou feedback imediato
   - execucao com navegacao por questao
+  - paleta de navegacao para salto direto entre questoes e contador de respondidas
+  - opcao de finalizacao antecipada com confirmacao
   - finalizacao com score
   - resultado detalhado com revisao por questao, filtros por status e resumo de acertos/erros/em branco
   - revisao expandida de alternativas com destaque de gabarito e resposta marcada
