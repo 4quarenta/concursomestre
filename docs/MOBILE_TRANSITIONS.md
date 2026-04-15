@@ -21,6 +21,36 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Feature flags beta no bootstrap mobile
+
+- commit: `1e04da0 Wire mobile beta modules to system feature flags`
+- origem web/plataforma:
+  - `src/services/system/moduleFlags.ts`
+  - `src/router/privateRoutes.tsx`
+  - `src/components/shared/layout/Layout.tsx`
+  - endpoint `settings.php`
+  - feature flags `annotatedLawsEnabled` e `flashcardsEnabled`
+- destino mobile:
+  - `mobile/src/services/api/endpoints.ts`
+  - `mobile/src/types/system.ts`
+  - `mobile/src/services/system/systemSettingsService.ts`
+  - `mobile/src/providers/AuthProvider.tsx`
+  - `mobile/src/navigation/AppNavigator.tsx`
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - `mobile/src/screens/ModulePlaceholderScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - bootstrap mobile autenticado passou a carregar `settings.php` e normalizar flags de modulo beta
+  - `AuthProvider` agora expoe estado de settings e helper `isFeatureEnabled` com bypass para admin
+  - atalhos do dashboard para Lei comentada e Flashcards respeitam as flags oficiais
+  - rotas/deep links de Lei comentada e Flashcards passaram a renderizar fallback de modulo indisponivel quando desativados
+  - placeholder de modulo ganhou `cardTitle` configuravel para diferenciar migracao em andamento de modulo bloqueado
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - conteudo real de lei comentada, flashcards, repeticao espacada e trilhas depende de implementacao futura dos modulos.
+
 ## 2026-04-14 - Dashboard evolucao em colunas (questoes/acertos)
 
 - commit: `77af668 Add column timeline chart to mobile dashboard`
