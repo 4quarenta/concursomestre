@@ -21,6 +21,32 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Simulados detalhe de historico no mobile
+
+- commit: `649030e Add mobile simulation history detail screen`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - historico com revisao detalhada de questoes apos conclusao de tentativas
+- destino mobile:
+  - `mobile/src/screens/SimulationDetailScreen.tsx`
+  - `mobile/src/screens/SimulationsScreen.tsx`
+  - `mobile/src/services/simulations/simulationsService.ts`
+  - `mobile/src/types/simulations.ts`
+  - `mobile/src/navigation/types.ts`
+  - `mobile/src/navigation/AppNavigator.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - lista de simulados agora abre tela dedicada de detalhe por tentativa
+  - detalhe mostra score, aproveitamento, data/tempo e revisao por questao com filtro e alternativas expandidas
+  - cache local de historico passou a guardar snapshot completo (config, questoes e respostas) para revisao offline
+  - service mobile ganhou `getDetail(id)` para recuperar tentativa local e fallback remoto quando disponivel
+  - deep link interno para detalhe de historico foi registrado em `simulados/historico/:simulationId`
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - sincronizacao de historico local com endpoint oficial de detalhe ainda depende de contrato backend dedicado.
+
 ## 2026-04-14 - Simulados revisao em foco com comunidade e anotacoes
 
 - commit: `1389155 Add community and notes to simulation focus review`
