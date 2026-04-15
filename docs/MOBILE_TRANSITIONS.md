@@ -21,6 +21,26 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Dashboard progresso de nivel (XP)
+
+- commit: `529245f Add level progress card to mobile dashboard`
+- origem web/plataforma:
+  - `src/app/dashboard/page.tsx`
+  - bloco de nivel com XP acumulado, progresso percentual e XP restante
+- destino mobile:
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - dashboard mobile passou a exibir card de nivel do usuario com leitura de `level` e `xp`
+  - barra de progresso mostra percentual de XP dentro do nivel atual
+  - card tambem destaca XP acumulado e quanto falta para avancar ao proximo nivel
+  - implementacao usa fallback seguro quando `level`/`xp` nao vierem no perfil
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - grafico avancado do dashboard web (estilo area chart) ainda nao foi migrado para o mobile.
+
 ## 2026-04-14 - Dashboard evolucao com toggle de acertos
 
 - commit: `82f0b29 Add correct-answer toggle to mobile dashboard timeline`
