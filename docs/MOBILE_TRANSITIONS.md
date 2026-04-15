@@ -21,6 +21,27 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Simulados revisao final filtravel e expandida
+
+- commit: `7d116db Improve mobile simulation final review UX`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - fluxo final de revisao com leitura por status e alternativas
+- destino mobile:
+  - `mobile/src/screens/SimulationRunScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - resultado final ganhou resumo visual de acertos, erros e questoes em branco
+  - revisao agora permite filtro por status (todas, acertos, erros, em branco)
+  - cada questao da revisao exibe materia/topico e pode ser expandida
+  - alternativas da questao passam a destacar gabarito correto e resposta incorreta selecionada
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - revisao detalhada ainda nao abre tela dedicada por questao com comentarios e notas.
+  - historico/listagem persistida de simulados ainda depende de endpoint oficial de listagem no backend.
+
 ## 2026-04-14 - Questoes modo foco/lista
 
 - commit: `7f0e33c Add mobile questions focus mode`
