@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { QuestionCommentsPanel } from '@/components/questions/QuestionCommentsPanel';
 import { QuestionHistoryPanel } from '@/components/questions/QuestionHistoryPanel';
+import { QuestionInsightPanel } from '@/components/questions/QuestionInsightPanel';
 import { QuestionNotePanel } from '@/components/questions/QuestionNotePanel';
 import { QuestionStatsPanel } from '@/components/questions/QuestionStatsPanel';
 import { useAuth } from '@/providers/AuthProvider';
@@ -112,6 +113,8 @@ export const QuestionsScreen: React.FC = () => {
   const [visibleHistoryMap, setVisibleHistoryMap] = React.useState<Record<string, boolean>>({});
   const [historyByQuestion, setHistoryByQuestion] = React.useState<Record<string, QuestionHistoryEntry[]>>({});
   const [historyLoadingMap, setHistoryLoadingMap] = React.useState<Record<string, boolean>>({});
+  const [visibleTeacherCommentMap, setVisibleTeacherCommentMap] = React.useState<Record<string, boolean>>({});
+  const [visibleDetailedCommentMap, setVisibleDetailedCommentMap] = React.useState<Record<string, boolean>>({});
   const [notesByQuestion, setNotesByQuestion] = React.useState<Record<string, QuestionNote>>({});
   const [noteDraftMap, setNoteDraftMap] = React.useState<Record<string, string>>({});
   const [visibleNotesMap, setVisibleNotesMap] = React.useState<Record<string, boolean>>({});
@@ -461,6 +464,26 @@ export const QuestionsScreen: React.FC = () => {
     }
   };
 
+  const handleToggleTeacherComment = (question: Question) => {
+    if (!question.id) return;
+
+    const questionKey = getQuestionStateKey(question.id);
+    const nextVisible = !visibleTeacherCommentMap[questionKey];
+
+    setVisibleTeacherCommentMap((previous) => ({ ...previous, [questionKey]: nextVisible }));
+    setVisibleDetailedCommentMap((previous) => ({ ...previous, [questionKey]: false }));
+  };
+
+  const handleToggleDetailedComment = (question: Question) => {
+    if (!question.id) return;
+
+    const questionKey = getQuestionStateKey(question.id);
+    const nextVisible = !visibleDetailedCommentMap[questionKey];
+
+    setVisibleDetailedCommentMap((previous) => ({ ...previous, [questionKey]: nextVisible }));
+    setVisibleTeacherCommentMap((previous) => ({ ...previous, [questionKey]: false }));
+  };
+
   const updateQuestionCommentsCount = React.useCallback((questionId: number, delta: number) => {
     if (delta === 0) return;
 
@@ -798,6 +821,8 @@ export const QuestionsScreen: React.FC = () => {
     const historyVisible = Boolean(visibleHistoryMap[questionStateKey]);
     const history = historyByQuestion[questionStateKey] || [];
     const historyLoading = Boolean(historyLoadingMap[questionStateKey]);
+    const teacherCommentVisible = Boolean(visibleTeacherCommentMap[questionStateKey]);
+    const detailedCommentVisible = Boolean(visibleDetailedCommentMap[questionStateKey]);
     const accuracyRate = getQuestionAccuracyRate(questionStats);
     const metaParts = [
       (item.bancas || []).map((agency) => getEntityLabel(agency)).filter(Boolean)[0],
@@ -864,6 +889,26 @@ export const QuestionsScreen: React.FC = () => {
         </View>
 
         <View style={styles.questionActionsRow}>
+          {(item.hasTeacherComment || item.teacherComment) ? (
+            <Pressable
+              onPress={() => handleToggleTeacherComment(item)}
+              style={[styles.secondaryActionButton, teacherCommentVisible && styles.secondaryActionButtonActive]}
+            >
+              <Text style={[styles.secondaryActionButtonText, teacherCommentVisible && styles.secondaryActionButtonTextActive]}>
+                Professor
+              </Text>
+            </Pressable>
+          ) : null}
+          {(item.hasDetailedComment || item.detailedComment) ? (
+            <Pressable
+              onPress={() => handleToggleDetailedComment(item)}
+              style={[styles.secondaryActionButton, detailedCommentVisible && styles.secondaryActionButtonActive]}
+            >
+              <Text style={[styles.secondaryActionButtonText, detailedCommentVisible && styles.secondaryActionButtonTextActive]}>
+                Analise
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable
             onPress={() => void handleToggleComments(item)}
             style={[styles.secondaryActionButton, commentsVisible && styles.secondaryActionButtonActive]}
@@ -933,6 +978,24 @@ export const QuestionsScreen: React.FC = () => {
             question={item}
             stats={questionStats}
             loading={statsLoading}
+          />
+        ) : null}
+
+        {teacherCommentVisible ? (
+          <QuestionInsightPanel
+            title="Comentario do professor"
+            content={item.teacherComment}
+            emptyText="Comentario do professor ainda nao disponivel para esta questao."
+            variant="teacher"
+          />
+        ) : null}
+
+        {detailedCommentVisible ? (
+          <QuestionInsightPanel
+            title="Analise detalhada"
+            content={item.detailedComment}
+            emptyText="Analise detalhada ainda nao disponivel para esta questao."
+            variant="detailed"
           />
         ) : null}
 
