@@ -4,6 +4,8 @@ import { sessionStore } from '@/services/auth/sessionStore';
 import { readApiErrorMessage } from '@/services/api/response';
 import { questionService } from '@/services/questions/questionService';
 import type { UserProfile } from '@/types/auth';
+import { systemSettingsService } from '@/services/system/systemSettingsService';
+import type { MobileFeatureKey, MobileSystemSettings } from '@/types/system';
 
 type LoginInput = {
   email: string;
@@ -18,12 +20,15 @@ type RegisterInput = {
 
 type AuthContextValue = {
   user: UserProfile | null;
+  systemSettings: MobileSystemSettings;
   isLoading: boolean;
   isBootstrapped: boolean;
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  refreshSystemSettings: () => Promise<void>;
+  isFeatureEnabled: (feature: MobileFeatureKey) => boolean;
   toggleSavedQuestion: (questionId: string | number) => Promise<boolean>;
 };
 
@@ -42,6 +47,9 @@ const normalizeUserProfile = (user: UserProfile | null | undefined): UserProfile
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = React.useState<UserProfile | null>(null);
+  const [systemSettings, setSystemSettings] = React.useState<MobileSystemSettings>(
+    () => systemSettingsService.createDefaultSystemSettings(),
+  );
   const [isLoading, setIsLoading] = React.useState(false);
   const [isBootstrapped, setIsBootstrapped] = React.useState(false);
 
@@ -64,6 +72,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await sessionStore.setSession(token, normalizedUser);
   }, []);
 
+  const refreshSystemSettings = React.useCallback(async () => {
+    try {
+      const settings = await systemSettingsService.getSystemSettings();
+      setSystemSettings(settings);
+    } catch {
+      // Nao bloqueia auth se settings estiver indisponivel.
+    }
+  }, []);
+
   const refreshProfile = React.useCallback(async () => {
     if (!sessionStore.getAccessToken()) return;
 
@@ -72,31 +89,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setUser(normalizedProfile);
     await sessionStore.setSession(sessionStore.getAccessToken(), normalizedProfile);
-  }, []);
+    await refreshSystemSettings();
+  }, [refreshSystemSettings]);
 
   const login = React.useCallback(async (input: LoginInput) => {
     setIsLoading(true);
     try {
       const response = await authFlowService.login(input);
       await applySessionFromResponse(response);
+      await refreshSystemSettings();
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel realizar o login.'));
     } finally {
       setIsLoading(false);
     }
-  }, [applySessionFromResponse]);
+  }, [applySessionFromResponse, refreshSystemSettings]);
 
   const register = React.useCallback(async (input: RegisterInput) => {
     setIsLoading(true);
     try {
       const response = await authFlowService.register(input);
       await applySessionFromResponse(response);
+      await refreshSystemSettings();
     } catch (error) {
       throw new Error(readApiErrorMessage(error, 'Nao foi possivel criar a conta.'));
     } finally {
       setIsLoading(false);
     }
-  }, [applySessionFromResponse]);
+  }, [applySessionFromResponse, refreshSystemSettings]);
 
   const logout = React.useCallback(async () => {
     setIsLoading(true);
@@ -106,6 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Nao bloqueia logout local.
     } finally {
       setUser(null);
+      setSystemSettings(systemSettingsService.createDefaultSystemSettings());
       await sessionStore.clearSession();
       setIsLoading(false);
     }
@@ -155,10 +176,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             setUser(normalizedProfile);
             await sessionStore.setSession(snapshot.accessToken, normalizedProfile);
+            await refreshSystemSettings();
           } catch {
             await sessionStore.clearSession();
             setUser(null);
+            setSystemSettings(systemSettingsService.createDefaultSystemSettings());
           }
+        } else {
+          setSystemSettings(systemSettingsService.createDefaultSystemSettings());
         }
       } finally {
         setIsBootstrapped(true);
@@ -166,18 +191,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     void bootstrap();
-  }, []);
+  }, [refreshSystemSettings]);
+
+  const isFeatureEnabled = React.useCallback((feature: MobileFeatureKey): boolean => {
+    if (user?.isAdmin || user?.role === 'admin') {
+      return true;
+    }
+
+    return Boolean(systemSettings.features[feature]);
+  }, [systemSettings.features, user?.isAdmin, user?.role]);
 
   const value = React.useMemo<AuthContextValue>(() => ({
     user,
+    systemSettings,
     isLoading,
     isBootstrapped,
     login,
     register,
     logout,
     refreshProfile,
+    refreshSystemSettings,
+    isFeatureEnabled,
     toggleSavedQuestion,
-  }), [isBootstrapped, isLoading, login, logout, refreshProfile, register, toggleSavedQuestion, user]);
+  }), [
+    isBootstrapped,
+    isFeatureEnabled,
+    isLoading,
+    login,
+    logout,
+    refreshProfile,
+    refreshSystemSettings,
+    register,
+    systemSettings,
+    toggleSavedQuestion,
+    user,
+  ]);
 
   return (
     <AuthContext.Provider value={value}>

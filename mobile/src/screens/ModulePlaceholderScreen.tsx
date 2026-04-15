@@ -5,17 +5,19 @@ import { colors } from '@/theme/colors';
 interface ModulePlaceholderScreenProps {
   title: string;
   description: string;
+  cardTitle?: string;
 }
 
 export const ModulePlaceholderScreen: React.FC<ModulePlaceholderScreenProps> = ({
   title,
   description,
+  cardTitle = 'Migracao em andamento',
 }) => {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{title}</Text>
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Migracao em andamento</Text>
+        <Text style={styles.cardTitle}>{cardTitle}</Text>
         <Text style={styles.cardText}>{description}</Text>
       </View>
     </ScrollView>

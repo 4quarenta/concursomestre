@@ -16,6 +16,7 @@ import { PerformanceSubjectsScreen } from '@/screens/PerformanceSubjectsScreen';
 import { MaterialDetailScreen } from '@/screens/MaterialDetailScreen';
 import { AnnotatedLawsScreen } from '@/screens/AnnotatedLawsScreen';
 import { FlashcardsScreen } from '@/screens/FlashcardsScreen';
+import { ModulePlaceholderScreen } from '@/screens/ModulePlaceholderScreen';
 import { colors } from '@/theme/colors';
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -51,8 +52,26 @@ const linking: LinkingOptions<AppStackParamList> = {
   },
 };
 
+const AnnotatedLawsDisabledScreen: React.FC = () => (
+  <ModulePlaceholderScreen
+    title="Lei comentada"
+    cardTitle="Modulo indisponivel"
+    description="O modulo Lei comentada esta desativado no momento para o seu perfil."
+  />
+);
+
+const FlashcardsDisabledScreen: React.FC = () => (
+  <ModulePlaceholderScreen
+    title="Flashcards"
+    cardTitle="Modulo indisponivel"
+    description="O modulo Flashcards esta desativado no momento para o seu perfil."
+  />
+);
+
 export const AppNavigator: React.FC = () => {
-  const { user, isBootstrapped } = useAuth();
+  const { user, isBootstrapped, isFeatureEnabled } = useAuth();
+  const canAccessAnnotatedLaws = isFeatureEnabled('annotatedLawsEnabled');
+  const canAccessFlashcards = isFeatureEnabled('flashcardsEnabled');
 
   if (!isBootstrapped) {
     return (
@@ -113,12 +132,12 @@ export const AppNavigator: React.FC = () => {
           />
           <Stack.Screen
             name="AnnotatedLaws"
-            component={AnnotatedLawsScreen}
+            component={canAccessAnnotatedLaws ? AnnotatedLawsScreen : AnnotatedLawsDisabledScreen}
             options={{ title: 'Lei comentada' }}
           />
           <Stack.Screen
             name="Flashcards"
-            component={FlashcardsScreen}
+            component={canAccessFlashcards ? FlashcardsScreen : FlashcardsDisabledScreen}
             options={{ title: 'Flashcards' }}
           />
         </Stack.Navigator>

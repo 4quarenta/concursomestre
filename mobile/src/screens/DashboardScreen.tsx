@@ -142,7 +142,7 @@ const calculateLevelProgress = (xp: number | undefined, level: number | undefine
  */
 export const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<DashboardNavigation>();
-  const { user } = useAuth();
+  const { user, isFeatureEnabled } = useAuth();
   const [stats, setStats] = React.useState<UserStatistics>(EMPTY_STATS);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -228,6 +228,8 @@ export const DashboardScreen: React.FC = () => {
     () => calculateLevelProgress(user?.xp, user?.level),
     [user?.level, user?.xp],
   );
+  const canAccessAnnotatedLaws = isFeatureEnabled('annotatedLawsEnabled');
+  const canAccessFlashcards = isFeatureEnabled('flashcardsEnabled');
 
   const loadStats = React.useCallback(async (useRefresh = false) => {
     if (!user?.id) {
@@ -525,12 +527,16 @@ export const DashboardScreen: React.FC = () => {
           <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Notifications')}>
             <Text style={styles.actionButtonText}>Notificacoes</Text>
           </Pressable>
-          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('AnnotatedLaws')}>
-            <Text style={styles.actionButtonText}>Lei comentada</Text>
-          </Pressable>
-          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Flashcards')}>
-            <Text style={styles.actionButtonText}>Flashcards</Text>
-          </Pressable>
+          {canAccessAnnotatedLaws ? (
+            <Pressable style={styles.actionButton} onPress={() => navigation.navigate('AnnotatedLaws')}>
+              <Text style={styles.actionButtonText}>Lei comentada</Text>
+            </Pressable>
+          ) : null}
+          {canAccessFlashcards ? (
+            <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Flashcards')}>
+              <Text style={styles.actionButtonText}>Flashcards</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
 

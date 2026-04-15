@@ -70,6 +70,9 @@ export const ENDPOINTS = {
   statistics: {
     user: 'statistics/user',
   },
+  settings: {
+    get: 'settings.php',
+  },
 } as const;
 
 export default ENDPOINTS;

@@ -9,6 +9,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
 - Sessao persistida (SecureStore)
 - Login/cadastro/logout via API oficial
 - Bootstrap de usuario autenticado (`auth/me.php`)
+- Bootstrap de feature flags essenciais (`settings.php`) para gate de modulos beta
 - Estrutura inicial de modulos mobile para migracao com paridade
 - Dashboard mobile com dados reais de estatisticas:
   - questoes respondidas
@@ -52,6 +53,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
 - Modulos beta com shell mobile:
   - `Lei comentada`
   - `Flashcards`
+  - visibilidade controlada por `annotatedLawsEnabled` e `flashcardsEnabled`
 - Fluxo de simulado em execucao:
   - configuracao (questoes + timer)
   - filtros locais por palavra-chave, dificuldade, materia, banca, ano, orgao, cargo e topicos
