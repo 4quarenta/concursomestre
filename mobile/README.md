@@ -55,6 +55,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - finalizacao com score
   - resultado detalhado com revisao por questao, filtros por status e resumo de acertos/erros/em branco
   - revisao expandida de alternativas com destaque de gabarito e resposta marcada
+  - revisao em foco por questao com navegacao anterior/proxima a partir do resumo
   - persistencia da sessao via `simulationsCreate`
   - cache local do historico para fallback quando a listagem remota estiver indisponivel
   - envio das respostas no endpoint oficial de questoes
@@ -106,7 +107,7 @@ Padrao local:
 - Migracao de modulos com paridade:
   - Dashboard completo com graficos, motivacao diaria e recortes de periodo
   - Questoes/practice com refinamentos finais de paridade fina
-  - Simulados com revisao dedicada por questao (comentarios/notas) e historico persistido oficial
+  - Simulados com acoplamento de comentarios/notas no modo foco e sincronizacao oficial de detalhe/historico
   - Lei comentada com conteudo real
   - Flashcards com revisao ativa real
   - Checkout/assinaturas/transacoes

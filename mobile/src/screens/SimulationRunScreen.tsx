@@ -103,6 +103,7 @@ export const SimulationRunScreen: React.FC = () => {
   const [result, setResult] = React.useState<MobileSimulationResult | null>(null);
   const [reviewFilter, setReviewFilter] = React.useState<ReviewFilter>('all');
   const [expandedReviewMap, setExpandedReviewMap] = React.useState<Record<string, boolean>>({});
+  const [focusedReviewIndex, setFocusedReviewIndex] = React.useState<number | null>(null);
   const [showPalette, setShowPalette] = React.useState(false);
 
   const currentQuestion = seed.questions[currentIndex];
@@ -195,6 +196,7 @@ export const SimulationRunScreen: React.FC = () => {
 
       setReviewFilter('all');
       setExpandedReviewMap({});
+      setFocusedReviewIndex(null);
       setResult({
         score,
         total: seed.questions.length,
@@ -282,6 +284,100 @@ export const SimulationRunScreen: React.FC = () => {
       { value: 'wrong', label: 'Erros', count: wrongCount },
       { value: 'blank', label: 'Em branco', count: blankCount },
     ];
+    const focusedReviewRow = focusedReviewIndex !== null ? reviewRows[focusedReviewIndex] : null;
+
+    if (focusedReviewRow) {
+      const safeFocusedIndex = focusedReviewIndex ?? 0;
+      const focusStatus = focusedReviewRow.status;
+      const focusEntry = focusedReviewRow.entry;
+
+      return (
+        <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+          <View style={styles.reviewFocusHeader}>
+            <Text style={styles.eyebrow}>Revisao em foco</Text>
+            <Text style={styles.reviewFocusTitle}>Questao {safeFocusedIndex + 1} de {result.total}</Text>
+            <Text style={styles.reviewFocusDescription}>
+              Navegue entre as questoes e revise alternativas com gabarito destacado.
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.reviewRow,
+              focusStatus === 'correct' && styles.reviewRowCorrect,
+              focusStatus === 'wrong' && styles.reviewRowWrong,
+              focusStatus === 'blank' && styles.reviewRowBlank,
+            ]}
+          >
+            <View style={styles.reviewRowHeader}>
+              <Text style={styles.reviewQuestionNumber}>Questao {safeFocusedIndex + 1}</Text>
+              <Text
+                style={[
+                  styles.reviewStatus,
+                  focusStatus === 'correct' && styles.reviewStatusCorrect,
+                  focusStatus !== 'correct' && styles.reviewStatusWrong,
+                ]}
+              >
+                {focusStatus === 'correct' ? 'Correta' : focusStatus === 'wrong' ? 'Incorreta' : 'Em branco'}
+              </Text>
+            </View>
+            <Text style={styles.reviewMeta}>
+              {getQuestionSubjectLabel(focusEntry.question)} | {getQuestionTopicLabel(focusEntry.question)}
+            </Text>
+            <Text style={styles.reviewQuestionText}>
+              {stripHtml(focusEntry.question.enunciado_clean || focusEntry.question.enunciado || 'Questao sem enunciado')}
+            </Text>
+            <View style={styles.reviewAnswerRow}>
+              <Text style={styles.reviewAnswerText}>Sua resposta: {formatAnswerLabel(focusEntry.selectedIndex)}</Text>
+              <Text style={styles.reviewAnswerText}>Gabarito: {formatAnswerLabel(focusEntry.correctIndex)}</Text>
+            </View>
+            <View style={styles.reviewOptionsList}>
+              {(focusEntry.question.itens || []).map((item, optionIndex) => {
+                const selected = focusEntry.selectedIndex === optionIndex;
+                const correct = focusEntry.correctIndex === optionIndex;
+
+                return (
+                  <View
+                    key={`focus-option-${safeFocusedIndex}-${optionIndex}`}
+                    style={[
+                      styles.reviewOptionRow,
+                      correct && styles.reviewOptionRowCorrect,
+                      selected && !correct && styles.reviewOptionRowWrong,
+                    ]}
+                  >
+                    <Text style={styles.reviewOptionLabel}>{String.fromCharCode(65 + optionIndex)}</Text>
+                    <Text style={styles.reviewOptionText}>
+                      {stripHtml(item?.corpo_clean || item?.corpo || `Alternativa ${optionIndex + 1}`)}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.actionsRow}>
+            <Pressable
+              style={[styles.secondaryButton, focusedReviewIndex === 0 && styles.buttonDisabled]}
+              onPress={() => setFocusedReviewIndex((current) => Math.max(0, Number(current || 0) - 1))}
+              disabled={focusedReviewIndex === 0}
+            >
+              <Text style={styles.secondaryButtonText}>Anterior</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.secondaryButton, focusedReviewIndex === reviewRows.length - 1 && styles.buttonDisabled]}
+              onPress={() => setFocusedReviewIndex((current) => Math.min(reviewRows.length - 1, Number(current || 0) + 1))}
+              disabled={focusedReviewIndex === reviewRows.length - 1}
+            >
+              <Text style={styles.secondaryButtonText}>Proxima</Text>
+            </Pressable>
+          </View>
+
+          <Pressable style={styles.mainButton} onPress={() => setFocusedReviewIndex(null)}>
+            <Text style={styles.mainButtonText}>Voltar ao resumo</Text>
+          </Pressable>
+        </ScrollView>
+      );
+    }
 
     return (
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -332,12 +428,8 @@ export const SimulationRunScreen: React.FC = () => {
             const isExpanded = Boolean(expandedReviewMap[reviewKey]);
 
             return (
-              <Pressable
+              <View
                 key={reviewKey}
-                onPress={() => setExpandedReviewMap((previous) => ({
-                  ...previous,
-                  [reviewKey]: !previous[reviewKey],
-                }))}
                 style={[
                   styles.reviewRow,
                   status === 'correct' && styles.reviewRowCorrect,
@@ -365,9 +457,27 @@ export const SimulationRunScreen: React.FC = () => {
                   <Text style={styles.reviewAnswerText}>Sua resposta: {formatAnswerLabel(entry.selectedIndex)}</Text>
                   <Text style={styles.reviewAnswerText}>Gabarito: {formatAnswerLabel(entry.correctIndex)}</Text>
                 </View>
-                <Text style={styles.reviewExpandHint}>
-                  {isExpanded ? 'Toque para recolher alternativas' : 'Toque para ver alternativas'}
-                </Text>
+                <View style={styles.reviewRowActions}>
+                  <Pressable
+                    onPress={() => setExpandedReviewMap((previous) => ({
+                      ...previous,
+                      [reviewKey]: !previous[reviewKey],
+                    }))}
+                    style={styles.reviewActionButton}
+                  >
+                    <Text style={styles.reviewActionText}>
+                      {isExpanded ? 'Recolher alternativas' : 'Ver alternativas'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setFocusedReviewIndex(index)}
+                    style={[styles.reviewActionButton, styles.reviewActionButtonPrimary]}
+                  >
+                    <Text style={[styles.reviewActionText, styles.reviewActionTextPrimary]}>
+                      Revisao em foco
+                    </Text>
+                  </Pressable>
+                </View>
 
                 {isExpanded ? (
                   <View style={styles.reviewOptionsList}>
@@ -393,7 +503,7 @@ export const SimulationRunScreen: React.FC = () => {
                     })}
                   </View>
                 ) : null}
-              </Pressable>
+              </View>
             );
           })}
         </View>
@@ -837,6 +947,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  reviewFocusHeader: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.card,
+    padding: 14,
+    gap: 6,
+  },
+  reviewFocusTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  reviewFocusDescription: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
   resultStatsRow: {
     marginTop: 8,
     width: '100%',
@@ -997,6 +1126,31 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     fontWeight: '800',
+  },
+  reviewRowActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reviewActionButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  reviewActionButtonPrimary: {
+    borderColor: colors.primary,
+    backgroundColor: '#EEF2FF',
+  },
+  reviewActionText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  reviewActionTextPrimary: {
+    color: colors.primary,
   },
   reviewExpandHint: {
     color: colors.primary,
