@@ -10,12 +10,18 @@ import {
 } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { QuestionCommentsPanel } from '@/components/questions/QuestionCommentsPanel';
 import { QuestionInsightPanel } from '@/components/questions/QuestionInsightPanel';
+import { QuestionNotePanel } from '@/components/questions/QuestionNotePanel';
 import { useAuth } from '@/providers/AuthProvider';
+import { commentsService } from '@/services/comments/commentsService';
 import { questionService } from '@/services/questions/questionService';
+import { questionNotesService } from '@/services/questions/questionNotesService';
 import { simulationsService } from '@/services/simulations/simulationsService';
 import { AppStackParamList } from '@/navigation/types';
 import { colors } from '@/theme/colors';
+import type { QuestionComment } from '@/types/comments';
+import type { QuestionNote } from '@/types/notes';
 import type { Question } from '@/types/questions';
 import type { MobileSimulationResult } from '@/types/simulation';
 
@@ -66,7 +72,7 @@ const mapSimulationDifficulty = (value?: string): string => {
 };
 
 type ReviewFilter = 'all' | 'correct' | 'wrong' | 'blank';
-type ReviewInsightMode = 'none' | 'teacher' | 'detailed';
+type ReviewInsightMode = 'none' | 'teacher' | 'detailed' | 'comments' | 'notes';
 
 const getReviewStatus = (
   entry: MobileSimulationResult['questionResults'][number],
@@ -108,6 +114,15 @@ export const SimulationRunScreen: React.FC = () => {
   const [focusedReviewIndex, setFocusedReviewIndex] = React.useState<number | null>(null);
   const [reviewInsightMode, setReviewInsightMode] = React.useState<ReviewInsightMode>('none');
   const [showPalette, setShowPalette] = React.useState(false);
+  const [commentsByQuestion, setCommentsByQuestion] = React.useState<Record<string, QuestionComment[]>>({});
+  const [commentsLoadingMap, setCommentsLoadingMap] = React.useState<Record<string, boolean>>({});
+  const [commentDraftMap, setCommentDraftMap] = React.useState<Record<string, string>>({});
+  const [commentSubmittingMap, setCommentSubmittingMap] = React.useState<Record<string, boolean>>({});
+  const [notesByQuestion, setNotesByQuestion] = React.useState<Record<string, QuestionNote>>({});
+  const [noteDraftMap, setNoteDraftMap] = React.useState<Record<string, string>>({});
+  const [noteSavingMap, setNoteSavingMap] = React.useState<Record<string, boolean>>({});
+  const [notesLoading, setNotesLoading] = React.useState(false);
+  const [notesHydratedUserId, setNotesHydratedUserId] = React.useState<string | null>(null);
 
   const currentQuestion = seed.questions[currentIndex];
   const currentQuestionKey = currentQuestion ? getQuestionKey(currentQuestion, currentIndex) : '';
@@ -269,6 +284,192 @@ export const SimulationRunScreen: React.FC = () => {
     );
   };
 
+  React.useEffect(() => {
+    if (user?.id) return;
+
+    setNotesHydratedUserId(null);
+    setNotesByQuestion({});
+    setNoteDraftMap({});
+    setNoteSavingMap({});
+  }, [user?.id]);
+
+  const ensureReviewNotesHydrated = React.useCallback(async () => {
+    if (!user?.id || notesHydratedUserId === user.id) return;
+
+    setNotesLoading(true);
+    try {
+      const [remoteNotes, localNotes] = await Promise.all([
+        questionNotesService.listRemoteNotes(user.id).catch(() => []),
+        questionNotesService.listLocalNotes(user.id),
+      ]);
+
+      const mergedNotes = questionNotesService.mergeNotes(remoteNotes, localNotes);
+      const nextNotesByQuestion: Record<string, QuestionNote> = {};
+      const nextDraftMap: Record<string, string> = {};
+
+      mergedNotes.forEach((note) => {
+        const questionKey = String(note.questionId || '').trim();
+        if (!questionKey) return;
+
+        nextNotesByQuestion[questionKey] = note;
+        nextDraftMap[questionKey] = note.text;
+      });
+
+      setNotesByQuestion(nextNotesByQuestion);
+      setNoteDraftMap(nextDraftMap);
+      setNotesHydratedUserId(user.id);
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel carregar anotacoes.');
+    } finally {
+      setNotesLoading(false);
+    }
+  }, [notesHydratedUserId, user?.id]);
+
+  const ensureReviewCommentsLoaded = React.useCallback(async (questionKey: string) => {
+    if (!questionKey) return;
+    if (commentsLoadingMap[questionKey] || commentsByQuestion[questionKey] !== undefined) return;
+
+    setCommentsLoadingMap((previous) => ({ ...previous, [questionKey]: true }));
+    try {
+      const rows = await commentsService.getComments(questionKey, user?.id);
+      setCommentsByQuestion((previous) => ({ ...previous, [questionKey]: rows }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel carregar comentarios.');
+    } finally {
+      setCommentsLoadingMap((previous) => ({ ...previous, [questionKey]: false }));
+    }
+  }, [commentsByQuestion, commentsLoadingMap, user?.id]);
+
+  const handleSubmitReviewComment = React.useCallback(async (
+    question: Question,
+    questionKey: string,
+    content: string,
+    parentId?: string,
+  ) => {
+    if (!question.id) return;
+
+    if (!user?.id || !user.name) {
+      Alert.alert('Login necessario', 'Entre na sua conta para comentar nesta questao.');
+      return;
+    }
+
+    const nextContent = content.trim();
+    if (!nextContent) return;
+
+    setCommentSubmittingMap((previous) => ({ ...previous, [questionKey]: true }));
+    try {
+      const createdComment = await commentsService.addComment({
+        questionId: questionKey,
+        content: nextContent,
+        userId: user.id,
+        userName: user.name,
+        parentId,
+        targetType: 'question',
+      });
+
+      setCommentsByQuestion((previous) => {
+        const currentComments = previous[questionKey] || [];
+        const nextComments = parentId
+          ? commentsService.addReplyToComments(currentComments, parentId, createdComment)
+          : [createdComment, ...currentComments];
+
+        return {
+          ...previous,
+          [questionKey]: nextComments,
+        };
+      });
+
+      setCommentDraftMap((previous) => ({ ...previous, [questionKey]: '' }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel publicar o comentario.');
+    } finally {
+      setCommentSubmittingMap((previous) => ({ ...previous, [questionKey]: false }));
+    }
+  }, [user?.id, user?.name]);
+
+  const handleLikeReviewComment = React.useCallback(async (questionKey: string, commentId: string) => {
+    if (!user?.id) {
+      Alert.alert('Login necessario', 'Entre na sua conta para curtir comentarios.');
+      return;
+    }
+
+    try {
+      await commentsService.likeComment(commentId, user.id);
+      setCommentsByQuestion((previous) => ({
+        ...previous,
+        [questionKey]: commentsService.likeCommentInTree(previous[questionKey] || [], commentId),
+      }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel curtir o comentario.');
+    }
+  }, [user?.id]);
+
+  const handleSaveReviewNote = React.useCallback(async (question: Question, questionKey: string) => {
+    if (!question.id) return;
+
+    if (!user?.id) {
+      Alert.alert('Login necessario', 'Entre na sua conta para anotar nesta questao.');
+      return;
+    }
+
+    const trimmedNote = (noteDraftMap[questionKey] || '').trim();
+    if (!trimmedNote) {
+      Alert.alert('Anotacao vazia', 'Escreva algo antes de salvar.');
+      return;
+    }
+
+    setNoteSavingMap((previous) => ({ ...previous, [questionKey]: true }));
+    try {
+      const previousNote = notesByQuestion[questionKey];
+      const nextNote: QuestionNote = {
+        id: previousNote?.id || `local-${user.id}-${question.id}`,
+        questionId: Number(question.id),
+        text: trimmedNote,
+        timestamp: Date.now(),
+        remoteId: previousNote?.remoteId ?? null,
+        source: previousNote?.remoteId ? 'local_override' : 'local',
+      };
+
+      await questionNotesService.upsertLocalNote(user.id, nextNote);
+      setNotesByQuestion((previous) => ({ ...previous, [questionKey]: nextNote }));
+      setNoteDraftMap((previous) => ({ ...previous, [questionKey]: trimmedNote }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel salvar a anotacao.');
+    } finally {
+      setNoteSavingMap((previous) => ({ ...previous, [questionKey]: false }));
+    }
+  }, [noteDraftMap, notesByQuestion, user?.id]);
+
+  const handleClearReviewNote = React.useCallback(async (question: Question, questionKey: string) => {
+    if (!question.id) return;
+
+    if (!user?.id) {
+      Alert.alert('Login necessario', 'Entre na sua conta para gerenciar anotacoes.');
+      return;
+    }
+
+    const currentNote = notesByQuestion[questionKey];
+
+    setNoteSavingMap((previous) => ({ ...previous, [questionKey]: true }));
+    try {
+      if (currentNote?.remoteId) {
+        await questionNotesService.deleteRemoteNote(currentNote.remoteId);
+      }
+
+      await questionNotesService.removeLocalNote(user.id, Number(question.id));
+      setNotesByQuestion((previous) => {
+        const next = { ...previous };
+        delete next[questionKey];
+        return next;
+      });
+      setNoteDraftMap((previous) => ({ ...previous, [questionKey]: '' }));
+    } catch (error: any) {
+      Alert.alert('Erro', error?.message || 'Nao foi possivel limpar a anotacao.');
+    } finally {
+      setNoteSavingMap((previous) => ({ ...previous, [questionKey]: false }));
+    }
+  }, [notesByQuestion, user?.id]);
+
   if (result) {
     const accuracy = result.total > 0 ? Math.round((result.score / result.total) * 100) : 0;
     const reviewRows = result.questionResults.map((entry, index) => ({
@@ -294,6 +495,15 @@ export const SimulationRunScreen: React.FC = () => {
       const safeFocusedIndex = focusedReviewIndex ?? 0;
       const focusStatus = focusedReviewRow.status;
       const focusEntry = focusedReviewRow.entry;
+      const focusQuestionKey = getQuestionKey(focusEntry.question, safeFocusedIndex);
+      const focusQuestionHasId = focusEntry.question.id !== undefined && focusEntry.question.id !== null;
+      const focusComments = commentsByQuestion[focusQuestionKey] || [];
+      const focusCommentsLoading = Boolean(commentsLoadingMap[focusQuestionKey]);
+      const focusCommentDraft = commentDraftMap[focusQuestionKey] || '';
+      const focusCommentsSubmitting = Boolean(commentSubmittingMap[focusQuestionKey]);
+      const focusNote = notesByQuestion[focusQuestionKey];
+      const focusNoteDraft = noteDraftMap[focusQuestionKey] ?? focusNote?.text ?? '';
+      const focusNoteSaving = Boolean(noteSavingMap[focusQuestionKey]);
 
       return (
         <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -375,6 +585,61 @@ export const SimulationRunScreen: React.FC = () => {
                   Analise detalhada
                 </Text>
               </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (!focusQuestionHasId) return;
+
+                  if (reviewInsightMode === 'comments') {
+                    setReviewInsightMode('none');
+                    return;
+                  }
+
+                  setReviewInsightMode('comments');
+                  void ensureReviewCommentsLoaded(focusQuestionKey);
+                }}
+                disabled={!focusQuestionHasId}
+                style={[
+                  styles.reviewActionButton,
+                  reviewInsightMode === 'comments' && styles.reviewActionButtonPrimary,
+                  !focusQuestionHasId && styles.reviewActionButtonDisabled,
+                ]}
+              >
+                <Text style={[styles.reviewActionText, reviewInsightMode === 'comments' && styles.reviewActionTextPrimary]}>
+                  Comunidade
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (!focusQuestionHasId) return;
+
+                  if (!user?.id) {
+                    Alert.alert('Login necessario', 'Entre na sua conta para gerenciar anotacoes.');
+                    return;
+                  }
+
+                  if (reviewInsightMode === 'notes') {
+                    setReviewInsightMode('none');
+                    return;
+                  }
+
+                  setReviewInsightMode('notes');
+                  setNoteDraftMap((previous) => ({
+                    ...previous,
+                    [focusQuestionKey]: previous[focusQuestionKey] ?? notesByQuestion[focusQuestionKey]?.text ?? '',
+                  }));
+                  void ensureReviewNotesHydrated();
+                }}
+                disabled={!focusQuestionHasId}
+                style={[
+                  styles.reviewActionButton,
+                  reviewInsightMode === 'notes' && styles.reviewActionButtonPrimary,
+                  !focusQuestionHasId && styles.reviewActionButtonDisabled,
+                ]}
+              >
+                <Text style={[styles.reviewActionText, reviewInsightMode === 'notes' && styles.reviewActionTextPrimary]}>
+                  Anotacao
+                </Text>
+              </Pressable>
             </View>
 
             {reviewInsightMode === 'teacher' ? (
@@ -393,6 +658,42 @@ export const SimulationRunScreen: React.FC = () => {
                 emptyText="Analise detalhada ainda nao disponivel para esta questao."
                 variant="detailed"
               />
+            ) : null}
+
+            {reviewInsightMode === 'comments' ? (
+              focusQuestionHasId ? (
+                <QuestionCommentsPanel
+                  comments={focusComments}
+                  loading={focusCommentsLoading}
+                  draft={focusCommentDraft}
+                  submitting={focusCommentsSubmitting}
+                  onChangeDraft={(value) => setCommentDraftMap((previous) => ({ ...previous, [focusQuestionKey]: value }))}
+                  onSubmitComment={(content, parentId) => handleSubmitReviewComment(focusEntry.question, focusQuestionKey, content, parentId)}
+                  onLikeComment={(commentId) => handleLikeReviewComment(focusQuestionKey, commentId)}
+                />
+              ) : (
+                <View style={styles.reviewUnavailableCard}>
+                  <Text style={styles.reviewUnavailableText}>Comentarios indisponiveis para esta questao.</Text>
+                </View>
+              )
+            ) : null}
+
+            {reviewInsightMode === 'notes' ? (
+              focusQuestionHasId && user?.id ? (
+                <QuestionNotePanel
+                  note={focusNote}
+                  draft={focusNoteDraft}
+                  loading={notesLoading}
+                  saving={focusNoteSaving}
+                  onChangeDraft={(value) => setNoteDraftMap((previous) => ({ ...previous, [focusQuestionKey]: value }))}
+                  onSave={() => handleSaveReviewNote(focusEntry.question, focusQuestionKey)}
+                  onClear={() => handleClearReviewNote(focusEntry.question, focusQuestionKey)}
+                />
+              ) : (
+                <View style={styles.reviewUnavailableCard}>
+                  <Text style={styles.reviewUnavailableText}>Anotacoes indisponiveis para esta questao.</Text>
+                </View>
+              )
             ) : null}
           </View>
 
@@ -1205,6 +1506,9 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: '#EEF2FF',
   },
+  reviewActionButtonDisabled: {
+    opacity: 0.55,
+  },
   reviewActionText: {
     color: colors.muted,
     fontSize: 11,
@@ -1212,6 +1516,19 @@ const styles = StyleSheet.create({
   },
   reviewActionTextPrimary: {
     color: colors.primary,
+  },
+  reviewUnavailableCard: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+  },
+  reviewUnavailableText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
   },
   reviewExpandHint: {
     color: colors.primary,
