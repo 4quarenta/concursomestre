@@ -21,6 +21,27 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Simulados revisao em foco com insights
+
+- commit: `3e6397f Add simulation focus insights on mobile`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - experiencia de revisao com apoio de comentarios/analises no `QuestionCard`
+- destino mobile:
+  - `mobile/src/screens/SimulationRunScreen.tsx`
+  - `mobile/src/components/questions/QuestionInsightPanel.tsx` (reuso)
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - revisao em foco do simulado ganhou acoes para abrir comentario do professor e analise detalhada
+  - render dos insights reaproveita o mesmo painel mobile ja usado no modulo Questoes
+  - ao navegar entre questoes na revisao em foco, o painel de insight e resetado para evitar contexto antigo
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - comentarios da comunidade e anotacoes pessoais ainda nao foram acoplados ao modo foco da revisao.
+  - sincronizacao de historico local com endpoint oficial de detalhe ainda depende de contrato backend dedicado.
+
 ## 2026-04-14 - Simulados revisao em foco por questao
 
 - commit: `c71bc80 Add focused review mode for mobile simulations`
