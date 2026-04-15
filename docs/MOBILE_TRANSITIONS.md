@@ -21,6 +21,32 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Feature flags dos modulos core no mobile
+
+- commit: `73f4578 Gate core mobile modules with system feature flags`
+- origem web/plataforma:
+  - `src/components/shared/layout/Layout.tsx`
+  - `src/router/privateRoutes.tsx`
+  - feature flags `practiceEnabled`, `simulationsEnabled`, `rankingsEnabled`, `marketplaceEnabled`
+  - endpoint `settings.php`
+- destino mobile:
+  - `mobile/src/types/system.ts`
+  - `mobile/src/services/system/systemSettingsService.ts`
+  - `mobile/src/navigation/MainTabs.tsx`
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - bootstrap mobile passou a normalizar tambem as flags dos modulos core da navegacao principal
+  - abas de Questoes, Simulados, Ranking e Marketplace agora respeitam gate por feature flag
+  - quando um modulo core estiver desativado, a aba deixa de aparecer para o usuario e o destino passa a renderizar fallback explicito de modulo indisponivel
+  - atalhos do dashboard para Questoes e Simulados passaram a seguir as mesmas flags da navegacao
+  - bypass de admin foi preservado via `isFeatureEnabled`
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - ainda faltam ajustes finos de paridade visual para alguns modulos core quando comparados ao layout web completo.
+
 ## 2026-04-15 - Raio-X da banca no mobile
 
 - commit: `938d312 Extract mobile bank analysis module with feature-flag gate`
