@@ -21,6 +21,29 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Cancelamento de assinatura no mobile
+
+- commit: `f302280 Add mobile subscription cancel and undo-cancel actions`
+- origem web/plataforma:
+  - `src/app/profile/page.tsx`
+  - `src/services/subscriptions/subscriptionsService.ts`
+  - endpoints `subscriptions/cancel.php` e `subscriptions/undo_cancel.php`
+- destino mobile:
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - `mobile/src/services/subscriptions/subscriptionsService.ts`
+  - `mobile/src/services/api/endpoints.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - perfil mobile ganhou acao de cancelamento de assinatura com confirmacao
+  - quando houver cancelamento pendente (`cancel_at_period_end`), o app oferece acao de desfazer cancelamento
+  - fluxo mobile diferencia mensagem de cancelamento durante janela de garantia (ate 7 dias) versus fim de ciclo
+  - estado da assinatura e historico sao recarregados apos cada acao para manter consistencia com backend
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - captura detalhada de motivo (formulario rico com campos adicionais/recaptcha) ainda permanece apenas no fluxo web.
+
 ## 2026-04-15 - Billing mobile com renovacao e reembolso
 
 - commit: `49994ff Expand mobile billing with renewal and refund actions`
