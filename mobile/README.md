@@ -89,6 +89,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - envio das respostas no endpoint oficial de questoes
 - Perfil mobile com billing Stripe:
   - alerta de atencao em pagamento (cartao expirando/falha) com acao de resolucao no portal Stripe
+  - cards de resumo da assinatura (status, ciclo/vigencia e valor) com mensagens dinamicas
   - listagem de cartoes do cofre
   - definir cartao padrao
   - remocao com bloqueio para cartao vinculado a assinatura

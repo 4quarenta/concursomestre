@@ -21,6 +21,27 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Cards de resumo de assinatura no mobile
+
+- commit: `f766dc8 Add mobile subscription summary cards in profile`
+- origem web/plataforma:
+  - `src/app/profile/page.tsx` (cards de resumo: status, ciclo/vigencia e valor)
+  - `src/types/global.ts` (`UserSubscription.plan.price`)
+- destino mobile:
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - `mobile/src/types/auth.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - perfil mobile ganhou bloco de resumo com 3 cards de assinatura (status, ciclo/vigencia e valor)
+  - mensagens de status e ciclo passaram a refletir cenarios ativos, inativos e reembolso pendente
+  - valor exibido agora prioriza `subscription.recurring_amount` e cai para `subscription.plan.price` quando necessario
+  - contrato mobile de `UserPlan` foi ampliado com `price` para alinhar o payload real do backend
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - composicao visual do resumo ainda esta em layout vertical no mobile, enquanto o web usa grid com maior densidade.
+
 ## 2026-04-15 - Alerta de falha de pagamento no perfil mobile
 
 - commit: `2c328e5 Add mobile payment issue alert in profile`
