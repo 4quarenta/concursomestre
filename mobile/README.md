@@ -52,7 +52,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - `Suporte` (abertura de chamados, historico e respostas em thread via feedback oficial + aba de doacao com PIX global do `settings.php`)
   - `Concursos` (catalogo inicial por banca/cargo/ano usando taxonomias oficiais de `settings.php`)
   - `Ranking` (listagem + detalhe publico + envio de gabarito)
-  - `Marketplace` (vitrine de materiais, detalhe publico, filtros, compra e abertura externa de arquivo)
+  - `Marketplace` (vitrine de materiais, detalhe publico, filtros, compra e fluxo de leitura com gate por transacao em `read/:materialId`)
 - Modulos beta com shell mobile:
   - `Lei comentada`
   - `Flashcards`
@@ -64,6 +64,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - `Marketplace` (`marketplaceEnabled`)
 - Stack complementar:
   - `Concursos` com deep link `concursomestre://concursos`
+  - `Reader` com deep link `concursomestre://read/:materialId`
 - Fluxo de simulado em execucao:
   - configuracao (questoes + timer)
   - filtros locais por palavra-chave, dificuldade, materia, banca, ano, orgao, cargo e topicos
@@ -106,6 +107,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
 - `src/screens/PlansScreen.tsx`: catalogo de planos no mobile
 - `src/screens/CheckoutScreen.tsx`: entrada de checkout mobile
 - `src/screens/SimulationDetailScreen.tsx`: detalhe de tentativa salva no historico
+- `src/screens/MaterialReaderScreen.tsx`: leitor de material com validacao de acesso por compra
 - `src/services/plans/planService.ts`: fachada mobile de planos/checkout
 
 ## Como rodar

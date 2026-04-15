@@ -21,6 +21,33 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Leitor de material no mobile
+
+- commit: `6b475d6 Add mobile material reader flow with deep-link support`
+- origem web/plataforma:
+  - `src/app/read/page.tsx`
+  - `src/app/material/page.tsx`
+  - `src/services/marketplace/marketplaceService.ts`
+  - fluxo `/read/:id` com gate por compra/autor/admin
+- destino mobile:
+  - `mobile/src/screens/MaterialReaderScreen.tsx`
+  - `mobile/src/screens/MaterialDetailScreen.tsx`
+  - `mobile/src/navigation/types.ts`
+  - `mobile/src/navigation/AppNavigator.tsx`
+  - `mobile/src/screens/NotificationsScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - app mobile passou a ter rota de leitor `read/:materialId` com validacao de acesso por transacao aprovada, autor ou admin
+  - detalhe de material agora direciona para o leitor mobile quando o acesso estiver liberado
+  - deep link interno `concursomestre://read/:materialId` foi registrado no app
+  - notificacoes com destino para `read/:id` ou `material/:id` agora abrem as telas nativas correspondentes
+  - leitor preserva fallback de abertura externa do arquivo para manter compatibilidade entre dispositivos
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - render PDF embutido com senha no app ainda depende de viewer nativo dedicado; fluxo atual abre o arquivo no leitor externo do dispositivo.
+
 ## 2026-04-15 - Modulo concursos no mobile
 
 - commit: `7c76488 Extract mobile concursos module from system taxonomies`
