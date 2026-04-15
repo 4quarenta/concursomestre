@@ -11,7 +11,8 @@ import {
   Text,
   View,
 } from 'react-native';
-import { RouteProp, useRoute } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppStackParamList } from '@/navigation/types';
 import { useAuth } from '@/providers/AuthProvider';
 import { getAssetUrl } from '@/services/api/client';
@@ -22,6 +23,7 @@ import type { Material } from '@/types/materials';
 import type { MobileTransaction } from '@/types/transactions';
 
 type MaterialDetailRoute = RouteProp<AppStackParamList, 'MaterialDetail'>;
+type MaterialDetailNavigation = NativeStackNavigationProp<AppStackParamList, 'MaterialDetail'>;
 
 const formatCurrency = (value: number | string | undefined): string => {
   return new Intl.NumberFormat('pt-BR', {
@@ -56,6 +58,7 @@ const isApprovedTransaction = (transaction: MobileTransaction): boolean => {
  */
 export const MaterialDetailScreen: React.FC = () => {
   const route = useRoute<MaterialDetailRoute>();
+  const navigation = useNavigation<MaterialDetailNavigation>();
   const { user } = useAuth();
   const { materialId, material: routeMaterial } = route.params;
   const [material, setMaterial] = React.useState<Material | null>(routeMaterial || null);
@@ -260,7 +263,9 @@ export const MaterialDetailScreen: React.FC = () => {
 
       <View style={styles.actions}>
         <Pressable
-          onPress={hasReaderAccess ? handleOpenMaterial : handlePurchase}
+          onPress={hasReaderAccess
+            ? () => navigation.navigate('Reader', { materialId: String(material.id) })
+            : handlePurchase}
           disabled={purchasing}
           style={({ pressed }) => [
             styles.primaryButton,
@@ -272,15 +277,15 @@ export const MaterialDetailScreen: React.FC = () => {
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Text style={styles.primaryButtonText}>
-              {hasReaderAccess ? 'Abrir arquivo' : 'Comprar material'}
+              {hasReaderAccess ? 'Abrir no leitor' : 'Comprar material'}
             </Text>
           )}
         </Pressable>
-        {!hasReaderAccess ? (
-          <Pressable style={styles.secondaryButton} onPress={handleOpenMaterial}>
-            <Text style={styles.secondaryButtonText}>Verificar acesso</Text>
-          </Pressable>
-        ) : null}
+        <Pressable style={styles.secondaryButton} onPress={handleOpenMaterial}>
+          <Text style={styles.secondaryButtonText}>
+            {hasReaderAccess ? 'Abrir direto' : 'Verificar acesso'}
+          </Text>
+        </Pressable>
       </View>
     </ScrollView>
   );

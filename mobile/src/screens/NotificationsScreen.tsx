@@ -76,6 +76,24 @@ const resolveStackTarget = (target?: string): AppStackRoute | null => {
   return null;
 };
 
+const resolveMaterialReaderId = (target?: string): string | null => {
+  const path = normalizeTargetPath(target);
+  if (!path) return null;
+
+  const match = path.match(/(?:^|\/)read\/([^/?#]+)/i);
+  if (!match?.[1]) return null;
+  return decodeURIComponent(match[1]);
+};
+
+const resolveMaterialDetailId = (target?: string): string | null => {
+  const path = normalizeTargetPath(target);
+  if (!path) return null;
+
+  const match = path.match(/(?:^|\/)(?:material|materiais)\/([^/?#]+)/i);
+  if (!match?.[1]) return null;
+  return decodeURIComponent(match[1]);
+};
+
 const resolveTypeColor = (type: string): string => {
   const normalized = type.toLowerCase();
   if (normalized === 'success') return colors.success;
@@ -194,6 +212,18 @@ export const NotificationsScreen: React.FC = () => {
 
   const openNotificationTarget = async (notification: MobileNotification) => {
     const target = notification.link;
+    const readerMaterialId = resolveMaterialReaderId(target);
+    if (readerMaterialId) {
+      navigation.navigate('Reader', { materialId: readerMaterialId });
+      return;
+    }
+
+    const materialDetailId = resolveMaterialDetailId(target);
+    if (materialDetailId) {
+      navigation.navigate('MaterialDetail', { materialId: materialDetailId });
+      return;
+    }
+
     const stackTarget = resolveStackTarget(target);
     const tabTarget = resolveMainTabTarget(target);
 

@@ -16,6 +16,7 @@ import { ConcursosScreen } from '@/screens/ConcursosScreen';
 import { RankingDetailScreen } from '@/screens/RankingDetailScreen';
 import { PerformanceSubjectsScreen } from '@/screens/PerformanceSubjectsScreen';
 import { MaterialDetailScreen } from '@/screens/MaterialDetailScreen';
+import { MaterialReaderScreen } from '@/screens/MaterialReaderScreen';
 import { BankAnalysisScreen } from '@/screens/BankAnalysisScreen';
 import { AnnotatedLawsScreen } from '@/screens/AnnotatedLawsScreen';
 import { FlashcardsScreen } from '@/screens/FlashcardsScreen';
@@ -51,6 +52,7 @@ const linking: LinkingOptions<AppStackParamList> = {
       SimulationDetail: 'simulados/historico/:simulationId',
       PerformanceSubjects: 'desempenho/materias',
       MaterialDetail: 'material/:materialId',
+      Reader: 'read/:materialId',
       BankAnalysis: 'x-ray',
       AnnotatedLaws: 'lei-comentada',
       Flashcards: 'flashcards',
@@ -154,6 +156,11 @@ export const AppNavigator: React.FC = () => {
             name="MaterialDetail"
             component={MaterialDetailScreen}
             options={{ title: 'Material' }}
+          />
+          <Stack.Screen
+            name="Reader"
+            component={MaterialReaderScreen}
+            options={{ title: 'Leitor' }}
           />
           <Stack.Screen
             name="BankAnalysis"

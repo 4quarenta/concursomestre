@@ -39,6 +39,9 @@ export type AppStackParamList = {
     materialId: string;
     material?: Material;
   };
+  Reader: {
+    materialId: string;
+  };
   BankAnalysis: undefined;
   AnnotatedLaws: undefined;
   Flashcards: undefined;
