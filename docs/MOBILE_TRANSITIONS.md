@@ -21,6 +21,25 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Dashboard motivacao diaria no mobile
+
+- commit: `b66b040 Add daily motivation card to mobile dashboard`
+- origem web/plataforma:
+  - `src/app/dashboard/page.tsx`
+  - bloco de motivacao diaria baseado na data atual
+- destino mobile:
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - dashboard mobile ganhou card dedicado de motivacao diaria com frase rotativa por dia do ano
+  - data amigavel em pt-BR passou a aparecer junto da mensagem para reforcar o contexto do dia
+  - selecao da frase usa fallback local deterministico, sem depender de contrato novo de backend
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - filtros de periodo e grafico historico completo do dashboard web ainda nao estao no mobile.
+
 ## 2026-04-14 - Simulados detalhe de historico no mobile
 
 - commit: `649030e Add mobile simulation history detail screen`
