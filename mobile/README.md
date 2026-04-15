@@ -95,6 +95,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - atalho para portal Stripe (adicionar/gerenciar cartoes)
   - toggle de renovacao automatica da assinatura
   - cancelamento de assinatura (fim de ciclo) com solicitacao dentro da janela de garantia
+  - captura opcional de motivo e detalhes no fluxo de cancelamento
   - desfazer solicitacao de cancelamento pendente
   - historico de transacoes da conta (plano, ciclo, metodo, gateway, status, valor)
   - abertura de fatura da transacao quando a URL estiver disponivel

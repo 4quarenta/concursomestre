@@ -21,6 +21,28 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Motivo de cancelamento no perfil mobile
+
+- commit: `8d3ff45 Add mobile cancellation reason flow in profile`
+- origem web/plataforma:
+  - `src/app/profile/page.tsx` (modal de cancelamento com motivo/detalhes)
+  - `src/services/subscriptions/subscriptionsService.ts`
+  - endpoint `subscriptions/cancel.php`
+- destino mobile:
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - perfil mobile passou a exibir fluxo de cancelamento com etapa de detalhes antes da confirmacao final
+  - usuario agora pode escolher motivo opcional de cancelamento (valor, uso, tecnico, conteudo ou outros)
+  - usuario pode informar detalhes adicionais opcionais em texto livre
+  - payload enviado ao backend passou a usar `reason` e `details` dinamicos, com fallback seguro para `arrependimento` ou `user_request`
+  - apos cancelar ou reverter cancelamento, o formulario local e resetado para evitar estado residual
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - reCAPTCHA no cancelamento ainda permanece apenas no fluxo web.
+
 ## 2026-04-15 - Requisitos de perfil no checkout mobile
 
 - commit: `1a6f20a Add mobile checkout requirements and profile sync`
