@@ -18,6 +18,8 @@ import { statisticsService } from '@/services/statistics/statisticsService';
 import { colors } from '@/theme/colors';
 import type { SubjectStatistics, UserStatistics } from '@/types/statistics';
 
+type DashboardTimeRange = 'today' | 'week' | 'month' | 'all';
+
 type DashboardNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Dashboard'>,
   NativeStackNavigationProp<AppStackParamList>
@@ -78,6 +80,28 @@ const formatDashboardDate = (date: Date): string => (
   })
 );
 
+const getRangeStartTimestamp = (range: DashboardTimeRange, now: Date): number => {
+  if (range === 'today') {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  }
+
+  if (range === 'week') {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 6);
+    start.setHours(0, 0, 0, 0);
+    return start.getTime();
+  }
+
+  if (range === 'month') {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 29);
+    start.setHours(0, 0, 0, 0);
+    return start.getTime();
+  }
+
+  return 0;
+};
+
 /**
  * Dashboard mobile com estatisticas reais do usuario.
  * @since v1.0.0
@@ -89,14 +113,51 @@ export const DashboardScreen: React.FC = () => {
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [timeRange, setTimeRange] = React.useState<DashboardTimeRange>('all');
 
   const subjectTop5 = React.useMemo(() => stats.subjectBreakdown.slice(0, 5), [stats.subjectBreakdown]);
-  const timelineRows = React.useMemo(() => stats.timeline.slice(-7), [stats.timeline]);
-  const timelineMax = React.useMemo(
-    () => Math.max(1, ...timelineRows.map((row) => Number(row.questions || 0))),
-    [timelineRows],
-  );
   const today = React.useMemo(() => new Date(), []);
+  const timelineRows = React.useMemo(() => {
+    const rows = [...stats.timeline];
+    if (rows.some((row) => Number(row.timestamp || 0) > 0)) {
+      rows.sort((left, right) => Number(left.timestamp || 0) - Number(right.timestamp || 0));
+    }
+    return rows;
+  }, [stats.timeline]);
+  const filteredTimelineRows = React.useMemo(() => {
+    if (timelineRows.length === 0) return [];
+
+    const fallbackCount = timeRange === 'today' ? 1 : timeRange === 'week' ? 7 : timeRange === 'month' ? 30 : 14;
+    const hasTimestamp = timelineRows.some((row) => Number(row.timestamp || 0) > 0);
+    if (!hasTimestamp) {
+      return timelineRows.slice(-fallbackCount);
+    }
+
+    if (timeRange === 'all') {
+      return timelineRows.slice(-fallbackCount);
+    }
+
+    const start = getRangeStartTimestamp(timeRange, new Date());
+    const scopedRows = timelineRows.filter((row) => Number(row.timestamp || 0) >= start);
+    return scopedRows.length > 0 ? scopedRows : timelineRows.slice(-fallbackCount);
+  }, [timeRange, timelineRows]);
+  const timelineMax = React.useMemo(
+    () => Math.max(1, ...filteredTimelineRows.map((row) => Number(row.questions || 0))),
+    [filteredTimelineRows],
+  );
+  const timelineSummary = React.useMemo(() => {
+    const questions = filteredTimelineRows.reduce((total, row) => total + Number(row.questions || 0), 0);
+    const correct = filteredTimelineRows.reduce((total, row) => total + Number(row.correct || 0), 0);
+    const wrong = filteredTimelineRows.reduce((total, row) => total + Number(row.wrong || 0), 0);
+    const accuracy = questions > 0 ? Math.round((correct / questions) * 100) : 0;
+
+    return {
+      questions,
+      correct,
+      wrong,
+      accuracy,
+    };
+  }, [filteredTimelineRows]);
   const dailyMotivation = React.useMemo(() => getDailyMotivation(today), [today]);
   const formattedToday = React.useMemo(() => formatDashboardDate(today), [today]);
 
@@ -233,25 +294,65 @@ export const DashboardScreen: React.FC = () => {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Evolucao recente</Text>
-        {timelineRows.length === 0 ? (
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Evolucao recente</Text>
+          <View style={styles.rangeRow}>
+            {([
+              { value: 'today', label: 'Hoje' },
+              { value: 'week', label: 'Semana' },
+              { value: 'month', label: 'Mes' },
+              { value: 'all', label: 'Tudo' },
+            ] as Array<{ value: DashboardTimeRange; label: string }>).map((option) => (
+              <Pressable
+                key={option.value}
+                onPress={() => setTimeRange(option.value)}
+                style={[styles.rangeChip, timeRange === option.value && styles.rangeChipActive]}
+              >
+                <Text style={[styles.rangeChipText, timeRange === option.value && styles.rangeChipTextActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+        {filteredTimelineRows.length === 0 ? (
           <Text style={styles.emptyText}>
             O timeline da API ainda nao veio preenchido para este usuario.
           </Text>
         ) : (
-          <View style={styles.timelineList}>
-            {timelineRows.map((row, index) => {
-              const widthPercent = clampPercent((Number(row.questions || 0) / timelineMax) * 100);
-              return (
-                <View key={`${row.label}-${index}`} style={styles.timelineRow}>
-                  <Text style={styles.timelineLabel}>{row.label}</Text>
-                  <View style={styles.timelineTrack}>
-                    <View style={[styles.timelineFill, { width: `${widthPercent}%` }]} />
+          <View style={styles.timelineBlock}>
+            <View style={styles.timelineSummaryRow}>
+              <View style={styles.timelineSummaryPill}>
+                <Text style={styles.timelineSummaryLabel}>Questoes</Text>
+                <Text style={styles.timelineSummaryValue}>{timelineSummary.questions}</Text>
+              </View>
+              <View style={styles.timelineSummaryPill}>
+                <Text style={styles.timelineSummaryLabel}>Acertos</Text>
+                <Text style={styles.timelineSummaryValue}>{timelineSummary.correct}</Text>
+              </View>
+              <View style={styles.timelineSummaryPill}>
+                <Text style={styles.timelineSummaryLabel}>Erros</Text>
+                <Text style={styles.timelineSummaryValue}>{timelineSummary.wrong}</Text>
+              </View>
+              <View style={styles.timelineSummaryPill}>
+                <Text style={styles.timelineSummaryLabel}>Precisao</Text>
+                <Text style={styles.timelineSummaryValue}>{timelineSummary.accuracy}%</Text>
+              </View>
+            </View>
+            <View style={styles.timelineList}>
+              {filteredTimelineRows.map((row, index) => {
+                const widthPercent = clampPercent((Number(row.questions || 0) / timelineMax) * 100);
+                return (
+                  <View key={`${row.label}-${index}`} style={styles.timelineRow}>
+                    <Text style={styles.timelineLabel}>{row.label}</Text>
+                    <View style={styles.timelineTrack}>
+                      <View style={[styles.timelineFill, { width: `${widthPercent}%` }]} />
+                    </View>
+                    <Text style={styles.timelineValue}>{row.questions}</Text>
                   </View>
-                  <Text style={styles.timelineValue}>{row.questions}</Text>
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
         )}
       </View>
@@ -435,7 +536,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 8,
+  },
+  rangeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-end',
+  },
+  rangeChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  rangeChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#EEF2FF',
+  },
+  rangeChipText: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  rangeChipTextActive: {
+    color: colors.primary,
   },
   linkButton: {
     minHeight: 30,
@@ -471,6 +601,36 @@ const styles = StyleSheet.create({
   },
   subjectList: {
     gap: 8,
+  },
+  timelineBlock: {
+    gap: 10,
+  },
+  timelineSummaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  timelineSummaryPill: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+    minWidth: 78,
+  },
+  timelineSummaryLabel: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  timelineSummaryValue: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
   },
   timelineList: {
     gap: 10,

@@ -19,6 +19,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - detalhe completo de desempenho por materia
   - motivacao diaria por data
   - evolucao recente por timeline quando a API disponibiliza pontos temporais
+  - recorte da evolucao por periodo (hoje/semana/mes/tudo)
 
 ## Fase 2 (em andamento)
 
