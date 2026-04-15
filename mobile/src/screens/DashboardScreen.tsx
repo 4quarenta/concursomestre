@@ -19,6 +19,12 @@ import { colors } from '@/theme/colors';
 import type { SubjectStatistics, UserStatistics } from '@/types/statistics';
 
 type DashboardTimeRange = 'today' | 'week' | 'month' | 'all';
+const TIME_RANGE_LABELS: Record<DashboardTimeRange, string> = {
+  today: 'Hoje',
+  week: 'Semana',
+  month: 'Mes',
+  all: 'Tudo',
+};
 
 type DashboardNavigation = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Dashboard'>,
@@ -177,6 +183,35 @@ export const DashboardScreen: React.FC = () => {
       accuracy,
     };
   }, [filteredTimelineRows]);
+  const kpiSummary = React.useMemo(() => {
+    if (filteredTimelineRows.length === 0) {
+      return {
+        totalQuestions: Number(stats.totalQuestionsAnswered || 0),
+        correctAnswers: Number(stats.correctAnswers || 0),
+        wrongAnswers: Number(stats.wrongAnswers || 0),
+        accuracyRate: clampPercent(Number(stats.accuracyRate || 0)),
+        usingTimeline: false,
+      };
+    }
+
+    return {
+      totalQuestions: timelineSummary.questions,
+      correctAnswers: timelineSummary.correct,
+      wrongAnswers: timelineSummary.wrong,
+      accuracyRate: clampPercent(timelineSummary.accuracy),
+      usingTimeline: true,
+    };
+  }, [
+    filteredTimelineRows.length,
+    stats.accuracyRate,
+    stats.correctAnswers,
+    stats.totalQuestionsAnswered,
+    stats.wrongAnswers,
+    timelineSummary.accuracy,
+    timelineSummary.correct,
+    timelineSummary.questions,
+    timelineSummary.wrong,
+  ]);
   const dailyMotivation = React.useMemo(() => getDailyMotivation(today), [today]);
   const formattedToday = React.useMemo(() => formatDashboardDate(today), [today]);
   const levelProgress = React.useMemo(
@@ -278,14 +313,16 @@ export const DashboardScreen: React.FC = () => {
       <View style={styles.kpiGrid}>
         <View style={styles.kpiCard}>
           <Text style={styles.kpiLabel}>Questoes</Text>
-          <Text style={styles.kpiValue}>{stats.totalQuestionsAnswered}</Text>
-          <Text style={styles.kpiHint}>Respondidas</Text>
+          <Text style={styles.kpiValue}>{kpiSummary.totalQuestions}</Text>
+          <Text style={styles.kpiHint}>
+            {kpiSummary.usingTimeline ? `Respondidas (${TIME_RANGE_LABELS[timeRange]})` : 'Respondidas'}
+          </Text>
         </View>
         <View style={styles.kpiCard}>
           <Text style={styles.kpiLabel}>Acuracia</Text>
-          <Text style={styles.kpiValue}>{Math.round(clampPercent(stats.accuracyRate))}%</Text>
+          <Text style={styles.kpiValue}>{Math.round(kpiSummary.accuracyRate)}%</Text>
           <Text style={styles.kpiHint}>
-            {stats.correctAnswers} acertos
+            {kpiSummary.correctAnswers} acertos / {kpiSummary.wrongAnswers} erros
           </Text>
         </View>
         <View style={styles.kpiCard}>
