@@ -88,7 +88,10 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - remocao com bloqueio para cartao vinculado a assinatura
   - aviso de cartao expirado/expirando
   - atalho para portal Stripe (adicionar/gerenciar cartoes)
+  - toggle de renovacao automatica da assinatura
   - historico de transacoes da conta (plano, ciclo, metodo, gateway, status, valor)
+  - abertura de fatura da transacao quando a URL estiver disponivel
+  - solicitacao e cancelamento de reembolso por transacao
 - Central de notificacoes mobile:
   - listagem via endpoint oficial
   - marcar uma/todas como lidas

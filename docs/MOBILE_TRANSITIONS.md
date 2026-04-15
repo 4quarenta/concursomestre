@@ -21,6 +21,33 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Billing mobile com renovacao e reembolso
+
+- commit: `49994ff Expand mobile billing with renewal and refund actions`
+- origem web/plataforma:
+  - `src/app/profile/page.tsx` (abas de assinatura e historico de transacoes)
+  - `src/services/subscriptions/subscriptionsService.ts`
+  - `src/services/transactions/transactionsService.ts`
+  - endpoints `subscriptions/update_renewal.php`, `subscriptions/cancel_refund.php` e `transactions/refund.php`
+- destino mobile:
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - `mobile/src/services/subscriptions/subscriptionsService.ts`
+  - `mobile/src/services/transactions/transactionsService.ts`
+  - `mobile/src/services/api/endpoints.ts`
+  - `mobile/src/types/transactions.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - perfil mobile ganhou acao para ativar/desativar renovacao automatica da assinatura
+  - transacoes passaram a suportar abertura de fatura quando a URL vier no payload
+  - historico mobile agora permite solicitar reembolso para transacoes aprovadas/concluidas
+  - quando houver solicitacao pendente, o app permite cancelar o pedido de reembolso na mesma tela
+  - contrato mobile de transacao foi ampliado para campos de fatura e metadados de reembolso/gateway
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - cancelamento completo da assinatura com captura de motivo/fluxo detalhado ainda nao foi portado para UX dedicada no mobile.
+
 ## 2026-04-15 - Leitor de material no mobile
 
 - commit: `6b475d6 Add mobile material reader flow with deep-link support`
