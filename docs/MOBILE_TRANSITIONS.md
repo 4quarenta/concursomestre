@@ -497,3 +497,30 @@ Toda transicao mobile deve registrar:
   - push para `origin/master`
 - pendencias conhecidas:
   - ainda faltam refinamentos finais de paridade no fluxo de pratica, sobretudo acabamento fino de interacoes e alguns estados ricos do card web.
+
+## 2026-04-14 - Simulados taxonomias completas no configurador
+
+- commit: `ec33795 Add mobile simulation taxonomy filters`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - contrato `SimulationConfig` em `src/types/global.ts`
+  - payload oficial de questoes com materia, banca, ano, orgao e cargo
+- destino mobile:
+  - `mobile/src/screens/SimulationConfigScreen.tsx`
+  - `mobile/src/screens/SimulationRunScreen.tsx`
+  - `mobile/src/types/simulation.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - configurador mobile passou a carregar o pool oficial completo de questoes e filtrar localmente
+  - simulados agora aceitam taxonomias de materia, banca, ano, orgao e cargo alem de palavra-chave e dificuldade
+  - a amostra exibida no configurador reflete o total elegivel local antes do inicio do simulado
+  - o `seed` mobile e a persistencia final do simulado passaram a registrar essas taxonomias para manter o contexto da configuracao
+- compatibilidade observada:
+  - como `questionsList` local ainda ignora filtros ricos no backend, o mobile aplica os recortes no cliente para entregar configuracao coerente
+  - quando o conjunto filtrado fica menor que a quantidade pedida, o configurador avisa e inicia com o total disponivel
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+  - push para `origin/master`
+- pendencias conhecidas:
+  - ainda faltam outros refinamentos de paridade do modulo Simulados, como taxonomias adicionais mais profundas e acabamento fino da experiencia de configuracao/revisao.

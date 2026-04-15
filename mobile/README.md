@@ -47,7 +47,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - `Flashcards`
 - Fluxo de simulado em execucao:
   - configuracao (questoes + timer)
-  - filtros iniciais por palavra-chave, dificuldade e materia
+  - filtros locais por palavra-chave, dificuldade, materia, banca, ano, orgao e cargo
   - execucao com navegacao por questao
   - finalizacao com score
   - resultado detalhado com revisao por questao
