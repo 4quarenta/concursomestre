@@ -21,6 +21,26 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Dashboard evolucao em colunas (questoes/acertos)
+
+- commit: `77af668 Add column timeline chart to mobile dashboard`
+- origem web/plataforma:
+  - `src/app/dashboard/page.tsx`
+  - grafico de evolucao com serie de questoes e acertos
+- destino mobile:
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - bloco de evolucao ganhou visual de grafico em colunas com scroll horizontal
+  - cada ponto passa a exibir barra de questoes e, quando habilitado, sobreposicao de acertos
+  - legenda e toggle de acertos foram mantidos, agora conectados ao grafico em colunas
+  - lista textual por linha continua no card para leitura numerica rapida
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - area chart nativo equivalente ao web ainda nao foi introduzido no mobile.
+
 ## 2026-04-14 - Dashboard KPIs sensiveis ao recorte temporal
 
 - commit: `2614626 Align mobile dashboard KPIs with selected range`
