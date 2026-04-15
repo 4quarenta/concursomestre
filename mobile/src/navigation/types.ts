@@ -29,6 +29,7 @@ export type AppStackParamList = {
     simulationId: string;
   };
   Notifications: undefined;
+  Support: undefined;
   RankingDetail: {
     rankingId: string;
   };

@@ -534,6 +534,9 @@ export const DashboardScreen: React.FC = () => {
           <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Notifications')}>
             <Text style={styles.actionButtonText}>Notificacoes</Text>
           </Pressable>
+          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Support')}>
+            <Text style={styles.actionButtonText}>Suporte</Text>
+          </Pressable>
           {canAccessBankAnalysis ? (
             <Pressable style={styles.actionButton} onPress={() => navigation.navigate('BankAnalysis')}>
               <Text style={styles.actionButtonText}>Raio-X da banca</Text>

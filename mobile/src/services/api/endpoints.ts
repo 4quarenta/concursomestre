@@ -46,6 +46,10 @@ export const ENDPOINTS = {
     delete: 'notificationsDelete',
     clearAll: 'notificationsClearAll',
   },
+  feedback: {
+    list: 'feedback/list.php',
+    create: 'feedback/create.php',
+  },
   profile: {
     update: 'users/update.php',
   },

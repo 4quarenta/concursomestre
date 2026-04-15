@@ -49,6 +49,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
 - Modulos em leitura real:
   - `Simulados` (listagem com merge remoto/local de historico + detalhe por tentativa)
   - `Raio-X da banca` (analise por banca/cargo/periodo com endpoint oficial de xray)
+  - `Suporte` (abertura de chamados, historico e respostas em thread via feedback oficial)
   - `Ranking` (listagem + detalhe publico + envio de gabarito)
   - `Marketplace` (vitrine de materiais, detalhe publico, filtros, compra e abertura externa de arquivo)
 - Modulos beta com shell mobile:
@@ -89,6 +90,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - marcar uma/todas como lidas
   - remocao/limpeza de notificacoes
   - deep links para abas principais via `concursomestre://`
+  - roteamento para stack de suporte e Raio-X quando o destino apontar para esses modulos
 
 ## Estrutura
 
