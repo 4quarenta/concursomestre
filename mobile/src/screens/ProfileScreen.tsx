@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -30,6 +31,14 @@ const toBoolean = (value: unknown): boolean => {
   }
   return Boolean(value);
 };
+
+const cancelReasonOptions = [
+  { value: 'price', label: 'Valor da assinatura' },
+  { value: 'usage', label: 'Nao estou usando o suficiente' },
+  { value: 'technical', label: 'Problemas tecnicos' },
+  { value: 'content', label: 'Falta de conteudos especificos' },
+  { value: 'other', label: 'Outros motivos' },
+];
 
 const hasActiveSubscriptionStatus = (status?: string): boolean => {
   const normalized = String(status || '').toLowerCase();
@@ -254,6 +263,9 @@ export const ProfileScreen: React.FC = () => {
   const [updatingRenewal, setUpdatingRenewal] = React.useState(false);
   const [updatingRefundId, setUpdatingRefundId] = React.useState<string | null>(null);
   const [updatingSubscriptionAction, setUpdatingSubscriptionAction] = React.useState(false);
+  const [showCancelForm, setShowCancelForm] = React.useState(false);
+  const [cancelReason, setCancelReason] = React.useState('');
+  const [cancelDetails, setCancelDetails] = React.useState('');
 
   const activeSubscription = hasActiveSubscriptionStatus(user?.subscription?.status);
   const renewalEnabled = toBoolean(user?.subscription?.auto_renew);
@@ -404,6 +416,32 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  const resetCancelForm = () => {
+    setShowCancelForm(false);
+    setCancelReason('');
+    setCancelDetails('');
+  };
+
+  const executeCancelSubscription = async () => {
+    setUpdatingSubscriptionAction(true);
+    try {
+      const reason = cancelReason.trim() || (withinRefundWindow ? 'arrependimento' : 'user_request');
+      const details = cancelDetails.trim() || undefined;
+      const result = await subscriptionsService.cancelSubscription(reason, details);
+      Alert.alert(
+        'Solicitacao enviada',
+        result.message || 'Cancelamento registrado com sucesso.',
+      );
+      await refreshProfile();
+      await loadTransactions();
+      resetCancelForm();
+    } catch (error: any) {
+      Alert.alert('Erro', readApiErrorMessage(error, 'Nao foi possivel cancelar a assinatura.'));
+    } finally {
+      setUpdatingSubscriptionAction(false);
+    }
+  };
+
   const handleCancelSubscription = () => {
     if (!activeSubscription) {
       Alert.alert('Assinatura inativa', 'Nao existe assinatura ativa para cancelar.');
@@ -411,31 +449,17 @@ export const ProfileScreen: React.FC = () => {
     }
 
     Alert.alert(
-      'Cancelar assinatura',
+      'Confirmar cancelamento',
       withinRefundWindow
-        ? 'Voce ainda esta no periodo de garantia. Deseja seguir com o cancelamento?'
+        ? 'Voce ainda esta no periodo de garantia. Deseja seguir com o cancelamento agora?'
         : 'Deseja cancelar a assinatura ao final do ciclo atual?',
       [
         { text: 'Voltar', style: 'cancel' },
         {
           text: 'Confirmar',
           style: 'destructive',
-          onPress: async () => {
-            setUpdatingSubscriptionAction(true);
-            try {
-              const reason = withinRefundWindow ? 'arrependimento' : 'user_request';
-              const result = await subscriptionsService.cancelSubscription(reason, 'Solicitacao via app mobile');
-              Alert.alert(
-                'Solicitacao enviada',
-                result.message || 'Cancelamento registrado com sucesso.',
-              );
-              await refreshProfile();
-              await loadTransactions();
-            } catch (error: any) {
-              Alert.alert('Erro', readApiErrorMessage(error, 'Nao foi possivel cancelar a assinatura.'));
-            } finally {
-              setUpdatingSubscriptionAction(false);
-            }
+          onPress: () => {
+            void executeCancelSubscription();
           },
         },
       ],
@@ -452,6 +476,7 @@ export const ProfileScreen: React.FC = () => {
       );
       await refreshProfile();
       await loadTransactions();
+      resetCancelForm();
     } catch (error: any) {
       Alert.alert('Erro', readApiErrorMessage(error, 'Nao foi possivel reverter o cancelamento.'));
     } finally {
@@ -549,6 +574,12 @@ export const ProfileScreen: React.FC = () => {
     );
   };
 
+  React.useEffect(() => {
+    if (!activeSubscription || subscriptionCancelPending) {
+      resetCancelForm();
+    }
+  }, [activeSubscription, subscriptionCancelPending]);
+
   useFocusEffect(
     React.useCallback(() => {
       void refreshProfile();
@@ -625,23 +656,87 @@ export const ProfileScreen: React.FC = () => {
               )}
             </Pressable>
           ) : (
-            <Pressable
-              style={({ pressed }) => [
-                styles.cancelButton,
-                pressed && !updatingSubscriptionAction && styles.cancelButtonPressed,
-                updatingSubscriptionAction && styles.cancelButtonDisabled,
-              ]}
-              onPress={handleCancelSubscription}
-              disabled={updatingSubscriptionAction}
-            >
-              {updatingSubscriptionAction ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
+            <View style={styles.cancelFlowBlock}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.cancelButton,
+                  pressed && !updatingSubscriptionAction && styles.cancelButtonPressed,
+                  updatingSubscriptionAction && styles.cancelButtonDisabled,
+                ]}
+                onPress={() => setShowCancelForm((previous) => !previous)}
+                disabled={updatingSubscriptionAction}
+              >
                 <Text style={styles.cancelButtonText}>
-                  {withinRefundWindow ? 'Cancelar e solicitar reembolso' : 'Cancelar ao fim do ciclo'}
+                  {showCancelForm ? 'Fechar cancelamento' : 'Cancelar assinatura'}
                 </Text>
+              </Pressable>
+
+              {showCancelForm && (
+                <View style={styles.cancelFormPanel}>
+                  <Text style={styles.cancelFormTitle}>Confirme seu pedido de cancelamento</Text>
+                  <Text style={styles.cancelFormDescription}>
+                    {withinRefundWindow
+                      ? 'Voce ainda esta na janela de garantia. Informe o motivo e confirme para seguirmos com sua solicitacao.'
+                      : 'Seu acesso continua ativo ate o fim do ciclo atual. Se quiser, compartilhe o motivo do cancelamento.'}
+                  </Text>
+
+                  <Text style={styles.cancelFormLabel}>Motivo principal (opcional)</Text>
+                  <View style={styles.cancelReasonGrid}>
+                    {cancelReasonOptions.map((option) => {
+                      const isSelected = cancelReason === option.value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          style={[styles.cancelReasonChip, isSelected && styles.cancelReasonChipSelected]}
+                          onPress={() => setCancelReason(option.value)}
+                        >
+                          <Text style={[styles.cancelReasonChipText, isSelected && styles.cancelReasonChipTextSelected]}>
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={styles.cancelFormLabel}>Detalhes adicionais (opcional)</Text>
+                  <TextInput
+                    value={cancelDetails}
+                    onChangeText={setCancelDetails}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                    placeholder="Se quiser, conte rapidamente o que motivou o cancelamento."
+                    placeholderTextColor={colors.muted}
+                    style={styles.cancelDetailsInput}
+                  />
+
+                  <View style={styles.cancelFormActions}>
+                    <Pressable
+                      style={styles.cancelKeepButton}
+                      onPress={resetCancelForm}
+                      disabled={updatingSubscriptionAction}
+                    >
+                      <Text style={styles.cancelKeepButtonText}>Manter assinatura</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.cancelConfirmButton, updatingSubscriptionAction && styles.cancelButtonDisabled]}
+                      onPress={handleCancelSubscription}
+                      disabled={updatingSubscriptionAction}
+                    >
+                      {updatingSubscriptionAction ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.cancelConfirmButtonText}>Confirmar cancelamento</Text>
+                      )}
+                    </Pressable>
+                  </View>
+
+                  <Text style={styles.cancelFormFootnote}>
+                    Seu acesso permanece ativo ate {formatDate(user?.subscription?.current_period_end)}.
+                  </Text>
+                </View>
               )}
-            </Pressable>
+            </View>
           )
         ) : null}
 
@@ -981,6 +1076,120 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 0.45,
+  },
+  cancelFlowBlock: {
+    marginTop: 8,
+    gap: 8,
+  },
+  cancelFormPanel: {
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 12,
+    backgroundColor: '#FEF2F2',
+    padding: 10,
+    gap: 8,
+  },
+  cancelFormTitle: {
+    color: '#7F1D1D',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  cancelFormDescription: {
+    color: '#991B1B',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 17,
+  },
+  cancelFormLabel: {
+    color: '#991B1B',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.45,
+  },
+  cancelReasonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  cancelReasonChip: {
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  cancelReasonChipSelected: {
+    borderColor: colors.danger,
+    backgroundColor: '#FEE2E2',
+  },
+  cancelReasonChipText: {
+    color: '#7F1D1D',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  cancelReasonChipTextSelected: {
+    color: colors.danger,
+  },
+  cancelDetailsInput: {
+    minHeight: 84,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cancelFormActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  cancelKeepButton: {
+    flex: 1,
+    minHeight: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  cancelKeepButtonText: {
+    color: '#475569',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+  },
+  cancelConfirmButton: {
+    flex: 1,
+    minHeight: 36,
+    borderRadius: 10,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  cancelConfirmButtonText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+  },
+  cancelFormFootnote: {
+    color: '#7F1D1D',
+    fontSize: 10,
+    fontWeight: '800',
   },
   undoCancelButton: {
     marginTop: 8,
