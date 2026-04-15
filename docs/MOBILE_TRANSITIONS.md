@@ -21,6 +21,27 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Simulados navegacao por paleta e finalizacao antecipada
+
+- commit: `8eb9773 Add mobile simulation navigation palette`
+- origem web/plataforma:
+  - `src/app/simulation/page.tsx`
+  - etapa ativa do simulado com grade de navegacao por questao e opcao de entrega antecipada
+- destino mobile:
+  - `mobile/src/screens/SimulationRunScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - runner mobile passou a mostrar contador de questoes respondidas durante a prova
+  - etapa ativa agora oferece paleta de navegacao para salto direto entre questoes
+  - paleta indica questao atual e questoes ja respondidas para leitura rapida de progresso
+  - fluxo ganhou opcao de finalizar o simulado antes da ultima questao com confirmacao explicita
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - revisao detalhada ainda nao abre tela dedicada por questao com comentarios e notas.
+  - historico/listagem persistida de simulados ainda depende de endpoint oficial de listagem no backend.
+
 ## 2026-04-14 - Simulados revisao final filtravel e expandida
 
 - commit: `7d116db Improve mobile simulation final review UX`
