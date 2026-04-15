@@ -51,7 +51,8 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - modo de resposta com resultado final ou feedback imediato
   - execucao com navegacao por questao
   - finalizacao com score
-  - resultado detalhado com revisao por questao
+  - resultado detalhado com revisao por questao, filtros por status e resumo de acertos/erros/em branco
+  - revisao expandida de alternativas com destaque de gabarito e resposta marcada
   - persistencia da sessao via `simulationsCreate`
   - envio das respostas no endpoint oficial de questoes
 - Perfil mobile com billing Stripe:
@@ -102,7 +103,7 @@ Padrao local:
 - Migracao de modulos com paridade:
   - Dashboard completo com graficos, motivacao diaria e recortes de periodo
   - Questoes/practice com refinamentos finais de paridade fina
-  - Simulados com taxonomias completas (banca, ano, orgao, cargo)
+  - Simulados com revisao dedicada por questao (comentarios/notas) e historico persistido oficial
   - Lei comentada com conteudo real
   - Flashcards com revisao ativa real
   - Checkout/assinaturas/transacoes

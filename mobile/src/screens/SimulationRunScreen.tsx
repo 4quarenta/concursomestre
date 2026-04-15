@@ -64,6 +64,26 @@ const mapSimulationDifficulty = (value?: string): string => {
   return 'All';
 };
 
+type ReviewFilter = 'all' | 'correct' | 'wrong' | 'blank';
+
+const getReviewStatus = (
+  entry: MobileSimulationResult['questionResults'][number],
+): Exclude<ReviewFilter, 'all'> => {
+  if (entry.isCorrect) return 'correct';
+  if (entry.answered) return 'wrong';
+  return 'blank';
+};
+
+const getQuestionSubjectLabel = (question: Question): string => {
+  const subject = (question.assuntos || []).find((item) => item?.materia && item?.nome);
+  return subject?.nome || 'Geral';
+};
+
+const getQuestionTopicLabel = (question: Question): string => {
+  const topic = (question.assuntos || []).find((item) => !item?.materia && item?.nome);
+  return topic?.nome || 'Topico geral';
+};
+
 /**
  * Tela mobile de execucao do simulado.
  * @since v1.0.0
@@ -81,6 +101,8 @@ export const SimulationRunScreen: React.FC = () => {
   );
   const [finishing, setFinishing] = React.useState(false);
   const [result, setResult] = React.useState<MobileSimulationResult | null>(null);
+  const [reviewFilter, setReviewFilter] = React.useState<ReviewFilter>('all');
+  const [expandedReviewMap, setExpandedReviewMap] = React.useState<Record<string, boolean>>({});
 
   const currentQuestion = seed.questions[currentIndex];
   const currentQuestionKey = currentQuestion ? getQuestionKey(currentQuestion, currentIndex) : '';
@@ -164,6 +186,8 @@ export const SimulationRunScreen: React.FC = () => {
         await refreshProfile();
       }
 
+      setReviewFilter('all');
+      setExpandedReviewMap({});
       setResult({
         score,
         total: seed.questions.length,
@@ -215,6 +239,23 @@ export const SimulationRunScreen: React.FC = () => {
 
   if (result) {
     const accuracy = result.total > 0 ? Math.round((result.score / result.total) * 100) : 0;
+    const reviewRows = result.questionResults.map((entry, index) => ({
+      entry,
+      index,
+      status: getReviewStatus(entry),
+    }));
+    const correctCount = reviewRows.filter((row) => row.status === 'correct').length;
+    const wrongCount = reviewRows.filter((row) => row.status === 'wrong').length;
+    const blankCount = reviewRows.filter((row) => row.status === 'blank').length;
+    const visibleReviewRows = reviewFilter === 'all'
+      ? reviewRows
+      : reviewRows.filter((row) => row.status === reviewFilter);
+    const reviewFilterOptions: Array<{ value: ReviewFilter; label: string; count: number }> = [
+      { value: 'all', label: 'Todas', count: result.total },
+      { value: 'correct', label: 'Acertos', count: correctCount },
+      { value: 'wrong', label: 'Erros', count: wrongCount },
+      { value: 'blank', label: 'Em branco', count: blankCount },
+    ];
 
     return (
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -226,31 +267,109 @@ export const SimulationRunScreen: React.FC = () => {
           <Text style={styles.resultMeta}>
             Tempo total: {formatRemainingTime(result.elapsedSeconds)}
           </Text>
+          <View style={styles.resultStatsRow}>
+            <View style={[styles.resultStatBadge, styles.resultStatBadgeCorrect]}>
+              <Text style={[styles.resultStatText, styles.resultStatTextCorrect]}>{correctCount} acertos</Text>
+            </View>
+            <View style={[styles.resultStatBadge, styles.resultStatBadgeWrong]}>
+              <Text style={[styles.resultStatText, styles.resultStatTextWrong]}>{wrongCount} erros</Text>
+            </View>
+            <View style={[styles.resultStatBadge, styles.resultStatBadgeBlank]}>
+              <Text style={[styles.resultStatText, styles.resultStatTextBlank]}>{blankCount} em branco</Text>
+            </View>
+          </View>
         </View>
 
         <View style={styles.reviewCard}>
           <Text style={styles.reviewTitle}>Revisao por questao</Text>
           <Text style={styles.reviewDescription}>Confira onde acertou, errou ou deixou em branco.</Text>
-          {result.questionResults.map((entry, index) => (
-            <View
-              key={`${getQuestionKey(entry.question, index)}-review`}
-              style={[styles.reviewRow, entry.isCorrect ? styles.reviewRowCorrect : styles.reviewRowWrong]}
-            >
-              <View style={styles.reviewRowHeader}>
-                <Text style={styles.reviewQuestionNumber}>Questao {index + 1}</Text>
-                <Text style={[styles.reviewStatus, entry.isCorrect ? styles.reviewStatusCorrect : styles.reviewStatusWrong]}>
-                  {entry.isCorrect ? 'Correta' : entry.answered ? 'Incorreta' : 'Em branco'}
+          <View style={styles.reviewFiltersRow}>
+            {reviewFilterOptions.map((option) => (
+              <Pressable
+                key={option.value}
+                onPress={() => setReviewFilter(option.value)}
+                style={[styles.reviewFilterChip, reviewFilter === option.value && styles.reviewFilterChipActive]}
+              >
+                <Text style={[styles.reviewFilterText, reviewFilter === option.value && styles.reviewFilterTextActive]}>
+                  {option.label} ({option.count})
                 </Text>
-              </View>
-              <Text numberOfLines={3} style={styles.reviewQuestionText}>
-                {stripHtml(entry.question.enunciado_clean || entry.question.enunciado || 'Questao sem enunciado')}
-              </Text>
-              <View style={styles.reviewAnswerRow}>
-                <Text style={styles.reviewAnswerText}>Sua resposta: {formatAnswerLabel(entry.selectedIndex)}</Text>
-                <Text style={styles.reviewAnswerText}>Gabarito: {formatAnswerLabel(entry.correctIndex)}</Text>
-              </View>
+              </Pressable>
+            ))}
+          </View>
+
+          {visibleReviewRows.length === 0 ? (
+            <View style={styles.reviewEmptyCard}>
+              <Text style={styles.reviewEmptyText}>Nenhuma questao nesta visao.</Text>
             </View>
-          ))}
+          ) : visibleReviewRows.map(({ entry, index, status }) => {
+            const reviewKey = `${getQuestionKey(entry.question, index)}-review`;
+            const isExpanded = Boolean(expandedReviewMap[reviewKey]);
+
+            return (
+              <Pressable
+                key={reviewKey}
+                onPress={() => setExpandedReviewMap((previous) => ({
+                  ...previous,
+                  [reviewKey]: !previous[reviewKey],
+                }))}
+                style={[
+                  styles.reviewRow,
+                  status === 'correct' && styles.reviewRowCorrect,
+                  status === 'wrong' && styles.reviewRowWrong,
+                  status === 'blank' && styles.reviewRowBlank,
+                ]}
+              >
+                <View style={styles.reviewRowHeader}>
+                  <Text style={styles.reviewQuestionNumber}>Questao {index + 1}</Text>
+                  <Text style={[
+                    styles.reviewStatus,
+                    status === 'correct' && styles.reviewStatusCorrect,
+                    status !== 'correct' && styles.reviewStatusWrong,
+                  ]}>
+                    {status === 'correct' ? 'Correta' : status === 'wrong' ? 'Incorreta' : 'Em branco'}
+                  </Text>
+                </View>
+                <Text style={styles.reviewMeta}>
+                  {getQuestionSubjectLabel(entry.question)} | {getQuestionTopicLabel(entry.question)}
+                </Text>
+                <Text numberOfLines={isExpanded ? undefined : 3} style={styles.reviewQuestionText}>
+                  {stripHtml(entry.question.enunciado_clean || entry.question.enunciado || 'Questao sem enunciado')}
+                </Text>
+                <View style={styles.reviewAnswerRow}>
+                  <Text style={styles.reviewAnswerText}>Sua resposta: {formatAnswerLabel(entry.selectedIndex)}</Text>
+                  <Text style={styles.reviewAnswerText}>Gabarito: {formatAnswerLabel(entry.correctIndex)}</Text>
+                </View>
+                <Text style={styles.reviewExpandHint}>
+                  {isExpanded ? 'Toque para recolher alternativas' : 'Toque para ver alternativas'}
+                </Text>
+
+                {isExpanded ? (
+                  <View style={styles.reviewOptionsList}>
+                    {(entry.question.itens || []).map((item, optionIndex) => {
+                      const selected = entry.selectedIndex === optionIndex;
+                      const correct = entry.correctIndex === optionIndex;
+
+                      return (
+                        <View
+                          key={`${reviewKey}-option-${optionIndex}`}
+                          style={[
+                            styles.reviewOptionRow,
+                            correct && styles.reviewOptionRowCorrect,
+                            selected && !correct && styles.reviewOptionRowWrong,
+                          ]}
+                        >
+                          <Text style={styles.reviewOptionLabel}>{String.fromCharCode(65 + optionIndex)}</Text>
+                          <Text style={styles.reviewOptionText}>
+                            {stripHtml(item?.corpo_clean || item?.corpo || `Alternativa ${optionIndex + 1}`)}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
         </View>
 
         <Pressable style={styles.mainButton} onPress={handleLeave}>
@@ -561,6 +680,45 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  resultStatsRow: {
+    marginTop: 8,
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+  },
+  resultStatBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  resultStatBadgeCorrect: {
+    borderColor: '#A7F3D0',
+    backgroundColor: '#ECFDF5',
+  },
+  resultStatBadgeWrong: {
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  resultStatBadgeBlank: {
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F1F5F9',
+  },
+  resultStatText: {
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  resultStatTextCorrect: {
+    color: colors.success,
+  },
+  resultStatTextWrong: {
+    color: colors.danger,
+  },
+  resultStatTextBlank: {
+    color: colors.muted,
+  },
   reviewCard: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -568,6 +726,43 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     padding: 14,
     gap: 10,
+  },
+  reviewFiltersRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reviewFilterChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  reviewFilterChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#EEF2FF',
+  },
+  reviewFilterText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  reviewFilterTextActive: {
+    color: colors.primary,
+  },
+  reviewEmptyCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+  },
+  reviewEmptyText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
   },
   reviewTitle: {
     color: colors.text,
@@ -595,6 +790,10 @@ const styles = StyleSheet.create({
   reviewRowWrong: {
     borderColor: '#FECACA',
     backgroundColor: '#FEF2F2',
+  },
+  reviewRowBlank: {
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
   },
   reviewRowHeader: {
     flexDirection: 'row',
@@ -627,6 +826,11 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     fontWeight: '700',
   },
+  reviewMeta: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
   reviewAnswerRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -636,6 +840,45 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     fontWeight: '800',
+  },
+  reviewExpandHint: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  reviewOptionsList: {
+    gap: 6,
+  },
+  reviewOptionRow: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    padding: 8,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'flex-start',
+  },
+  reviewOptionRowCorrect: {
+    borderColor: '#A7F3D0',
+    backgroundColor: '#ECFDF5',
+  },
+  reviewOptionRowWrong: {
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  reviewOptionLabel: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '900',
+    width: 16,
+  },
+  reviewOptionText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
   },
 });
 
