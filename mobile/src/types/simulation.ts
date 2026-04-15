@@ -1,6 +1,7 @@
 import type { Question } from '@/types/questions';
 
 export type MobileSimulationDifficulty = 'all' | 'easy' | 'medium' | 'hard';
+export type MobileSimulationFeedbackMode = 'after_all' | 'instant';
 
 export interface MobileSimulationConfig {
   questionCount: number;
@@ -8,11 +9,13 @@ export interface MobileSimulationConfig {
   timerMinutes: number;
   keyword?: string;
   difficulty?: MobileSimulationDifficulty;
+  feedbackMode?: MobileSimulationFeedbackMode;
   subjects?: string[];
   agencies?: string[];
   years?: string[];
   organizations?: string[];
   roles?: string[];
+  topics?: string[];
 }
 
 export interface MobileSimulationSeed {

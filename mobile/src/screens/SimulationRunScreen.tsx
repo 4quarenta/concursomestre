@@ -84,9 +84,14 @@ export const SimulationRunScreen: React.FC = () => {
 
   const currentQuestion = seed.questions[currentIndex];
   const currentQuestionKey = currentQuestion ? getQuestionKey(currentQuestion, currentIndex) : '';
+  const feedbackMode = seed.config.feedbackMode || 'after_all';
+  const isInstantFeedback = feedbackMode === 'instant';
   const hasSelectedAnswer = currentQuestion ? answers[currentQuestionKey] !== undefined : false;
   const isLastQuestion = currentIndex === seed.questions.length - 1;
   const progressText = `${Math.min(currentIndex + 1, seed.questions.length)} / ${seed.questions.length}`;
+  const currentCorrectIndex = currentQuestion ? getCorrectIndex(currentQuestion) : -1;
+  const currentSelectedIndex = currentQuestion ? answers[currentQuestionKey] : undefined;
+  const currentAnswerIsCorrect = currentSelectedIndex !== undefined && currentSelectedIndex === currentCorrectIndex;
 
   const handleFinishSimulation = React.useCallback(async () => {
     if (finishing || result) return;
@@ -135,7 +140,7 @@ export const SimulationRunScreen: React.FC = () => {
           difficulty: mapSimulationDifficulty(seed.config.difficulty),
           timerEnabled: seed.config.timerEnabled,
           timerMinutes: seed.config.timerMinutes,
-          feedbackMode: 'after_all',
+          feedbackMode,
           filters: {
             careers: [],
             agencies: seed.config.agencies || [],
@@ -143,7 +148,7 @@ export const SimulationRunScreen: React.FC = () => {
             organizations: seed.config.organizations || [],
             roles: seed.config.roles || [],
             levels: [],
-            topics: [],
+            topics: seed.config.topics || [],
             keyword: seed.config.keyword || undefined,
           },
         },
@@ -170,7 +175,7 @@ export const SimulationRunScreen: React.FC = () => {
     } finally {
       setFinishing(false);
     }
-  }, [answers, finishing, refreshProfile, result, seed, user?.id]);
+  }, [answers, feedbackMode, finishing, refreshProfile, result, seed, user?.id]);
 
   React.useEffect(() => {
     if (!seed.config.timerEnabled || result) return;
@@ -188,6 +193,8 @@ export const SimulationRunScreen: React.FC = () => {
 
   const handleSelectOption = (optionIndex: number) => {
     if (!currentQuestion) return;
+    if (isInstantFeedback && hasSelectedAnswer) return;
+
     setAnswers((prev) => ({
       ...prev,
       [currentQuestionKey]: optionIndex,
@@ -275,14 +282,35 @@ export const SimulationRunScreen: React.FC = () => {
         </Text>
       </View>
 
+      {isInstantFeedback && hasSelectedAnswer ? (
+        <View style={[styles.feedbackCard, currentAnswerIsCorrect ? styles.feedbackCardCorrect : styles.feedbackCardWrong]}>
+          <Text style={[styles.feedbackTitle, currentAnswerIsCorrect ? styles.feedbackTitleCorrect : styles.feedbackTitleWrong]}>
+            {currentAnswerIsCorrect ? 'Resposta correta' : 'Resposta incorreta'}
+          </Text>
+          <Text style={styles.feedbackText}>
+            Sua resposta: {formatAnswerLabel(currentSelectedIndex)} | Gabarito: {formatAnswerLabel(currentCorrectIndex)}
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.optionsContainer}>
         {(currentQuestion.itens || []).map((item, optionIndex) => {
-          const selected = answers[currentQuestionKey] === optionIndex;
+          const selected = currentSelectedIndex === optionIndex;
+          const showInstantResult = isInstantFeedback && hasSelectedAnswer;
+          const isCorrectOption = showInstantResult && currentCorrectIndex === optionIndex;
+          const isWrongSelected = showInstantResult && selected && currentCorrectIndex !== optionIndex;
           return (
             <Pressable
               key={`${currentQuestion.id}-${optionIndex}`}
               onPress={() => handleSelectOption(optionIndex)}
-              style={[styles.optionButton, selected && styles.optionButtonSelected]}
+              disabled={finishing || (isInstantFeedback && hasSelectedAnswer)}
+              style={[
+                styles.optionButton,
+                selected && styles.optionButtonSelected,
+                isCorrectOption && styles.optionButtonCorrect,
+                isWrongSelected && styles.optionButtonWrong,
+                (finishing || (isInstantFeedback && hasSelectedAnswer)) && styles.optionButtonLocked,
+              ]}
             >
               <Text style={styles.optionLabel}>{String.fromCharCode(65 + optionIndex)}</Text>
               <Text style={styles.optionText}>
@@ -369,6 +397,38 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: '700',
   },
+  feedbackCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    gap: 4,
+  },
+  feedbackCardCorrect: {
+    borderColor: '#A7F3D0',
+    backgroundColor: '#ECFDF5',
+  },
+  feedbackCardWrong: {
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
+  },
+  feedbackTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  feedbackTitleCorrect: {
+    color: colors.success,
+  },
+  feedbackTitleWrong: {
+    color: colors.danger,
+  },
+  feedbackText: {
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
   optionsContainer: {
     gap: 8,
   },
@@ -384,6 +444,17 @@ const styles = StyleSheet.create({
   optionButtonSelected: {
     borderColor: colors.primary,
     backgroundColor: '#EEF2FF',
+  },
+  optionButtonCorrect: {
+    borderColor: colors.success,
+    backgroundColor: '#ECFDF5',
+  },
+  optionButtonWrong: {
+    borderColor: colors.danger,
+    backgroundColor: '#FEF2F2',
+  },
+  optionButtonLocked: {
+    opacity: 0.94,
   },
   optionLabel: {
     width: 24,

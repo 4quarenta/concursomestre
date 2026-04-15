@@ -16,12 +16,16 @@ import { AppStackParamList } from '@/navigation/types';
 import { questionService } from '@/services/questions/questionService';
 import { colors } from '@/theme/colors';
 import type { Question } from '@/types/questions';
-import type { MobileSimulationDifficulty } from '@/types/simulation';
+import type { MobileSimulationDifficulty, MobileSimulationFeedbackMode } from '@/types/simulation';
 
 const QUESTION_COUNT_OPTIONS = [10, 20, 30];
 const TIMER_MINUTES_OPTIONS = [10, 20, 30, 45, 60];
 const PREVIEW_PAGE_SIZE = 40;
 const DIFFICULTY_OPTIONS: MobileSimulationDifficulty[] = ['all', 'easy', 'medium', 'hard'];
+const FEEDBACK_MODE_OPTIONS: Array<{ value: MobileSimulationFeedbackMode; label: string }> = [
+  { value: 'after_all', label: 'Resultado no final' },
+  { value: 'instant', label: 'Feedback imediato' },
+];
 
 const getDifficultyLabel = (value: MobileSimulationDifficulty): string => {
   if (value === 'easy') return 'Facil';
@@ -74,11 +78,13 @@ export const SimulationConfigScreen: React.FC = () => {
   const [difficulty, setDifficulty] = React.useState<MobileSimulationDifficulty>('all');
   const [questionPool, setQuestionPool] = React.useState<Question[]>([]);
   const [loadingPool, setLoadingPool] = React.useState(true);
+  const [feedbackMode, setFeedbackMode] = React.useState<MobileSimulationFeedbackMode>('after_all');
   const [selectedSubjects, setSelectedSubjects] = React.useState<string[]>([]);
   const [selectedAgencies, setSelectedAgencies] = React.useState<string[]>([]);
   const [selectedYears, setSelectedYears] = React.useState<string[]>([]);
   const [selectedOrganizations, setSelectedOrganizations] = React.useState<string[]>([]);
   const [selectedRoles, setSelectedRoles] = React.useState<string[]>([]);
+  const [selectedTopics, setSelectedTopics] = React.useState<string[]>([]);
   const [starting, setStarting] = React.useState(false);
 
   const toggleSelection = React.useCallback((values: string[], value: string): string[] => (
@@ -161,6 +167,34 @@ export const SimulationConfigScreen: React.FC = () => {
     return Array.from(values).sort((left, right) => left.localeCompare(right, 'pt-BR'));
   }, [questionPool]);
 
+  const topicOptions = React.useMemo(() => {
+    const scopedQuestions = selectedSubjects.length === 0
+      ? questionPool
+      : questionPool.filter((question) => (
+        (question.assuntos || []).some((subject) => subject?.materia && subject?.nome && selectedSubjects.includes(subject.nome))
+      ));
+
+    const values = new Set<string>();
+    scopedQuestions.forEach((question) => {
+      (question.assuntos || []).forEach((subject) => {
+        if (subject?.materia) return;
+        if (subject?.nome) values.add(subject.nome);
+      });
+    });
+
+    return Array.from(values).sort((left, right) => left.localeCompare(right, 'pt-BR'));
+  }, [questionPool, selectedSubjects]);
+
+  React.useEffect(() => {
+    setSelectedTopics((previous) => {
+      const next = previous.filter((topic) => topicOptions.includes(topic));
+      if (next.length === previous.length && next.every((topic, index) => topic === previous[index])) {
+        return previous;
+      }
+      return next;
+    });
+  }, [topicOptions]);
+
   const filteredQuestions = React.useMemo(() => {
     const keywordNeedle = keyword.trim().toLowerCase();
 
@@ -190,6 +224,10 @@ export const SimulationConfigScreen: React.FC = () => {
         selectedRoles.length === 0
         || (question.cargos || []).some((role) => selectedRoles.includes(getRoleLabel(role)))
       );
+      const matchesTopic = (
+        selectedTopics.length === 0
+        || (question.assuntos || []).some((subject) => subject?.nome && selectedTopics.includes(subject.nome))
+      );
 
       return (
         matchesKeyword
@@ -199,6 +237,7 @@ export const SimulationConfigScreen: React.FC = () => {
         && matchesYear
         && matchesOrganization
         && matchesRole
+        && matchesTopic
       );
     });
   }, [
@@ -209,6 +248,7 @@ export const SimulationConfigScreen: React.FC = () => {
     selectedOrganizations,
     selectedRoles,
     selectedSubjects,
+    selectedTopics,
     selectedYears,
   ]);
 
@@ -267,11 +307,13 @@ export const SimulationConfigScreen: React.FC = () => {
             timerMinutes,
             keyword: keyword.trim() || undefined,
             difficulty,
+            feedbackMode,
             subjects: selectedSubjects,
             agencies: selectedAgencies,
             years: selectedYears,
             organizations: selectedOrganizations,
             roles: selectedRoles,
+            topics: selectedTopics,
           },
           questions: selected,
           startedAt: Date.now(),
@@ -290,6 +332,7 @@ export const SimulationConfigScreen: React.FC = () => {
     setSelectedYears([]);
     setSelectedOrganizations([]);
     setSelectedRoles([]);
+    setSelectedTopics([]);
   };
 
   return (
@@ -364,6 +407,9 @@ export const SimulationConfigScreen: React.FC = () => {
         <Text style={styles.filterLabel}>Cargos</Text>
         {renderMultiSelectChips(roleOptions, selectedRoles, setSelectedRoles, 'Todos os cargos')}
 
+        <Text style={styles.filterLabel}>Topicos</Text>
+        {renderMultiSelectChips(topicOptions, selectedTopics, setSelectedTopics, 'Todos os topicos')}
+
         <View style={styles.previewCard}>
           <Text style={styles.previewTitle}>
             Amostra local: {previewQuestions.length} de {filteredQuestions.length} questoes elegiveis
@@ -371,6 +417,11 @@ export const SimulationConfigScreen: React.FC = () => {
           <Text style={styles.previewText}>
             O configurador usa o pool oficial completo no app para aplicar materia, banca, ano, orgao e cargo sem depender dos filtros do endpoint legado.
           </Text>
+          {selectedTopics.length > 0 ? (
+            <Text style={styles.previewText}>
+              Topicos ativos: {selectedTopics.join(', ')}
+            </Text>
+          ) : null}
           {filteredQuestions.length > 0 && filteredQuestions.length < questionCount ? (
             <Text style={styles.previewNotice}>
               Ha menos questoes do que o total pedido; o simulado vai iniciar com {filteredQuestions.length}.
@@ -416,6 +467,28 @@ export const SimulationConfigScreen: React.FC = () => {
             ))}
           </View>
         )}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Modo de resposta</Text>
+        <View style={styles.optionsRow}>
+          {FEEDBACK_MODE_OPTIONS.map((option) => (
+            <Pressable
+              key={option.value}
+              onPress={() => setFeedbackMode(option.value)}
+              style={[styles.optionChip, feedbackMode === option.value && styles.optionChipActive]}
+            >
+              <Text style={[styles.optionChipText, feedbackMode === option.value && styles.optionChipTextActive]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.helperText}>
+          {feedbackMode === 'instant'
+            ? 'Cada resposta mostra o acerto na hora e trava a questao atual.'
+            : 'O gabarito completo aparece apenas no resultado final.'}
+        </Text>
       </View>
 
       <Pressable
@@ -561,6 +634,12 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 11,
     fontWeight: '800',
+  },
+  helperText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   filterActions: {
     flexDirection: 'row',
