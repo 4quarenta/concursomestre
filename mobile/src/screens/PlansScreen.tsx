@@ -17,6 +17,14 @@ import { planService } from '@/services/plans/planService';
 import { colors } from '@/theme/colors';
 import type { Plan } from '@/types/plans';
 
+const BILLING_CYCLE_OPTIONS = [
+  { key: 'monthly', label: 'Mensal' },
+  { key: 'quarterly', label: 'Trimestral' },
+  { key: 'annual', label: 'Anual' },
+] as const;
+
+type BillingCycle = typeof BILLING_CYCLE_OPTIONS[number]['key'];
+
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -58,6 +66,19 @@ const resolvePlanTimeScore = (plan: Pick<Plan, 'interval_unit' | 'interval_count
   return 1;
 };
 
+const isPlanMatchingBillingCycle = (plan: Plan, cycle: BillingCycle): boolean => {
+  const isMonthly = plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 1;
+  const isQuarterly = plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 3;
+  const isAnnual = plan.interval_unit === 'year' || (
+    plan.interval_unit === 'month'
+    && Number(plan.interval_count || 1) === 12
+  );
+
+  if (cycle === 'monthly') return isMonthly;
+  if (cycle === 'quarterly') return isQuarterly;
+  return isAnnual;
+};
+
 const normalizeCheckoutPlan = (plan: Plan): CheckoutRoutePlan => ({
   id: plan.id,
   name: plan.name,
@@ -76,6 +97,7 @@ export const PlansScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [billingCycle, setBillingCycle] = React.useState<BillingCycle>('monthly');
   const [plans, setPlans] = React.useState<Plan[]>([]);
   const allowSameTierCycleChangeEnabled = Boolean(systemSettings.sameTierCycleChangeEnabled);
   const hasActiveSubscription = hasActiveSubscriptionStatus(user?.subscription?.status);
@@ -95,6 +117,13 @@ export const PlansScreen: React.FC = () => {
   const currentTimeScore = React.useMemo(
     () => (currentPlanInCatalog ? resolvePlanTimeScore(currentPlanInCatalog) : 0),
     [currentPlanInCatalog],
+  );
+  const filteredPlans = React.useMemo(
+    () => plans.filter((plan) => {
+      if (Number(plan.price || 0) <= 0) return true;
+      return isPlanMatchingBillingCycle(plan, billingCycle);
+    }),
+    [billingCycle, plans],
   );
 
   const loadPlans = React.useCallback(async (useRefresh = false) => {
@@ -129,6 +158,23 @@ export const PlansScreen: React.FC = () => {
   React.useEffect(() => {
     void loadPlans(false);
   }, [loadPlans]);
+
+  React.useEffect(() => {
+    const hasPaidPlanForCurrentCycle = plans.some(
+      (plan) => Number(plan.price || 0) > 0 && isPlanMatchingBillingCycle(plan, billingCycle),
+    );
+    if (hasPaidPlanForCurrentCycle || plans.length === 0) return;
+
+    const fallbackCycle = BILLING_CYCLE_OPTIONS.find((option) => (
+      plans.some(
+        (plan) => Number(plan.price || 0) > 0 && isPlanMatchingBillingCycle(plan, option.key),
+      )
+    ));
+
+    if (fallbackCycle && fallbackCycle.key !== billingCycle) {
+      setBillingCycle(fallbackCycle.key);
+    }
+  }, [billingCycle, plans]);
 
   const resolvePlanActionState = React.useCallback((plan: Plan) => {
     const isCurrent = hasActiveSubscription && currentPlanId > 0 && Number(plan.id) === currentPlanId;
@@ -192,7 +238,7 @@ export const PlansScreen: React.FC = () => {
   return (
     <View style={styles.screen}>
       <FlatList
-        data={plans}
+        data={filteredPlans}
         keyExtractor={(item) => String(item.id)}
         refreshControl={(
           <RefreshControl
@@ -209,12 +255,37 @@ export const PlansScreen: React.FC = () => {
             <Text style={styles.description}>
               Selecione um plano para seguir no checkout seguro da plataforma.
             </Text>
+
+            <View style={styles.billingCycleSwitcher}>
+              {BILLING_CYCLE_OPTIONS.map((option) => {
+                const isActive = option.key === billingCycle;
+                return (
+                  <Pressable
+                    key={option.key}
+                    onPress={() => setBillingCycle(option.key)}
+                    style={[
+                      styles.billingCycleButton,
+                      isActive ? styles.billingCycleButtonActive : styles.billingCycleButtonInactive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.billingCycleButtonText,
+                        isActive ? styles.billingCycleButtonTextActive : styles.billingCycleButtonTextInactive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         )}
         ListEmptyComponent={(
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Nenhum plano disponivel</Text>
-            <Text style={styles.emptyText}>Tente novamente em alguns instantes.</Text>
+            <Text style={styles.emptyTitle}>Nenhum plano neste ciclo</Text>
+            <Text style={styles.emptyText}>Troque o ciclo para ver outras opcoes.</Text>
           </View>
         )}
         renderItem={({ item }) => (
@@ -304,6 +375,40 @@ const styles = StyleSheet.create({
     padding: 14,
     backgroundColor: colors.card,
     gap: 6,
+  },
+  billingCycleSwitcher: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  billingCycleButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 999,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  billingCycleButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#EEF2FF',
+  },
+  billingCycleButtonInactive: {
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  billingCycleButtonText: {
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  billingCycleButtonTextActive: {
+    color: colors.primary,
+  },
+  billingCycleButtonTextInactive: {
+    color: colors.muted,
   },
   eyebrow: {
     color: colors.muted,

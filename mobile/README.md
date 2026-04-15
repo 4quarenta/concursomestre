@@ -41,6 +41,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - estatisticas agregadas e historico de resolucoes por questao com carregamento sob demanda
   - modo foco por questao e modo lista
 - Modulo `Planos` com catalogo oficial e regras de elegibilidade:
+  - seletor de ciclo (mensal, trimestral e anual) com filtro do catalogo de planos pagos
   - bloqueio de compra do plano atual ativo
   - bloqueio de downgrade para plano inferior durante assinatura ativa
   - bloqueio de troca de ciclo no mesmo tier quando `sameTierCycleChangeEnabled` estiver desativado no painel admin

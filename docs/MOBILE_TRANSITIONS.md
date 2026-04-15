@@ -21,6 +21,25 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Seletor de ciclo na tela de planos mobile
+
+- commit: `Add mobile plans billing cycle selector (neste commit)`
+- origem web/plataforma:
+  - `src/app/plans/page.tsx` (tabs de ciclo de cobranca: mensal, trimestral e anual)
+- destino mobile:
+  - `mobile/src/screens/PlansScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - tela de planos mobile ganhou seletor de ciclo com opcoes `Mensal`, `Trimestral` e `Anual`
+  - planos pagos agora sao filtrados pelo ciclo selecionado, mantendo o plano gratuito visivel em qualquer ciclo
+  - quando o ciclo atual nao possui planos pagos disponiveis, a tela escolhe automaticamente o primeiro ciclo com oferta ativa
+  - estado vazio passou a orientar troca de ciclo quando nao houver plano no recorte selecionado
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - badges de desconto por ciclo e exibicao dinamica de oferta promocional (como no web) ainda nao foram portadas para o mobile.
+
 ## 2026-04-15 - Elegibilidade de assinatura na tela de planos mobile
 
 - commit: `Add mobile plans eligibility guards (neste commit)`
