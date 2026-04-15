@@ -21,6 +21,26 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-14 - Dashboard evolucao com toggle de acertos
+
+- commit: `82f0b29 Add correct-answer toggle to mobile dashboard timeline`
+- origem web/plataforma:
+  - `src/app/dashboard/page.tsx`
+  - controle para mostrar/ocultar serie de acertos no bloco de evolucao
+- destino mobile:
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - bloco de evolucao ganhou toggle para mostrar ou ocultar destaque de acertos
+  - visual por ponto agora diferencia volume total de questoes e faixa de acertos no mesmo trilho
+  - legenda da serie e valor lateral por ponto foram adaptados para leitura `acertos/questoes` quando o destaque esta ativo
+  - comportamento de recorte por periodo foi preservado junto com o novo toggle
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - grafico avancado do dashboard web (estilo area chart) ainda nao foi migrado para o mobile.
+
 ## 2026-04-14 - Dashboard evolucao com recorte de periodo
 
 - commit: `b2aaed7 Add dashboard timeline range filters on mobile`
