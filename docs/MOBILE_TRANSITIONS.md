@@ -21,6 +21,28 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Alerta de falha de pagamento no perfil mobile
+
+- commit: `2c328e5 Add mobile payment issue alert in profile`
+- origem web/plataforma:
+  - `src/app/profile/page.tsx` (banner de `paymentIssue` com CTA para billing portal)
+  - endpoint de perfil autenticado (`auth/me.php`)
+- destino mobile:
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - `mobile/src/types/auth.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - perfil mobile agora renderiza alerta quando o backend sinaliza `paymentIssue`
+  - alerta diferencia visual de risco para cartao expirando/falha generica e orienta acao imediata
+  - CTA do alerta abre diretamente o portal Stripe para resolucao de cobranca
+  - tipagem mobile de perfil/subscription foi ampliada para suportar `paymentIssue`, `subscription.id`, status adicionais e `recurring_amount`
+  - leitura de renovacao automatica passou a priorizar `cancel_at_period_end` quando esse flag existir (alinhamento com logica web)
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - instrumentacao analitica detalhada de eventos de billing (banner view/click) ainda esta fora do escopo no mobile.
+
 ## 2026-04-15 - Timeline de ciclo da assinatura no mobile
 
 - commit: `5987e6b Add mobile subscription cycle progress summary`
