@@ -21,6 +21,36 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Central de suporte no mobile
+
+- commit: `1a9501e Extract mobile support center with feedback threads`
+- origem web/plataforma:
+  - `src/app/support/page.tsx`
+  - `src/services/support/supportService.ts`
+  - endpoints `feedback/list.php` e `feedback/create.php`
+- destino mobile:
+  - `mobile/src/types/support.ts`
+  - `mobile/src/services/support/supportService.ts`
+  - `mobile/src/screens/SupportScreen.tsx`
+  - `mobile/src/services/api/endpoints.ts`
+  - `mobile/src/navigation/types.ts`
+  - `mobile/src/navigation/AppNavigator.tsx`
+  - `mobile/src/screens/NotificationsScreen.tsx`
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - modulo de suporte/feedback passou a existir no app mobile com categorias de abertura (problema, sugestao e ajuda)
+  - usuario pode abrir solicitacao com assunto + descricao usando endpoint oficial de criacao
+  - historico de conversas passou a listar threads do usuario por categoria com status de atendimento
+  - cada thread pode abrir respostas em timeline e aceitar nova resposta do usuario no mesmo fluxo
+  - deep link interno `concursomestre://suporte` foi registrado e notificacoes podem abrir a tela de suporte diretamente
+  - dashboard ganhou atalho rapido para a central de suporte
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - a experiencia de doacao da tela web de suporte ainda nao foi portada para o mobile.
+
 ## 2026-04-15 - Feature flags dos modulos core no mobile
 
 - commit: `73f4578 Gate core mobile modules with system feature flags`
