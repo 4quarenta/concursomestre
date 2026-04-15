@@ -1,6 +1,17 @@
-export type MobileFeatureKey = 'annotatedLawsEnabled' | 'flashcardsEnabled' | 'xRayEnabled';
+export type MobileFeatureKey =
+  | 'practiceEnabled'
+  | 'simulationsEnabled'
+  | 'rankingsEnabled'
+  | 'marketplaceEnabled'
+  | 'annotatedLawsEnabled'
+  | 'flashcardsEnabled'
+  | 'xRayEnabled';
 
 export interface MobileFeatureFlags {
+  practiceEnabled: boolean;
+  simulationsEnabled: boolean;
+  rankingsEnabled: boolean;
+  marketplaceEnabled: boolean;
   annotatedLawsEnabled: boolean;
   flashcardsEnabled: boolean;
   xRayEnabled: boolean;
@@ -11,6 +22,10 @@ export interface MobileSystemSettings {
 }
 
 export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
+  practiceEnabled: true,
+  simulationsEnabled: true,
+  rankingsEnabled: true,
+  marketplaceEnabled: true,
   annotatedLawsEnabled: false,
   flashcardsEnabled: false,
   xRayEnabled: true,

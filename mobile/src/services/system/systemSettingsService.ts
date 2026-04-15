@@ -51,6 +51,26 @@ const resolveFeatureFlag = (
 
 const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): MobileSystemSettings => {
   const features: MobileFeatureFlags = {
+    practiceEnabled: resolveFeatureFlag(
+      payload,
+      'practiceEnabled',
+      DEFAULT_MOBILE_FEATURE_FLAGS.practiceEnabled,
+    ),
+    simulationsEnabled: resolveFeatureFlag(
+      payload,
+      'simulationsEnabled',
+      DEFAULT_MOBILE_FEATURE_FLAGS.simulationsEnabled,
+    ),
+    rankingsEnabled: resolveFeatureFlag(
+      payload,
+      'rankingsEnabled',
+      DEFAULT_MOBILE_FEATURE_FLAGS.rankingsEnabled,
+    ),
+    marketplaceEnabled: resolveFeatureFlag(
+      payload,
+      'marketplaceEnabled',
+      DEFAULT_MOBILE_FEATURE_FLAGS.marketplaceEnabled,
+    ),
     annotatedLawsEnabled: resolveFeatureFlag(
       payload,
       'annotatedLawsEnabled',

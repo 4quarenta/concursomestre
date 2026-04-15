@@ -228,6 +228,8 @@ export const DashboardScreen: React.FC = () => {
     () => calculateLevelProgress(user?.xp, user?.level),
     [user?.level, user?.xp],
   );
+  const canAccessQuestions = isFeatureEnabled('practiceEnabled');
+  const canAccessSimulations = isFeatureEnabled('simulationsEnabled');
   const canAccessBankAnalysis = isFeatureEnabled('xRayEnabled');
   const canAccessAnnotatedLaws = isFeatureEnabled('annotatedLawsEnabled');
   const canAccessFlashcards = isFeatureEnabled('flashcardsEnabled');
@@ -516,12 +518,16 @@ export const DashboardScreen: React.FC = () => {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Atalhos</Text>
         <View style={styles.quickActions}>
-          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Questoes')}>
-            <Text style={styles.actionButtonText}>Praticar questoes</Text>
-          </Pressable>
-          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Simulados')}>
-            <Text style={styles.actionButtonText}>Iniciar simulado</Text>
-          </Pressable>
+          {canAccessQuestions ? (
+            <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Questoes')}>
+              <Text style={styles.actionButtonText}>Praticar questoes</Text>
+            </Pressable>
+          ) : null}
+          {canAccessSimulations ? (
+            <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Simulados')}>
+              <Text style={styles.actionButtonText}>Iniciar simulado</Text>
+            </Pressable>
+          ) : null}
           <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Planos')}>
             <Text style={styles.actionButtonText}>Ver planos</Text>
           </Pressable>
