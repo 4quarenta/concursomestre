@@ -274,6 +274,16 @@ export const ProfileScreen: React.FC = () => {
   const subscriptionDaysSinceStart = getSubscriptionDaysSinceStart(user?.subscription?.current_period_start);
   const withinRefundWindow = subscriptionDaysSinceStart !== null && subscriptionDaysSinceStart <= 7;
   const subscriptionPlanName = user?.subscription?.plan?.name || user?.plan || 'Gratuito';
+  const totalInstallments = Math.max(1, Number(user?.subscription?.total_installments || 1));
+  const paidInstallments = Math.max(0, Number(user?.subscription?.paid_installments || 0));
+  const currentInstallment = totalInstallments > 1
+    ? Math.min(Math.max(paidInstallments, 1), totalInstallments)
+    : 1;
+  const termCommitmentRemaining = totalInstallments > 1 && paidInstallments < totalInstallments;
+  const hasPendingRefundRequest = React.useMemo(
+    () => transactions.some((transaction) => String(transaction.status || '').toLowerCase() === 'refund_requested'),
+    [transactions],
+  );
 
   const primaryCard = React.useMemo(
     () => cards.find((card) => toBoolean(card?.is_default)) || cards[0] || null,
@@ -398,12 +408,35 @@ export const ProfileScreen: React.FC = () => {
     }
 
     const nextAutoRenew = !renewalEnabled;
+    if (nextAutoRenew && cards.length === 0) {
+      Alert.alert(
+        'Cartao obrigatorio',
+        'Voce precisa de um cartao salvo para ativar a renovacao automatica.',
+        [
+          { text: 'Agora nao', style: 'cancel' },
+          {
+            text: 'Abrir Stripe',
+            onPress: () => {
+              void handleManageOnStripe();
+            },
+          },
+        ],
+      );
+      return;
+    }
+
     setUpdatingRenewal(true);
     try {
       const result = await subscriptionsService.updateRenewal(nextAutoRenew);
       Alert.alert(
         'Renovacao atualizada',
-        result.message || (nextAutoRenew ? 'Renovacao automatica ativada.' : 'Renovacao automatica desativada.'),
+        result.message || (
+          nextAutoRenew
+            ? 'Renovacao automatica ativada.'
+            : (termCommitmentRemaining
+              ? 'Renovacao automatica desativada. A assinatura sera encerrada ao fim do termo contratado.'
+              : 'Renovacao automatica desativada. A assinatura sera encerrada ao fim do periodo atual.')
+        ),
       );
       await refreshProfile();
     } catch (error: any) {
@@ -614,6 +647,16 @@ export const ProfileScreen: React.FC = () => {
 
         <Text style={styles.label}>Renovacao automatica</Text>
         <Text style={styles.value}>{renewalEnabled ? 'Ativada' : 'Desativada'}</Text>
+        {totalInstallments > 1 && (
+          <Text style={styles.valueHint}>
+            Parcela {currentInstallment} de {totalInstallments} do termo contratado.
+          </Text>
+        )}
+        {!renewalEnabled && termCommitmentRemaining && (
+          <Text style={styles.valueHint}>
+            As cobrancas atuais seguem ate a ultima parcela contratada.
+          </Text>
+        )}
         {activeSubscription ? (
           <Pressable
             style={({ pressed }) => [
@@ -638,6 +681,11 @@ export const ProfileScreen: React.FC = () => {
         <Text style={styles.value}>
           {subscriptionCancelPending ? 'Cancelamento agendado para o fim do ciclo' : 'Sem solicitacao pendente'}
         </Text>
+        {hasPendingRefundRequest && (
+          <Text style={styles.valueHint}>
+            Existe uma solicitacao de reembolso pendente em analise.
+          </Text>
+        )}
         {activeSubscription ? (
           subscriptionCancelPending ? (
             <Pressable
@@ -1030,6 +1078,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
     fontWeight: '700',
+  },
+  valueHint: {
+    marginTop: 2,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 16,
   },
   renewalButton: {
     marginTop: 8,
