@@ -21,6 +21,35 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Modulo concursos no mobile
+
+- commit: `7c76488 Extract mobile concursos module from system taxonomies`
+- origem web/plataforma:
+  - `src/app/concursos/page.tsx`
+  - `src/router/privateRoutes.tsx` (rota privada `/concursos`)
+  - endpoint `settings.php` (taxonomias globais)
+- destino mobile:
+  - `mobile/src/screens/ConcursosScreen.tsx`
+  - `mobile/src/types/system.ts`
+  - `mobile/src/services/system/systemSettingsService.ts`
+  - `mobile/src/navigation/types.ts`
+  - `mobile/src/navigation/AppNavigator.tsx`
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - `mobile/src/screens/NotificationsScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - app mobile passou a ter tela dedicada de concursos com catalogo inicial por banca/cargo/ano
+  - tela usa taxonomias oficiais carregadas do `settings.php` no bootstrap de sistema
+  - bootstrap mobile passou a normalizar `taxonomies.agencies`, `taxonomies.roles` e `taxonomies.years`
+  - busca local por banca/orgao/cargo e filtro por ano foram portados para o fluxo mobile
+  - navegacao stack e deep link `concursomestre://concursos` foram adicionados
+  - dashboard ganhou atalho direto para concursos e notificacoes agora abrem essa tela quando o destino aponta para concurso/edital
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - o modulo mobile ainda opera com catalogo inicial por taxonomias; integracoes futuras com editais detalhados e materiais vinculados seguem em backlog.
+
 ## 2026-04-15 - Doacao na central de suporte mobile
 
 - commit: `2f4205d Add mobile donation support tab with PIX settings`
