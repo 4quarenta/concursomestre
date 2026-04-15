@@ -21,6 +21,30 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Doacao na central de suporte mobile
+
+- commit: `2f4205d Add mobile donation support tab with PIX settings`
+- origem web/plataforma:
+  - `src/app/support/page.tsx`
+  - `src/types/global.ts` (`pixKey`)
+  - endpoint `settings.php`
+- destino mobile:
+  - `mobile/src/screens/SupportScreen.tsx`
+  - `mobile/src/types/system.ts`
+  - `mobile/src/services/system/systemSettingsService.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - central de suporte mobile ganhou a 4a aba `Doacao`, alinhada ao fluxo da plataforma web
+  - aba de doacao mostra bloco de apoio com chave PIX oficial
+  - `pixKey` passou a ser lido do bootstrap de configuracoes (com compatibilidade `pixKey` e `pix_key`)
+  - quando a chave nao vier do backend, o app usa fallback seguro `pix@concursomestre.com.br`
+  - abertura de chamados, historico e respostas em thread permaneceram inalterados nas abas de suporte
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - a experiencia de pagamento por cartao segue fora do escopo mobile, como no fluxo web atual.
+
 ## 2026-04-15 - Central de suporte no mobile
 
 - commit: `1a9501e Extract mobile support center with feedback threads`
