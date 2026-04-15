@@ -12,6 +12,7 @@ import { SimulationDetailScreen } from '@/screens/SimulationDetailScreen';
 import { SimulationRunScreen } from '@/screens/SimulationRunScreen';
 import { NotificationsScreen } from '@/screens/NotificationsScreen';
 import { SupportScreen } from '@/screens/SupportScreen';
+import { ConcursosScreen } from '@/screens/ConcursosScreen';
 import { RankingDetailScreen } from '@/screens/RankingDetailScreen';
 import { PerformanceSubjectsScreen } from '@/screens/PerformanceSubjectsScreen';
 import { MaterialDetailScreen } from '@/screens/MaterialDetailScreen';
@@ -44,6 +45,7 @@ const linking: LinkingOptions<AppStackParamList> = {
       },
       Notifications: 'notificacoes',
       Support: 'suporte',
+      Concursos: 'concursos',
       RankingDetail: 'ranking/:rankingId',
       SimulationConfig: 'simulados/novo',
       SimulationDetail: 'simulados/historico/:simulationId',
@@ -132,6 +134,11 @@ export const AppNavigator: React.FC = () => {
             name="Support"
             component={SupportScreen}
             options={{ title: 'Suporte' }}
+          />
+          <Stack.Screen
+            name="Concursos"
+            component={ConcursosScreen}
+            options={{ title: 'Concursos' }}
           />
           <Stack.Screen
             name="RankingDetail"

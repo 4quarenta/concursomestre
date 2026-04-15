@@ -30,6 +30,7 @@ export type AppStackParamList = {
   };
   Notifications: undefined;
   Support: undefined;
+  Concursos: undefined;
   RankingDetail: {
     rankingId: string;
   };

@@ -6,6 +6,8 @@ import {
   DEFAULT_MOBILE_SYSTEM_SETTINGS,
   type MobileFeatureFlags,
   type MobileFeatureKey,
+  type MobileGlobalTaxonomies,
+  type MobileTaxonomyItem,
   type MobileSystemSettings,
 } from '@/types/system';
 
@@ -47,6 +49,62 @@ const resolveFeatureFlag = (
   }
 
   return fallback;
+};
+
+const normalizeTaxonomyItems = (value: unknown): MobileTaxonomyItem[] => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((entry, index) => {
+      if (typeof entry === 'string') {
+        const name = entry.trim();
+        if (!name) return null;
+
+        return {
+          id: name || `taxonomy-${index}`,
+          name,
+        } satisfies MobileTaxonomyItem;
+      }
+
+      if (!entry || typeof entry !== 'object') return null;
+
+      const row = entry as Record<string, unknown>;
+      const name = String(row.name || row.nome || '').trim();
+      if (!name) return null;
+
+      return {
+        id: String(row.id || row.slug || name || `taxonomy-${index}`),
+        name,
+        slug: typeof row.slug === 'string' ? row.slug : undefined,
+      } satisfies MobileTaxonomyItem;
+    })
+    .filter((item): item is MobileTaxonomyItem => Boolean(item));
+};
+
+const normalizeYears = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+
+  const uniqueYears = new Set<string>();
+  value.forEach((entry) => {
+    const year = String(entry || '').trim();
+    if (year) {
+      uniqueYears.add(year);
+    }
+  });
+
+  return [...uniqueYears].sort((left, right) => right.localeCompare(left));
+};
+
+const normalizeTaxonomies = (payload: Record<string, unknown>): MobileGlobalTaxonomies => {
+  const source = payload.taxonomies && typeof payload.taxonomies === 'object'
+    ? payload.taxonomies as Record<string, unknown>
+    : payload;
+
+  const agencies = normalizeTaxonomyItems(source.agencies);
+  const roles = normalizeTaxonomyItems(source.roles);
+  const years = normalizeYears(source.years);
+
+  return { agencies, roles, years };
 };
 
 const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): MobileSystemSettings => {
@@ -102,6 +160,7 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
   return {
     features,
     pixKey: normalizePixKey(),
+    taxonomies: normalizeTaxonomies(payload),
   };
 };
 
@@ -133,6 +192,11 @@ export const systemSettingsService = {
     return {
       features: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.features },
       pixKey: DEFAULT_MOBILE_SYSTEM_SETTINGS.pixKey,
+      taxonomies: {
+        agencies: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.agencies],
+        roles: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.roles],
+        years: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.years],
+      },
     };
   },
 };

@@ -17,9 +17,22 @@ export interface MobileFeatureFlags {
   xRayEnabled: boolean;
 }
 
+export interface MobileTaxonomyItem {
+  id: string;
+  name: string;
+  slug?: string;
+}
+
+export interface MobileGlobalTaxonomies {
+  agencies: MobileTaxonomyItem[];
+  roles: MobileTaxonomyItem[];
+  years: string[];
+}
+
 export interface MobileSystemSettings {
   features: MobileFeatureFlags;
   pixKey?: string;
+  taxonomies: MobileGlobalTaxonomies;
 }
 
 export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
@@ -35,4 +48,9 @@ export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
   features: { ...DEFAULT_MOBILE_FEATURE_FLAGS },
   pixKey: undefined,
+  taxonomies: {
+    agencies: [],
+    roles: [],
+    years: [],
+  },
 };
