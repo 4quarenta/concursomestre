@@ -114,6 +114,7 @@ export const DashboardScreen: React.FC = () => {
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [timeRange, setTimeRange] = React.useState<DashboardTimeRange>('all');
+  const [showCorrectTimeline, setShowCorrectTimeline] = React.useState(true);
 
   const subjectTop5 = React.useMemo(() => stats.subjectBreakdown.slice(0, 5), [stats.subjectBreakdown]);
   const today = React.useMemo(() => new Date(), []);
@@ -296,23 +297,33 @@ export const DashboardScreen: React.FC = () => {
       <View style={styles.card}>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Evolucao recente</Text>
-          <View style={styles.rangeRow}>
-            {([
-              { value: 'today', label: 'Hoje' },
-              { value: 'week', label: 'Semana' },
-              { value: 'month', label: 'Mes' },
-              { value: 'all', label: 'Tudo' },
-            ] as Array<{ value: DashboardTimeRange; label: string }>).map((option) => (
-              <Pressable
-                key={option.value}
-                onPress={() => setTimeRange(option.value)}
-                style={[styles.rangeChip, timeRange === option.value && styles.rangeChipActive]}
-              >
-                <Text style={[styles.rangeChipText, timeRange === option.value && styles.rangeChipTextActive]}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
+          <View style={styles.timelineControls}>
+            <Pressable
+              onPress={() => setShowCorrectTimeline((current) => !current)}
+              style={[styles.timelineToggleButton, showCorrectTimeline && styles.timelineToggleButtonActive]}
+            >
+              <Text style={[styles.timelineToggleText, showCorrectTimeline && styles.timelineToggleTextActive]}>
+                {showCorrectTimeline ? 'Ocultar acertos' : 'Mostrar acertos'}
+              </Text>
+            </Pressable>
+            <View style={styles.rangeRow}>
+              {([
+                { value: 'today', label: 'Hoje' },
+                { value: 'week', label: 'Semana' },
+                { value: 'month', label: 'Mes' },
+                { value: 'all', label: 'Tudo' },
+              ] as Array<{ value: DashboardTimeRange; label: string }>).map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() => setTimeRange(option.value)}
+                  style={[styles.rangeChip, timeRange === option.value && styles.rangeChipActive]}
+                >
+                  <Text style={[styles.rangeChipText, timeRange === option.value && styles.rangeChipTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
         </View>
         {filteredTimelineRows.length === 0 ? (
@@ -321,6 +332,18 @@ export const DashboardScreen: React.FC = () => {
           </Text>
         ) : (
           <View style={styles.timelineBlock}>
+            <View style={styles.timelineLegendRow}>
+              <View style={styles.timelineLegendItem}>
+                <View style={[styles.timelineLegendDot, styles.timelineLegendDotQuestions]} />
+                <Text style={styles.timelineLegendText}>Questoes</Text>
+              </View>
+              {showCorrectTimeline ? (
+                <View style={styles.timelineLegendItem}>
+                  <View style={[styles.timelineLegendDot, styles.timelineLegendDotCorrect]} />
+                  <Text style={styles.timelineLegendText}>Acertos</Text>
+                </View>
+              ) : null}
+            </View>
             <View style={styles.timelineSummaryRow}>
               <View style={styles.timelineSummaryPill}>
                 <Text style={styles.timelineSummaryLabel}>Questoes</Text>
@@ -341,14 +364,20 @@ export const DashboardScreen: React.FC = () => {
             </View>
             <View style={styles.timelineList}>
               {filteredTimelineRows.map((row, index) => {
-                const widthPercent = clampPercent((Number(row.questions || 0) / timelineMax) * 100);
+                const questionsPercent = clampPercent((Number(row.questions || 0) / timelineMax) * 100);
+                const correctPercent = clampPercent((Number(row.correct || 0) / timelineMax) * 100);
                 return (
                   <View key={`${row.label}-${index}`} style={styles.timelineRow}>
                     <Text style={styles.timelineLabel}>{row.label}</Text>
                     <View style={styles.timelineTrack}>
-                      <View style={[styles.timelineFill, { width: `${widthPercent}%` }]} />
+                      <View style={[styles.timelineFill, { width: `${questionsPercent}%` }]} />
+                      {showCorrectTimeline ? (
+                        <View style={[styles.timelineCorrectFill, { width: `${correctPercent}%` }]} />
+                      ) : null}
                     </View>
-                    <Text style={styles.timelineValue}>{row.questions}</Text>
+                    <Text style={styles.timelineValue}>
+                      {showCorrectTimeline ? `${row.correct}/${row.questions}` : row.questions}
+                    </Text>
                   </View>
                 );
               })}
@@ -539,6 +568,32 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  timelineControls: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  timelineToggleButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  timelineToggleButtonActive: {
+    borderColor: '#99F6E4',
+    backgroundColor: '#CCFBF1',
+  },
+  timelineToggleText: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  timelineToggleTextActive: {
+    color: '#0F766E',
+  },
   rangeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -605,6 +660,34 @@ const styles = StyleSheet.create({
   timelineBlock: {
     gap: 10,
   },
+  timelineLegendRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  timelineLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  timelineLegendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+  },
+  timelineLegendDotQuestions: {
+    backgroundColor: colors.primary,
+  },
+  timelineLegendDotCorrect: {
+    backgroundColor: '#0F766E',
+  },
+  timelineLegendText: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
   timelineSummaryRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -652,17 +735,26 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#E2E8F0',
     overflow: 'hidden',
+    position: 'relative',
   },
   timelineFill: {
     height: '100%',
     borderRadius: 999,
     backgroundColor: colors.primary,
   },
+  timelineCorrectFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 999,
+    backgroundColor: '#0F766E',
+  },
   timelineValue: {
-    minWidth: 22,
+    minWidth: 46,
     textAlign: 'right',
     color: colors.text,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
   },
   subjectRow: {
