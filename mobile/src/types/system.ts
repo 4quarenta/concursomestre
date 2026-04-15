@@ -1,8 +1,9 @@
-export type MobileFeatureKey = 'annotatedLawsEnabled' | 'flashcardsEnabled';
+export type MobileFeatureKey = 'annotatedLawsEnabled' | 'flashcardsEnabled' | 'xRayEnabled';
 
 export interface MobileFeatureFlags {
   annotatedLawsEnabled: boolean;
   flashcardsEnabled: boolean;
+  xRayEnabled: boolean;
 }
 
 export interface MobileSystemSettings {
@@ -12,6 +13,7 @@ export interface MobileSystemSettings {
 export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
   annotatedLawsEnabled: false,
   flashcardsEnabled: false,
+  xRayEnabled: true,
 };
 
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {

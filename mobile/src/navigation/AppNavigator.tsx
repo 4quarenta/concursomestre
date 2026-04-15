@@ -14,6 +14,7 @@ import { NotificationsScreen } from '@/screens/NotificationsScreen';
 import { RankingDetailScreen } from '@/screens/RankingDetailScreen';
 import { PerformanceSubjectsScreen } from '@/screens/PerformanceSubjectsScreen';
 import { MaterialDetailScreen } from '@/screens/MaterialDetailScreen';
+import { BankAnalysisScreen } from '@/screens/BankAnalysisScreen';
 import { AnnotatedLawsScreen } from '@/screens/AnnotatedLawsScreen';
 import { FlashcardsScreen } from '@/screens/FlashcardsScreen';
 import { ModulePlaceholderScreen } from '@/screens/ModulePlaceholderScreen';
@@ -46,6 +47,7 @@ const linking: LinkingOptions<AppStackParamList> = {
       SimulationDetail: 'simulados/historico/:simulationId',
       PerformanceSubjects: 'desempenho/materias',
       MaterialDetail: 'material/:materialId',
+      BankAnalysis: 'x-ray',
       AnnotatedLaws: 'lei-comentada',
       Flashcards: 'flashcards',
     },
@@ -68,8 +70,17 @@ const FlashcardsDisabledScreen: React.FC = () => (
   />
 );
 
+const BankAnalysisDisabledScreen: React.FC = () => (
+  <ModulePlaceholderScreen
+    title="Raio-X da banca"
+    cardTitle="Modulo indisponivel"
+    description="O modulo Raio-X da banca esta desativado no momento para o seu perfil."
+  />
+);
+
 export const AppNavigator: React.FC = () => {
   const { user, isBootstrapped, isFeatureEnabled } = useAuth();
+  const canAccessBankAnalysis = isFeatureEnabled('xRayEnabled');
   const canAccessAnnotatedLaws = isFeatureEnabled('annotatedLawsEnabled');
   const canAccessFlashcards = isFeatureEnabled('flashcardsEnabled');
 
@@ -129,6 +140,11 @@ export const AppNavigator: React.FC = () => {
             name="MaterialDetail"
             component={MaterialDetailScreen}
             options={{ title: 'Material' }}
+          />
+          <Stack.Screen
+            name="BankAnalysis"
+            component={canAccessBankAnalysis ? BankAnalysisScreen : BankAnalysisDisabledScreen}
+            options={{ title: 'Raio-X da banca' }}
           />
           <Stack.Screen
             name="AnnotatedLaws"

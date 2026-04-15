@@ -228,6 +228,7 @@ export const DashboardScreen: React.FC = () => {
     () => calculateLevelProgress(user?.xp, user?.level),
     [user?.level, user?.xp],
   );
+  const canAccessBankAnalysis = isFeatureEnabled('xRayEnabled');
   const canAccessAnnotatedLaws = isFeatureEnabled('annotatedLawsEnabled');
   const canAccessFlashcards = isFeatureEnabled('flashcardsEnabled');
 
@@ -527,6 +528,11 @@ export const DashboardScreen: React.FC = () => {
           <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Notifications')}>
             <Text style={styles.actionButtonText}>Notificacoes</Text>
           </Pressable>
+          {canAccessBankAnalysis ? (
+            <Pressable style={styles.actionButton} onPress={() => navigation.navigate('BankAnalysis')}>
+              <Text style={styles.actionButtonText}>Raio-X da banca</Text>
+            </Pressable>
+          ) : null}
           {canAccessAnnotatedLaws ? (
             <Pressable style={styles.actionButton} onPress={() => navigation.navigate('AnnotatedLaws')}>
               <Text style={styles.actionButtonText}>Lei comentada</Text>

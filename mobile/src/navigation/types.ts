@@ -37,6 +37,7 @@ export type AppStackParamList = {
     materialId: string;
     material?: Material;
   };
+  BankAnalysis: undefined;
   AnnotatedLaws: undefined;
   Flashcards: undefined;
 };

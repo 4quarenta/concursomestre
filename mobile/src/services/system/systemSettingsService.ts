@@ -61,6 +61,11 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
       'flashcardsEnabled',
       DEFAULT_MOBILE_FEATURE_FLAGS.flashcardsEnabled,
     ),
+    xRayEnabled: resolveFeatureFlag(
+      payload,
+      'xRayEnabled',
+      DEFAULT_MOBILE_FEATURE_FLAGS.xRayEnabled,
+    ),
   };
 
   return { features };

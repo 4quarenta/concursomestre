@@ -19,6 +19,7 @@ import type { MobileNotification } from '@/types/notifications';
 
 type NotificationsNavigation = NativeStackNavigationProp<AppStackParamList, 'Notifications'>;
 type MainTabRoute = keyof MainTabParamList;
+type AppStackRoute = keyof Pick<AppStackParamList, 'BankAnalysis'>;
 
 const parseDate = (rawValue?: number | string): Date | null => {
   if (rawValue === undefined || rawValue === null || rawValue === '') return null;
@@ -60,6 +61,15 @@ const resolveMainTabTarget = (target?: string): MainTabRoute | null => {
   if (path.includes('marketplace') || path.includes('materiais') || path.includes('material')) return 'Marketplace';
   if (path.includes('perfil') || path.includes('profile')) return 'Perfil';
   if (path.includes('dashboard') || path === '/' || path === '') return 'Dashboard';
+
+  return null;
+};
+
+const resolveStackTarget = (target?: string): AppStackRoute | null => {
+  const path = normalizeTargetPath(target);
+  if (!path) return null;
+
+  if (path.includes('x-ray') || path.includes('raio-x') || path.includes('raiox')) return 'BankAnalysis';
 
   return null;
 };
@@ -182,7 +192,13 @@ export const NotificationsScreen: React.FC = () => {
 
   const openNotificationTarget = async (notification: MobileNotification) => {
     const target = notification.link;
+    const stackTarget = resolveStackTarget(target);
     const tabTarget = resolveMainTabTarget(target);
+
+    if (stackTarget) {
+      navigation.navigate(stackTarget);
+      return;
+    }
 
     if (tabTarget) {
       navigation.navigate('MainTabs', { screen: tabTarget });

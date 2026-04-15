@@ -69,6 +69,7 @@ export const ENDPOINTS = {
   },
   statistics: {
     user: 'statistics/user',
+    xray: 'statistics/xray.php',
   },
   settings: {
     get: 'settings.php',
