@@ -40,7 +40,10 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - anotacoes com hidratacao remota e persistencia local no app
   - estatisticas agregadas e historico de resolucoes por questao com carregamento sob demanda
   - modo foco por questao e modo lista
-- Modulo `Planos` com catalogo oficial
+- Modulo `Planos` com catalogo oficial e regras de elegibilidade:
+  - bloqueio de compra do plano atual ativo
+  - bloqueio de downgrade para plano inferior durante assinatura ativa
+  - bloqueio de troca de ciclo no mesmo tier quando `sameTierCycleChangeEnabled` estiver desativado no painel admin
 - Fluxo `Checkout` mobile (sessao Stripe hospedada + cartao salvo):
   - resumo do plano
   - cupom

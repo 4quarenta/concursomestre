@@ -31,6 +31,7 @@ export interface MobileGlobalTaxonomies {
 
 export interface MobileSystemSettings {
   features: MobileFeatureFlags;
+  sameTierCycleChangeEnabled: boolean;
   pixKey?: string;
   taxonomies: MobileGlobalTaxonomies;
 }
@@ -47,6 +48,7 @@ export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
 
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
   features: { ...DEFAULT_MOBILE_FEATURE_FLAGS },
+  sameTierCycleChangeEnabled: false,
   pixKey: undefined,
   taxonomies: {
     agencies: [],

@@ -107,6 +107,28 @@ const normalizeTaxonomies = (payload: Record<string, unknown>): MobileGlobalTaxo
   return { agencies, roles, years };
 };
 
+const resolveBooleanSetting = (
+  payload: Record<string, unknown>,
+  key: string,
+  fallback: boolean,
+): boolean => {
+  const features = (payload.features && typeof payload.features === 'object')
+    ? payload.features as Record<string, unknown>
+    : {};
+
+  const nestedValue = normalizeBooleanLike(features[key]);
+  if (nestedValue !== null) {
+    return nestedValue;
+  }
+
+  const flatValue = normalizeBooleanLike(payload[key]);
+  if (flatValue !== null) {
+    return flatValue;
+  }
+
+  return fallback;
+};
+
 const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): MobileSystemSettings => {
   const normalizePixKey = () => {
     const rawValue = typeof payload.pixKey === 'string'
@@ -159,6 +181,7 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
 
   return {
     features,
+    sameTierCycleChangeEnabled: resolveBooleanSetting(payload, 'sameTierCycleChangeEnabled', false),
     pixKey: normalizePixKey(),
     taxonomies: normalizeTaxonomies(payload),
   };
@@ -191,6 +214,7 @@ export const systemSettingsService = {
   createDefaultSystemSettings(): MobileSystemSettings {
     return {
       features: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.features },
+      sameTierCycleChangeEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.sameTierCycleChangeEnabled,
       pixKey: DEFAULT_MOBILE_SYSTEM_SETTINGS.pixKey,
       taxonomies: {
         agencies: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.agencies],

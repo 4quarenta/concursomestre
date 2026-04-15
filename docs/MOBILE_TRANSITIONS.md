@@ -21,6 +21,28 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Elegibilidade de assinatura na tela de planos mobile
+
+- commit: `Add mobile plans eligibility guards (neste commit)`
+- origem web/plataforma:
+  - `src/app/plans/page.tsx` (bloqueios para plano atual, downgrade e troca de ciclo no mesmo tier via `sameTierCycleChangeEnabled`)
+- destino mobile:
+  - `mobile/src/screens/PlansScreen.tsx`
+  - `mobile/src/types/system.ts`
+  - `mobile/src/services/system/systemSettingsService.ts`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - tela de planos mobile passou a bloquear checkout quando o usuario seleciona o plano ja ativo
+  - downgrade para plano inferior ativo segue bloqueado com alerta explicito na propria tela
+  - troca de ciclo no mesmo tier agora respeita a flag administrativa `sameTierCycleChangeEnabled`
+  - catalogo mobile passou a exibir CTA e badge contextual para estado bloqueado (`Plano atual`, `Downgrade indisponivel`, `Troca de ciclo indisponivel`)
+  - bootstrap de configuracoes mobile passou a normalizar `sameTierCycleChangeEnabled` do endpoint `settings.php`
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - fluxo de confirmacao de downgrade com modal dedicado (como no web) ainda nao foi portado; no mobile o bloqueio permanece por alerta.
+
 ## 2026-04-15 - Copiar referencia de transacao no mobile
 
 - commit: `34f460a Add mobile transaction reference copy action`
