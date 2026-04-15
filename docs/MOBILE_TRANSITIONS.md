@@ -21,6 +21,25 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Badges de assinatura e CTA de plano no mobile
+
+- commit: `b407065 Add mobile subscription badges and plans CTA`
+- origem web/plataforma:
+  - `src/app/profile/page.tsx` (badges de assinatura/ciclo e botao `Upgrade`/`Gerenciar plano`)
+- destino mobile:
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - card de assinatura mobile ganhou badges de estado (ativa/inativa) e ciclo (mensal/trimestral/anual)
+  - perfil passou a oferecer CTA direto para a aba de planos (`Upgrade` ou `Gerenciar plano`)
+  - navegacao foi conectada ao stack principal para abrir `MainTabs -> Planos` sem sair do fluxo de perfil
+  - heuristica do CTA segue plano atual (`Elite` exibe gerenciar; demais exibem upgrade)
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - badge complementar de nível de plano (Essencial/Pro/Elite) ainda pode ser enriquecida depois via taxonomia canonica.
+
 ## 2026-04-15 - Referencia de gateway nas transacoes mobile
 
 - commit: `2521cdd Expand mobile transaction cards with gateway reference details`
