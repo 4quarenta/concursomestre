@@ -21,6 +21,26 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Referencia de gateway nas transacoes mobile
+
+- commit: `2521cdd Expand mobile transaction cards with gateway reference details`
+- origem web/plataforma:
+  - `src/app/profile/page.tsx` (tabela de transacoes com referencia do gateway, parcela e agendamento)
+- destino mobile:
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - card de transacao mobile agora exibe referencia principal do gateway (`providerTransactionId`/`referenceId`)
+  - rotulo de referencia foi alinhado ao payload (`providerTransactionLabel` com fallback `ID Stripe`)
+  - transacoes parceladas agora mostram indicador de parcela (`x/y`) quando os campos vierem do backend
+  - timestamp passou a priorizar `dateTimeFormatted` para manter consistencia com a formatacao web
+  - campo de agendamento (`scheduleLabel`) passou a aparecer no card quando informado
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - acao explicita de copiar referencia da transacao (botao "Copiar") ainda permanece apenas no web.
+
 ## 2026-04-15 - Cards de resumo de assinatura no mobile
 
 - commit: `f766dc8 Add mobile subscription summary cards in profile`
