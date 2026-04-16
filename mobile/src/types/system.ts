@@ -29,9 +29,17 @@ export interface MobileGlobalTaxonomies {
   years: string[];
 }
 
+export interface MobilePlanDetail {
+  displayName?: string;
+  enabled?: boolean;
+}
+
+export type MobilePlanDetailsMap = Record<string, MobilePlanDetail>;
+
 export interface MobileSystemSettings {
   features: MobileFeatureFlags;
   sameTierCycleChangeEnabled: boolean;
+  planDetails: MobilePlanDetailsMap;
   pixKey?: string;
   taxonomies: MobileGlobalTaxonomies;
 }
@@ -49,6 +57,7 @@ export const DEFAULT_MOBILE_FEATURE_FLAGS: MobileFeatureFlags = {
 export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
   features: { ...DEFAULT_MOBILE_FEATURE_FLAGS },
   sameTierCycleChangeEnabled: false,
+  planDetails: {},
   pixKey: undefined,
   taxonomies: {
     agencies: [],

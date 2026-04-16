@@ -8,6 +8,7 @@ import {
   type MobileFeatureKey,
   type MobileGlobalTaxonomies,
   type MobileTaxonomyItem,
+  type MobilePlanDetailsMap,
   type MobileSystemSettings,
 } from '@/types/system';
 
@@ -107,6 +108,32 @@ const normalizeTaxonomies = (payload: Record<string, unknown>): MobileGlobalTaxo
   return { agencies, roles, years };
 };
 
+const normalizePlanDetails = (payload: Record<string, unknown>): MobilePlanDetailsMap => {
+  if (!payload.planDetails || typeof payload.planDetails !== 'object') {
+    return {};
+  }
+
+  const source = payload.planDetails as Record<string, unknown>;
+  return Object.entries(source).reduce<MobilePlanDetailsMap>((accumulator, [key, value]) => {
+    if (!value || typeof value !== 'object') {
+      return accumulator;
+    }
+
+    const detail = value as Record<string, unknown>;
+    const displayName = typeof detail.displayName === 'string'
+      ? detail.displayName.trim()
+      : '';
+    const enabled = normalizeBooleanLike(detail.enabled);
+
+    accumulator[key] = {
+      displayName: displayName || undefined,
+      enabled: enabled !== null ? enabled : undefined,
+    };
+
+    return accumulator;
+  }, {});
+};
+
 const resolveBooleanSetting = (
   payload: Record<string, unknown>,
   key: string,
@@ -182,6 +209,7 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
   return {
     features,
     sameTierCycleChangeEnabled: resolveBooleanSetting(payload, 'sameTierCycleChangeEnabled', false),
+    planDetails: normalizePlanDetails(payload),
     pixKey: normalizePixKey(),
     taxonomies: normalizeTaxonomies(payload),
   };
@@ -215,6 +243,7 @@ export const systemSettingsService = {
     return {
       features: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.features },
       sameTierCycleChangeEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.sameTierCycleChangeEnabled,
+      planDetails: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.planDetails },
       pixKey: DEFAULT_MOBILE_SYSTEM_SETTINGS.pixKey,
       taxonomies: {
         agencies: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.agencies],

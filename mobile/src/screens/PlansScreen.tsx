@@ -16,6 +16,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { planService } from '@/services/plans/planService';
 import { colors } from '@/theme/colors';
 import type { Plan } from '@/types/plans';
+import type { MobilePlanDetailsMap } from '@/types/system';
 
 const BILLING_CYCLE_OPTIONS = [
   { key: 'monthly', label: 'Mensal' },
@@ -64,6 +65,56 @@ const resolvePlanTimeScore = (plan: Pick<Plan, 'interval_unit' | 'interval_count
   if (plan.interval_unit === 'year') return 12;
   if (plan.interval_unit === 'month') return Number(plan.interval_count || 1);
   return 1;
+};
+
+const normalizePlanNameKey = (value: string): string => {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+};
+
+const resolveCanonicalPlanKey = (planName: string): string | null => {
+  const normalized = normalizePlanNameKey(planName);
+  if (!normalized) return null;
+
+  if (normalized.includes('gratuito') || normalized.includes('free')) return 'Gratuito';
+  if (normalized.includes('essencial')) return 'Essencial';
+  if (normalized.includes('elite')) return 'Elite';
+  if (normalized.includes('pro')) return 'Pro';
+  return null;
+};
+
+const resolvePlanDetail = (
+  planName: string,
+  planDetails: MobilePlanDetailsMap,
+) => {
+  if (planDetails[planName]) return planDetails[planName];
+
+  const canonicalKey = resolveCanonicalPlanKey(planName);
+  if (!canonicalKey) return undefined;
+
+  return (
+    planDetails[canonicalKey]
+    || planDetails[canonicalKey.toLowerCase()]
+    || planDetails[canonicalKey.toUpperCase()]
+  );
+};
+
+const isPlanEnabledByName = (planName: string, planDetails: MobilePlanDetailsMap): boolean => {
+  const detail = resolvePlanDetail(planName, planDetails);
+  if (!detail) return true;
+  return detail.enabled !== false;
+};
+
+const resolveConfiguredPlanDisplayName = (
+  planName: string,
+  planDetails: MobilePlanDetailsMap,
+): string => {
+  const detail = resolvePlanDetail(planName, planDetails);
+  const configuredName = String(detail?.displayName || '').trim();
+  return configuredName || planName;
 };
 
 const isPlanMatchingBillingCycle = (plan: Plan, cycle: BillingCycle): boolean => {
@@ -118,12 +169,16 @@ export const PlansScreen: React.FC = () => {
     () => (currentPlanInCatalog ? resolvePlanTimeScore(currentPlanInCatalog) : 0),
     [currentPlanInCatalog],
   );
+  const visiblePlans = React.useMemo(
+    () => plans.filter((plan) => isPlanEnabledByName(plan.name, systemSettings.planDetails)),
+    [plans, systemSettings.planDetails],
+  );
   const filteredPlans = React.useMemo(
-    () => plans.filter((plan) => {
+    () => visiblePlans.filter((plan) => {
       if (Number(plan.price || 0) <= 0) return true;
       return isPlanMatchingBillingCycle(plan, billingCycle);
     }),
-    [billingCycle, plans],
+    [billingCycle, visiblePlans],
   );
 
   const loadPlans = React.useCallback(async (useRefresh = false) => {
@@ -160,13 +215,13 @@ export const PlansScreen: React.FC = () => {
   }, [loadPlans]);
 
   React.useEffect(() => {
-    const hasPaidPlanForCurrentCycle = plans.some(
+    const hasPaidPlanForCurrentCycle = visiblePlans.some(
       (plan) => Number(plan.price || 0) > 0 && isPlanMatchingBillingCycle(plan, billingCycle),
     );
-    if (hasPaidPlanForCurrentCycle || plans.length === 0) return;
+    if (hasPaidPlanForCurrentCycle || visiblePlans.length === 0) return;
 
     const fallbackCycle = BILLING_CYCLE_OPTIONS.find((option) => (
-      plans.some(
+      visiblePlans.some(
         (plan) => Number(plan.price || 0) > 0 && isPlanMatchingBillingCycle(plan, option.key),
       )
     ));
@@ -174,7 +229,7 @@ export const PlansScreen: React.FC = () => {
     if (fallbackCycle && fallbackCycle.key !== billingCycle) {
       setBillingCycle(fallbackCycle.key);
     }
-  }, [billingCycle, plans]);
+  }, [billingCycle, visiblePlans]);
 
   const resolvePlanActionState = React.useCallback((plan: Plan) => {
     const isCurrent = hasActiveSubscription && currentPlanId > 0 && Number(plan.id) === currentPlanId;
@@ -313,7 +368,9 @@ export const PlansScreen: React.FC = () => {
           <View style={styles.planCard}>
             <View style={styles.planHead}>
               <View style={styles.planNameBlock}>
-                <Text style={styles.planName}>{item.name}</Text>
+                <Text style={styles.planName}>
+                  {resolveConfiguredPlanDisplayName(item.name, systemSettings.planDetails)}
+                </Text>
                 <Text style={styles.planInterval}>Ciclo: {formatInterval(item)}</Text>
               </View>
               <Text style={styles.planPrice}>{formatCurrency(item.price)}</Text>

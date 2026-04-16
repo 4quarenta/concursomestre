@@ -21,6 +21,28 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Plan details do painel no catalogo mobile
+
+- commit: `Add mobile plans panel visibility and display-name parity (neste commit)`
+- origem web/plataforma:
+  - `src/app/plans/page.tsx` (gate de visibilidade via `isPlanEnabledByName` e nome configuravel do plano)
+  - `src/services/plans` (uso de `planDetails` para nome exibido)
+- destino mobile:
+  - `mobile/src/types/system.ts`
+  - `mobile/src/services/system/systemSettingsService.ts`
+  - `mobile/src/screens/PlansScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - bootstrap mobile passou a normalizar `planDetails` do `settings.php` (incluindo `displayName` e `enabled`)
+  - catalogo de planos mobile agora respeita plano desativado no painel admin
+  - cards de plano mobile passaram a exibir nome configurado do painel quando existir
+  - fallback de ciclo mensal/trimestral/anual passou a considerar apenas planos realmente visiveis no app
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - badges promocionais por ciclo (`% OFF`) e ofertas dinamicas completas da web ainda nao foram portadas para o mobile.
+
 ## 2026-04-15 - Seletor de ciclo na tela de planos mobile
 
 - commit: `Add mobile plans billing cycle selector (neste commit)`
