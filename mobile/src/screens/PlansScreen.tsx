@@ -270,9 +270,25 @@ export const PlansScreen: React.FC = () => {
       return;
     }
     if (actionState.isLower) {
+      const targetPlanLabel = resolveConfiguredPlanDisplayName(plan.name, systemSettings.planDetails);
       Alert.alert(
-        'Downgrade indisponivel',
-        'Nao e possivel iniciar downgrade para plano inferior enquanto sua assinatura atual estiver ativa.',
+        'Aviso de downgrade',
+        `Ao mudar para o plano ${targetPlanLabel}, seus beneficios premium atuais podem ser reduzidos apos a migracao.`,
+        [
+          {
+            text: 'Cancelar',
+            style: 'cancel',
+          },
+          {
+            text: 'Continuar downgrade',
+            style: 'destructive',
+            onPress: () => {
+              navigation.navigate('Checkout', {
+                plan: normalizeCheckoutPlan(plan),
+              });
+            },
+          },
+        ],
       );
       return;
     }
@@ -351,7 +367,7 @@ export const PlansScreen: React.FC = () => {
               : actionState.blocksSameTierCycleChange
                 ? 'Troca de ciclo indisponivel'
                 : actionState.isLower
-                ? 'Downgrade indisponivel'
+                ? 'Confirmar downgrade'
                 : 'Assinar plano';
             const shouldShowStateBadge = (
               actionState.isCurrent
@@ -362,7 +378,7 @@ export const PlansScreen: React.FC = () => {
               ? 'Plano ativo'
               : actionState.blocksSameTierCycleChange
                 ? 'Mesmo tier bloqueado'
-                : 'Plano inferior bloqueado';
+                : 'Plano inferior com confirmacao';
 
             return (
           <View style={styles.planCard}>
@@ -393,7 +409,6 @@ export const PlansScreen: React.FC = () => {
                 styles.ctaButton,
                 (
                   actionState.isCurrent
-                  || actionState.isLower
                   || actionState.blocksSameTierCycleChange
                 ) && styles.ctaButtonDisabled,
               ]}

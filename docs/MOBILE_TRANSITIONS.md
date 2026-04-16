@@ -21,6 +21,25 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## 2026-04-15 - Confirmacao de downgrade nos planos mobile
+
+- commit: `Add mobile downgrade confirmation in plans flow (neste commit)`
+- origem web/plataforma:
+  - `src/app/plans/page.tsx` (modal de aviso antes de seguir com downgrade de tier)
+- destino mobile:
+  - `mobile/src/screens/PlansScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - planos mobile deixaram de bloquear downgrade com alerta simples
+  - quando o usuario escolhe plano inferior, o app abre confirmacao explicando impacto da migracao
+  - CTA de plano inferior foi atualizado para `Confirmar downgrade`
+  - ao confirmar, o fluxo segue para `Checkout` com o plano selecionado
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - modal dedicado com bloco visual rico (beneficios perdidos/credito proporcional), igual ao web, ainda pode ser refinado no mobile.
+
 ## 2026-04-15 - Plan details do painel no catalogo mobile
 
 - commit: `Add mobile plans panel visibility and display-name parity (neste commit)`
