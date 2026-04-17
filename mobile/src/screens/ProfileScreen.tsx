@@ -18,6 +18,7 @@ import { AppStackParamList } from '@/navigation/types';
 import { readApiErrorMessage } from '@/services/api/response';
 import { cardsService } from '@/services/billing/cardsService';
 import { formatMaskedCardLabelAscii } from '@/services/billing/cardDisplay';
+import { resolveCanonicalPlanKey, resolveConfiguredPlanDisplayName } from '@/services/plans/planDetails';
 import { subscriptionsService } from '@/services/subscriptions/subscriptionsService';
 import { transactionsService } from '@/services/transactions/transactionsService';
 import { colors } from '@/theme/colors';
@@ -259,7 +260,7 @@ const getCardExpiryState = (card?: SavedCard | null) => {
  * @since v1.0.0
  */
 export const ProfileScreen: React.FC = () => {
-  const { user, logout, isLoading, refreshProfile } = useAuth();
+  const { user, logout, isLoading, refreshProfile, systemSettings } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const [cards, setCards] = React.useState<SavedCard[]>([]);
   const [transactions, setTransactions] = React.useState<MobileTransaction[]>([]);
@@ -287,7 +288,11 @@ export const ProfileScreen: React.FC = () => {
   const subscriptionCancelPending = activeSubscription && cancelAtPeriodEnd;
   const subscriptionDaysSinceStart = getSubscriptionDaysSinceStart(user?.subscription?.current_period_start);
   const withinRefundWindow = subscriptionDaysSinceStart !== null && subscriptionDaysSinceStart <= 7;
-  const subscriptionPlanName = user?.subscription?.plan?.name || user?.plan || 'Gratuito';
+  const rawSubscriptionPlanName = String(user?.subscription?.plan?.name || user?.plan || 'Gratuito');
+  const subscriptionPlanName = resolveConfiguredPlanDisplayName(
+    rawSubscriptionPlanName,
+    systemSettings.planDetails,
+  );
   const totalInstallments = Math.max(1, Number(user?.subscription?.total_installments || 1));
   const paidInstallments = Math.max(0, Number(user?.subscription?.paid_installments || 0));
   const currentInstallment = totalInstallments > 1
@@ -352,7 +357,7 @@ export const ProfileScreen: React.FC = () => {
   const cycleSummaryDescription = activeSubscription
     ? `${subscriptionRemainingDays} dias restantes no ciclo atual.`
     : 'Sem ciclo de cobranca em andamento.';
-  const isElitePlan = subscriptionPlanName.toLowerCase().includes('elite');
+  const isElitePlan = resolveCanonicalPlanKey(rawSubscriptionPlanName) === 'Elite';
   const subscriptionCycleLabel = user?.subscription?.plan?.interval_unit === 'year'
     ? 'Anual'
     : user?.subscription?.plan?.interval_count === 3

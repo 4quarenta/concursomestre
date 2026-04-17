@@ -21,6 +21,8 @@ import { BankAnalysisScreen } from '@/screens/BankAnalysisScreen';
 import { AnnotatedLawsScreen } from '@/screens/AnnotatedLawsScreen';
 import { FlashcardsScreen } from '@/screens/FlashcardsScreen';
 import { ModulePlaceholderScreen } from '@/screens/ModulePlaceholderScreen';
+import { ChangelogScreen } from '@/screens/ChangelogScreen';
+import { FaqScreen } from '@/screens/FaqScreen';
 import { colors } from '@/theme/colors';
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -56,6 +58,8 @@ const linking: LinkingOptions<AppStackParamList> = {
       BankAnalysis: 'x-ray',
       AnnotatedLaws: 'lei-comentada',
       Flashcards: 'flashcards',
+      Changelog: 'changelog',
+      Faq: 'faq',
     },
   },
 };
@@ -176,6 +180,16 @@ export const AppNavigator: React.FC = () => {
             name="Flashcards"
             component={canAccessFlashcards ? FlashcardsScreen : FlashcardsDisabledScreen}
             options={{ title: 'Flashcards' }}
+          />
+          <Stack.Screen
+            name="Changelog"
+            component={ChangelogScreen}
+            options={{ title: 'Novidades' }}
+          />
+          <Stack.Screen
+            name="Faq"
+            component={FaqScreen}
+            options={{ title: 'Duvidas frequentes' }}
           />
         </Stack.Navigator>
       ) : (

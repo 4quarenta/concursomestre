@@ -35,11 +35,23 @@ export interface MobilePlanDetail {
 }
 
 export type MobilePlanDetailsMap = Record<string, MobilePlanDetail>;
+export type MobilePlanName = 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
+
+export interface MobilePlanPricing {
+  monthly: number;
+  quarterly: number;
+  annual: number;
+  quarterlyDiscountPercent: number;
+  annualDiscountPercent: number;
+}
+
+export type MobilePlanPricingMap = Partial<Record<MobilePlanName, MobilePlanPricing>>;
 
 export interface MobileSystemSettings {
   features: MobileFeatureFlags;
   sameTierCycleChangeEnabled: boolean;
   planDetails: MobilePlanDetailsMap;
+  pricing: MobilePlanPricingMap;
   pixKey?: string;
   taxonomies: MobileGlobalTaxonomies;
 }
@@ -58,6 +70,7 @@ export const DEFAULT_MOBILE_SYSTEM_SETTINGS: MobileSystemSettings = {
   features: { ...DEFAULT_MOBILE_FEATURE_FLAGS },
   sameTierCycleChangeEnabled: false,
   planDetails: {},
+  pricing: {},
   pixKey: undefined,
   taxonomies: {
     agencies: [],

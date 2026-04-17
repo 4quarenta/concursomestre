@@ -2,6 +2,11 @@
 
 App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
 
+## Nota de escopo
+
+Em `2026-04-16`, a migracao da plataforma web publica para Next.js foi oficialmente separada da extracao mobile.
+O app Expo continua sendo a frente mobile; a camada SEO/indexavel da web passou a ser documentada em `docs/NEXTJS_MIGRATION.md`.
+
 ## Fase 1 (entregue)
 
 - Base Expo + TypeScript
@@ -43,10 +48,13 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
 - Modulo `Planos` com catalogo oficial e regras de elegibilidade:
   - seletor de ciclo (mensal, trimestral e anual) com filtro do catalogo de planos pagos
   - respeita `planDetails` do painel para visibilidade de planos e nome exibido no card
+  - respeita `pricing` do painel para valor exibido e ordenacao do catalogo
   - bloqueio de compra do plano atual ativo
   - confirmacao de downgrade para plano inferior antes de seguir ao checkout
   - bloqueio de troca de ciclo no mesmo tier quando `sameTierCycleChangeEnabled` estiver desativado no painel admin
 - Fluxo `Checkout` mobile (sessao Stripe hospedada + cartao salvo):
+  - resumo do checkout respeita o nome configurado do plano em `planDetails`
+  - subtotal e validacao de cupom usam o valor configurado em `pricing` quando existir
   - resumo do plano
   - cupom
   - modo de cobranca Stripe por ciclo (1x, 3x ou 12x sem juros conforme plano)
@@ -75,6 +83,8 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
 - Stack complementar:
   - `Concursos` com deep link `concursomestre://concursos`
   - `Reader` com deep link `concursomestre://read/:materialId`
+  - `Changelog` com deep link `concursomestre://changelog`
+  - `FAQ` com deep link `concursomestre://faq`
 - Fluxo de simulado em execucao:
   - configuracao (questoes + timer)
   - filtros locais por palavra-chave, dificuldade, materia, banca, ano, orgao, cargo e topicos
@@ -93,6 +103,7 @@ App Android/iOS em React Native (Expo), com painel admin mantido apenas na web.
   - tela de detalhe de historico com revisao por questao para tentativas salvas
   - envio das respostas no endpoint oficial de questoes
 - Perfil mobile com billing Stripe:
+  - nome do plano atual respeita `planDetails` do painel
   - alerta de atencao em pagamento (cartao expirando/falha) com acao de resolucao no portal Stripe
   - cards de resumo da assinatura (status, ciclo/vigencia e valor) com mensagens dinamicas
   - badges de estado/ciclo da assinatura com CTA direto para upgrade/gerenciar plano

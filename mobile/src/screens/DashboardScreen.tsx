@@ -555,6 +555,12 @@ export const DashboardScreen: React.FC = () => {
               <Text style={styles.actionButtonText}>Flashcards</Text>
             </Pressable>
           ) : null}
+          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Changelog')}>
+            <Text style={styles.actionButtonText}>Novidades</Text>
+          </Pressable>
+          <Pressable style={styles.actionButton} onPress={() => navigation.navigate('Faq')}>
+            <Text style={styles.actionButtonText}>Duvidas frequentes</Text>
+          </Pressable>
         </View>
       </View>
 

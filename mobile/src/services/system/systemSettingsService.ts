@@ -9,6 +9,9 @@ import {
   type MobileGlobalTaxonomies,
   type MobileTaxonomyItem,
   type MobilePlanDetailsMap,
+  type MobilePlanName,
+  type MobilePlanPricing,
+  type MobilePlanPricingMap,
   type MobileSystemSettings,
 } from '@/types/system';
 
@@ -134,6 +137,35 @@ const normalizePlanDetails = (payload: Record<string, unknown>): MobilePlanDetai
   }, {});
 };
 
+const normalizePlanPricing = (payload: Record<string, unknown>): MobilePlanPricingMap => {
+  if (!payload.pricing || typeof payload.pricing !== 'object') {
+    return {};
+  }
+
+  const source = payload.pricing as Record<string, unknown>;
+  return Object.entries(source).reduce<MobilePlanPricingMap>((accumulator, [key, value]) => {
+    if (!value || typeof value !== 'object') {
+      return accumulator;
+    }
+
+    const normalizedKey = String(key || '').trim() as MobilePlanName;
+    if (!['Gratuito', 'Essencial', 'Pro', 'Elite'].includes(normalizedKey)) {
+      return accumulator;
+    }
+
+    const pricing = value as Record<string, unknown>;
+    accumulator[normalizedKey] = {
+      monthly: Number(pricing.monthly || 0),
+      quarterly: Number(pricing.quarterly || 0),
+      annual: Number(pricing.annual || 0),
+      quarterlyDiscountPercent: Number(pricing.quarterlyDiscountPercent || pricing.quarterly_discount_percent || 0),
+      annualDiscountPercent: Number(pricing.annualDiscountPercent || pricing.annual_discount_percent || 0),
+    } satisfies MobilePlanPricing;
+
+    return accumulator;
+  }, {});
+};
+
 const resolveBooleanSetting = (
   payload: Record<string, unknown>,
   key: string,
@@ -210,6 +242,7 @@ const normalizeSystemSettingsPayload = (payload: Record<string, unknown>): Mobil
     features,
     sameTierCycleChangeEnabled: resolveBooleanSetting(payload, 'sameTierCycleChangeEnabled', false),
     planDetails: normalizePlanDetails(payload),
+    pricing: normalizePlanPricing(payload),
     pixKey: normalizePixKey(),
     taxonomies: normalizeTaxonomies(payload),
   };
@@ -244,6 +277,7 @@ export const systemSettingsService = {
       features: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.features },
       sameTierCycleChangeEnabled: DEFAULT_MOBILE_SYSTEM_SETTINGS.sameTierCycleChangeEnabled,
       planDetails: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.planDetails },
+      pricing: { ...DEFAULT_MOBILE_SYSTEM_SETTINGS.pricing },
       pixKey: DEFAULT_MOBILE_SYSTEM_SETTINGS.pixKey,
       taxonomies: {
         agencies: [...DEFAULT_MOBILE_SYSTEM_SETTINGS.taxonomies.agencies],

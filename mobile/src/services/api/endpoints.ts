@@ -83,6 +83,9 @@ export const ENDPOINTS = {
   settings: {
     get: 'settings.php',
   },
+  changelog: {
+    list: 'changelog/list.php',
+  },
 } as const;
 
 export default ENDPOINTS;

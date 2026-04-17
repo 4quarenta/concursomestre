@@ -13,10 +13,14 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AppStackParamList, CheckoutRoutePlan } from '@/navigation/types';
 import { useAuth } from '@/providers/AuthProvider';
+import {
+  isPlanEnabledByName,
+  resolveConfiguredPlanCycleAmount,
+  resolveConfiguredPlanDisplayName,
+} from '@/services/plans/planDetails';
 import { planService } from '@/services/plans/planService';
 import { colors } from '@/theme/colors';
 import type { Plan } from '@/types/plans';
-import type { MobilePlanDetailsMap } from '@/types/system';
 
 const BILLING_CYCLE_OPTIONS = [
   { key: 'monthly', label: 'Mensal' },
@@ -65,56 +69,6 @@ const resolvePlanTimeScore = (plan: Pick<Plan, 'interval_unit' | 'interval_count
   if (plan.interval_unit === 'year') return 12;
   if (plan.interval_unit === 'month') return Number(plan.interval_count || 1);
   return 1;
-};
-
-const normalizePlanNameKey = (value: string): string => {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-};
-
-const resolveCanonicalPlanKey = (planName: string): string | null => {
-  const normalized = normalizePlanNameKey(planName);
-  if (!normalized) return null;
-
-  if (normalized.includes('gratuito') || normalized.includes('free')) return 'Gratuito';
-  if (normalized.includes('essencial')) return 'Essencial';
-  if (normalized.includes('elite')) return 'Elite';
-  if (normalized.includes('pro')) return 'Pro';
-  return null;
-};
-
-const resolvePlanDetail = (
-  planName: string,
-  planDetails: MobilePlanDetailsMap,
-) => {
-  if (planDetails[planName]) return planDetails[planName];
-
-  const canonicalKey = resolveCanonicalPlanKey(planName);
-  if (!canonicalKey) return undefined;
-
-  return (
-    planDetails[canonicalKey]
-    || planDetails[canonicalKey.toLowerCase()]
-    || planDetails[canonicalKey.toUpperCase()]
-  );
-};
-
-const isPlanEnabledByName = (planName: string, planDetails: MobilePlanDetailsMap): boolean => {
-  const detail = resolvePlanDetail(planName, planDetails);
-  if (!detail) return true;
-  return detail.enabled !== false;
-};
-
-const resolveConfiguredPlanDisplayName = (
-  planName: string,
-  planDetails: MobilePlanDetailsMap,
-): string => {
-  const detail = resolvePlanDetail(planName, planDetails);
-  const configuredName = String(detail?.displayName || '').trim();
-  return configuredName || planName;
 };
 
 const isPlanMatchingBillingCycle = (plan: Plan, cycle: BillingCycle): boolean => {
@@ -170,8 +124,17 @@ export const PlansScreen: React.FC = () => {
     [currentPlanInCatalog],
   );
   const visiblePlans = React.useMemo(
-    () => plans.filter((plan) => isPlanEnabledByName(plan.name, systemSettings.planDetails)),
-    [plans, systemSettings.planDetails],
+    () => plans
+      .filter((plan) => isPlanEnabledByName(plan.name, systemSettings.planDetails))
+      .sort((left, right) => {
+        const tierDelta = Number(left.tier || 0) - Number(right.tier || 0);
+        if (tierDelta !== 0) return tierDelta;
+
+        const leftAmount = resolveConfiguredPlanCycleAmount(left, systemSettings.pricing);
+        const rightAmount = resolveConfiguredPlanCycleAmount(right, systemSettings.pricing);
+        return leftAmount - rightAmount;
+      }),
+    [plans, systemSettings.planDetails, systemSettings.pricing],
   );
   const filteredPlans = React.useMemo(
     () => visiblePlans.filter((plan) => {
@@ -389,7 +352,9 @@ export const PlansScreen: React.FC = () => {
                 </Text>
                 <Text style={styles.planInterval}>Ciclo: {formatInterval(item)}</Text>
               </View>
-              <Text style={styles.planPrice}>{formatCurrency(item.price)}</Text>
+              <Text style={styles.planPrice}>
+                {formatCurrency(resolveConfiguredPlanCycleAmount(item, systemSettings.pricing))}
+              </Text>
             </View>
 
             {shouldShowStateBadge && (

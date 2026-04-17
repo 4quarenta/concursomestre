@@ -20,6 +20,7 @@ import { readApiErrorMessage } from '@/services/api/response';
 import { authFlowService } from '@/services/auth/authFlowService';
 import { cardsService } from '@/services/billing/cardsService';
 import { formatMaskedCardLabelAscii } from '@/services/billing/cardDisplay';
+import { resolveConfiguredPlanCycleAmount, resolveConfiguredPlanDisplayName } from '@/services/plans/planDetails';
 import { planService } from '@/services/plans/planService';
 import { subscriptionsService } from '@/services/subscriptions/subscriptionsService';
 import { colors } from '@/theme/colors';
@@ -112,10 +113,14 @@ const isValidCpf = (value: string) => {
  * @since v1.0.0
  */
 export const CheckoutScreen: React.FC = () => {
-  const { user, refreshProfile, updateUser } = useAuth();
+  const { user, refreshProfile, updateUser, systemSettings } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const route = useRoute<CheckoutRoute>();
   const { plan } = route.params;
+  const displayPlanName = React.useMemo(
+    () => resolveConfiguredPlanDisplayName(String(plan.name || ''), systemSettings.planDetails),
+    [plan.name, systemSettings.planDetails],
+  );
   const defaultInstallments = React.useMemo(
     () => resolveMaxInstallments(
       Number(plan.interval_count || 1),
@@ -153,7 +158,10 @@ export const CheckoutScreen: React.FC = () => {
   });
 
   const cycleLabel = resolveCycleLabel(Number(plan.interval_count || 1), String(plan.interval_unit || 'month'));
-  const subtotal = Number(plan.price || 0);
+  const subtotal = React.useMemo(
+    () => resolveConfiguredPlanCycleAmount(plan, systemSettings.pricing),
+    [plan, systemSettings.pricing],
+  );
   const total = Math.max(0, subtotal - couponDiscount);
   const maxInstallments = React.useMemo(
     () => resolveMaxInstallments(
@@ -527,7 +535,7 @@ export const CheckoutScreen: React.FC = () => {
       }
 
       await refreshProfile();
-      Alert.alert('Assinatura concluida', 'Pagamento processado com sucesso.', [
+      Alert.alert('Assinatura concluida', `Pagamento do plano ${displayPlanName} processado com sucesso.`, [
         {
           text: 'OK',
           onPress: () => navigation.replace('MainTabs'),
@@ -569,7 +577,7 @@ export const CheckoutScreen: React.FC = () => {
     >
       <View style={styles.summaryCard}>
         <Text style={styles.eyebrow}>Resumo do plano</Text>
-        <Text style={styles.planName}>{plan.name}</Text>
+        <Text style={styles.planName}>{displayPlanName}</Text>
         <Text style={styles.planCycle}>Assinatura {cycleLabel}</Text>
 
         <View style={styles.totalRow}>

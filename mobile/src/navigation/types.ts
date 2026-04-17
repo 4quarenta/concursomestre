@@ -45,6 +45,8 @@ export type AppStackParamList = {
   BankAnalysis: undefined;
   AnnotatedLaws: undefined;
   Flashcards: undefined;
+  Changelog: undefined;
+  Faq: undefined;
 };
 
 export type MainTabParamList = {

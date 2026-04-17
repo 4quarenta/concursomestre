@@ -21,6 +21,95 @@ Toda transicao mobile deve registrar:
 - Escopo recomendado: rotas publicas/indexaveis em SSR/SSG/ISR, metadata por rota, sitemap/robots, canonical, Open Graph, JSON-LD e redirects preservando URLs atuais.
 - A area logada/admin pode permanecer em Vite SPA enquanto SEO nao for requisito dessas telas.
 
+## Separacao de frentes
+
+Em `2026-04-16`, o escopo foi explicitamente separado:
+
+- a extracao mobile continua registrada neste arquivo
+- a migracao SEO da plataforma web para Next passou a ser documentada em `docs/NEXTJS_MIGRATION.md`
+
+Essa separacao evita misturar a base Expo com a camada publica/indexavel da web.
+
+## 2026-04-15 - Changelog e FAQ no mobile
+
+- commit: `pendente (alteracao local, sem commit)`
+- origem web/plataforma:
+  - `src/app/changelog/page.tsx` (lista versionada de atualizacoes com service e endpoint)
+  - `src/app/faq/page.tsx` (perguntas frequentes estaticas com busca e accordion)
+  - `src/services/changelog/changelogService.ts`
+  - endpoint `changelog/list.php`
+- destino mobile:
+  - `mobile/src/types/changelog.ts`
+  - `mobile/src/services/changelog/changelogService.ts`
+  - `mobile/src/services/api/endpoints.ts`
+  - `mobile/src/screens/ChangelogScreen.tsx`
+  - `mobile/src/screens/FaqScreen.tsx`
+  - `mobile/src/navigation/types.ts`
+  - `mobile/src/navigation/AppNavigator.tsx`
+  - `mobile/src/screens/DashboardScreen.tsx`
+  - `mobile/src/screens/NotificationsScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - app mobile passou a ter tela de Changelog com seletor horizontal de versoes e painel de categorias/itens por release
+  - versao mais recente e pre-selecionada automaticamente; pull-to-refresh recarrega do endpoint oficial
+  - app mobile passou a ter tela de FAQ com dados estaticos, busca local por termo e accordion por item/categoria
+  - estado vazio orientado com mensagem de fallback em ambas as telas
+  - deep links `concursomestre://changelog` e `concursomestre://faq` registrados no app
+  - atalhos `Novidades` e `Duvidas frequentes` adicionados no bloco de atalhos rapidos do Dashboard
+  - notificacoes passaram a mapear destinos `changelog`/`novidades` para `ChangelogScreen` e `faq`/`duvidas` para `FaqScreen`
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - FAQ mobile usa dados estaticos; quando o backend expuser endpoint oficial de FAQ, o service pode ser adaptado sem alterar a tela.
+
+## 2026-04-15 - Pricing do painel em planos e checkout mobile
+
+- commit: `pendente (alteracao local, sem commit)`
+- origem web/plataforma:
+  - `src/services/plans/planOffer.ts` (resolucao do valor de ciclo a partir de `pricing`)
+  - `src/app/plans/page.tsx`
+  - `src/app/checkout/page.tsx`
+- destino mobile:
+  - `mobile/src/types/system.ts`
+  - `mobile/src/services/system/systemSettingsService.ts`
+  - `mobile/src/services/plans/planDetails.ts`
+  - `mobile/src/screens/PlansScreen.tsx`
+  - `mobile/src/screens/CheckoutScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - bootstrap mobile passou a normalizar `pricing` do `settings.php`
+  - catalogo de planos mobile agora usa o valor configurado no painel para exibir preco e ordenar cards
+  - checkout mobile passou a usar o valor configurado como subtotal base e como referencia para validacao de cupom
+  - helper compartilhado passou a resolver o valor de ciclo configurado por plano/ciclo com fallback seguro para `plan.price`
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - calculo completo de oferta promocional e desconto efetivo por ciclo, como no `resolvePlanOffer` web, ainda nao foi portado integralmente para o mobile.
+
+## 2026-04-15 - Nome configurado do plano no checkout mobile
+
+- commit: `pendente (alteracao local, sem commit)`
+- origem web/plataforma:
+  - `src/app/checkout/page.tsx` (consistencia do nome configurado do plano entre catalogo e checkout)
+- destino mobile:
+  - `mobile/src/services/plans/planDetails.ts`
+  - `mobile/src/screens/PlansScreen.tsx`
+  - `mobile/src/screens/CheckoutScreen.tsx`
+  - `mobile/src/screens/ProfileScreen.tsx`
+  - status atualizado em `mobile/README.md`
+- paridade entregue:
+  - checkout mobile passou a usar o mesmo nome configurado do painel visto na listagem de planos
+  - resumo do checkout e mensagem de sucesso agora refletem `planDetails.displayName` quando existir
+  - perfil mobile passou a exibir o nome configurado do plano atual na secao de assinatura
+  - logica de resolucao de `planDetails` foi extraida para helper compartilhado entre catalogo, checkout e perfil
+- validacoes:
+  - `npm --prefix mobile run typecheck`
+  - `git diff --check`
+- pendencias conhecidas:
+  - ofertas promocionais completas e badges de desconto do checkout web ainda nao foram portadas para o mobile.
+
 ## 2026-04-15 - Confirmacao de downgrade nos planos mobile
 
 - commit: `Add mobile downgrade confirmation in plans flow (neste commit)`

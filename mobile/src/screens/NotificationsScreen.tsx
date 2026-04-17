@@ -19,7 +19,7 @@ import type { MobileNotification } from '@/types/notifications';
 
 type NotificationsNavigation = NativeStackNavigationProp<AppStackParamList, 'Notifications'>;
 type MainTabRoute = keyof MainTabParamList;
-type AppStackRoute = keyof Pick<AppStackParamList, 'BankAnalysis' | 'Support' | 'Concursos'>;
+type AppStackRoute = keyof Pick<AppStackParamList, 'BankAnalysis' | 'Support' | 'Concursos' | 'Changelog' | 'Faq'>;
 
 const parseDate = (rawValue?: number | string): Date | null => {
   if (rawValue === undefined || rawValue === null || rawValue === '') return null;
@@ -72,6 +72,8 @@ const resolveStackTarget = (target?: string): AppStackRoute | null => {
   if (path.includes('x-ray') || path.includes('raio-x') || path.includes('raiox')) return 'BankAnalysis';
   if (path.includes('suporte') || path.includes('support') || path.includes('feedback')) return 'Support';
   if (path.includes('concurso') || path.includes('edital')) return 'Concursos';
+  if (path.includes('changelog') || path.includes('novidades')) return 'Changelog';
+  if (path.includes('faq') || path.includes('duvidas')) return 'Faq';
 
   return null;
 };
