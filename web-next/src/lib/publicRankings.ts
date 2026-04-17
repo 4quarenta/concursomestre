@@ -40,7 +40,9 @@ export const buildRankingMetadata = (ranking: Ranking): Metadata => {
   const canonicalPath = buildRankingPath(ranking);
 
   return {
-    title,
+    title: {
+      absolute: title,
+    },
     description,
     alternates: {
       canonical: canonicalPath,

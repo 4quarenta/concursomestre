@@ -49,7 +49,9 @@ export const buildLandingMetadata = (
   const description = landing.seo?.metaDescription || `Compare os planos do ${siteName} e escolha a assinatura ideal.`;
 
   return {
-    title,
+    title: {
+      absolute: title,
+    },
     description,
     openGraph: {
       title: landing.seo?.ogTitle || title,

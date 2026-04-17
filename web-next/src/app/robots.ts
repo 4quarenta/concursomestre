@@ -7,11 +7,10 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: '*',
-      allow: ['/'],
-      disallow: ['/auth', '/dashboard', '/admin', '/profile', '/checkout'],
+      allow: ['/', '/checkout/termos-de-adesao'],
+      disallow: ['/auth', '/dashboard', '/admin', '/profile', '/checkout/'],
     },
     sitemap: `${baseUrl}/sitemap.xml`,
     host: baseUrl,
   };
 }
-

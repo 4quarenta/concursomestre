@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import MarketingPlansLandingClient from '@/components/landing/MarketingPlansLandingClient';
 import { buildLandingMetadata, loadPublicMarketingPageData } from '@/lib/publicMarketing';
 import { buildMarketingLandingPath } from '@/services/marketing/landingPages';
@@ -7,6 +7,8 @@ import { buildMarketingLandingPath } from '@/services/marketing/landingPages';
 interface DynamicLandingPageProps {
   params: Promise<{ slug: string }>;
 }
+
+export const revalidate = 3600;
 
 export async function generateStaticParams() {
   const { settings } = await loadPublicMarketingPageData('planos');
@@ -31,8 +33,9 @@ export default async function DynamicLandingPage({ params }: DynamicLandingPageP
     notFound();
   }
 
-  if (buildMarketingLandingPath(slug) !== `/l/${slug}`) {
-    notFound();
+  const canonicalPath = buildMarketingLandingPath(slug);
+  if (canonicalPath !== `/l/${slug}`) {
+    redirect(canonicalPath);
   }
 
   return (

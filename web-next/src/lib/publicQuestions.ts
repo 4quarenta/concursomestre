@@ -20,7 +20,9 @@ export const buildQuestionMetadata = (question: Question): Metadata => {
   const description = summarizeSeoText(seoLabel, 160);
 
   return {
-    title,
+    title: {
+      absolute: title,
+    },
     description,
     alternates: {
       canonical: canonicalPath,

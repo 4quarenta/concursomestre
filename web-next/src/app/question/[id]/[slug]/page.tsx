@@ -1,12 +1,14 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { ArrowRight, Building2, Calendar, FileQuestion, GraduationCap, ShieldCheck, Tag } from 'lucide-react';
 import { buildQuestionMetadata, loadPublicQuestionById } from '@/lib/publicQuestions';
+import { buildQuestionStructuredData, serializeStructuredData } from '@/lib/structuredData';
 import { normalizeQuestionRichHtml } from '@/services/questions/questionHtmlSanitizer';
 import { buildQuestionPath, buildQuestionSlug, getQuestionSeoLabel, summarizeSeoText } from '@/services/seo/slug';
 
 const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+export const revalidate = 3600;
 
 interface QuestionPageProps {
   params: Promise<{ id: string; slug: string }>;
@@ -39,6 +41,10 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
 
   const canonicalPath = buildQuestionPath(question);
   const canonicalSlug = buildQuestionSlug(question);
+  if (slug !== canonicalSlug) {
+    redirect(canonicalPath);
+  }
+
   const metadataItems = [
     { label: 'Banca', value: question.bancas?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
     { label: 'Orgao', value: question.orgaos?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
@@ -48,14 +54,13 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
   ].filter((item) => item.value);
 
   return (
-    <section className="mx-auto w-full max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
-      {slug !== canonicalSlug && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-          URL canonica: <Link href={canonicalPath} className="underline underline-offset-2">{canonicalPath}</Link>
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeStructuredData(buildQuestionStructuredData(question)) }}
+      />
+      <section className="mx-auto w-full max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="border-b border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-sky-50 p-4 sm:p-5 md:p-6 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Questao publica</p>
           <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
@@ -169,7 +174,8 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
             </aside>
           </div>
         </div>
-      </div>
-    </section>
+        </div>
+      </section>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import type { Question, Ranking } from '@types';
+import type { Material, Question, Ranking } from '@types';
 import { websiteManifest } from '@/config/platform';
 
 const MAX_SLUG_LENGTH = 80;
@@ -33,6 +33,12 @@ export const buildRankingSlug = (ranking: Partial<Ranking>) =>
 
 export const buildRankingPath = (ranking: Partial<Ranking>) =>
   `/ranking/${ranking.id}/${buildRankingSlug(ranking)}`;
+
+export const buildMaterialSlug = (material: Partial<Material>) =>
+  slugifyContent(material.title || material.description || `material-${material.id || 'publico'}`);
+
+export const buildMaterialPath = (material: Partial<Material>) =>
+  `/material/${material.id}/${buildMaterialSlug(material)}`;
 
 export const buildAbsoluteUrl = (path: string, baseUrl = DEFAULT_CANONICAL_BASE_URL) =>
   new URL(path, baseUrl).toString();
