@@ -1,10 +1,10 @@
 import { redirect } from 'next/navigation';
-import { buildLegacyUrl, type LegacySearchParams } from '@/lib/legacyRedirect';
+import { appendSearchParamsToPath, type RouteSearchParams } from '@/lib/searchParams';
 
-export default async function DashboardBridgePage({
+export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<LegacySearchParams>;
+  searchParams: Promise<RouteSearchParams>;
 }) {
-  redirect(buildLegacyUrl('/', await searchParams));
+  redirect(appendSearchParamsToPath('/', await searchParams));
 }

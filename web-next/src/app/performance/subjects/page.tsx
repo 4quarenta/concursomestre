@@ -1,10 +1,14 @@
-import { redirect } from 'next/navigation';
-import { buildLegacyUrl, type LegacySearchParams } from '@/lib/legacyRedirect';
+import type { Metadata } from 'next';
+import PerformanceSubjectsPageClient from '@/components/performance/PerformanceSubjectsPageClient';
 
-export default async function PerformanceSubjectsBridgePage({
-  searchParams,
-}: {
-  searchParams: Promise<LegacySearchParams>;
-}) {
-  redirect(buildLegacyUrl('/performance/subjects', await searchParams));
+export const metadata: Metadata = {
+  title: 'Performance por materia | ConcursoMestre',
+  description: 'Acompanhe sua leitura detalhada por materia com acertos, erros e precisao consolidada.',
+  alternates: {
+    canonical: '/performance/subjects',
+  },
+};
+
+export default function PerformanceSubjectsPage() {
+  return <PerformanceSubjectsPageClient />;
 }

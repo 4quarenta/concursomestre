@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { websiteManifest } from '@/config/platform';
+import { AuthSessionProvider } from '@/components/auth/AuthSessionProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -41,7 +42,9 @@ export default function RootLayout({
         className="min-h-full flex flex-col no-scrollbar bg-slate-50 text-slate-900 transition-colors dark:bg-slate-900 dark:text-slate-100"
         suppressHydrationWarning
       >
-        {children}
+        <AuthSessionProvider>
+          {children}
+        </AuthSessionProvider>
       </body>
     </html>
   );

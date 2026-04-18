@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "cd web-next && npm install --ignore-scripts",
     "dev": "npm --prefix web-next run dev",
     "build": "npm --prefix web-next run build",
     "start": "npm --prefix web-next run start",
@@ -13,6 +14,8 @@
     "legacy-web:build": "vite build",
     "legacy-web:preview": "vite preview",
     "legacy-web:typecheck": "tsc --noEmit -p tsconfig.legacy.json",
+    "legacy-web:inventory": "node scripts/checks/legacy-web-inventory.mjs",
+    "legacy-web:debt-report": "node scripts/checks/legacy-web-typecheck-report.mjs",
     "mobile:start": "npm --prefix mobile run start",
     "mobile:android": "npm --prefix mobile run android",
     "mobile:ios": "npm --prefix mobile run ios",

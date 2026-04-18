@@ -1,25 +1,29 @@
-import { redirect } from 'next/navigation';
-import { buildLegacyUrl, type LegacySearchParams } from '@/lib/legacyRedirect';
+import { safeServerFetch } from '@/lib/api';
+import { mergePublicSystemSettings } from '@/lib/publicSettings';
+import AuthPageClient from '@/components/auth/AuthPageClient';
+import type { SystemSettings } from '@/types';
+import { readFirstSearchParam, type RouteSearchParams } from '@/lib/searchParams';
 
-const buildLegacyAuthUrl = (searchParams: LegacySearchParams) => {
-  const targetUrl = new URL(buildLegacyUrl('/auth', searchParams));
-
-  const requestedMode = targetUrl.searchParams.get('mode');
-  const requestedRegister = targetUrl.searchParams.get('register');
-
-  if (!requestedMode && (requestedRegister === 'true' || requestedRegister === '1')) {
-    targetUrl.searchParams.set('mode', 'signup');
-  }
-
-  targetUrl.searchParams.delete('register');
-
-  return targetUrl.toString();
+type AuthPageProps = {
+  searchParams: Promise<RouteSearchParams>;
 };
 
-export default async function AuthBridgePage({
-  searchParams,
-}: {
-  searchParams: Promise<LegacySearchParams>;
-}) {
-  redirect(buildLegacyAuthUrl(await searchParams));
+export default async function AuthPage({ searchParams }: AuthPageProps) {
+  const resolvedSearchParams = await searchParams;
+  const settings = mergePublicSystemSettings(
+    await safeServerFetch<Partial<SystemSettings>>('settings.php', {}),
+  );
+  const requestedMode = readFirstSearchParam(resolvedSearchParams.mode);
+  const redirectTo = readFirstSearchParam(resolvedSearchParams.redirect);
+  const referralCode = readFirstSearchParam(resolvedSearchParams.ref)
+    ?? readFirstSearchParam(resolvedSearchParams.referral);
+
+  return (
+    <AuthPageClient
+      initialMode={requestedMode === 'signup' ? 'signup' : 'login'}
+      redirectTo={redirectTo}
+      referralCode={referralCode}
+      systemSettings={settings}
+    />
+  );
 }

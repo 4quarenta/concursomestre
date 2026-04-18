@@ -1,10 +1,17 @@
-import { redirect } from 'next/navigation';
-import { buildLegacyUrl, type LegacySearchParams } from '@/lib/legacyRedirect';
+import ConfirmEmailClient from '@/components/auth/ConfirmEmailClient';
+import { readFirstSearchParam, type RouteSearchParams } from '@/lib/searchParams';
 
-export default async function ConfirmEmailBridgePage({
-  searchParams,
-}: {
-  searchParams: Promise<LegacySearchParams>;
-}) {
-  redirect(buildLegacyUrl('/confirm-email', await searchParams));
+type ConfirmEmailPageProps = {
+  searchParams: Promise<RouteSearchParams>;
+};
+
+export default async function ConfirmEmailPage({ searchParams }: ConfirmEmailPageProps) {
+  const resolvedSearchParams = await searchParams;
+
+  return (
+    <ConfirmEmailClient
+      redirectTo={readFirstSearchParam(resolvedSearchParams.redirect)}
+      token={readFirstSearchParam(resolvedSearchParams.token)}
+    />
+  );
 }

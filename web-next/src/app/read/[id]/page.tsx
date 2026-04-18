@@ -1,13 +1,21 @@
-import { redirect } from 'next/navigation';
-import { buildLegacyUrl, type LegacySearchParams } from '@/lib/legacyRedirect';
+import type { Metadata } from 'next';
+import MaterialReaderClient from '@/components/reader/MaterialReaderClient';
 
-export default async function ReadBridgePage({
+export const metadata: Metadata = {
+  title: 'Leitor de material | ConcursoMestre',
+  description: 'Leitor protegido de materiais adquiridos no ConcursoMestre.',
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
+
+export default async function ReadPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<LegacySearchParams>;
 }) {
   const { id } = await params;
-  redirect(buildLegacyUrl(`/read/${id}`, await searchParams));
+
+  return <MaterialReaderClient materialId={id} />;
 }

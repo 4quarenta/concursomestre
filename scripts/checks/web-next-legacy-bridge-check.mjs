@@ -15,38 +15,49 @@ const legacyWebBaseUrl = (
 ).replace(/\/$/, '');
 const outputPath = process.env.WEB_NEXT_LEGACY_BRIDGE_CHECK_OUTPUT || '';
 
-const bridgeRoutes = [
-  { source: '/auth?register=true&ref=bridge-check', destination: `${legacyWebBaseUrl}/auth?ref=bridge-check&mode=signup` },
-  { source: '/auth?mode=login', destination: `${legacyWebBaseUrl}/auth?mode=login` },
-  { source: '/dashboard?from=bridge-check', destination: `${legacyWebBaseUrl}/?from=bridge-check` },
-  { source: '/confirm-email?token=bridge-token', destination: `${legacyWebBaseUrl}/confirm-email?token=bridge-token` },
-  { source: '/reset-password?token=bridge-token', destination: `${legacyWebBaseUrl}/reset-password?token=bridge-token` },
-  { source: '/concursos', destination: `${legacyWebBaseUrl}/concursos` },
-  { source: '/practice', destination: `${legacyWebBaseUrl}/practice` },
-  { source: '/lei-comentada', destination: `${legacyWebBaseUrl}/lei-comentada` },
-  { source: '/flashcards', destination: `${legacyWebBaseUrl}/flashcards` },
-  { source: '/simulation', destination: `${legacyWebBaseUrl}/simulation` },
-  { source: '/x-ray', destination: `${legacyWebBaseUrl}/x-ray` },
-  { source: '/marketplace', destination: `${legacyWebBaseUrl}/marketplace` },
-  { source: '/ranking', destination: `${legacyWebBaseUrl}/ranking` },
-  { source: '/profile?tab=personal', destination: `${legacyWebBaseUrl}/profile?tab=personal` },
-  { source: '/profile/billing?tab=cards', destination: `${legacyWebBaseUrl}/profile/billing?tab=cards` },
-  { source: '/performance/subjects', destination: `${legacyWebBaseUrl}/performance/subjects` },
-  { source: '/notifications', destination: `${legacyWebBaseUrl}/notifications` },
-  { source: '/partner-dashboard', destination: `${legacyWebBaseUrl}/partner-dashboard` },
-  { source: '/support', destination: `${legacyWebBaseUrl}/support` },
-  { source: '/subscription/success', destination: `${legacyWebBaseUrl}/subscription/success` },
-  { source: '/subscription/failure?source=bridge-check', destination: `${legacyWebBaseUrl}/subscription/failure?source=bridge-check` },
-  { source: '/subscription/pending?source=bridge-check', destination: `${legacyWebBaseUrl}/subscription/pending?source=bridge-check` },
-  { source: '/read/42', destination: `${legacyWebBaseUrl}/read/42` },
-  { source: '/checkout/123', destination: `${legacyWebBaseUrl}/checkout/123` },
-  { source: '/admin?section=overview', destination: `${legacyWebBaseUrl}/admin?section=overview` },
-  { source: '/admin/settings/seo', destination: `${legacyWebBaseUrl}/admin/settings/seo` },
+const routeChecks = [
+  { source: '/auth?register=true&ref=bridge-check', expectedStatus: 200, type: 'render' },
+  { source: '/auth?mode=login', expectedStatus: 200, type: 'render' },
+  { source: '/dashboard?from=bridge-check', destination: `${webNextBaseUrl}/?from=bridge-check`, type: 'redirect' },
+  { source: '/confirm-email?token=bridge-token', expectedStatus: 200, type: 'render' },
+  { source: '/reset-password?token=bridge-token', expectedStatus: 200, type: 'render' },
+  { source: '/concursos', expectedStatus: 200, type: 'render' },
+  { source: '/practice', destination: `${legacyWebBaseUrl}/practice`, type: 'redirect' },
+  { source: '/lei-comentada', expectedStatus: 200, type: 'render' },
+  { source: '/flashcards', expectedStatus: 200, type: 'render' },
+  { source: '/simulation', destination: `${legacyWebBaseUrl}/simulation`, type: 'redirect' },
+  { source: '/x-ray', expectedStatus: 200, type: 'render' },
+  { source: '/marketplace', expectedStatus: 200, type: 'render' },
+  { source: '/ranking', expectedStatus: 200, type: 'render' },
+  { source: '/profile?tab=personal', expectedStatus: 200, type: 'render' },
+  { source: '/profile/billing?tab=cards', expectedStatus: 200, type: 'render' },
+  { source: '/performance/subjects', expectedStatus: 200, type: 'render' },
+  { source: '/notifications', expectedStatus: 200, type: 'render' },
+  { source: '/partner-dashboard', expectedStatus: 200, type: 'render' },
+  { source: '/support', expectedStatus: 200, type: 'render' },
+  { source: '/subscription/success', expectedStatus: 200, type: 'render' },
+  { source: '/subscription/failure?source=bridge-check', expectedStatus: 200, type: 'render' },
+  { source: '/subscription/pending?source=bridge-check', expectedStatus: 200, type: 'render' },
+  { source: '/read/42', expectedStatus: 200, type: 'render' },
+  { source: '/checkout/123', expectedStatus: 200, type: 'render' },
+  { source: '/admin?section=overview', destination: `${legacyWebBaseUrl}/admin?section=overview`, type: 'redirect' },
+  { source: '/admin/settings/seo', destination: `${legacyWebBaseUrl}/admin/settings/seo`, type: 'redirect' },
 ];
 
 const results = [];
 
 const resolveWebNextUrl = (pathname) => new URL(pathname, `${webNextBaseUrl}/`).toString();
+const normalizeLocation = (location) => {
+  if (!location) {
+    return '';
+  }
+
+  try {
+    return new URL(location, `${webNextBaseUrl}/`).toString();
+  } catch {
+    return location;
+  }
+};
 
 const addResult = (status, label, detail = '') => {
   results.push({ status, label, detail });
@@ -63,20 +74,36 @@ const expectRedirect = async ({ source, destination }) => {
     }
 
     const location = response.headers.get('location') || '';
-    if (location !== destination) {
+    const normalizedLocation = normalizeLocation(location);
+    if (normalizedLocation !== destination) {
       addResult('fail', `${source} redirect`, `expected ${destination}, got ${location || 'empty location'}`);
       return;
     }
 
-    addResult('ok', `${source} redirect`, location);
+    addResult('ok', `${source} redirect`, normalizedLocation);
   } catch (error) {
     addResult('fail', `${source} request`, error instanceof Error ? error.message : String(error));
   }
 };
 
-for (const route of bridgeRoutes) {
+const expectRenderedRoute = async ({ source, expectedStatus }) => {
+  try {
+    const response = await fetch(resolveWebNextUrl(source), { redirect: 'manual' });
+
+    if (response.status !== expectedStatus) {
+      addResult('fail', `${source} status`, `expected ${expectedStatus}, got ${response.status}`);
+      return;
+    }
+
+    addResult('ok', `${source} render`, `status ${response.status}`);
+  } catch (error) {
+    addResult('fail', `${source} request`, error instanceof Error ? error.message : String(error));
+  }
+};
+
+for (const route of routeChecks) {
   // eslint-disable-next-line no-await-in-loop
-  await expectRedirect(route);
+  await (route.type === 'redirect' ? expectRedirect(route) : expectRenderedRoute(route));
 }
 
 const failures = results.filter((result) => result.status === 'fail');
@@ -87,8 +114,8 @@ if (outputPath) {
     generatedAt: new Date().toISOString(),
     webNextBaseUrl,
     legacyWebBaseUrl,
-    summary: {
-      total: results.length,
+      summary: {
+        total: results.length,
       failures: failures.length,
       ok: results.filter((result) => result.status === 'ok').length,
     },
@@ -99,5 +126,5 @@ if (outputPath) {
 if (failures.length > 0) {
   process.exitCode = 1;
 } else {
-  console.log(`[OK] legacy bridge coverage - ${bridgeRoutes.length} routes validated`);
+  console.log(`[OK] legacy bridge coverage - ${routeChecks.length} routes validated`);
 }

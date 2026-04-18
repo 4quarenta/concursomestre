@@ -1,10 +1,5 @@
-import { redirect } from 'next/navigation';
-import { buildLegacyUrl, type LegacySearchParams } from '@/lib/legacyRedirect';
+import NotificationsPageClient from '@/components/notifications/NotificationsPageClient';
 
-export default async function NotificationsBridgePage({
-  searchParams,
-}: {
-  searchParams: Promise<LegacySearchParams>;
-}) {
-  redirect(buildLegacyUrl('/notifications', await searchParams));
+export default function NotificationsPage() {
+  return <NotificationsPageClient />;
 }

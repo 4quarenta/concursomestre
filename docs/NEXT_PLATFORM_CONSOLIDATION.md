@@ -23,25 +23,63 @@ Transformar o `web-next` na base principal do web da plataforma, mantendo a SPA 
 - `npm run build`: `ok`
 - `npm run typecheck`: `ok`
 - `npm run web-next:hybrid-local-check`: `ok`
+- `npm run web-next:legacy-bridge-check`: `ok`
 - a validacao do legado foi isolada em `tsconfig.legacy.json`
+- `npm install` na raiz agora bootstrapa o `web-next` via `postinstall`, evitando falha de CI/Vercel em ambientes limpos
 - `npm run legacy-web:typecheck` agora ignora `docs/`, `mobile/` e `web-next/`, expondo apenas a divida real da SPA Vite
+- `npm run legacy-web:inventory` passa a gerar evidencias reproduziveis do legado em `docs/reports/`
+- `npm run legacy-web:debt-report` passa a agrupar a divida de typecheck por dominio e arquivo
 - o inventario inicial do legado ativo foi aberto em `docs/LEGACY_WEB_INVENTORY.md`
 - em modo hibrido local validado, o legado respondeu em `http://localhost:3000` e o Next respondeu em `http://localhost:3001`
+- o inventario atual registra `26` roots em overlap exato, `8` roots apenas no legado e `8` roots apenas no Next
+- o debt report atual registra `70` erros de typecheck em `29` arquivos e `15` dominios do legado
+- um alinhamento estrutural de aliases em `tsconfig.json` e `vite.config.ts` ja removeu parte da divida inicial do legado
+- os fluxos `auth`, `confirm-email`, `reset-password`, `support`, `notifications`, `dashboard`, `subscription/[status]`, `ranking`, `concursos`, `flashcards`, `lei-comentada`, `performance/subjects`, `x-ray`, `read/[id]`, `checkout/[planId]`, `marketplace`, `partner-dashboard` e `profile/[[...slug]]` ja nao dependem mais de `buildLegacyUrl`
+- ainda restam `3` entrypoints em `web-next/src/app` que encaminham para a SPA legada
 
 ## Leitura atual do legado
 
 Os erros reais ainda ativos na SPA antiga estao concentrados principalmente em:
 
 - admin database, taxonomias, exams, finance, marketing, panel, settings e support
-- checkout, profile, simulation e router
-- aliases/imports antigos como `@constants` e `types`
+- profile, router, subscriptions, providers e questions
+- checkout, simulation, layout compartilhado e overlays
 - contratos divergentes entre tipos de dominio e componentes
 - pontos de assinaturas de callback e retorno que deixaram de bater com as tipagens atuais
 
 Isso confirma duas coisas:
 
 - a raiz ja pode operar o web principal em Next com seguranca
-- ainda nao e hora de remover o legado Vite, porque ele permanece como fonte ativa de modulos administrativos e autenticados
+- ainda nao e hora de remover o legado Vite, porque ele permanece como fonte ativa de modulos administrativos, autenticados e de leitura/checkout avancado
+
+## Pontes ainda ativas
+
+As rotas abaixo ainda sao bridges explicitas para o legado:
+
+- `admin/[[...slug]]`
+- `practice`
+- `simulation`
+
+As entradas abaixo ja foram absorvidas pelo Next nesta fase:
+
+- `auth`
+- `checkout/[planId]`
+- `concursos`
+- `confirm-email`
+- `dashboard`
+- `flashcards`
+- `lei-comentada`
+- `marketplace`
+- `notifications`
+- `partner-dashboard`
+- `performance/subjects`
+- `profile/[[...slug]]`
+- `ranking`
+- `reset-password`
+- `read/[id]`
+- `subscription/[status]`
+- `support`
+- `x-ray`
 
 ## Etapas da consolidacao
 

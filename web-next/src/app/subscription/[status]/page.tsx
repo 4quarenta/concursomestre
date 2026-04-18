@@ -1,14 +1,12 @@
-import { notFound, redirect } from 'next/navigation';
-import { buildLegacyUrl, type LegacySearchParams } from '@/lib/legacyRedirect';
+import { notFound } from 'next/navigation';
+import SubscriptionStatusClient from '@/components/subscription/SubscriptionStatusClient';
 
 const ALLOWED_STATUSES = new Set(['success', 'failure', 'pending']);
 
-export default async function SubscriptionBridgePage({
+export default async function SubscriptionStatusPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ status: string }>;
-  searchParams: Promise<LegacySearchParams>;
 }) {
   const { status } = await params;
 
@@ -16,5 +14,5 @@ export default async function SubscriptionBridgePage({
     notFound();
   }
 
-  redirect(buildLegacyUrl(`/subscription/${status}`, await searchParams));
+  return <SubscriptionStatusClient status={status as 'failure' | 'pending' | 'success'} />;
 }

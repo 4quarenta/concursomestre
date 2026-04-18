@@ -1,10 +1,17 @@
-import { redirect } from 'next/navigation';
-import { buildLegacyUrl, type LegacySearchParams } from '@/lib/legacyRedirect';
+import ResetPasswordClient from '@/components/auth/ResetPasswordClient';
+import { readFirstSearchParam, type RouteSearchParams } from '@/lib/searchParams';
 
-export default async function ResetPasswordBridgePage({
-  searchParams,
-}: {
-  searchParams: Promise<LegacySearchParams>;
-}) {
-  redirect(buildLegacyUrl('/reset-password', await searchParams));
+type ResetPasswordPageProps = {
+  searchParams: Promise<RouteSearchParams>;
+};
+
+export default async function ResetPasswordPage({ searchParams }: ResetPasswordPageProps) {
+  const resolvedSearchParams = await searchParams;
+
+  return (
+    <ResetPasswordClient
+      emailFromUrl={readFirstSearchParam(resolvedSearchParams.email)}
+      token={readFirstSearchParam(resolvedSearchParams.token)}
+    />
+  );
 }

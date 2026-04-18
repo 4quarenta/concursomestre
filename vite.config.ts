@@ -36,6 +36,7 @@ export default defineConfig(({ mode }) => {
         '@providers': path.resolve(__dirname, './src/providers'),
         '@constants': path.resolve(__dirname, './src/constants'),
         '@types': path.resolve(__dirname, './src/types/index.ts'),
+        'types': path.resolve(__dirname, './src/types/index.ts'),
       }
     },
     build: {
