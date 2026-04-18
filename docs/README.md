@@ -13,7 +13,62 @@
 - `BILLING_E_VALIDACAO.md`
 - `ENCODING_E_TEXTO.md`
 - `MOBILE_TRANSITIONS.md`
+- `NEXTJS_MIGRATION.md`
+- `WEB_NEXT_CUTOVER.md`
+- `WEB_NEXT_STAGE4_STAGING.md`
+- `WEB_NEXT_STAGE5_PRODUCTION.md`
+- `GOOGLE_SEARCH_CONSOLE.md`
+- `examples/` para snippets operacionais, como os cortes Apache e Nginx do `web-next`
+- `config/deploy/` para templates operacionais de gate e corte por ambiente
 - `reports/` para saidas automatizadas do billing
+
+## Checks operacionais da migracao web
+
+- `npm run web-next:cutover-check`
+- `npm run web-next:legacy-bridge-check`
+- `npm run web-next:legacy-bridge-report`
+- `npm run web-next:hybrid-local-check`
+- `npm run web-next:hybrid-local-report`
+- `npm run web-next:cutover-handoff`
+- `npm run web-next:staging-gate`
+- `npm run web-next:stage4-init-config`
+- `npm run web-next:stage4-status`
+- `npm run web-next:stage4-readiness`
+- `npm run web-next:stage4-proxy-check`
+- `npm run web-next:stage4-smoke`
+- `npm run web-next:stage4-config-check`
+- `npm run web-next:stage4-rollout`
+- `npm run web-next:stage4-handoff`
+- `npm run web-next:stage5-init-config`
+- `npm run web-next:stage5-validate`
+- `npm run web-next:stage5-launch`
+- `npm run web-next:stage5-status`
+- `npm run web-next:stage5-readiness`
+- `npm run web-next:stage5-smoke`
+- `npm run web-next:production-gate`
+- `npm run test:transition`
+- `scripts/checks/run-web-next-hybrid-local-check.ps1`
+- `scripts/checks/run-web-next-hybrid-local-report.ps1`
+- `scripts/checks/run-web-next-cutover-handoff.ps1`
+- `scripts/checks/run-web-next-cutover-report.ps1`
+- `scripts/checks/run-web-next-legacy-bridge-check.ps1`
+- `scripts/checks/new-web-next-stage4-rollout-config.ps1`
+- `scripts/checks/run-web-next-stage4-status.ps1`
+- `scripts/checks/run-web-next-stage4-proxy-check.ps1`
+- `scripts/checks/run-web-next-stage4-smoke.ps1`
+- `scripts/checks/run-web-next-stage4-rollout.ps1`
+- `scripts/checks/run-web-next-stage4-handoff.ps1`
+- `scripts/checks/new-web-next-stage5-launch-config.ps1`
+- `scripts/checks/run-web-next-stage5-launch.ps1`
+- `scripts/checks/run-web-next-stage5-status.ps1`
+- `scripts/checks/run-web-next-stage5-smoke.ps1`
+- `scripts/checks/render-web-next-gate-summary.mjs`
+- `.github/workflows/web-next-stage4-smoke.yml`
+- `.github/workflows/web-next-stage4-rollout.yml`
+- `.github/workflows/web-next-stage5-smoke.yml`
+- `.github/workflows/web-next-stage5-launch.yml`
+- `.github/workflows/web-next-staging-gate.yml`
+- `.github/workflows/web-next-legacy-bridge-check.yml`
 
 ## Fonte principal
 

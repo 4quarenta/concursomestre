@@ -1,0 +1,18 @@
+{
+  "Environment": "staging",
+  "BaseUrl": "https://staging.seu-dominio.com",
+  "LegacyWebBaseUrl": "https://app.staging.seu-dominio.com",
+  "ExpectedCanonicalBaseUrl": "https://staging.seu-dominio.com",
+  "QuestionId": "123",
+  "RankingId": "abc",
+  "MaterialId": "xyz",
+  "ProxyMode": "hybrid",
+  "ProxyConfigReference": "docs/examples/nginx-web-next-cutover.conf",
+  "GateOutputPath": "docs/reports/web-next-staging-gate.json",
+  "OutputPath": "docs/reports/web-next-stage4-rollout-latest.json",
+  "GateCommand": "npm run web-next:stage4-rollout",
+  "GateWorkflow": ".github/workflows/web-next-stage4-rollout.yml",
+  "WorkflowRunUrl": "",
+  "Result": "pending",
+  "Notes": "Preencha este arquivo em uma copia local ignorada pelo git para registrar a rodada da macro 4."
+}

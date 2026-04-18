@@ -20,10 +20,15 @@ const normalizeMaterialsList = (payload: unknown): Material[] => {
 };
 
 export const loadPublicMaterialById = async (id: string): Promise<Material | null> => {
-  const payload = await safeServerFetch<unknown>('materialsList', []);
-  const materials = normalizeMaterialsList(payload);
+  const materials = await loadPublicMaterials();
 
   return materials.find((material) => String(material.id) === String(id)) || null;
+};
+
+export const loadPublicMaterials = async (): Promise<Material[]> => {
+  const payload = await safeServerFetch<unknown>('materialsList', []);
+
+  return normalizeMaterialsList(payload);
 };
 
 export const buildMaterialMetadata = (material: Material): Metadata => {

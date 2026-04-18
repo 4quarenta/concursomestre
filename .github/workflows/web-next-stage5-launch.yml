@@ -1,0 +1,168 @@
+name: Web Next Stage 5 Launch
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: URL base do dominio final
+        required: true
+        type: string
+      expected_canonical_base_url:
+        description: Host canonico esperado em producao
+        required: true
+        type: string
+      legacy_web_base_url:
+        description: URL base da SPA legada se o corte final ainda estiver hibrido
+        required: false
+        default: ""
+        type: string
+      question_id:
+        description: ID real de questao publica
+        required: true
+        type: string
+      ranking_id:
+        description: ID real de ranking publico
+        required: true
+        type: string
+      material_id:
+        description: ID real de material publico
+        required: true
+        type: string
+      search_console_property:
+        description: Identificador da propriedade no Search Console
+        required: true
+        type: string
+      search_console_checklist_completed:
+        description: Marque verdadeiro somente depois de enviar sitemaps e registrar as inspecoes
+        required: true
+        default: false
+        type: boolean
+      monitoring_notes:
+        description: Notas sobre os primeiros dias de monitoramento
+        required: false
+        default: ""
+        type: string
+      notes:
+        description: Notas curtas da rodada final
+        required: false
+        default: ""
+        type: string
+      validate_only:
+        description: Validar apenas a config da etapa 5 sem chamar o production gate
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  stage5-launch:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web-next/package-lock.json
+
+      - name: Install Root Dependencies
+        run: npm ci
+
+      - name: Install web-next Dependencies
+        run: npm --prefix web-next ci
+
+      - name: Create Stage 5 Launch Config
+        shell: powershell
+        run: |
+          $workflowRunUrl = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          $configPath = "config/deploy/web-next-stage5-launch.ci.local.json"
+
+          $config = [ordered]@{
+            Environment = "production"
+            BaseUrl = "${{ inputs.base_url }}"
+            LegacyWebBaseUrl = "${{ inputs.legacy_web_base_url }}"
+            ExpectedCanonicalBaseUrl = "${{ inputs.expected_canonical_base_url }}"
+            QuestionId = "${{ inputs.question_id }}"
+            RankingId = "${{ inputs.ranking_id }}"
+            MaterialId = "${{ inputs.material_id }}"
+            SearchConsoleProperty = "${{ inputs.search_console_property }}"
+            SitemapUrls = @(
+              "${{ inputs.base_url }}/sitemap.xml",
+              "${{ inputs.base_url }}/question-sitemap.xml"
+            )
+            InspectedUrls = @(
+              "${{ inputs.base_url }}/",
+              "${{ inputs.base_url }}/planos",
+              "${{ inputs.base_url }}/elite"
+            )
+            SearchConsoleChecklistCompleted = [System.Convert]::ToBoolean("${{ inputs.search_console_checklist_completed }}")
+            MonitoringWindowDays = 7
+            MonitoringNotes = "${{ inputs.monitoring_notes }}"
+            GateOutputPath = "docs/reports/web-next-production-gate-ci.json"
+            OutputPath = "docs/reports/web-next-stage5-launch-ci.json"
+            GateCommand = "npm run web-next:production-gate"
+            GateWorkflow = ".github/workflows/web-next-stage5-launch.yml"
+            SearchConsoleRunbook = "docs/GOOGLE_SEARCH_CONSOLE.md"
+            WorkflowRunUrl = $workflowRunUrl
+            Result = "pending"
+            Notes = "${{ inputs.notes }}"
+          }
+
+          $config | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $configPath -Encoding utf8
+          "WEB_NEXT_STAGE5_CONFIG=$configPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WEB_NEXT_STAGE5_OUTPUT=docs/reports/web-next-stage5-launch-ci.json" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WEB_NEXT_STAGE5_MARKDOWN=docs/reports/web-next-stage5-launch-ci.md" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WEB_NEXT_STAGE5_STATUS=docs/reports/web-next-stage5-status-ci.json" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WEB_NEXT_STAGE5_STATUS_MARKDOWN=docs/reports/web-next-stage5-status-ci.md" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run Stage 5 Launch
+        shell: powershell
+        run: |
+          $arguments = @("-ConfigPath", "${{ env.WEB_NEXT_STAGE5_CONFIG }}")
+          if ("${{ inputs.validate_only }}" -eq "true") {
+            $arguments += "-ValidateOnly"
+          }
+
+          powershell -ExecutionPolicy Bypass -File scripts/checks/run-web-next-stage5-launch.ps1 @arguments
+
+      - name: Run Stage 5 Status
+        if: always()
+        shell: powershell
+        run: >
+          powershell -ExecutionPolicy Bypass -File scripts/checks/run-web-next-stage5-status.ps1
+          -ConfigPath "${{ env.WEB_NEXT_STAGE5_CONFIG }}"
+          -LaunchReportPath "${{ env.WEB_NEXT_STAGE5_OUTPUT }}"
+          -OutputPath "${{ env.WEB_NEXT_STAGE5_STATUS }}"
+
+      - name: Append Stage 5 Summary
+        if: always()
+        shell: powershell
+        run: |
+          if (Test-Path -LiteralPath "${{ env.WEB_NEXT_STAGE5_MARKDOWN }}") {
+            Get-Content -LiteralPath "${{ env.WEB_NEXT_STAGE5_MARKDOWN }}" -Raw | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+          if (Test-Path -LiteralPath "${{ env.WEB_NEXT_STAGE5_STATUS_MARKDOWN }}") {
+            Get-Content -LiteralPath "${{ env.WEB_NEXT_STAGE5_STATUS_MARKDOWN }}" -Raw | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          }
+
+      - name: Upload Stage 5 Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-next-stage5-launch
+          path: |
+            docs/reports/web-next-stage5-launch-ci.json
+            docs/reports/web-next-stage5-launch-ci.md
+            docs/reports/web-next-stage5-status-ci.json
+            docs/reports/web-next-stage5-status-ci.md
+            docs/reports/web-next-production-gate-ci*.json
+            docs/reports/web-next-production-gate-ci*.summary.md
+          if-no-files-found: warn

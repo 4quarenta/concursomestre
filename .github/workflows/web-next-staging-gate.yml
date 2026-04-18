@@ -1,0 +1,176 @@
+name: Web Next Environment Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente alvo do gate
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+      base_url:
+        description: URL base do ambiente a validar
+        required: true
+        type: string
+      expected_canonical_base_url:
+        description: Host canonico esperado para metadata, robots e sitemaps
+        required: true
+        type: string
+      legacy_web_base_url:
+        description: URL base da SPA legada para validar redirects do corte hibrido
+        required: false
+        default: ""
+        type: string
+      question_id:
+        description: ID real de questao publica para validar redirect e JSON-LD
+        required: true
+        type: string
+      ranking_id:
+        description: ID real de ranking publico para validar redirect e JSON-LD
+        required: true
+        type: string
+      material_id:
+        description: ID real de material publico para validar redirect e JSON-LD
+        required: true
+        type: string
+      output_path:
+        description: Caminho do relatorio JSON no workspace; deixe vazio para usar o padrao do ambiente
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  environment-gate:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web-next/package-lock.json
+
+      - name: Install Root Dependencies
+        run: npm ci
+
+      - name: Install web-next Dependencies
+        run: npm --prefix web-next ci
+
+      - name: Resolve Gate Output Path
+        shell: powershell
+        run: |
+          function Get-DetailedReportPath {
+            param(
+              [string]$CombinedPath,
+              [string]$Suffix
+            )
+
+            $directory = Split-Path -Parent $CombinedPath
+            $extension = [System.IO.Path]::GetExtension($CombinedPath)
+            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($CombinedPath)
+
+            if (-not $extension) {
+              $extension = ".json"
+            }
+
+            $fileName = "$baseName.$Suffix$extension"
+
+            if ($directory) {
+              return Join-Path $directory $fileName
+            }
+
+            return $fileName
+          }
+
+          function Get-SummaryReportPath {
+            param(
+              [string]$JsonPath
+            )
+
+            $directory = Split-Path -Parent $JsonPath
+            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($JsonPath)
+            $summaryFileName = "$baseName.summary.md"
+
+            if ($directory) {
+              return Join-Path $directory $summaryFileName
+            }
+
+            return $summaryFileName
+          }
+
+          $resolvedPath = "${{ inputs.output_path }}"
+          if (-not $resolvedPath) {
+            $resolvedPath = if ("${{ inputs.environment }}" -eq "production") {
+              "docs/reports/web-next-production-gate-ci.json"
+            } else {
+              "docs/reports/web-next-staging-gate-ci.json"
+            }
+          }
+
+          "WEB_NEXT_GATE_OUTPUT_PATH=$resolvedPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WEB_NEXT_GATE_SUMMARY_PATH=$(Get-SummaryReportPath -JsonPath $resolvedPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          if ("${{ inputs.legacy_web_base_url }}") {
+            $publicPath = Get-DetailedReportPath -CombinedPath $resolvedPath -Suffix "public"
+            $legacyPath = Get-DetailedReportPath -CombinedPath $resolvedPath -Suffix "legacy"
+
+            "WEB_NEXT_GATE_PUBLIC_OUTPUT_PATH=$publicPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "WEB_NEXT_GATE_LEGACY_OUTPUT_PATH=$legacyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "WEB_NEXT_GATE_PUBLIC_SUMMARY_PATH=$(Get-SummaryReportPath -JsonPath $publicPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "WEB_NEXT_GATE_LEGACY_SUMMARY_PATH=$(Get-SummaryReportPath -JsonPath $legacyPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - name: Run Environment Gate
+        shell: powershell
+        run: >
+          powershell -ExecutionPolicy Bypass -File scripts/checks/run-web-next-staging-gate.ps1
+          -Environment "${{ inputs.environment }}"
+          -BaseUrl "${{ inputs.base_url }}"
+          -LegacyWebBaseUrl "${{ inputs.legacy_web_base_url }}"
+          -ExpectedCanonicalBaseUrl "${{ inputs.expected_canonical_base_url }}"
+          -QuestionId "${{ inputs.question_id }}"
+          -RankingId "${{ inputs.ranking_id }}"
+          -MaterialId "${{ inputs.material_id }}"
+          -OutputPath "${{ env.WEB_NEXT_GATE_OUTPUT_PATH }}"
+
+      - name: Append Environment Gate Summary
+        if: always()
+        shell: powershell
+        run: |
+          node scripts/checks/render-web-next-gate-summary.mjs "${{ env.WEB_NEXT_GATE_OUTPUT_PATH }}" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Upload Environment Gate Report
+        if: ${{ always() && !inputs.legacy_web_base_url }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-next-${{ inputs.environment }}-gate-report
+          path: |
+            ${{ env.WEB_NEXT_GATE_OUTPUT_PATH }}
+            ${{ env.WEB_NEXT_GATE_SUMMARY_PATH }}
+          if-no-files-found: warn
+
+      - name: Upload Hybrid Environment Gate Reports
+        if: ${{ always() && inputs.legacy_web_base_url }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-next-${{ inputs.environment }}-hybrid-gate-report
+          path: |
+            ${{ env.WEB_NEXT_GATE_OUTPUT_PATH }}
+            ${{ env.WEB_NEXT_GATE_SUMMARY_PATH }}
+            ${{ env.WEB_NEXT_GATE_PUBLIC_OUTPUT_PATH }}
+            ${{ env.WEB_NEXT_GATE_PUBLIC_SUMMARY_PATH }}
+            ${{ env.WEB_NEXT_GATE_LEGACY_OUTPUT_PATH }}
+            ${{ env.WEB_NEXT_GATE_LEGACY_SUMMARY_PATH }}
+          if-no-files-found: warn

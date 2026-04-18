@@ -43,6 +43,29 @@ export type ChangelogVersion = {
   content_json: ChangelogCategory[];
 };
 
+const changelogDateFormatter = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'UTC',
+});
+
+const formatReleaseDate = (value: string) => {
+  const trimmedValue = String(value || '').trim();
+
+  if (trimmedValue === '') {
+    return '';
+  }
+
+  const normalizedValue = /^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)
+    ? `${trimmedValue}T00:00:00Z`
+    : trimmedValue;
+  const parsedValue = new Date(normalizedValue);
+
+  if (Number.isNaN(parsedValue.getTime())) {
+    return trimmedValue;
+  }
+
+  return changelogDateFormatter.format(parsedValue);
+};
+
 const TrophyIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -172,7 +195,7 @@ export default function ChangelogClient({ initialVersions, error }: ChangelogCli
                         v{selectedVersion.version}
                       </span>
                       <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                        Data de lançamento: {new Date(selectedVersion.release_date).toLocaleDateString('pt-BR')}
+                        Data de lançamento: {formatReleaseDate(selectedVersion.release_date)}
                       </span>
                     </div>
                     <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-4 tracking-tight">

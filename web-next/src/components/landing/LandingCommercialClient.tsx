@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, BookOpen, BrainCircuit, CheckCircle2, Globe, GraduationCap, LineChart, MessageSquareQuote, ShieldCheck, Sparkles, Star, Target, Trophy, XCircle, Zap } from 'lucide-react';
 import type { Plan, PlanConfig, SystemSettings } from '@/types';
@@ -112,10 +112,13 @@ const getConfiguredPlanFeatureItems = (
     .filter((feature) => feature.text);
 };
 
-const buildCanonicalUrl = (url?: string | null) => String(url || '').trim() || websiteManifest.website.canonicalUrl || `${window.location.origin}/`;
-
 const LandingCommercialClient: React.FC<LandingCommercialClientProps> = ({ systemSettings, plans }) => {
   const [billingCycle, setBillingCycle] = useState<LandingBillingCycle>('annual');
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   const currentTheme = themeConfig[systemSettings.activeTheme || 'default'] || themeConfig.default;
   const ThemeIcon = currentTheme.icon;
@@ -174,7 +177,8 @@ const LandingCommercialClient: React.FC<LandingCommercialClientProps> = ({ syste
   );
   const limitedOfferEndsAt = systemSettings.limitedOfferCountdown?.endsAt || '';
   const hasActiveLimitedOfferCountdown = Boolean(
-    systemSettings.limitedOfferCountdown?.enabled
+    hasMounted
+    && systemSettings.limitedOfferCountdown?.enabled
     && limitedOfferEndsAt
     && new Date(limitedOfferEndsAt).getTime() > Date.now(),
   );

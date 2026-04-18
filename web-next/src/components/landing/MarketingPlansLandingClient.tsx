@@ -36,7 +36,6 @@ import {
   resolvePlanOffer,
 } from '@/services/plans';
 import { themeConfig } from '@/constants/themes';
-import { websiteManifest } from '@/config/platform';
 import LimitedOfferCountdown from '@/components/shared/marketing/LimitedOfferCountdown';
 import LandingSectionHeader from '@/components/landing/LandingSectionHeader';
 import { ThemeOrnaments } from '@/components/landing/ThemeOrnaments';
@@ -101,34 +100,6 @@ const isPlanInCycle = (plan: Plan, cycle: BillingCycle) => {
   return isMonthly;
 };
 
-const buildCanonicalUrl = (slug: string, customCanonical?: string) => {
-  if (String(customCanonical || '').trim() !== '') {
-    return String(customCanonical).trim();
-  }
-
-  if (typeof window !== 'undefined') {
-    if (slug === 'planos') {
-      return `${window.location.origin}/planos`;
-    }
-
-    if (slug === 'elite') {
-      return `${window.location.origin}/elite`;
-    }
-
-    return `${window.location.origin}/l/${slug}`;
-  }
-
-  if (slug === 'planos') {
-    return `${websiteManifest.website.canonicalUrl || ''}/planos`;
-  }
-
-  if (slug === 'elite') {
-    return `${websiteManifest.website.canonicalUrl || ''}/elite`;
-  }
-
-  return `${websiteManifest.website.canonicalUrl || ''}/l/${slug}`;
-};
-
 const getCardIcon = (planName: PlanName) => {
   if (planName === 'Elite') {
     return Trophy;
@@ -166,6 +137,7 @@ const MarketingPlansLandingClient = ({
 }: MarketingPlansLandingClientProps) => {
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('annual');
   const [trackingQueryString, setTrackingQueryString] = useState('');
+  const [hasMounted, setHasMounted] = useState(false);
 
   const currentTheme = themeConfig[systemSettings?.activeTheme || 'default'] || themeConfig.default;
   const ThemeIcon = currentTheme.icon;
@@ -176,6 +148,7 @@ const MarketingPlansLandingClient = ({
       : '';
 
   useEffect(() => {
+    setHasMounted(true);
     const params = new URLSearchParams(window.location.search);
     params.delete('preview');
     const serialized = params.toString();
@@ -277,19 +250,11 @@ const MarketingPlansLandingClient = ({
   const hasVisibleOffer = landingPlanCards.some((card) => card.hasDiscount);
   const limitedOfferEndsAt = systemSettings.limitedOfferCountdown?.endsAt || '';
   const hasActiveLimitedOfferCountdown = Boolean(
-    systemSettings.limitedOfferCountdown?.enabled
+    hasMounted
+    && systemSettings.limitedOfferCountdown?.enabled
     && limitedOfferEndsAt
     && new Date(limitedOfferEndsAt).getTime() > Date.now(),
   );
-
-  const seoPayload = useMemo(() => ({
-    title: landingPage?.seo?.title || `${siteName} | Planos para estudar com mais estrategia`,
-    description: landingPage?.seo?.metaDescription || `Compare os planos do ${siteName} e escolha a assinatura ideal para estudar com milhares de questoes, gabaritos comentados, simulados e analises detalhadas.`,
-    canonical: buildCanonicalUrl(slug, landingPage?.seo?.canonicalUrl),
-    robots: 'index,follow',
-    ogTitle: landingPage?.seo?.ogTitle || `${siteName} | Escolha o plano ideal para acelerar sua preparacao`,
-    ogDescription: landingPage?.seo?.ogDescription || landingPage?.seo?.metaDescription || `Acesse questoes, simulados, gabaritos comentados e recursos premium do ${siteName}.`,
-  }), [landingPage?.seo?.canonicalUrl, landingPage?.seo?.metaDescription, landingPage?.seo?.ogDescription, landingPage?.seo?.ogTitle, siteName, slug]);
 
   if (loading) {
     return (

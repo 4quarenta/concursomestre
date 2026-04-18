@@ -10,7 +10,7 @@
 #>
 
 param(
-    [switch]$IncludeBackend = $true
+    [string]$IncludeBackend = '1'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -77,7 +77,8 @@ function Get-FrontendTargets {
     $sourceFiles = Get-ChildItem -Path (Join-Path $Root 'src') -Recurse -File -Include *.ts, *.tsx, *.js, *.jsx |
         Select-Object -ExpandProperty FullName
 
-    return ($targets + $sourceFiles) | Sort-Object -Unique
+    $allTargets = @($targets) + @($sourceFiles)
+    return @($allTargets | Sort-Object -Unique)
 }
 
 function Get-BackendTargets {
@@ -105,7 +106,7 @@ function Get-BackendTargets {
         }
     }
 
-    return $files | Sort-Object -Unique
+    return @($files | Sort-Object -Unique)
 }
 
 $frontendRoot = Split-Path -Parent $PSScriptRoot | Split-Path -Parent
@@ -114,7 +115,7 @@ $backendRoot = 'C:\xampp\htdocs\questao-pro-backend'
 $targets = @()
 $targets += Get-FrontendTargets -Root $frontendRoot
 
-if ($IncludeBackend) {
+if ($IncludeBackend -ne '0') {
     $targets += Get-BackendTargets -Root $backendRoot
 }
 

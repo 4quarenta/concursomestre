@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, BookOpen, BrainCircuit, CheckCircle2, Globe, GraduationCap, LineChart, MessageSquareQuote, ShieldCheck, Sparkles, Star, Target, Trophy, XCircle, Zap } from 'lucide-react';
@@ -36,10 +47,10 @@ const getMonthlyEquivalent = (plan: Plan) => {
 };
 
 const getPlanTotalLabel = (plan: Plan) => {
-  if (plan.price === 0) return 'Sem cobrança';
+  if (plan.price === 0) return 'Sem cobranÃ§a';
   if (plan.interval_unit === 'year') return `${formatCurrency(plan.price)} por ano`;
   if (plan.interval_unit === 'month' && plan.interval_count === 3) return `${formatCurrency(plan.price)} a cada 3 meses`;
-  return `${formatCurrency(plan.price)} por mês`;
+  return `${formatCurrency(plan.price)} por mÃªs`;
 };
 
 const getPlanFeatureList = (plan: Plan) => {
@@ -50,11 +61,11 @@ const getPlanFeatureList = (plan: Plan) => {
 const normalizeFeatureKey = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 const LANDING_PLAN_FEATURE_COPY: Array<{ match: string[]; text: string }> = [
-  { match: ['banco de questoes', 'questoes ilimitadas'], text: 'Acesso completo a milhares de questões para treinar todos os dias.' },
-  { match: ['simulados', 'simulados ilimitados'], text: 'Simulados ilimitados com análise detalhada do seu desempenho.' },
-  { match: ['comentarios', 'comentarios da comunidade'], text: 'Comentários e contexto para revisar melhor e aprender com cada erro.' },
-  { match: ['desempenho', 'estatisticas', 'estatisticas basicas'], text: 'Leitura clara da sua evolução para saber onde ajustar a rota.' },
-  { match: ['revisao', 'materiais', 'materiais de estudo'], text: 'Revisão mais eficiente com apoio para voltar no que realmente importa.' },
+  { match: ['banco de questoes', 'questoes ilimitadas'], text: 'Acesso completo a milhares de questÃµes para treinar todos os dias.' },
+  { match: ['simulados', 'simulados ilimitados'], text: 'Simulados ilimitados com anÃ¡lise detalhada do seu desempenho.' },
+  { match: ['comentarios', 'comentarios da comunidade'], text: 'ComentÃ¡rios e contexto para revisar melhor e aprender com cada erro.' },
+  { match: ['desempenho', 'estatisticas', 'estatisticas basicas'], text: 'Leitura clara da sua evoluÃ§Ã£o para saber onde ajustar a rota.' },
+  { match: ['revisao', 'materiais', 'materiais de estudo'], text: 'RevisÃ£o mais eficiente com apoio para voltar no que realmente importa.' },
 ];
 
 const formatPlanFeatureForLanding = (feature: string) => {
@@ -190,15 +201,15 @@ const LandingCommercialPage: React.FC = () => {
   const globalSeo = systemSettings.seo?.global;
   const landingSeo = systemSettings.seo?.pages?.landing;
   const seoPayload = useMemo(() => ({
-    title: landingSeo?.title || `${siteName} | Estude com estratégia e evolua com mais direção`,
-    description: landingSeo?.meta_description || globalSeo?.meta_description || 'Banco de questões, simulados e análise de desempenho para concursos, OAB e ENEM. Comece grátis, descubra onde melhorar e evolua com mais clareza.',
+    title: landingSeo?.title || `${siteName} | Estude com estratÃ©gia e evolua com mais direÃ§Ã£o`,
+    description: landingSeo?.meta_description || globalSeo?.meta_description || 'Banco de questÃµes, simulados e anÃ¡lise de desempenho para concursos, OAB e ENEM. Comece grÃ¡tis, descubra onde melhorar e evolua com mais clareza.',
     canonical: buildCanonicalUrl(landingSeo?.canonical_url || globalSeo?.canonical_base_url),
     robots: landingSeo?.robots_override || globalSeo?.robots_default || 'index,follow',
-    ogTitle: landingSeo?.og_title || globalSeo?.default_og_title || `${siteName} | Se você quer passar, precisa estudar com estratégia`,
+    ogTitle: landingSeo?.og_title || globalSeo?.default_og_title || `${siteName} | Se vocÃª quer passar, precisa estudar com estratÃ©gia`,
     ogDescription: landingSeo?.og_description || globalSeo?.default_og_description || 'Pratique com foco, acompanhe seu desempenho e entenda exatamente como melhorar.',
     ogImage: landingSeo?.og_image || globalSeo?.default_og_image || '',
-    twitterTitle: globalSeo?.default_twitter_title || landingSeo?.title || `${siteName} | Comece grátis`,
-    twitterDescription: globalSeo?.default_twitter_description || landingSeo?.meta_description || 'Teste a plataforma, pratique com direção e veja sua evolução com mais clareza.',
+    twitterTitle: globalSeo?.default_twitter_title || landingSeo?.title || `${siteName} | Comece grÃ¡tis`,
+    twitterDescription: globalSeo?.default_twitter_description || landingSeo?.meta_description || 'Teste a plataforma, pratique com direÃ§Ã£o e veja sua evoluÃ§Ã£o com mais clareza.',
     twitterImage: globalSeo?.default_twitter_image || landingSeo?.og_image || '',
   }), [globalSeo, landingSeo, siteName]);
 
@@ -219,7 +230,7 @@ const LandingCommercialPage: React.FC = () => {
             <Zap size={14} className="text-amber-400" />
             <span>{systemSettings.activePromotion.bannerText}</span>
             <Link to="/auth?register=true" className="rounded-full bg-white px-3 py-1 text-[9px] text-slate-900 transition-colors hover:bg-slate-100">
-              Começar grátis
+              ComeÃ§ar grÃ¡tis
             </Link>
           </div>
         </div>
@@ -251,7 +262,7 @@ const LandingCommercialPage: React.FC = () => {
               to="/auth?register=true"
               className={`rounded-xl px-6 py-2.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg transition-all hover:scale-105 active:scale-95 ${currentTheme.button}`}
             >
-              Criar conta grátis
+              Criar conta grÃ¡tis
             </Link>
           </div>
         </div>
@@ -268,20 +279,20 @@ const LandingCommercialPage: React.FC = () => {
           <div className="space-y-8 text-center">
             <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] ${currentTheme.accent}`}>
               <CheckCircle2 size={14} />
-              Estude com direção, não no escuro
+              Estude com direÃ§Ã£o, nÃ£o no escuro
             </div>
 
             <div className="space-y-5">
               <h1 className="text-5xl font-black leading-[1.05] tracking-tight text-slate-950 dark:text-white md:text-7xl">
-                Se você quer passar,
+                Se vocÃª quer passar,
                 {' '}
                 <span className={`bg-gradient-to-r bg-clip-text text-transparent ${currentTheme.heroGradient}`}>
-                  precisa estudar com estratégia
+                  precisa estudar com estratÃ©gia
                 </span>
                 .
               </h1>
               <p className="mx-auto max-w-3xl text-lg font-medium leading-relaxed text-slate-500 dark:text-slate-400 md:text-xl">
-                Banco de questões, simulados e análise de desempenho para te mostrar exatamente onde você está e como melhorar.
+                Banco de questÃµes, simulados e anÃ¡lise de desempenho para te mostrar exatamente onde vocÃª estÃ¡ e como melhorar.
               </p>
             </div>
 
@@ -301,7 +312,7 @@ const LandingCommercialPage: React.FC = () => {
                 to="/auth?register=true"
                 className={`flex items-center justify-center gap-3 rounded-[2rem] px-10 py-5 text-sm font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:scale-105 active:scale-95 sm:flex-1 ${currentTheme.button}`}
               >
-                Começar grátis <ArrowRight size={18} />
+                ComeÃ§ar grÃ¡tis <ArrowRight size={18} />
               </Link>
               <a
                 href="#planos"
@@ -312,7 +323,7 @@ const LandingCommercialPage: React.FC = () => {
             </div>
 
             <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-              Sem cartão • Comece em menos de 1 minuto
+              Sem cartÃ£o â€¢ Comece em menos de 1 minuto
             </p>
           </div>
         </div>
@@ -331,9 +342,9 @@ const LandingCommercialPage: React.FC = () => {
       <section id="recursos" className="bg-slate-50 px-6 py-28 transition-colors dark:bg-slate-950">
         <div className="mx-auto max-w-7xl">
           <LandingSectionHeader
-            eyebrow="O que você encontra na plataforma"
-            title="Recursos pensados para fazer você estudar melhor"
-            description="Tudo aqui existe para te dar mais clareza, mais direção e mais chance de evoluir sem desperdiçar tempo."
+            eyebrow="O que vocÃª encontra na plataforma"
+            title="Recursos pensados para fazer vocÃª estudar melhor"
+            description="Tudo aqui existe para te dar mais clareza, mais direÃ§Ã£o e mais chance de evoluir sem desperdiÃ§ar tempo."
           />
 
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -357,8 +368,8 @@ const LandingCommercialPage: React.FC = () => {
         <div className="mx-auto max-w-7xl">
           <LandingSectionHeader
             eyebrow={`Como o ${siteName} vai te ajudar`}
-            title="Um fluxo para estudar com mais direção"
-            description="Você pratica, revisa e acompanha sua evolução no mesmo lugar, sem depender de tentativa e erro para saber o que fazer depois."
+            title="Um fluxo para estudar com mais direÃ§Ã£o"
+            description="VocÃª pratica, revisa e acompanha sua evoluÃ§Ã£o no mesmo lugar, sem depender de tentativa e erro para saber o que fazer depois."
           />
 
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -384,7 +395,7 @@ const LandingCommercialPage: React.FC = () => {
       <section className="bg-slate-50 px-6 py-28 dark:bg-slate-950">
         <div className="mx-auto max-w-7xl">
           <LandingSectionHeader
-            eyebrow="Recomendações e feedback"
+            eyebrow="RecomendaÃ§Ãµes e feedback"
             title="Quem usa, evolui"
             description="A plataforma precisa fazer sentido na rotina real de quem quer estudar melhor, com mais clareza e menos improviso."
           />
@@ -409,9 +420,9 @@ const LandingCommercialPage: React.FC = () => {
       <section id="focos" className="px-6 py-28">
         <div className="mx-auto max-w-7xl">
           <LandingSectionHeader
-            eyebrow="Especialização por objetivo"
-            title="A sua chave para concursos e exames mais disputados do país"
-            description="Cada objetivo pede uma estratégia diferente. A plataforma te ajuda a estudar com mais precisão no contexto da prova que você quer enfrentar."
+            eyebrow="EspecializaÃ§Ã£o por objetivo"
+            title="A sua chave para concursos e exames mais disputados do paÃ­s"
+            description="Cada objetivo pede uma estratÃ©gia diferente. A plataforma te ajuda a estudar com mais precisÃ£o no contexto da prova que vocÃª quer enfrentar."
           />
 
           <div className="grid gap-6 lg:grid-cols-3">
@@ -441,33 +452,33 @@ const LandingCommercialPage: React.FC = () => {
       <section className="bg-slate-950 px-6 py-24 text-white">
         <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-5">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-300">Comece grátis</p>
-            <h2 className="text-3xl font-black tracking-tight md:text-5xl">Comece grátis e veja sua evolução na prática</h2>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-300">Comece grÃ¡tis</p>
+            <h2 className="text-3xl font-black tracking-tight md:text-5xl">Comece grÃ¡tis e veja sua evoluÃ§Ã£o na prÃ¡tica</h2>
             <p className="max-w-3xl text-base font-medium leading-relaxed text-slate-300">
-              Crie sua conta, teste a plataforma e entenda rapidamente onde você precisa melhorar.
+              Crie sua conta, teste a plataforma e entenda rapidamente onde vocÃª precisa melhorar.
             </p>
             <div className="flex flex-col gap-4 sm:flex-row">
               <Link to="/auth?register=true" className="inline-flex items-center justify-center gap-3 rounded-[2rem] bg-white px-8 py-4 text-xs font-black uppercase tracking-[0.2em] text-slate-950 transition-all hover:bg-slate-100">
-                Começar grátis <ArrowRight size={16} />
+                ComeÃ§ar grÃ¡tis <ArrowRight size={16} />
               </Link>
               <a href="#planos" className="inline-flex items-center justify-center gap-3 rounded-[2rem] border border-white/15 px-8 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-white/5">
                 Ver planos
               </a>
             </div>
-            <p className="text-sm font-semibold text-slate-400">Sem compromisso. Sem cartão.</p>
+            <p className="text-sm font-semibold text-slate-400">Sem compromisso. Sem cartÃ£o.</p>
           </div>
 
           <div className="rounded-[2.5rem] border border-white/10 bg-white/5 p-7">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-200">Plano de entrada</p>
             <h3 className="mt-3 text-2xl font-black">{freePlan ? getConfiguredPlanDisplayName(freePlan.name, systemSettings.planDetails, freePlan.name) : 'Acesso gratuito'}</h3>
             <p className="mt-3 text-sm font-medium leading-relaxed text-slate-300">
-              {freePlan?.description || 'Ideal para conhecer a plataforma, praticar com foco e descobrir rapidamente como seu estudo pode ganhar mais direção.'}
+              {freePlan?.description || 'Ideal para conhecer a plataforma, praticar com foco e descobrir rapidamente como seu estudo pode ganhar mais direÃ§Ã£o.'}
             </p>
             <ul className="mt-6 space-y-3">
               {(freePlan ? getConfiguredPlanFeatures(freePlan, systemSettings.planDetails).map(formatPlanFeatureForLanding) : [
                 'Teste a plataforma sem pagar.',
-                'Comece com prática, revisão e mais clareza.',
-                'Suba de plano quando fizer sentido para você.',
+                'Comece com prÃ¡tica, revisÃ£o e mais clareza.',
+                'Suba de plano quando fizer sentido para vocÃª.',
               ]).map((item) => (
                 <li key={item} className="flex items-start gap-2 text-sm font-semibold text-white">
                   <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
@@ -482,9 +493,9 @@ const LandingCommercialPage: React.FC = () => {
       <section id="planos" className="px-6 py-28">
         <div className="mx-auto max-w-7xl">
           <LandingSectionHeader
-            eyebrow="Planos e preços"
-            title="Entre grátis agora e avance para o plano certo quando quiser ir além"
-            description="Você pode começar sem pagar e subir de plano quando quiser mais profundidade, mais volume de treino e mais análise para acelerar seu resultado."
+            eyebrow="Planos e preÃ§os"
+            title="Entre grÃ¡tis agora e avance para o plano certo quando quiser ir alÃ©m"
+            description="VocÃª pode comeÃ§ar sem pagar e subir de plano quando quiser mais profundidade, mais volume de treino e mais anÃ¡lise para acelerar seu resultado."
           />
 
           <div className="mb-12 flex justify-center">
@@ -517,11 +528,11 @@ const LandingCommercialPage: React.FC = () => {
 
           {!plansLoaded || !isSystemSettingsLoaded ? (
             <div className="rounded-[2.5rem] border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Carregando catálogo oficial de planos...</p>
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Carregando catÃ¡logo oficial de planos...</p>
             </div>
           ) : visiblePlans.length === 0 ? (
             <div className="rounded-[2.5rem] border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Nenhum plano ativo encontrado no catálogo atual.</p>
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Nenhum plano ativo encontrado no catÃ¡logo atual.</p>
             </div>
           ) : (
             <div className="grid justify-center gap-6 [grid-template-columns:repeat(auto-fit,minmax(280px,320px))]">
@@ -541,10 +552,10 @@ const LandingCommercialPage: React.FC = () => {
                   ? '/ano'
                   : offer?.cycleLabel === 'cada 3 meses'
                     ? '/cada 3 meses'
-                    : '/mês';
+                    : '/mÃªs';
                 const pricingFooterLabel = showOffer
                   ? (hasActiveLimitedOfferCountdown ? 'Oferta por tempo limitado' : 'Desconto aplicado')
-                  : (plan.price === 0 ? 'Sem cobrança' : getPlanTotalLabel(plan));
+                  : (plan.price === 0 ? 'Sem cobranÃ§a' : getPlanTotalLabel(plan));
 
                 return (
                   <article
@@ -589,11 +600,11 @@ const LandingCommercialPage: React.FC = () => {
                       {showOffer && plan.price > 0 ? (
                         <>
                           <p className={`text-xs font-bold uppercase tracking-[0.16em] line-through ${isFeatured ? 'text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}>
-                            De {formatCurrency(offer.originalMonthlyAmount)}/mês
+                            De {formatCurrency(offer.originalMonthlyAmount)}/mÃªs
                           </p>
                           <p className={`text-4xl font-black tracking-tight ${isFeatured ? 'text-emerald-300' : 'text-emerald-600 dark:text-emerald-400'}`}>
                             {formatCurrency(offer.discountedMonthlyAmount)}
-                            <span className={`ml-1 text-sm font-bold ${isFeatured ? 'text-emerald-100' : 'text-emerald-500 dark:text-emerald-300'}`}>/mês</span>
+                            <span className={`ml-1 text-sm font-bold ${isFeatured ? 'text-emerald-100' : 'text-emerald-500 dark:text-emerald-300'}`}>/mÃªs</span>
                           </p>
                           {showCycleTotal && (
                             <p className={`text-xs font-bold uppercase tracking-[0.16em] ${isFeatured ? 'text-emerald-100' : 'text-emerald-500 dark:text-emerald-300'}`}>
@@ -604,8 +615,8 @@ const LandingCommercialPage: React.FC = () => {
                       ) : (
                         <>
                           <p className={`text-4xl font-black tracking-tight ${isFeatured ? 'text-emerald-300' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                            {plan.price === 0 ? 'Grátis' : formatCurrency(offer?.discountedMonthlyAmount || 0)}
-                            {plan.price > 0 && <span className={`ml-1 text-sm font-bold ${isFeatured ? 'text-emerald-100' : 'text-emerald-500 dark:text-emerald-300'}`}>/mês</span>}
+                            {plan.price === 0 ? 'GrÃ¡tis' : formatCurrency(offer?.discountedMonthlyAmount || 0)}
+                            {plan.price > 0 && <span className={`ml-1 text-sm font-bold ${isFeatured ? 'text-emerald-100' : 'text-emerald-500 dark:text-emerald-300'}`}>/mÃªs</span>}
                           </p>
                         </>
                       )}
@@ -663,9 +674,9 @@ const LandingCommercialPage: React.FC = () => {
       <section className="bg-slate-50 px-6 py-28 dark:bg-slate-950">
         <div className="mx-auto max-w-7xl">
           <LandingSectionHeader
-            eyebrow="Comunidade e presença"
-            title="Conteúdos e dicas para estudar melhor todos os dias"
-            description="Acompanhe novidades, orientações práticas e os canais da plataforma para manter o estudo vivo fora da rotina de questões."
+            eyebrow="Comunidade e presenÃ§a"
+            title="ConteÃºdos e dicas para estudar melhor todos os dias"
+            description="Acompanhe novidades, orientaÃ§Ãµes prÃ¡ticas e os canais da plataforma para manter o estudo vivo fora da rotina de questÃµes."
           />
 
           <div className="grid gap-6 md:grid-cols-3">
@@ -679,10 +690,10 @@ const LandingCommercialPage: React.FC = () => {
                   </div>
                   <h3 className="text-lg font-black text-slate-900 dark:text-white">{item.label}</h3>
                   <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-                    {item.handle || 'Acompanhe novidades, dicas práticas e atualizações da plataforma.'}
+                    {item.handle || 'Acompanhe novidades, dicas prÃ¡ticas e atualizaÃ§Ãµes da plataforma.'}
                   </p>
                   <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">
-                    {isClickable ? 'Acessar canal' : 'Canal em configuração'}
+                    {isClickable ? 'Acessar canal' : 'Canal em configuraÃ§Ã£o'}
                   </p>
                 </div>
               );
@@ -697,9 +708,9 @@ const LandingCommercialPage: React.FC = () => {
       <section className="px-6 py-28">
         <div className="mx-auto max-w-7xl">
           <LandingSectionHeader
-            eyebrow="Próximo passo"
-            title="Se você quer estudar com mais direção, o próximo passo é começar"
-            description="Sem promessas vazias. A ideia aqui é simples: usar uma rotina mais clara para transformar esforço em progresso real."
+            eyebrow="PrÃ³ximo passo"
+            title="Se vocÃª quer estudar com mais direÃ§Ã£o, o prÃ³ximo passo Ã© comeÃ§ar"
+            description="Sem promessas vazias. A ideia aqui Ã© simples: usar uma rotina mais clara para transformar esforÃ§o em progresso real."
             align="left"
           />
 
@@ -722,14 +733,14 @@ const LandingCommercialPage: React.FC = () => {
               <div className="space-y-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Criar conta</p>
                 <h3 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-                  Comece grátis e veja na prática onde você pode evoluir mais rápido.
+                  Comece grÃ¡tis e veja na prÃ¡tica onde vocÃª pode evoluir mais rÃ¡pido.
                 </h3>
                 <p className="max-w-3xl text-sm font-medium leading-relaxed text-slate-600 dark:text-slate-400">
-                  Crie sua conta, conheça o fluxo da plataforma e descubra como questões, simulados, revisão e desempenho podem trabalhar juntos no seu resultado.
+                  Crie sua conta, conheÃ§a o fluxo da plataforma e descubra como questÃµes, simulados, revisÃ£o e desempenho podem trabalhar juntos no seu resultado.
                 </p>
               </div>
               <Link to="/auth?register=true" className={`inline-flex items-center justify-center gap-3 rounded-[2rem] px-8 py-4 text-xs font-black uppercase tracking-[0.2em] text-white transition-all hover:scale-105 active:scale-95 ${currentTheme.button}`}>
-                Criar conta grátis <ArrowRight size={16} />
+                Criar conta grÃ¡tis <ArrowRight size={16} />
               </Link>
             </div>
           </div>
@@ -744,7 +755,7 @@ const LandingCommercialPage: React.FC = () => {
               <span>{siteName}</span>
             </div>
             <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-              Plataforma de estudos para concurso, OAB e ENEM com banco de questões, simulados, revisão e análise de desempenho.
+              Plataforma de estudos para concurso, OAB e ENEM com banco de questÃµes, simulados, revisÃ£o e anÃ¡lise de desempenho.
             </p>
           </div>
 
@@ -752,7 +763,7 @@ const LandingCommercialPage: React.FC = () => {
             <h4 className="mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Produto</h4>
             <ul className="space-y-4 text-sm font-bold text-slate-600 dark:text-slate-400">
               <li><a href="#recursos" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Recursos</a></li>
-              <li><a href="#focos" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Focos de preparação</a></li>
+              <li><a href="#focos" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Focos de preparaÃ§Ã£o</a></li>
               <li><a href="#planos" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Planos</a></li>
             </ul>
           </div>
@@ -761,7 +772,7 @@ const LandingCommercialPage: React.FC = () => {
             <h4 className="mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Acesso</h4>
             <ul className="space-y-4 text-sm font-bold text-slate-600 dark:text-slate-400">
               <li><Link to="/auth" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Entrar</Link></li>
-              <li><Link to="/auth?register=true" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Criar conta grátis</Link></li>
+              <li><Link to="/auth?register=true" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Criar conta grÃ¡tis</Link></li>
               <li><Link to="/plans" className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-300">Ver planos completos</Link></li>
             </ul>
           </div>
@@ -770,10 +781,10 @@ const LandingCommercialPage: React.FC = () => {
             <h4 className="mb-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Institucional</h4>
             <div className="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-400">
               <Globe size={18} />
-              <span>Português (Brasil)</span>
+              <span>PortuguÃªs (Brasil)</span>
             </div>
             <p className="mt-4 text-[10px] font-medium leading-relaxed text-slate-400">
-              © 2026 {siteName}. Plataforma focada em clareza, prática e evolução real de estudos.
+              Â© 2026 {siteName}. Plataforma focada em clareza, prÃ¡tica e evoluÃ§Ã£o real de estudos.
             </p>
           </div>
         </div>

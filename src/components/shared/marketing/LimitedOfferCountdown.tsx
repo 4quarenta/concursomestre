@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import React from 'react';
 import { Flame } from 'lucide-react';
 import { useLimitedOfferCountdown } from '@services/offers/useLimitedOfferCountdown';
@@ -51,7 +62,7 @@ const LimitedOfferCountdown: React.FC<LimitedOfferCountdownProps> = ({
           </div>
           <div className="flex items-center gap-2 text-xs font-black leading-tight tracking-tight sm:text-base">
             <Flame size={16} className="shrink-0 text-amber-300" />
-            <span>O tempo está acabando! Garanta sua oferta agora.</span>
+            <span>O tempo estÃ¡ acabando! Garanta sua oferta agora.</span>
           </div>
         </div>
 

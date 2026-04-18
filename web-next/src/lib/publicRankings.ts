@@ -24,10 +24,15 @@ const normalizeRankingsList = (payload: unknown): Ranking[] => {
 };
 
 export const loadPublicRankingById = async (id: string): Promise<Ranking | null> => {
-  const payload = await safeServerFetch<unknown>('rankingsList', []);
-  const rankings = normalizeRankingsList(payload);
+  const rankings = await loadPublicRankings();
 
   return rankings.find((ranking) => String(ranking.id) === String(id)) || null;
+};
+
+export const loadPublicRankings = async (): Promise<Ranking[]> => {
+  const payload = await safeServerFetch<unknown>('rankingsList', []);
+
+  return normalizeRankingsList(payload);
 };
 
 export const buildRankingMetadata = (ranking: Ranking): Metadata => {

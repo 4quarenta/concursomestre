@@ -1,0 +1,169 @@
+{
+  "generatedAt": "2026-04-18T01:01:41.793Z",
+  "baseUrl": "https://concursomestre.com.br",
+  "expectedCanonicalBaseUrl": "https://concursomestre.com.br",
+  "requireEntityIds": true,
+  "passed": false,
+  "summary": {
+    "ok": 0,
+    "skip": 0,
+    "fail": 31
+  },
+  "results": [
+    {
+      "status": "fail",
+      "label": "/ request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/planos request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/elite request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/faq request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/changelog request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/privacy request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/terms request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/checkout/termos-de-adesao request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/robots.txt request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/sitemap.xml request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/question-sitemap.xml request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/question-sitemap-page.xml?page=1 request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/ request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/planos request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/elite request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/faq request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/changelog request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/privacy request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/terms request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/checkout/termos-de-adesao request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/plans request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/robots.txt request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/sitemap.xml request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/question-sitemap.xml request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/question-sitemap-page.xml?page=1 request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/question/123 request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/question/123 structured data",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/ranking/abc request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/ranking/abc structured data",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/material/xyz request",
+      "detail": "fetch failed"
+    },
+    {
+      "status": "fail",
+      "label": "/material/xyz structured data",
+      "detail": "fetch failed"
+    }
+  ]
+}

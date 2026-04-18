@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.next/
+.next-build*/
 *.local
 
 # Editor directories and files
@@ -30,3 +32,21 @@ pages/*.corrupted
 stripe-listener*.log
 tmp_*.json
 .tmp/
+docs/reports/web-next-cutover-*.json
+docs/reports/web-next-staging-gate*.json
+docs/reports/web-next-stage4-rollout*.json
+docs/reports/web-next-stage4-rollout*.md
+docs/reports/web-next-stage4-handoff*.json
+docs/reports/web-next-stage4-handoff*.md
+docs/reports/web-next-stage4-status*.json
+docs/reports/web-next-stage4-status*.md
+docs/reports/web-next-stage4-proxy-check*.json
+docs/reports/web-next-stage4-proxy-check*.md
+docs/reports/web-next-stage5-launch*.json
+docs/reports/web-next-stage5-launch*.md
+docs/reports/web-next-stage5-status*.json
+docs/reports/web-next-stage5-status*.md
+docs/reports/web-next-legacy-bridge-check*.json
+docs/reports/web-next-hybrid-local*.json
+docs/reports/web-next-*.summary.md
+config/deploy/*.local.json

@@ -1,3 +1,14 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
 import type {
   MarketingLandingComparisonRow,
   MarketingLandingFaqItem,
@@ -44,27 +55,27 @@ export const buildMarketingLandingPath = (slug: string) => {
 const createDefaultPlanCards = (): MarketingLandingPlanCard[] => ([
   {
     id: buildLandingId('plan-card'),
-    title: 'Plano Básico',
+    title: 'Plano BÃ¡sico',
     planName: 'Essencial',
     badge: 'Entrada inteligente',
-    description: 'Para quem quer sair do improviso, praticar com consistência e ganhar clareza no estudo.',
-    ctaLabel: 'Escolher Básico',
+    description: 'Para quem quer sair do improviso, praticar com consistÃªncia e ganhar clareza no estudo.',
+    ctaLabel: 'Escolher BÃ¡sico',
     summaryBenefits: [
-      'Milhares de questões para praticar com foco',
+      'Milhares de questÃµes para praticar com foco',
       'Gabaritos comentados para aprender com cada erro',
-      'Filtros para montar estudos com mais direção',
+      'Filtros para montar estudos com mais direÃ§Ã£o',
     ],
   },
   {
     id: buildLandingId('plan-card'),
-    title: 'Plano Avançado',
+    title: 'Plano AvanÃ§ado',
     planName: 'Pro',
     badge: 'Mais vendido',
-    description: 'Para quem já leva a preparação a sério e quer revisar, medir desempenho e manter constância.',
-    ctaLabel: 'Escolher Avançado',
+    description: 'Para quem jÃ¡ leva a preparaÃ§Ã£o a sÃ©rio e quer revisar, medir desempenho e manter constÃ¢ncia.',
+    ctaLabel: 'Escolher AvanÃ§ado',
     summaryBenefits: [
-      'Simulados para medir ritmo e evolução',
-      'Análises detalhadas por disciplina, banca e assunto',
+      'Simulados para medir ritmo e evoluÃ§Ã£o',
+      'AnÃ¡lises detalhadas por disciplina, banca e assunto',
       'Recursos premium para estudar com mais profundidade',
     ],
   },
@@ -73,13 +84,13 @@ const createDefaultPlanCards = (): MarketingLandingPlanCard[] => ([
     title: 'Plano Elite',
     planName: 'Elite',
     badge: 'Mais completo',
-    description: 'Para quem quer estudar sem limitações, acompanhar a própria evolução com precisão e buscar vantagem competitiva real.',
+    description: 'Para quem quer estudar sem limitaÃ§Ãµes, acompanhar a prÃ³pria evoluÃ§Ã£o com precisÃ£o e buscar vantagem competitiva real.',
     ctaLabel: 'Assinar Plano Elite',
     featured: true,
     summaryBenefits: [
       'Acesso ao conjunto mais robusto de recursos premium',
       'Leitura profunda do desempenho para ajustar a rota',
-      'Mais consistência, clareza e poder de execução até a prova',
+      'Mais consistÃªncia, clareza e poder de execuÃ§Ã£o atÃ© a prova',
     ],
   },
 ]);
@@ -87,38 +98,38 @@ const createDefaultPlanCards = (): MarketingLandingPlanCard[] => ([
 const createDefaultComparisonRows = (): MarketingLandingComparisonRow[] => ([
   {
     id: buildLandingId('comparison-row'),
-    label: 'Acesso a questões',
+    label: 'Acesso a questÃµes',
     values: { Essencial: 'Completo', Pro: 'Completo', Elite: 'Completo' },
   },
   {
     id: buildLandingId('comparison-row'),
     label: 'Gabaritos comentados',
-    values: { Essencial: 'Essenciais', Pro: 'Avançados', Elite: 'Avançados + contexto premium' },
+    values: { Essencial: 'Essenciais', Pro: 'AvanÃ§ados', Elite: 'AvanÃ§ados + contexto premium' },
   },
   {
     id: buildLandingId('comparison-row'),
     label: 'Simulados',
-    values: { Essencial: 'Limitados', Pro: 'Ilimitados', Elite: 'Ilimitados + foco estratégico' },
+    values: { Essencial: 'Limitados', Pro: 'Ilimitados', Elite: 'Ilimitados + foco estratÃ©gico' },
   },
   {
     id: buildLandingId('comparison-row'),
-    label: 'Filtros avançados',
+    label: 'Filtros avanÃ§ados',
     values: { Essencial: 'Base', Pro: 'Completo', Elite: 'Completo' },
   },
   {
     id: buildLandingId('comparison-row'),
-    label: 'Análises detalhadas',
-    values: { Essencial: 'Resumo', Pro: 'Profundas', Elite: 'Profundas + visão competitiva' },
+    label: 'AnÃ¡lises detalhadas',
+    values: { Essencial: 'Resumo', Pro: 'Profundas', Elite: 'Profundas + visÃ£o competitiva' },
   },
   {
     id: buildLandingId('comparison-row'),
-    label: 'Área de dúvidas respondidas',
-    values: { Essencial: 'Não', Pro: 'Sim', Elite: 'Sim' },
+    label: 'Ãrea de dÃºvidas respondidas',
+    values: { Essencial: 'NÃ£o', Pro: 'Sim', Elite: 'Sim' },
   },
   {
     id: buildLandingId('comparison-row'),
-    label: 'Organização de estudo',
-    values: { Essencial: 'Boa', Pro: 'Avançada', Elite: 'Avançada' },
+    label: 'OrganizaÃ§Ã£o de estudo',
+    values: { Essencial: 'Boa', Pro: 'AvanÃ§ada', Elite: 'AvanÃ§ada' },
   },
   {
     id: buildLandingId('comparison-row'),
@@ -127,46 +138,46 @@ const createDefaultComparisonRows = (): MarketingLandingComparisonRow[] => ([
   },
   {
     id: buildLandingId('comparison-row'),
-    label: 'Experiência sem anúncios',
-    values: { Essencial: 'Não', Pro: 'Sim', Elite: 'Sim' },
+    label: 'ExperiÃªncia sem anÃºncios',
+    values: { Essencial: 'NÃ£o', Pro: 'Sim', Elite: 'Sim' },
   },
   {
     id: buildLandingId('comparison-row'),
-    label: 'Suporte a estudo avançado',
-    values: { Essencial: 'Base', Pro: 'Forte', Elite: 'Máximo' },
+    label: 'Suporte a estudo avanÃ§ado',
+    values: { Essencial: 'Base', Pro: 'Forte', Elite: 'MÃ¡ximo' },
   },
 ]);
 
 const createDefaultFaq = (): MarketingLandingFaqItem[] => ([
   {
     id: buildLandingId('faq'),
-    question: 'O que está incluso em cada plano?',
-    answer: 'Cada plano libera um nível diferente de profundidade. O Básico atende quem quer começar com direção, o Avançado amplia análise e simulados, e o Elite entrega a experiência mais completa para estudar com profundidade e constância.',
+    question: 'O que estÃ¡ incluso em cada plano?',
+    answer: 'Cada plano libera um nÃ­vel diferente de profundidade. O BÃ¡sico atende quem quer comeÃ§ar com direÃ§Ã£o, o AvanÃ§ado amplia anÃ¡lise e simulados, e o Elite entrega a experiÃªncia mais completa para estudar com profundidade e constÃ¢ncia.',
   },
   {
     id: buildLandingId('faq'),
-    question: 'Como funciona o acesso após a compra?',
-    answer: 'Assim que o pagamento é aprovado, o acesso é liberado no mesmo fluxo da plataforma e a assinatura fica disponível no seu perfil.',
+    question: 'Como funciona o acesso apÃ³s a compra?',
+    answer: 'Assim que o pagamento Ã© aprovado, o acesso Ã© liberado no mesmo fluxo da plataforma e a assinatura fica disponÃ­vel no seu perfil.',
   },
   {
     id: buildLandingId('faq'),
     question: 'Posso cancelar depois?',
-    answer: 'Sim. A gestão da assinatura segue o fluxo oficial da plataforma e você pode cancelar a renovação quando quiser, respeitando as regras do plano contratado.',
+    answer: 'Sim. A gestÃ£o da assinatura segue o fluxo oficial da plataforma e vocÃª pode cancelar a renovaÃ§Ã£o quando quiser, respeitando as regras do plano contratado.',
   },
   {
     id: buildLandingId('faq'),
     question: 'Como funciona a garantia?',
-    answer: 'Você pode testar a experiência e, se se arrepender dentro do prazo de 7 dias, solicitar reembolso conforme a política vigente.',
+    answer: 'VocÃª pode testar a experiÃªncia e, se se arrepender dentro do prazo de 7 dias, solicitar reembolso conforme a polÃ­tica vigente.',
   },
   {
     id: buildLandingId('faq'),
     question: 'O Plano Elite inclui todos os recursos premium?',
-    answer: 'Sim. O Elite foi desenhado para concentrar o pacote mais robusto da plataforma, com acesso amplo aos recursos premium voltados para performance e consistência.',
+    answer: 'Sim. O Elite foi desenhado para concentrar o pacote mais robusto da plataforma, com acesso amplo aos recursos premium voltados para performance e consistÃªncia.',
   },
   {
     id: buildLandingId('faq'),
-    question: 'O checkout é seguro?',
-    answer: 'Sim. O fluxo de cobrança usa o checkout oficial da plataforma com Stripe e mantém as validações de segurança e renovação já adotadas no produto.',
+    question: 'O checkout Ã© seguro?',
+    answer: 'Sim. O fluxo de cobranÃ§a usa o checkout oficial da plataforma com Stripe e mantÃ©m as validaÃ§Ãµes de seguranÃ§a e renovaÃ§Ã£o jÃ¡ adotadas no produto.',
   },
 ]);
 
@@ -254,104 +265,104 @@ export const createDefaultPlansLandingPage = (siteName = 'ConcursoMestre'): Mark
     pageType: 'plans',
     linkedPlanId: null,
     hero: {
-      eyebrow: 'Preparação premium',
-      title: 'Estude com mais estratégia, pratique sem limites e acelere sua aprovação',
-      description: `Plataforma completa para concursos com milhares de questões, gabaritos comentados, análises detalhadas, simulados, recursos de revisão e acompanhamento da sua evolução no ${siteName}.`,
+      eyebrow: 'PreparaÃ§Ã£o premium',
+      title: 'Estude com mais estratÃ©gia, pratique sem limites e acelere sua aprovaÃ§Ã£o',
+      description: `Plataforma completa para concursos com milhares de questÃµes, gabaritos comentados, anÃ¡lises detalhadas, simulados, recursos de revisÃ£o e acompanhamento da sua evoluÃ§Ã£o no ${siteName}.`,
       primaryCtaLabel: 'Assinar Plano Elite',
       secondaryCtaLabel: 'Ver planos',
-      proof: 'Checkout seguro, garantia de 7 dias e acesso liberado após a aprovação.',
+      proof: 'Checkout seguro, garantia de 7 dias e acesso liberado apÃ³s a aprovaÃ§Ã£o.',
     },
     planCards: createDefaultPlanCards(),
     authoritySection: {
       eyebrow: 'Autoridade e valor',
-      title: 'Uma preparação robusta em um só lugar',
-      description: 'Você encontra o volume, a análise e a organização que faltam quando o estudo depende de várias ferramentas soltas.',
+      title: 'Uma preparaÃ§Ã£o robusta em um sÃ³ lugar',
+      description: 'VocÃª encontra o volume, a anÃ¡lise e a organizaÃ§Ã£o que faltam quando o estudo depende de vÃ¡rias ferramentas soltas.',
       items: [
-        { title: 'Milhares de questões de concursos', description: 'Volume real para praticar todos os dias e construir repertório competitivo.' },
-        { title: 'Gabaritos comentados', description: 'Entenda o raciocínio das respostas e transforme erro em revisão útil.' },
-        { title: 'Análises detalhadas de desempenho', description: 'Veja onde você perde ponto e ajuste o estudo por disciplina, banca e assunto.' },
-        { title: 'Simulados e filtros estratégicos', description: 'Monte sessões sob medida e teste sua preparação com ritmo de prova.' },
-        { title: 'Cadernos e organização do progresso', description: 'Mantenha a rotina mais estruturada e acompanhe o que já evoluiu.' },
-        { title: 'Área de dúvidas respondidas', description: 'Aprofunde a preparação com apoio para sair de impasses mais rápido.' },
+        { title: 'Milhares de questÃµes de concursos', description: 'Volume real para praticar todos os dias e construir repertÃ³rio competitivo.' },
+        { title: 'Gabaritos comentados', description: 'Entenda o raciocÃ­nio das respostas e transforme erro em revisÃ£o Ãºtil.' },
+        { title: 'AnÃ¡lises detalhadas de desempenho', description: 'Veja onde vocÃª perde ponto e ajuste o estudo por disciplina, banca e assunto.' },
+        { title: 'Simulados e filtros estratÃ©gicos', description: 'Monte sessÃµes sob medida e teste sua preparaÃ§Ã£o com ritmo de prova.' },
+        { title: 'Cadernos e organizaÃ§Ã£o do progresso', description: 'Mantenha a rotina mais estruturada e acompanhe o que jÃ¡ evoluiu.' },
+        { title: 'Ãrea de dÃºvidas respondidas', description: 'Aprofunde a preparaÃ§Ã£o com apoio para sair de impasses mais rÃ¡pido.' },
       ],
     },
     valueMatrix: {
       eyebrow: 'Valor percebido',
-      title: 'O que você faz, recebe e conquista',
+      title: 'O que vocÃª faz, recebe e conquista',
       whatYouDo: [
-        'Pratica com milhares de questões',
+        'Pratica com milhares de questÃµes',
         'Monta cadernos e simulados sob medida',
         'Acompanha o desempenho com profundidade',
-        'Revisa com mais inteligência e foco',
+        'Revisa com mais inteligÃªncia e foco',
       ],
       whatYouReceive: [
         'Gabaritos comentados',
-        'Análises detalhadas',
+        'AnÃ¡lises detalhadas',
         'Recursos premium de estudo',
-        'Área de dúvidas respondidas',
-        'Ferramentas para organizar a preparação',
+        'Ãrea de dÃºvidas respondidas',
+        'Ferramentas para organizar a preparaÃ§Ã£o',
       ],
       whatYouConquer: [
         'Mais clareza no estudo',
-        'Mais consistência na rotina',
-        'Decisões melhores sobre o que revisar',
-        'Evolução mais visível',
+        'Mais consistÃªncia na rotina',
+        'DecisÃµes melhores sobre o que revisar',
+        'EvoluÃ§Ã£o mais visÃ­vel',
         'Preparo mais competitivo',
       ],
     },
     eliteSection: {
       eyebrow: 'Plano Elite',
-      title: 'Para quem quer estudar com profundidade, consistência e vantagem competitiva',
-      description: 'O Elite concentra a experiência mais completa da plataforma para quem não quer limitar treino, revisão e leitura do desempenho.',
+      title: 'Para quem quer estudar com profundidade, consistÃªncia e vantagem competitiva',
+      description: 'O Elite concentra a experiÃªncia mais completa da plataforma para quem nÃ£o quer limitar treino, revisÃ£o e leitura do desempenho.',
       bullets: [
-        'Estude sem limitações de volume e profundidade',
+        'Estude sem limitaÃ§Ãµes de volume e profundidade',
         'Tenha acesso ao conjunto mais forte de recursos premium',
-        'Acompanhe sua evolução com mais precisão e contexto',
+        'Acompanhe sua evoluÃ§Ã£o com mais precisÃ£o e contexto',
         'Ganhe mais clareza sobre onde melhorar antes da prova',
-        'Sustente uma rotina mais séria e profissional de preparação',
+        'Sustente uma rotina mais sÃ©ria e profissional de preparaÃ§Ã£o',
       ],
       ctaLabel: 'Quero assinar o Elite',
     },
     comparisonRows: createDefaultComparisonRows(),
     objections: [
       {
-        title: 'Ainda estou começando',
-        description: 'A landing foi desenhada para mostrar um caminho claro: você pode começar com uma entrada mais acessível e evoluir para o Elite quando quiser mais profundidade.',
+        title: 'Ainda estou comeÃ§ando',
+        description: 'A landing foi desenhada para mostrar um caminho claro: vocÃª pode comeÃ§ar com uma entrada mais acessÃ­vel e evoluir para o Elite quando quiser mais profundidade.',
       },
       {
-        title: 'Não sei por onde estudar',
-        description: 'Os filtros, simulados e análises ajudam a transformar dúvida em direção prática sobre o que treinar e revisar.',
+        title: 'NÃ£o sei por onde estudar',
+        description: 'Os filtros, simulados e anÃ¡lises ajudam a transformar dÃºvida em direÃ§Ã£o prÃ¡tica sobre o que treinar e revisar.',
       },
       {
         title: 'Tenho pouco tempo',
-        description: 'A plataforma reduz desperdício com organização, priorização e leitura rápida dos pontos fracos.',
+        description: 'A plataforma reduz desperdÃ­cio com organizaÃ§Ã£o, priorizaÃ§Ã£o e leitura rÃ¡pida dos pontos fracos.',
       },
       {
-        title: 'Já usei outras plataformas e não mantive constância',
-        description: 'Aqui o foco é rotina com clareza: treino, revisão e acompanhamento da evolução no mesmo fluxo.',
+        title: 'JÃ¡ usei outras plataformas e nÃ£o mantive constÃ¢ncia',
+        description: 'Aqui o foco Ã© rotina com clareza: treino, revisÃ£o e acompanhamento da evoluÃ§Ã£o no mesmo fluxo.',
       },
       {
-        title: 'Não quero correr risco',
-        description: 'A garantia de 7 dias reduz a fricção de entrada e permite avaliar a experiência com mais segurança.',
+        title: 'NÃ£o quero correr risco',
+        description: 'A garantia de 7 dias reduz a fricÃ§Ã£o de entrada e permite avaliar a experiÃªncia com mais seguranÃ§a.',
       },
     ],
     guarantee: {
       title: '7 dias de garantia',
-      description: 'Você pode testar a experiência, entender se ela faz sentido para sua preparação e solicitar reembolso dentro do prazo de arrependimento.',
+      description: 'VocÃª pode testar a experiÃªncia, entender se ela faz sentido para sua preparaÃ§Ã£o e solicitar reembolso dentro do prazo de arrependimento.',
     },
     faq: createDefaultFaq(),
     finalCta: {
-      title: 'Sua preparação pode ser mais estratégica a partir de hoje',
-      description: 'Escolha o plano ideal para o seu momento e comece a estudar com mais clareza, profundidade e constância.',
+      title: 'Sua preparaÃ§Ã£o pode ser mais estratÃ©gica a partir de hoje',
+      description: 'Escolha o plano ideal para o seu momento e comece a estudar com mais clareza, profundidade e constÃ¢ncia.',
       primaryCtaLabel: 'Assinar Plano Elite',
       secondaryCtaLabel: 'Comparar planos',
     },
     seo: {
-      title: `${siteName} | Planos de assinatura para estudar com mais estratégia`,
-      metaDescription: `Compare os planos do ${siteName} e escolha a assinatura ideal para estudar com milhares de questões, gabaritos comentados, simulados e análises detalhadas.`,
+      title: `${siteName} | Planos de assinatura para estudar com mais estratÃ©gia`,
+      metaDescription: `Compare os planos do ${siteName} e escolha a assinatura ideal para estudar com milhares de questÃµes, gabaritos comentados, simulados e anÃ¡lises detalhadas.`,
       canonicalUrl: '',
-      ogTitle: `${siteName} | Escolha o plano ideal para acelerar sua preparação`,
-      ogDescription: 'Conheça os planos de assinatura com foco em evolução, constância e vantagem competitiva para concursos.',
+      ogTitle: `${siteName} | Escolha o plano ideal para acelerar sua preparaÃ§Ã£o`,
+      ogDescription: 'ConheÃ§a os planos de assinatura com foco em evoluÃ§Ã£o, constÃ¢ncia e vantagem competitiva para concursos.',
     },
     createdAt: now,
     updatedAt: now,
@@ -551,7 +562,7 @@ const normalizeFaq = (items: Partial<MarketingLandingFaqItem>[]): MarketingLandi
   return items.map((item, index) => ({
     id: sanitizeText(item.id, fallback[index]?.id || buildLandingId('faq')),
     question: sanitizeText(item.question, fallback[index]?.question || 'Pergunta frequente'),
-    answer: sanitizeText(item.answer, fallback[index]?.answer || 'Resposta em configuração.'),
+    answer: sanitizeText(item.answer, fallback[index]?.answer || 'Resposta em configuraÃ§Ã£o.'),
   }));
 };
 
@@ -582,8 +593,8 @@ export const normalizeMarketingLandingPage = (page?: Partial<MarketingLandingPag
       description: sanitizeText(page?.authoritySection?.description, fallback.authoritySection.description),
       items: Array.isArray(page?.authoritySection?.items) && page.authoritySection.items.length > 0
         ? page.authoritySection.items.map((item, index) => ({
-          title: sanitizeText(item.title, fallback.authoritySection.items[index]?.title || 'Benefício'),
-          description: sanitizeText(item.description, fallback.authoritySection.items[index]?.description || 'Descrição em configuração.'),
+          title: sanitizeText(item.title, fallback.authoritySection.items[index]?.title || 'BenefÃ­cio'),
+          description: sanitizeText(item.description, fallback.authoritySection.items[index]?.description || 'DescriÃ§Ã£o em configuraÃ§Ã£o.'),
         }))
         : fallback.authoritySection.items,
     },
@@ -612,8 +623,8 @@ export const normalizeMarketingLandingPage = (page?: Partial<MarketingLandingPag
     comparisonRows: normalizeComparisonRows(page?.comparisonRows || []),
     objections: Array.isArray(page?.objections) && page.objections.length > 0
       ? page.objections.map((item, index) => ({
-        title: sanitizeText(item.title, fallback.objections[index]?.title || 'Objeção'),
-        description: sanitizeText(item.description, fallback.objections[index]?.description || 'Resposta em configuração.'),
+        title: sanitizeText(item.title, fallback.objections[index]?.title || 'ObjeÃ§Ã£o'),
+        description: sanitizeText(item.description, fallback.objections[index]?.description || 'Resposta em configuraÃ§Ã£o.'),
       }))
       : fallback.objections,
     guarantee: {
@@ -671,7 +682,7 @@ export const duplicateMarketingLandingPage = (page: MarketingLandingPage): Marke
   return {
     ...page,
     id: buildLandingId('landing'),
-    title: `${page.title} (Cópia)`,
+    title: `${page.title} (CÃ³pia)`,
     slug: `${normalizeLandingSlug(page.slug)}-copia`,
     status: 'draft',
     createdAt: now,

@@ -10,16 +10,59 @@
 */
 
 import {
-    Flame, Star, Sparkles, GraduationCap, PartyPopper, Zap,
-    Music, ShoppingBag, Book, Pencil, Timer, Egg, Tag, Percent,
-    Clock, Ghost
+    Book,
+    Egg,
+    Flame,
+    GraduationCap,
+    Music,
+    PartyPopper,
+    Pencil,
+    Percent,
+    ShoppingBag,
+    Sparkles,
+    Star,
+    Tag,
+    Timer,
+    Zap
 } from 'lucide-react';
 
 interface ThemeOrnamentsProps {
     themeId: string;
 }
 
-export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
+const hashSeed = (seed: string) => {
+    let hash = 2166136261;
+
+    for (let index = 0; index < seed.length; index += 1) {
+        hash ^= seed.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+
+    return hash >>> 0;
+};
+
+const getSeededNumber = (seed: string, min: number, max: number) => {
+    const normalized = hashSeed(seed) / 4294967295;
+    return min + (normalized * (max - min));
+};
+
+const getPercentValue = (themeId: string, index: number, axis: 'x' | 'y', min = 0, max = 100) => (
+    `${getSeededNumber(`${themeId}:${index}:${axis}`, min, max).toFixed(2)}%`
+);
+
+const getDurationValue = (themeId: string, index: number, key: string, min: number, max: number) => (
+    `${getSeededNumber(`${themeId}:${index}:${key}`, min, max).toFixed(2)}s`
+);
+
+const getPixelValue = (themeId: string, index: number, key: string, min: number, max: number) => (
+    Number(getSeededNumber(`${themeId}:${index}:${key}`, min, max).toFixed(2))
+);
+
+const getRotationValue = (themeId: string, index: number) => (
+    `${getSeededNumber(`${themeId}:${index}:rotation`, 0, 360).toFixed(2)}deg`
+);
+
+export function ThemeOrnaments({ themeId }: ThemeOrnamentsProps) {
     switch (themeId) {
         case 'sao-joao':
             return (
@@ -50,12 +93,12 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
                             key={i}
                             className="absolute text-fuchsia-500/10 animate-spin-slow"
                             style={{
-                                top: `${Math.random() * 100}%`,
-                                left: `${Math.random() * 100}%`,
-                                animationDuration: `${15 + Math.random() * 20}s`
+                                top: getPercentValue(themeId, i, 'y'),
+                                left: getPercentValue(themeId, i, 'x'),
+                                animationDuration: getDurationValue(themeId, i, 'duration', 15, 35)
                             }}
                         >
-                            <Music size={15 + Math.random() * 40} />
+                            <Music size={getPixelValue(themeId, i, 'size', 15, 55)} />
                         </div>
                     ))}
                     <div className="absolute top-1/4 right-[15%] text-purple-500/10 animate-bounce">
@@ -72,12 +115,12 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
                             key={i}
                             className="absolute text-yellow-500/5 animate-pulse"
                             style={{
-                                top: `${Math.random() * 100}%`,
-                                left: `${Math.random() * 100}%`,
+                                top: getPercentValue(themeId, i, 'y'),
+                                left: getPercentValue(themeId, i, 'x'),
                                 animationDelay: `${i * 0.3}s`
                             }}
                         >
-                            <Zap size={150 + Math.random() * 150} strokeWidth={0.5} />
+                            <Zap size={getPixelValue(themeId, i, 'size', 150, 300)} strokeWidth={0.5} />
                         </div>
                     ))}
                 </div>
@@ -117,12 +160,12 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
                             key={i}
                             className="absolute text-amber-400/20 animate-ping"
                             style={{
-                                top: `${Math.random() * 100}%`,
-                                left: `${Math.random() * 100}%`,
-                                animationDuration: `${4 + Math.random() * 5}s`
+                                top: getPercentValue(themeId, i, 'y'),
+                                left: getPercentValue(themeId, i, 'x'),
+                                animationDuration: getDurationValue(themeId, i, 'duration', 4, 9)
                             }}
                         >
-                            <Star size={25 + Math.random() * 40} fill="currentColor" />
+                            <Star size={getPixelValue(themeId, i, 'size', 25, 65)} fill="currentColor" />
                         </div>
                     ))}
                     <div className="absolute top-1/3 left-1/3 text-blue-400/10 animate-pulse">
@@ -138,12 +181,12 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
                             key={i}
                             className="absolute text-emerald-500/10 animate-bounce"
                             style={{
-                                top: `${80 + Math.random() * 15}%`,
-                                left: `${Math.random() * 90}%`,
+                                top: getPercentValue(themeId, i, 'y', 80, 95),
+                                left: getPercentValue(themeId, i, 'x', 0, 90),
                                 animationDelay: `${i * 0.5}s`
                             }}
                         >
-                            <Egg size={40 + Math.random() * 40} strokeWidth={1} />
+                            <Egg size={getPixelValue(themeId, i, 'size', 40, 80)} strokeWidth={1} />
                         </div>
                     ))}
                     <div className="absolute top-1/4 left-1/2 -translate-x-1/2 text-emerald-600/5">
@@ -159,13 +202,13 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
                             key={i}
                             className="absolute text-rose-500/10 animate-pulse flex items-center gap-1"
                             style={{
-                                top: `${Math.random() * 100}%`,
-                                left: `${Math.random() * 100}%`,
+                                top: getPercentValue(themeId, i, 'y'),
+                                left: getPercentValue(themeId, i, 'x'),
                                 animationDelay: `${i * 0.2}s`,
-                                transform: `rotate(${Math.random() * 360}deg)`
+                                transform: `rotate(${getRotationValue(themeId, i)})`
                             }}
                         >
-                            <Tag size={30 + Math.random() * 30} />
+                            <Tag size={getPixelValue(themeId, i, 'size', 30, 60)} />
                             <Percent size={14} />
                         </div>
                     ))}
@@ -177,4 +220,4 @@ export const ThemeOrnaments: React.FC<ThemeOrnamentsProps> = ({ themeId }) => {
         default:
             return null;
     }
-};
+}
