@@ -7,113 +7,30 @@
 
 ## Objetivo
 
-Registrar o que ainda permanece ativo na SPA Vite da raiz depois que o Next passou a ser a base principal do web.
+Registrar a decisao de remover a SPA Vite da arvore ativa deste branch depois que a arquitetura Next foi promovida para a raiz.
 
-## Evidencia automatizada
+## Estado atual
 
-- comando oficial: `npm run legacy-web:inventory`
-- relatorio JSON: `docs/reports/legacy-web-inventory-latest.json`
-- resumo Markdown: `docs/reports/legacy-web-inventory-latest.summary.md`
-- divida tipada por dominio: `npm run legacy-web:debt-report`
-- relatorio de typecheck: `docs/reports/legacy-web-typecheck-report-latest.json`
-- resumo de typecheck: `docs/reports/legacy-web-typecheck-report-latest.summary.md`
+- `src/` agora e a aplicacao Next principal
+- `web-next/` foi removida depois da promocao
+- `index.html`, `vite.config.ts` e `tsconfig.legacy.json` foram removidos da raiz
+- o legado Vite permanece como backup historico no branch `master`
+- relatorios antigos em `docs/reports/` continuam como evidencias da transicao, mas nao representam mais uma subpasta ativa
 
-## Leitura estrutural
+## Evidencias historicas
 
-- arquivos sob `src/`: `294`
-- arquivos sob `web-next/src/`: `94`
+Durante a fase hibrida, os relatorios de inventario registraram:
 
-## Rotas da SPA antiga que tambem ja existem no Next
+- rotas com overlap entre SPA Vite e Next
+- hotspots de typecheck da SPA antiga
+- bridges ainda existentes no inicio da migracao
+- entrada de `practice`, `simulation` e `admin` na fila de absorcao
 
-Essas areas precisam ser tratadas como duplicacao controlada durante a transicao:
+Esses relatorios devem ser usados apenas para comparacao funcional. A partir da consolidacao na raiz, a auditoria deve olhar primeiro para a aplicacao Next ativa em `src/`.
 
-- `admin`
-- `auth`
-- `changelog`
-- `checkout`
-- `concursos`
-- `confirm-email`
-- `dashboard`
-- `elite`
-- `faq`
-- `flashcards`
-- `lei-comentada`
-- `marketplace`
-- `material`
-- `notifications`
-- `partner-dashboard`
-- `planos`
-- `practice`
-- `privacy`
-- `profile`
-- `promo`
-- `question`
-- `ranking`
-- `reset-password`
-- `simulation`
-- `support`
-- `terms`
-
-## Areas que continuam apenas na SPA legada
-
-Essas rotas ainda exigem decisao explicita antes de qualquer remocao estrutural:
-
-- `bank-analysis`
-- `landing`
-- `landing-campaign`
-- `performance-subjects`
-- `plans`
-- `questions`
-- `ranking-detail`
-- `reader`
-
-## Dominios de service ainda ativos na raiz
-
-Os agrupamentos atuais em `src/services/` mostram que a raiz continua concentrando fluxos autenticados, administrativos e comerciais:
-
-- `admin`
-- `auth`
-- `billing`
-- `comments`
-- `dashboard`
-- `filters`
-- `marketing`
-- `marketplace`
-- `materials`
-- `notifications`
-- `payments`
-- `plans`
-- `profile`
-- `progress`
-- `questions`
-- `rankings`
-- `simulations`
-- `statistics`
-- `subscriptions`
-- `support`
-- `system`
-- `transactions`
-
-## Leitura operacional
-
-Hoje o estado correto da plataforma e o seguinte:
-
-- o Next ja e a base operacional principal do web na raiz
-- a SPA Vite ainda nao pode ser removida
-- a raiz antiga continua sendo a dona de partes autenticadas, administrativas e de contratos de dominio
-
-## Bridges ainda vivas no web-next
-
-Hoje ainda existem `3` entrypoints em `web-next/src/app` que chamam `buildLegacyUrl`:
+## Entry points absorvidos pelo Next
 
 - `admin/[[...slug]]`
-- `practice`
-- `simulation`
-
-## Entry points ja absorvidos pelo Next
-
-Desde a consolidacao deste branch, as entradas abaixo deixaram de depender de bridge legado:
-
 - `auth`
 - `checkout/[planId]`
 - `concursos`
@@ -125,41 +42,28 @@ Desde a consolidacao deste branch, as entradas abaixo deixaram de depender de br
 - `notifications`
 - `partner-dashboard`
 - `performance/subjects`
+- `practice`
 - `profile/[[...slug]]`
 - `ranking`
 - `reset-password`
 - `read/[id]`
+- `simulation`
 - `subscription/[status]`
 - `support`
 - `x-ray`
 
-## Hotspots atuais do typecheck legado
+## Transicoes registradas em 2026-04-18
 
-Resumo extraido de `docs/reports/legacy-web-typecheck-report-latest.summary.md`:
-
-- `70` erros ativos
-- `29` arquivos afetados
-- `15` dominios afetados
-
-Dominios mais pesados neste momento:
-
-- `app/admin`: `38`
-- `app/profile`: `13`
-- `router`: `3`
-- `services/subscriptions`: `3`
-- `providers`: `2`
-- `services/questions`: `2`
-
-Arquivos mais pesados neste momento:
-
-- `src/app/profile/page.tsx`: `13`
-- `src/app/admin/components/database/useAdminDatabaseManagerController.tsx`: `9`
-- `src/app/admin/components/finance/AdminFinance.tsx`: `8`
+- `practice` foi absorvida como rota nativa do Next com listagem de questoes, filtros principais, resposta autenticada e salvos.
+- `simulation` foi absorvida como rota nativa do Next com configuracao de simulado, cronometro, resultado, revisao e tentativa de persistencia da sessao.
+- `admin/[[...slug]]` foi absorvido como shell administrativo nativo do Next com dashboard, usuarios, materiais, financeiro, suporte, marketing, configuracoes, SEO e logs.
+- a SPA legada saiu da arvore ativa deste branch e deve ser consultada no branch `master` apenas quando for necessario comparar comportamento.
 
 ## Consequencia para a proxima etapa
 
-Antes da limpeza pesada de diretorios, precisamos fechar este inventario em tres grupos:
+A auditoria de limpeza deve ser feita sobre o Next ativo:
 
-1. rotas ja absorvidas pelo Next e prontas para desativacao futura
-2. modulos que continuarao temporariamente como legado controlado
-3. codigo morto, duplicado ou sem ownership claro, que sera alvo da auditoria de limpeza
+1. confirmar paridade funcional das rotas absorvidas
+2. remover referencias operacionais a caminhos antigos
+3. separar codigo vivo, codigo morto e codigo pendente de decisao
+4. revisar seguranca, pagamentos, SEO, painel admin e analytics de receita antes da producao

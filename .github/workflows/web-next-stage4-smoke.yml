@@ -11,7 +11,11 @@ on:
       - "scripts/checks/run-web-next-stage4-*.ps1"
       - "package.json"
       - "package-lock.json"
-      - "web-next/**"
+      - "next.config.ts"
+      - "postcss.config.mjs"
+      - "tsconfig.json"
+      - "src/**"
+      - "public/**"
 
 permissions:
   contents: read
@@ -29,20 +33,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            web-next/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install Root Dependencies
         run: npm ci
-
-      - name: Install web-next Dependencies
-        run: npm --prefix web-next ci
 
       - name: Run Stage 4 Smoke
         shell: powershell
         run: npm run web-next:stage4-smoke
 
-      - name: Typecheck web-next
+      - name: Typecheck Next Root
         shell: powershell
         run: npm run web-next:typecheck

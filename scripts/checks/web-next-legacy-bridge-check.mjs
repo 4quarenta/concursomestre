@@ -22,10 +22,10 @@ const routeChecks = [
   { source: '/confirm-email?token=bridge-token', expectedStatus: 200, type: 'render' },
   { source: '/reset-password?token=bridge-token', expectedStatus: 200, type: 'render' },
   { source: '/concursos', expectedStatus: 200, type: 'render' },
-  { source: '/practice', destination: `${legacyWebBaseUrl}/practice`, type: 'redirect' },
+  { source: '/practice', expectedStatus: 200, type: 'render' },
   { source: '/lei-comentada', expectedStatus: 200, type: 'render' },
   { source: '/flashcards', expectedStatus: 200, type: 'render' },
-  { source: '/simulation', destination: `${legacyWebBaseUrl}/simulation`, type: 'redirect' },
+  { source: '/simulation', expectedStatus: 200, type: 'render' },
   { source: '/x-ray', expectedStatus: 200, type: 'render' },
   { source: '/marketplace', expectedStatus: 200, type: 'render' },
   { source: '/ranking', expectedStatus: 200, type: 'render' },
@@ -40,8 +40,8 @@ const routeChecks = [
   { source: '/subscription/pending?source=bridge-check', expectedStatus: 200, type: 'render' },
   { source: '/read/42', expectedStatus: 200, type: 'render' },
   { source: '/checkout/123', expectedStatus: 200, type: 'render' },
-  { source: '/admin?section=overview', destination: `${legacyWebBaseUrl}/admin?section=overview`, type: 'redirect' },
-  { source: '/admin/settings/seo', destination: `${legacyWebBaseUrl}/admin/settings/seo`, type: 'redirect' },
+  { source: '/admin?section=overview', expectedStatus: 200, type: 'render' },
+  { source: '/admin/settings/seo', expectedStatus: 200, type: 'render' },
 ];
 
 const results = [];

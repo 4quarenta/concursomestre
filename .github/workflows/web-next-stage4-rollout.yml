@@ -76,15 +76,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            web-next/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install Root Dependencies
         run: npm ci
-
-      - name: Install web-next Dependencies
-        run: npm --prefix web-next ci
 
       - name: Create Stage 4 Rollout Config
         shell: powershell

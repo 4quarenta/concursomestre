@@ -1,23 +1,23 @@
-/*
-* ----------------------------------------------------
-* @author: 4quarenta
-* @author URI: https://github.com/4quarenta
-* @copyright: (c) 2026 ConcursoMestre. All rights reserved
-* ----------------------------------------------------
-*
-* @since 1.0.0
-*
-*/
+import type { Metadata } from 'next';
+import MarketingPlansLandingClient from '@/components/landing/MarketingPlansLandingClient';
+import { buildLandingMetadata, loadPublicMarketingPageData } from '@/lib/publicMarketing';
 
-import React from 'react';
-import MarketingPlansLandingPage from '../planos/components/MarketingPlansLandingPage';
+export async function generateMetadata(): Promise<Metadata> {
+  return buildLandingMetadata('elite', await loadPublicMarketingPageData('elite'));
+}
 
-/**
- * Shell publico da landing comercial dedicada ao Plano Elite.
- * Mantem a rota /elite enxuta e delega a composicao ao renderer oficial de landing pages.
- *
- * @since v1.0.0
- */
-const EliteLandingPage: React.FC = () => <MarketingPlansLandingPage slug="elite" />;
+export default async function ElitePage() {
+  const pageData = await loadPublicMarketingPageData('elite');
 
-export default EliteLandingPage;
+  return (
+    <MarketingPlansLandingClient
+      slug="elite"
+      siteName={pageData.siteName}
+      plans={pageData.plans}
+      systemSettings={pageData.settings}
+      landing={pageData.landing}
+      loading={false}
+      isPreviewMode={false}
+    />
+  );
+}

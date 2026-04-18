@@ -2,6 +2,10 @@
 
 Este documento registra a migracao da plataforma web publica do ConcursoMestre para Next.js App Router.
 
+## Nota de consolidacao em 2026-04-18
+
+A arquitetura Next foi promovida para a raiz do repositorio neste branch. Quando este documento citar `web-next/` como pasta, leia como historico da fase hibrida. O codigo ativo agora fica em `src/`, os comandos principais rodam na raiz e os aliases `web-next:*` permanecem apenas para compatibilidade com runbooks e relatorios.
+
 ## Escopo corrigido
 
 Em `2026-04-16`, o escopo foi corrigido para evitar confusao entre duas frentes diferentes:
@@ -16,8 +20,8 @@ Consolidacao aberta em `2026-04-18`:
 - branch dedicada criada: `4quarenta/next-version`
 - a raiz do repositorio passa a tratar o Next como base principal do web
 - os comandos `dev`, `build`, `start` e `typecheck` da raiz agora apontam para o Next
-- a SPA Vite anterior fica preservada como legado por `legacy-web:dev|build|preview`
-- `legacy-web:typecheck` agora usa `tsconfig.legacy.json` para medir apenas a divida real da SPA
+- a SPA Vite anterior fica preservada no branch `master`, fora da arvore ativa deste branch
+- os comandos `legacy-web:*` foram removidos da base principal apos a promocao fisica para raiz
 - a transicao e a auditoria passaram a ser documentadas em:
   - `docs/NEXT_PLATFORM_CONSOLIDATION.md`
   - `docs/PLATFORM_1_0_0_AUDIT_PROGRAM.md`
@@ -111,8 +115,8 @@ Base validada em `2026-04-16`:
 
 ## Validacoes executadas
 
-- `npm --prefix web-next run typecheck`
-- `npm --prefix web-next run build`
+- `npm run typecheck`
+- `npm run build`
 
 Resultado atual:
 
@@ -197,7 +201,7 @@ Marco validado em `2026-04-17`:
 - o baseline de inventario publico do backend foi sincronizado com os bridges atuais fora deste workspace
 - `npm run web-next:cutover-report` passou a gerar relatorio JSON em `docs/reports/web-next-cutover-latest.json`
 - runbook operacional do Search Console documentado em `docs/GOOGLE_SEARCH_CONSOLE.md`
-- `web-next/.env.example` passou a documentar `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CANONICAL_URL` e limites de sitemap por ambiente
+- `.env.example` passou a documentar `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_CANONICAL_URL` e limites de sitemap por ambiente
 - `web-next:cutover-check` agora pode validar tambem o host do canonical via `WEB_NEXT_EXPECTED_CANONICAL_BASE_URL`
 - `web-next:staging-gate` virou o atalho oficial para validar staging com canonical host e IDs reais obrigatorios
 - `web-next:staging-gate` agora aceita `ConfigPath` e protege contra placeholder host antes de rodar a validacao real
@@ -222,49 +226,48 @@ Marco validado em `2026-04-17`:
 - a macro 5 agora tambem tem init config, validate, launch, status, readiness e smoke dedicados para o corte final e Search Console
 - workflow manual `.github/workflows/web-next-staging-gate.yml` preparado para rodar o gate em CI com artifact do relatorio
 - esse workflow manual agora aceita `environment=staging|production`, evitando manter duas esteiras quase iguais para o mesmo gate
-- workflow de CI atualizado para instalar dependencias da raiz e do `web-next` em ambiente limpo antes de executar o gate
+- workflow de CI atualizado para instalar dependencias da raiz em ambiente limpo antes de executar o gate
 - `config/deploy/` passou a concentrar templates de gate para staging e producao
 - o gate local agora detecta automaticamente `config/deploy/web-next-<ambiente>-gate.local.json`, mantendo IDs reais fora do repositório
 - alias `web-next:production-gate` criado para separar o fluxo e o relatorio de producao do gate de staging
 
 ## Arquivos-chave desta etapa
 
-- `web-next/src/app/page.tsx`
-- `web-next/src/app/planos/page.tsx`
-- `web-next/src/app/elite/page.tsx`
-- `web-next/src/app/l/[slug]/page.tsx`
-- `web-next/src/app/question/[id]/page.tsx`
-- `web-next/src/app/question/[id]/[slug]/page.tsx`
-- `web-next/src/app/ranking/[id]/page.tsx`
-- `web-next/src/app/ranking/[id]/[slug]/page.tsx`
-- `web-next/src/app/material/[id]/page.tsx`
-- `web-next/src/app/material/[id]/[slug]/page.tsx`
-- `web-next/src/app/promo/[slug]/page.tsx`
-- `web-next/src/app/checkout/termos-de-adesao/page.tsx`
-- `web-next/src/app/checkout/termos-de-adesao/CheckoutAdhesionTermsClient.tsx`
-- `web-next/src/app/faq/page.tsx`
-- `web-next/src/app/auth/page.tsx`
-- `web-next/src/app/dashboard/page.tsx`
-- `web-next/src/app/admin/[[...slug]]/page.tsx`
-- `web-next/src/app/checkout/[planId]/page.tsx`
-- `web-next/src/app/confirm-email/page.tsx`
-- `web-next/src/app/reset-password/page.tsx`
-- `web-next/src/app/profile/[[...slug]]/page.tsx`
-- `web-next/src/app/read/[id]/page.tsx`
-- `web-next/src/lib/legacyRedirect.ts`
+- `src/app/page.tsx`
+- `src/app/planos/page.tsx`
+- `src/app/elite/page.tsx`
+- `src/app/l/[slug]/page.tsx`
+- `src/app/question/[id]/page.tsx`
+- `src/app/question/[id]/[slug]/page.tsx`
+- `src/app/ranking/[id]/page.tsx`
+- `src/app/ranking/[id]/[slug]/page.tsx`
+- `src/app/material/[id]/page.tsx`
+- `src/app/material/[id]/[slug]/page.tsx`
+- `src/app/promo/[slug]/page.tsx`
+- `src/app/checkout/termos-de-adesao/page.tsx`
+- `src/app/checkout/termos-de-adesao/CheckoutAdhesionTermsClient.tsx`
+- `src/app/faq/page.tsx`
+- `src/app/auth/page.tsx`
+- `src/app/dashboard/page.tsx`
+- `src/app/admin/[[...slug]]/page.tsx`
+- `src/app/checkout/[planId]/page.tsx`
+- `src/app/confirm-email/page.tsx`
+- `src/app/reset-password/page.tsx`
+- `src/app/profile/[[...slug]]/page.tsx`
+- `src/app/read/[id]/page.tsx`
 - `scripts/checks/web-next-legacy-bridge-check.mjs`
-- `web-next/src/app/changelog/page.tsx`
-- `web-next/src/app/robots.ts`
-- `web-next/src/app/sitemap.ts`
-- `web-next/src/app/question-sitemap.xml/route.ts`
-- `web-next/src/app/question-sitemap-page.xml/route.ts`
-- `web-next/src/lib/api.ts`
-- `web-next/src/lib/publicMarketing.ts`
-- `web-next/src/lib/publicQuestions.ts`
-- `web-next/src/lib/publicRankings.ts`
-- `web-next/src/lib/publicMaterials.ts`
-- `web-next/src/lib/publicQuestionSitemap.ts`
-- `web-next/src/lib/publicPromotion.ts`
+- `src/app/changelog/page.tsx`
+- `src/app/robots.ts`
+- `src/app/sitemap.ts`
+- `src/app/question-sitemap.xml/route.ts`
+- `src/app/question-sitemap-page.xml/route.ts`
+- `src/lib/api.ts`
+- `src/lib/publicMarketing.ts`
+- `src/lib/publicQuestions.ts`
+- `src/lib/publicRankings.ts`
+- `src/lib/publicMaterials.ts`
+- `src/lib/publicQuestionSitemap.ts`
+- `src/lib/publicPromotion.ts`
 - `web-next/src/lib/structuredData.ts`
 - `web-next/src/lib/publicSettings.ts`
 - `web-next/src/services/seo/slug.ts`

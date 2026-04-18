@@ -1,13 +1,15 @@
 # Runbook de corte da web publica para Next.js
 
-Este documento descreve como colocar o `web-next` na frente das rotas publicas sem quebrar a SPA Vite que ainda atende area logada, pratica, admin e checkout transacional.
+Este documento registra a fase de corte hibrido que colocou o Next na frente das rotas publicas.
+
+Nota em `2026-04-18`: a arquitetura Next foi promovida para a raiz do repositorio. A pasta `web-next/` nao existe mais neste branch; o termo `web-next` continua apenas como nome historico de scripts, relatorios e workflows. A SPA Vite antiga permanece como referencia no branch `master`.
 
 ## Estado validado
 
-Validado localmente em `2026-04-16`:
+Validado localmente na fase hibrida em `2026-04-16`:
 
-- `npm --prefix web-next run typecheck`: ok
-- `npm --prefix web-next run build`: ok
+- `npm run typecheck`: ok
+- `npm run build`: ok
 - `npm run web-next:cutover-check`: ok
 - `http://localhost:3001/plans`: `308` para `/planos`
 - `http://localhost:3001/checkout/termos-de-adesao`: `200`
@@ -26,7 +28,7 @@ Atualizacao operacional em `2026-04-17`:
   - `api/subscriptions/stripe_testing_runs.php`
   - `api/users/remove_photo.php`
 - `powershell -ExecutionPolicy Bypass -File scripts/checks/transition-readiness.ps1`: `TRANSITION_READY|OK`
-- `web-next/src/app/auth/page.tsx` passou a agir como bridge local para a SPA legada quando o Next estiver rodando sem o proxy hibrido
+- `src/app/auth/page.tsx` passou a agir como bridge local para a SPA legada quando o Next estava rodando sem o proxy hibrido
 - o bridge usa `NEXT_PUBLIC_LEGACY_WEB_URL` e preserva query string, convertendo `?register=true` para `?mode=signup`
 - bridges equivalentes foram abertos para as rotas ainda autenticadas da SPA, reduzindo `404` locais enquanto o proxy final nao assume esses caminhos
 - `scripts/checks/web-next-legacy-bridge-check.mjs` passou a validar automaticamente os redirects dessas rotas hibridas
@@ -89,12 +91,12 @@ O checklist tecnico unificado tambem passou a validar o `web-next`:
 
 - `npm run test:transition` agora executa `web-next:typecheck` e `web-next:build`
 - se `http://localhost:3001` estiver respondendo, o mesmo script dispara `web-next:cutover-check` automaticamente
-- o template de ambiente do `web-next` fica em `web-next/.env.example`
+- o template de ambiente do Next fica em `.env.example`
 
 Se a pasta `.next` local estiver travada por algum processo do Windows, valide o build em um diretorio isolado:
 
 ```bash
-NEXT_DIST_DIR=.next-build-check npm --prefix web-next run build
+NEXT_DIST_DIR=.next-build-check npm run build
 ```
 
 Por padrao, o script usa `http://localhost:3001`. Para validar staging ou producao:
@@ -158,14 +160,14 @@ NEXT_PUBLIC_CANONICAL_URL=https://staging.exemplo.com/
 
 Arquivos de apoio:
 
-- `web-next/.env.example`
-- `web-next/.env.local.example`
-- `web-next/.env.staging.example`
+- `.env.example`
+- `.env.local.example`
+- `.env.staging.example`
 
-Para desenvolvimento local do ambiente hibrido, configure tambem:
+Para desenvolvimento local de um ambiente hibrido historico, use variaveis de runtime dos scripts:
 
 ```bash
-NEXT_PUBLIC_LEGACY_WEB_URL=http://localhost:3000/
+WEB_LEGACY_BASE_URL=http://localhost:3000
 ```
 
 O `web-next` continua com fallback para os manifestos versionados, mas a fase de corte deve preferir override por ambiente para evitar editar configuracao canonica no codigo.

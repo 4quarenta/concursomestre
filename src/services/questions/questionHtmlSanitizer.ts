@@ -1,14 +1,3 @@
-/*
-* ----------------------------------------------------
-* @author: 4quarenta
-* @author URI: https://github.com/4quarenta
-* @copyright: (c) 2026 ConcursoMestre. All rights reserved
-* ----------------------------------------------------
-*
-* @since 1.0.0
-*
-*/
-
 const RADICAL_SYMBOL = '\u221A';
 const RADICAL_TOKEN_PATTERN = '(?:\\u221A|&radic;|&#8730;|&#x221a;|\\u00E2\\u02C6\\u0161)';
 const DECORATIVE_LINE_CHARS_PATTERN = '[\\s\\u00A0_\\-\\u00AF\\u203E\\u2014\\u2015\\u2500\\u2501\\u0304\\u0305\\u0332]';
@@ -66,13 +55,11 @@ const sanitizeLineStyledElement = (element: HTMLElement): void => {
 const regexNormalizeRadicalArtifacts = (inputHtml: string): string => {
   let normalized = inputHtml;
 
-  // Ex.: "√¯¯¯¯¯" / "√_____" / mojibake equivalents.
   normalized = normalized.replace(
     new RegExp(`${RADICAL_TOKEN_PATTERN}(?:${DECORATIVE_LINE_CHARS_PATTERN}|&nbsp;|&#160;){3,}`, 'gi'),
     RADICAL_SYMBOL,
   );
 
-  // Ex.: "√<span style='text-decoration: overline'>_____</span>" (and div/p variants).
   normalized = normalized.replace(
     new RegExp(
       `${RADICAL_TOKEN_PATTERN}\\s*<(span|div|p)[^>]*(?:text-decoration\\s*:\\s*overline|border-top|border-bottom)[^>]*>(?:${DECORATIVE_LINE_CHARS_PATTERN}|&nbsp;|&#160;|<br\\s*\\/?>)*<\\/\\1>`,
@@ -81,18 +68,11 @@ const regexNormalizeRadicalArtifacts = (inputHtml: string): string => {
     RADICAL_SYMBOL,
   );
 
-  // Ex.: "√<hr ...>" from malformed OCR conversions.
   normalized = normalized.replace(new RegExp(`${RADICAL_TOKEN_PATTERN}\\s*<hr[^>]*>`, 'gi'), RADICAL_SYMBOL);
 
   return normalized;
 };
 
-/**
- * Removes malformed OCR/PDF artifacts that generate "infinite radical lines"
- * while preserving valid question content.
- *
- * @since 1.0.0
- */
 export const normalizeQuestionRichHtml = (rawHtml: string | null | undefined): string => {
   if (!rawHtml) {
     return '';

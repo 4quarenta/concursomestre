@@ -2,9 +2,11 @@
 
 Esta macroetapa cobre o corte final no dominio canonico, a abertura do Search Console e o monitoramento inicial de indexacao.
 
+Nota em `2026-04-18`: `web-next` permanece como nome historico dos scripts da macro, mas a aplicacao Next ativa roda na raiz do repositorio.
+
 ## Objetivo
 
-- validar o `web-next` no dominio final
+- validar o Next no dominio final
 - registrar o envio dos sitemaps no Search Console
 - confirmar URLs canonicas e indexacao inicial
 - abrir a janela de monitoramento dos primeiros dias

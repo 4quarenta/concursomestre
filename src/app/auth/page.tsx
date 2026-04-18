@@ -1,27 +1,29 @@
-/*
-* ----------------------------------------------------
-* @author: 4quarenta
-* @author URI: https://github.com/4quarenta
-* @copyright: (c) 2026 ConcursoMestre. All rights reserved
-* ----------------------------------------------------
-*
-* @since 1.0.0
-*
-*/
+import { safeServerFetch } from '@/lib/api';
+import { mergePublicSystemSettings } from '@/lib/publicSettings';
+import AuthPageClient from '@/components/auth/AuthPageClient';
+import type { SystemSettings } from '@/types';
+import { readFirstSearchParam, type RouteSearchParams } from '@/lib/searchParams';
 
-import React from 'react';
-import type { UserProfile } from '@types';
-import Auth from './components/Auth';
-
-interface AuthPageProps {
-  onLogin: (user: UserProfile | null, token?: string | null) => Promise<void>;
-}
-
-/**
- * Entry point oficial da autenticação.
- */
-const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
-  return <Auth onLogin={onLogin} />;
+type AuthPageProps = {
+  searchParams: Promise<RouteSearchParams>;
 };
 
-export default AuthPage;
+export default async function AuthPage({ searchParams }: AuthPageProps) {
+  const resolvedSearchParams = await searchParams;
+  const settings = mergePublicSystemSettings(
+    await safeServerFetch<Partial<SystemSettings>>('settings.php', {}),
+  );
+  const requestedMode = readFirstSearchParam(resolvedSearchParams.mode);
+  const redirectTo = readFirstSearchParam(resolvedSearchParams.redirect);
+  const referralCode = readFirstSearchParam(resolvedSearchParams.ref)
+    ?? readFirstSearchParam(resolvedSearchParams.referral);
+
+  return (
+    <AuthPageClient
+      initialMode={requestedMode === 'signup' ? 'signup' : 'login'}
+      redirectTo={redirectTo}
+      referralCode={referralCode}
+      systemSettings={settings}
+    />
+  );
+}

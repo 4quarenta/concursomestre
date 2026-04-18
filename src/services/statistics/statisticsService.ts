@@ -9,99 +9,64 @@
 *
 */
 
-import { apiClient, ENDPOINTS } from '@services/api';
-import type { ApiResponse } from '@services/api';
-import type {
-  UserStatistics,
-  QuestionStatistics,
-  PlatformStatistics,
-  StudySessionPayload,
-  StudySessionResult,
-} from './types';
+import { readApiData } from '@/lib/browserApi';
+import { requestAuthenticatedApi } from '@/lib/authSession';
 
-/**
- * Fachada oficial do dominio de estatisticas.
- * Ela alimenta visoes de usuário, questão e plataforma sem expor rotas cruas para a UI.
- * @since 1.0.0
- */
+export interface SubjectStatistics {
+  accuracyRate: number;
+  averageTime: number;
+  correctAnswers: number;
+  subject: string;
+  totalQuestions: number;
+  wrongAnswers: number;
+}
+
+export interface UserStatistics {
+  accuracyRate: number;
+  bestStreak: number;
+  correctAnswers: number;
+  currentStreak: number;
+  lastActivity: string;
+  questionStudyTime: number;
+  readingStudyTime: number;
+  subjectBreakdown: SubjectStatistics[];
+  totalQuestionsAnswered: number;
+  totalStudyTime: number;
+  userId: string;
+  wrongAnswers: number;
+}
+
+const createUserStatisticsFallback = (userId: string): UserStatistics => ({
+  accuracyRate: 0,
+  bestStreak: 0,
+  correctAnswers: 0,
+  currentStreak: 0,
+  lastActivity: '',
+  questionStudyTime: 0,
+  readingStudyTime: 0,
+  subjectBreakdown: [],
+  totalQuestionsAnswered: 0,
+  totalStudyTime: 0,
+  userId,
+  wrongAnswers: 0,
+});
+
 export const statisticsService = {
-  /**
-   * Carrega os indicadores consolidados do usuário para alimentar dashboards
-   * pessoais, progresso e comparativos.
-   * @since 1.0.0
-   */
   async getUserStatistics(userId: string): Promise<UserStatistics> {
-    const response = await apiClient.get<ApiResponse<UserStatistics>>(
-      `${ENDPOINTS.statistics.user}/${userId}`,
-    ) as unknown as ApiResponse<UserStatistics>;
-    const payload = (response.data || response) as Partial<UserStatistics>;
+    const response = await requestAuthenticatedApi<any>(`statistics/user/${encodeURIComponent(userId)}`, {
+      method: 'GET',
+    });
+
+    const payload = readApiData<Partial<UserStatistics>>(response, {});
+    const fallback = createUserStatisticsFallback(userId);
+
     return {
-      questionStudyTime: 0,
-      readingStudyTime: 0,
-      totalStudyTime: 0,
-      lastActivity: '',
-      subjectBreakdown: [],
+      ...fallback,
       ...payload,
+      subjectBreakdown: Array.isArray(payload.subjectBreakdown)
+        ? payload.subjectBreakdown
+        : fallback.subjectBreakdown,
     };
-  },
-
-  /**
-   * Carrega o agregado estatistico de uma questão especifica.
-   * @since 1.0.0
-   */
-  async getQuestionStatistics(questionId: number): Promise<QuestionStatistics> {
-    const response = await apiClient.get<ApiResponse<QuestionStatistics>>(
-      `${ENDPOINTS.statistics.question}/${questionId}`,
-    ) as unknown as ApiResponse<QuestionStatistics>;
-    return response.data;
-  },
-
-  /**
-   * Carrega indicadores globais da plataforma para areas administrativas e
-   * paineis executivos.
-   * @since 1.0.0
-   */
-  async getPlatformStatistics(): Promise<PlatformStatistics> {
-    const response = await apiClient.get<ApiResponse<PlatformStatistics>>(
-      ENDPOINTS.statistics.platform,
-    ) as unknown as ApiResponse<PlatformStatistics>;
-    return response.data;
-  },
-
-  /**
-   * Registra uma sessao de estudo consolidada no backend oficial.
-   * @since v1.0.0
-   */
-  async recordStudySession(payload: StudySessionPayload): Promise<StudySessionResult> {
-    const response = await apiClient.post<ApiResponse<StudySessionResult>>(
-      ENDPOINTS.statistics.studySession,
-      {
-        practice_seconds: payload.practiceSeconds,
-        simulation_seconds: payload.simulationSeconds,
-        reading_seconds: payload.readingSeconds,
-        started_at: payload.startedAt,
-        ended_at: payload.endedAt,
-        source_context: payload.sourceContext || {},
-      },
-    ) as unknown as ApiResponse<StudySessionResult>;
-
-    return (response.data || response) as StudySessionResult;
-  },
-
-  /**
-   * Atualiza o agregado estatistico do usuário depois de uma resposta.
-   * @since 1.0.0
-   */
-  async updateUserStatistics(userId: string, data: {
-    questionId: number;
-    isCorrect: boolean;
-    timeSpent: number;
-  }): Promise<{ success: boolean }> {
-    const response = await apiClient.post<ApiResponse>(
-      `${ENDPOINTS.statistics.user}/${userId}/update`,
-      data,
-    ) as unknown as ApiResponse;
-    return { success: response.success };
   },
 };
 

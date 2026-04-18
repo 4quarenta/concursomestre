@@ -1,14 +1,3 @@
-/*
-* ----------------------------------------------------
-* @author: 4quarenta
-* @author URI: https://github.com/4quarenta
-* @copyright: (c) 2026 ConcursoMestre. All rights reserved
-* ----------------------------------------------------
-*
-* @since 1.0.0
-*
-*/
-
 import { useEffect, useMemo, useState } from 'react';
 
 export interface LimitedOfferCountdownState {
@@ -50,13 +39,7 @@ export const useLimitedOfferCountdown = (
   endsAt?: string | null,
 ): LimitedOfferCountdownState => {
   const expiresAt = useMemo(() => parseEndsAt(endsAt), [endsAt]);
-  const [remainingMs, setRemainingMs] = useState(() => {
-    if (!enabled || expiresAt <= 0) {
-      return 0;
-    }
-
-    return Math.max(0, expiresAt - Date.now());
-  });
+  const [remainingMs, setRemainingMs] = useState(0);
 
   useEffect(() => {
     if (!enabled || expiresAt <= Date.now()) {
@@ -77,7 +60,7 @@ export const useLimitedOfferCountdown = (
   }, [enabled, expiresAt]);
 
   const parts = useMemo(() => splitRemainingTime(remainingMs), [remainingMs]);
-  const isActive = enabled && expiresAt > Date.now() && remainingMs > 0;
+  const isActive = enabled && remainingMs > 0;
 
   return {
     isActive,

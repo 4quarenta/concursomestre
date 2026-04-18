@@ -1,16 +1,19 @@
 # Google Search Console
 
-Este runbook cobre a abertura de indexacao da camada publica em `web-next` depois do corte por rota.
+Este runbook cobre a abertura de indexacao da plataforma Next depois da consolidacao na raiz.
+
+Nota em `2026-04-18`: os comandos `web-next:*` continuam como aliases operacionais, mas o codigo Next ativo fica em `src/` e roda a partir da raiz do repositorio.
 
 ## Objetivo
 
 - submeter os sitemaps canonicos novos
-- confirmar que Googlebot enxerga o `web-next` como origem das rotas publicas
+- confirmar que Googlebot enxerga o Next como origem das rotas publicas
 - monitorar cobertura, canonicals e rich results nos primeiros dias
 
 ## Pre-condicoes
 
-- `npm run test:transition` retorna `TRANSITION_READY|OK`
+- `npm run typecheck` passa na raiz
+- `npm run build` passa na raiz
 - `npm run web-next:stage5-smoke` passa
 - `npm run web-next:stage5-validate` passa com a config local da macro 5
 - `npm run web-next:stage5-status` deixa a macro 5 em `config-validated` ou acima antes do launch real
@@ -18,7 +21,7 @@ Este runbook cobre a abertura de indexacao da camada publica em `web-next` depoi
 - quando estiver validando staging/producao, preferir `WEB_NEXT_EXPECTED_CANONICAL_BASE_URL` para garantir que o host do canonical tambem ficou correto
 - em staging/producao, preferir `WEB_NEXT_REQUIRE_ENTITY_IDS=1` com uma URL real de questao, ranking e material antes de abrir indexacao
 - em Windows, o atalho `npm run web-next:staging-gate -- ...` consolida essa validacao num relatorio unico
-- se o ambiente ainda estiver em modo hibrido, incluir tambem `LegacyWebBaseUrl` no gate ajuda a validar o comportamento real do proxy antes da abertura de indexacao
+- se algum ambiente temporario ainda estiver em modo hibrido, incluir tambem `LegacyWebBaseUrl` no gate ajuda a validar o comportamento real do proxy antes da abertura de indexacao
 - `npm run web-next:stage4-smoke` deve passar para confirmar que os scripts da macro 4 estao operacionais localmente
 - `.github/workflows/web-next-stage4-smoke.yml` pode validar esse smoke em CI sem staging real
 - `npm run web-next:stage4-init-config` pode gerar a config local da macro 4 a partir dos valores reais de staging

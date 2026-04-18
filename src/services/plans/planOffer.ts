@@ -1,14 +1,3 @@
-/*
-* ----------------------------------------------------
-* @author: 4quarenta
-* @author URI: https://github.com/4quarenta
-* @copyright: (c) 2026 ConcursoMestre. All rights reserved
-* ----------------------------------------------------
-*
-* @since 1.0.0
-*
-*/
-
 import type { DiscountCode, Plan, PlanConfig, PlanPricing, PlanName } from '@types';
 import { getCanonicalPlanName } from './planAccess';
 import { resolvePlanAutoCouponsById } from './planAutoCoupon';
