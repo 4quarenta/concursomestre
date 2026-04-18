@@ -13,7 +13,10 @@
 - `BILLING_E_VALIDACAO.md`
 - `ENCODING_E_TEXTO.md`
 - `MOBILE_TRANSITIONS.md`
+- `LEGACY_WEB_INVENTORY.md`
 - `NEXTJS_MIGRATION.md`
+- `NEXT_PLATFORM_CONSOLIDATION.md`
+- `PLATFORM_1_0_0_AUDIT_PROGRAM.md`
 - `WEB_NEXT_CUTOVER.md`
 - `WEB_NEXT_STAGE4_STAGING.md`
 - `WEB_NEXT_STAGE5_PRODUCTION.md`
@@ -24,6 +27,14 @@
 
 ## Checks operacionais da migracao web
 
+- `npm run dev`
+- `npm run build`
+- `npm run start`
+- `npm run typecheck`
+- `npm run legacy-web:dev`
+- `npm run legacy-web:build`
+- `npm run legacy-web:preview`
+- `npm run legacy-web:typecheck`
 - `npm run web-next:cutover-check`
 - `npm run web-next:legacy-bridge-check`
 - `npm run web-next:legacy-bridge-report`

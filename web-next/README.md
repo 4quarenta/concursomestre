@@ -55,6 +55,13 @@ npm run start
 Na raiz do repositorio tambem existem atalhos para o corte:
 
 ```bash
+npm run dev
+npm run build
+npm run start
+npm run typecheck
+npm run legacy-web:dev
+npm run legacy-web:build
+npm run legacy-web:typecheck
 npm run web-next:typecheck
 npm run web-next:build
 npm run web-next:cutover-check
@@ -84,6 +91,15 @@ npm run web-next:production-gate
 ```
 
 Os templates de gate e rollout por ambiente ficam em `config/deploy/`.
+
+## Papel atual
+
+O `web-next` ja e a base principal do web no fluxo de consolidacao.
+
+Na raiz do repositorio:
+
+- `npm run dev`, `build`, `start` e `typecheck` passam a representar o Next
+- `legacy-web:*` preserva a SPA Vite anterior apenas como legado operacional
 
 ## Validacao de corte
 
@@ -150,6 +166,8 @@ Esse fluxo valida:
 
 - paginas publicas e SEO do Next
 - redirects hibridos para a SPA legada
+
+Essa continua sendo a convencao local recomendada durante a transicao, mesmo com a raiz passando a tratar o Next como base principal.
 
 Para staging/producao, o check tambem aceita:
 

@@ -11,6 +11,17 @@ Em `2026-04-16`, o escopo foi corrigido para evitar confusao entre duas frentes 
 
 A migracao Next **nao** faz parte do app mobile. Ela atende a camada publica/indexavel da plataforma web, mantendo a area logada e administrativa no projeto Vite atual.
 
+Consolidacao aberta em `2026-04-18`:
+
+- branch dedicada criada: `4quarenta/next-version`
+- a raiz do repositorio passa a tratar o Next como base principal do web
+- os comandos `dev`, `build`, `start` e `typecheck` da raiz agora apontam para o Next
+- a SPA Vite anterior fica preservada como legado por `legacy-web:dev|build|preview`
+- `legacy-web:typecheck` agora usa `tsconfig.legacy.json` para medir apenas a divida real da SPA
+- a transicao e a auditoria passaram a ser documentadas em:
+  - `docs/NEXT_PLATFORM_CONSOLIDATION.md`
+  - `docs/PLATFORM_1_0_0_AUDIT_PROGRAM.md`
+
 Atualizacao em `2026-04-17`:
 
 - `web-next` ganhou um bridge explicito para `/auth`
