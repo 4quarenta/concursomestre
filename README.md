@@ -1,8 +1,6 @@
 # ConcursoMestre Web
 
-Plataforma web principal do ConcursoMestre em Next.js App Router.
-
-Em `2026-04-18`, a arquitetura Next foi promovida para a raiz do repositorio. A antiga SPA Vite nao faz mais parte da arvore ativa deste branch; o backup historico permanece no branch `master` do GitHub e nos registros de transicao em `docs/`.
+Plataforma web principal do ConcursoMestre em Next.js App Router, consolidada diretamente na raiz do repositorio.
 
 ## Estado atual
 
@@ -10,25 +8,43 @@ Em `2026-04-18`, a arquitetura Next foi promovida para a raiz do repositorio. A 
 - versao alvo: `1.0.0`
 - app web principal: `src/`
 - app mobile Expo: `mobile/`
-- configs Next: `next.config.ts`, `tsconfig.json`, `postcss.config.mjs`, `eslint.config.mjs`
-- a pasta `web-next/` foi removida depois da promocao para raiz
-- os aliases `web-next:*` continuam existindo apenas para preservar runbooks, checks e historico de relatorios
+- backup historico da SPA anterior: branch `master` no GitHub
+- runtime local atual: `npm run dev` na raiz
 
-## Rotas web cobertas
+Em `2026-04-18`, a migracao foi reiniciada a partir do branch `master` porque a tentativa anterior havia alterado a experiencia visual e funcional da plataforma logada. A regra deste branch e preservar a UI e os fluxos da plataforma web original, mudando apenas a base tecnica para Next.js.
+
+## Arquitetura
+
+- `src/app/`: rotas do App Router e paginas por dominio
+- `src/components/`: componentes compartilhados e componentes restaurados da plataforma web
+- `src/providers/`: providers globais reais da aplicacao
+- `src/services/`: integracoes HTTP e servicos de dominio
+- `src/constants/`, `src/config/`, `src/types/`, `src/utils/`: contratos transversais
+- `src/assets/`: assets usados pela plataforma web
+
+A aplicacao Next separada nao faz parte da arquitetura ativa. Ela foi removida desta base porque o Next agora e o proprio web da raiz.
+
+## Rotas cobertas na raiz
 
 - `/`
 - `/auth`
-- `/admin/[[...slug]]`
+- `/admin`
+- `/admin/[tab]/[[...section]]`
+- `/bank-analysis`
 - `/dashboard`
-- `/profile/[[...slug]]`
+- `/profile`
+- `/profile/[tab]`
 - `/planos`
+- `/plans`
 - `/elite`
 - `/faq`
 - `/changelog`
 - `/privacy`
 - `/terms`
+- `/checkout`
 - `/checkout/[planId]`
 - `/checkout/termos-de-adesao`
+- `/checkout/terms-of-adhesion`
 - `/concursos`
 - `/practice`
 - `/simulation`
@@ -36,38 +52,31 @@ Em `2026-04-18`, a arquitetura Next foi promovida para a raiz do repositorio. A 
 - `/lei-comentada`
 - `/marketplace`
 - `/ranking`
+- `/ranking/[id]/[[...slug]]`
 - `/notifications`
 - `/partner-dashboard`
 - `/performance/subjects`
+- `/performance-subjects`
 - `/support`
 - `/subscription/[status]`
 - `/l/[slug]`
-- `/question/[id]/[slug]`
-- `/ranking/[id]/[slug]`
-- `/material/[id]/[slug]`
+- `/question`
+- `/question/[id]/[[...slug]]`
+- `/material`
+- `/material/[id]/[[...slug]]`
+- `/promo`
 - `/promo/[slug]`
 - `/read/[id]`
+- `/reader`
+- `/ranking-detail`
 - `/x-ray`
-- `/robots.txt`
-- `/sitemap.xml`
-- `/question-sitemap.xml`
-- `/question-sitemap-page.xml?page=N`
 
 ## Variaveis de ambiente
 
 Use `.env.example` como base local.
 
-Para staging, existe tambem `.env.staging.example`.
-Para desenvolvimento local, existe `.env.local.example`.
-
-- `NEXT_PUBLIC_API_URL`
-  - endpoint base do backend PHP usado pelos dados publicos e autenticados
-- `NEXT_PUBLIC_CANONICAL_URL`
-  - dominio canonico usado por metadata, sitemap e robots
-- `WEB_NEXT_SITEMAP_DYNAMIC_LIMIT`
-  - limite das colecoes dinamicas em `sitemap.xml`
-- `WEB_NEXT_QUESTION_SITEMAP_PAGE_SIZE`
-  - quantidade de questoes por pagina no sitemap dedicado
+- `NEXT_PUBLIC_API_BASE_URL`: endpoint base do backend PHP.
+- `NEXT_PUBLIC_CANONICAL_URL`: URL canonica planejada para metadados. Em localhost, pode permanecer provisoria ate a compra do dominio.
 
 ## Comandos principais
 
@@ -75,46 +84,25 @@ Para desenvolvimento local, existe `.env.local.example`.
 npm install
 npm run dev
 npm run typecheck
-npm run build
-npm run start
+npm run check:text-encoding
 ```
 
-## Checks de transicao e producao
+`npm run build` existe para CI/deploy, mas nao foi executado nesta retomada porque a rodada atual esta focada em `npm run dev`.
 
-Os nomes `web-next:*` continuam por compatibilidade, mas todos rodam a partir da raiz.
+## Deploy
 
-```bash
-npm run web-next:typecheck
-npm run web-next:build
-npm run web-next:cutover-check
-npm run web-next:legacy-bridge-check
-npm run web-next:stage4-smoke
-npm run web-next:stage5-smoke
-npm run web-next:production-gate
-```
+No Vercel, o projeto deve apontar para a raiz do repositorio:
 
-## CI e deploy
-
-Ambientes limpos devem instalar somente as dependencias da raiz:
-
-```bash
-npm ci
-npm run build
-```
-
-Nao existe mais `web-next/package.json` ou `web-next/package-lock.json` neste branch.
+- `Root Directory`: raiz
+- `Install Command`: `npm ci`
+- `Build Command`: `npm run build`
+- framework: `Next.js`
 
 ## Documentacao operacional
 
-- `docs/NEXT_PLATFORM_CONSOLIDATION.md`
-  - estado da consolidacao e etapas de auditoria
-- `docs/LEGACY_WEB_INVENTORY.md`
-  - inventario historico do legado e decisao de remocao da arvore ativa
-- `docs/NEXTJS_MIGRATION.md`
-  - historico da migracao, macros e gates
-- `docs/GOOGLE_SEARCH_CONSOLE.md`
-  - preparacao para visibilidade no Google
-- `docs/WEB_NEXT_STAGE4_ROLLOUT.md`
-  - rollout controlado
-- `docs/WEB_NEXT_STAGE5_PRODUCTION.md`
-  - preparacao de producao
+- `docs/NEXT_PLATFORM_CONSOLIDATION.md`: estado da consolidacao e etapas atuais.
+- `docs/NEXTJS_MIGRATION.md`: historico resumido da migracao e decisao de reinicio frio.
+- `docs/LEGACY_WEB_INVENTORY.md`: inventario historico usado para comparar com o branch `master`.
+- `docs/PLATFORM_1_0_0_AUDIT_PROGRAM.md`: programa de auditoria para producao.
+- `docs/GOOGLE_SEARCH_CONSOLE.md`: preparacao futura para indexacao quando houver dominio.
+- `docs/VERCEL_ROOT_TRANSITION.md`: orientacao de configuracao do projeto no Vercel.

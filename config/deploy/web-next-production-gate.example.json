@@ -1,9 +1,0 @@
-{
-  "BaseUrl": "https://producao.exemplo.com",
-  "LegacyWebBaseUrl": "https://app.producao.exemplo.com",
-  "ExpectedCanonicalBaseUrl": "https://producao.exemplo.com",
-  "QuestionId": "123",
-  "RankingId": "abc",
-  "MaterialId": "xyz",
-  "OutputPath": "docs/reports/web-next-production-gate.json"
-}

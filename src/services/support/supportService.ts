@@ -9,13 +9,7 @@
 *
 */
 
-import { assertApiSuccess, readApiData } from '@/lib/browserApi';
-import { requestAuthenticatedApi } from '@/lib/authSession';
-
-const FEEDBACK_ENDPOINTS = {
-  list: 'feedback/list.php',
-  create: 'feedback/create.php',
-} as const;
+import { apiClient, assertApiSuccess, readApiData, ENDPOINTS } from '@services/api';
 
 export type SupportThread = {
   id: number;
@@ -47,12 +41,20 @@ export type CreatedSupportThreadResult = {
   parent_id: number | null;
 };
 
+/**
+ * Centraliza o fluxo da central de suporte/feedback do usuario.
+ * Essa camada e consumida pela pagina publica de suporte e pelo historico de conversas.
+ *
+ * @since 1.0.0
+ */
 export const supportService = {
+  /**
+   * Lista os chamados do usuario autenticado.
+   *
+   * @since 1.0.0
+   */
   async listThreads(): Promise<SupportThread[]> {
-    const response = await requestAuthenticatedApi<any>(FEEDBACK_ENDPOINTS.list, {
-      method: 'GET',
-    });
-
+    const response = await apiClient.get(ENDPOINTS.feedback.list) as any;
     const payload = readApiData<any>(response, {});
 
     if (Array.isArray(payload)) {
@@ -70,11 +72,13 @@ export const supportService = {
     return [];
   },
 
+  /**
+   * Carrega a conversa de um chamado especifico.
+   *
+   * @since 1.0.0
+   */
   async listReplies(threadId: number): Promise<SupportReply[]> {
-    const response = await requestAuthenticatedApi<any>(`${FEEDBACK_ENDPOINTS.list}?id=${threadId}`, {
-      method: 'GET',
-    });
-
+    const response = await apiClient.get(`${ENDPOINTS.feedback.list}?id=${threadId}`) as any;
     const payload = readApiData<any>(response, {});
 
     if (Array.isArray(payload?.replies)) {
@@ -88,13 +92,16 @@ export const supportService = {
     return [];
   },
 
+  /**
+   * Abre um novo chamado/sugestao para o suporte.
+   * Retorna o payload persistido para a UI materializar a thread sem depender do refresh imediato.
+   *
+   * @since 1.0.0
+   */
   async createThread(input: CreateSupportThreadInput): Promise<CreatedSupportThreadResult> {
-    const response = await requestAuthenticatedApi<any>(FEEDBACK_ENDPOINTS.create, {
-      method: 'POST',
-      body: input,
-    });
-
+    const response = await apiClient.post(ENDPOINTS.feedback.create, input) as any;
     assertApiSuccess(response, 'Nao foi possivel enviar a solicitacao.');
+
     const payload = readApiData<any>(response, {});
 
     return {
@@ -106,18 +113,22 @@ export const supportService = {
     };
   },
 
+  /**
+   * Responde uma thread existente da central de suporte.
+   * O retorno ajuda a auditar que a resposta foi persistida no backend oficial.
+   *
+   * @since 1.0.0
+   */
   async replyToThread(parentId: number, type: string, details: string): Promise<CreatedSupportThreadResult> {
-    const response = await requestAuthenticatedApi<any>(FEEDBACK_ENDPOINTS.create, {
-      method: 'POST',
-      body: {
-        parent_id: parentId,
-        type,
-        reason: 'Resposta do usuario',
-        details,
-      },
-    });
+    const response = await apiClient.post(ENDPOINTS.feedback.create, {
+      parent_id: parentId,
+      type,
+      reason: 'Resposta do usuario',
+      details,
+    }) as any;
 
     assertApiSuccess(response, 'Nao foi possivel enviar a solicitacao.');
+
     const payload = readApiData<any>(response, {});
 
     return {

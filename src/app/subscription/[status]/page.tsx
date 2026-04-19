@@ -1,18 +1,23 @@
-import { notFound } from 'next/navigation';
-import SubscriptionStatusClient from '@/components/subscription/SubscriptionStatusClient';
+'use client';
 
-const ALLOWED_STATUSES = new Set(['success', 'failure', 'pending']);
+import { useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@providers/AuthProvider';
+import { buildProfilePath } from '../../profile/profileNavigation';
 
-export default async function SubscriptionStatusPage({
-  params,
-}: {
-  params: Promise<{ status: string }>;
-}) {
-  const { status } = await params;
+export default function SubscriptionStatusPage() {
+  const router = useRouter();
+  const params = useParams<{ status?: string }>();
+  const { currentUser } = useAuth();
 
-  if (!ALLOWED_STATUSES.has(status)) {
-    notFound();
-  }
+  useEffect(() => {
+    if (!currentUser) {
+      router.replace('/auth');
+      return;
+    }
 
-  return <SubscriptionStatusClient status={status as 'failure' | 'pending' | 'success'} />;
+    router.replace(params.status === 'failure' ? '/plans' : buildProfilePath('billing'));
+  }, [currentUser, params.status, router]);
+
+  return null;
 }

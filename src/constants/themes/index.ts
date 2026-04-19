@@ -9,16 +9,16 @@
 *
 */
 
-import { defaultTheme } from './default';
-import { blackFridayTheme } from './black-friday';
-import { blackNovemberTheme } from './black-november';
-import { estudanteTheme } from './estudante';
-import { saoJoaoTheme } from './sao-joao';
-import { carnavalTheme } from './carnaval';
-import { anoNovoTheme } from './ano-novo';
-import { pascoaTheme } from './pascoa';
-import { consumidorTheme } from './consumidor';
-import { ThemeRegistry } from './types';
+import { defaultTheme } from './default.ts';
+import { blackFridayTheme } from './black-friday.ts';
+import { blackNovemberTheme } from './black-november.ts';
+import { estudanteTheme } from './estudante.ts';
+import { saoJoaoTheme } from './sao-joao.ts';
+import { carnavalTheme } from './carnaval.ts';
+import { anoNovoTheme } from './ano-novo.ts';
+import { pascoaTheme } from './pascoa.ts';
+import { consumidorTheme } from './consumidor.ts';
+import { ThemeRegistry } from './types.ts';
 
 export const themeConfig: ThemeRegistry = {
     'default': defaultTheme,
@@ -32,4 +32,4 @@ export const themeConfig: ThemeRegistry = {
     'consumidor': consumidorTheme,
 };
 
-export * from './types';
+export * from './types.ts';

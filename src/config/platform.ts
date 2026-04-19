@@ -20,20 +20,6 @@ type AndroidPlatformOverride = typeof androidManifestSource;
 export type WebsitePlatformManifest = BasePlatformManifest & WebsitePlatformOverride;
 export type AndroidPlatformManifest = BasePlatformManifest & AndroidPlatformOverride;
 
-const normalizeUrlWithTrailingSlash = (value: string) => (
-  value.endsWith('/') ? value : `${value}/`
-);
-
-/**
- * Permite sobrescrever a URL canonica do canal web por ambiente.
- * Isso evita editar o manifesto versionado para staging ou validacoes em dominio alternativo.
- * @since v1.0.0
- */
-const getCanonicalUrlOverride = () => {
-  const override = process.env.NEXT_PUBLIC_CANONICAL_URL || process.env.NEXT_PUBLIC_SITE_URL || '';
-  return override.trim() ? normalizeUrlWithTrailingSlash(override.trim()) : null;
-};
-
 /**
  * Mescla o manifesto base com o manifesto de um canal especifico.
  * Esse contrato evita duplicacao e prepara a plataforma para compartilhar identidade entre web e app Android.
@@ -55,15 +41,6 @@ const mergePlatformManifest = <TChannelManifest extends object>(channelManifest:
 export const websiteManifest: WebsitePlatformManifest = mergePlatformManifest(websiteManifestSource);
 export const androidManifest: AndroidPlatformManifest = mergePlatformManifest(androidManifestSource);
 export const platformVersion = baseManifest.version;
-
-const canonicalUrlOverride = getCanonicalUrlOverride();
-
-if (canonicalUrlOverride) {
-  websiteManifest.website = {
-    ...websiteManifest.website,
-    canonicalUrl: canonicalUrlOverride,
-  };
-}
 
 /**
  * Garante que uma meta tag exista e possa ser atualizada a partir do manifesto.

@@ -9,8 +9,8 @@
 *
 */
 
-import { readApiData } from '@/lib/browserApi';
-import { requestAuthenticatedApi } from '@/lib/authSession';
+import { apiClient, ENDPOINTS, readApiData } from '@services/api';
+import type { AnalyticsData, BankAnalysis } from './types';
 
 export type BankIntelLink = {
   text: string;
@@ -56,11 +56,6 @@ export type BankXrayPayload = {
   recommendation: string;
 };
 
-const XRAY_ENDPOINTS = {
-  bankInfo: 'statistics/banca_info.php',
-  stats: 'statistics/xray.php',
-} as const;
-
 const normalizeChartDatum = (item: any): XrayChartDatum => ({
   name: String(item?.name || 'Sem nome'),
   value: Number(item?.value || 0),
@@ -72,9 +67,9 @@ const normalizeBreakdownDatum = (item: any): XrayBreakdownDatum => ({
   percent: Number(item?.percent || 0),
   topics: Array.isArray(item?.topics)
     ? item.topics.map((topic: any) => ({
-      topic: String(topic?.topic || 'Sem assunto'),
-      percent: Number(topic?.percent || 0),
-    }))
+        topic: String(topic?.topic || 'Sem assunto'),
+        percent: Number(topic?.percent || 0),
+      }))
     : [],
 });
 
@@ -86,7 +81,7 @@ const normalizeExamDatum = (item: any, index: number) => ({
 
 const normalizeXrayPayload = (payload: any): BankXrayPayload => ({
   total: Number(payload?.total || 0),
-  textStyle: String(payload?.textStyle || 'Objetiva e direta'),
+  textStyle: String(payload?.textStyle || 'Objetiva e Direta'),
   contextUsage: Number(payload?.contextUsage || 0),
   difficultyData: Array.isArray(payload?.difficultyData)
     ? payload.difficultyData.map(normalizeChartDatum)
@@ -103,31 +98,30 @@ const normalizeXrayPayload = (payload: any): BankXrayPayload => ({
   recommendation: String(payload?.recommendation || ''),
 });
 
-const buildEndpoint = (endpoint: string, params: Record<string, string | undefined>) => {
-  const searchParams = new URLSearchParams();
-
-  Object.entries(params).forEach(([key, value]) => {
-    if (typeof value === 'string' && value.trim()) {
-      searchParams.set(key, value);
-    }
-  });
-
-  const query = searchParams.toString();
-  return query ? `${endpoint}?${query}` : endpoint;
-};
-
+/**
+ * Fachada oficial do dominio de raio-x. Ela centraliza a leitura dos payloads
+ * do backend atual enquanto o frontend vai sendo migrado para contratos mais
+ * previsiveis.
+ * @since 1.0.0
+ */
 export const bankAnalysisService = {
+  /**
+   * Busca inteligencia pública da banca a partir do site oficial cadastrado.
+   * @since 1.0.0
+   */
   async getBankIntel(url: string): Promise<BankIntelPayload> {
-    const response = await requestAuthenticatedApi<any>(
-      buildEndpoint(XRAY_ENDPOINTS.bankInfo, { url }),
-      {
-        method: 'GET',
-      },
-    );
+    const response = await apiClient.get(
+      ENDPOINTS.statistics.bancaInfo,
+      { params: { url } },
+    ) as any;
 
     const payload = readApiData<any>(response, {});
+
     if (payload?.error) {
-      return { emAndamento: [], realizados: [] };
+      return {
+        emAndamento: [],
+        realizados: [],
+      };
     }
 
     return {
@@ -136,20 +130,61 @@ export const bankAnalysisService = {
     };
   },
 
+  /**
+   * Busca o raio-x consolidado da banca para os filtros selecionados.
+   * @since 1.0.0
+   */
   async getXrayStats(filters: BankXrayFilters): Promise<BankXrayPayload> {
-    const response = await requestAuthenticatedApi<any>(
-      buildEndpoint(XRAY_ENDPOINTS.stats, {
-        banca: filters.banca,
-        cargo: filters.cargo,
-        ano: filters.ano,
-      }),
+    const response = await apiClient.get(
+      ENDPOINTS.statistics.xray,
       {
-        method: 'GET',
+        params: {
+          banca: filters.banca,
+          cargo: filters.cargo || undefined,
+          ano: filters.ano || undefined,
+        },
       },
-    );
+    ) as any;
 
     const payload = readApiData<any>(response, {});
     return normalizeXrayPayload(payload);
+  },
+
+  /**
+   * Mantem compatibilidade com usos antigos do dominio.
+   * @since 1.0.0
+   */
+  async getAnalysis(boardId: string): Promise<BankAnalysis> {
+    const response = await apiClient.get(ENDPOINTS.bankAnalysis.board, {
+      params: { boardId },
+    }) as any;
+
+    const payload = readApiData<{ analysis?: BankAnalysis }>(response, {});
+    return payload.analysis || (payload as unknown as BankAnalysis);
+  },
+
+  /**
+   * Mantem compatibilidade com analiticos de usuário ainda não migrados.
+   * @since 1.0.0
+   */
+  async getUserAnalytics(): Promise<AnalyticsData> {
+    const response = await apiClient.get(ENDPOINTS.bankAnalysis.user) as any;
+    const payload = readApiData<{ analytics?: AnalyticsData }>(response, {});
+    return payload.analytics || (payload as AnalyticsData);
+  },
+
+  /**
+   * Mantem compatibilidade com os insights de padroes ainda usados
+   * indiretamente por partes legadas do app.
+   * @since 1.0.0
+   */
+  async getPatternInsights(boardId: string): Promise<any> {
+    const response = await apiClient.get(ENDPOINTS.bankAnalysis.insights, {
+      params: { boardId },
+    }) as any;
+
+    const payload = readApiData<{ insights?: any }>(response, {});
+    return payload.insights ?? payload;
   },
 };
 

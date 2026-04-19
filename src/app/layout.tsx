@@ -1,17 +1,17 @@
 import type { Metadata } from 'next';
 import { websiteManifest } from '@/config/platform';
-import { AuthSessionProvider } from '@/components/auth/AuthSessionProvider';
+import NextAppProviders from '@/providers/NextAppProviders';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: {
     template: '%s | ConcursoMestre',
-    default: 'ConcursoMestre | Questoes, simulados, ranking e materiais para concursos',
+    default: websiteManifest.website.title,
   },
   metadataBase: new URL(websiteManifest.website.canonicalUrl),
-  description: 'Plataforma de questoes para concursos com simulados, ranking, assinatura, desempenho e marketplace de materiais.',
-  applicationName: 'ConcursoMestre',
-  authors: [{ name: "4quarenta" }],
+  description: websiteManifest.website.description,
+  applicationName: websiteManifest.website.applicationName,
+  authors: [{ name: '4quarenta' }],
   generator: 'Next.js',
   keywords: ['concursos', 'questoes', 'simulados', 'ranking', 'marketplace'],
   referrer: 'origin',
@@ -42,9 +42,7 @@ export default function RootLayout({
         className="min-h-full flex flex-col no-scrollbar bg-slate-50 text-slate-900 transition-colors dark:bg-slate-900 dark:text-slate-100"
         suppressHydrationWarning
       >
-        <AuthSessionProvider>
-          {children}
-        </AuthSessionProvider>
+        <NextAppProviders>{children}</NextAppProviders>
       </body>
     </html>
   );

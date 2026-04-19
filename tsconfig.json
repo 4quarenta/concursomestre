@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
     "lib": [
       "dom",
       "dom.iterable",
@@ -8,8 +10,10 @@
     ],
     "allowJs": true,
     "skipLibCheck": true,
-    "strict": true,
     "noEmit": true,
+    "types": [
+      "node"
+    ],
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -22,6 +26,7 @@
         "name": "next"
       }
     ],
+    "baseUrl": ".",
     "paths": {
       "@/*": [
         "./src/*"
@@ -29,13 +34,24 @@
       "@services/*": [
         "./src/services/*"
       ],
+      "@providers/*": [
+        "./src/providers/*"
+      ],
+      "@constants": [
+        "./src/constants/index.ts"
+      ],
       "@constants/*": [
         "./src/constants/*"
       ],
       "@types": [
         "./src/types/index.ts"
+      ],
+      "types": [
+        "./src/types/index.ts"
       ]
-    }
+    },
+    "allowImportingTsExtensions": true,
+    "strict": false
   },
   "include": [
     "next-env.d.ts",
@@ -51,6 +67,8 @@
     "node_modules",
     "mobile",
     "docs",
-    "scripts"
+    "scripts",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
   ]
 }

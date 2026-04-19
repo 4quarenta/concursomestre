@@ -1,29 +1,43 @@
-import { safeServerFetch } from '@/lib/api';
-import { mergePublicSystemSettings } from '@/lib/publicSettings';
-import AuthPageClient from '@/components/auth/AuthPageClient';
-import type { SystemSettings } from '@/types';
-import { readFirstSearchParam, type RouteSearchParams } from '@/lib/searchParams';
+'use client';
 
-type AuthPageProps = {
-  searchParams: Promise<RouteSearchParams>;
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
+import React from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@providers/AuthProvider';
+import Auth from './components/Auth';
+
+/**
+ * Entry point oficial da autenticação.
+ */
+const AuthPage: React.FC = () => {
+  const router = useRouter();
+  const { currentUser, login } = useAuth();
+
+  React.useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    const redirect = window.sessionStorage.getItem('redirectAfterLogin') || '/';
+    window.sessionStorage.removeItem('redirectAfterLogin');
+    router.replace(redirect);
+  }, [currentUser, router]);
+
+  if (currentUser) {
+    return null;
+  }
+
+  return <Auth onLogin={login} />;
 };
 
-export default async function AuthPage({ searchParams }: AuthPageProps) {
-  const resolvedSearchParams = await searchParams;
-  const settings = mergePublicSystemSettings(
-    await safeServerFetch<Partial<SystemSettings>>('settings.php', {}),
-  );
-  const requestedMode = readFirstSearchParam(resolvedSearchParams.mode);
-  const redirectTo = readFirstSearchParam(resolvedSearchParams.redirect);
-  const referralCode = readFirstSearchParam(resolvedSearchParams.ref)
-    ?? readFirstSearchParam(resolvedSearchParams.referral);
-
-  return (
-    <AuthPageClient
-      initialMode={requestedMode === 'signup' ? 'signup' : 'login'}
-      redirectTo={redirectTo}
-      referralCode={referralCode}
-      systemSettings={settings}
-    />
-  );
-}
+export default AuthPage;

@@ -1,0 +1,240 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
+import React, { useEffect, useState } from 'react';
+import { CheckCircle2, Clock, Database, Loader2, RefreshCcw, Trash2, X } from 'lucide-react';
+import { useToast } from '@providers/ToastProvider';
+import { adminService } from '@services/admin/adminService';
+import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
+
+/**
+ * Controle operacional do cache administrativo.
+ * Mantem leitura, limpeza e configuracao de TTL dentro do service oficial.
+ */
+const AdminCacheManagement = () => {
+  const { addToast } = useToast();
+  const [cacheStats, setCacheStats] = useState<any>(null);
+  const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  const [draftTtl, setDraftTtl] = useState('300');
+  const [isClearCacheDialogOpen, setIsClearCacheDialogOpen] = useState(false);
+
+  const fetchCacheStats = async () => {
+    setLoadingKey((current) => current || 'refresh');
+    try {
+      const data = await adminService.getCacheStats();
+      setCacheStats(data);
+      setDraftTtl(String(data.default_ttl || 300));
+    } catch (error) {
+      setCacheStats({
+        total_files: 0,
+        valid_entries: 0,
+        expired_entries: 0,
+        total_size_mb: 0,
+        enabled: true,
+        default_ttl: 300,
+        table_name: null,
+        source: 'none',
+        supports_expiration: false,
+        supports_size_estimate: false,
+      });
+      addToast('Não foi possível carregar as estatísticas de cache.', 'error');
+    } finally {
+      setLoadingKey(null);
+    }
+  };
+
+  useEffect(() => {
+    void fetchCacheStats();
+  }, []);
+
+  const runAction = async (actionKey: string, operation: () => Promise<string>) => {
+    if (loadingKey) {
+      return;
+    }
+
+    setLoadingKey(actionKey);
+    try {
+      const nextMessage = await operation();
+      setMessage(nextMessage);
+      addToast(nextMessage, 'success');
+      await fetchCacheStats();
+      window.setTimeout(() => setMessage(''), 3500);
+    } catch (error: any) {
+      const errorMessage = error?.message || 'Não foi possível executar a operação de cache.';
+      setMessage(errorMessage);
+      addToast(errorMessage, 'error');
+    } finally {
+      setLoadingKey(null);
+      setIsClearCacheDialogOpen(false);
+    }
+  };
+
+  if (!cacheStats) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 size={24} className="animate-spin text-indigo-500" />
+      </div>
+    );
+  }
+
+  const nextEnabled = !cacheStats.enabled;
+
+  return (
+    <div className="space-y-6">
+      <AdminConfirmDialog
+        isOpen={isClearCacheDialogOpen}
+        title="Limpar todo o cache"
+        description="Essa ação remove todas as entradas do cache administrativo e operacional. Use apenas quando precisar forçar uma nova reconstrução do runtime."
+        confirmLabel="Limpar cache"
+        tone="danger"
+        loading={loadingKey === 'clear'}
+        onConfirm={() => void runAction('clear', () => adminService.clearCache())}
+        onCancel={() => setIsClearCacheDialogOpen(false)}
+      />
+
+      {message && (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/10 dark:text-emerald-300">
+          <CheckCircle2 size={16} />
+          {message}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Entradas</p>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.total_files || 0}</p>
+        </div>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/30 dark:bg-emerald-900/10">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">Válidas</p>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.valid_entries || 0}</p>
+        </div>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/30 dark:bg-amber-900/10">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">Expiradas</p>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.expired_entries || 0}</p>
+        </div>
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900/30 dark:bg-indigo-900/10">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Tamanho</p>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.total_size_mb || 0} MB</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Tabela ativa</p>
+          <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.table_name || 'Não encontrada'}</p>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{cacheStats.source || 'none'}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr),minmax(0,1fr)]">
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Status do cache</h4>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                {cacheStats.enabled ? 'Cache ativo e pronto para servir respostas.' : 'Cache desligado. As respostas serão calculadas sem armazenamento intermediário.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void runAction('toggle', () => adminService.saveCacheSettings({ enabled: nextEnabled, default_ttl: Number(draftTtl) || 300 }))}
+              disabled={!!loadingKey}
+              className={`relative inline-flex h-9 w-16 items-center rounded-full border transition-all ${
+                cacheStats.enabled ? 'border-emerald-500 bg-emerald-500/90' : 'border-slate-200 bg-slate-200 dark:border-slate-700 dark:bg-slate-800'
+              } ${loadingKey ? 'cursor-not-allowed opacity-60' : ''}`}
+            >
+              <span className={`inline-block h-7 w-7 rounded-full bg-white shadow transition-transform ${cacheStats.enabled ? 'translate-x-8' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-[minmax(0,1fr),auto]">
+            <div className="space-y-1.5">
+              <label className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">TTL padrão (segundos)</label>
+              <input
+                type="number"
+                min={1}
+                value={draftTtl}
+                onChange={(event) => setDraftTtl(event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void runAction('settings', () => adminService.saveCacheSettings({ enabled: !!cacheStats.enabled, default_ttl: Number(draftTtl) || 300 }))}
+              disabled={!!loadingKey}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loadingKey === 'settings' ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
+              Salvar TTL
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Expiração por linha</p>
+              <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_expiration ? 'Suportada' : 'Não suportada'}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Estimativa de tamanho</p>
+              <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_size_estimate ? 'Disponível' : 'Não suportada'}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Operações</h4>
+          <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Executa limpeza real e recarrega o estado vindo do backend oficial.</p>
+          <div className="mt-6 space-y-3">
+            <button
+              type="button"
+              onClick={() => void runAction('clean', () => adminService.cleanExpiredCache())}
+              disabled={!!loadingKey}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loadingKey === 'clean' ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Limpar expirados
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsClearCacheDialogOpen(true)}
+              disabled={!!loadingKey}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-600 px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <X size={14} />
+              Limpar todo cache
+            </button>
+            <button
+              type="button"
+              onClick={() => void fetchCacheStats()}
+              disabled={!!loadingKey}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-slate-700 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+            >
+              {loadingKey === 'refresh' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+              Atualizar leitura
+            </button>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+            <div className="flex items-center gap-2">
+              <Database size={16} className="text-indigo-500" />
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Fonte detectada</p>
+            </div>
+            <p className="mt-3 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+              {cacheStats.table_name
+                ? `A leitura atual usa a tabela ${cacheStats.table_name}.`
+                : 'Nenhuma tabela de cache ativa foi encontrada no banco.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AdminCacheManagement;

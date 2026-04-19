@@ -36,14 +36,17 @@ export interface Banca {
   id: number;
   sigla: string;
   nome: string;
+  name?: string;
   slug: string;
   descrição?: string;
+  descricao?: string;
   oab?: boolean;
 }
 
 export interface Orgao {
   id: number;
   nome: string;
+  name?: string;
   sigla?: string;
   slug: string;
   uf?: string;
@@ -54,11 +57,14 @@ export interface Cargo {
   id: number;
   slug: string;
   descrição: string;
+  descricao?: string;
+  name?: string;
 }
 
 export interface Assunto {
   id: number;
   nome: string;
+  name?: string;
   nome_clean?: string;
   slug: string;
   materia: boolean;
@@ -113,6 +119,7 @@ export interface ErrorReport {
   status: 'pending' | 'resolved' | 'ignored';
   timestamp: number;
   evidenceUrl?: string; // Evidência enviada pelo usuário na denúncia
+  resolution?: string;
   resolvedAt?: number;
 }
 
@@ -387,7 +394,9 @@ export interface UserProfile {
   paymentIssue?: {
     message?: string;
     code?: string;
+    type?: string;
   };
+  planDisplayName?: string;
   billing: {
     plan: 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
     billingCycle: 'monthly' | 'quarterly' | 'annual';
@@ -708,12 +717,13 @@ export interface TaxonomyItem {
   name: string;
   slug?: string;
   parentId?: string;
-  type?: 'agency' | 'subject' | 'topic' | 'role' | 'year' | 'modality' | 'career';
+  type?: 'agency' | 'subject' | 'topic' | 'role' | 'year' | 'modality' | 'career' | string;
   description?: string;
   website?: string;
 }
 
 export interface GlobalTaxonomies {
+  areas?: TaxonomyItem[];
   agencies: TaxonomyItem[];
   organizations: TaxonomyItem[];
   subjects: TaxonomyItem[];
@@ -742,6 +752,7 @@ export interface StripePaymentMethodsSettings {
 }
 
 export interface SystemSettings {
+  appName?: string;
   activeTheme: AppPromotionTheme;
   paymentProvider?: 'stripe';
   paymentCheckoutMode?: 'internal' | 'redirect';
