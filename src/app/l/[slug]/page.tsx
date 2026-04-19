@@ -1,1 +1,1 @@
-export { default } from '../../landing-campaign/page';
+export { default } from '../../landing-campaign/LandingCampaignPage';

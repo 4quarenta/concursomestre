@@ -11,7 +11,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertTriangle, Maximize, FileText, Layout, List, StickyNote, Save, MessageSquare, Bookmark as BookmarkIcon, Clock, Trash2, GraduationCap } from 'lucide-react';
-import * as pdfjs from 'pdfjs-dist';
 // import 'pdfjs-dist/web/pdf_viewer.css'; // Removed to prevent conflict
 import { apiClient, ENDPOINTS } from '@services/api'; // Ensure this path is correct based on project structure
 import { readerService } from '@services/materials';
@@ -19,6 +18,11 @@ import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import CommentsSection from '../feedback/CommentsSection';
+
+type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
+type PdfDocumentProxy = import('pdfjs-dist/legacy/build/pdf.mjs').PDFDocumentProxy;
+
+let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
 
 // Estilos para TextLayer
 const styles = `
@@ -56,10 +60,19 @@ if (typeof document !== 'undefined') {
     document.head.appendChild(styleEl);
 }
 
-// Configurar worker do pdfjs ? o Vite resolve o ?url para o caminho correto em node_modules
-// @ts-ignore
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+const loadPdfJsModule = async (): Promise<PdfJsModule> => {
+    if (!pdfJsModulePromise) {
+        pdfJsModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs').then((module) => {
+            module.GlobalWorkerOptions.workerSrc = new URL(
+                'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
+                import.meta.url,
+            ).toString();
+            return module;
+        });
+    }
+
+    return pdfJsModulePromise;
+};
 
 interface PdfViewerProps {
     url: string;
@@ -101,12 +114,13 @@ const StudyTimer: React.FC = () => {
 };
 
 interface PdfPageProps {
-    pdfDoc: pdfjs.PDFDocumentProxy;
+    pdfDoc: PdfDocumentProxy;
+    pdfjsModule: PdfJsModule;
     pageNum: number;
     scale: number;
 }
 
-const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pageNum, scale }) => {
+const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pdfjsModule, pageNum, scale }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const textLayerRef = useRef<HTMLDivElement>(null);
     const renderTaskRef = useRef<any>(null);
@@ -171,7 +185,7 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pageNum, scale }) => {
                     const textContent = await page.getTextContent();
 
                     try {
-                        const pdfjsAny = pdfjs as any;
+                        const pdfjsAny = pdfjsModule as any;
 
                         if (false /* pdfjsAny.renderTextLayer */) {
                             await pdfjsAny.renderTextLayer({
@@ -184,8 +198,8 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pageNum, scale }) => {
                         } else {
                             // Fallback manual — usar mesma rotação do canvas para alinhamento correto
                             textContent.items.forEach((item: any) => {
-                                const tx = pdfjs.Util.transform(
-                                    pdfjs.Util.transform(
+                                const tx = pdfjsModule.Util.transform(
+                                    pdfjsModule.Util.transform(
                                         page.getViewport({ scale: scale, rotation: page.rotate }).transform, // Use same rotation as canvas
                                         item.transform
                                     ),
@@ -223,7 +237,7 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pageNum, scale }) => {
                 renderTaskRef.current = null;
             }
         };
-    }, [pdfDoc, pageNum, scale]);
+    }, [pdfDoc, pageNum, pdfjsModule, scale]);
 
 
     return (
@@ -237,7 +251,8 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pageNum, scale }) => {
 const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode = 'modal', materialId, password }) => {
     const { currentUser } = useAuth();
     const { addToast } = useToast();
-    const [pdfDoc, setPdfDoc] = useState<pdfjs.PDFDocumentProxy | null>(null);
+    const [pdfjsModule, setPdfjsModule] = useState<PdfJsModule | null>(null);
+    const [pdfDoc, setPdfDoc] = useState<PdfDocumentProxy | null>(null);
     const [pageNum, setPageNum] = useState(1);
     const [scale, setScale] = useState(1.0);
     const [displayMode, setDisplayMode] = useState<'page' | 'scroll'>('page');
@@ -278,12 +293,39 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                 fetchComments();
             }
         } else {
+            setPdfjsModule(null);
             setPdfDoc(null);
             setPageNum(1);
             setScale(1.0);
             setLoading(false);
         }
     }, [isOpen, url, materialId, currentUser, password]);
+
+    useEffect(() => {
+        if (!isOpen || typeof window === 'undefined') {
+            return;
+        }
+
+        let isMounted = true;
+
+        loadPdfJsModule()
+            .then((module) => {
+                if (isMounted) {
+                    setPdfjsModule(module);
+                }
+            })
+            .catch((err) => {
+                console.error('Failed to initialize PDF.js:', err);
+                if (isMounted) {
+                    setError('Nao foi possivel inicializar o leitor PDF.');
+                    setLoading(false);
+                }
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [isOpen]);
 
     // Busca comentários do material no backend ao abrir o viewer
     const fetchComments = async () => {
@@ -316,6 +358,8 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
         setError(null);
         try {
             console.log('[PdfViewer] loadPdf start. url:', url, '| password:', password);
+            const pdfjs = await loadPdfJsModule();
+            setPdfjsModule(pdfjs);
             const getDocParams: any = { url };
             if (password) {
                 getDocParams.password = password;
@@ -557,6 +601,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                         {displayMode === 'page' ? (
                             <PdfPage
                                 pdfDoc={pdfDoc}
+                                pdfjsModule={pdfjsModule}
                                 pageNum={pageNum}
                                 scale={scale}
                             />
@@ -566,6 +611,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                                     <PdfPage
                                         key={num}
                                         pdfDoc={pdfDoc}
+                                        pdfjsModule={pdfjsModule}
                                         pageNum={num}
                                         scale={scale}
                                     />

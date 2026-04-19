@@ -27,7 +27,9 @@ import {
 import { buildAbsoluteUrl, buildRankingPath, buildRankingSlug, summarizeSeoText, useDocumentSeo } from '@services/seo';
 
 const RankingDetailPage: React.FC = () => {
-  const { id, slug } = useParams<{ id: string; slug?: string }>();
+  const params = useParams<{ id?: string; slug?: string | string[] }>();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const routeSlug = Array.isArray(params.slug) ? params.slug.join('/') : params.slug;
   const router = useRouter();
   const [ranking, setRanking] = React.useState<Ranking | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -89,10 +91,10 @@ const RankingDetailPage: React.FC = () => {
     }
 
     const canonicalSlug = buildRankingSlug(ranking);
-    if (slug !== canonicalSlug) {
+    if (routeSlug !== canonicalSlug) {
       router.replace(canonicalPath);
     }
-  }, [canonicalPath, ranking, router, slug]);
+  }, [canonicalPath, ranking, routeSlug, router]);
 
   useDocumentSeo(ranking ? {
     title: `${summarizeSeoText(`${ranking.name} ${ranking.institution}`, 60)} | ConcursoMestre`,

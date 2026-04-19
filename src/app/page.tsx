@@ -1,8 +1,8 @@
 'use client';
 
 import { useAuth } from '@providers/AuthProvider';
-import DashboardPage from './dashboard/page';
-import LandingPage from './landing/page';
+import DashboardPage from './dashboard/DashboardPage';
+import LandingPage from './landing/LandingPage';
 
 export default function HomePage() {
   const { currentUser } = useAuth();

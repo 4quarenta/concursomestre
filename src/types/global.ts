@@ -806,9 +806,11 @@ export interface SystemSettings {
   adBannerSidebar?: string;
   adBannerBottom?: string;
   geminiApiKey?: string;
+  hasGeminiApiKeyConfigured?: boolean;
   recaptchaEnabled?: boolean;
   recaptchaSiteKey?: string;
   recaptchaSecretKey?: string;
+  hasRecaptchaSecretConfigured?: boolean;
 
   googleAnalyticsId?: string;
   metaPixelId?: string;
@@ -823,6 +825,7 @@ export interface SystemSettings {
   smtpSecure?: 'tls' | 'ssl';
   smtpUser?: string;
   smtpPass?: string;
+  hasSmtpPasswordConfigured?: boolean;
   mailFromAddress?: string;
   mailFromName?: string;
   stripeKey?: string;

@@ -1,1 +1,1 @@
-export { default } from '../../performance-subjects/page';
+export { default } from '../../performance-subjects/PerformanceSubjectsPage';

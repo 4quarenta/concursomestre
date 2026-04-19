@@ -1,1 +1,1 @@
-export { default } from '../bank-analysis/page';
+export { default } from '../bank-analysis/BankAnalysisPage';

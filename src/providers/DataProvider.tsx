@@ -97,9 +97,12 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     sameTierCycleChangeEnabled: false,
   },
   geminiApiKey: '',
+  hasGeminiApiKeyConfigured: false,
   recaptchaEnabled: false,
   recaptchaSiteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI', // Chave de teste pública do Google
-  recaptchaSecretKey: ''
+  recaptchaSecretKey: '',
+  hasRecaptchaSecretConfigured: false,
+  hasSmtpPasswordConfigured: false
 };
 
 const FEATURE_SETTING_KEYS = Object.keys(DEFAULT_SYSTEM_SETTINGS.features) as Array<keyof SystemSettings['features']>;
@@ -184,15 +187,28 @@ const mergeSystemSettings = (
   };
 };
 
+const sanitizePersistedSystemSettings = (settings: SystemSettings): SystemSettings => {
+  const nextSettings = { ...settings };
+  const smtpPass = typeof nextSettings.smtpPass === 'string' ? nextSettings.smtpPass.trim() : '';
+
+  if (smtpPass !== '') {
+    nextSettings.hasSmtpPasswordConfigured = true;
+  }
+
+  nextSettings.smtpPass = '';
+
+  return nextSettings;
+};
+
 const resolvePersistedSystemSettings = (
   fallback: SystemSettings,
   persisted?: Partial<SystemSettings> | null,
 ): SystemSettings => {
   if (persisted && Object.keys(persisted).length > 0) {
-    return mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, persisted);
+    return sanitizePersistedSystemSettings(mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, persisted));
   }
 
-  return mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, fallback);
+  return sanitizePersistedSystemSettings(mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, fallback));
 };
 
 interface DataState {
@@ -830,7 +846,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     adminService.getSystemSettings()
       .then((settingsPayload) => {
         if (settingsPayload && Object.keys(settingsPayload).length > 0) {
-          const normalizedSettings = mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, settingsPayload);
+          const normalizedSettings = resolvePersistedSystemSettings(DEFAULT_SYSTEM_SETTINGS, settingsPayload);
           lastSavedSystemSettingsRef.current = normalizedSettings;
           dispatch({ type: 'UPDATE_SYSTEM_SETTINGS', payload: normalizedSettings });
         }

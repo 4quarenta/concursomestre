@@ -32,7 +32,7 @@ const DevModeBanner: React.FC = () => {
     if (systemSettings?.appMode === 'production' || dismissed) return null;
 
     const smtpConfigured = !!(systemSettings?.smtpHost && systemSettings?.smtpUser);
-    const apiKeySet = !!(systemSettings?.geminiApiKey);
+    const apiKeySet = !!(systemSettings?.hasGeminiApiKeyConfigured || systemSettings?.geminiApiKey);
 
     return (
         <div className="fixed bottom-0 left-0 right-0 z-[9998] pointer-events-none">

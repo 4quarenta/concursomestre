@@ -1,1 +1,1 @@
-export { default } from '../../reader/page';
+export { default } from '../../reader/ReaderPage';

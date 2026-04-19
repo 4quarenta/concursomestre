@@ -100,7 +100,9 @@ export const useAdminPageController = () => {
       hash: typeof window !== 'undefined' ? window.location.hash : '',
     };
   }, [pathname, searchParams]);
-  const params = useParams<{ tab?: string; section?: string }>();
+  const params = useParams<{ tab?: string | string[]; section?: string | string[] }>();
+  const routeTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  const routeSection = Array.isArray(params.section) ? params.section.join('/') : params.section;
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [activeTab, setActiveTabState] = useState<AdminPageTab>('panel');
@@ -187,8 +189,8 @@ export const useAdminPageController = () => {
    */
   useEffect(() => {
     const route = resolveAdminRoute(
-      params.tab || legacySearchParams.get('tab'),
-      params.section || legacySearchParams.get('section'),
+      routeTab || legacySearchParams.get('tab'),
+      routeSection || legacySearchParams.get('section'),
     );
 
     setActiveTabState(route.tab);
@@ -207,8 +209,8 @@ export const useAdminPageController = () => {
     void ensureRankingsLoaded();
     void ensureTaxonomiesLoaded();
   }, [
-    params.tab,
-    params.section,
+    routeSection,
+    routeTab,
     legacySearchParams,
     location.hash,
     location.pathname,

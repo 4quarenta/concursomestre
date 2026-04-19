@@ -1,1 +1,1 @@
-export { default } from '../terms-of-adhesion/page';
+export { default } from '../CheckoutAdhesionTermsPage';

@@ -196,7 +196,7 @@ export const useManualQuestionWorkflow = ({
         ...manualQ,
         options: manualQ.itens.map((item: any) => item.corpo).filter((option: string) => option),
       } as Question;
-      const detail = await aiService.generateDetailedAnalysis(systemSettings.geminiApiKey || '', question);
+      const detail = await aiService.generateDetailedAnalysis(question);
       setManualQ((previous: any) => ({ ...previous, detailedComment: detail }));
     } catch (error) {
       addToast('Erro ao gerar análise detalhada da questão.', 'error');
@@ -212,7 +212,7 @@ export const useManualQuestionWorkflow = ({
         ...manualQ,
         options: manualQ.itens.map((item: any) => item.corpo).filter((option: string) => option),
       } as Question;
-      const comment = await aiService.generateTeacherComment(systemSettings.geminiApiKey || '', question);
+      const comment = await aiService.generateTeacherComment(question);
       setManualQ((previous: any) => ({ ...previous, teacherComment: comment }));
     } catch (error) {
       addToast('Erro ao gerar comentário do professor.', 'error');

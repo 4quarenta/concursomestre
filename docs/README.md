@@ -10,20 +10,30 @@ A tentativa anterior de manter uma aplicacao Next separada foi encerrada. Os scr
 
 Snapshots de codigo antigo que ficavam em `docs/legacy/workspace-backups` tambem foram removidos. O backup oficial para comparacao agora e o branch `master`.
 
-## Documentos principais
+## Documentacao operacional atual
 
 - `NEXT_PLATFORM_CONSOLIDATION.md`
 - `NEXTJS_MIGRATION.md`
-- `LEGACY_WEB_INVENTORY.md`
+- `PRODUCTION_READINESS_AUDIT_PLAN.md`
 - `PLATFORM_1_0_0_AUDIT_PROGRAM.md`
+- `LEGACY_WEB_INVENTORY.md`
 - `VERCEL_ROOT_TRANSITION.md`
 - `GOOGLE_SEARCH_CONSOLE.md`
-- `ARQUITETURA_CONSOLIDADA.md`
+- `ADMIN_PANEL_REBUILD_BLUEPRINT.md`
 - `PRODUTO_E_MODULOS.md`
-- `ADMIN_CONSOLIDADO.md`
 - `BILLING_E_VALIDACAO.md`
+- `STRIPE_CARD_VAULT_OPERATIONS.md`
+- `STRIPE_TESTING_MATRIX_ADMIN.md`
 - `ENCODING_E_TEXTO.md`
 - `MOBILE_TRANSITIONS.md`
+
+## Historico preservado
+
+Documentos que guardam auditorias antigas, consolidacoes anteriores e contexto de rodadas fechadas agora ficam em `docs/history/`.
+
+- `history/README.md`
+- `history/consolidated/ARQUITETURA_CONSOLIDADA.md`
+- `history/admin/`
 
 ## Checks locais atuais
 
@@ -42,6 +52,9 @@ npm run check:text-encoding
 Relatorio atual da paridade Next:
 
 - `reports/next-root-parity-audit-latest.md`
+- `reports/root-cleanup-inventory-latest.md`
+- `reports/documentation-audit-latest.md`
+- `reports/code-cleanup-audit-latest.md`
 
 ## Regra de integridade de texto
 

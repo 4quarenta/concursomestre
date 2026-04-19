@@ -101,8 +101,8 @@ const AdminPanelSection = ({
     },
     {
       label: 'Webhook Stripe',
-      value: systemSettings?.hasStripeWebhookConfigured || systemSettings?.stripeWebhookSecret ? 'Configurado' : 'Nao comprovado',
-      tone: systemSettings?.hasStripeWebhookConfigured || systemSettings?.stripeWebhookSecret ? 'emerald' : 'amber',
+      value: systemSettings?.hasStripeWebhookConfigured ? 'Configurado' : 'Nao comprovado',
+      tone: systemSettings?.hasStripeWebhookConfigured ? 'emerald' : 'amber',
     },
     {
       label: 'Cron oficial',
@@ -144,7 +144,6 @@ const AdminPanelSection = ({
     systemSettings?.hasStripeWebhookConfigured,
     systemSettings?.stripeKey,
     systemSettings?.stripePublishableKey,
-    systemSettings?.stripeWebhookSecret,
   ]);
 
   return (

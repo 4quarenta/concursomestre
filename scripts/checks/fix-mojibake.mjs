@@ -13,7 +13,7 @@ const roots = [
 ];
 
 const exts = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.json', '.md', '.php', '.sql', '.txt']);
-const ignoredPathFragments = ['node_modules', '.git', 'dist', 'docs\\legacy\\workspace-backups', '\\vendor\\'];
+const ignoredPathFragments = ['node_modules', '.git', 'dist', '\\vendor\\'];
 
 const replacements = new Map([
   ['Ã€', 'À'], ['Ã', 'Á'], ['Ã‚', 'Â'], ['Ãƒ', 'Ã'], ['Ã„', 'Ä'], ['Ã…', 'Å'],

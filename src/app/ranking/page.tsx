@@ -12,7 +12,6 @@
 */
 
 import React, { useState, useMemo } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
 import { Ranking, RankingEntry } from '../../types';
 import {
    Trophy, Plus, Users, BarChart3, ChevronRight,
@@ -22,8 +21,6 @@ import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 /**
  * Tela pública de rankings pos-prova.

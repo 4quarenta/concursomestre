@@ -1,1 +1,1 @@
-export { default } from '../../../ranking-detail/page';
+export { default } from '../../../ranking-detail/RankingDetailPage';

@@ -24,6 +24,8 @@ vi.mock('@services/api', () => ({
   ENDPOINTS: {
     subscriptions: {
       automationHelper: 'subscriptions/automation_helper.php',
+      stripeTestingMatrix: 'subscriptions/stripe_testing_matrix.php',
+      stripeTestingRuns: 'subscriptions/stripe_testing_runs.php',
       createStripeCheckout: 'subscriptions/create_stripe_checkout.php',
       createStripeSubscription: 'subscriptions/create_stripe_subscription.php',
       finalizeStripeSubscription: 'subscriptions/finalize_stripe_subscription.php',
@@ -75,6 +77,50 @@ describe('subscriptionsService', () => {
 
     expect(mockGet).toHaveBeenCalledWith('subscriptions/automation_helper.php');
     expect(response.cron_url).toContain('cron.php');
+  });
+
+  it('loads the official Stripe testing matrix through the subscriptions facade', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        scenarios: [
+          {
+            id: 'card-success',
+            title: 'Cartao aprovado',
+          },
+        ],
+      },
+    });
+
+    const response = await subscriptionsService.getStripeTestingMatrix();
+
+    expect(mockGet).toHaveBeenCalledWith('subscriptions/stripe_testing_matrix.php');
+    expect(response.scenarios).toHaveLength(1);
+    expect(response.scenarios[0].id).toBe('card-success');
+  });
+
+  it('registers a guided Stripe testing run through the official endpoint', async () => {
+    const payload = {
+      scenario_id: 'card-success',
+      execution_result: 'passed' as const,
+      payment_intent_id: 'pi_123',
+      subscription_id: 'sub_123',
+      transaction_id: 'tx_123',
+      evidence_url: 'https://example.com/evidence.png',
+      gateway_message: 'approved',
+      notes: 'Fluxo aprovado no ambiente de teste.',
+    };
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: 42,
+      },
+    });
+
+    const response = await subscriptionsService.createStripeTestingRun(payload);
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/stripe_testing_runs.php', payload);
+    expect(response.id).toBe(42);
   });
 
   it('creates the hosted Stripe checkout through the official subscriptions facade', async () => {
@@ -133,6 +179,36 @@ describe('subscriptionsService', () => {
     expect(response.success).toBe(true);
   });
 
+  it('creates an internal Stripe subscription using a saved card token', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        subscription_id: 'sub_saved_123',
+        requires_action: false,
+      },
+    });
+
+    const response = await subscriptionsService.createStripeSubscription({
+      plan_id: 4,
+      auto_renew: true,
+      coupon_code: 'FIDELIDADE15',
+      saved_card_id: 'card_123',
+      billing_mode: 'term_recurring',
+      installment_count: 12,
+    });
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/create_stripe_subscription.php', {
+      plan_id: 4,
+      auto_renew: true,
+      coupon_code: 'FIDELIDADE15',
+      saved_card_id: 'card_123',
+      billing_mode: 'term_recurring',
+      installment_count: 12,
+    });
+    expect(response.subscription_id).toBe('sub_saved_123');
+    expect(response.requires_action).toBe(false);
+  });
+
   it('finalizes the Stripe subscription through the official subscriptions facade', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
@@ -172,6 +248,53 @@ describe('subscriptionsService', () => {
     expect(response.status).toBe('pending');
   });
 
+  it('requests Stripe PIX capability activation through the administrative facade', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        requested: true,
+        capability: 'pix_payments',
+      },
+    });
+
+    const response = await subscriptionsService.requestStripePixCapability();
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/stripe_pix_capability.php', {
+      request: true,
+    });
+    expect(response.requested).toBe(true);
+    expect(response.capability).toBe('pix_payments');
+  });
+
+  it('validates a commercial coupon with plan targeting data', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        coupon: {
+          code: 'PRO20',
+          discountPercentage: 20,
+        },
+      },
+    });
+
+    const response = await subscriptionsService.validateCoupon('PRO20', 129.9, {
+      planId: 3,
+      targetType: 'plan',
+      targetId: 3,
+    });
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/validate_coupon.php', {
+      code: 'PRO20',
+      amount: 129.9,
+      plan_id: 3,
+      item_id: undefined,
+      target_type: 'plan',
+      target_id: 3,
+    });
+    expect(response.coupon.code).toBe('PRO20');
+    expect(response.coupon.discountPercentage).toBe(20);
+  });
+
   it('opens the stripe portal through the official endpoint', async () => {
     mockPost.mockResolvedValueOnce({
       success: true,
@@ -184,5 +307,75 @@ describe('subscriptionsService', () => {
 
     expect(mockPost).toHaveBeenCalledWith('subscriptions/create_stripe_portal.php', {});
     expect(response.url).toBe('https://billing.stripe.com/session/test');
+  });
+
+  it('updates automatic renewal preference through the official endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        auto_renew: false,
+      },
+    });
+
+    const response = await subscriptionsService.updateRenewal(false);
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/update_renewal.php', {
+      auto_renew: false,
+    });
+    expect(response.auto_renew).toBe(false);
+  });
+
+  it('requests subscription cancellation with optional context and captcha token', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        refund_processed: true,
+        refund_id: 're_123',
+      },
+    });
+
+    const response = await subscriptionsService.cancelSubscription(
+      'budget',
+      'Usuario pediu cancelamento com reembolso.',
+      'captcha-token',
+    );
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/cancel.php', {
+      reason: 'budget',
+      details: 'Usuario pediu cancelamento com reembolso.',
+      captchaToken: 'captcha-token',
+    });
+    expect(response.refund_processed).toBe(true);
+    expect(response.refund_id).toBe('re_123');
+  });
+
+  it('cancels a pending subscription refund request through the official endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        status: 'refund_cancelled',
+      },
+    });
+
+    const response = await subscriptionsService.cancelRefundRequest();
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/cancel_refund.php', {});
+    expect(response.status).toBe('refund_cancelled');
+  });
+
+  it('undoes a pending cancellation request through the official endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        status: 'active',
+        cancel_at_period_end: false,
+      },
+    });
+
+    const response = await subscriptionsService.undoCancellationRequest();
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/undo_cancel.php', {});
+    expect(response.status).toBe('active');
+    expect(response.cancel_at_period_end).toBe(false);
   });
 });

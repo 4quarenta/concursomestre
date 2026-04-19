@@ -29,7 +29,9 @@ import {
 import { buildAbsoluteUrl, buildMaterialPath, buildMaterialSlug, summarizeSeoText, useDocumentSeo } from '@services/seo';
 
 const MaterialPublicPage: React.FC = () => {
-  const { id, slug } = useParams<{ id: string; slug?: string }>();
+  const params = useParams<{ id?: string; slug?: string | string[] }>();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const routeSlug = Array.isArray(params.slug) ? params.slug.join('/') : params.slug;
   const router = useRouter();
   const { currentUser } = useAuth();
   const { transactions } = useMarketplace();
@@ -93,10 +95,10 @@ const MaterialPublicPage: React.FC = () => {
     }
 
     const canonicalSlug = buildMaterialSlug(material);
-    if (slug !== canonicalSlug) {
+    if (routeSlug !== canonicalSlug) {
       router.replace(canonicalPath);
     }
-  }, [canonicalPath, material, router, slug]);
+  }, [canonicalPath, material, routeSlug, router]);
 
   useDocumentSeo(material ? {
     title: `${summarizeSeoText(material.title, 60)} | ConcursoMestre`,

@@ -8,6 +8,7 @@ import { useData } from '@providers/DataProvider';
 import { canAccessAdminPanel } from '@services/auth';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import Layout from '@/components/shared/layout/Layout';
+import PageTransition from '@/components/PageTransition';
 import GlobalLoader from '@/components/GlobalLoader';
 import ModuleAccessFallback from '@/components/shared/feedback/ModuleAccessFallback';
 import DebugBanner from '@/components/shared/feedback/debug/DebugBanner';
@@ -18,7 +19,7 @@ import { buildAdminPath, resolveAdminRoute } from '../app/admin/config/adminPage
 const LAST_STABLE_ROUTE_KEY = 'lastStableRoute';
 const ROUTE_BEFORE_RELOAD_KEY = 'routeBeforeReload';
 
-const PUBLIC_WITHOUT_PLATFORM_SHELL = [
+const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/auth',
   '/reset-password',
   '/confirm-email',
@@ -28,10 +29,13 @@ const PUBLIC_WITHOUT_PLATFORM_SHELL = [
   '/planos',
   '/elite',
   '/checkout',
+  '/read',
+  '/subscription',
 ];
 
-const isPublicWithoutPlatformShell = (pathname: string) => (
-  PUBLIC_WITHOUT_PLATFORM_SHELL.some((path) => pathname === path || pathname.startsWith(`${path}/`))
+const isWithoutPlatformShell = (pathname: string) => (
+  pathname === '/profile'
+  || ROUTES_WITHOUT_PLATFORM_SHELL.some((path) => pathname === path || pathname.startsWith(`${path}/`))
   || pathname.startsWith('/l/')
 );
 
@@ -47,10 +51,8 @@ const followsGlobalLoginRequirement = (pathname: string) => (
 );
 
 const alwaysRequiresAuthenticatedUser = (pathname: string) => (
-  pathname === '/dashboard'
-  || pathname.startsWith('/profile')
+  pathname.startsWith('/profile')
   || pathname.startsWith('/performance')
-  || pathname.startsWith('/performance-subjects')
   || pathname.startsWith('/notifications')
   || pathname.startsWith('/support')
   || pathname.startsWith('/read')
@@ -311,6 +313,10 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     framedChildren = <ModuleAccessFallback description={`O modulo ${featureGate.label} nao esta disponivel para o seu perfil.`} />;
   }
 
+  if (!pathname.startsWith('/admin') && !pathname.startsWith('/profile')) {
+    framedChildren = <PageTransition>{framedChildren}</PageTransition>;
+  }
+
   const appOverlays = (
     <>
       <GlobalLoader />
@@ -328,7 +334,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     );
   }
 
-  if (pathname.startsWith('/admin') || pathname === '/partner-dashboard' || isPublicWithoutPlatformShell(pathname)) {
+  if (pathname.startsWith('/admin') || pathname === '/partner-dashboard' || isWithoutPlatformShell(pathname)) {
     return (
       <>
         {framedChildren}

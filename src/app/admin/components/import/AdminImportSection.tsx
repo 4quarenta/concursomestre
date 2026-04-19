@@ -98,12 +98,12 @@ const AdminImportSection = ({
             <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700/50 dark:bg-slate-800/50">
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                  <Zap size={12} className={systemSettings.geminiApiKey?.startsWith('AIza') ? 'text-emerald-500' : 'text-slate-400'} />
+                  <Zap size={12} className={systemSettings.hasGeminiApiKeyConfigured || systemSettings.geminiApiKey ? 'text-emerald-500' : 'text-slate-400'} />
                   Gemini API Key
                 </label>
-                {systemSettings.geminiApiKey?.startsWith('AIza') && (
+                {systemSettings.hasGeminiApiKeyConfigured && (
                   <span className="flex items-center gap-1 text-[9px] font-black uppercase text-emerald-500">
-                    <CheckCircle2 size={10} /> Ativa
+                    <CheckCircle2 size={10} /> Configurada
                   </span>
                 )}
               </div>
@@ -112,7 +112,7 @@ const AdminImportSection = ({
                   type="password"
                   value={systemSettings.geminiApiKey || ''}
                   onChange={(event) => onGeminiApiKeyChange(event.target.value)}
-                  placeholder="Cole sua API Key aqui (AIza...)"
+                  placeholder={systemSettings.hasGeminiApiKeyConfigured ? 'Digite uma nova chave para substituir a atual' : 'Cole sua API Key aqui (AIza...)'}
                   className="h-9 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
                 />
                 <button
@@ -124,10 +124,15 @@ const AdminImportSection = ({
                   {isSavingSettings ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 </button>
               </div>
-              {!systemSettings.geminiApiKey && (
+              {!systemSettings.hasGeminiApiKeyConfigured && !systemSettings.geminiApiKey && (
                 <p className="text-[9px] font-medium leading-tight text-amber-600 dark:text-amber-400">
                   <AlertTriangle size={10} className="mr-1 inline" />
                   Necessario configurar uma chave valida para extrair questões.
+                </p>
+              )}
+              {systemSettings.hasGeminiApiKeyConfigured && !systemSettings.geminiApiKey && (
+                <p className="text-[9px] font-medium leading-tight text-slate-500 dark:text-slate-400">
+                  A chave atual fica oculta por seguranca. Preencha o campo apenas para substituir.
                 </p>
               )}
             </div>

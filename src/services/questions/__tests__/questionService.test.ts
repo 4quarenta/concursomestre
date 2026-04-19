@@ -40,9 +40,21 @@ vi.mock('@services/api', () => ({
 
     return response ?? fallback;
   },
+  readApiErrorMessage: (response: any, fallback = '') => {
+    if (typeof response?.error === 'string') {
+      return response.error;
+    }
+
+    if (typeof response?.message === 'string' && response?.success === false) {
+      return response.message;
+    }
+
+    return fallback;
+  },
   ENDPOINTS: {
     questions: {
       list: 'questionsList',
+      show: 'questionsShow',
       create: 'questionsCreate',
       update: 'questionsUpdate',
       delete: 'questionsDelete',

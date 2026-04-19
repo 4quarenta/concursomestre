@@ -10,11 +10,27 @@
 */
 
 import { useState } from 'react';
-import * as pdfjs from 'pdfjs-dist';
 import type { Question, SystemSettings } from '@types';
 import { aiService } from '@services/questions';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://esm.sh/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs`;
+type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
+
+let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
+
+const loadPdfJsModule = async (): Promise<PdfJsModule> => {
+  if (!pdfJsModulePromise) {
+    pdfJsModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs').then((module) => {
+      module.GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
+        import.meta.url,
+      ).toString();
+
+      return module;
+    });
+  }
+
+  return pdfJsModulePromise;
+};
 
 export type GenerateSpecificType = 'teacher' | 'detailed';
 
@@ -74,12 +90,13 @@ export const useAdminImportWorkflow = ({
     setKeyProgress(0);
 
     try {
+      const pdfjs = await loadPdfJsModule();
       addLog('Iniciando leitura do Gabarito...');
       const keyBuffer = await kFile.arrayBuffer();
       const keyPdf = await pdfjs.getDocument(keyBuffer).promise;
       const keyImage = await pdfToImage(keyPdf, 1);
       setKeyProgress(50);
-      const keyMap = await aiService.extractAnswerKeyMapping(systemSettings.geminiApiKey || '', keyImage);
+      const keyMap = await aiService.extractAnswerKeyMapping(keyImage);
       setKeyProgress(100);
       addLog('Gabarito oficial mapeado pela IA.');
 
@@ -95,11 +112,7 @@ export const useAdminImportWorkflow = ({
         addLog(`Lendo pág ${pageIndex}/${pagesCount}...`);
 
         const pageImage = await pdfToImage(questionPdf, pageIndex);
-        const result = await aiService.extractQuestionsFromPage(
-          systemSettings.geminiApiKey || '',
-          pageImage,
-          extractWithComment,
-        );
+        const result = await aiService.extractQuestionsFromPage(pageImage, extractWithComment);
 
         if (result.questions && result.questions.length > 0) {
           addLog(`${result.questions.length} questões encontradas na pág ${pageIndex}.`);
@@ -174,7 +187,7 @@ export const useAdminImportWorkflow = ({
     for (let index = 0; index < totalQuestions; index += 1) {
       if (!updatedQuestions[index].detailedComment) {
         try {
-          const detail = await aiService.generateDetailedAnalysis(systemSettings.geminiApiKey || '', updatedQuestions[index]);
+          const detail = await aiService.generateDetailedAnalysis(updatedQuestions[index]);
           updatedQuestions[index] = { ...updatedQuestions[index], detailedComment: detail };
           setExtractedQuestions([...updatedQuestions]);
         } catch (error) {
@@ -196,10 +209,10 @@ export const useAdminImportWorkflow = ({
     try {
       let updatedQuestion = { ...question };
       if (type === 'teacher') {
-        const comment = await aiService.generateTeacherComment(systemSettings.geminiApiKey || '', question);
+        const comment = await aiService.generateTeacherComment(question);
         updatedQuestion.teacherComment = comment;
       } else {
-        const detail = await aiService.generateDetailedAnalysis(systemSettings.geminiApiKey || '', question);
+        const detail = await aiService.generateDetailedAnalysis(question);
         updatedQuestion.detailedComment = detail;
       }
 

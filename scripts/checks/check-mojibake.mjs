@@ -13,7 +13,7 @@ const roots = [
 ];
 
 const exts = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.json', '.md', '.php', '.sql', '.txt']);
-const ignoredPathFragments = ['node_modules', '.git', 'dist', 'docs\\legacy\\workspace-backups', '\\vendor\\'];
+const ignoredPathFragments = ['node_modules', '.git', 'dist', '\\vendor\\'];
 
 const suspectTokens = [
   'Ã¡', 'Ã¢', 'Ã£', 'Ã¤', 'Ã©', 'Ãª', 'Ã­', 'Ã³', 'Ã´', 'Ãµ', 'Ãº', 'Ã§',

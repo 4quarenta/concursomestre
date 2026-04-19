@@ -30,7 +30,9 @@ import { buildAbsoluteUrl, buildQuestionPath, buildQuestionSlug, getQuestionSeoL
 const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 const QuestionPublicPage: React.FC = () => {
-  const { id, slug } = useParams<{ id: string; slug?: string }>();
+  const params = useParams<{ id?: string; slug?: string | string[] }>();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const routeSlug = Array.isArray(params.slug) ? params.slug.join('/') : params.slug;
   const router = useRouter();
   const [question, setQuestion] = React.useState<Question | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -87,10 +89,10 @@ const QuestionPublicPage: React.FC = () => {
     }
 
     const canonicalSlug = buildQuestionSlug(question);
-    if (slug !== canonicalSlug) {
+    if (routeSlug !== canonicalSlug) {
       router.replace(canonicalPath);
     }
-  }, [canonicalPath, question, router, slug]);
+  }, [canonicalPath, question, routeSlug, router]);
 
   useDocumentSeo(question ? {
     title: `${summarizeSeoText(getQuestionSeoLabel(question), 60)} | ConcursoMestre`,

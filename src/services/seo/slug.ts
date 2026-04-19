@@ -10,11 +10,10 @@
 */
 
 import type { Material, Question, Ranking } from '@types';
-import { websiteManifest } from '../../config/platform';
+import { getConfiguredSiteUrl } from '../../config/siteUrl';
 
 const MAX_SLUG_LENGTH = 80;
-const DEFAULT_CANONICAL_BASE_URL = websiteManifest.website.canonicalUrl
-  || (typeof window !== 'undefined' ? window.location.origin : 'https://concursomestre.com.br/');
+const DEFAULT_CANONICAL_BASE_URL = getConfiguredSiteUrl().toString();
 
 const stripHtml = (value: string) => value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 

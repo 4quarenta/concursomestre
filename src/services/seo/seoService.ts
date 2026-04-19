@@ -36,7 +36,7 @@ export interface SitemapStatusPayload {
   note?: string;
 }
 
-const SITEMAP_STATUS_URL = '/sitemap-status.json';
+const SITEMAP_STATUS_URL = '/api/seo/sitemap-status';
 
 export const seoService = {
   async getSitemapStatus(): Promise<SitemapStatusPayload | null> {

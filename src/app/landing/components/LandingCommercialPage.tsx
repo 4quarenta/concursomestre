@@ -323,7 +323,7 @@ const LandingCommercialPage: React.FC = () => {
             </div>
 
             <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-              Sem cartão * Comece em menos de 1 minuto
+              Sem cartão • Comece em menos de 1 minuto
             </p>
           </div>
         </div>

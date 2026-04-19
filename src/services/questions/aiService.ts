@@ -10,279 +10,291 @@
 */
 
 /**
- * Fachada de IA baseada em Gemini para importacao, OCR e explicacoes de questões.
- * Ela e usada principalmente pelo importador administrativo e por fluxos de comentário didatico.
+ * Gateway oficial de IA do admin.
+ * Toda chamada ao Gemini passa pelo backend autenticado para evitar
+ * exposicao de segredos no navegador.
  * @since 1.0.0
  */
 
-import { GoogleGenAI, Type } from "@google/genai";
 import type { Question } from '@types';
+import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+
+type GeminiSchemaType = 'STRING' | 'NUMBER' | 'INTEGER' | 'BOOLEAN' | 'ARRAY' | 'OBJECT';
+
+interface GeminiResponseSchema {
+  type: GeminiSchemaType;
+  properties?: Record<string, GeminiResponseSchema>;
+  items?: GeminiResponseSchema;
+  enum?: string[];
+  required?: string[];
+}
+
+interface GeminiAttachment {
+  mimeType: string;
+  data: string;
+}
+
+interface GeminiGatewayPayload {
+  prompt: string;
+  attachments?: GeminiAttachment[];
+  responseMimeType?: string;
+  responseSchema?: GeminiResponseSchema;
+  model?: string;
+}
+
+interface GeminiGatewayResponse {
+  text?: string;
+}
 
 export interface PageExtractionResult {
-    metadata?: {
-        agency?: string;
-        source?: string;
-        year?: string;
-        role?: string;
-        examType?: 'Concurso' | 'ENEM';
-    };
-    questions: Partial<Question>[];
+  metadata?: {
+    agency?: string;
+    source?: string;
+    year?: string;
+    role?: string;
+    examType?: 'Concurso' | 'ENEM';
+  };
+  questions: Partial<Question>[];
 }
+
+const DEFAULT_MODEL = 'gemini-1.5-flash-latest';
+
+const extractTextFromGatewayResponse = (payload: GeminiGatewayResponse | string): string => {
+  if (typeof payload === 'string') {
+    return payload;
+  }
+
+  return typeof payload?.text === 'string' ? payload.text : '';
+};
+
+const normalizeJsonText = (text: string): string => {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('```')) {
+    return trimmed;
+  }
+
+  return trimmed
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/i, '')
+    .trim();
+};
+
+const parseGeminiJson = <T>(text: string, fallback: T): T => {
+  try {
+    return JSON.parse(normalizeJsonText(text)) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const requestGeminiText = async (payload: GeminiGatewayPayload): Promise<string> => {
+  const response = await apiClient.post<any>(ENDPOINTS.ai.generate, {
+    model: DEFAULT_MODEL,
+    ...payload,
+  }) as any;
+  const envelope = assertApiSuccess<GeminiGatewayResponse | string>(
+    response,
+    'Nao foi possivel executar a solicitacao de IA.',
+  );
+  const data = readApiData<GeminiGatewayResponse | string>(envelope.raw, { text: '' });
+  return extractTextFromGatewayResponse(data);
+};
+
+const buildQuestionAlternatives = (question: Question): string => {
+  const itens = Array.isArray(question.itens) ? question.itens : [];
+  return itens
+    .map((item, index) => `${String.fromCharCode(65 + index)}) ${item.corpo || ''}`)
+    .join('\n');
+};
+
+const resolveCorrectLetter = (question: Question): string => {
+  const itens = Array.isArray(question.itens) ? question.itens : [];
+  const correctItemIndex = itens.findIndex((item) => item.id === question.resposta);
+  return correctItemIndex !== -1 ? String.fromCharCode(65 + correctItemIndex) : '?';
+};
 
 /**
  * Centraliza os fluxos de IA usados pelo frontend administrativo.
  * @since 1.0.0
  */
 export const aiService = {
-    /**
-     * Extrai questões de uma imagem de pagina usando Gemini.
-     * Esse fluxo abastece o importador por PDF/imagem no painel admin.
-     * @since 1.0.0
-     */
-    async extractQuestionsFromPage(
-        apiKey: string,
-        pageBase64: string,
-        includeTeacherComment: boolean = true
-    ): Promise<PageExtractionResult> {
-        if (!apiKey || apiKey.includes('PLACEHOLDER')) {
-            throw new Error("Chave de API inválida. Configure nas Configurações do Admin.");
-        }
+  /**
+   * Extrai questoes de uma imagem de pagina via backend.
+   * @since 1.0.0
+   */
+  async extractQuestionsFromPage(
+    pageBase64: string,
+    includeTeacherComment: boolean = true,
+  ): Promise<PageExtractionResult> {
+    const commentInstruction = includeTeacherComment
+      ? '- Comentario do Professor (teacherComment): gere uma explicacao didatica e resumida de por que a resposta correta e a correta.'
+      : '';
 
-        const ai = new GoogleGenAI({ apiKey });
+    const prompt = `
+Voce e um especialista em OCR e estruturacao de dados de provas de concursos e ENEM.
+Analise a imagem da pagina da prova fornecida.
 
-        const commentInstruction = includeTeacherComment
-            ? "- Comentário do Professor (teacherComment): Gere uma explicação didática e RESUMIDA de por que a resposta correta é a correta."
-            : "";
+IMPORTANTE:
+- Extraia TODAS as questoes visiveis na pagina.
+- Se a prova estiver em colunas, leia todas as colunas.
+- Nao ignore questoes incompletas se o enunciado estiver legivel.
 
-        const prompt = `
-      Você é um especialista em OCR e estruturação de dados de provas de Concursos e ENEM.
-      Análise a imagem da página da prova fornecida.
-      
-      IMPORTANTE:
-      - Extraia TODAS as questões visíveis na página.
-      - Se a prova estiver em colunas, leia todas as colunas.
-      - Não ignore questões incompletas se o enunciado estiver legível.
-      
-      1. Identifique os metadados da prova: Banca (agency), Órgão/Fonte (source), Ano (year), Cargo (role), Tipo (examType).
-      2. Para cada questão encontrada, gere obrigatoriamente:
-         - Enunciado (text)
-         - Texto de Apoio (introText) se houver.
-         - Alternativas (options).
-         - Matéria (Subject) baseado no conteúdo.
-         - Assunto Específico (topic). Ex: 'Crase', 'Probabilidade', 'Atos Administrativos'.
-         - Nível de Escolaridade (level). Ex: 'Fundamental', 'Médio', 'Superior'.
-         ${commentInstruction}
-      
-      Retorne APENAS um JSON seguindo o esquema.
-    `;
+1. Identifique os metadados da prova: banca (agency), orgao/fonte (source), ano (year), cargo (role), tipo (examType).
+2. Para cada questao encontrada, gere obrigatoriamente:
+   - Enunciado (text)
+   - Texto de apoio (introText), se houver
+   - Alternativas (options)
+   - Materia (subject)
+   - Assunto especifico (topic)
+   - Nivel de escolaridade (level): Fundamental, Medio ou Superior
+   ${commentInstruction}
 
-        const schemaProperties: any = {
-            text: { type: Type.STRING },
-            introText: { type: Type.STRING },
-            subject: { type: Type.STRING },
-            topic: { type: Type.STRING },
-            level: { type: Type.STRING, enum: ['Fundamental', 'Médio', 'Superior'] },
-            difficulty: { type: Type.STRING },
-            options: { type: Type.ARRAY, items: { type: Type.STRING } }
-        };
+Retorne APENAS um JSON seguindo o esquema informado.
+    `.trim();
 
-        const requiredFields = ["text", "subject", "options", "topic", "level"];
+    const schemaProperties: Record<string, GeminiResponseSchema> = {
+      text: { type: 'STRING' },
+      introText: { type: 'STRING' },
+      subject: { type: 'STRING' },
+      topic: { type: 'STRING' },
+      level: { type: 'STRING', enum: ['Fundamental', 'Medio', 'Superior'] },
+      difficulty: { type: 'STRING' },
+      options: { type: 'ARRAY', items: { type: 'STRING' } },
+    };
 
-        if (includeTeacherComment) {
-            schemaProperties.teacherComment = { type: Type.STRING };
-            requiredFields.push("teacherComment");
-        }
+    const requiredFields = ['text', 'subject', 'options', 'topic', 'level'];
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash-latest',
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: 'image/jpeg', data: pageBase64 } },
-                    { text: prompt }
-                ]
+    if (includeTeacherComment) {
+      schemaProperties.teacherComment = { type: 'STRING' };
+      requiredFields.push('teacherComment');
+    }
+
+    const text = await requestGeminiText({
+      prompt,
+      attachments: [{ mimeType: 'image/jpeg', data: pageBase64 }],
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'OBJECT',
+        properties: {
+          metadata: {
+            type: 'OBJECT',
+            properties: {
+              agency: { type: 'STRING' },
+              source: { type: 'STRING' },
+              year: { type: 'STRING' },
+              role: { type: 'STRING' },
+              examType: { type: 'STRING', enum: ['Concurso', 'ENEM'] },
             },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        metadata: {
-                            type: Type.OBJECT,
-                            properties: {
-                                agency: { type: Type.STRING },
-                                source: { type: Type.STRING },
-                                year: { type: Type.STRING },
-                                role: { type: Type.STRING },
-                                examType: { type: Type.STRING, enum: ['Concurso', 'ENEM'] }
-                            }
-                        },
-                        questions: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: schemaProperties,
-                                required: requiredFields
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        return JSON.parse(response.text || '{"questions": []}') as PageExtractionResult;
-    },
-
-    /**
-     * Extrai o gabarito oficial a partir de uma imagem.
-     * @since 1.0.0
-     */
-    async extractAnswerKeyMapping(
-        apiKey: string,
-        keyImageBase64: string
-    ): Promise<Record<number, number>> {
-        if (!apiKey) throw new Error("API Key inválida.");
-
-        const ai = new GoogleGenAI({ apiKey });
-
-        const prompt = `
-      Análise a imagem do gabarito oficial.
-      Extraia o mapeamento de Número da Questão para a Alternativa Correta.
-      Retorne um objeto JSON onde a chave é o número da questão e o valor é o índice da alternativa (0 para A, 1 para B, 2 para C, 3 para D, 4 para E).
-      Exemplo: {"1": 2, "2": 0}
-    `;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash-latest',
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: 'image/jpeg', data: keyImageBase64 } },
-                    { text: prompt }
-                ]
+          },
+          questions: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: schemaProperties,
+              required: requiredFields,
             },
-            config: { responseMimeType: "application/json" }
-        });
+          },
+        },
+      },
+    });
 
-        return JSON.parse(response.text || '{}');
-    },
+    return parseGeminiJson<PageExtractionResult>(text, { questions: [] });
+  },
 
-    /**
-     * Gera uma análise detalhada em Markdown para uma questão.
-     * Esse texto pode ser usado em comentários do professor e revisao assistida.
-     * @since 1.0.0
-     */
-    async generateDetailedAnalysis(apiKey: string, question: Question): Promise<string> {
-        if (!apiKey) throw new Error("API Key inválida.");
+  /**
+   * Extrai o gabarito oficial a partir de uma imagem.
+   * @since 1.0.0
+   */
+  async extractAnswerKeyMapping(keyImageBase64: string): Promise<Record<number, number>> {
+    const prompt = `
+Analise a imagem do gabarito oficial.
+Extraia o mapeamento de numero da questao para a alternativa correta.
+Retorne um objeto JSON onde a chave e o numero da questao e o valor e o indice da alternativa (0 para A, 1 para B, 2 para C, 3 para D, 4 para E).
+Exemplo: {"1": 2, "2": 0}
+    `.trim();
 
-        const ai = new GoogleGenAI({ apiKey });
+    const text = await requestGeminiText({
+      prompt,
+      attachments: [{ mimeType: 'image/jpeg', data: keyImageBase64 }],
+      responseMimeType: 'application/json',
+    });
 
-        const correctItemIndex = question.itens.findIndex(it => it.id === question.resposta);
-        const correctLetter = correctItemIndex !== -1 ? String.fromCharCode(65 + correctItemIndex) : '?';
+    return parseGeminiJson<Record<number, number>>(text, {});
+  },
 
-        const prompt = `
-      Atue como um professor sênior de cursinho preparatório.
-      Análise a seguinte questão:
-      
-      Enunciado: ${question.enunciado}
-      Alternativas:
-      ${question.itens.map((it, i) => `${String.fromCharCode(65 + i)}) ${it.corpo}`).join('\n')}
-      
-      A resposta correta é a letra: ${correctLetter}
-      
-      Gere um comentário detalhado, didático e estruturado em Markdown.
-      
-      REGRAS ESTRITAS DE ESTILO:
-      1. NÃO use saudações, introduções ("Olá aluno", "Vamos analisar") ou conclusões genéricas.
-      2. Vá DIRETO AO PONTO. Comece imediatamente com a análise.
-      3. Explique brevemente o conceito central.
-      4. Análise CADA alternativa (A, B, C, D, E) explicando o erro ou acerto.
-      5. Use formatação negrito para palavras-chave.
-      
-      Não retorne JSON, retorne o texto em Markdown diretamente.
-    `;
+  /**
+   * Gera uma analise detalhada em Markdown para uma questao.
+   * @since 1.0.0
+   */
+  async generateDetailedAnalysis(question: Question): Promise<string> {
+    const prompt = `
+Atue como um professor senior de cursinho preparatorio.
+Analise a seguinte questao:
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash-latest',
-            contents: prompt
-        });
+Enunciado: ${question.enunciado}
+Alternativas:
+${buildQuestionAlternatives(question)}
 
-        return response.text || "Não foi possível gerar a análise detalhada.";
-    },
+A resposta correta e a letra: ${resolveCorrectLetter(question)}
 
-    /**
-     * Gera um comentário curto do professor para uma questão.
-     * @since 1.0.0
-     */
-    async generateTeacherComment(apiKey: string, question: Question): Promise<string> {
-        if (!apiKey) throw new Error("API Key inválida.");
+Gere um comentario detalhado, didatico e estruturado em Markdown.
 
-        const ai = new GoogleGenAI({ apiKey });
+REGRAS ESTRITAS DE ESTILO:
+1. Nao use saudacoes, introducoes ou conclusoes genericas.
+2. Va direto ao ponto.
+3. Explique brevemente o conceito central.
+4. Analise cada alternativa (A, B, C, D, E) explicando o erro ou acerto.
+5. Use negrito para palavras-chave.
 
-        const correctItemIndex = question.itens.findIndex(it => it.id === question.resposta);
-        const correctLetter = correctItemIndex !== -1 ? String.fromCharCode(65 + correctItemIndex) : '?';
+Nao retorne JSON, retorne apenas o texto em Markdown.
+    `.trim();
 
-        const prompt = `
-      Análise a questão: "${question.enunciado}".
-      Alternativas: ${question.itens.map(it => it.corpo).join(', ')}.
-      A correta é a letra ${correctLetter}.
-      
-      Gere um comentário curto e didático do professor explicando o gabarito. Sem saudações.
-    `;
+    const text = await requestGeminiText({ prompt });
+    return text || 'Nao foi possivel gerar a analise detalhada.';
+  },
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash-latest',
-            contents: prompt
-        });
+  /**
+   * Gera um comentario curto do professor para uma questao.
+   * @since 1.0.0
+   */
+  async generateTeacherComment(question: Question): Promise<string> {
+    const itens = Array.isArray(question.itens) ? question.itens : [];
+    const prompt = `
+Analise a questao: "${question.enunciado}".
+Alternativas: ${itens.map((item) => item.corpo).join(', ')}.
+A correta e a letra ${resolveCorrectLetter(question)}.
 
-        return response.text || "";
-    },
+Gere um comentario curto e didatico do professor explicando o gabarito. Sem saudacoes.
+    `.trim();
 
-    /**
-     * Gera uma explicacao direta da questão em Markdown.
-     * @since 1.0.0
-     */
-    async getQuestionExplanation(apiKey: string, question: Question): Promise<string> {
-        if (!apiKey) throw new Error("API Key inválida.");
+    const text = await requestGeminiText({ prompt });
+    return text || '';
+  },
 
-        const ai = new GoogleGenAI({ apiKey });
+  /**
+   * Gera uma explicacao direta da questao em Markdown.
+   * @since 1.0.0
+   */
+  async getQuestionExplanation(question: Question): Promise<string> {
+    const prompt = `Explique didaticamente a questao: "${question.enunciado}" com resposta correta sendo a alternativa ${resolveCorrectLetter(question)}. Use Markdown.`;
+    const text = await requestGeminiText({ prompt });
+    return text || 'Sem explicacao.';
+  },
 
-        const correctItemIndex = question.itens.findIndex(it => it.id === question.resposta);
-        const correctLetter = correctItemIndex !== -1 ? String.fromCharCode(65 + correctItemIndex) : '?';
+  /**
+   * Extrai uma lista de aprovados a partir de um PDF.
+   * @since 1.0.0
+   */
+  async extractApprovedListFromPDF(pdfBase64: string): Promise<string[]> {
+    const text = await requestGeminiText({
+      prompt: 'Extraia os numeros de inscricao dos aprovados deste PDF. Retorne um JSON { "approvedRegistrationNumbers": ["123", "456"] }.',
+      attachments: [{ mimeType: 'application/pdf', data: pdfBase64 }],
+      responseMimeType: 'application/json',
+    });
 
-        const prompt = `Explique didaticamente a questão: "${question.enunciado}" com resposta correta sendo a alternativa ${correctLetter}. Use Markdown.`;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash-latest',
-            contents: prompt
-        });
-
-        return response.text || "Sem explicação.";
-    },
-
-    /**
-     * Extrai uma lista de aprovados a partir de um PDF.
-     * @since 1.0.0
-     */
-    async extractApprovedListFromPDF(apiKey: string, pdfBase64: string): Promise<string[]> {
-        if (!apiKey) throw new Error("API Key inválida.");
-
-        const ai = new GoogleGenAI({ apiKey });
-
-        const prompt = `Extraia os números de inscrição dos aprovados deste PDF. Retorne um JSON { "approvedRegistrationNumbers": ["123", "456"] }.`;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-1.5-flash-latest',
-            contents: [{
-                parts: [
-                    { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } },
-                    { text: prompt }
-                ]
-            }],
-            config: { responseMimeType: "application/json" }
-        });
-
-        const result = JSON.parse(response.text || '{"approvedRegistrationNumbers": []}');
-        return result.approvedRegistrationNumbers;
-    },
+    const result = parseGeminiJson<{ approvedRegistrationNumbers?: string[] }>(text, {});
+    return Array.isArray(result.approvedRegistrationNumbers) ? result.approvedRegistrationNumbers : [];
+  },
 };
 
 export default aiService;
