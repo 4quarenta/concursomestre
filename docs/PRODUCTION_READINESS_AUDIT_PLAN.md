@@ -170,7 +170,35 @@ Status atual:
 - implementacao real por dominio iniciada com modelos de Overview e Revenue
 - telas privadas conectadas de Overview e Revenue criadas no limite da nova arquitetura
 - dominio Operation iniciado com modelo, blueprint e screen privada conectada
-- proxima frente: criar o dominio Support com denuncias, feedbacks, threads e SLA
+- dominio Growth iniciado com modelo, blueprint e screen privada conectada para SEO, sitemap, landing pages e campanhas
+- dominio Security iniciado com modelo, blueprint e screen privada conectada para acesso admin, segredos write-only, logs e reset controlado
+- dominio Settings iniciado com modelo, blueprint e screen privada conectada para ambiente, modulos, integracoes e readiness de release
+- dominio Support iniciado com modelo, blueprint e screen privada conectada
+- os 7 dominios-base privados do rebuild agora existem
+- navegacao privada real do rebuild criada sob `/admin/rebuild`
+- atalhos reais entre filas e areas-alvo conectados com foco visual por URL
+- primeiros drilldowns operacionais detalhados entregues em `Revenue` e `Support`, ja com paineis de trabalho por foco
+- segunda rodada de drilldowns entregue em `Operation` e `Growth`, com ancoras de foco coerentes para scroll e leitura operacional
+- terceira rodada entregue em `Security` e `Settings`, fechando os seis dominios-base com drilldowns operacionais reais
+- quarta rodada entregue em `Support` e `Operation`, com filtros locais, contadores por recorte e triagem navegavel
+- quinta rodada entregue em `Revenue` e `Growth`, levando a triagem interativa para financeiro e aquisicao
+- reorganizacao de UX aplicada para paginas por funcionalidade: dominio como indice, rotina como subrota propria
+- primeira camada de tabelas administrativas entregue em subpaginas criticas de `Support`, `Revenue` e `Operation`
+- tabelas administrativas expandidas para `Growth`, `Security` e `Settings`
+- primeira camada de acoes reais entregue em `Support`: moderacao de denuncias, resposta de feedback e atualizacao de status usando `adminService`
+- segunda camada de acoes reais entregue em `Revenue` e `Operation`: reembolsos, moderacao de materiais/rankings e status de usuarios
+- terceira camada de acoes reais entregue em `Settings`: salvamento geral e testes oficiais de SMTP/integracoes
+- quarta camada de acoes reais entregue em `Security`: setup e ativacao de 2FA, mantendo reset de base apenas como inventario nao destrutivo
+- gate de paridade e readiness de troca implementado em `/admin/rebuild/overview/parity`
+- relatorio tecnico de troca registrado em `docs/reports/admin-rebuild-route-switch-readiness-latest.md`
+- primeiro gap de `Operation` reduzido com edicao real de questoes em backlog usando `updateQuestion`
+- `Operation` evoluiu para CRUD basico de questoes usando `addQuestion`, `updateQuestion` e `deleteQuestion`
+- `Operation` separou `taxonomies` e `exams`, com cadastro basico real de taxonomias via `saveSystemSettingsNow` e inventario proprio de provas
+- `Operation` adicionou edicao/remocao basica de taxonomias em `systemSettings.taxonomies`, com confirmacao textual para remocao
+- `Operation` adicionou CRUD basico de banco de provas em `systemSettings.examBank`, com confirmacao textual para remocao
+- `Operation` adicionou importador assistido em `/admin/rebuild/operation/import`, com extracao via PDF, revisao por questao e publicacao em massa
+- o shell e o design system do rebuild passaram por simplificacao para reduzir densidade visual e melhorar usabilidade
+- proxima frente: continuar os gaps de `Operation` com editor profundo, vinculos avancados de provas e governanca avancada de taxonomias, ou avancar para `Revenue` em subscriptions/pricing
 
 Evidencia atual:
 
@@ -184,6 +212,7 @@ Observacao:
 
 - a recriacao total do painel admin fica fora desta etapa operacional e sera executada como macrofase dedicada
 - quando essa macrofase iniciar, a UI antiga nao sera preservada como layout; ela sera usada apenas para garantir paridade funcional
+- apos o reset da iteracao anterior, a nova fundacao do rebuild passou a explicitar dois escopos administrativos: governanca de database e governanca da plataforma
 
 ### Etapa 4.8 - Fechamento para producao
 

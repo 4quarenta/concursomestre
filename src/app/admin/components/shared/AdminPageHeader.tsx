@@ -21,7 +21,7 @@ interface AdminPageHeaderProps {
 
 const AdminPageHeader = ({ title, description = 'Gestao completa da plataforma.', activeSectionLabel }: AdminPageHeaderProps) => (
   <header className="mb-8 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-    <div>
+    <div className="min-w-0">
       <div className="mb-1 flex items-center gap-2">
         <h1 className={`flex items-center gap-2 ${PLATFORM_PAGE_TITLE_CLASS}`}>
           <Shield className="text-rose-600" />

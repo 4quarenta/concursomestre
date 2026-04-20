@@ -41,6 +41,17 @@ export type CreatedSupportThreadResult = {
   parent_id: number | null;
 };
 
+const readCreatedThreadId = (payload: any) => Number(
+  payload?.id
+  || payload?.feedback_id
+  || payload?.thread_id
+  || payload?.insert_id
+  || payload?.feedback?.id
+  || payload?.thread?.id
+  || payload?.data?.id
+  || 0,
+);
+
 /**
  * Centraliza o fluxo da central de suporte/feedback do usuario.
  * Essa camada e consumida pela pagina publica de suporte e pelo historico de conversas.
@@ -105,7 +116,7 @@ export const supportService = {
     const payload = readApiData<any>(response, {});
 
     return {
-      id: Number(payload?.id || 0),
+      id: readCreatedThreadId(payload),
       type: String(payload?.type || input.type),
       parent_id: payload?.parent_id === null || payload?.parent_id === undefined
         ? null
@@ -132,7 +143,7 @@ export const supportService = {
     const payload = readApiData<any>(response, {});
 
     return {
-      id: Number(payload?.id || 0),
+      id: readCreatedThreadId(payload),
       type: String(payload?.type || type),
       parent_id: payload?.parent_id === null || payload?.parent_id === undefined
         ? null

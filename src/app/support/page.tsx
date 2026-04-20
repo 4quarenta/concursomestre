@@ -118,6 +118,15 @@ const STATUS_META: Record<SupportThread['status'], { label: string; className: s
   },
 };
 
+const mergeSupportThreads = (officialThreads: SupportThread[], localThreads: SupportThread[]) => {
+  const officialIds = new Set(officialThreads.map((thread) => thread.id));
+  const localOnlyThreads = localThreads.filter((thread) => !officialIds.has(thread.id));
+
+  return [...localOnlyThreads, ...officialThreads].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+};
+
 /**
  * Organiza a central de suporte em um workspace mais claro.
  * A pagina separa categoria, formulario, historico e doacao sem misturar prioridades.
@@ -152,10 +161,12 @@ const Support: React.FC = () => {
    *
    * @since 1.0.0
    */
-  const fetchHistory = React.useCallback(async (notifyOnError = true) => {
+  const fetchHistory = React.useCallback(async (notifyOnError = true, preserveLocalThreads = false) => {
     try {
       const threads = await supportService.listThreads();
-      setFeedbackHistory(threads);
+      setFeedbackHistory((currentThreads) => (
+        preserveLocalThreads ? mergeSupportThreads(threads, currentThreads) : threads
+      ));
     } catch (error) {
       console.error('Error fetching feedback history', error);
       if (notifyOnError) {
@@ -221,23 +232,23 @@ const Support: React.FC = () => {
         details: normalizedDetails,
       });
 
-      if (createdThread.id > 0) {
-        appendCreatedThread({
-          id: createdThread.id,
-          type: createdThread.type || activeCategory.serviceType,
-          reason: normalizedSubject,
-          details: normalizedDetails,
-          status: 'new',
-          created_at: new Date().toISOString(),
-          reply_count: 0,
-        });
-      }
+      const createdThreadId = Number(createdThread.id || 0);
+      const localThreadId = createdThreadId > 0 ? createdThreadId : -Date.now();
+      appendCreatedThread({
+        id: localThreadId,
+        type: createdThread.type || activeCategory.serviceType,
+        reason: normalizedSubject,
+        details: normalizedDetails,
+        status: 'new',
+        created_at: new Date().toISOString(),
+        reply_count: 0,
+      });
 
       addToast('Solicitacao enviada com sucesso.', 'success');
       setSubject('');
       setDetails('');
       setComposeStep(1);
-      void fetchHistory();
+      void fetchHistory(true, true);
     } catch (error) {
       console.error('Error creating support thread', error);
       addToast(readApiErrorMessage(error, 'Nao foi possivel enviar sua solicitacao.'), 'error');
@@ -258,6 +269,10 @@ const Support: React.FC = () => {
     }
 
     setExpandedFeedbackId(threadId);
+
+    if (threadId < 0) {
+      return;
+    }
 
     if (replies[threadId]) {
       return;
@@ -306,27 +321,7 @@ const Support: React.FC = () => {
     }
   };
 
-  const filteredHistory = useMemo(() => {
-    if (activeTab === 'donation') {
-      return feedbackHistory;
-    }
-
-    return feedbackHistory.filter((thread) => {
-      if (activeTab === 'bug') {
-        return thread.type === 'bug';
-      }
-
-      if (activeTab === 'feedback') {
-        return thread.type === 'suggestion' || thread.type === 'other';
-      }
-
-      if (activeTab === 'info') {
-        return thread.type === 'support';
-      }
-
-      return true;
-    });
-  }, [activeTab, feedbackHistory]);
+  const filteredHistory = useMemo(() => feedbackHistory, [feedbackHistory]);
 
   const supportStats = useMemo(() => ({
     total: feedbackHistory.length,
@@ -640,13 +635,14 @@ const Support: React.FC = () => {
             <div className="mt-6 space-y-4">
               {filteredHistory.length === 0 ? (
                 <div className="rounded-[1.8rem] border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center dark:border-slate-700 dark:bg-slate-950">
-                  <p className="text-base font-black text-slate-900 dark:text-slate-100">Nenhuma conversa nesta categoria ainda.</p>
+                  <p className="text-base font-black text-slate-900 dark:text-slate-100">Nenhuma conversa aberta ainda.</p>
                   <p className="mt-2 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">Assim que voce enviar algo, o historico vai aparecer aqui com status e respostas.</p>
                 </div>
               ) : filteredHistory.map((thread) => {
                 const statusMeta = STATUS_META[thread.status];
                 const isExpanded = expandedFeedbackId === thread.id;
                 const threadReplies = replies[thread.id] || [];
+                const isLocalThread = thread.id < 0;
                 return (
                   <div key={thread.id} className="overflow-hidden rounded-[1.8rem] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                     <button type="button" onClick={() => void toggleFeedback(thread.id)} className="w-full px-5 py-5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/70">
@@ -686,17 +682,23 @@ const Support: React.FC = () => {
                             <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-center text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">Nenhuma resposta ainda.</div>
                           )}
                         </div>
-                        <div className="mt-4 rounded-[1.6rem] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Responder conversa</p>
-                          <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                            <input type="text" value={replyDrafts[thread.id] || ''} onChange={(event) => setReplyDrafts((currentDrafts) => ({ ...currentDrafts, [thread.id]: event.target.value }))} placeholder="Escreva sua resposta..." className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 dark:focus:bg-slate-900" />
-                            <button type="button" onClick={() => void handleReplySubmit(thread)} disabled={sendingReplyId === thread.id || !(replyDrafts[thread.id] || '').trim()} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500">
-                              <Send size={15} />
-                              {sendingReplyId === thread.id ? 'Enviando...' : 'Responder'}
-                            </button>
+                        {isLocalThread ? (
+                          <p className="mt-4 rounded-[1.6rem] border border-amber-200 bg-amber-50 p-4 text-xs font-medium leading-5 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                            Conversa enviada e aguardando sincronizacao do historico oficial.
+                          </p>
+                        ) : (
+                          <div className="mt-4 rounded-[1.6rem] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Responder conversa</p>
+                            <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                              <input type="text" value={replyDrafts[thread.id] || ''} onChange={(event) => setReplyDrafts((currentDrafts) => ({ ...currentDrafts, [thread.id]: event.target.value }))} placeholder="Escreva sua resposta..." className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 dark:focus:bg-slate-900" />
+                              <button type="button" onClick={() => void handleReplySubmit(thread)} disabled={sendingReplyId === thread.id || !(replyDrafts[thread.id] || '').trim()} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500">
+                                <Send size={15} />
+                                {sendingReplyId === thread.id ? 'Enviando...' : 'Responder'}
+                              </button>
+                            </div>
+                            <p className="mt-3 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Quando houver resposta do suporte pelo painel administrativo, a conversa continua aqui e o historico fica centralizado.</p>
                           </div>
-                          <p className="mt-3 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Quando houver resposta do suporte pelo painel administrativo, a conversa continua aqui e o historico fica centralizado.</p>
-                        </div>
+                        )}
                       </div>
                     ) : null}
                   </div>

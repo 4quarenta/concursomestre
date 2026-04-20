@@ -76,6 +76,7 @@ interface AdminFinanceProps {
   allUsers: UserProfile[];
   initialSection?: 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation' | 'balance' | 'prices' | 'marketing';
   onSectionChange?: (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation') => void;
+  standaloneSection?: boolean;
 }
 
 type FinanceSection = 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation';
@@ -148,13 +149,7 @@ const isAdminTransactionHeld = (transaction: any) => {
   const timestamp = Number(transaction?.timestamp || 0);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return true;
 
-  const transactionDate = new Date(timestamp);
-  const now = new Date();
-  const passedWarranty = (now.getTime() - timestamp) >= (7 * 24 * 60 * 60 * 1000);
-  const isPastNextMonth = now.getFullYear() > transactionDate.getFullYear()
-    || (now.getFullYear() === transactionDate.getFullYear() && now.getMonth() > transactionDate.getMonth());
-
-  return !(passedWarranty && isPastNextMonth);
+  return (Date.now() - timestamp) < (7 * 24 * 60 * 60 * 1000);
 };
 
 const AdminFinance = ({
@@ -163,6 +158,7 @@ const AdminFinance = ({
   allUsers,
   initialSection = 'subscriptions',
   onSectionChange,
+  standaloneSection = false,
 }: AdminFinanceProps) => {
   const { currentUser } = useAuth();
   const { addToast } = useToast();
@@ -932,6 +928,24 @@ const AdminFinance = ({
   };
 
   const selectedSeller = viewingSellerDetails ? sellersMetrics.find(s => s.id === viewingSellerDetails) : null;
+  const activeSectionLabel = activeSection === 'subscriptions'
+    ? 'Assinaturas'
+    : activeSection === 'refunds'
+      ? 'Reembolsos'
+      : activeSection === 'transactions'
+        ? 'Transacoes'
+        : activeSection === 'plans-coupons'
+          ? 'Planos e cupons'
+          : 'Automacao';
+  const activeSectionDescription = activeSection === 'subscriptions'
+    ? 'Base assinante, repasses a vendedores e sinais de recorrencia.'
+    : activeSection === 'refunds'
+      ? 'Fila de decisao para reembolso e tratativas de retencao.'
+      : activeSection === 'transactions'
+        ? 'Historico financeiro consolidado da plataforma.'
+        : activeSection === 'plans-coupons'
+          ? 'Pricing, beneficios, limites por plano e configuracao comercial.'
+          : 'Rotinas de cron, testes Stripe e evidencias operacionais.';
 
   return (
     <div className="space-y-5 animate-slide-up md:space-y-6">
@@ -1094,59 +1108,73 @@ const AdminFinance = ({
         document.body,
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {financeOverviewCards.map((card) => (
-            <div
-              key={card.label}
-              className={"rounded-[2rem] border p-4 shadow-sm transition-colors sm:p-5 " + (card.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : card.tone === 'rose' ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10' : card.tone === 'amber' ? 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10' : card.tone === 'indigo' ? 'border-indigo-200 bg-indigo-50 dark:border-indigo-900/30 dark:bg-indigo-900/10' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900')}
-            >
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{card.label}</p>
-              <p className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">{card.value}</p>
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{card.helper}</p>
-            </div>
-          ))}
-        </div>
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Dominio financeiro</p>
-          <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Assinaturas, transacoes, reembolsos, planos e automacao</p>
+      {standaloneSection ? (
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+            Financeiro / {activeSectionLabel}
+          </p>
+          <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">{activeSectionLabel}</p>
           <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-            Acoes criticas exibem sucesso apenas apos persistencia real. Refund, automacao e planos seguem o fluxo oficial.
+            {activeSectionDescription}
           </p>
         </div>
-      </div>
-      <div className="flex gap-2 rounded-[2rem] border border-slate-200 bg-white p-2 shadow-sm transition-all overflow-x-auto no-scrollbar dark:border-slate-800 dark:bg-slate-900">
-        <button
-          onClick={() => changeSection('subscriptions')}
-          className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'subscriptions' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
-        >
-          <div className="flex items-center gap-2"><Users size={14} /> Assinaturas</div>
-        </button>
-        <button
-          onClick={() => changeSection('refunds')}
-          className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'refunds' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
-        >
-          <div className="flex items-center gap-2"><ShieldAlert size={14} /> Reembolsos {refundRequests.length > 0 && <span className="bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px]">{refundRequests.length}</span>}</div>
-        </button>
-        <button
-          onClick={() => changeSection('transactions')}
-          className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'transactions' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
-        >
-          <div className="flex items-center gap-2"><FileText size={14} /> Transacoes</div>
-        </button>
-        <button
-          onClick={() => changeSection('plans-coupons')}
-          className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'plans-coupons' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
-        >
-          <div className="flex items-center gap-2"><Tag size={14} /> Planos e cupons</div>
-        </button>
-        <button
-          onClick={() => changeSection('automation')}
-          className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'automation' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
-        >
-          <div className="flex items-center gap-2"><Terminal size={14} /> Automacao</div>
-        </button>
-      </div>
+      ) : (
+        <>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {financeOverviewCards.map((card) => (
+                <div
+                  key={card.label}
+                  className={"rounded-[2rem] border p-4 shadow-sm transition-colors sm:p-5 " + (card.tone === 'emerald' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : card.tone === 'rose' ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10' : card.tone === 'amber' ? 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10' : card.tone === 'indigo' ? 'border-indigo-200 bg-indigo-50 dark:border-indigo-900/30 dark:bg-indigo-900/10' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900')}
+                >
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{card.label}</p>
+                  <p className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">{card.value}</p>
+                  <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{card.helper}</p>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Dominio financeiro</p>
+              <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Assinaturas, transacoes, reembolsos, planos e automacao</p>
+              <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                Acoes criticas exibem sucesso apenas apos persistencia real. Refund, automacao e planos seguem o fluxo oficial.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 rounded-[2rem] border border-slate-200 bg-white p-2 shadow-sm transition-all overflow-x-auto no-scrollbar dark:border-slate-800 dark:bg-slate-900">
+            <button
+              onClick={() => changeSection('subscriptions')}
+              className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'subscriptions' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
+            >
+              <div className="flex items-center gap-2"><Users size={14} /> Assinaturas</div>
+            </button>
+            <button
+              onClick={() => changeSection('refunds')}
+              className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'refunds' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
+            >
+              <div className="flex items-center gap-2"><ShieldAlert size={14} /> Reembolsos {refundRequests.length > 0 && <span className="bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px]">{refundRequests.length}</span>}</div>
+            </button>
+            <button
+              onClick={() => changeSection('transactions')}
+              className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'transactions' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
+            >
+              <div className="flex items-center gap-2"><FileText size={14} /> Transacoes</div>
+            </button>
+            <button
+              onClick={() => changeSection('plans-coupons')}
+              className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'plans-coupons' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
+            >
+              <div className="flex items-center gap-2"><Tag size={14} /> Planos e cupons</div>
+            </button>
+            <button
+              onClick={() => changeSection('automation')}
+              className={"px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.18em] transition-all " + (activeSection === 'automation' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800')}
+            >
+              <div className="flex items-center gap-2"><Terminal size={14} /> Automacao</div>
+            </button>
+          </div>
+        </>
+      )}
 
 
       {activeSection === 'subscriptions' && (

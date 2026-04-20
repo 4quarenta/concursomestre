@@ -18,7 +18,6 @@ Separar documentacao operacional atual de material historico preservado, reduzin
 - `LEGACY_WEB_INVENTORY.md`
 - `VERCEL_ROOT_TRANSITION.md`
 - `GOOGLE_SEARCH_CONSOLE.md`
-- `ADMIN_PANEL_REBUILD_BLUEPRINT.md`
 - `BILLING_E_VALIDACAO.md`
 - `STRIPE_CARD_VAULT_OPERATIONS.md`
 - `STRIPE_TESTING_MATRIX_ADMIN.md`

@@ -37,7 +37,7 @@ export const ADMIN_DATABASE_CATEGORIES: AdminDatabaseCategoryConfig[] = [
     label: 'Conteudo',
     description: 'Banco de questoes, importacao e taxonomias.',
     icon: BookOpen,
-    tabs: ['questions', 'exams', 'import', 'filters'],
+    tabs: ['questions', 'exams', 'import', 'filters', 'lei-comentada'],
   },
   {
     id: 'people',
@@ -79,6 +79,11 @@ export const ADMIN_DATABASE_SUBTAB_META: Record<string, AdminDatabaseSubTabMeta>
   filters: {
     label: 'Filtros e taxonomias',
     description: 'Bancas, orgaos, assuntos e relacionamentos da base.',
+    category: 'content',
+  },
+  'lei-comentada': {
+    label: 'Lei Comentada',
+    description: 'Leis, artigos, comentarios editoriais, sumulas e vinculo com materias.',
     category: 'content',
   },
   users: {

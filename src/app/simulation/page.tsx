@@ -91,6 +91,149 @@ const SearchableMultiSelect: React.FC<{
    );
 };
 
+type SimulationTab = 'ready' | 'custom' | 'results';
+
+type ReadySimulationPreset = {
+   id: string;
+   title: string;
+   description: string;
+   config: SimulationConfig;
+   details: string[];
+};
+
+type SimulationConfigOverrides = Partial<Omit<SimulationConfig, 'filters'>> & {
+   filters?: Partial<SimulationConfig['filters']>;
+};
+
+const createSimulationConfig = (overrides: SimulationConfigOverrides = {}): SimulationConfig => {
+   const base: SimulationConfig = {
+      id: '',
+      name: 'Treino de Performance',
+      questionCount: 10,
+      subjects: [],
+      difficulty: 'All',
+      timerEnabled: true,
+      timerMinutes: 20,
+      feedbackMode: 'after_all',
+      filters: { careers: [], agencies: [], years: [], organizations: [], roles: [], levels: [], topics: [] },
+   };
+
+   return {
+      ...base,
+      ...overrides,
+      filters: {
+         ...base.filters,
+         ...(overrides.filters || {}),
+      },
+   };
+};
+
+const getSimulationScore = (session: SimulationSession) => {
+   if (typeof session.score === 'number') return session.score;
+
+   return Object.values((session.answers || {}) as Record<string, any>).filter((answer) => {
+      if (answer === null || answer === undefined) return false;
+      if (typeof answer === 'object') return Boolean(answer.is_correct);
+      return false;
+   }).length;
+};
+
+const getSimulationAccuracy = (session: SimulationSession) => {
+   const total = session.questions?.length || 0;
+   if (total === 0) return 0;
+
+   return Math.round((getSimulationScore(session) / total) * 100);
+};
+
+const getSimulationDurationSeconds = (session: SimulationSession) => {
+   if (session.endTime && session.startTime) {
+      return Math.max(0, Math.round((session.endTime - session.startTime) / 1000));
+   }
+
+   const answerTime = Object.values((session.answers || {}) as Record<string, any>).reduce((total, answer) => {
+      const timeTaken = typeof answer === 'object' && answer ? Number(answer.time_taken || 0) : 0;
+      return total + (Number.isFinite(timeTaken) ? timeTaken : 0);
+   }, 0);
+
+   if (answerTime > 0) return Math.round(answerTime);
+
+   return Math.max(0, Number(session.config?.timerMinutes || 0) * 60);
+};
+
+const formatSimulationDuration = (seconds: number) => {
+   const safeSeconds = Math.max(0, Math.round(seconds || 0));
+   const hours = Math.floor(safeSeconds / 3600);
+   const minutes = Math.floor((safeSeconds % 3600) / 60);
+   const remainingSeconds = safeSeconds % 60;
+
+   if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+   if (minutes > 0) return `${minutes}m ${String(remainingSeconds).padStart(2, '0')}s`;
+   return `${remainingSeconds}s`;
+};
+
+const getSimulationDateLabel = (session: SimulationSession) => {
+   const timestamp = session.endTime || session.startTime;
+   if (!timestamp) return 'Sem data';
+
+   return new Date(timestamp).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+   });
+};
+
+const getQuestionSubjectLabel = (question: Question) => {
+   return question.assuntos?.find((assunto) => assunto.materia)?.nome || question.assuntos?.[0]?.nome || 'Geral';
+};
+
+const isQuestionCorrectInSession = (session: SimulationSession, question: Question) => {
+   const answer = ((session.answers || {}) as Record<string, any>)[question.id];
+   if (answer === null || answer === undefined) return false;
+   if (typeof answer === 'object') return Boolean(answer.is_correct);
+
+   const correctItem = (question.itens || []).find((item, index) => Number(item.id) === Number(question.resposta) || index === Number(question.resposta));
+   const correctIndex = (question.itens || []).indexOf(correctItem as any);
+   return Number(answer) === correctIndex;
+};
+
+const buildResultInsights = (session: SimulationSession, historicalAverage: number) => {
+   const accuracy = getSimulationAccuracy(session);
+   const duration = getSimulationDurationSeconds(session);
+   const secondsPerQuestion = session.questions.length > 0 ? Math.round(duration / session.questions.length) : 0;
+   const missedQuestions = session.questions.filter((question) => !isQuestionCorrectInSession(session, question));
+   const missedBySubject = missedQuestions.reduce<Record<string, number>>((acc, question) => {
+      const label = getQuestionSubjectLabel(question);
+      acc[label] = (acc[label] || 0) + 1;
+      return acc;
+   }, {});
+   const weakestSubject = Object.entries(missedBySubject).sort((a, b) => b[1] - a[1])[0]?.[0];
+   const comparison = historicalAverage > 0
+      ? accuracy >= historicalAverage
+         ? `${accuracy - historicalAverage} p.p. acima da sua média geral.`
+         : `${historicalAverage - accuracy} p.p. abaixo da sua média geral.`
+      : 'Este resultado inaugura sua base de comparação.';
+
+   return [
+      {
+         title: 'Desempenho',
+         value: `${accuracy}%`,
+         description: comparison,
+      },
+      {
+         title: 'Ritmo',
+         value: formatSimulationDuration(secondsPerQuestion),
+         description: 'Tempo médio por questão neste simulado.',
+      },
+      {
+         title: 'Prioridade',
+         value: weakestSubject || 'Manter ritmo',
+         description: weakestSubject
+            ? `Revise ${weakestSubject}; foi onde apareceram mais perdas.`
+            : 'Sem erros registrados neste simulado.',
+      },
+   ];
+};
+
 const Simulation: React.FC = () => {
    const { currentUser, addSimulation } = useAuth();
    const { questions, submitAnswer, systemSettings, ensureTaxonomiesLoaded } = useData();
@@ -128,6 +271,7 @@ const Simulation: React.FC = () => {
    const router = useRouter();
 
    const [viewMode, setViewMode] = useState<'focus' | 'list'>('focus');
+   const [simulationTab, setSimulationTab] = useState<SimulationTab>('ready');
 
    const allAgencies = useMemo(() => Array.from(new Set(questions.flatMap(q => q.bancas?.map(b => b.sigla || b.nome) || []).filter(Boolean))).sort() as string[], [questions]);
    const allYears = useMemo(() => Array.from(new Set(questions.flatMap(q => q.anos || []).map(String))).sort().reverse(), [questions]);
@@ -135,11 +279,7 @@ const Simulation: React.FC = () => {
    const allRoles = useMemo(() => Array.from(new Set(questions.flatMap(q => q.cargos || []).map(c => c.descrição || (c as any).nome).filter(Boolean))).sort(), [questions]);
    const allLevels = useMemo(() => Array.from(new Set(questions.map(q => q.nivel || (q as any).level).filter(Boolean))).sort(), [questions]);
 
-   const [config, setConfig] = useState<SimulationConfig>({
-      id: '', name: 'Treino de Performance', questionCount: 10, subjects: [], difficulty: 'All',
-      timerEnabled: true, timerMinutes: 20, feedbackMode: 'after_all',
-      filters: { careers: [], agencies: [], years: [], organizations: [], roles: [], levels: [], topics: [] }
-   });
+   const [config, setConfig] = useState<SimulationConfig>(() => createSimulationConfig());
 
    const allTopics = useMemo(() => {
       const relevantQuestions = config.subjects.length > 0 ? questions.filter(q => q.assuntos?.some(a => config.subjects.includes(a.nome as any))) : questions;
@@ -231,6 +371,115 @@ const Simulation: React.FC = () => {
       return allTopics;
    }, [isEnemFocus, config.subjects, enemQuestions, allTopics, systemSettings.taxonomies?.topics, systemSettings.taxonomies?.subjects]);
 
+   const completedSimulations = useMemo(() => {
+      return ((currentUser as any)?.simulations || [])
+         .filter((session: SimulationSession) => session.status === 'completed' && session.questions?.length > 0)
+         .sort((a: SimulationSession, b: SimulationSession) => (b.endTime || b.startTime || 0) - (a.endTime || a.startTime || 0));
+   }, [(currentUser as any)?.simulations]);
+
+   const simulationStats = useMemo(() => {
+      const completedCount = completedSimulations.length;
+      const averageAccuracy = completedCount > 0
+         ? Math.round(completedSimulations.reduce((total: number, session: SimulationSession) => total + getSimulationAccuracy(session), 0) / completedCount)
+         : 0;
+      const averageDurationSeconds = completedCount > 0
+         ? Math.round(completedSimulations.reduce((total: number, session: SimulationSession) => total + getSimulationDurationSeconds(session), 0) / completedCount)
+         : 0;
+      const bestAccuracy = completedCount > 0
+         ? Math.max(...completedSimulations.map((session: SimulationSession) => getSimulationAccuracy(session)))
+         : 0;
+
+      return {
+         completedCount,
+         averageAccuracy,
+         averageDurationSeconds,
+         bestAccuracy,
+      };
+   }, [completedSimulations]);
+
+   const readySimulationPresets = useMemo<ReadySimulationPreset[]>(() => {
+      const presets: ReadySimulationPreset[] = [
+         {
+            id: 'quick-start',
+            title: 'Aquecimento rápido',
+            description: 'Uma bateria curta para entrar no ritmo sem configurar filtros.',
+            config: createSimulationConfig({
+               name: 'Aquecimento rápido',
+               questionCount: 10,
+               timerMinutes: 20,
+            }),
+            details: ['10 questões', '20 min', 'Resultado no final'],
+         },
+         {
+            id: 'performance',
+            title: 'Treino de performance',
+            description: 'Simulado equilibrado para medir consistência e ritmo de prova.',
+            config: createSimulationConfig({
+               name: 'Treino de performance',
+               questionCount: 20,
+               timerMinutes: 45,
+            }),
+            details: ['20 questões', '45 min', 'Todas as matérias'],
+         },
+      ];
+
+      const firstSubject = simulationSubjects[0];
+      if (firstSubject) {
+         presets.push({
+            id: 'subject-focus',
+            title: `Foco em ${firstSubject}`,
+            description: 'Pratique uma área específica para encontrar gargalos com mais clareza.',
+            config: createSimulationConfig({
+               name: `Foco em ${firstSubject}`,
+               questionCount: 20,
+               subjects: [firstSubject as Subject],
+               timerMinutes: 40,
+            }),
+            details: ['20 questões', '40 min', firstSubject],
+         });
+      }
+
+      const firstAgency = simulationAgencies[0];
+      if (firstAgency) {
+         presets.push({
+            id: 'agency-focus',
+            title: `Banca ${firstAgency}`,
+            description: 'Treino direcionado para o estilo de cobrança da banca selecionada.',
+            config: createSimulationConfig({
+               name: `Banca ${firstAgency}`,
+               questionCount: 20,
+               timerMinutes: 40,
+               filters: { agencies: [firstAgency] },
+            }),
+            details: ['20 questões', '40 min', firstAgency],
+         });
+      }
+
+      return presets.slice(0, 4);
+   }, [simulationSubjects, simulationAgencies]);
+
+   const historyInsights = useMemo(() => {
+      if (simulationStats.completedCount === 0) {
+         return [
+            'Conclua seu primeiro simulado para liberar comparações de desempenho.',
+            'Ao finalizar, você verá tendências de nota, ritmo e temas prioritários.',
+         ];
+      }
+
+      const latest = completedSimulations[0];
+      const latestAccuracy = latest ? getSimulationAccuracy(latest) : 0;
+      const trend = latestAccuracy - simulationStats.averageAccuracy;
+      const trendLabel = trend >= 0
+         ? `Seu último resultado ficou ${trend} p.p. acima da média geral.`
+         : `Seu último resultado ficou ${Math.abs(trend)} p.p. abaixo da média geral.`;
+
+      return [
+         trendLabel,
+         `Seu melhor resultado registrado até agora é ${simulationStats.bestAccuracy}%.`,
+         `Seu tempo médio por simulado está em ${formatSimulationDuration(simulationStats.averageDurationSeconds)}.`,
+      ];
+   }, [completedSimulations, simulationStats]);
+
    useEffect(() => {
       let timer: any;
       if (step === 'active' && timeLeft > 0) timer = setInterval(() => setTimeLeft(p => p - 1), 1000);
@@ -264,7 +513,7 @@ const Simulation: React.FC = () => {
    // Verificar se o usuário pode criar sim personalizado (apenas Pro ou Elite)
    const canCreateCustomSim = currentUser && (currentUser as any).plan && (currentUser as any).plan !== 'Gratuito' && (currentUser as any).plan !== 'Essencial';
 
-   const handleCreate = () => {
+   const handleCreate = (overrideConfig?: SimulationConfig) => {
       if (currentUser && !currentUser.emailVerified) {
          setAuthModalConfig({
             title: "Confirme seu E-mail",
@@ -273,32 +522,36 @@ const Simulation: React.FC = () => {
          setShowAuthModal(true);
          return;
       }
+
+      const activeConfig = overrideConfig || config;
+      const activeIsEnemFocus = activeConfig.filters.careers.some((career) => normalizeCareerSelectorLabel(career) === ENEM_FOCUS_NAME);
       let filtered = questions.filter(q => {
-         const matchSubject = config.subjects.length === 0 || (
-            isEnemFocus
-               ? getEnemSubjectAreasForQuestion(q).some((area) => config.subjects.includes(area as Subject))
-               : q.assuntos?.some(a => config.subjects.includes(a.nome as any))
+         const matchSubject = activeConfig.subjects.length === 0 || (
+            activeIsEnemFocus
+               ? getEnemSubjectAreasForQuestion(q).some((area) => activeConfig.subjects.includes(area as Subject))
+               : q.assuntos?.some(a => activeConfig.subjects.includes(a.nome as any))
          );
-         const matchAgency = isEnemFocus || config.filters.agencies.length === 0 || q.bancas?.some(b => config.filters.agencies.includes(b.sigla || b.nome));
-         const matchYear = config.filters.years.length === 0 || (q.anos && q.anos.some(y => config.filters.years.includes(String(y))));
-         const matchOrg = isEnemFocus || config.filters.organizations.length === 0 || q.orgaos?.some(o => config.filters.organizations.includes(o.sigla || o.nome));
-         const matchRole = isEnemFocus || config.filters.roles.length === 0 || q.cargos?.some(c => config.filters.roles.includes((c as any).descricao || (c as any)['descrição'] || (c as any).nome));
-         const matchLevel = isEnemFocus || config.filters.levels.length === 0 || config.filters.levels.includes(q.nivel || (q as any).level);
-         const matchTopic = config.filters.topics.length === 0 || q.assuntos?.some(a => config.filters.topics.includes(a.nome as any));
-         const matchCareer = config.filters.careers.length === 0
+         const matchAgency = activeIsEnemFocus || activeConfig.filters.agencies.length === 0 || q.bancas?.some(b => activeConfig.filters.agencies.includes(b.sigla || b.nome));
+         const matchYear = activeConfig.filters.years.length === 0 || (q.anos && q.anos.some(y => activeConfig.filters.years.includes(String(y))));
+         const matchOrg = activeIsEnemFocus || activeConfig.filters.organizations.length === 0 || q.orgaos?.some(o => activeConfig.filters.organizations.includes(o.sigla || o.nome));
+         const matchRole = activeIsEnemFocus || activeConfig.filters.roles.length === 0 || q.cargos?.some(c => activeConfig.filters.roles.includes((c as any).descricao || (c as any)['descrição'] || (c as any).nome));
+         const matchLevel = activeIsEnemFocus || activeConfig.filters.levels.length === 0 || activeConfig.filters.levels.includes(q.nivel || (q as any).level);
+         const matchTopic = activeConfig.filters.topics.length === 0 || q.assuntos?.some(a => activeConfig.filters.topics.includes(a.nome as any));
+         const matchCareer = activeConfig.filters.careers.length === 0
             || (
-               isEnemFocus
+               activeIsEnemFocus
                   ? isEnemQuestion(q)
-                  : q.carreiras?.some((career) => config.filters.careers.includes(normalizeCareerSelectorLabel(career?.nome)))
+                  : q.carreiras?.some((career) => activeConfig.filters.careers.includes(normalizeCareerSelectorLabel(career?.nome)))
             );
 
          return matchSubject && matchAgency && matchYear && matchOrg && matchRole && matchLevel && matchTopic && matchCareer;
       });
 
       if (filtered.length === 0) return addToast("`Nenhuma questão encontrada com esses filtros.", "warning");
-      const finalQs = filtered.sort(() => Math.random() - 0.5).slice(0, config.questionCount);
-      setActiveSession({ id: `sim-${Date.now()}`, config, questions: finalQs, answers: {}, startTime: Date.now(), status: 'in_progress' });
-      setTimeLeft(config.timerMinutes * 60); setCurrentIdx(0); setStep('active');
+      const finalQs = filtered.sort(() => Math.random() - 0.5).slice(0, activeConfig.questionCount);
+      setConfig(activeConfig);
+      setActiveSession({ id: `sim-${Date.now()}`, config: activeConfig, questions: finalQs, answers: {}, startTime: Date.now(), status: 'in_progress' });
+      setTimeLeft(activeConfig.timerMinutes * 60); setCurrentIdx(0); setStep('active');
       updateImmersiveMode(true);
    };
 
@@ -388,6 +641,216 @@ const Simulation: React.FC = () => {
       </>
    );
 
+   const handleStartReadyPreset = (preset: ReadySimulationPreset) => {
+      if (!currentUser) {
+         setAuthModalConfig({
+            title: "Inicie seu Treino",
+            description: "Entre na sua conta para fazer simulados prontos e salvar seus resultados.",
+         });
+         setShowAuthModal(true);
+         return;
+      }
+
+      handleCreate(preset.config);
+   };
+
+   const renderSimulationStats = () => (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+         {[
+            {
+               label: 'Simulados realizados',
+               value: simulationStats.completedCount.toString(),
+               icon: History,
+               helper: simulationStats.completedCount > 0 ? 'Histórico salvo' : 'Nenhum ainda',
+            },
+            {
+               label: 'Média geral',
+               value: `${simulationStats.averageAccuracy}%`,
+               icon: BarChart3,
+               helper: simulationStats.completedCount > 0 ? `Melhor: ${simulationStats.bestAccuracy}%` : 'Sem base ainda',
+            },
+            {
+               label: 'Tempo médio',
+               value: formatSimulationDuration(simulationStats.averageDurationSeconds),
+               icon: Timer,
+               helper: 'Por simulado concluído',
+            },
+         ].map((item) => {
+            const Icon = item.icon;
+            return (
+               <div key={item.label} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors">
+                  <div className="flex items-start justify-between gap-3">
+                     <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{item.label}</p>
+                        <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{item.value}</p>
+                        <p className="mt-1 text-[11px] font-bold text-slate-400 dark:text-slate-500">{item.helper}</p>
+                     </div>
+                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                        <Icon size={18} />
+                     </div>
+                  </div>
+               </div>
+            );
+         })}
+      </div>
+   );
+
+   const renderSimulationTabs = () => {
+      const tabs: { id: SimulationTab; label: string; badge?: string }[] = [
+         { id: 'ready', label: 'Simulados prontos' },
+         { id: 'custom', label: 'Criar o próprio' },
+         { id: 'results', label: 'Meus resultados', badge: simulationStats.completedCount > 0 ? String(simulationStats.completedCount) : undefined },
+      ];
+
+      return (
+         <div className="grid grid-cols-1 gap-1 rounded-2xl bg-slate-100 p-1 dark:bg-slate-800/80 sm:grid-cols-3">
+            {tabs.map((tab) => (
+               <button
+                  key={tab.id}
+                  onClick={() => setSimulationTab(tab.id)}
+                  className={`flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl px-3 text-center text-[11px] font-black uppercase tracking-widest transition-all ${simulationTab === tab.id ? 'bg-white text-slate-950 shadow-sm dark:bg-slate-950 dark:text-white' : 'text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300'}`}
+               >
+                  {tab.label}
+                  {tab.badge ? <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] text-white">{tab.badge}</span> : null}
+               </button>
+            ))}
+         </div>
+      );
+   };
+
+   const renderReadySimulations = () => (
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+         {readySimulationPresets.map((preset) => (
+            <div key={preset.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm transition-colors">
+               <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-3">
+                     <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                           <PlayCircle size={22} />
+                        </div>
+                        <div>
+                           <h3 className="text-base font-black text-slate-900 dark:text-slate-100">{preset.title}</h3>
+                           <p className="text-xs font-bold text-slate-400 dark:text-slate-500">{preset.details.join(' · ')}</p>
+                        </div>
+                     </div>
+                     <p className="text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">{preset.description}</p>
+                  </div>
+                  <button
+                     onClick={() => handleStartReadyPreset(preset)}
+                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-slate-200 transition-all hover:bg-indigo-600 dark:bg-indigo-600 dark:shadow-none dark:hover:bg-indigo-700"
+                  >
+                     Começar <ChevronRight size={15} />
+                  </button>
+               </div>
+            </div>
+         ))}
+      </div>
+   );
+
+   const renderSimulationResults = () => {
+      if (!currentUser) {
+         return (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900">
+               <History className="mx-auto mb-4 text-slate-300 dark:text-slate-600" size={34} />
+               <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">Entre para ver seus resultados</h3>
+               <p className="mx-auto mt-2 max-w-md text-sm font-medium text-slate-500 dark:text-slate-400">Seu histórico de simulados, médias e insights ficam salvos na conta.</p>
+               <button
+                  onClick={() => {
+                     setAuthModalConfig({
+                        title: 'Acesse sua conta',
+                        description: 'Entre para visualizar seu histórico de simulados e acompanhar sua evolução.',
+                     });
+                     setShowAuthModal(true);
+                  }}
+                  className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-indigo-700"
+               >
+                  Entrar <ArrowRight size={14} />
+               </button>
+            </div>
+         );
+      }
+
+      if (completedSimulations.length === 0) {
+         return (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900">
+               <BarChart3 className="mx-auto mb-4 text-slate-300 dark:text-slate-600" size={34} />
+               <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">Nenhum resultado ainda</h3>
+               <p className="mx-auto mt-2 max-w-md text-sm font-medium text-slate-500 dark:text-slate-400">Comece por um simulado pronto ou crie um próprio para gerar sua primeira análise.</p>
+               <button
+                  onClick={() => setSimulationTab('ready')}
+                  className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700"
+               >
+                  Ver simulados <ArrowRight size={14} />
+               </button>
+            </div>
+         );
+      }
+
+      return (
+         <div className="space-y-5">
+            <div className="space-y-4">
+               {completedSimulations.map((session: SimulationSession) => {
+                  const accuracy = getSimulationAccuracy(session);
+                  const isAboveAverage = accuracy >= simulationStats.averageAccuracy;
+                  return (
+                     <div key={session.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm transition-colors">
+                        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                           <div className="flex-1 space-y-3">
+                              <div>
+                                 <h3 className="text-base font-black text-slate-900 dark:text-slate-100">{session.config?.name || 'Simulado concluído'}</h3>
+                                 <p className="mt-1 text-xs font-bold text-slate-500 dark:text-slate-400">
+                                    {getSimulationDateLabel(session)} · {session.questions.length} questões · {formatSimulationDuration(getSimulationDurationSeconds(session))}
+                                 </p>
+                              </div>
+                              <div>
+                                 <div className="mb-2 flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400">
+                                    <span>Sua nota</span>
+                                    <span className={isAboveAverage ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}>{accuracy}%</span>
+                                 </div>
+                                 <div className="h-3 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                                    <div
+                                       className={`h-full rounded-full ${isAboveAverage ? 'bg-gradient-to-r from-indigo-500 to-emerald-500' : 'bg-gradient-to-r from-red-500 to-amber-500'}`}
+                                       style={{ width: `${Math.min(100, Math.max(0, accuracy))}%` }}
+                                    />
+                                 </div>
+                                 <p className={`mt-2 flex items-center gap-1.5 text-xs font-bold ${isAboveAverage ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                                    <CheckCircle2 size={13} />
+                                    {isAboveAverage ? 'Acima da média geral' : 'Abaixo da média geral'}
+                                 </p>
+                              </div>
+                           </div>
+                           <div className="min-w-[110px] border-t border-slate-100 pt-4 text-left dark:border-slate-800 md:border-l md:border-t-0 md:pl-6 md:pt-0 md:text-center">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Média</p>
+                              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-slate-100">{simulationStats.averageAccuracy}%</p>
+                           </div>
+                        </div>
+                     </div>
+                  );
+               })}
+            </div>
+
+            <div className="rounded-3xl border border-indigo-100 bg-indigo-50 p-5 transition-colors dark:border-indigo-900/40 dark:bg-indigo-900/20">
+               <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm dark:bg-slate-900 dark:text-indigo-400">
+                     <BrainCircuit size={20} />
+                  </div>
+                  <div>
+                     <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500 dark:text-indigo-300">Insights</p>
+                     <h3 className="text-sm font-black text-indigo-950 dark:text-indigo-100">Leitura dos seus resultados</h3>
+                  </div>
+               </div>
+               <div className="grid gap-3 md:grid-cols-3">
+                  {historyInsights.map((insight) => (
+                     <div key={insight} className="rounded-2xl bg-white p-4 text-xs font-bold leading-relaxed text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
+                        {insight}
+                     </div>
+                  ))}
+               </div>
+            </div>
+         </div>
+      );
+   };
+
    // if (!currentUser) return null; // Removed to allow guest access
 
    if (step === 'config') {
@@ -396,11 +859,17 @@ const Simulation: React.FC = () => {
             <header className="text-center space-y-2">
                <div className="flex items-center justify-center gap-2 mb-2">
                   <div className="p-2 bg-indigo-600 dark:bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 dark:shadow-none transition-colors"><Timer size={20} /></div>
-                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Novo Simulado</h1>
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Simulados</h1>
                </div>
-               <p className="text-slate-400 dark:text-slate-500 text-sm font-medium max-w-sm mx-auto transition-colors">Configure seu ambiente de treino e teste seus conhecimentos.</p>
+               <p className="text-slate-400 dark:text-slate-500 text-sm font-medium max-w-lg mx-auto transition-colors">Escolha um simulado pronto, crie seu próprio treino ou acompanhe seus resultados.</p>
             </header>
 
+            {renderSimulationStats()}
+            {renderSimulationTabs()}
+            {simulationTab === 'ready' ? renderReadySimulations() : null}
+            {simulationTab === 'results' ? renderSimulationResults() : null}
+
+            {simulationTab === 'custom' ? (
             <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-7 md:space-y-8 transition-colors">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <SearchableMultiSelect
@@ -478,6 +947,7 @@ const Simulation: React.FC = () => {
                   Começar Agora <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                </button>
             </div>
+            ) : null}
             {renderModals()}
          </div>
       );
@@ -625,6 +1095,7 @@ const Simulation: React.FC = () => {
 
    if (step === 'result' && activeSession) {
       const accuracy = Math.round((activeSession.score! / activeSession.questions.length) * 100);
+      const resultInsights = buildResultInsights(activeSession, simulationStats.averageAccuracy);
       return (
          <div className="w-full space-y-6 px-2 py-4 animate-fade-in sm:px-3 md:space-y-8 md:px-0 md:py-6">
             {renderExitFullscreenButton()}
@@ -661,6 +1132,27 @@ const Simulation: React.FC = () => {
                            : "Bom treino! Foque em revisar as questões que errou para consolidar o aprendizado."}
                      </p>
                   </div>
+               </div>
+            </div>
+
+            <div className="space-y-4">
+               <div className="flex items-center gap-3 px-1">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                     <BrainCircuit size={18} />
+                  </div>
+                  <div>
+                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Insights do resultado</p>
+                     <h3 className="text-base font-black text-slate-900 dark:text-slate-100">O que este simulado indica</h3>
+                  </div>
+               </div>
+               <div className="grid gap-4 md:grid-cols-3">
+                  {resultInsights.map((insight) => (
+                     <div key={insight.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{insight.title}</p>
+                        <p className="mt-2 text-xl font-black text-slate-900 dark:text-slate-100">{insight.value}</p>
+                        <p className="mt-2 text-xs font-bold leading-relaxed text-slate-500 dark:text-slate-400">{insight.description}</p>
+                     </div>
+                  ))}
                </div>
             </div>
 

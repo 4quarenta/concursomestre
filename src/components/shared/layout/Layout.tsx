@@ -11,7 +11,7 @@
 
 
 import React, { useState } from 'react';
-import { LayoutDashboard, BookOpen, User, Menu, X, BrainCircuit, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, Menu, X, BrainCircuit, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -42,9 +42,18 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
+type SidebarNavItem = {
+  label: string;
+  icon: LucideIcon;
+  path: string;
+  enabled: boolean;
+  moduleEnabled?: boolean;
+  badge?: number;
+};
+
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { currentUser: user, refreshUser } = useAuth();
-  const { notifications, markNotificationAsRead, systemSettings } = useData();
+  const { notifications, markNotificationAsRead, reports, systemSettings } = useData();
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
@@ -133,8 +142,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const unreadCount = notifications.filter(n => !n.isRead && !n.deletedAt).length;
+  const adminFeedbackCount = Math.max(0, Number((systemSettings as any)?.adminFeedbackCount || 0));
+  const adminOpenReportsCount = React.useMemo(
+    () => (reports || []).filter((report: any) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase())).length,
+    [reports],
+  );
+  const adminMenuBadgeCount = adminFeedbackCount + adminOpenReportsCount;
 
-  const navItems = [
+  const navItems: SidebarNavItem[] = [
     { label: 'Dashboard', icon: LayoutDashboard, path: '/', enabled: !!user },
     { label: 'Quest\u00F5es', icon: BookOpen, path: '/practice', enabled: practiceEnabled },
     { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled },
@@ -156,7 +171,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   });
 
   if (canOpenAdminPanel) {
-    navItems.push({ label: 'Painel Admin', icon: ShieldAlert, path: buildAdminPath('panel', 'dashboard'), enabled: true });
+    navItems.push({
+      label: 'Painel Admin',
+      icon: ShieldAlert,
+      path: buildAdminPath('panel', 'dashboard'),
+      enabled: true,
+      badge: adminMenuBadgeCount > 0 ? adminMenuBadgeCount : undefined,
+    });
   }
 
   const isActive = (path: string) => {
@@ -376,16 +397,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {/* Sidebar Navigation */}
         {!isDashboardPage && !isSimulationFullscreenPage && (
           <aside className={`
-            fixed inset-y-0 left-0 z-30 h-[100dvh] w-[84vw] max-w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transform transition-transform duration-200 ease-in-out flex flex-col
-            md:relative md:translate-x-0
+            fixed inset-y-0 left-0 z-30 flex h-[100dvh] w-[84vw] max-w-64 flex-col overflow-hidden border-r border-slate-200 bg-white transform transition-transform duration-200 ease-in-out dark:border-slate-800 dark:bg-slate-900
+            md:w-64 md:translate-x-0
             ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
           `}>
-            <div className="p-6 hidden md:flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-2xl mb-6">
-              <BrainCircuit className="w-8 h-8" />
+            <div className="hidden shrink-0 items-center gap-2 px-5 pb-4 pt-5 text-xl font-bold text-indigo-600 dark:text-indigo-400 md:flex">
+              <BrainCircuit className="h-7 w-7" />
               <span>ConcursoMestre</span>
             </div>
 
-            <div className="px-6 mb-6 md:hidden mt-4">
+            <div className="mb-3 mt-4 shrink-0 px-4 md:hidden">
               <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
                 <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-400">
                   {userInitials}
@@ -397,11 +418,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </div>
             </div>
 
-            <nav className="px-4 space-y-2 flex-1">
+            <nav className="no-scrollbar min-h-0 flex-1 space-y-1.5 overflow-y-auto px-3.5 py-3">
               {navItems.map((item) => {
                 const isAdminItem = item.path.startsWith('/admin');
                 const isCurrent = isActive(item.path);
-                let styles = "flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium relative ";
+                let styles = "flex items-center gap-3 px-3.5 py-2.5 rounded-lg transition-all text-[15px] font-semibold relative ";
 
                 if (isAdminItem) {
                   styles += isCurrent
@@ -419,6 +440,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 const isGloballyDisabled = item.enabled === false;
                 const isModuleDisabled = item.moduleEnabled === false;
                 const shouldShowDevBadge = isGloballyDisabled || isModuleDisabled;
+                const badgeCount = Number(item.badge || 0);
+                const hasBadge = badgeCount > 0;
+                const hasRightAccessory = isLocked || shouldShowDevBadge || hasBadge;
 
                 return (
                   <Link
@@ -428,23 +452,32 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     className={`${styles} ${isLocked ? 'opacity-75' : ''}`}
                     title={shouldShowDevBadge ? 'Desativado no admin (visivel apenas para Admin)' : ''}
                   >
-                    <item.icon size={20} />
-                    {item.label}
+                    <item.icon size={19} className="shrink-0" />
+                    <span className={`min-w-0 truncate ${hasRightAccessory ? 'pr-8' : ''}`}>{item.label}</span>
                     {item.path === '/changelog' && unreadCount > 0 && (
-                      <span className="w-2 h-2 rounded-full bg-red-500 absolute left-8 top-3.5 animate-pulse shadow-sm shadow-red-500/50" />
+                      <span className="absolute left-7 top-2.5 h-2 w-2 rounded-full bg-red-500 shadow-sm shadow-red-500/50 animate-pulse" />
+                    )}
+                    {hasBadge && !isLocked && !shouldShowDevBadge && (
+                      <span className={`absolute right-3 rounded-full px-1.5 py-0.5 text-[9px] font-black ${
+                        isAdminItem
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+                          : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300'
+                      }`}>
+                        {badgeCount > 99 ? '99+' : badgeCount}
+                      </span>
                     )}
                     {isLocked && (
-                      <Lock size={14} className="absolute right-4 text-amber-500" />
+                      <Lock size={14} className="absolute right-3 text-amber-500" />
                     )}
                     {shouldShowDevBadge && !isLocked && (
-                      <span className="absolute right-4 px-1.5 py-0.5 text-[8px] font-black uppercase bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 rounded">DEV</span>
+                      <span className="absolute right-3 rounded bg-red-100 px-1.5 py-0.5 text-[8px] font-black uppercase text-red-600 dark:bg-red-900/30 dark:text-red-400">DEV</span>
                     )}
                   </Link>
                 );
               })}
             </nav>
 
-            <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
+            <div className="shrink-0 space-y-3 border-t border-slate-100 p-3 dark:border-slate-800">
               {user && (
                 <div className={currentPlanTheme.box}>
                 <Link href="/plans" className="block text-inherit hover:opacity-80 transition-opacity">
@@ -484,6 +517,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               )}
             </div>
           </aside>
+        )}
+
+        {!isDashboardPage && !isSimulationFullscreenPage && (
+          <div className="hidden w-64 flex-none md:block" aria-hidden />
         )}
 
         {/* Main Content Area */}

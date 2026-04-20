@@ -34,6 +34,8 @@ interface ManualQuestionModalProps {
   onGenerateDetailedComment: () => void;
   onClose: () => void;
   onSave: () => void;
+  presentation?: 'modal' | 'page';
+  reportContext?: React.ReactNode;
 }
 
 /**
@@ -98,6 +100,8 @@ const ManualQuestionModal = ({
   onGenerateDetailedComment,
   onClose,
   onSave,
+  presentation = 'modal',
+  reportContext,
 }: ManualQuestionModalProps) => {
   const updateManualQ = (patch: Record<string, unknown>) => {
     setManualQ((prev: any) => ({ ...prev, ...patch }));
@@ -232,8 +236,11 @@ const ManualQuestionModal = ({
     setIsProvaSearchOpen(false);
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-slate-50 animate-in fade-in slide-in-from-bottom-4 duration-300 dark:bg-slate-950">
+  const editorFrame = (
+    <div className={presentation === 'page'
+      ? 'flex min-h-[100dvh] flex-col overflow-hidden bg-slate-50 dark:bg-slate-950'
+      : 'fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-slate-50 animate-in fade-in slide-in-from-bottom-4 duration-300 dark:bg-slate-950'}
+    >
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-slate-100 bg-white p-8 transition-colors dark:border-slate-800 dark:bg-slate-900">
           <div>
@@ -278,6 +285,12 @@ const ManualQuestionModal = ({
             </button>
           </div>
         </div>
+
+        {reportContext ? (
+          <div className="border-b border-slate-100 bg-white px-8 py-5 dark:border-slate-800 dark:bg-slate-900">
+            {reportContext}
+          </div>
+        ) : null}
 
         <div className="no-scrollbar flex-1 overflow-y-auto space-y-8 bg-slate-50 p-8 dark:bg-slate-950">
           {(manualQ.anulada || manualQ.desatualizada) && (
@@ -657,9 +670,14 @@ const ManualQuestionModal = ({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+
+  if (presentation === 'page') {
+    return editorFrame;
+  }
+
+  return createPortal(editorFrame, document.body);
 };
 
 export default ManualQuestionModal;

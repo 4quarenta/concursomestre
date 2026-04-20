@@ -74,6 +74,7 @@ const AdminNavigationSidebar = ({
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
+          const badgeCount = Number(tab.badge || 0);
 
           return (
             <button
@@ -101,9 +102,9 @@ const AdminNavigationSidebar = ({
                   </div>
                 </div>
 
-                {tab.badge !== undefined && (
+                {badgeCount > 0 && (
                   <span className={`rounded-full px-2 py-1 text-[10px] font-black ${isActive ? 'bg-white/15 text-white' : 'bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300'}`}>
-                    {tab.badge}
+                    {badgeCount > 99 ? '99+' : badgeCount}
                   </span>
                 )}
               </div>

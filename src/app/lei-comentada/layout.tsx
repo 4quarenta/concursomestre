@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { buildPublicPageMetadata } from '../seoMetadata';
 
 export const metadata = buildPublicPageMetadata({
-  title: 'Lei comentada',
-  description: 'Estude legislacao para concursos com leitura orientada, comentarios e conexao com questoes da plataforma.',
+  title: 'Lei Comentada',
+  description: 'Estude legislação para concursos com texto oficial, comentários, jurisprudência, macetes e atualizações monitoradas.',
   path: '/lei-comentada',
 });
 

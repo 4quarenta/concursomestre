@@ -10,6 +10,7 @@
 */
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@providers/ToastProvider';
 import AdminDatabaseNavigation from './AdminDatabaseNavigation';
 import AdminDatabaseModals from './AdminDatabaseModals';
@@ -27,6 +28,7 @@ import { useAdminQuestionsWorkflow } from '../questions/useAdminQuestionsWorkflo
 import { useAdminQuestionWorkbench } from '../questions/useAdminQuestionWorkbench';
 import { useRankingEditorWorkflow } from '../rankings/useRankingEditorWorkflow';
 import { useAdminUserProfileWorkflow } from '../users/useAdminUserProfileWorkflow';
+import { buildAdminQuestionEditPath } from '../../config/adminPageNavigationConfig';
 
 export interface AdminDatabaseManagerControllerProps {
   questions: any[];
@@ -74,6 +76,7 @@ export const useAdminDatabaseManagerController = ({
   initialTab = 'questions',
 }: AdminDatabaseManagerControllerProps) => {
   const { addToast } = useToast();
+  const router = useRouter();
 
   /**
    * Controla categoria ativa, subaba e filtro textual da area de base de dados.
@@ -268,6 +271,17 @@ export const useAdminDatabaseManagerController = ({
     onRefreshQuestions: reloadCurrentPage,
   });
 
+  const openQuestionEditPage = React.useCallback((question: any, report?: any) => {
+    const questionId = question?.id ?? report?.questionId;
+
+    if (!questionId) {
+      addToast('Nao foi possivel identificar a questao para edicao.', 'error');
+      return;
+    }
+
+    router.push(buildAdminQuestionEditPath(questionId, report?.id));
+  }, [addToast, router]);
+
   /**
    * Concentra a moderação cruzada de materiais e reports, incluindo atalhos para questões e perfis.
    */
@@ -284,7 +298,7 @@ export const useAdminDatabaseManagerController = ({
     addToast,
     moderateMaterial,
     resolveReport,
-    openManualModal,
+    openManualModal: openQuestionEditPage,
     openUserProfile,
   });
 
@@ -328,7 +342,7 @@ export const useAdminDatabaseManagerController = ({
     renderSortableHeader,
     sortData,
     onQuestionsPageChange: loadQuestions,
-    onQuestionEdit: openManualModal,
+    onQuestionEdit: openQuestionEditPage,
     onQuestionDelete: onDeleteQuestion,
     editingExamId,
     examDraft,

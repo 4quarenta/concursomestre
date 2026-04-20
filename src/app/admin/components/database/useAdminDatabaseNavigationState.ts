@@ -21,7 +21,8 @@ type AdminDatabaseSubTab =
   | 'import'
   | 'reports'
   | 'blocked'
-  | 'filters';
+  | 'filters'
+  | 'lei-comentada';
 
 type AdminDatabaseCategory = 'content' | 'people' | 'moderation';
 
@@ -41,6 +42,7 @@ const VALID_SUBTABS: AdminDatabaseSubTab[] = [
   'reports',
   'blocked',
   'filters',
+  'lei-comentada',
 ];
 
 const getCategoryFromSubTab = (subTab: string): AdminDatabaseCategory => {

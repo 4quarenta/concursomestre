@@ -15,6 +15,7 @@ import AdminMaterialsSection from '../materials/AdminMaterialsSection';
 import BlockedMaterialsSection from '../materials/BlockedMaterialsSection';
 import AdminExamBankSection from '../exams/AdminExamBankSection';
 import AdminImportSection from '../import/AdminImportSection';
+import AdminLegalCommentarySection from '../legal-commentary/AdminLegalCommentarySection';
 import AdminQuestionsSection from '../questions/AdminQuestionsSection';
 import AdminRankingsSection from '../rankings/AdminRankingsSection';
 import AdminReportsSection from '../reports/AdminReportsSection';
@@ -227,6 +228,10 @@ const AdminDatabaseSections = ({
         onDelete={onDeleteFilter}
       />
     );
+  }
+
+  if (activeSubTab === 'lei-comentada') {
+    return <AdminLegalCommentarySection filter={filterSearch} />;
   }
 
   if (activeSubTab === 'import') {

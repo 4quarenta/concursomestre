@@ -75,17 +75,59 @@ const readAdminTransactionPlatformFee = (transaction: any) => {
   return Number.isFinite(fee) && fee > 0 ? fee : amount * 0.20;
 };
 
+const isAdminMarketplaceTransaction = (transaction: any) => {
+  const type = String(transaction?.type || '').toLowerCase();
+  return type !== 'plan'
+    && type !== 'subscription'
+    && Boolean(transaction?.sellerId || transaction?.seller_id || transaction?.materialId || transaction?.material_id);
+};
+
 const isAdminHeldTransaction = (transaction: any) => {
   const timestamp = Number(transaction?.timestamp || 0);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return true;
 
-  const now = new Date();
-  const transactionDate = new Date(timestamp);
-  const passedWarranty = (now.getTime() - timestamp) >= (7 * 24 * 60 * 60 * 1000);
-  const isPastDay1OfNextMonth = now.getFullYear() > transactionDate.getFullYear()
-    || (now.getFullYear() === transactionDate.getFullYear() && now.getMonth() > transactionDate.getMonth());
+  return (Date.now() - timestamp) < (7 * 24 * 60 * 60 * 1000);
+};
 
-  return !(passedWarranty && isPastDay1OfNextMonth);
+const isAdminSellerPayoutPaid = (transaction: any) => {
+  const booleanFlags = [
+    transaction?.sellerPaid,
+    transaction?.seller_paid,
+    transaction?.paidToSeller,
+    transaction?.paid_to_seller,
+    transaction?.paidOut,
+    transaction?.paid_out,
+  ];
+
+  if (booleanFlags.some((flag) => flag === true || flag === 1 || flag === '1')) {
+    return true;
+  }
+
+  const statusFlags = [
+    transaction?.sellerPayoutStatus,
+    transaction?.seller_payout_status,
+    transaction?.payoutStatus,
+    transaction?.payout_status,
+  ];
+
+  if (statusFlags.some((status) => ['paid', 'completed', 'processed', 'sent'].includes(String(status || '').toLowerCase()))) {
+    return true;
+  }
+
+  const dateFlags = [
+    transaction?.sellerPaidAt,
+    transaction?.seller_paid_at,
+    transaction?.paidToSellerAt,
+    transaction?.paid_to_seller_at,
+    transaction?.payoutDate,
+    transaction?.payout_date,
+  ];
+
+  return dateFlags.some((value) => {
+    if (typeof value === 'number') return Number.isFinite(value) && value > 0;
+    if (typeof value === 'string') return value.trim() !== '';
+    return false;
+  });
 };
 
 /**
@@ -214,6 +256,69 @@ const AdminDashboard = ({
       refundRequestsCount: stats.refund_requests_count,
     };
   }, [stats]);
+
+  const sellerTransferOverview = useMemo(() => {
+    const summary = (filteredTransactions || []).reduce((acc, transaction: any) => {
+      if (!isAdminPaidTransaction(transaction) || !isAdminMarketplaceTransaction(transaction)) {
+        return acc;
+      }
+
+      const sellerShare = Math.max(0, readAdminTransactionAmount(transaction) - readAdminTransactionPlatformFee(transaction));
+      if (sellerShare <= 0) return acc;
+
+      if (isAdminSellerPayoutPaid(transaction)) {
+        acc.paid += sellerShare;
+        return acc;
+      }
+
+      if (isAdminHeldTransaction(transaction)) {
+        acc.held += sellerShare;
+      } else {
+        acc.available += sellerShare;
+      }
+
+      return acc;
+    }, {
+      available: 0,
+      held: 0,
+      paid: 0,
+    });
+
+    return {
+      ...summary,
+      totalPending: summary.available + summary.held,
+    };
+  }, [filteredTransactions]);
+
+  const auditPlatformRevenueOverview = useMemo(() => {
+    return (filteredTransactions || []).reduce((acc, transaction: any) => {
+      if (!isAdminPaidTransaction(transaction)) {
+        return acc;
+      }
+
+      const amount = readAdminTransactionAmount(transaction);
+      const platformShare = isAdminSubscriptionTransaction(transaction)
+        ? amount
+        : readAdminTransactionPlatformFee(transaction);
+
+      if (platformShare <= 0) {
+        return acc;
+      }
+
+      if (isAdminHeldTransaction(transaction)) {
+        acc.held += platformShare;
+      } else {
+        acc.available += platformShare;
+      }
+
+      acc.total += platformShare;
+      return acc;
+    }, {
+      available: 0,
+      held: 0,
+      total: 0,
+    });
+  }, [filteredTransactions]);
 
 
   const filteredReports = filterByPeriod(allReports, 'createdAt');
@@ -408,9 +513,9 @@ const AdminDashboard = ({
           <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-3xl border border-blue-100 dark:border-blue-900/30">
             <p className="text-[10px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-1">Valor Pago</p>
             <h3 className="text-xl font-black text-blue-700 dark:text-blue-300">
-              R$ {(stats.total_paid || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              R$ {sellerTransferOverview.paid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </h3>
-            <div className="mt-2 text-[9px] text-blue-400 font-bold uppercase">Repasses Realizados</div>
+            <div className="mt-2 text-[9px] text-blue-400 font-bold uppercase">Repasses Confirmados</div>
           </div>
 
           {/* Seller Payout */}
@@ -420,7 +525,7 @@ const AdminDashboard = ({
               {showAvailableOnly ? 'A Repassar Disponível' : 'Valor para Repassar aos Vendedores'}
             </p>
             <h3 className="text-xl font-black text-slate-700 dark:text-slate-200 relative z-10">
-              R$ {(showAvailableOnly ? stats.available_seller_payout : stats.seller_payout).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              R$ {(showAvailableOnly ? sellerTransferOverview.available : sellerTransferOverview.totalPending).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
             </h3>
             <div className="mt-2 text-[9px] text-slate-400 font-bold uppercase relative z-10">Venda de Materiais</div>
           </div>
@@ -428,7 +533,7 @@ const AdminDashboard = ({
           {/* Held Balance */}
           <div className="bg-amber-50 dark:bg-amber-900/10 p-6 rounded-3xl border border-amber-100 dark:border-amber-900/30">
             <p className="text-[10px] font-black text-amber-500 dark:text-amber-400 uppercase tracking-widest mb-1">Valor Retido (7 dias Reembolso)</p>
-            <h3 className="text-xl font-black text-amber-700 dark:text-amber-300">R$ {stats.held_balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+            <h3 className="text-xl font-black text-amber-700 dark:text-amber-300">R$ {sellerTransferOverview.held.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
             <div className="mt-2 text-[9px] text-amber-400 font-bold uppercase">Garantia Reembolso</div>
           </div>
 
@@ -616,8 +721,8 @@ const AdminDashboard = ({
                       <li className="flex gap-3 p-4 bg-amber-50/50 dark:bg-amber-900/5 rounded-2xl border border-amber-100/50 dark:border-amber-900/20">
                         <div className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-amber-500/20"><Clock size={14} /></div>
                         <div>
-                          <p className="font-black text-amber-900 dark:text-amber-300">Pagamentos Todo Dia 01</p>
-                          <p className="text-xs text-amber-700/70">O repasse é liberado apenas no dia 1º do mês seguinte, respeitando os 7 dias de retenção legal (válido para assinaturas e materiais).</p>
+                          <p className="font-black text-amber-900 dark:text-amber-300">Retenção de 7 Dias</p>
+                          <p className="text-xs text-amber-700/70">O valor fica retido apenas durante a janela de possível reembolso. Depois disso, o saldo deixa de ser retido e segue o fluxo operacional de pagamento.</p>
                         </div>
                       </li>
                     </ul>
@@ -641,8 +746,8 @@ const AdminDashboard = ({
                   </div>
                   <div className="col-span-2 bg-gradient-to-br from-indigo-600 to-purple-700 p-8 rounded-[40px] shadow-2xl shadow-indigo-500/30 text-white relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-700"><DollarSign size={120} /></div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-2 opacity-70">Receita Líquida (Pronto para Repasse)</p>
-                    <p className="text-5xl font-black tracking-tighter">R$ {(stats.available_platform_revenue || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-2 opacity-70">Receita Líquida Fora da Retenção</p>
+                    <p className="text-5xl font-black tracking-tighter">R$ {auditPlatformRevenueOverview.available.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                     <div className="mt-6 flex gap-2">
                       <span className="bg-white/10 px-3 py-1.5 rounded-xl text-[10px] font-black backdrop-blur-md uppercase tracking-widest">Saldo Auditado</span>
                       <span className="bg-emerald-400/20 text-emerald-100 px-3 py-1.5 rounded-xl text-[10px] font-black backdrop-blur-md uppercase tracking-widest flex items-center gap-2">
@@ -730,7 +835,7 @@ const AdminDashboard = ({
                                     </div>
                                   ) : isHeld ? (
                                     <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-amber-100 dark:border-amber-900/30 flex items-center gap-2">
-                                      <Clock size={12} className="animate-pulse" /> Retido (Dia 01)
+                                      <Clock size={12} className="animate-pulse" /> Retido (7 dias)
                                     </div>
                                   ) : (
                                     <div className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-emerald-100 dark:border-emerald-900/30 flex items-center gap-2">

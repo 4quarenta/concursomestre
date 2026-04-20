@@ -14,3 +14,4 @@
  * A implementacao real das tipagens globais agora vive dentro de `src/types`.
  */
 export * from './global';
+export * from './legalCommentary';

@@ -24,6 +24,7 @@ import { useData } from '@providers/DataProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
+import { adminService, type AdminFeedbackThread } from '@services/admin/adminService';
 import {
   ADMIN_SECTION_CONFIG,
   DEFAULT_SECTION_BY_TAB,
@@ -45,6 +46,9 @@ import {
   type AdminSettingsSection,
   type AdminSupportSection,
 } from '../../config/adminPageNavigationConfig';
+
+const countPendingFeedbackThreads = (threads: AdminFeedbackThread[]) =>
+  threads.filter((thread) => String(thread.status || '').toLowerCase() !== 'resolved').length;
 
 export type {
   AdminFinanceSection,
@@ -117,9 +121,39 @@ export const useAdminPageController = () => {
   const userInitials = currentUser?.name?.charAt(0) || 'A';
   const refundRequestsCount = (transactions || []).filter((transaction: any) => transaction.status === 'refund_requested').length;
   const openReportsCount = (reports || []).filter((report: any) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase())).length;
-  const feedbackCount = Number((systemSettings as any)?.adminFeedbackCount || 0);
+  const settingsFeedbackCount = Math.max(0, Number((systemSettings as any)?.adminFeedbackCount || 0));
+  const [pendingFeedbackCount, setPendingFeedbackCount] = useState(settingsFeedbackCount);
+  const feedbackCount = pendingFeedbackCount;
   const panelAlertsCount = openReportsCount + refundRequestsCount;
   const supportInboxCount = feedbackCount + openReportsCount;
+
+  useEffect(() => {
+    setPendingFeedbackCount(settingsFeedbackCount);
+  }, [settingsFeedbackCount]);
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      return;
+    }
+
+    let isCurrent = true;
+
+    adminService.getFeedbackThreads()
+      .then((threads) => {
+        if (isCurrent) {
+          setPendingFeedbackCount(countPendingFeedbackThreads(threads));
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setPendingFeedbackCount(settingsFeedbackCount);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentUser?.id, settingsFeedbackCount]);
 
   const adminTabs = useMemo<AdminNavigationTab[]>(() => ([
     { key: 'panel', label: 'Painel', icon: LayoutDashboard, badge: panelAlertsCount > 0 ? panelAlertsCount : undefined, description: 'Visao geral e saude operacional' },
@@ -360,22 +394,8 @@ export const useAdminPageController = () => {
     supportSectionProps: {
       initialSection: initialSupportSection,
       allReports: reports,
-      onOpenReportTarget: (report: any) => {
-        if (report?.targetType === 'question') {
-          handleSectionChange('operation', 'questions');
-          addToast(`Abra a secao Questoes para revisar o alvo ID ${report.questionId || report.targetId || report.id}.`, 'info');
-          return;
-        }
-
-        if (report?.targetType === 'material') {
-          handleSectionChange('operation', 'materials');
-          addToast(`Abra a secao Materiais para revisar o alvo ID ${report.materialId || report.targetId || report.id}.`, 'info');
-          return;
-        }
-
-        handleSectionChange('support', 'threads');
-        addToast('Comentarios denunciados seguem pela fila de suporte e threads.', 'info');
-      },
+      pendingFeedbackCount: feedbackCount,
+      onPendingFeedbackCountChange: setPendingFeedbackCount,
       onResolveReport: (report: any) => resolveReport(report.id, 'resolved', report.resolution || report.reason || 'Denuncia tratada pela equipe administrativa.'),
       onSectionChange: (section: AdminSupportSection) => handleSectionChange('support', section),
     },

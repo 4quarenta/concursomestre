@@ -108,7 +108,18 @@ const FEEDBACK_REPLY_TEMPLATES: Record<string, Array<{ label: string; message: s
   ],
 };
 
-export const AdminFeedback: React.FC<{ mode?: 'feedback' | 'threads' }> = ({ mode = 'feedback' }) => {
+interface AdminFeedbackProps {
+  mode?: 'feedback' | 'threads';
+  onPendingCountChange?: (count: number) => void;
+}
+
+const countPendingFeedback = (items: AdminFeedbackThread[]) =>
+  items.filter((item) => item.status !== 'resolved').length;
+
+export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
+  mode = 'feedback',
+  onPendingCountChange,
+}) => {
   const { addToast } = useToast();
   const [feedbacks, setFeedbacks] = useState<AdminFeedbackThread[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,6 +150,12 @@ export const AdminFeedback: React.FC<{ mode?: 'feedback' | 'threads' }> = ({ mod
   useEffect(() => {
     void fetchFeedback();
   }, [fetchFeedback]);
+
+  useEffect(() => {
+    if (!loading) {
+      onPendingCountChange?.(countPendingFeedback(feedbacks));
+    }
+  }, [feedbacks, loading, onPendingCountChange]);
 
   const dataset = useMemo(() => {
     if (mode === 'threads') {

@@ -21,7 +21,7 @@ interface UseAdminModerationWorkbenchOptions {
   addToast: ToastHandler;
   moderateMaterial: (materialId: string, status: string, reason: string, evidenceUrl?: string) => void;
   resolveReport: (reportId: string, status: string, resolution?: string, evidenceUrl?: string) => void;
-  openManualModal: (question?: Question) => void;
+  openManualModal: (question?: Question, report?: ErrorReport) => void;
   openUserProfile: (userId: string) => void;
 }
 

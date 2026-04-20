@@ -96,7 +96,7 @@ const AdminReportsSection = ({
                     onClick={() => onInspect(group.lastReport)}
                     className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg transition-colors flex items-center gap-1 font-bold text-[9px] uppercase"
                   >
-                    <Shield size={14} /> {group.targetType === 'comment' ? 'Inspecionar' : 'Moderar'}
+                    <Shield size={14} /> Moderar
                   </button>
                   <button
                     type="button"

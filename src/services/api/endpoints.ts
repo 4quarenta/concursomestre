@@ -210,6 +210,18 @@ export const ENDPOINTS = {
         generate: 'aiGenerate',
     },
 
+    legalCommentary: {
+        list: 'legal-commentary/list.php',
+        detail: 'legal-commentary/detail.php',
+        favorite: 'legal-commentary/favorite.php',
+        progress: 'legal-commentary/progress.php',
+        comment: 'legal-commentary/comment.php',
+        adminList: 'legal-commentary/admin/list.php',
+        adminDetail: 'legal-commentary/admin/detail.php',
+        adminSave: 'legal-commentary/admin/save.php',
+        adminDelete: 'legal-commentary/admin/delete.php',
+    },
+
     settings: {
         get: 'settings.php',
         update: 'admin/settings.php',

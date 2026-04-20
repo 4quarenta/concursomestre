@@ -13,7 +13,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Bell, BookOpen, Clock, Cpu, Database, FileText, Flag, Globe, LayoutDashboard, Loader2,
-  Layers, Lock, Mail, Megaphone, MessageSquare, RefreshCcw, Repeat, Settings, ShieldAlert, ShieldCheck,
+  Layers, Lock, Mail, Megaphone, MessageSquare, RefreshCcw, Repeat, Save, Settings, ShieldAlert, ShieldCheck,
   ShoppingBag, ShoppingCart, Sparkles, Terminal, Trash2, Trophy, Upload, Users, XCircle, Zap,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
@@ -39,6 +39,7 @@ interface AdminSettingsProps {
   addToast: AdminToastFn;
   initialSection?: AdminSettingsTab;
   onSectionChange?: (section: AdminSettingsTab) => void;
+  standaloneSection?: boolean;
 }
 
 const inputClassName = 'w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
@@ -113,6 +114,7 @@ const AdminSettings = ({
   addToast,
   initialSection = 'general',
   onSectionChange,
+  standaloneSection = false,
 }: AdminSettingsProps) => {
   const { currentUser, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminSettingsTab>(initialSection);
@@ -318,27 +320,68 @@ const AdminSettings = ({
   const isGeminiConfigured = !!(localSettings.hasGeminiApiKeyConfigured || localSettings.geminiApiKey);
   const isRecaptchaSecretConfigured = !!(localSettings.hasRecaptchaSecretConfigured || localSettings.recaptchaSecretKey);
   const isSmtpPasswordConfigured = !!(localSettings.hasSmtpPasswordConfigured || localSettings.smtpPass);
+  const settingsTabs = [
+    { id: 'general', label: 'Geral', icon: Settings },
+    { id: 'modules', label: 'Modulos', icon: LayoutDashboard },
+    { id: 'security', label: 'Seguranca', icon: ShieldAlert },
+    { id: 'integrations', label: 'Integracoes', icon: Cpu },
+    { id: 'email', label: 'E-mail', icon: Mail },
+    { id: 'ads', label: 'Anuncios', icon: Megaphone },
+    { id: 'seo', label: 'SEO', icon: Globe },
+    { id: 'performance', label: 'Performance', icon: Database },
+    { id: 'logs', label: 'Logs', icon: FileText },
+  ] as const;
+  const activeTabMeta = settingsTabs.find((tab) => tab.id === activeTab);
+  const activeTabDescription = activeTab === 'general'
+    ? 'Ambiente, identidade, parametros globais e conteudo base.'
+    : activeTab === 'modules'
+      ? 'Feature flags e modulos habilitados.'
+      : activeTab === 'security'
+        ? '2FA, blindagem administrativa e reset controlado.'
+        : activeTab === 'integrations'
+          ? 'Stripe, Gemini, analytics, pixel e reCAPTCHA.'
+          : activeTab === 'email'
+            ? 'SMTP, remetente e teste de envio.'
+            : activeTab === 'ads'
+              ? 'Banners, Ads e rastreio comercial.'
+              : activeTab === 'seo'
+                ? 'Metadados, indexacao e configuracao SEO.'
+                : activeTab === 'performance'
+                  ? 'Cache, manutencao e rotinas tecnicas.'
+                  : 'Visualizacao de logs e auditoria operacional.';
 
   return (
     <div className="space-y-5 md:space-y-6">
       <LogViewer isOpen={isLogViewerOpen} onClose={() => setIsLogViewerOpen(false)} />
-      <AdminSettingsTabsBar
-        tabs={[
-          { id: 'general', label: 'Geral', icon: Settings },
-          { id: 'modules', label: 'Modulos', icon: LayoutDashboard },
-          { id: 'security', label: 'Seguranca', icon: ShieldAlert },
-          { id: 'integrations', label: 'Integracoes', icon: Cpu },
-          { id: 'email', label: 'E-mail', icon: Mail },
-          { id: 'ads', label: 'Anuncios', icon: Megaphone },
-          { id: 'seo', label: 'SEO', icon: Globe },
-          { id: 'performance', label: 'Performance', icon: Database },
-          { id: 'logs', label: 'Logs', icon: FileText },
-        ]}
-        activeTab={activeTab}
-        isSaving={isSavingSettings}
-        onChange={(section) => changeSection(section as AdminSettingsTab)}
-        onSave={() => void handlePersistSettings()}
-      />
+      {standaloneSection ? (
+        <div className="mb-4 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+              Configuracoes / {activeTabMeta?.label || activeTab}
+            </p>
+            <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{activeTabMeta?.label || activeTab}</p>
+            <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+              {activeTabDescription}
+            </p>
+          </div>
+          <button
+            onClick={() => void handlePersistSettings()}
+            disabled={isSavingSettings}
+            className="flex items-center gap-2 rounded-2xl bg-indigo-600 px-8 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-xl shadow-indigo-200 transition-all active:scale-95 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70 dark:shadow-indigo-900/20"
+          >
+            <Save size={18} />
+            {isSavingSettings ? 'Salvando...' : 'Salvar alteracoes'}
+          </button>
+        </div>
+      ) : (
+        <AdminSettingsTabsBar
+          tabs={settingsTabs as any}
+          activeTab={activeTab}
+          isSaving={isSavingSettings}
+          onChange={(section) => changeSection(section as AdminSettingsTab)}
+          onSave={() => void handlePersistSettings()}
+        />
+      )}
 
       {activeTab === 'general' && (
         <div className="grid gap-6">
