@@ -45,7 +45,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   const visibleNotifications = notifications.filter((notification) => !notification.deletedAt);
 
   return (
-    <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in text-left">
+    <div className="absolute right-0 top-12 z-50 w-80 overflow-hidden rounded-lg border border-slate-200 bg-white text-left shadow-2xl dark:border-slate-800 dark:bg-slate-900 animate-scale-in">
       <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
         <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
         {unreadCount > 0 && (
@@ -95,7 +95,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
             setIsNotifOpen(false);
             navigate('/notifications');
           }}
-          className="w-full py-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex items-center justify-center gap-1"
+          className="flex w-full items-center justify-center gap-1 rounded-lg py-2 text-[10px] font-black uppercase tracking-widest text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
         >
           Ver Todas <ArrowRight size={12} />
         </button>

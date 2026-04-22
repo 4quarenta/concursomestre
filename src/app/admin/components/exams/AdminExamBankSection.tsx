@@ -61,7 +61,7 @@ const DraftInput = ({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+      className="h-10 w-full rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
     />
   </div>
 );
@@ -93,23 +93,23 @@ const AdminExamBankSection = ({
   return (
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Banco de provas</p>
           <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{totalExams}</p>
         </div>
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Questoes vinculadas</p>
           <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{totalLinkedQuestions}</p>
         </div>
-        <div className="rounded-[2rem] border border-indigo-200 bg-indigo-50 p-5 dark:border-indigo-900/30 dark:bg-indigo-900/10">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Uso principal</p>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-5 dark:border-blue-900/30 dark:bg-blue-900/10">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-600 dark:text-blue-300">Uso principal</p>
           <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Vinculo rapido no editar questao</p>
           <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">A busca de prova usa este mesmo cadastro.</p>
         </div>
       </div>
 
       {examDraft ? (
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Editar prova</p>
@@ -119,7 +119,7 @@ const AdminExamBankSection = ({
               <button
                 type="button"
                 onClick={onCancelEdit}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 transition-all hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 Cancelar
               </button>
@@ -127,7 +127,7 @@ const AdminExamBankSection = ({
                 type="button"
                 onClick={onSaveEdit}
                 disabled={actionLoading === 'save'}
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700 disabled:opacity-60"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
               >
                 {actionLoading === 'save' ? 'Salvando...' : 'Salvar prova'}
               </button>
@@ -151,7 +151,7 @@ const AdminExamBankSection = ({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="border-b border-slate-100 px-6 py-4 dark:border-slate-800">
           <p className="text-sm font-black text-slate-900 dark:text-slate-100">Lista de provas cadastradas</p>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Use editar para ajustar o cadastro e deletar para remover o vinculo do banco global.</p>
@@ -171,7 +171,7 @@ const AdminExamBankSection = ({
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {exams.map((exam) => (
-                <tr key={exam.id} className={editingExamId === String(exam.id) ? 'bg-indigo-50/60 dark:bg-indigo-900/10' : ''}>
+                <tr key={exam.id} className={editingExamId === String(exam.id) ? 'bg-blue-50/60 dark:bg-blue-900/10' : ''}>
                   <td className="p-4">
                     <div className="flex flex-col gap-1">
                       <span className="text-sm font-black text-slate-900 dark:text-slate-100">{exam.nome}</span>
@@ -194,7 +194,7 @@ const AdminExamBankSection = ({
                       <button
                         type="button"
                         onClick={() => onStartEdit(exam)}
-                        className="inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-600 transition-all hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-300"
+                        className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                       >
                         <Edit3 size={12} />
                         Editar
@@ -202,7 +202,7 @@ const AdminExamBankSection = ({
                       <button
                         type="button"
                         onClick={() => onRequestDelete(exam)}
-                        className="inline-flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-red-600 transition-all hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
+                        className="inline-flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
                       >
                         <Trash2 size={12} />
                         Deletar

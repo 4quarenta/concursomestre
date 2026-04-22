@@ -15,12 +15,17 @@ import React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
+  AlertCircle,
   ArrowLeft,
   BookOpen,
   Bot,
+  CheckCircle2,
+  Download,
   FileText,
+  History,
   Loader2,
   Plus,
+  RefreshCcw,
   Save,
   Sparkles,
   Trash2,
@@ -35,7 +40,11 @@ import type {
   ArticleJurisprudence,
   LawArticle,
   LawDetail,
+  LegalArticleEditorialSnapshot,
   LegalArea,
+  LegalEditorialBatchRun,
+  LegalEditorialGenerationResult,
+  LegalEditorialGenerationScope,
   TeacherComment,
 } from '@types';
 
@@ -43,7 +52,7 @@ type AdminLawDraft = Partial<LawDetail> & {
   areaId?: string;
   sumulas?: Array<{
     id?: string;
-    articleId: string;
+    articleId?: string;
     court: string;
     number: string;
     text: string;
@@ -57,6 +66,8 @@ interface TaxonomyOption {
   name: string;
   parentId?: string | number | null;
 }
+
+type LegalAiGenerationKind = 'teacher-comment' | 'exam-tip' | 'jurisprudence' | 'sumula' | 'doctrine' | 'bundle';
 
 const createTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -123,6 +134,96 @@ const buildEmptyLaw = (areas: LegalArea[]): AdminLawDraft => ({
   sumulas: [],
 });
 
+const hydrateDraftFromLaw = (law: Partial<LawDetail>, areas: LegalArea[]): AdminLawDraft => {
+  const articleIdMap = new Map<string, string>();
+  const articles = (law.articles || []).map((article, index) => {
+    const nextId = String(article.id || createTempId(`article-${index + 1}`));
+    const originalId = String(article.id || '');
+    if (originalId) {
+      articleIdMap.set(originalId, nextId);
+    }
+
+    return {
+      ...article,
+      id: nextId,
+      lawId: String(article.lawId || law.id || 'new'),
+      slug: article.slug || `art-${index + 1}`,
+      blocks: (article.blocks || []).map((block, blockIndex) => ({
+        ...block,
+        id: block.id || `${nextId}-block-${blockIndex + 1}`,
+      })),
+      paragraphs: article.paragraphs || [],
+      jurisprudenceNotes: article.jurisprudenceNotes || [],
+      syllabi: article.syllabi || [],
+      doctrine: article.doctrine || [],
+      hierarchy: article.hierarchy || {},
+      relatedQuestionCount: article.relatedQuestionCount || 0,
+      subjectFilterId: article.subjectFilterId ?? null,
+      topicFilterId: article.topicFilterId ?? null,
+    };
+  });
+
+  const resolveArticleId = (articleId?: string | null) => {
+    if (!articleId) return '';
+    return articleIdMap.get(String(articleId)) || String(articleId);
+  };
+
+  const resolvedAreaId = String(law.areaId || law.area?.id || areas[0]?.id || '');
+  const resolvedArea = areas.find((area) => String(area.id) === resolvedAreaId) || law.area || areas[0];
+
+  return {
+    ...law,
+    id: String(law.id || ''),
+    areaId: resolvedAreaId,
+    area: resolvedArea,
+    aliases: law.aliases || [],
+    title: law.title || '',
+    shortTitle: law.shortTitle || '',
+    number: law.number || '',
+    year: law.year || '',
+    date: law.date || '',
+    slug: law.slug || '',
+    description: law.description || '',
+    summary: law.summary || '',
+    ementa: law.ementa || '',
+    status: law.status || 'active',
+    officialUrl: law.officialUrl || '',
+    sourceName: law.sourceName || 'Portal do Planalto',
+    lastSyncedAt: law.lastSyncedAt || '',
+    isRecentlyUpdated: Boolean(law.isRecentlyUpdated),
+    accessCount: law.accessCount || 0,
+    articleCount: law.articleCount || articles.length,
+    commentedArticleCount: law.commentedArticleCount || 0,
+    jurisprudenceCount: law.jurisprudenceCount || 0,
+    examTipCount: law.examTipCount || 0,
+    articles,
+    teacherComments: (law.teacherComments || []).map((comment) => ({
+      ...comment,
+      articleId: resolveArticleId(comment.articleId),
+    })),
+    jurisprudence: (law.jurisprudence || []).map((item) => ({
+      ...item,
+      articleId: resolveArticleId(item.articleId),
+    })),
+    examTips: (law.examTips || []).map((item) => ({
+      ...item,
+      articleId: resolveArticleId(item.articleId),
+    })),
+    userComments: law.userComments || [],
+    updates: law.updates || [],
+    sumulas: articles.flatMap((article) => (
+      (article.syllabi || []).map((sumula) => {
+        const syllabusId = 'id' in sumula ? (sumula as { id?: string }).id : undefined;
+        return {
+          ...sumula,
+          id: String(syllabusId || createTempId('sumula')),
+        articleId: article.id,
+        };
+      })
+    )),
+  };
+};
+
 const getArticleLabel = (article: LawArticle) =>
   article.number ? `Art. ${article.number}` : 'Artigo sem numero';
 
@@ -151,6 +252,113 @@ const SelectInput = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => (
   />
 );
 
+const AI_KIND_LABEL: Record<LegalAiGenerationKind, string> = {
+  'teacher-comment': 'Comentario',
+  'exam-tip': 'Macete',
+  jurisprudence: 'Jurisprudencia',
+  sumula: 'Sumula',
+  doctrine: 'Doutrina',
+  bundle: 'Pacote IA',
+};
+
+const sanitizeInlineText = (value: string) => String(value || '')
+  .replace(/\s+/g, ' ')
+  .replace(/\s+([,.;:!?])/g, '$1')
+  .trim();
+
+const stripAiLead = (value: string) => {
+  let nextValue = sanitizeInlineText(value);
+  const patterns = [
+    /^prezad[oa]s?\s+alun[oa]s?[,:!.\-\s]*/i,
+    /^car[oa]s?\s+alun[oa]s?[,:!.\-\s]*/i,
+    /^ol[aá][,:!.\-\s]*/i,
+    /^vamos\s+(analisar|ao\s+que\s+importa|direto\s+ao\s+ponto)[,:!.\-\s]*/i,
+    /^aten[cç][aã]o[,:!.\-\s]*/i,
+  ];
+
+  patterns.forEach((pattern) => {
+    nextValue = nextValue.replace(pattern, '');
+  });
+
+  return nextValue.trim();
+};
+
+const splitSentences = (value: string) => sanitizeInlineText(value)
+  .split(/(?<=[.!?])\s+/)
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+const limitSentences = (value: string, maxSentences: number) => {
+  const sentences = splitSentences(stripAiLead(value));
+  return sanitizeInlineText(sentences.slice(0, maxSentences).join(' '));
+};
+
+const normalizeShortText = (value: string, maxLength: number) => {
+  const cleanValue = stripAiLead(value);
+  if (cleanValue.length <= maxLength) {
+    return cleanValue;
+  }
+
+  return `${cleanValue.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+};
+
+const normalizeStringList = (values?: string[], limit = 3) => (Array.isArray(values) ? values : [])
+  .map((item) => normalizeShortText(item, 120))
+  .filter(Boolean)
+  .slice(0, limit);
+
+const formatBatchStatusLabel = (status?: string) => {
+  switch (status) {
+    case 'success':
+      return 'Sucesso';
+    case 'partial':
+      return 'Parcial';
+    case 'failed':
+      return 'Falha';
+    case 'running':
+      return 'Em execucao';
+    case 'pending':
+      return 'Pendente';
+    case 'completed':
+      return 'Concluido';
+    case 'stopped':
+      return 'Interrompido';
+    case 'skipped':
+      return 'Ignorado';
+    default:
+      return status || 'Sem status';
+  }
+};
+
+const getBatchStatusClasses = (status?: string) => {
+  switch (status) {
+    case 'success':
+      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300';
+    case 'failed':
+      return 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300';
+    case 'running':
+      return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300';
+    case 'stopped':
+      return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
+    case 'pending':
+      return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+    default:
+      return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300';
+  }
+};
+
+const formatDoctrineEntry = (entry: { author?: string; work?: string; text?: string }) => {
+  const text = normalizeShortText(entry.text || '', 220);
+  if (!text) return '';
+
+  const author = sanitizeInlineText(entry.author || '');
+  const work = sanitizeInlineText(entry.work || '');
+  const prefix = author ? `${author}: ` : '';
+  const suffix = work ? ` (${work})` : '';
+
+  return `${prefix}${text}${suffix}`.trim();
+};
+
 const AdminLegalCommentaryEditPage = () => {
   const params = useParams<{ lawId?: string | string[] }>();
   const router = useRouter();
@@ -162,16 +370,29 @@ const AdminLegalCommentaryEditPage = () => {
   const [subjects, setSubjects] = React.useState<TaxonomyOption[]>([]);
   const [topics, setTopics] = React.useState<TaxonomyOption[]>([]);
   const [draft, setDraft] = React.useState<AdminLawDraft | null>(null);
+  const draftRef = React.useRef<AdminLawDraft | null>(null);
   const [activeArticleId, setActiveArticleId] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
+  const [isImportingFromPlanalto, setIsImportingFromPlanalto] = React.useState(false);
   const [aiLoading, setAiLoading] = React.useState<string | null>(null);
+  const [batchRun, setBatchRun] = React.useState<LegalEditorialBatchRun | null>(null);
+  const [isBatchRunning, setIsBatchRunning] = React.useState(false);
+  const [isBatchRefreshing, setIsBatchRefreshing] = React.useState(false);
+  const [isBatchPaused, setIsBatchPaused] = React.useState(false);
+  const [batchOnlyMissingComments, setBatchOnlyMissingComments] = React.useState(true);
+  const batchPauseRef = React.useRef(false);
+  const batchStopRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!isAuthLoading && !canAccessAdminPanel(currentUser)) {
       router.replace('/');
     }
   }, [currentUser, isAuthLoading, router]);
+
+  React.useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   React.useEffect(() => {
     let isCurrent = true;
@@ -185,19 +406,7 @@ const AdminLegalCommentaryEditPage = () => {
         if (!isCurrent) return;
 
         const nextAreas = payload.areas || [];
-        const nextLaw = payload.law
-          ? {
-              ...payload.law,
-              areaId: payload.law.areaId || payload.law.area?.id || nextAreas[0]?.id || '',
-              sumulas: payload.law.articles.flatMap((article) => (
-                (article.syllabi || []).map((sumula) => ({
-                  ...sumula,
-                  id: createTempId('sumula'),
-                  articleId: article.id,
-                }))
-              )),
-            }
-          : buildEmptyLaw(nextAreas);
+        const nextLaw = payload.law ? hydrateDraftFromLaw(payload.law, nextAreas) : buildEmptyLaw(nextAreas);
 
         setAreas(nextAreas);
         setSubjects((taxonomies.subjects || []) as TaxonomyOption[]);
@@ -216,6 +425,37 @@ const AdminLegalCommentaryEditPage = () => {
       isCurrent = false;
     };
   }, [addToast, lawId]);
+
+  React.useEffect(() => {
+    if (!draft?.id || isNew) {
+      setBatchRun(null);
+      return;
+    }
+
+    let active = true;
+    setIsBatchRefreshing(true);
+
+    legalCommentaryApiService.getAdminEditorialBatchStatus({ lawId: String(draft.id) })
+      .then((run) => {
+        if (active) {
+          setBatchRun(run);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setBatchRun(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsBatchRefreshing(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [draft?.id, isNew]);
 
   const activeArticle = React.useMemo(
     () => draft?.articles?.find((article) => article.id === activeArticleId) || draft?.articles?.[0] || null,
@@ -297,6 +537,51 @@ const AdminLegalCommentaryEditPage = () => {
     });
   };
 
+  const addDoctrine = (text = '') => {
+    if (!activeArticle) return;
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        articles: (current.articles || []).map((article) => article.id === activeArticle.id ? {
+          ...article,
+          doctrine: [...(article.doctrine || []), text],
+        } : article),
+      };
+    });
+  };
+
+  const updateDoctrine = (index: number, text: string) => {
+    if (!activeArticle) return;
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        articles: (current.articles || []).map((article) => {
+          if (article.id !== activeArticle.id) return article;
+          return {
+            ...article,
+            doctrine: (article.doctrine || []).map((item, itemIndex) => itemIndex === index ? text : item),
+          };
+        }),
+      };
+    });
+  };
+
+  const removeDoctrine = (index: number) => {
+    if (!activeArticle) return;
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        articles: (current.articles || []).map((article) => article.id === activeArticle.id ? {
+          ...article,
+          doctrine: (article.doctrine || []).filter((_, itemIndex) => itemIndex !== index),
+        } : article),
+      };
+    });
+  };
+
   const addTeacherComment = (comment?: Partial<TeacherComment>) => {
     if (!activeArticle) return;
     const nextComment: TeacherComment = {
@@ -340,7 +625,14 @@ const AdminLegalCommentaryEditPage = () => {
       priority: item?.priority || 'medium',
       sourceUrl: item?.sourceUrl || '',
     };
-    setDraft((current) => current ? { ...current, jurisprudence: [...(current.jurisprudence || []), nextItem] } : current);
+    setDraft((current) => current ? {
+      ...current,
+      jurisprudence: [...(current.jurisprudence || []), nextItem],
+      articles: (current.articles || []).map((article) => article.id === activeArticle.id ? {
+        ...article,
+        jurisprudenceNotes: [],
+      } : article),
+    } : current);
   };
 
   const addSumula = (item?: Partial<NonNullable<AdminLawDraft['sumulas']>[number]>) => {
@@ -374,42 +666,351 @@ const AdminLegalCommentaryEditPage = () => {
     } : current);
   };
 
-  const generateWithAi = async (kind: 'teacher-comment' | 'exam-tip' | 'jurisprudence' | 'sumula') => {
-    if (!draft || !activeArticle) return;
+  const resolveAiScope = (kind: Exclude<LegalAiGenerationKind, 'bundle'>): LegalEditorialGenerationScope => {
+    if (kind === 'teacher-comment') return 'field-comment';
+    if (kind === 'exam-tip') return 'field-macete';
+    if (kind === 'jurisprudence') return 'field-jurisprudencia';
+    if (kind === 'sumula') return 'field-sumulas';
+    return 'field-doutrina';
+  };
+
+  const buildArticleEditorialSnapshot = React.useCallback((currentDraft: AdminLawDraft, article: LawArticle): LegalArticleEditorialSnapshot => ({
+    articleId: article.id,
+    articleNumber: article.number,
+    teacherComments: (currentDraft.teacherComments || []).filter((item) => item.articleId === article.id),
+    examTips: (currentDraft.examTips || []).filter((item) => item.articleId === article.id),
+    doctrine: article.doctrine || [],
+    jurisprudenceNotes: article.jurisprudenceNotes || [],
+    jurisprudence: (currentDraft.jurisprudence || []).filter((item) => item.articleId === article.id),
+    sumulas: (currentDraft.sumulas || []).filter((item) => item.articleId === article.id),
+  }), []);
+
+  const articleHasTeacherComment = React.useCallback((currentDraft: AdminLawDraft, article: LawArticle) => {
+    const snapshot = buildArticleEditorialSnapshot(currentDraft, article);
+    return (snapshot.teacherComments || []).some((item) => String(item.body || '').trim().length > 0);
+  }, [buildArticleEditorialSnapshot]);
+
+  const batchEligibleArticlesCount = React.useMemo(() => {
+    if (!draft?.articles?.length) return 0;
+    return (draft.articles || []).filter((article) => (
+      batchOnlyMissingComments ? !articleHasTeacherComment(draft, article) : true
+    )).length;
+  }, [articleHasTeacherComment, batchOnlyMissingComments, draft]);
+
+  const waitWhileBatchPaused = React.useCallback(async () => {
+    while (batchPauseRef.current && !batchStopRef.current) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }, []);
+
+  const ensureNestedIds = React.useCallback((articleId: string, editorial: LegalArticleEditorialSnapshot): LegalArticleEditorialSnapshot => ({
+    articleId,
+    articleNumber: editorial.articleNumber,
+    teacherComments: (editorial.teacherComments || []).map((item) => ({
+      ...item,
+      id: item.id || createTempId('teacher'),
+      articleId,
+    })),
+    examTips: (editorial.examTips || []).map((item) => ({
+      ...item,
+      id: item.id || createTempId('tip'),
+      articleId,
+    })),
+    doctrine: editorial.doctrine || [],
+    jurisprudenceNotes: editorial.jurisprudenceNotes || [],
+    jurisprudence: (editorial.jurisprudence || []).map((item) => ({
+      ...item,
+      id: item.id || createTempId('juris'),
+      articleId,
+    })),
+    sumulas: (editorial.sumulas || []).map((item) => ({
+      ...item,
+      id: item.id || createTempId('sumula'),
+      articleId,
+    })),
+  }), []);
+
+  const applyEditorialResultToDraft = React.useCallback((result: LegalEditorialGenerationResult) => {
+    if (!result.articleId) return;
+
+    setDraft((current) => {
+      if (!current) return current;
+      const editorial = ensureNestedIds(result.articleId, result.editorial);
+
+      return {
+        ...current,
+        teacherComments: [
+          ...(current.teacherComments || []).filter((item) => item.articleId !== result.articleId),
+          ...editorial.teacherComments,
+        ],
+        examTips: [
+          ...(current.examTips || []).filter((item) => item.articleId !== result.articleId),
+          ...editorial.examTips,
+        ],
+        jurisprudence: [
+          ...(current.jurisprudence || []).filter((item) => item.articleId !== result.articleId),
+          ...editorial.jurisprudence,
+        ],
+        sumulas: [
+          ...(current.sumulas || []).filter((item) => item.articleId !== result.articleId),
+          ...editorial.sumulas,
+        ],
+        articles: (current.articles || []).map((article) => article.id === result.articleId ? {
+          ...article,
+          doctrine: editorial.doctrine,
+          doutrina: editorial.doctrine,
+          jurisprudenceNotes: editorial.jurisprudenceNotes || [],
+          macete: editorial.examTips[0]?.body || null,
+          examTip: editorial.examTips[0]?.body || null,
+          comentarios: editorial.teacherComments,
+          jurisprudencia: editorial.jurisprudence,
+          sumulas: editorial.sumulas,
+          syllabi: editorial.sumulas,
+        } : article),
+      };
+    });
+  }, [ensureNestedIds]);
+
+  const refreshBatchRun = React.useCallback(async (runId?: string) => {
+    if (!runId && !draftRef.current?.id) return null;
+
+    setIsBatchRefreshing(true);
+    try {
+      const nextRun = await legalCommentaryApiService.getAdminEditorialBatchStatus(
+        runId ? { runId } : { lawId: String(draftRef.current?.id || '') },
+      );
+      setBatchRun(nextRun);
+      return nextRun;
+    } finally {
+      setIsBatchRefreshing(false);
+    }
+  }, []);
+
+  const generateArticleEditorial = React.useCallback(async (
+    article: LawArticle,
+    scope: LegalEditorialGenerationScope,
+    batchRunId?: string,
+  ) => {
+    const currentDraft = draftRef.current;
+    if (!currentDraft) {
+      throw new Error('Nenhuma lei carregada para gerar editorial.');
+    }
+
+    const result = await legalCommentaryApiService.generateAdminEditorial({
+      scope,
+      lawId: String(currentDraft.id || ''),
+      articleId: article.id,
+      law: currentDraft,
+      article,
+      existingEditorial: buildArticleEditorialSnapshot(currentDraft, article),
+      previewOnly: !/^\d+$/.test(String(currentDraft.id || '')) || !/^\d+$/.test(String(article.id || '')),
+      batchRunId,
+    });
+
+    applyEditorialResultToDraft(result);
+    if (result.batch) {
+      setBatchRun(result.batch);
+    }
+    return result;
+  }, [applyEditorialResultToDraft, buildArticleEditorialSnapshot]);
+
+  const generateWithAi = async (kind: Exclude<LegalAiGenerationKind, 'bundle'>) => {
+    if (!draft || !activeArticle) {
+      addToast('Nenhum artigo ativo para gerar conteudo.', 'info');
+      return;
+    }
+
     setAiLoading(kind);
 
     try {
-      if (kind === 'teacher-comment') {
-        const suggestion = await legalCommentaryApiService.generateEditorialSuggestion<Partial<TeacherComment>>(
-          { kind, law: draft, article: activeArticle },
-          {},
-        );
-        addTeacherComment(suggestion);
-      } else if (kind === 'exam-tip') {
-        const suggestion = await legalCommentaryApiService.generateEditorialSuggestion<Partial<ArticleExamTip>>(
-          { kind, law: draft, article: activeArticle },
-          {},
-        );
-        addExamTip(suggestion);
-      } else if (kind === 'jurisprudence') {
-        const suggestion = await legalCommentaryApiService.generateEditorialSuggestion<Partial<ArticleJurisprudence>>(
-          { kind, law: draft, article: activeArticle },
-          {},
-        );
-        addJurisprudence(suggestion);
-      } else {
-        const suggestion = await legalCommentaryApiService.generateEditorialSuggestion<Partial<NonNullable<AdminLawDraft['sumulas']>[number]>>(
-          { kind, law: draft, article: activeArticle },
-          {},
-        );
-        addSumula(suggestion);
-      }
+      const result = await generateArticleEditorial(activeArticle, resolveAiScope(kind));
+      const warnings = result.summary.warnings || [];
 
-      addToast('Conteudo gerado. Revise antes de salvar.', 'success');
-    } catch {
-      addToast('Nao foi possivel gerar com IA agora.', 'error');
+      if (result.summary.approvedBlocks > 0) {
+        addToast(`${AI_KIND_LABEL[kind]} gerado${result.persisted ? ' e salvo' : ''}. Revise o resultado.`, 'success');
+      } else {
+        addToast(warnings[0] || `Nada seguro para adicionar em ${AI_KIND_LABEL[kind].toLowerCase()}.`, 'info');
+      }
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel gerar com IA agora.', 'error');
     } finally {
       setAiLoading(null);
+    }
+  };
+
+  const generateAiBundle = async () => {
+    if (!draft || !activeArticle) {
+      addToast('Nenhum artigo ativo para gerar conteudo.', 'info');
+      return;
+    }
+
+    setAiLoading('bundle');
+
+    try {
+      const result = await generateArticleEditorial(activeArticle, 'article-full');
+      const warnings = result.summary.warnings || [];
+
+      if (result.summary.approvedBlocks > 0) {
+        addToast(
+          `Pacote IA concluido${result.persisted ? ' e salvo' : ''}: ${result.summary.approvedBlocks} bloco(s) aprovados. Revise o artigo.`,
+          'success',
+        );
+      } else {
+        addToast(warnings[0] || 'A IA nao encontrou conteudo editorial seguro para este artigo.', 'info');
+      }
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel gerar o pacote com IA agora.', 'error');
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
+  const executeBatchRun = React.useCallback(async (run: LegalEditorialBatchRun) => {
+    setIsBatchRunning(true);
+    batchStopRef.current = false;
+    batchPauseRef.current = false;
+    setIsBatchPaused(false);
+
+    try {
+      for (const item of run.items) {
+        if (batchStopRef.current) {
+          break;
+        }
+
+        await waitWhileBatchPaused();
+        if (batchStopRef.current) {
+          break;
+        }
+
+        const currentDraft = draftRef.current;
+        const article = currentDraft?.articles?.find((entry) => entry.id === item.articleId);
+        if (!currentDraft || !article) {
+          continue;
+        }
+
+        try {
+          await generateArticleEditorial(article, 'article-full', run.id);
+        } catch {
+          await refreshBatchRun(run.id);
+        }
+      }
+
+      const finalRun = batchStopRef.current
+        ? await legalCommentaryApiService.stopAdminEditorialBatch(run.id).catch(async () => refreshBatchRun(run.id))
+        : await refreshBatchRun(run.id);
+
+      if (finalRun) {
+        setBatchRun(finalRun);
+      }
+
+      if (finalRun) {
+        if (finalRun.status === 'stopped') {
+          addToast('Lote interrompido. O progresso concluido foi mantido.', 'info');
+        } else if (finalRun.failedArticles > 0 || finalRun.partialArticles > 0) {
+          addToast(
+            `Lote concluido com revisoes pendentes: ${finalRun.successfulArticles} sucesso, ${finalRun.partialArticles} parcial, ${finalRun.failedArticles} falha.`,
+            'info',
+          );
+        } else {
+          addToast(`Lote concluido com sucesso em ${finalRun.successfulArticles} artigo(s).`, 'success');
+        }
+      }
+    } finally {
+      setIsBatchRunning(false);
+      batchPauseRef.current = false;
+      batchStopRef.current = false;
+      setIsBatchPaused(false);
+    }
+  }, [generateArticleEditorial, refreshBatchRun, addToast, waitWhileBatchPaused]);
+
+  const startBatchGeneration = async (options?: { onlyMissingComments?: boolean }) => {
+    if (!draft?.id || !/^\d+$/.test(String(draft.id))) {
+      addToast('Salve a lei antes de iniciar a geracao em lote.', 'info');
+      return;
+    }
+
+    const unsavedArticles = (draft.articles || []).some((article) => !/^\d+$/.test(String(article.id || '')));
+    if (unsavedArticles) {
+      addToast('Salve os artigos novos antes de rodar o lote.', 'info');
+      return;
+    }
+
+    try {
+      const onlyMissingComments = options?.onlyMissingComments ?? batchOnlyMissingComments;
+      const eligibleArticles = (draft.articles || []).filter((article) => (
+        onlyMissingComments ? !articleHasTeacherComment(draft, article) : true
+      ));
+
+      if (eligibleArticles.length === 0) {
+        addToast(
+          onlyMissingComments
+            ? 'Todos os artigos ja possuem comentario do professor.'
+            : 'Nao ha artigos elegiveis para o lote.',
+          'info',
+        );
+        return;
+      }
+
+      const run = await legalCommentaryApiService.startAdminEditorialBatch(
+        String(draft.id),
+        eligibleArticles.map((article) => article.id),
+      );
+      setBatchRun(run);
+      await executeBatchRun(run);
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel iniciar o lote editorial.', 'error');
+    }
+  };
+
+  const retryFailedBatch = async () => {
+    if (!batchRun?.id) {
+      addToast('Nenhum lote disponivel para reprocessar.', 'info');
+      return;
+    }
+
+    try {
+      const run = await legalCommentaryApiService.retryAdminEditorialBatch(batchRun.id);
+      setBatchRun(run);
+      await executeBatchRun(run);
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel reprocessar os artigos falhados.', 'error');
+    }
+  };
+
+  const toggleBatchPause = () => {
+    const nextPaused = !batchPauseRef.current;
+    batchPauseRef.current = nextPaused;
+    setIsBatchPaused(nextPaused);
+  };
+
+  const stopBatchRun = () => {
+    batchStopRef.current = true;
+    batchPauseRef.current = false;
+    setIsBatchPaused(false);
+  };
+
+  const importFromPlanalto = async () => {
+    const officialUrl = draft?.officialUrl?.trim();
+    if (!officialUrl) {
+      addToast('Informe a URL oficial do Planalto para importar a lei.', 'error');
+      return;
+    }
+
+    setIsImportingFromPlanalto(true);
+
+    try {
+      const result = await legalCommentaryApiService.importLawFromPlanalto(officialUrl, false);
+      const taxonomies = await filtersService.listTaxonomies();
+      const nextDraft = hydrateDraftFromLaw(result.law, areas);
+      setSubjects((taxonomies.subjects || []) as TaxonomyOption[]);
+      setTopics((taxonomies.topics || []) as TaxonomyOption[]);
+      setDraft(nextDraft);
+      setActiveArticleId(nextDraft.articles?.[0]?.id || '');
+      addToast('Lei importada do Planalto para revisao no editor.', 'success');
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel importar a lei do Planalto.', 'error');
+    } finally {
+      setIsImportingFromPlanalto(false);
     }
   };
 
@@ -431,17 +1032,11 @@ const AdminLegalCommentaryEditPage = () => {
       if (isNew && saved.id) {
         router.replace(`/admin/operation/lei-comentada/${saved.id}/edit`);
       } else {
-        setDraft({
-          ...saved,
-          areaId: saved.areaId || saved.area?.id,
-          sumulas: saved.articles.flatMap((article) => (
-            (article.syllabi || []).map((sumula) => ({
-              ...sumula,
-              id: createTempId('sumula'),
-              articleId: article.id,
-            }))
-          )),
-        });
+        const nextDraft = hydrateDraftFromLaw(saved, areas);
+        setDraft(nextDraft);
+        setActiveArticleId((current) => current && nextDraft.articles.some((article) => article.id === current)
+          ? current
+          : nextDraft.articles?.[0]?.id || '');
       }
     } catch (error: any) {
       addToast(error?.message || 'Nao foi possivel salvar a lei.', 'error');
@@ -464,6 +1059,12 @@ const AdminLegalCommentaryEditPage = () => {
   const articleTips = (draft.examTips || []).filter((item) => item.articleId === activeArticle?.id);
   const articleJurisprudence = (draft.jurisprudence || []).filter((item) => item.articleId === activeArticle?.id);
   const articleSumulas = (draft.sumulas || []).filter((item) => item.articleId === activeArticle?.id);
+  const batchProgressPercent = batchRun?.totalArticles
+    ? Math.min(100, Math.round((batchRun.processedArticles / batchRun.totalArticles) * 100))
+    : 0;
+  const batchStartLabel = batchOnlyMissingComments
+    ? `Gerar comentarios pendentes (${batchEligibleArticlesCount})`
+    : `Gerar comentarios de todos (${batchEligibleArticlesCount})`;
 
   return (
     <div className="min-h-[100dvh] bg-slate-50 px-4 py-6 dark:bg-slate-950 md:px-8">
@@ -484,15 +1085,25 @@ const AdminLegalCommentaryEditPage = () => {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => void saveLaw()}
-            disabled={isSaving}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-60"
-          >
-            {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-            Salvar lei
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {!isNew && draft.id ? (
+              <Link
+                href={`/admin/operation/lei-comentada/${encodeURIComponent(String(draft.id))}/updates`}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                <History size={15} /> Atualizacoes
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void saveLaw()}
+              disabled={isSaving}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-60"
+            >
+              {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+              Salvar lei
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -538,7 +1149,23 @@ const AdminLegalCommentaryEditPage = () => {
                 </div>
                 <div>
                   <FieldLabel>Link oficial do Planalto</FieldLabel>
-                  <TextInput value={draft.officialUrl || ''} onChange={(event) => updateLawField('officialUrl', event.target.value)} placeholder="https://www.planalto.gov.br/..." />
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <TextInput
+                      value={draft.officialUrl || ''}
+                      onChange={(event) => updateLawField('officialUrl', event.target.value)}
+                      placeholder="https://www.planalto.gov.br/..."
+                      className="flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void importFromPlanalto()}
+                      disabled={isImportingFromPlanalto}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-60 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
+                    >
+                      {isImportingFromPlanalto ? <Loader2 className="animate-spin" size={15} /> : <Download size={15} />}
+                      Importar
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <FieldLabel>Resumo</FieldLabel>
@@ -605,30 +1232,44 @@ const AdminLegalCommentaryEditPage = () => {
                       <FieldLabel>Titulo interno</FieldLabel>
                       <TextInput value={activeArticle.title || ''} onChange={(event) => updateArticleField('title', event.target.value)} placeholder="Anterioridade da lei" />
                     </div>
-                    <div>
-                      <FieldLabel>Materia vinculada</FieldLabel>
-                      <SelectInput value={activeArticle.subjectFilterId || ''} onChange={(event) => {
-                        updateArticleField('subjectFilterId', event.target.value || null);
-                        updateArticleField('topicFilterId', null);
-                      }}>
-                        <option value="">Sem materia</option>
-                        {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
-                      </SelectInput>
-                    </div>
-                    <div>
-                      <FieldLabel>Assunto vinculado</FieldLabel>
-                      <SelectInput value={activeArticle.topicFilterId || ''} onChange={(event) => updateArticleField('topicFilterId', event.target.value || null)}>
-                        <option value="">Sem assunto</option>
-                        {filteredTopics.map((topic) => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
-                      </SelectInput>
-                    </div>
-                    <div>
-                      <FieldLabel>Questoes relacionadas</FieldLabel>
-                      <TextInput type="number" value={activeArticle.relatedQuestionCount || 0} onChange={(event) => updateArticleField('relatedQuestionCount', Number(event.target.value) || 0)} />
+                    <div className="lg:col-span-3">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                        <div className="flex flex-col gap-1">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Vinculo com questoes</p>
+                          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Use apenas os filtros editoriais que relacionam este artigo ao banco de questoes: materia e assunto.</p>
+                        </div>
+                        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                          <div>
+                            <FieldLabel>Materia</FieldLabel>
+                            <SelectInput value={activeArticle.subjectFilterId || ''} onChange={(event) => {
+                              updateArticleField('subjectFilterId', event.target.value || null);
+                              updateArticleField('topicFilterId', null);
+                            }}>
+                              <option value="">Selecionar materia</option>
+                              {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+                            </SelectInput>
+                          </div>
+                          <div>
+                            <FieldLabel>Assunto</FieldLabel>
+                            <SelectInput
+                              value={activeArticle.topicFilterId || ''}
+                              onChange={(event) => updateArticleField('topicFilterId', event.target.value || null)}
+                              disabled={!activeArticle.subjectFilterId}
+                            >
+                              <option value="">{activeArticle.subjectFilterId ? 'Selecionar assunto' : 'Selecione uma materia primeiro'}</option>
+                              {filteredTopics.map((topic) => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
+                            </SelectInput>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <div className="lg:col-span-3">
                       <FieldLabel>Texto oficial do artigo</FieldLabel>
                       <TextArea className="min-h-[220px]" value={activeArticle.text || ''} onChange={(event) => updateArticleField('text', event.target.value)} />
+                    </div>
+                    <div>
+                      <FieldLabel>Questoes relacionadas</FieldLabel>
+                      <TextInput type="number" value={activeArticle.relatedQuestionCount || 0} onChange={(event) => updateArticleField('relatedQuestionCount', Number(event.target.value) || 0)} />
                     </div>
                   </div>
                 </section>
@@ -638,20 +1279,52 @@ const AdminLegalCommentaryEditPage = () => {
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Editorial e IA</p>
                       <h2 className="mt-1 text-xl font-black text-slate-900 dark:text-slate-100">Conteudo do artigo</h2>
-                      <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">Gere com IA, revise e salve no banco como conteudo editorial da plataforma.</p>
+                      <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">Gere com IA e ajuste manualmente o conteudo editorial quando necessario.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      {!isNew && draft.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void startBatchGeneration()}
+                            disabled={isBatchRunning || Boolean(aiLoading) || batchEligibleArticlesCount <= 0}
+                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-60 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
+                          >
+                            {isBatchRunning ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                            {batchStartLabel}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void startBatchGeneration({ onlyMissingComments: false })}
+                            disabled={isBatchRunning || Boolean(aiLoading) || !(draft.articles || []).length}
+                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-[10px] font-black uppercase tracking-[0.14em] text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-60 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20"
+                          >
+                            {isBatchRunning ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                            Gerar comentarios de todos os artigos
+                          </button>
+                        </>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void generateAiBundle()}
+                        disabled={Boolean(aiLoading) || isBatchRunning}
+                        className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
+                      >
+                        {aiLoading === 'bundle' ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                        Gerar pacote IA
+                      </button>
                       {[
                         ['teacher-comment', 'Comentario'],
                         ['exam-tip', 'Macete'],
                         ['jurisprudence', 'Jurisprudencia'],
                         ['sumula', 'Sumula'],
+                        ['doctrine', 'Doutrina'],
                       ].map(([kind, label]) => (
                         <button
                           key={kind}
                           type="button"
-                          onClick={() => void generateWithAi(kind as any)}
-                          disabled={Boolean(aiLoading)}
+                          onClick={() => void generateWithAi(kind as Exclude<LegalAiGenerationKind, 'bundle'>)}
+                          disabled={Boolean(aiLoading) || isBatchRunning}
                           className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-slate-700 disabled:opacity-60 dark:bg-white dark:text-slate-950"
                         >
                           {aiLoading === kind ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
@@ -661,12 +1334,185 @@ const AdminLegalCommentaryEditPage = () => {
                     </div>
                   </div>
 
-                  <div className="mt-6 grid gap-5 xl:grid-cols-2">
-                    <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Comentarios de professor</h3>
-                        <button type="button" onClick={() => addTeacherComment()} className="rounded-lg bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">Adicionar</button>
+                  {!isNew && draft.id ? (
+                    <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Lote editorial</p>
+                          <h3 className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">Status por artigo</h3>
+                          <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+                            O lote processa artigo por artigo, salva o que passou pela validacao e permite reprocessar apenas as falhas.
+                          </p>
+                          <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            Pausa e parada acontecem entre artigos. O que ja foi salvo permanece no banco.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={toggleBatchPause}
+                            disabled={!isBatchRunning}
+                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/20"
+                          >
+                            {isBatchPaused ? <CheckCircle2 size={14} /> : <RefreshCcw size={14} />}
+                            {isBatchPaused ? 'Retomar lote' : 'Pausar lote'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={stopBatchRun}
+                            disabled={!isBatchRunning}
+                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20"
+                          >
+                            <AlertCircle size={14} />
+                            Parar lote
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void refreshBatchRun(batchRun?.id)}
+                            disabled={isBatchRefreshing || isBatchRunning}
+                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                          >
+                            {isBatchRefreshing ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
+                            Atualizar status
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void retryFailedBatch()}
+                            disabled={!batchRun || batchRun.failedArticles <= 0 || isBatchRunning}
+                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20"
+                          >
+                            <RefreshCcw size={14} />
+                            Reprocessar falhados
+                          </button>
+                        </div>
                       </div>
+
+                      <label className="mt-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          checked={batchOnlyMissingComments}
+                          onChange={(event) => setBatchOnlyMissingComments(event.target.checked)}
+                          disabled={isBatchRunning}
+                        />
+                        Processar somente artigos sem comentario do professor
+                        <span className="ml-auto rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                          {batchEligibleArticlesCount} elegiveis
+                        </span>
+                      </label>
+
+                      {batchRun ? (
+                        <>
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Processado</p>
+                              <p className="mt-2 text-lg font-black text-slate-900 dark:text-slate-100">
+                                {batchRun.processedArticles}/{batchRun.totalArticles}
+                              </p>
+                            </div>
+                            <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-3 dark:border-indigo-500/20 dark:bg-indigo-500/10">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-300">Progresso</p>
+                              <p className="mt-2 text-lg font-black text-indigo-700 dark:text-indigo-200">{batchProgressPercent}%</p>
+                            </div>
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-300">Sucesso</p>
+                              <p className="mt-2 text-lg font-black text-emerald-700 dark:text-emerald-200">{batchRun.successfulArticles}</p>
+                            </div>
+                            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-600 dark:text-amber-300">Parcial</p>
+                              <p className="mt-2 text-lg font-black text-amber-700 dark:text-amber-200">{batchRun.partialArticles}</p>
+                            </div>
+                            <div className="rounded-xl border border-rose-200 bg-rose-50/80 p-3 dark:border-rose-500/20 dark:bg-rose-500/10">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-600 dark:text-rose-300">Falha</p>
+                              <p className="mt-2 text-lg font-black text-rose-700 dark:text-rose-200">{batchRun.failedArticles}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between gap-3">
+                            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                              {batchProgressPercent}% concluido
+                              {isBatchPaused ? ' • pausado' : ''}
+                              {isBatchRunning && !isBatchPaused ? ' • em execucao' : ''}
+                            </p>
+                            <span className={`inline-flex h-8 items-center rounded-full px-3 text-[10px] font-black uppercase tracking-[0.16em] ${getBatchStatusClasses(batchRun.status)}`}>
+                              {batchRun.status === 'success' || batchRun.status === 'completed' ? <CheckCircle2 size={12} className="mr-1.5" /> : null}
+                              {batchRun.status === 'failed' || batchRun.status === 'stopped' ? <AlertCircle size={12} className="mr-1.5" /> : null}
+                              {batchRun.status === 'running' ? <Loader2 size={12} className="mr-1.5 animate-spin" /> : null}
+                              {formatBatchStatusLabel(batchRun.status)}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                            <div
+                              className="h-full rounded-full bg-indigo-600 transition-all"
+                              style={{
+                                width: `${batchProgressPercent}%`,
+                              }}
+                            />
+                          </div>
+
+                          <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto pr-1">
+                            {batchRun.items.map((item) => (
+                              <div key={item.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center lg:justify-between">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">Art. {item.articleNumber || item.articleId}</p>
+                                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                                    A: {item.stageAStatus} • B: {item.stageBStatus} • C: {item.stageCStatus}
+                                  </p>
+                                  {item.errorMessage ? (
+                                    <p className="mt-1 text-xs font-semibold text-rose-600 dark:text-rose-300">{item.errorMessage}</p>
+                                  ) : null}
+                                  {!item.errorMessage && item.warnings?.[0] ? (
+                                    <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-300">{item.warnings[0]}</p>
+                                  ) : null}
+                                </div>
+                                <div className={`inline-flex h-8 items-center rounded-full px-3 text-[10px] font-black uppercase tracking-[0.16em] ${
+                                  item.status === 'success'
+                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                    : item.status === 'failed'
+                                      ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+                                      : item.status === 'stopped'
+                                        ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                      : item.status === 'running'
+                                        ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
+                                        : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
+                                }`}>
+                                  {item.status === 'success' ? <CheckCircle2 size={12} className="mr-1.5" /> : null}
+                                  {item.status === 'failed' ? <AlertCircle size={12} className="mr-1.5" /> : null}
+                                  {item.status === 'stopped' ? <AlertCircle size={12} className="mr-1.5" /> : null}
+                                  {item.status === 'running' ? <Loader2 size={12} className="mr-1.5 animate-spin" /> : null}
+                                  {item.status}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                          Nenhum lote editorial registrado para esta lei ainda.
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+
+                    <div className="mt-6 grid gap-5 xl:grid-cols-2">
+                      <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Comentarios de professor</h3>
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            {!isNew && draft.id ? (
+                              <button
+                                type="button"
+                                onClick={() => void startBatchGeneration({ onlyMissingComments: false })}
+                                disabled={isBatchRunning || Boolean(aiLoading) || !(draft.articles || []).length}
+                                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[10px] font-black uppercase text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-60 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20"
+                              >
+                                Gerar em varios artigos
+                              </button>
+                            ) : null}
+                            <button type="button" onClick={() => addTeacherComment()} className="rounded-lg bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">Adicionar</button>
+                          </div>
+                        </div>
                       {articleComments.map((comment) => (
                         <div key={comment.id} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
                           <TextInput value={comment.title} onChange={(event) => updateNestedItem('teacherComments', comment.id, 'title', event.target.value)} />
@@ -695,6 +1541,11 @@ const AdminLegalCommentaryEditPage = () => {
                         <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Jurisprudencia</h3>
                         <button type="button" onClick={() => addJurisprudence()} className="rounded-lg bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">Adicionar</button>
                       </div>
+                      {(activeArticle.jurisprudenceNotes || []).map((note, index) => (
+                        <div key={`${activeArticle.id}-juris-note-${index}`} className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-sm font-semibold leading-6 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                          {note}
+                        </div>
+                      ))}
                       {articleJurisprudence.map((item) => (
                         <div key={item.id} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
                           <div className="grid grid-cols-2 gap-2">
@@ -722,6 +1573,19 @@ const AdminLegalCommentaryEditPage = () => {
                           </div>
                           <TextArea value={item.text} onChange={(event) => updateNestedItem('sumulas', item.id || '', 'text', event.target.value)} />
                           <button type="button" onClick={() => removeNestedItem('sumulas', item.id || '')} className="text-[10px] font-black uppercase text-red-600">Remover</button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Doutrina</h3>
+                        <button type="button" onClick={() => addDoctrine()} className="rounded-lg bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">Adicionar</button>
+                      </div>
+                      {(activeArticle.doctrine || []).map((item, index) => (
+                        <div key={`${activeArticle.id}-doctrine-${index}`} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+                          <TextArea value={item} onChange={(event) => updateDoctrine(index, event.target.value)} />
+                          <button type="button" onClick={() => removeDoctrine(index)} className="text-[10px] font-black uppercase text-red-600">Remover</button>
                         </div>
                       ))}
                     </div>

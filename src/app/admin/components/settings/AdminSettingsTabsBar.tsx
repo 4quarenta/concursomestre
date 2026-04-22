@@ -41,15 +41,15 @@ const AdminSettingsTabsBar = ({
 }: AdminSettingsTabsBarProps) => {
   return (
     <div className="mb-4 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-      <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200/50 bg-slate-100/50 p-1.5 dark:border-slate-800/50 dark:bg-slate-800/50">
+      <div className="flex flex-wrap gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => onChange(tab.id)}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-[11px] font-semibold transition-colors ${
               activeTab === tab.id
-                ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-700 dark:text-indigo-400'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
             }`}
           >
             <tab.icon size={14} /> {tab.label}
@@ -60,7 +60,7 @@ const AdminSettingsTabsBar = ({
       <button
         onClick={onSave}
         disabled={isSaving}
-        className="flex items-center gap-2 rounded-2xl bg-indigo-600 px-8 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-xl shadow-indigo-200 transition-all active:scale-95 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70 dark:shadow-indigo-900/20"
+        className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
       >
         <Save size={18} />
         {isSaving ? 'Salvando...' : 'Salvar alteracoes'}

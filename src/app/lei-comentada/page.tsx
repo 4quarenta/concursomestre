@@ -79,8 +79,14 @@ const AreaIcon: React.FC<{ area: LegalArea; size?: number }> = ({ area, size = 1
 const LawCard: React.FC<{
   law: LawSummary;
   onToggleFavorite: (law: LawSummary) => void;
-}> = ({ law, onToggleFavorite }) => (
-  <article className="group flex min-h-[190px] flex-col justify-between rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500/40">
+  onPrefetch: (slug: string) => void;
+}> = ({ law, onToggleFavorite, onPrefetch }) => (
+  <article
+    className="group flex min-h-[190px] flex-col justify-between rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-500/40"
+    onMouseEnter={() => onPrefetch(law.slug)}
+    onFocusCapture={() => onPrefetch(law.slug)}
+    onTouchStart={() => onPrefetch(law.slug)}
+  >
     <div className="flex items-start justify-between gap-4">
       <Link href={`/lei-comentada/${law.slug}`} className="min-w-0 flex-1">
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -126,7 +132,7 @@ const LawCard: React.FC<{
       </div>
       <Link
         href={`/lei-comentada/${law.slug}`}
-        className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-indigo-600 transition-colors hover:text-indigo-700 dark:text-indigo-300 dark:hover:text-indigo-200"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-indigo-200/70 transition-all hover:-translate-y-0.5 hover:bg-indigo-700 hover:shadow-indigo-300/70 dark:bg-indigo-500 dark:shadow-none dark:hover:bg-indigo-400"
       >
         Abrir lei <ChevronRight size={14} />
       </Link>
@@ -221,6 +227,10 @@ const AnnotatedLawsPage: React.FC = () => {
     setSnapshot(nextSnapshot);
   }, []);
 
+  const prefetchLawDetail = React.useCallback((slug: string) => {
+    void legalCommentaryApiService.prefetchLawDetail(slug);
+  }, []);
+
   const toggleFavorite = async (law: LawSummary) => {
     if (!currentUser) {
       addToast('Entre na sua conta para favoritar leis e artigos.', 'warning');
@@ -308,6 +318,8 @@ const AnnotatedLawsPage: React.FC = () => {
                 <Link
                   key={law.id}
                   href={`/lei-comentada/${law.slug}`}
+                  onMouseEnter={() => prefetchLawDetail(law.slug)}
+                  onFocus={() => prefetchLawDetail(law.slug)}
                   className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/40 dark:hover:text-indigo-300"
                 >
                   {getLawChipLabel(law)}
@@ -415,7 +427,7 @@ const AnnotatedLawsPage: React.FC = () => {
 
                   <div className="grid gap-4 lg:grid-cols-2">
                     {group.laws.map((law) => (
-                      <LawCard key={law.id} law={law} onToggleFavorite={toggleFavorite} />
+                      <LawCard key={law.id} law={law} onToggleFavorite={toggleFavorite} onPrefetch={prefetchLawDetail} />
                     ))}
                   </div>
                 </div>

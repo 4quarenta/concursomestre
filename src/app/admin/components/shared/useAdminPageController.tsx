@@ -156,16 +156,36 @@ export const useAdminPageController = () => {
   }, [currentUser?.id, settingsFeedbackCount]);
 
   const adminTabs = useMemo<AdminNavigationTab[]>(() => ([
-    { key: 'panel', label: 'Painel', icon: LayoutDashboard, badge: panelAlertsCount > 0 ? panelAlertsCount : undefined, description: 'Visao geral e saude operacional' },
-    { key: 'operation', label: 'Operacao', icon: BookOpen, description: 'Questoes, usuarios e materiais' },
-    { key: 'finance', label: 'Financeiro', icon: DollarSign, badge: refundRequestsCount > 0 ? refundRequestsCount : undefined, description: 'Transacoes, planos e automacao' },
-    { key: 'marketing', label: 'Marketing', icon: Megaphone, description: 'Landing pages e ativos de aquisicao' },
-    { key: 'support', label: 'Suporte', icon: MessageSquare, badge: supportInboxCount > 0 ? supportInboxCount : undefined, description: 'Feedback, denuncias e threads' },
-    { key: 'settings', label: 'Configuracoes', icon: Settings, description: 'Integracoes e controles globais' },
+    { key: 'panel', label: 'Dashboard', icon: LayoutDashboard, badge: panelAlertsCount > 0 ? panelAlertsCount : undefined, group: 'Conteudo', description: 'Visao geral e saude operacional' },
+    { key: 'operation', label: 'Operacao', icon: BookOpen, group: 'Conteudo', description: 'Questoes, usuarios, materiais e lei comentada' },
+    { key: 'finance', label: 'Financeiro', icon: DollarSign, badge: refundRequestsCount > 0 ? refundRequestsCount : undefined, group: 'Comercial', description: 'Transacoes, planos, repasses e automacao' },
+    { key: 'marketing', label: 'Marketing', icon: Megaphone, group: 'Comercial', description: 'Landing pages e ativos de aquisicao' },
+    { key: 'support', label: 'Suporte', icon: MessageSquare, badge: supportInboxCount > 0 ? supportInboxCount : undefined, group: 'Relacionamento', description: 'Feedback, denuncias e threads' },
+    { key: 'settings', label: 'Configuracoes', icon: Settings, group: 'Sistema', description: 'Integracoes e controles globais' },
   ]), [panelAlertsCount, refundRequestsCount, supportInboxCount]);
 
   const activeTabLabel = adminTabs.find((tab) => tab.key === activeTab)?.label || 'Painel';
   const activeSections = ADMIN_SECTION_CONFIG[activeTab];
+  const searchTargets = useMemo(() => {
+    const tabTargets = adminTabs.map((tab) => ({
+      label: tab.label,
+      description: tab.description,
+      path: buildAdminPath(tab.key, DEFAULT_SECTION_BY_TAB[tab.key]),
+      group: tab.group || 'Admin',
+    }));
+
+    const sectionTargets = (Object.entries(ADMIN_SECTION_CONFIG) as [AdminPageTab, { key: string; label: string }[]][])
+      .flatMap(([tabKey, sections]) => (
+        sections.map((section) => ({
+          label: section.label,
+          description: `${adminTabs.find((tab) => tab.key === tabKey)?.label || tabKey} - ${TAB_DESCRIPTIONS[tabKey]}`,
+          path: buildAdminPath(tabKey, section.key),
+          group: adminTabs.find((tab) => tab.key === tabKey)?.group || 'Admin',
+        }))
+      ));
+
+    return [...tabTargets, ...sectionTargets];
+  }, [adminTabs]);
   const legacySearchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const activeSectionLabel = useMemo(() => {
     const currentKey = activeTab === 'panel'
@@ -338,7 +358,13 @@ export const useAdminPageController = () => {
       unreadCount,
       navigate,
       currentUserName: currentUser?.name,
+      currentUserFirstName: currentUser?.name?.trim().split(/\s+/)[0] || undefined,
+      currentTabLabel: activeTabLabel,
+      currentSectionLabel: activeSectionLabel,
       userInitials,
+      searchTargets,
+      primaryActionLabel: 'Nova questao',
+      primaryActionPath: buildAdminPath('operation', 'questions'),
     },
     panelSectionProps: {
       questions,

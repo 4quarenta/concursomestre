@@ -57,7 +57,7 @@ export interface PageExtractionResult {
   questions: Partial<Question>[];
 }
 
-const DEFAULT_MODEL = 'gemini-1.5-flash-latest';
+const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 
 const extractTextFromGatewayResponse = (payload: GeminiGatewayResponse | string): string => {
   if (typeof payload === 'string') {

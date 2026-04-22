@@ -28,6 +28,7 @@ export type AdminNavigationTab = {
   label: string;
   icon: any;
   badge?: number;
+  group?: string;
   description: string;
 };
 

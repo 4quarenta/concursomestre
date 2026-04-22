@@ -102,7 +102,7 @@ const FiltersManagementSection = ({
 
   return (
     <div className="grid grid-cols-1 gap-6 animate-slide-up md:grid-cols-4">
-      <div className="md:col-span-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm h-fit">
+      <div className="h-fit rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:col-span-1">
         <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 ml-2">Filtrar por Tipo</h3>
         <div className="space-y-1">
           {filterTypes.map((type) => (
@@ -110,7 +110,7 @@ const FiltersManagementSection = ({
               key={type.key}
               type="button"
               onClick={() => onActiveFilterTypeChange(type.key)}
-              className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between ${activeFilterType === type.key ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+              className={`flex w-full items-center justify-between rounded-md px-4 py-2.5 text-left text-sm font-medium transition-colors ${activeFilterType === type.key ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}
             >
               {type.label}
               <ChevronDown size={14} className={activeFilterType === type.key ? 'rotate-[-90deg]' : 'opacity-0'} />
@@ -120,7 +120,7 @@ const FiltersManagementSection = ({
       </div>
 
       <div className="md:col-span-3 space-y-4">
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="flex flex-col items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:flex-row">
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={16} />
             <input
@@ -128,19 +128,19 @@ const FiltersManagementSection = ({
               placeholder="Pesquisar em todas as taxonomias..."
               value={filterSearch}
               onChange={(event) => onFilterSearchChange(event.target.value)}
-              className="w-full h-11 pl-10 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500 transition-colors"
+              className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
           <button
             type="button"
             onClick={onCreate}
-            className="w-full md:w-auto h-11 px-6 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 active:scale-95"
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-6 text-sm font-semibold text-white transition-colors hover:bg-blue-700 md:w-auto"
           >
             <Plus size={18} /> Novo Filtro
           </button>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden overflow-x-auto no-scrollbar">
+        <div className="overflow-hidden overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm no-scrollbar dark:border-slate-800 dark:bg-slate-900">
           <table className="w-full text-left text-xs min-w-[600px]">
             <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
               <tr>
@@ -175,7 +175,7 @@ const FiltersManagementSection = ({
                           type="button"
                           onClick={() => onAddChild(item.type, item.id)}
                           title="Adicionar Subitem"
-                          className="p-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg transition-all"
+                          className="rounded-md p-2 text-slate-400 transition-colors hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-500 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400"
                         >
                           <PlusCircle size={14} />
                         </button>
@@ -183,14 +183,14 @@ const FiltersManagementSection = ({
                       <button
                         type="button"
                         onClick={() => onEdit(item)}
-                        className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-all"
+                        className="rounded-md p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                       >
                         <Edit3 size={14} />
                       </button>
                       <button
                         type="button"
                         onClick={() => onDelete(item)}
-                        className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition-all"
+                        className="rounded-md p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-900/30 dark:hover:text-red-400"
                       >
                         <Trash2 size={14} />
                       </button>

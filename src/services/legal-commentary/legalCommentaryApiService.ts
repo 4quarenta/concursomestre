@@ -9,16 +9,29 @@
 *
 */
 
-import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
 import type {
+  ArticleExamTip,
+  ArticleJurisprudence,
   LawArticle,
   LawDetail,
   LawSummary,
+  Question,
   LegalArea,
+  LegalArticleEditorialSnapshot,
+  LegalArticleSyllabus,
+  LegalEditorialBatchRun,
+  LegalEditorialGenerationResult,
+  LegalEditorialGenerationScope,
   LegalFavoriteType,
   LegalHomeSnapshot,
   LegalSearchResult,
+  LegalSyncLog,
   LegalUserComment,
+  RelatedQuestionLawArticle,
+  RelatedQuestionLawMatch,
+  LawUpdate,
+  TeacherComment,
 } from '@types';
 
 interface LegalSearchPayload {
@@ -35,122 +48,250 @@ interface LegalAdminDetailPayload {
   areas: LegalArea[];
 }
 
-type LegalAiKind = 'teacher-comment' | 'exam-tip' | 'jurisprudence' | 'sumula';
+interface LegalAdminUpdatesPayload {
+  law: LawDetail | null;
+  updates: LawUpdate[];
+  syncLogs: LegalSyncLog[];
+}
 
-interface LegalAiSuggestionInput {
-  kind: LegalAiKind;
+export interface PlanaltoCatalogItem {
+  url: string;
+  label: string;
+  sourceId?: string | null;
+  sourceLabel?: string | null;
+  exists?: boolean;
+  lawId?: string | null;
+  platformTitle?: string | null;
+  lastSyncedAt?: string | null;
+  lastUpdatedAt?: string | null;
+}
+
+export interface PlanaltoCatalogSource {
+  id: string;
+  label: string;
+  description: string;
+  sortOrder?: number;
+}
+
+interface PlanaltoCatalogPayload {
+  items: PlanaltoCatalogItem[];
+  sources: PlanaltoCatalogSource[];
+}
+
+interface PlanaltoImportPayload {
+  law: LawDetail;
+  persisted: boolean;
+  created?: boolean;
+  sourceUrl: string;
+  sync?: {
+    insertedArticles: number;
+    changedArticles: number;
+    revokedArticles: number;
+  };
+}
+
+export interface LegalEditorialGenerationInput {
+  scope: LegalEditorialGenerationScope;
+  lawId?: string;
+  articleId?: string;
   law: Partial<LawDetail | LawSummary>;
   article?: Partial<LawArticle> | null;
+  existingEditorial?: Partial<LegalArticleEditorialSnapshot>;
+  previewOnly?: boolean;
+  batchRunId?: string;
 }
 
 const unwrap = <T>(response: any, fallback: T): T => readApiData<T>(response, fallback);
+const lawDetailCache = new Map<string, LawDetail | null>();
+const lawDetailPromiseCache = new Map<string, Promise<LawDetail | null>>();
+const relatedQuestionLawsCache = new Map<string, RelatedQuestionLawMatch[]>();
+let homeSnapshotCache: LegalHomeSnapshot | null = null;
+let homeSnapshotPromise: Promise<LegalHomeSnapshot> | null = null;
 
-const normalizeJsonText = (text: string) => {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith('```')) return trimmed;
-  return trimmed.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+const normalizeText = (value: unknown) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .trim();
+
+const dedupeById = <T extends { id: string }>(items: T[]): T[] => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = String(item.id || '');
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 };
 
-const safeParseJson = <T>(text: string, fallback: T): T => {
-  try {
-    return JSON.parse(normalizeJsonText(text)) as T;
-  } catch {
-    return fallback;
+const normalizeQuestionTaxonomy = (question: Question) => {
+  const assuntos = Array.isArray(question.assuntos) ? question.assuntos : [];
+  const subjects = assuntos
+    .filter((item) => item && item.materia)
+    .map((item) => ({
+      id: String(item.id),
+      name: String(item.nome || item.name || '').trim(),
+    }))
+    .filter((item) => item.name);
+
+  const topics = assuntos
+    .filter((item) => item && !item.materia)
+    .map((item) => ({
+      id: String(item.id),
+      rootId: item.assunto_raiz ? String(item.assunto_raiz) : null,
+      name: String(item.nome || item.name || '').trim(),
+    }))
+    .filter((item) => item.name);
+
+  if (!subjects.length && assuntos.length > 0) {
+    const fallback = assuntos[0];
+    if (fallback?.nome) {
+      subjects.push({
+        id: String(fallback.id || fallback.slug || fallback.nome),
+        name: String(fallback.nome).trim(),
+      });
+    }
   }
+
+  return { subjects, topics };
 };
 
-const extractAiText = (payload: any): string => {
-  if (typeof payload === 'string') return payload;
-  if (typeof payload?.text === 'string') return payload.text;
-  return '';
+const buildRelatedQuestionLawsCacheKey = (question: Question) => {
+  const taxonomy = normalizeQuestionTaxonomy(question);
+  return JSON.stringify({
+    id: String(question.id || ''),
+    subjects: taxonomy.subjects.map((item) => item.id),
+    topics: taxonomy.topics.map((item) => item.id),
+  });
 };
 
-const buildAiPrompt = ({ kind, law, article }: LegalAiSuggestionInput) => {
-  const articleText = article?.text || article?.blocks?.map((block) => `${block.label} ${block.text}`).join('\n') || '';
-  const base = `
-Voce e editor juridico da plataforma ConcursoMestre.
-Produza conteudo didatico em pt-BR para concursos publicos.
+const buildLawSummarySearchText = (law: LawSummary) => normalizeText([
+  law.title,
+  law.shortTitle,
+  law.acronym,
+  law.number,
+  law.description,
+  law.summary,
+  law.ementa,
+  ...(Array.isArray(law.aliases) ? law.aliases : []),
+].join(' '));
 
-Lei: ${law.shortTitle || law.title || 'Lei comentada'}
-Numero: ${law.number || ''}
-Artigo: ${article?.number || ''}
-Texto oficial:
-${articleText}
+const buildArticleSearchText = (article: LawArticle) => normalizeText([
+  article.number,
+  article.title,
+  article.text,
+  article.texto,
+  article.hierarchy?.title,
+  article.hierarchy?.chapter,
+  article.hierarchy?.section,
+  ...(Array.isArray(article.blocks) ? article.blocks.slice(0, 4).map((block) => block.text) : []),
+].join(' '));
 
-Regras:
-- Seja direto, tecnico e util para prova.
-- Nao invente fonte oficial, numero de sumula ou precedente se nao houver seguranca.
-- Retorne apenas JSON valido, sem markdown.
-  `.trim();
-
-  if (kind === 'teacher-comment') {
-    return `${base}
-
-Gere um comentario de professor.
-Formato JSON:
-{
-  "title": "Comentario do professor",
-  "body": "explicacao didatica",
-  "examFocus": ["ponto que cai em prova"],
-  "pitfalls": ["pegadinha comum"],
-  "relatedRefs": ["referencia cruzada opcional"]
-}`;
+const pickArticleSnippet = (article: LawArticle) => {
+  const sourceText = String(article.text || article.texto || article.blocks?.[0]?.text || '').replace(/\s+/g, ' ').trim();
+  if (!sourceText) {
+    return '';
   }
 
-  if (kind === 'exam-tip') {
-    return `${base}
-
-Gere um macete para prova.
-Formato JSON:
-{
-  "title": "Macete para prova",
-  "body": "frase de memorizacao ou alerta objetivo",
-  "tags": ["tag"]
-}`;
-  }
-
-  if (kind === 'jurisprudence') {
-    return `${base}
-
-Sugira uma jurisprudencia relevante somente se for segura. Se nao houver seguranca, retorne um resumo editorial sem numero ficticio.
-Formato JSON:
-{
-  "court": "STF ou STJ",
-  "precedentType": "Tema, sumula, repetitivo, informativo ou entendimento",
-  "title": "titulo curto",
-  "summary": "resumo objetivo",
-  "examImpact": "impacto para concursos",
-  "isConsolidated": false,
-  "priority": "medium",
-  "sourceUrl": ""
-}`;
-  }
-
-  return `${base}
-
-Sugira uma sumula relacionada somente se for segura. Se nao houver sumula segura, retorne numero vazio e texto explicando a necessidade de revisao editorial.
-Formato JSON:
-{
-  "court": "STF ou STJ",
-  "number": "",
-  "text": "texto da sumula ou observacao para revisao",
-  "sourceUrl": "",
-  "priority": "medium"
-}`;
+  return sourceText.length > 180 ? `${sourceText.slice(0, 177)}...` : sourceText;
 };
+
+const buildRelatedLawReason = (matchedSubjects: string[], matchedTopics: string[]) => {
+  if (matchedSubjects.length > 0 && matchedTopics.length > 0) {
+    return `Relacionada à matéria ${matchedSubjects[0]} e ao assunto ${matchedTopics[0]} desta questão.`;
+  }
+
+  if (matchedTopics.length > 0) {
+    return `Relacionada ao assunto ${matchedTopics[0]} desta questão.`;
+  }
+
+  if (matchedSubjects.length > 0) {
+    return `Relacionada à matéria ${matchedSubjects[0]} desta questão.`;
+  }
+
+  return 'Relacionada ao conteúdo jurídico desta questão.';
+};
+
+const normalizeAiGenerationErrorMessage = (message: string): string => {
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes('quota exceeded')
+    || normalized.includes('resource_exhausted')
+    || normalized.includes('current quota')
+    || normalized.includes('rate-limits')
+  ) {
+    return 'A chave Gemini configurada no backend está sem cota para geração. Ative faturamento/quota no projeto dessa chave ou troque para outra chave com uso liberado.';
+  }
+
+  if (normalized.includes('gemini api key nao esta configurada')) {
+    return 'A Gemini API Key ainda nao está configurada no backend. Salve a chave nas configuracoes do sistema e tente novamente.';
+  }
+
+  if (
+    normalized.includes('erro de conexao com o gemini api')
+    || normalized.includes('failed to connect')
+    || normalized.includes('connection refused')
+  ) {
+    return 'O backend não conseguiu se conectar à Gemini API. Verifique conectividade externa e regras de firewall do servidor.';
+  }
+
+  if (
+    normalized.includes('currently experiencing high demand')
+    || normalized.includes('"status": "unavailable"')
+    || normalized.includes('temporarily unavailable')
+  ) {
+    return 'A Gemini API esta com alta demanda neste momento. Tente novamente em alguns instantes.';
+  }
+
+  return message;
+};
+
+const ensureArray = <T>(value: unknown): T[] => (Array.isArray(value) ? value as T[] : []);
+
+const normalizeEditorialSnapshot = (payload: any): LegalArticleEditorialSnapshot => ({
+  articleId: String(payload?.articleId || ''),
+  articleNumber: payload?.articleNumber ? String(payload.articleNumber) : undefined,
+  teacherComments: ensureArray<TeacherComment>(payload?.teacherComments),
+  examTips: ensureArray<ArticleExamTip>(payload?.examTips),
+  doctrine: ensureArray<string>(payload?.doctrine).map((item) => String(item || '')).filter(Boolean),
+  jurisprudenceNotes: ensureArray<string>(payload?.jurisprudenceNotes).map((item) => String(item || '')).filter(Boolean),
+  jurisprudence: ensureArray<ArticleJurisprudence>(payload?.jurisprudence),
+  sumulas: ensureArray<LegalArticleSyllabus>(payload?.sumulas),
+});
 
 export const legalCommentaryApiService = {
   async getHomeSnapshot(): Promise<LegalHomeSnapshot> {
-    const response = await apiClient.get(ENDPOINTS.legalCommentary.list) as any;
-    return unwrap<LegalHomeSnapshot>(response, {
-      areas: [],
-      lawsByArea: [],
-      mostAccessed: [],
-      favoriteLaws: [],
-      recentlyStudied: [],
-      recentlyUpdated: [],
-      totals: { laws: 0, articles: 0, commentedArticles: 0, updatedRecently: 0 },
-    });
+    if (homeSnapshotCache) {
+      return homeSnapshotCache;
+    }
+
+    if (homeSnapshotPromise) {
+      return homeSnapshotPromise;
+    }
+
+    homeSnapshotPromise = (async () => {
+      const response = await apiClient.get(ENDPOINTS.legalCommentary.list) as any;
+      const payload = unwrap<LegalHomeSnapshot>(response, {
+        areas: [],
+        lawsByArea: [],
+        mostAccessed: [],
+        favoriteLaws: [],
+        recentlyStudied: [],
+        recentlyUpdated: [],
+        totals: { laws: 0, articles: 0, commentedArticles: 0, updatedRecently: 0 },
+      });
+      homeSnapshotCache = payload;
+      return payload;
+    })();
+
+    try {
+      return await homeSnapshotPromise;
+    } finally {
+      homeSnapshotPromise = null;
+    }
   },
 
   async search(query: string): Promise<LegalSearchResult[]> {
@@ -161,11 +302,212 @@ export const legalCommentaryApiService = {
     return Array.isArray(payload.results) ? payload.results : [];
   },
 
-  async getLawDetail(slug: string): Promise<LawDetail | null> {
-    const response = await apiClient.get(ENDPOINTS.legalCommentary.detail, {
-      params: { slug },
-    }) as any;
-    return unwrap<LawDetail | null>(response, null);
+  async getLawDetail(slug: string, options?: { force?: boolean }): Promise<LawDetail | null> {
+    const normalizedSlug = String(slug || '').trim();
+    if (!normalizedSlug) return null;
+
+    if (options?.force) {
+      lawDetailCache.delete(normalizedSlug);
+      lawDetailPromiseCache.delete(normalizedSlug);
+    }
+
+    if (lawDetailCache.has(normalizedSlug)) {
+      return lawDetailCache.get(normalizedSlug) ?? null;
+    }
+
+    const existingRequest = lawDetailPromiseCache.get(normalizedSlug);
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    const request = (async () => {
+      const response = await apiClient.get(ENDPOINTS.legalCommentary.detail, {
+        params: { slug: normalizedSlug },
+      }) as any;
+      const lawDetail = unwrap<LawDetail | null>(response, null);
+      lawDetailCache.set(normalizedSlug, lawDetail);
+      return lawDetail;
+    })();
+
+    lawDetailPromiseCache.set(normalizedSlug, request);
+
+    try {
+      return await request;
+    } finally {
+      lawDetailPromiseCache.delete(normalizedSlug);
+    }
+  },
+
+  async prefetchLawDetail(slug: string): Promise<void> {
+    try {
+      await this.getLawDetail(slug);
+    } catch {
+      // Prefetch nao deve bloquear a navegacao.
+    }
+  },
+
+  async getRelatedLawsForQuestion(question: Question): Promise<RelatedQuestionLawMatch[]> {
+    const cacheKey = buildRelatedQuestionLawsCacheKey(question);
+    if (relatedQuestionLawsCache.has(cacheKey)) {
+      return relatedQuestionLawsCache.get(cacheKey) || [];
+    }
+
+    const { subjects, topics } = normalizeQuestionTaxonomy(question);
+    if (!subjects.length && !topics.length) {
+      relatedQuestionLawsCache.set(cacheKey, []);
+      return [];
+    }
+
+    const subjectNames = subjects.map((item) => item.name).filter(Boolean);
+    const topicNames = topics.map((item) => item.name).filter(Boolean);
+    const subjectIds = new Set(subjects.map((item) => item.id));
+    const topicIds = new Set(topics.map((item) => item.id));
+    const subjectNamesNormalized = subjectNames.map(normalizeText);
+    const topicNamesNormalized = topicNames.map(normalizeText);
+
+    const home = await this.getHomeSnapshot();
+    const allLaws = dedupeById<LawSummary>(home.lawsByArea.flatMap((entry) => entry.laws));
+
+    const summaryCandidates = allLaws
+      .map((law) => {
+        const haystack = buildLawSummarySearchText(law);
+        let score = 0;
+        const matchedSubjectNames = subjectNames.filter((name, index) => {
+          const normalized = subjectNamesNormalized[index];
+          if (!normalized) return false;
+          const isMatch = haystack.includes(normalized);
+          if (isMatch) {
+            score += 4;
+          }
+          return isMatch;
+        });
+        const matchedTopicNames = topicNames.filter((name, index) => {
+          const normalized = topicNamesNormalized[index];
+          if (!normalized) return false;
+          const isMatch = haystack.includes(normalized);
+          if (isMatch) {
+            score += 6;
+          }
+          return isMatch;
+        });
+
+        const areaName = normalizeText(home.lawsByArea.find((entry) => entry.laws.some((item) => item.id === law.id))?.area?.name || '');
+        subjectNamesNormalized.forEach((normalized, index) => {
+          if (normalized && (normalized.includes(areaName) || areaName.includes(normalized))) {
+            score += 5;
+            if (!matchedSubjectNames.includes(subjectNames[index])) {
+              matchedSubjectNames.push(subjectNames[index]);
+            }
+          }
+        });
+
+        return {
+          law,
+          score,
+          matchedSubjectNames,
+          matchedTopicNames,
+        };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 6);
+
+    const lawDetails = await Promise.all(
+      summaryCandidates.map(async (entry) => ({
+        summary: entry,
+        detail: await this.getLawDetail(entry.law.slug),
+      })),
+    );
+
+    const results = lawDetails
+      .map(({ summary, detail }) => {
+        const matchedArticles: RelatedQuestionLawArticle[] = Array.isArray(detail?.articles)
+          ? detail!.articles
+            .map((article) => {
+              let score = 0;
+              const articleMatchedSubjects = new Set<string>(summary.matchedSubjectNames);
+              const articleMatchedTopics = new Set<string>(summary.matchedTopicNames);
+
+              if (article.subjectFilterId && subjectIds.has(String(article.subjectFilterId))) {
+                score += 12;
+                const subjectName = subjects.find((item) => item.id === String(article.subjectFilterId))?.name;
+                if (subjectName) {
+                  articleMatchedSubjects.add(subjectName);
+                }
+              }
+
+              if (article.topicFilterId && topicIds.has(String(article.topicFilterId))) {
+                score += 18;
+                const topicName = topics.find((item) => item.id === String(article.topicFilterId))?.name;
+                if (topicName) {
+                  articleMatchedTopics.add(topicName);
+                }
+              }
+
+              const articleSearchText = buildArticleSearchText(article);
+
+              subjectNamesNormalized.forEach((normalized, index) => {
+                if (normalized && articleSearchText.includes(normalized)) {
+                  score += 3;
+                  articleMatchedSubjects.add(subjectNames[index]);
+                }
+              });
+
+              topicNamesNormalized.forEach((normalized, index) => {
+                if (normalized && articleSearchText.includes(normalized)) {
+                  score += 6;
+                  articleMatchedTopics.add(topicNames[index]);
+                }
+              });
+
+              if (score <= 0) {
+                return null;
+              }
+
+              return {
+                id: article.id,
+                number: article.number,
+                title: article.title,
+                snippet: pickArticleSnippet(article),
+                matchScore: score,
+                matchedSubjectNames: Array.from(articleMatchedSubjects),
+                matchedTopicNames: Array.from(articleMatchedTopics),
+              };
+            })
+            .filter((item): item is RelatedQuestionLawArticle => Boolean(item))
+            .sort((left, right) => right.matchScore - left.matchScore)
+            .slice(0, 3)
+          : [];
+
+        const score = summary.score + matchedArticles.reduce((accumulator, item) => accumulator + item.matchScore, 0);
+        const matchedSubjectNames = Array.from(new Set([
+          ...summary.matchedSubjectNames,
+          ...matchedArticles.flatMap((item) => item.matchedSubjectNames),
+        ]));
+        const matchedTopicNames = Array.from(new Set([
+          ...summary.matchedTopicNames,
+          ...matchedArticles.flatMap((item) => item.matchedTopicNames),
+        ]));
+
+        if (score <= 0) {
+          return null;
+        }
+
+        return {
+          law: summary.law,
+          reason: buildRelatedLawReason(matchedSubjectNames, matchedTopicNames),
+          score,
+          matchedSubjectNames,
+          matchedTopicNames,
+          matchedArticles,
+        };
+      })
+      .filter((item): item is RelatedQuestionLawMatch => Boolean(item))
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 3);
+
+    relatedQuestionLawsCache.set(cacheKey, results);
+    return results;
   },
 
   async toggleFavorite(type: LegalFavoriteType, targetId: string): Promise<{ isFavorite: boolean }> {
@@ -253,14 +595,97 @@ export const legalCommentaryApiService = {
     assertApiSuccess(response, 'Nao foi possivel remover a lei.');
   },
 
-  async generateEditorialSuggestion<T = any>(input: LegalAiSuggestionInput, fallback: T): Promise<T> {
-    const response = await apiClient.post(ENDPOINTS.ai.generate, {
-      prompt: buildAiPrompt(input),
-      responseMimeType: 'application/json',
+  async getSyncCatalog(sourceIds: string[] = []): Promise<PlanaltoCatalogPayload> {
+    const response = await apiClient.get(ENDPOINTS.legalCommentary.adminCatalog, {
+      params: sourceIds.length > 0 ? { sources: sourceIds.join(',') } : undefined,
     }) as any;
-    const envelope = assertApiSuccess<any>(response, 'Nao foi possivel gerar o conteudo com IA.');
-    const text = extractAiText(unwrap<any>(envelope.raw, { text: '' }));
-    return safeParseJson<T>(text, fallback);
+    const payload = unwrap<PlanaltoCatalogPayload>(response, { items: [], sources: [] });
+    return {
+      items: Array.isArray(payload.items) ? payload.items : [],
+      sources: Array.isArray(payload.sources) ? payload.sources : [],
+    };
+  },
+
+  async importLawFromPlanalto(url: string, persist = false): Promise<PlanaltoImportPayload> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.adminImport, {
+      url,
+      persist,
+    }) as any;
+    const envelope = assertApiSuccess<PlanaltoImportPayload>(response, 'Nao foi possivel importar a lei do Planalto.');
+    return unwrap<PlanaltoImportPayload>(envelope.raw, {} as PlanaltoImportPayload);
+  },
+
+  async syncAdminLaw(id: string): Promise<PlanaltoImportPayload> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.adminSync, { id }) as any;
+    const envelope = assertApiSuccess<PlanaltoImportPayload>(response, 'Nao foi possivel sincronizar esta lei.');
+    return unwrap<PlanaltoImportPayload>(envelope.raw, {} as PlanaltoImportPayload);
+  },
+
+  async getAdminLawUpdates(id: string): Promise<LegalAdminUpdatesPayload> {
+    const response = await apiClient.get(ENDPOINTS.legalCommentary.adminUpdates, {
+      params: { id },
+    }) as any;
+    return unwrap<LegalAdminUpdatesPayload>(response, { law: null, updates: [], syncLogs: [] });
+  },
+
+  async generateAdminEditorial(input: LegalEditorialGenerationInput): Promise<LegalEditorialGenerationResult> {
+    try {
+      const response = await apiClient.post(ENDPOINTS.legalCommentary.adminGenerate, {
+        ...input,
+        existingEditorial: input.existingEditorial ? {
+          articleId: input.existingEditorial.articleId,
+          articleNumber: input.existingEditorial.articleNumber,
+          teacherComments: input.existingEditorial.teacherComments || [],
+          examTips: input.existingEditorial.examTips || [],
+          doctrine: input.existingEditorial.doctrine || [],
+          jurisprudenceNotes: input.existingEditorial.jurisprudenceNotes || [],
+          jurisprudence: input.existingEditorial.jurisprudence || [],
+          sumulas: input.existingEditorial.sumulas || [],
+        } : undefined,
+      }) as any;
+      const envelope = assertApiSuccess<LegalEditorialGenerationResult>(response, 'Nao foi possivel gerar o conteudo com IA.');
+      const payload = unwrap<LegalEditorialGenerationResult>(envelope.raw, {} as LegalEditorialGenerationResult);
+      return {
+        ...payload,
+        editorial: normalizeEditorialSnapshot(payload.editorial),
+      };
+    } catch (error: any) {
+      const message = readApiErrorMessage(error, 'Nao foi possivel gerar o conteudo com IA.');
+      throw new Error(normalizeAiGenerationErrorMessage(message));
+    }
+  },
+
+  async startAdminEditorialBatch(lawId: string, articleIds: string[]): Promise<LegalEditorialBatchRun> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.adminBatchStart, {
+      lawId,
+      articleIds,
+    }) as any;
+    const envelope = assertApiSuccess<{ run: LegalEditorialBatchRun }>(response, 'Nao foi possivel iniciar o lote editorial.');
+    return unwrap<{ run: LegalEditorialBatchRun }>(envelope.raw, { run: {} as LegalEditorialBatchRun }).run;
+  },
+
+  async getAdminEditorialBatchStatus(params: { runId?: string; lawId?: string }): Promise<LegalEditorialBatchRun | null> {
+    const response = await apiClient.get(ENDPOINTS.legalCommentary.adminBatchStatus, {
+      params,
+    }) as any;
+    const payload = unwrap<{ run: LegalEditorialBatchRun | null }>(response, { run: null });
+    return payload.run || null;
+  },
+
+  async retryAdminEditorialBatch(runId: string): Promise<LegalEditorialBatchRun> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.adminBatchRetry, {
+      runId,
+    }) as any;
+    const envelope = assertApiSuccess<{ run: LegalEditorialBatchRun }>(response, 'Nao foi possivel reprocessar os artigos falhados.');
+    return unwrap<{ run: LegalEditorialBatchRun }>(envelope.raw, { run: {} as LegalEditorialBatchRun }).run;
+  },
+
+  async stopAdminEditorialBatch(runId: string): Promise<LegalEditorialBatchRun> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.adminBatchStop, {
+      runId,
+    }) as any;
+    const envelope = assertApiSuccess<{ run: LegalEditorialBatchRun }>(response, 'Nao foi possivel interromper o lote editorial.');
+    return unwrap<{ run: LegalEditorialBatchRun }>(envelope.raw, { run: {} as LegalEditorialBatchRun }).run;
   },
 };
 

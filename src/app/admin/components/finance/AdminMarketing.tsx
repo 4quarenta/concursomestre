@@ -24,6 +24,7 @@ interface AdminMarketingProps {
 }
 
 type CouponTargetType = 'all' | 'plan' | 'item';
+const DEFAULT_LIMITED_OFFER_EXTENSION_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface CouponDraft extends DiscountCode {
   code: string;
@@ -67,6 +68,15 @@ const toIsoDateTimeValue = (value: string) => {
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+};
+
+const resolveFutureLimitedOfferEndsAt = (value?: string | null) => {
+  const timestamp = new Date(value || '').getTime();
+  if (!value || Number.isNaN(timestamp) || timestamp <= Date.now()) {
+    return new Date(Date.now() + DEFAULT_LIMITED_OFFER_EXTENSION_MS).toISOString();
+  }
+
+  return value;
 };
 
 const getCouponRuntimeStatus = (coupon: CouponDraft) => {
@@ -295,7 +305,17 @@ const AdminMarketing = ({
   };
 
   const handleSaveLimitedOfferCountdown = async () => {
-    const nextSettings = { ...systemSettings, limitedOfferCountdown };
+    const normalizedCountdown = limitedOfferCountdown?.enabled
+      ? {
+        ...(limitedOfferCountdown || { enabled: true, endsAt: '' }),
+        endsAt: resolveFutureLimitedOfferEndsAt(limitedOfferCountdown?.endsAt),
+      }
+      : limitedOfferCountdown;
+    const nextSettings = { ...systemSettings, limitedOfferCountdown: normalizedCountdown };
+    if (normalizedCountdown?.enabled && normalizedCountdown.endsAt !== limitedOfferCountdown?.endsAt) {
+      setLimitedOfferCountdown(normalizedCountdown);
+      addToast('Definimos automaticamente uma data final futura de 7 dias para a oferta limitada.', 'info');
+    }
     await persistMarketingSettings(nextSettings, 'Oferta limitada atualizada.', 'save-limited-offer');
   };
 
@@ -474,6 +494,9 @@ const AdminMarketing = ({
                   onChange={(event) => setLimitedOfferCountdown((current) => ({
                     ...(current || { endsAt: '' }),
                     enabled: event.target.checked,
+                    endsAt: event.target.checked
+                      ? resolveFutureLimitedOfferEndsAt(current?.endsAt)
+                      : (current?.endsAt || ''),
                   }))}
                   className="h-5 w-5 rounded border-slate-300 text-amber-500"
                 />

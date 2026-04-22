@@ -89,14 +89,14 @@ const AdminDatabaseNavigation = ({
                 key={category.id}
                 type="button"
                 onClick={() => onSelectCategory(category.id, category.tabs[0])}
-                className={`rounded-[2rem] border p-5 text-left transition-all ${
+                className={`rounded-lg border p-5 text-left transition-colors ${
                   isActive
-                    ? 'border-indigo-500 bg-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none'
+                    ? 'border-blue-600 bg-blue-600 text-white'
                     : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800'
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className={`rounded-2xl p-3 ${isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'}`}>
+                  <div className={`rounded-lg p-3 ${isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'}`}>
                     <category.icon size={18} />
                   </div>
                   <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`}>
@@ -113,7 +113,7 @@ const AdminDatabaseNavigation = ({
           })}
         </div>
 
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Pertence a</p>
           <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">{activeCategoryConfig?.label || 'Operacao'}</p>
           <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
@@ -121,7 +121,7 @@ const AdminDatabaseNavigation = ({
           </p>
 
           {activeSectionMeta ? (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/60">
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/60">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Secao ativa</p>
               <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{activeSectionMeta.label}</p>
               <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
@@ -132,7 +132,7 @@ const AdminDatabaseNavigation = ({
         </div>
       </div>
 
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Secoes do dominio</p>
@@ -157,7 +157,7 @@ const AdminDatabaseNavigation = ({
               <button
                 type="button"
                 onClick={onCreateQuestion}
-                className="flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-5 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-md transition-all active:scale-95 hover:bg-indigo-700"
+                className="flex h-11 items-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
               >
                 <Plus size={16} /> Nova questao
               </button>
@@ -175,22 +175,22 @@ const AdminDatabaseNavigation = ({
                 key={tab}
                 type="button"
                 onClick={() => onSelectSubTab(tab)}
-                className={`rounded-2xl border p-4 text-left transition-all ${
+                className={`rounded-lg border p-4 text-left transition-colors ${
                   isActive
-                    ? 'border-indigo-500 bg-indigo-50 shadow-sm dark:border-indigo-700 dark:bg-indigo-900/20'
+                    ? 'border-blue-500 bg-blue-50 shadow-sm dark:border-blue-700 dark:bg-blue-900/20'
                     : 'border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white dark:border-slate-800 dark:bg-slate-900/60 dark:hover:border-slate-700 dark:hover:bg-slate-800'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className={`text-[10px] font-black uppercase tracking-[0.18em] ${isActive ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                    <p className={`text-[10px] font-black uppercase tracking-[0.18em] ${isActive ? 'text-blue-600 dark:text-blue-300' : 'text-slate-500 dark:text-slate-400'}`}>
                       {subTabLabels[tab] || tab}
                     </p>
                     <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
                       {meta?.description || 'Secao operacional do admin.'}
                     </p>
                   </div>
-                  <ArrowRight size={16} className={isActive ? 'text-indigo-500' : 'text-slate-300 dark:text-slate-600'} />
+                  <ArrowRight size={16} className={isActive ? 'text-blue-500' : 'text-slate-300 dark:text-slate-600'} />
                 </div>
               </button>
             );

@@ -11,7 +11,7 @@
 
 
 import React, { useState } from 'react';
-import { LayoutDashboard, BookOpen, User, Menu, X, BrainCircuit, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, Menu, X, BrainCircuit, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -27,7 +27,7 @@ import { ENDPOINTS } from '@services/api';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 import { canAccessAdminPanel } from '@services/auth';
 import LogoutConfirmButton from './LogoutConfirmButton';
-import { buildProfilePath } from '../../../app/profile/profileNavigation';
+import { buildProfilePath, type ProfileTab } from '../../../app/profile/profileNavigation';
 import { buildAdminPath } from '../../../app/admin/config/adminPageNavigationConfig';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import {
@@ -58,6 +58,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { addToast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -83,6 +84,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const xRayEnabled = resolveSystemFeatureFlag(systemSettings, 'xRayEnabled');
   const rankingsEnabled = resolveSystemFeatureFlag(systemSettings, 'rankingsEnabled');
   const marketplaceEnabled = resolveSystemFeatureFlag(systemSettings, 'marketplaceEnabled');
+  const referralEnabled = resolveSystemFeatureFlag(systemSettings, 'referralEnabled');
+  const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
 
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
@@ -96,7 +99,32 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   React.useEffect(() => {
     setIsMobileMenuOpen(false);
+    setIsProfileMenuOpen(false);
   }, [location.pathname]);
+
+  React.useEffect(() => {
+    if (!isProfileMenuOpen) return undefined;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isProfileMenuOpen]);
 
   const closeVerificationModal = () => {
     window.sessionStorage.setItem('welcomeModalClosed', 'true');
@@ -195,8 +223,73 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const hasXRayAccess = hasPlanBenefit(user, 'xray_banca', systemSettings.planEntitlements);
 
   const userName = user?.name || 'Visitante';
+  const userFirstName = React.useMemo(() => {
+    const normalized = String(userName).trim();
+    return normalized.split(/\s+/)[0] || 'Visitante';
+  }, [userName]);
   const userInitials = userName.charAt(0);
   const userLevel = user?.level || 0;
+  const profileQuickMenuItems = React.useMemo<Array<{
+    tab: ProfileTab;
+    label: string;
+    description: string;
+    icon: LucideIcon;
+  }>>(() => {
+    const items: Array<{
+      tab: ProfileTab;
+      label: string;
+      description: string;
+      icon: LucideIcon;
+    }> = [
+      {
+        tab: 'personal',
+        label: 'Dados pessoais',
+        description: 'Foto, dados da conta e cartoes salvos.',
+        icon: User,
+      },
+      {
+        tab: 'billing',
+        label: 'Assinatura',
+        description: 'Plano ativo, renovacao e cobrancas.',
+        icon: CreditCard,
+      },
+      {
+        tab: 'billing-history',
+        label: 'Transacoes',
+        description: 'Historico financeiro e comprovantes.',
+        icon: BarChart3,
+      },
+      {
+        tab: 'materials',
+        label: 'Meus materiais',
+        description: 'Materiais adquiridos e downloads.',
+        icon: Package,
+      },
+      {
+        tab: 'notebook',
+        label: 'Minhas anotacoes',
+        description: 'Anotacoes e registros salvos.',
+        icon: StickyNote,
+      },
+      {
+        tab: 'security',
+        label: 'Privacidade',
+        description: 'Seguranca, protecao e acesso.',
+        icon: ShieldCheck,
+      },
+    ];
+
+    if (referralEnabled) {
+      items.splice(5, 0, {
+        tab: 'referral',
+        label: 'Indique e ganhe',
+        description: 'Convites, beneficios e afiliacao.',
+        icon: Gift,
+      });
+    }
+
+    return items;
+  }, [referralEnabled]);
 
   const getPlanStatusTheme = (tier: number) => {
     switch (tier) {
@@ -245,6 +338,21 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       }
     }
     setIsNotifOpen(false);
+  };
+
+  const handleProfileMenuToggle = () => {
+    if (!user) {
+      window.sessionStorage.setItem('redirectAfterLogin', location.pathname + location.search + location.hash);
+      router.push('/auth');
+      return;
+    }
+
+    setIsProfileMenuOpen((current) => !current);
+  };
+
+  const handleProfileMenuNavigate = (tab: ProfileTab) => {
+    setIsProfileMenuOpen(false);
+    router.push(buildProfilePath(tab));
   };
 
   const getCategoryIcon = (category: string) => {
@@ -397,9 +505,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {/* Sidebar Navigation */}
         {!isDashboardPage && !isSimulationFullscreenPage && (
           <aside className={`
-            fixed inset-y-0 left-0 z-30 flex h-[100dvh] w-[84vw] max-w-64 flex-col overflow-hidden border-r border-slate-200 bg-white transform transition-transform duration-200 ease-in-out dark:border-slate-800 dark:bg-slate-900
-            md:w-64 md:translate-x-0
-            ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+            cm-layout-sidebar fixed inset-y-0 left-0 z-30 flex h-[100dvh] w-[84vw] max-w-64 flex-col overflow-hidden border-r border-slate-200 bg-white transform transition-transform duration-200 ease-in-out dark:border-slate-800 dark:bg-slate-900
+            md:w-64
+            ${isMobileMenuOpen
+              ? 'translate-x-0 opacity-100'
+              : '-translate-x-full opacity-100 md:translate-x-0'}
           `}>
             <div className="hidden shrink-0 items-center gap-2 px-5 pb-4 pt-5 text-xl font-bold text-indigo-600 dark:text-indigo-400 md:flex">
               <BrainCircuit className="h-7 w-7" />
@@ -520,7 +630,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         )}
 
         {!isDashboardPage && !isSimulationFullscreenPage && (
-          <div className="hidden w-64 flex-none md:block" aria-hidden />
+          <div
+            className="cm-layout-sidebar-spacer hidden w-64 flex-none overflow-hidden transition-[width] duration-200 md:block"
+            aria-hidden
+          />
         )}
 
         {/* Main Content Area */}
@@ -559,14 +672,67 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   )}
                 </div>
               )}
-              <div className="flex items-center gap-3 pl-6 border-l border-slate-200 dark:border-slate-800">
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{userName}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">{user ? `Nível ${userLevel}` : 'Visitante'}</p>
-                </div>
-                <div className="w-9 h-9 rounded-full bg-slate-900 dark:bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-md cursor-pointer hover:opacity-80 transition-opacity" onClick={() => user ? router.push('/profile/personal') : router.push('/auth')}>
-                  {userInitials}
-                </div>
+              <div ref={profileMenuRef} className="relative flex items-center gap-3 border-l border-slate-200 pl-6 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={handleProfileMenuToggle}
+                  aria-haspopup="menu"
+                  aria-expanded={isProfileMenuOpen}
+                  className="group flex items-center gap-3 rounded-2xl px-2 py-1.5 transition-all hover:bg-white hover:shadow-sm dark:hover:bg-slate-900"
+                >
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-300">{userFirstName}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{user ? `Nível ${userLevel}` : 'Visitante'}</p>
+                  </div>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white shadow-md transition-opacity group-hover:opacity-90 dark:bg-indigo-600">
+                    {userInitials}
+                  </div>
+                  <ChevronDown size={15} className={`text-slate-400 transition-transform dark:text-slate-500 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {user && isProfileMenuOpen ? (
+                  <div className="absolute right-0 top-full z-50 mt-3 w-[360px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/80 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/30">
+                    <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                      <p className="text-sm font-black text-slate-900 dark:text-slate-100">{userFirstName}</p>
+                      <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{user.email || 'Conta conectada'}</p>
+                      <div className="mt-3 inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200">
+                        Nível {userLevel}
+                      </div>
+                    </div>
+
+                    <div className="p-2">
+                      {profileQuickMenuItems.map((item) => {
+                        const isCurrent = location.pathname === buildProfilePath(item.tab);
+
+                        return (
+                          <button
+                            key={item.tab}
+                            type="button"
+                            onClick={() => handleProfileMenuNavigate(item.tab)}
+                            className={`flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition-colors ${
+                              isCurrent
+                                ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-200'
+                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'
+                            }`}
+                          >
+                            <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                              isCurrent
+                                ? 'bg-white text-indigo-600 dark:bg-slate-900 dark:text-indigo-300'
+                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+                            }`}>
+                              <item.icon size={17} />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-black">{item.label}</span>
+                              <span className="mt-1 block text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">{item.description}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -587,6 +753,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             onClick={() => setIsMobileMenuOpen(false)}
           />
         )}
+
+        <style jsx global>{`
+          body[data-legal-reading-focus='true'] .cm-layout-sidebar {
+            transform: translateX(-100%);
+            opacity: 0;
+            pointer-events: none;
+          }
+
+          body[data-legal-reading-focus='true'] .cm-layout-sidebar-spacer {
+            width: 0 !important;
+          }
+        `}</style>
       </div>
     </div>
   );

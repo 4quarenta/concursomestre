@@ -11,6 +11,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowRight, BookOpen, BrainCircuit, CheckCircle2, Globe, GraduationCap, LineChart, MessageSquareQuote, ShieldCheck, Sparkles, Star, Target, Trophy, XCircle, Zap } from 'lucide-react';
 import type { Plan, PlanConfig } from '@types';
 import LimitedOfferCountdown from '../../../components/shared/marketing/LimitedOfferCountdown';
@@ -67,6 +68,36 @@ const LANDING_PLAN_FEATURE_COPY: Array<{ match: string[]; text: string }> = [
   { match: ['desempenho', 'estatisticas', 'estatisticas basicas'], text: 'Leitura clara da sua evolução para saber onde ajustar a rota.' },
   { match: ['revisao', 'materiais', 'materiais de estudo'], text: 'Revisão mais eficiente com apoio para voltar no que realmente importa.' },
 ];
+
+const PRODUCT_SCREENSHOTS = [
+  {
+    id: 'questions',
+    title: 'Questoes com filtros rapidos',
+    description: 'Busque por materia, banca e nivel sem perder tempo ate chegar no treino certo.',
+    image: '/landing/questions-preview.png',
+    href: '/questions',
+    badge: 'Questoes',
+    highlight: 'Busca direta',
+  },
+  {
+    id: 'simulations',
+    title: 'Simulados com leitura de resultado',
+    description: 'Veja nota, media e comparacao para ajustar a rotina com mais clareza.',
+    image: '/landing/simulations-preview.png',
+    href: '/simulation',
+    badge: 'Simulados',
+    highlight: 'Resultado rapido',
+  },
+  {
+    id: 'legal-commentary',
+    title: 'Lei comentada para revisar com contexto',
+    description: 'Estude o texto legal com trilha visual, comentarios e apoio para revisao.',
+    image: '/landing/legal-commentary-preview.png',
+    href: '/lei-comentada',
+    badge: 'Lei comentada',
+    highlight: 'Estudo guiado',
+  },
+] as const;
 
 const formatPlanFeatureForLanding = (feature: string) => {
   const normalized = normalizeFeatureKey(feature);
@@ -339,6 +370,73 @@ const LandingCommercialPage: React.FC = () => {
           ))}
         </div>
       </section>
+      <section className="bg-slate-950 px-6 pb-24">
+        <div className="mx-auto max-w-7xl rounded-[2.5rem] border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/20 backdrop-blur-sm md:p-8 xl:p-10">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-400/20 bg-indigo-400/10 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-100">
+                <Star size={14} className="text-amber-300" />
+                Veja a plataforma em acao
+              </div>
+              <div className="space-y-3">
+                <h2 className="text-3xl font-black tracking-tight text-white md:text-4xl">
+                  Menos promessa, mais tela real.
+                </h2>
+                <p className="max-w-2xl text-sm font-medium leading-relaxed text-slate-300 md:text-base">
+                  Algumas das areas que voce vai usar no dia a dia para praticar, revisar e acompanhar sua evolucao dentro da plataforma.
+                </p>
+              </div>
+            </div>
+
+            <Link
+              href="/auth?register=true"
+              className={`inline-flex items-center justify-center gap-3 rounded-[1.5rem] px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-lg transition-all hover:scale-105 active:scale-95 ${currentTheme.button}`}
+            >
+              Testar agora <ArrowRight size={16} />
+            </Link>
+          </div>
+
+          <div className="mt-10 grid gap-6 lg:grid-cols-3">
+            {PRODUCT_SCREENSHOTS.map((item) => (
+              <article key={item.id} className="group flex h-full flex-col rounded-[2rem] border border-white/10 bg-slate-950/80 p-4 shadow-lg shadow-black/10">
+                <div className="relative aspect-[10/16] overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-900">
+                  <Image
+                    src={item.image}
+                    alt={item.title}
+                    fill
+                    sizes="(max-width: 1024px) 100vw, 33vw"
+                    className="object-cover object-top transition-transform duration-500 group-hover:scale-[1.02]"
+                  />
+                  <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-3 p-4">
+                    <span className="rounded-full bg-white/90 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-900">
+                      {item.badge}
+                    </span>
+                    <span className="rounded-full bg-slate-950/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white">
+                      {item.highlight}
+                    </span>
+                  </div>
+                  <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-slate-950 via-slate-950/55 to-transparent" />
+                </div>
+
+                <div className="mt-5 flex flex-1 items-start justify-between gap-4">
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-black tracking-tight text-white">{item.title}</h3>
+                    <p className="text-sm font-medium leading-relaxed text-slate-400">{item.description}</p>
+                  </div>
+
+                  <Link
+                    href={item.href}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-white transition-colors hover:bg-white/10"
+                  >
+                    Abrir <ArrowRight size={14} />
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id="recursos" className="bg-slate-50 px-6 py-28 transition-colors dark:bg-slate-950">
         <div className="mx-auto max-w-7xl">
           <LandingSectionHeader

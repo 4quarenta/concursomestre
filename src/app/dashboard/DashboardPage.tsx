@@ -45,6 +45,7 @@ import {
 } from '@constants/layout';
 import { AdPlaceholder } from '../../components/shared/ui/AdPlaceholder';
 import {
+  buildAccuracyInsight,
   buildQuestionTimelineData,
   buildSubjectPerformanceData,
   calculateAccuracySummary,
@@ -244,6 +245,11 @@ const Dashboard: React.FC = () => {
   const subjectMetrics = useMemo(
     () => buildSubjectPerformanceData(filteredAnswers, questions),
     [filteredAnswers, questions],
+  );
+
+  const accuracyInsight = useMemo(
+    () => buildAccuracyInsight(accuracySummary),
+    [accuracySummary],
   );
 
   const timelineData = useMemo(
@@ -535,6 +541,39 @@ const Dashboard: React.FC = () => {
             <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-center dark:bg-amber-500/10">
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-amber-600 dark:text-amber-300">Erros</p>
               <p className="mt-1 text-lg font-black text-amber-600 dark:text-amber-300">{accuracySummary.wrongAnswers}</p>
+            </div>
+          </div>
+
+          <div
+            className={`mt-4 rounded-2xl border p-4 ${
+              accuracyInsight.tone === 'emerald'
+                ? 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-500/20 dark:bg-emerald-500/10'
+                : accuracyInsight.tone === 'amber'
+                  ? 'border-amber-200 bg-amber-50/80 dark:border-amber-500/20 dark:bg-amber-500/10'
+                  : accuracyInsight.tone === 'rose'
+                    ? 'border-rose-200 bg-rose-50/80 dark:border-rose-500/20 dark:bg-rose-500/10'
+                    : 'border-indigo-200 bg-indigo-50/80 dark:border-indigo-500/20 dark:bg-indigo-500/10'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
+                  accuracyInsight.tone === 'emerald'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                    : accuracyInsight.tone === 'amber'
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+                      : accuracyInsight.tone === 'rose'
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
+                        : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
+                }`}
+              >
+                <Lightbulb size={16} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Insight do periodo</p>
+                <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{accuracyInsight.title}</p>
+                <p className="mt-1 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">{accuracyInsight.description}</p>
+              </div>
             </div>
           </div>
 

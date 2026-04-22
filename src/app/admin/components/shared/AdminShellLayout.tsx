@@ -39,7 +39,7 @@ const AdminShellLayout = ({
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
 
   return (
-    <div className="flex min-h-[100dvh] w-full overflow-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950">
+    <div className="flex min-h-[100dvh] w-full overflow-hidden bg-slate-100 transition-colors duration-300 dark:bg-slate-950">
       <AdminNavigationSidebar
         activeTab={activeTab}
         onTabChange={onTabChange}
@@ -48,7 +48,7 @@ const AdminShellLayout = ({
         onRequestClose={() => setIsMobileSidebarOpen(false)}
       />
 
-      <div className="hidden w-72 flex-none md:block" aria-hidden />
+      <div className="hidden w-[280px] flex-none md:block" aria-hidden />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden transition-colors duration-300">
         <AdminTopBar
@@ -57,10 +57,12 @@ const AdminShellLayout = ({
           onToggleSidebar={() => setIsMobileSidebarOpen((previous) => !previous)}
         />
 
-        <div className={`no-scrollbar mx-auto flex-1 w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} overflow-y-auto overflow-x-hidden px-3 py-5 sm:px-4 md:px-6 md:py-8 lg:px-8`}>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className={`no-scrollbar mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} px-3 py-5 sm:px-4 md:px-6 md:py-8 lg:px-8`}>
           <AdminPageHeader title={pageTitle} description={pageDescription} activeSectionLabel={activeSectionLabel} />
 
-          <div className="min-h-[500px] pb-10">{children}</div>
+            <div className="min-h-[500px] pb-10">{children}</div>
+          </div>
         </div>
       </div>
 

@@ -10,12 +10,13 @@
 */
 
 import React, { useState, useEffect, useRef } from 'react';
-import type { Question, UserAnswer, QuestaoComentario as Comment, ErrorReport, UserNote, QuestionStats } from '@types';
+import type { Question, UserAnswer, QuestaoComentario as Comment, ErrorReport, UserNote, QuestionStats, RelatedQuestionLawMatch } from '@types';
 import {
   CheckCircle2, XCircle, Flag, BookOpen, GraduationCap,
-  Eye, EyeOff, Building2, Calendar, Briefcase, ThumbsUp, MessageSquare, BarChart3, AlertTriangle, Share2, Lock, StickyNote, Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Layers, Tag, Crown, Zap, Star, Reply, History, PlusCircle, MinusCircle
+  Eye, EyeOff, Building2, Calendar, Briefcase, ThumbsUp, MessageSquare, BarChart3, AlertTriangle, Share2, Lock, StickyNote, Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Layers, Tag, Crown, Zap, Star, Reply, History, PlusCircle, MinusCircle, FileText, Loader2
 } from 'lucide-react';
 import { getAssetUrl } from '@services/api';
+import { legalCommentaryApiService } from '@services/legal-commentary';
 import { questionService } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import ReactMarkdown from 'react-markdown';
@@ -78,6 +79,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const [eliminatedOptionIds, setEliminatedOptionIds] = useState<(number | string)[]>([]);
   const [showComments, setShowComments] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
+  const [showAnnotatedLaws, setShowAnnotatedLaws] = useState(false);
+  const [relatedAnnotatedLaws, setRelatedAnnotatedLaws] = useState<RelatedQuestionLawMatch[]>([]);
+  const [isLoadingAnnotatedLaws, setIsLoadingAnnotatedLaws] = useState(false);
 
   // Added useMarketplace here to do a lightweight check for the materials button rendering
   const { materials } = useMarketplace();
@@ -109,6 +113,58 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       return false;
     });
   }, [materials, question.assuntos, systemSettings.features.marketplaceEnabled]);
+
+  useEffect(() => {
+    if (!systemSettings.features.annotatedLawsEnabled) {
+      setRelatedAnnotatedLaws([]);
+      setShowAnnotatedLaws(false);
+      setIsLoadingAnnotatedLaws(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingAnnotatedLaws(true);
+
+    legalCommentaryApiService.getRelatedLawsForQuestion(question)
+      .then((payload) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setRelatedAnnotatedLaws(payload);
+        if (payload.length === 0) {
+          setShowAnnotatedLaws(false);
+        }
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return;
+        }
+
+        setRelatedAnnotatedLaws([]);
+        setShowAnnotatedLaws(false);
+      })
+      .finally(() => {
+        if (!isMounted) {
+          return;
+        }
+
+        setIsLoadingAnnotatedLaws(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [question, systemSettings.features.annotatedLawsEnabled]);
+
+  const hasRelatedAnnotatedLaws = relatedAnnotatedLaws.length > 0;
+  const hasQuestionTaxonomy = Array.isArray(question.assuntos) && question.assuntos.length > 0;
+  const canShowAnnotatedLawsButton = systemSettings.features.annotatedLawsEnabled
+    && (
+      hasRelatedAnnotatedLaws
+      || (isLoadingAnnotatedLaws && hasQuestionTaxonomy)
+    );
+  const canShowStudyMaterialsButton = hasRelatedMaterials;
 
   const [showTeacherComment, setShowTeacherComment] = useState(false);
   const [showDetailedComment, setShowDetailedComment] = useState(false);
@@ -215,6 +271,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     setShowFilters(false);
     setShowStats(false);
     setShowMaterials(false);
+    setShowAnnotatedLaws(false);
     setLocalStats(question.stats || null);
     setIsContextExpanded(false); // Reset context expansion when question changes
 
@@ -241,6 +298,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       setShowDetailedComment(false);
       setShowComments(false);
       setShowMaterials(false);
+      setShowAnnotatedLaws(false);
 
       setLoadingStats(true);
       try {
@@ -687,6 +745,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   }
                   setShowTeacherComment(!showTeacherComment);
                   setShowDetailedComment(false);
+                  setShowAnnotatedLaws(false);
                 }}
                 className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showTeacherComment ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : canSeeTeacher ? 'text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-700 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
               >
@@ -705,6 +764,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   }
                   setShowDetailedComment(!showDetailedComment);
                   setShowTeacherComment(false);
+                  setShowAnnotatedLaws(false);
                 }}
                 className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showDetailedComment ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeDetailed ? 'text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-700 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
               >
@@ -713,21 +773,39 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               </button>
             )}
 
+            {canShowAnnotatedLawsButton && (
+              <button
+                onClick={() => {
+                  setShowAnnotatedLaws(!showAnnotatedLaws);
+                  setShowMaterials(false);
+                  setShowStats(false);
+                  setShowComments(false);
+                  setShowTeacherComment(false);
+                  setShowDetailedComment(false);
+                }}
+                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showAnnotatedLaws ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'text-violet-700 dark:text-violet-300 bg-white dark:bg-slate-700 border-violet-200 dark:border-violet-800 hover:bg-violet-50 dark:hover:bg-slate-600'}`}
+              >
+                {isLoadingAnnotatedLaws && !showAnnotatedLaws ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                Leis Relacionadas
+              </button>
+            )}
+
             {systemSettings.features.communityEnabled && (
-              <button onClick={() => { setShowComments(!showComments); setShowMaterials(false); setShowStats(false); setShowTeacherComment(false); setShowDetailedComment(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showComments ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'}`}>
+              <button onClick={() => { setShowComments(!showComments); setShowMaterials(false); setShowAnnotatedLaws(false); setShowStats(false); setShowTeacherComment(false); setShowDetailedComment(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showComments ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'}`}>
                 <MessageSquare size={14} /> {question.commentsCount || 0} Comentários
               </button>
             )}
 
-            <button onClick={() => { handleToggleStats(); setShowMaterials(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showStats ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'}`}>
+            <button onClick={() => { handleToggleStats(); setShowMaterials(false); setShowAnnotatedLaws(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showStats ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'}`}>
               <BarChart3 size={14} /> Estatísticas
             </button>
 
-            {systemSettings.features.marketplaceEnabled && hasRelatedMaterials && (
-              <button onClick={() => { setShowMaterials(!showMaterials); setShowStats(false); setShowComments(false); setShowTeacherComment(false); setShowDetailedComment(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showMaterials ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'}`}>
-                <BookOpen size={14} /> Materiais Relacionados
+            {canShowStudyMaterialsButton && (
+              <button onClick={() => { setShowMaterials(!showMaterials); setShowAnnotatedLaws(false); setShowStats(false); setShowComments(false); setShowTeacherComment(false); setShowDetailedComment(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showMaterials ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'}`}>
+                <BookOpen size={14} /> Material de Estudo
               </button>
             )}
+
 
             <button onClick={() => setIsNoteModalOpen(true)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${noteText ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-900/50' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/10'}`}>
               <StickyNote size={14} /> {noteText ? 'Anotação ✅' : 'Anotar'}
@@ -752,7 +830,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
 
         {/* Áreas Expandidas */}
-        {(showComments || showTeacherComment || showDetailedComment || showStats || showMaterials) && (
+        {(showComments || showTeacherComment || showDetailedComment || showStats || showMaterials || showAnnotatedLaws) && (
           <div className="bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 animate-fade-in divide-y divide-slate-100 dark:divide-slate-800">
 
             {showStats && (
@@ -890,6 +968,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             )}
 
             {showMaterials && <RelatedMaterialsSection question={question} currentUser={currentUser} onClose={() => setShowMaterials(false)} />}
+            {showAnnotatedLaws && <RelatedAnnotatedLawsSection question={question} onClose={() => setShowAnnotatedLaws(false)} initialMatches={relatedAnnotatedLaws} />}
             <div className="px-6 py-4">
               <AdBanner type="bottom" />
             </div>
@@ -1007,6 +1086,193 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       {upgradeModal}
       {cardContent}
     </>
+  );
+};
+
+const RelatedAnnotatedLawsSection = ({ question, onClose, initialMatches = [] }: { question: Question; onClose: () => void; initialMatches?: RelatedQuestionLawMatch[] }) => {
+  const router = useRouter();
+  const [matches, setMatches] = useState<RelatedQuestionLawMatch[]>(initialMatches);
+  const [isLoading, setIsLoading] = useState(initialMatches.length === 0);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (initialMatches.length > 0) {
+      setMatches(initialMatches);
+      setIsLoading(false);
+      setError(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    legalCommentaryApiService.getRelatedLawsForQuestion(question)
+      .then((payload) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setMatches(payload);
+      })
+      .catch((requestError) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel carregar as leis relacionadas.');
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [initialMatches, question]);
+
+  if (isLoading) {
+    return (
+      <div className="p-6 bg-violet-50/40 dark:bg-violet-900/10 animate-slide-down">
+        <div className="flex items-center gap-2 text-violet-800 dark:text-violet-300 font-bold text-[9px] uppercase tracking-widest mb-4">
+          <FileText size={14} /> Lei Comentada relacionada
+        </div>
+        <div className="flex items-center gap-3 rounded-2xl border border-violet-100 bg-white/80 px-4 py-4 text-sm font-medium text-slate-600 dark:border-violet-900/30 dark:bg-slate-900/70 dark:text-slate-300">
+          <Loader2 size={16} className="animate-spin text-violet-600 dark:text-violet-300" />
+          Buscando leis e artigos vinculados à matéria e ao assunto desta questão...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 bg-violet-50/40 dark:bg-violet-900/10 animate-slide-down">
+        <div className="flex items-center gap-2 text-violet-800 dark:text-violet-300 font-bold text-[9px] uppercase tracking-widest mb-4">
+          <FileText size={14} /> Lei Comentada relacionada
+        </div>
+        <div className="rounded-2xl border border-rose-100 bg-white/80 p-4 text-sm text-slate-600 dark:border-rose-900/30 dark:bg-slate-900/70 dark:text-slate-300">
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  if (matches.length === 0) {
+    return (
+      <div className="p-6 bg-violet-50/40 dark:bg-violet-900/10 animate-slide-down">
+        <div className="flex items-center gap-2 text-violet-800 dark:text-violet-300 font-bold text-[9px] uppercase tracking-widest mb-4">
+          <FileText size={14} /> Lei Comentada relacionada
+        </div>
+        <div className="rounded-2xl border border-violet-100 bg-white/80 p-5 text-center dark:border-violet-900/30 dark:bg-slate-900/70">
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Ainda não encontramos uma lei comentada diretamente vinculada a esta questão.</p>
+          <p className="mt-2 text-xs leading-6 text-slate-500 dark:text-slate-400">
+            Isso normalmente acontece quando o vínculo editorial entre questão, matéria e artigos ainda não foi cadastrado.
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => router.push('/lei-comentada')}
+              className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-colors hover:bg-violet-700"
+            >
+              <FileText size={14} /> Abrir catálogo de leis
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-slate-100"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 bg-violet-50/40 dark:bg-violet-900/10 animate-slide-down">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2 text-violet-800 dark:text-violet-300 font-bold text-[9px] uppercase tracking-widest">
+          <FileText size={14} /> Lei Comentada relacionada
+        </div>
+        <button
+          type="button"
+          onClick={() => router.push('/lei-comentada')}
+          className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-violet-700 transition-colors hover:bg-violet-50 dark:border-violet-900/40 dark:bg-slate-900 dark:text-violet-300 dark:hover:bg-slate-800"
+        >
+          Ver todas
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {matches.map((match) => (
+          <div key={match.law.id} className="rounded-2xl border border-violet-100 bg-white/90 p-4 shadow-sm dark:border-violet-900/30 dark:bg-slate-900/80">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-violet-700 dark:bg-violet-900/30 dark:text-violet-200">
+                    {match.law.acronym || match.law.shortTitle}
+                  </span>
+                  {match.matchedSubjectNames.slice(0, 2).map((item) => (
+                    <span key={`${match.law.id}-subject-${item}`} className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                      {item}
+                    </span>
+                  ))}
+                  {match.matchedTopicNames.slice(0, 2).map((item) => (
+                    <span key={`${match.law.id}-topic-${item}`} className="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-violet-600 dark:bg-violet-900/20 dark:text-violet-300">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+                <h3 className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">{match.law.shortTitle}</h3>
+                <p className="mt-1 text-xs leading-6 text-slate-500 dark:text-slate-400">{match.reason}</p>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <Link
+                  href={`/lei-comentada/${match.law.slug}`}
+                  className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-colors hover:bg-violet-700"
+                >
+                  Abrir lei
+                </Link>
+              </div>
+            </div>
+
+            {match.matchedArticles.length > 0 ? (
+              <div className="mt-4 space-y-2 border-t border-violet-100 pt-4 dark:border-violet-900/20">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-500 dark:text-violet-300">Artigos mais úteis para esta questão</p>
+                {match.matchedArticles.map((article) => (
+                  <Link
+                    key={article.id}
+                    href={`/lei-comentada/${match.law.slug}#${article.id}`}
+                    className="block rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 transition-colors hover:border-violet-200 hover:bg-violet-50/60 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-violet-900/40 dark:hover:bg-violet-900/10"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-black text-slate-800 dark:text-slate-100">
+                          Art. {article.number}{article.title ? ` — ${article.title}` : ''}
+                        </p>
+                        {article.snippet ? (
+                          <p className="mt-1 text-xs leading-6 text-slate-500 dark:text-slate-400">{article.snippet}</p>
+                        ) : null}
+                      </div>
+                      <span className="shrink-0 text-[10px] font-black uppercase tracking-[0.16em] text-violet-500 dark:text-violet-300">
+                        Abrir
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 };
 

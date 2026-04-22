@@ -41,6 +41,11 @@ import {
     downloadAuthenticatedFile,
     getAssetUrl,
 } from '@services/api';
+import {
+    listLegalCommentaryNotesForUser,
+    removeLegalCommentaryArticleNote,
+    type LegalCommentaryStoredNote,
+} from '@services/legal-commentary/legalCommentaryNotes';
 import { cardsService, formatMaskedCardLabelAscii } from '@services/billing';
 import { marketplaceService } from '@services/marketplace';
 import { profileService } from '@services/profile';
@@ -72,6 +77,24 @@ const parseFeatureFlag = (value: unknown): boolean => {
         if (['0', 'false', 'no', 'off', ''].includes(normalized)) return false;
     }
     return false;
+};
+
+const stripHtml = (value: string) => value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+const truncateText = (value: string, maxLength: number) => (
+    value.length > maxLength ? `${value.slice(0, maxLength).trimEnd()}...` : value
+);
+
+type NotebookEntry = {
+    id: string;
+    source: 'question' | 'law';
+    title: string;
+    subtitle: string;
+    text: string;
+    timestamp: number;
+    questionId?: number;
+    articleId?: string;
+    lawSlug?: string;
 };
 
 const Profile: React.FC = () => {
@@ -134,6 +157,12 @@ const Profile: React.FC = () => {
     const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
     const cancelRequestInFlightRef = React.useRef(false);
     const renewalRequestInFlightRef = React.useRef(false);
+    const [lawNotes, setLawNotes] = useState<LegalCommentaryStoredNote[]>([]);
+
+    const currentUserKey = React.useMemo(() => {
+        const legacyUserId = (currentUser as any)?.userId;
+        return String(currentUser?.id || legacyUserId || currentUser?.email || '');
+    }, [currentUser]);
 
     const primarySavedCard = useMemo(() => {
         return userCards.find((card: any) => Number(card.is_default) === 1) || userCards[0] || null;
@@ -144,6 +173,61 @@ const Profile: React.FC = () => {
     React.useEffect(() => {
         setPhotoLoadFailed(false);
     }, [profilePhotoUrl]);
+
+    React.useEffect(() => {
+        if (!currentUserKey) {
+            setLawNotes([]);
+            return;
+        }
+
+        setLawNotes(listLegalCommentaryNotesForUser(currentUserKey));
+    }, [currentUserKey]);
+
+    const notebookEntries = React.useMemo<NotebookEntry[]>(() => {
+        const questionEntries = userNotes.map((note) => {
+            const question = questions.find((item) => Number(item.id) === Number(note.questionId));
+            const questionLabel = question
+                ? truncateText(stripHtml(question.enunciado_clean || question.enunciado || `Questão #${note.questionId}`), 92)
+                : `Questão #${note.questionId}`;
+
+            const assuntos = Array.isArray(question?.assuntos)
+                ? question.assuntos.map((assunto) => assunto.nome || assunto.name).filter(Boolean)
+                : [];
+
+            return {
+                id: `question-${note.id}`,
+                source: 'question' as const,
+                title: questionLabel,
+                subtitle: assuntos.length > 0 ? assuntos.slice(0, 2).join(' • ') : 'Anotação em questão',
+                text: note.text,
+                timestamp: note.timestamp,
+                questionId: note.questionId,
+            };
+        });
+
+        const legalEntries = lawNotes.map((note) => ({
+            id: `law-${note.id}`,
+            source: 'law' as const,
+            title: note.articleTitle
+                ? `Art. ${note.articleNumber || '?'} • ${note.articleTitle}`
+                : `Art. ${note.articleNumber || '?'} • ${note.lawShortTitle || note.lawTitle || 'Lei Comentada'}`,
+            subtitle: [note.lawTitle || note.lawShortTitle || 'Lei Comentada', note.areaName].filter(Boolean).join(' • '),
+            text: note.note,
+            timestamp: note.updatedAt,
+            articleId: note.articleId,
+            lawSlug: note.lawSlug,
+        }));
+
+        return [...questionEntries, ...legalEntries].sort((left, right) => right.timestamp - left.timestamp);
+    }, [lawNotes, questions, userNotes]);
+
+    const handleRemoveLawNote = React.useCallback((articleId: string) => {
+        if (!currentUserKey) return;
+
+        removeLegalCommentaryArticleNote(currentUserKey, articleId);
+        setLawNotes((currentNotes) => currentNotes.filter((note) => note.articleId !== articleId));
+        addToast('Anotação removida.', 'success');
+    }, [addToast, currentUserKey]);
 
     const formatSavedCardLabel = React.useCallback((card: any) => {
         if (!card) return '';
@@ -1845,17 +1929,89 @@ const Profile: React.FC = () => {
                   <div className="space-y-6">
                      <div className="flex justify-between items-center">
                         <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Minhas Anotações</h2>
-                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{userNotes.length} notas</span>
+                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{notebookEntries.length} notas</span>
                      </div>
-                     {userNotes.length > 0 ? (
+                     {notebookEntries.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           {userNotes.map(n => (
-                              <div key={n.id} className="p-6 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-100 dark:border-yellow-900/20 rounded-2xl group relative hover:shadow-sm transition-all">
-                                 <p className="text-xs text-yellow-800 dark:text-yellow-200 font-medium leading-relaxed whitespace-pre-wrap">{n.text}</p>
-                                 <div className="mt-4 pt-3 border-t border-yellow-100/50 dark:border-yellow-900/30 flex justify-between items-center">
-                                    <span className="text-[10px] text-yellow-600/60 dark:text-yellow-500/40 font-bold uppercase">{new Date(n.timestamp).toLocaleDateString()}</span>
-                                    <button onClick={() => saveNote(n.questionId, '')} className="text-yellow-600/60 hover:text-red-500 transition-colors"><X size={14} /></button>
+                           {notebookEntries.map((entry) => (
+                              <div
+                                 key={entry.id}
+                                 className={`p-6 rounded-2xl group relative hover:shadow-sm transition-all border ${
+                                    entry.source === 'law'
+                                       ? 'bg-indigo-50 dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/30'
+                                       : 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-100 dark:border-yellow-900/20'
+                                 }`}
+                              >
+                                 <div className="flex items-start justify-between gap-3">
+                                    <div className="space-y-2">
+                                       <div className="flex flex-wrap items-center gap-2">
+                                          <span
+                                             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
+                                                entry.source === 'law'
+                                                   ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
+                                                   : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                                             }`}
+                                          >
+                                             {entry.source === 'law' ? <BookOpen size={11} /> : <StickyNote size={11} />}
+                                             {entry.source === 'law' ? 'Lei' : 'Questão'}
+                                          </span>
+                                          <span className={`text-[10px] font-bold uppercase ${
+                                             entry.source === 'law'
+                                                ? 'text-indigo-600/70 dark:text-indigo-400/70'
+                                                : 'text-yellow-600/70 dark:text-yellow-500/60'
+                                          }`}>
+                                             {new Date(entry.timestamp).toLocaleDateString()}
+                                          </span>
+                                       </div>
+                                       <div>
+                                          <h3 className={`text-sm font-bold ${
+                                             entry.source === 'law'
+                                                ? 'text-indigo-950 dark:text-indigo-100'
+                                                : 'text-yellow-950 dark:text-yellow-100'
+                                          }`}>
+                                             {entry.title}
+                                          </h3>
+                                          <p className={`mt-1 text-[11px] font-medium ${
+                                             entry.source === 'law'
+                                                ? 'text-indigo-700/75 dark:text-indigo-300/70'
+                                                : 'text-yellow-700/75 dark:text-yellow-300/70'
+                                          }`}>
+                                             {entry.subtitle}
+                                          </p>
+                                       </div>
+                                    </div>
+
+                                    <button
+                                       onClick={() => entry.source === 'law' && entry.articleId ? handleRemoveLawNote(entry.articleId) : saveNote(entry.questionId || 0, '')}
+                                       className={`shrink-0 transition-colors ${
+                                          entry.source === 'law'
+                                             ? 'text-indigo-600/60 hover:text-red-500 dark:text-indigo-300/60'
+                                             : 'text-yellow-600/60 hover:text-red-500 dark:text-yellow-500/60'
+                                       }`}
+                                       title="Remover anotação"
+                                    >
+                                       <X size={14} />
+                                    </button>
                                  </div>
+
+                                 <p className={`mt-4 text-xs font-medium leading-relaxed whitespace-pre-wrap ${
+                                    entry.source === 'law'
+                                       ? 'text-indigo-900 dark:text-indigo-100'
+                                       : 'text-yellow-800 dark:text-yellow-200'
+                                 }`}>
+                                    {entry.text}
+                                 </p>
+
+                                 {entry.source === 'law' && entry.lawSlug ? (
+                                    <div className="mt-4 pt-3 border-t border-indigo-100/70 dark:border-indigo-900/40 flex justify-end">
+                                       <button
+                                          onClick={() => router.push(`/lei-comentada/${entry.lawSlug}${entry.articleId ? `#${entry.articleId}` : ''}`)}
+                                          className="text-[11px] font-bold text-indigo-700 transition-colors hover:text-indigo-500 dark:text-indigo-300"
+                                       >
+                                          Abrir na lei
+                                       </button>
+                                    </div>
+                                 ) : null}
                               </div>
                            ))}
                         </div>
@@ -1863,7 +2019,7 @@ const Profile: React.FC = () => {
                         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
                            <StickyNote size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhuma anotação encontrada.</p>
-                           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Adicione notas nas questões durante seus estudos.</p>
+                           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Adicione notas em questões e artigos da Lei Comentada durante seus estudos.</p>
                         </div>
                      )}
                   </div>

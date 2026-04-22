@@ -36,6 +36,12 @@ export interface DashboardAccuracySummary {
   accuracyRate: number;
 }
 
+export interface DashboardPerformanceInsight {
+  tone: 'emerald' | 'amber' | 'rose' | 'indigo';
+  title: string;
+  description: string;
+}
+
 export interface DashboardLevelProgress {
   currentLevel: number;
   currentXp: number;
@@ -168,6 +174,62 @@ export const calculateAccuracySummary = (answers: UserAnswer[]): DashboardAccura
     correctAnswers,
     wrongAnswers,
     accuracyRate,
+  };
+};
+
+/**
+ * Gera um insight curto para o card de desempenho geral.
+ * O texto muda conforme a porcentagem de acerto e tenta orientar o proximo passo.
+ *
+ * @since 1.0.0
+ */
+export const buildAccuracyInsight = (
+  summary: DashboardAccuracySummary,
+): DashboardPerformanceInsight => {
+  if (summary.totalQuestions === 0) {
+    return {
+      tone: 'indigo',
+      title: 'Base em construcao',
+      description: 'Resolva algumas questoes para liberar um diagnostico real do seu desempenho.',
+    };
+  }
+
+  if (summary.accuracyRate >= 85) {
+    return {
+      tone: 'emerald',
+      title: 'Desempenho muito forte',
+      description: 'Seu aproveitamento esta alto. Vale manter ritmo e priorizar revisoes para nao perder consistencia.',
+    };
+  }
+
+  if (summary.accuracyRate >= 70) {
+    return {
+      tone: 'emerald',
+      title: 'Bom nivel de precisao',
+      description: 'Voce ja esta em uma faixa competitiva. O melhor ganho agora costuma vir dos erros recorrentes.',
+    };
+  }
+
+  if (summary.accuracyRate >= 55) {
+    return {
+      tone: 'amber',
+      title: 'Faixa de consolidacao',
+      description: 'O desempenho esta intermediario. Revisar fundamentos e atacar os temas com mais erro tende a destravar rapido.',
+    };
+  }
+
+  if (summary.accuracyRate >= 40) {
+    return {
+      tone: 'amber',
+      title: 'Atencao aos fundamentos',
+      description: 'Sua margem de erro ainda esta alta. O melhor caminho agora e revisar base teorica antes de ganhar velocidade.',
+    };
+  }
+
+  return {
+    tone: 'rose',
+    title: 'Hora de recalibrar',
+    description: 'Seu percentual indica dificuldade forte no recorte atual. Foque em materia, assunto e comentarios antes de ampliar volume.',
   };
 };
 

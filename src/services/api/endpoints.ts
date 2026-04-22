@@ -220,6 +220,15 @@ export const ENDPOINTS = {
         adminDetail: 'legal-commentary/admin/detail.php',
         adminSave: 'legal-commentary/admin/save.php',
         adminDelete: 'legal-commentary/admin/delete.php',
+        adminCatalog: 'legal-commentary/admin/catalog.php',
+        adminImport: 'legal-commentary/admin/import.php',
+        adminSync: 'legal-commentary/admin/sync.php',
+        adminUpdates: 'legal-commentary/admin/updates.php',
+        adminGenerate: 'legal-commentary/admin/generate.php',
+        adminBatchStart: 'legal-commentary/admin/batch-start.php',
+        adminBatchStatus: 'legal-commentary/admin/batch-status.php',
+        adminBatchRetry: 'legal-commentary/admin/batch-retry.php',
+        adminBatchStop: 'legal-commentary/admin/batch-stop.php',
     },
 
     settings: {

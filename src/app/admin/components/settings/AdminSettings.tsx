@@ -45,6 +45,7 @@ interface AdminSettingsProps {
 const inputClassName = 'w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
 const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500';
 const RESET_TABLE_EXCLUSIONS = new Set(['settings', 'system_settings']);
+const DEFAULT_LIMITED_OFFER_EXTENSION_MS = 7 * 24 * 60 * 60 * 1000;
 
 const toDateTimeLocalValue = (value?: string | null) => {
   if (!value) {
@@ -67,6 +68,15 @@ const toIsoDateTimeValue = (value: string) => {
 
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+};
+
+const resolveFutureLimitedOfferEndsAt = (value?: string | null) => {
+  const timestamp = new Date(value || '').getTime();
+  if (!value || Number.isNaN(timestamp) || timestamp <= Date.now()) {
+    return new Date(Date.now() + DEFAULT_LIMITED_OFFER_EXTENSION_MS).toISOString();
+  }
+
+  return value;
 };
 
 const featureItems = [
@@ -213,10 +223,21 @@ const AdminSettings = ({
     const nextSettings = buildSettingsPayload();
     const limitedOfferCountdown = nextSettings.limitedOfferCountdown;
     if (limitedOfferCountdown?.enabled) {
-      const endsAtTimestamp = new Date(limitedOfferCountdown.endsAt || '').getTime();
-      if (!limitedOfferCountdown.endsAt || Number.isNaN(endsAtTimestamp) || endsAtTimestamp <= Date.now()) {
-        addToast('Defina uma data final futura para ativar a oferta por tempo limitado.', 'error');
-        return;
+      const resolvedEndsAt = resolveFutureLimitedOfferEndsAt(limitedOfferCountdown.endsAt);
+      if (resolvedEndsAt !== limitedOfferCountdown.endsAt) {
+        nextSettings.limitedOfferCountdown = {
+          ...limitedOfferCountdown,
+          endsAt: resolvedEndsAt,
+        };
+        setLocalSettings((current) => ({
+          ...current,
+          limitedOfferCountdown: {
+            ...(current.limitedOfferCountdown || { enabled: true, endsAt: resolvedEndsAt }),
+            enabled: true,
+            endsAt: resolvedEndsAt,
+          },
+        }));
+        addToast('A oferta por tempo limitado estava sem data valida. Definimos automaticamente um encerramento futuro de 7 dias.', 'info');
       }
     }
 
