@@ -11,10 +11,12 @@ import Layout from '@/components/shared/layout/Layout';
 import PageTransition from '@/components/PageTransition';
 import GlobalLoader from '@/components/GlobalLoader';
 import ModuleAccessFallback from '@/components/shared/feedback/ModuleAccessFallback';
+import GlobalPaymentIssueBanner from '@/components/shared/feedback/GlobalPaymentIssueBanner';
 import DebugBanner from '@/components/shared/feedback/debug/DebugBanner';
 import { StudyTrackerBridge } from './StudyTrackerProvider';
 import { buildProfilePath } from '../app/profile/profileNavigation';
 import { buildAdminPath, resolveAdminRoute } from '../app/admin/config/adminPageNavigationConfig';
+import { resolveUserPaymentIssue } from '@/services/billing/paymentIssue';
 
 const LAST_STABLE_ROUTE_KEY = 'lastStableRoute';
 const ROUTE_BEFORE_RELOAD_KEY = 'routeBeforeReload';
@@ -118,11 +120,22 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   const loginRequired = resolveSystemFeatureFlag(systemSettings, 'loginRequired', false);
   const featureGate = featureGateForPath(pathname);
   const isPastDueSubscription = currentUser?.subscription?.status === 'past_due';
-  const isPaymentIssue = Boolean((currentUser?.paymentIssue || isPastDueSubscription) && !canAccessAdmin);
-  const isFixingPayment = pathname.startsWith('/profile') || pathname === '/plans' || pathname.startsWith('/checkout');
+  const paymentIssue = React.useMemo(() => resolveUserPaymentIssue(currentUser), [currentUser]);
+  const hasPaymentIssue = Boolean(paymentIssue || isPastDueSubscription);
+  const isBlockingPaymentIssue = Boolean(isPastDueSubscription || paymentIssue?.interactionLock);
+  const isFixingPayment = pathname === buildProfilePath('billing')
+    || pathname === buildProfilePath('personal')
+    || pathname === buildProfilePath('billing-history')
+    || pathname.startsWith('/checkout')
+    || pathname.startsWith('/support');
   const shouldRedirectToAuth = alwaysRequiresAuthenticatedUser(pathname)
     || (loginRequired && followsGlobalLoginRequirement(pathname));
   const currentRoute = `${pathname}${search ? `?${search}` : ''}`;
+  const paymentIssueFixPath = paymentIssue?.actionTarget || `${buildProfilePath('personal')}#saved-cards-personal-section`;
+  const paymentIssueMessage = isPastDueSubscription
+    ? 'A renovação da sua assinatura falhou. Atualize ou troque o cartão salvo para regularizar as próximas cobranças.'
+    : (paymentIssue?.message || 'Atualize seu cartão para manter o acesso e as próximas cobranças em dia.');
+  const paymentIssueActionLabel = paymentIssue?.actionLabel || 'Cadastrar cartão';
 
   React.useEffect(() => {
     if (isLoading || restoredLegacyHashRouteRef.current || typeof window === 'undefined') {
@@ -269,27 +282,40 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     );
   }
 
-  if (isPaymentIssue && !isFixingPayment) {
+  if (isBlockingPaymentIssue && !isFixingPayment) {
     return (
-      <div className="fixed inset-0 z-[9999] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6 text-center">
+      <>
+        <div className="fixed inset-x-0 top-0 z-[9998] px-3 py-3 sm:px-4">
+          <div className="mx-auto max-w-6xl">
+            <GlobalPaymentIssueBanner
+              message={paymentIssueMessage}
+              blocking
+              actionLabel={paymentIssueActionLabel}
+              onAction={() => router.push(paymentIssueFixPath)}
+            />
+          </div>
+        </div>
+        <div className="fixed inset-0 z-[9999] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6 text-center">
         <div className="bg-white dark:bg-slate-900 max-w-md w-full rounded-[2.5rem] p-8 space-y-6 shadow-2xl animate-scale-in border border-rose-100 dark:border-rose-900/30">
           <div className="w-20 h-20 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-[2rem] flex items-center justify-center mx-auto shadow-lg shadow-rose-200/50 dark:shadow-none animate-pulse">
             <ShieldAlert size={40} />
           </div>
           <div className="space-y-2">
-            <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Problema no Pagamento</h2>
+            <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+              {isPastDueSubscription ? 'Problema no Pagamento' : 'Cartão obrigatório para continuar'}
+            </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
               {isPastDueSubscription
                 ? 'A renovacao da sua assinatura falhou e seu acesso ficou pendente. Atualize ou troque o cartao salvo para regularizar a cobranca.'
-                : 'Detectamos um problema com o metodo de pagamento da sua assinatura ativa (cartao vencido ou ausente). Atualize seus dados para continuar acessando a plataforma.'}
+                : 'Sua assinatura ativa precisa de um cartao salvo para sustentar as proximas faturas da Stripe. Cadastre o cartao antes de continuar usando a plataforma.'}
             </p>
           </div>
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => router.push(buildProfilePath('billing'))}
+              onClick={() => router.push(paymentIssueFixPath)}
               className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-200 dark:shadow-indigo-900/20"
             >
-              Atualizar Cartao Agora
+              {paymentIssueActionLabel}
             </button>
             <button
               onClick={logout}
@@ -299,7 +325,8 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
             </button>
           </div>
         </div>
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -316,6 +343,17 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   if (!pathname.startsWith('/admin') && !pathname.startsWith('/profile')) {
     framedChildren = <PageTransition>{framedChildren}</PageTransition>;
   }
+
+  const shelllessPaymentIssueBanner = hasPaymentIssue && isWithoutPlatformShell(pathname) ? (
+    <div className="mx-auto w-full max-w-6xl px-4 pt-4 sm:px-6">
+      <GlobalPaymentIssueBanner
+        message={paymentIssueMessage}
+        blocking={Boolean(paymentIssue?.interactionLock)}
+        actionLabel={paymentIssueActionLabel}
+        onAction={() => router.push(paymentIssueFixPath)}
+      />
+    </div>
+  ) : null;
 
   const appOverlays = (
     <>
@@ -337,6 +375,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   if (pathname.startsWith('/admin') || pathname === '/partner-dashboard' || isWithoutPlatformShell(pathname)) {
     return (
       <>
+        {shelllessPaymentIssueBanner}
         {framedChildren}
         {appOverlays}
       </>

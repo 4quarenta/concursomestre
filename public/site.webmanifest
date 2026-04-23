@@ -10,10 +10,10 @@
   "theme_color": "#4f46e5",
   "icons": [
     {
-      "src": "/platform-icons/concurso-mestre.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "src": "/branding/favicon.png",
+      "sizes": "768x768",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

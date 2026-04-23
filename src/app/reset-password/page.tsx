@@ -111,9 +111,9 @@ const ResetPasswordPage: React.FC = () => {
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-950 dark:to-slate-900 p-6">
             <div className="w-full max-w-md">
                 <PublicBrandLink
-                    className="mb-10 flex items-center justify-center gap-2 text-xl font-bold text-indigo-600 dark:text-indigo-400 transition-opacity hover:opacity-90"
-                    iconSize={28}
-                    labelClassName="tracking-tight text-slate-900 dark:text-white"
+                    className="mb-10 inline-flex items-center justify-center transition-opacity hover:opacity-90"
+                    width={220}
+                    priority
                 />
 
                 <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 animate-scale-in">

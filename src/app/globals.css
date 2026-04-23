@@ -42,11 +42,18 @@
 
 @layer base {
   body {
-    @apply antialiased bg-slate-50 text-slate-900 transition-colors duration-300;
+    @apply antialiased bg-slate-50 text-slate-900;
   }
 
   .dark body {
     @apply bg-slate-900 text-slate-100;
+  }
+
+  html.theme-switching *,
+  html.theme-switching *::before,
+  html.theme-switching *::after {
+    transition: none !important;
+    animation: none !important;
   }
 }
 

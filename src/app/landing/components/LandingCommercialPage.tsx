@@ -20,6 +20,7 @@ import { themeConfig } from '@constants/themes';
 import { planService, getCanonicalPlanName, getConfiguredPlanDisplayName, isPlanEnabledByName, resolvePlanAutoCouponsById, resolvePlanDiscountBadgesByCycle, resolvePlanOffer } from '@services/plans';
 import { useDocumentSeo } from '@services/seo';
 import { websiteManifest } from '../../../config/platform';
+import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 import { ThemeOrnaments } from './ThemeOrnaments';
 import LandingSectionHeader from './LandingSectionHeader';
 import { mergeLandingPageContent, landingFeatureIconMap, landingSocialIconMap, createDefaultLandingPageContent } from '../landingContent';
@@ -268,10 +269,14 @@ const LandingCommercialPage: React.FC = () => {
       )}
       <nav className="sticky top-0 z-50 border-b border-slate-100 bg-white/85 px-6 py-4 backdrop-blur-md dark:border-slate-900 dark:bg-slate-950/85">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-6">
-          <Link href="/" className="flex shrink-0 items-center gap-2 text-2xl font-black tracking-tight text-indigo-600 dark:text-indigo-400">
-            <ThemeIcon className="h-8 w-8" />
-            <span>{siteName}</span>
-          </Link>
+          <div style={{ margin: '-17px' }}>
+            <PublicBrandLink
+              className="inline-flex shrink-0 items-center transition-opacity hover:opacity-90"
+              width={250}
+              priority
+              variant="standard"
+            />
+          </div>
 
           <div className="hidden flex-1 items-center justify-center gap-6 md:flex">
             {navLinks.map((link) => (
@@ -848,10 +853,11 @@ const LandingCommercialPage: React.FC = () => {
       <footer className="border-t border-slate-100 px-6 py-20 shadow-inner dark:border-slate-900">
         <div className="mx-auto grid max-w-7xl gap-12 md:grid-cols-4">
           <div className="space-y-6">
-            <div className="flex items-center gap-2 text-xl font-black tracking-tight text-indigo-600 dark:text-indigo-400">
-              <ThemeIcon size={24} />
-              <span>{siteName}</span>
-            </div>
+            <PublicBrandLink
+              className="inline-flex items-center transition-opacity hover:opacity-90"
+              width={240}
+              variant="standard"
+            />
             <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">
               Plataforma de estudos para concurso, OAB e ENEM com banco de questões, simulados, revisão e análise de desempenho.
             </p>

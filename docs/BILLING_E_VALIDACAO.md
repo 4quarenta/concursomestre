@@ -9,9 +9,29 @@
 - A fonte de verdade dos cartoes salvos e a Stripe. O checkout e o perfil devem listar cartoes pelo service oficial `cardsService.listSavedCards()` sem enviar `user_id` manualmente; o backend resolve o usuario autenticado pela sessao.
 - A rota `api/users/list_cards.php` passa pelo modulo oficial `modules/users`, chama `UsersCardsService::listSavedCards()` e sincroniza o espelho local a partir da Stripe por `UsersCardsStripeSupport::syncStripeCardsForUser()`.
 - O campo interno `users.has_saved_card` e apenas um indicativo operacional para evitar chamadas desnecessarias. Ele nao substitui a listagem real de payment methods da Stripe.
+- O `users.stripe_customer_id` deve permanecer estável. A resolucao do customer canônico prioriza: `provider_customer_id` da assinatura ativa, `stripe_customer_id` salvo no usuario, histórico local Stripe (`user_subscriptions` / `transactions`) e, só em último caso, busca remota por `metadata.user_id` / email antes de criar um novo customer.
+- A criacao/resolucao do customer Stripe usa trava por usuario para evitar que requisicoes concorrentes gerem customers duplicados para a mesma conta.
+- A estrategia completa de consolidacao do customer canônico esta documentada em `docs/STRIPE_CUSTOMER_CANONICALIZATION.md`.
 - Se a sincronizacao com a Stripe falhar, a UI deve exibir erro de sincronizacao em vez de mostrar `0` cartoes como se fosse estado real.
 - O cartao associado a renovacao de assinatura fica marcado no espelho local por `locked_by_recurring = 1`. Ele nao pode ser removido enquanto for o unico cartao da assinatura; o usuario deve adicionar outro cartao e defini-lo como padrao para mover o vinculo.
 - A verificacao de validade do cartao preferencial ocorre no payload autenticado do perfil e tambem pode ser executada periodicamente por `C:\xampp\htdocs\questao-pro-backend\scripts\checks\check_subscription_card_expiry.php`. Cartao vencido ou proximo do vencimento gera `paymentIssue` e uma notificacao deduplicada para orientar o usuario a atualizar o metodo de pagamento.
+
+## Renovacao, recibos e inadimplencia
+
+- A regra oficial de renovacao e:
+  - contrato atual congelado no valor aceito;
+  - proxima renovacao pelo preco efetivo vigente;
+  - preco efetivo vigente = preco publico atual + promocoes automaticas + cupons autoaplicados validos.
+- A proxima renovacao da assinatura e projetada localmente e sincronizada no Stripe por `Subscription Schedule`.
+- Toda cobranca aprovada envia:
+  - email com recibo/comprovante;
+  - notificacao in-app.
+- Toda falha de cobranca envia:
+  - email com orientacao de regularizacao;
+  - notificacao in-app;
+  - bloqueio real de acesso premium.
+- O lembrete preventivo de renovacao e enviado 5 dias antes da cobranca.
+- A documentacao operacional completa dessa camada esta em `docs/STRIPE_RENEWAL_PRICING_AND_COLLECTIONS.md`.
 
 ## Arquivos absorvidos
 

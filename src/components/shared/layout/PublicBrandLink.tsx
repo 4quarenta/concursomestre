@@ -11,14 +11,15 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { BrainCircuit } from 'lucide-react';
 import { useData } from '@providers/DataProvider';
+import BrandLogo from './BrandLogo';
 
 interface PublicBrandLinkProps {
   className?: string;
-  iconSize?: number;
-  iconClassName?: string;
-  labelClassName?: string;
+  width?: number;
+  priority?: boolean;
+  surface?: 'theme' | 'light' | 'dark';
+  variant?: 'standard' | 'full' | 'adaptive';
 }
 
 /**
@@ -26,10 +27,11 @@ interface PublicBrandLinkProps {
  * Centraliza o nome configurado do site e evita headers estaticos divergentes.
  */
 const PublicBrandLink: React.FC<PublicBrandLinkProps> = ({
-  className = 'flex items-center gap-2 transition-opacity hover:opacity-90',
-  iconSize = 28,
-  iconClassName = '',
-  labelClassName = 'tracking-tight font-black',
+  className = 'inline-flex items-center transition-opacity hover:opacity-90',
+  width = 220,
+  priority = false,
+  surface = 'theme',
+  variant = 'adaptive',
 }) => {
   const { systemSettings } = useData();
   const siteName = systemSettings?.siteName || 'ConcursoMestre';
@@ -40,8 +42,8 @@ const PublicBrandLink: React.FC<PublicBrandLinkProps> = ({
       className={className}
       aria-label={`Ir para a home de ${siteName}`}
     >
-      <BrainCircuit size={iconSize} className={iconClassName || undefined} />
-      <span className={labelClassName}>{siteName}</span>
+      <BrandLogo width={width} priority={priority} surface={surface} variant={variant} alt={siteName} />
+      <span className="sr-only">{siteName}</span>
     </Link>
   );
 };

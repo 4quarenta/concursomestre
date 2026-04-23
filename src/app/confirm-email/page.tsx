@@ -142,9 +142,9 @@ const Page: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">
       <PublicBrandLink
-        className="mb-8 flex items-center gap-2 text-xl font-bold text-indigo-600 dark:text-indigo-400 transition-opacity hover:opacity-90"
-        iconSize={28}
-        labelClassName="tracking-tight"
+        className="mb-8 inline-flex items-center transition-opacity hover:opacity-90"
+        width={220}
+        priority
       />
 
       <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-slate-800 dark:bg-slate-900 animate-scale-in">

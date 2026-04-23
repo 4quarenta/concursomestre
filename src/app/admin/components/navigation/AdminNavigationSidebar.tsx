@@ -14,6 +14,7 @@ import { Home, LogOut, X } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@providers/AuthProvider';
 import LogoutConfirmButton from '../../../../components/shared/layout/LogoutConfirmButton';
+import BrandLogo from '../../../../components/shared/layout/BrandLogo';
 
 interface AdminNavigationSidebarProps {
   activeTab: string;
@@ -52,11 +53,8 @@ const AdminNavigationSidebar = ({
       <div className="border-b border-slate-700/80 px-5 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-lg font-black text-white">
-              Q
-            </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">ConcursoMestre Admin</p>
+              <BrandLogo width={172} surface="dark" />
               <p className="truncate text-xs text-slate-400">Painel administrativo</p>
             </div>
           </div>

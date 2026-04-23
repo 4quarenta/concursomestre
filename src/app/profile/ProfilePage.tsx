@@ -285,8 +285,8 @@ const Profile: React.FC = () => {
     // Handlers de API para Gerenciamento de Dados
     const primarySavedCardExpiryState = useMemo(() => getCardExpiryState(primarySavedCard), [getCardExpiryState, primarySavedCard]);
 
-    const fetchUserCards = async () => {
-        if (!currentUser) return;
+    const fetchUserCards = React.useCallback(async () => {
+        if (!currentUser?.id) return;
         setIsLoadingCards(true);
         setCardsLoadError(null);
         try {
@@ -298,7 +298,7 @@ const Profile: React.FC = () => {
         } finally {
             setIsLoadingCards(false);
         }
-    };
+    }, [currentUser?.id]);
 
     const handleRemoveCard = async (cardId: string) => {
         if (!window.confirm('Tem certeza que deseja remover este cartão?')) return;
@@ -517,7 +517,7 @@ const Profile: React.FC = () => {
         }
     };
 
-    const fetchUserTransactions = async () => {
+    const fetchUserTransactions = React.useCallback(async () => {
         if (!currentUser?.id) return;
         setIsLoadingTransactions(true);
         try {
@@ -532,7 +532,7 @@ const Profile: React.FC = () => {
         } finally {
             setIsLoadingTransactions(false);
         }
-    };
+    }, [addToast, currentUser?.id]);
 
     const formatTransactionAmount = (amount: number | string) => {
         const numericAmount = typeof amount === 'number' ? amount : Number(amount || 0);
@@ -711,6 +711,12 @@ const Profile: React.FC = () => {
     const recurringAmount = Number(activeSubscription?.recurring_amount || 0);
     const subscriptionChargeAmount = recurringAmount > 0 ? recurringAmount : Number(activeSubscription?.plan?.price || 0);
     const nextChargeReferenceDate = subscriptionNextChargeAt || subscriptionEndDate;
+    const nextRenewalAmount = Number(activeSubscription?.next_renewal_amount || subscriptionChargeAmount || 0);
+    const nextRenewalDate = activeSubscription?.next_renewal_date || nextChargeReferenceDate;
+    const nextRenewalCycleLabel = String(activeSubscription?.next_renewal_cycle_label || subscriptionCycleLabel || 'Mensal');
+    const nextRenewalPriceSourceLabel = activeSubscription?.next_renewal_price_source === 'auto_coupon'
+        ? 'cupom autoaplicado vigente'
+        : 'preço atual do plano';
     const subscriptionValueDescription = showFreeInactiveSubscriptionState
         ? 'Plano gratuito ativo.'
         : installmentCount > 1
@@ -718,7 +724,7 @@ const Profile: React.FC = () => {
             : `Cobrança ${subscriptionCycleLabel.toLowerCase()}.`;
     const subscriptionHeadline = hasActiveSubscription
         ? (resolvedAutoRenew
-            ? `A renovação automática está ligada e a próxima cobrança está prevista para ${formatDateBR(nextChargeReferenceDate)}.`
+            ? `A próxima renovação está prevista para ${formatDateBR(nextRenewalDate)} por ${formatTransactionAmount(nextRenewalAmount)} no plano ${nextRenewalCycleLabel.toLowerCase()}.`
             : (termCommitmentRemaining
                 ? 'A renovação automática está desligada. O termo atual seguirá até a última parcela contratada e depois será encerrado.'
                 : `A renovação automática está desligada. Seu acesso fica ativo até ${formatDateBR(subscriptionEndDate)}.`))
@@ -737,7 +743,7 @@ const Profile: React.FC = () => {
         : 'Sua assinatura não esta ativa no momento.';
     const renewalCardDescription = hasActiveSubscription
         ? (resolvedAutoRenew
-            ? 'Sua assinatura segue protegida para renovar automaticamente ao fim deste ciclo.'
+            ? `Ao manter a renovação ativa, a próxima cobrança seguirá o ${nextRenewalPriceSourceLabel}.`
             : (termCommitmentRemaining
                 ? 'A renovação esta desligada. As cobrancas atuais seguem ate o fim do termo contratado e depois param automaticamente.'
                 : 'A renovação esta desligada e o acesso termina no fim deste ciclo.'))
@@ -774,7 +780,7 @@ const Profile: React.FC = () => {
         setOptimisticAutoRenew(null);
     }, [activeSubscription?.id, activeSubscription?.auto_renew, activeSubscription?.cancel_at_period_end]);
 
-    const fetchUserMaterials = async () => {
+    const fetchUserMaterials = React.useCallback(async () => {
         if (!currentUser?.id) return;
         try {
             const materials = await marketplaceService.listUserMaterials(currentUser.id);
@@ -782,16 +788,16 @@ const Profile: React.FC = () => {
         } catch (err) {
             console.error('Error fetching materials:', err);
         }
-    };
+    }, [currentUser?.id]);
 
-    const fetchReferralStats = async () => {
+    const fetchReferralStats = React.useCallback(async () => {
         try {
             const stats = await profileService.getReferralStats();
             setReferralStats(stats);
         } catch (err) {
             console.error('Failed to fetch referral stats', err);
         }
-    };
+    }, []);
 
     const handleCancelRefundRequest = async () => {
         if (!currentUser?.id) return;
@@ -959,13 +965,18 @@ const Profile: React.FC = () => {
                                         {renewalCardDescription}
                                     </p>
                                     {resolvedAutoRenew && hasActiveSubscription && (
-                                        <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                                            Proxima cobranca: {formatDateBR(nextChargeReferenceDate)}
-                                        </p>
+                                        <div className="space-y-1">
+                                            <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                                Próxima renovação: {formatDateBR(nextRenewalDate)} por {formatTransactionAmount(nextRenewalAmount)} no plano {nextRenewalCycleLabel.toLowerCase()}.
+                                            </p>
+                                            <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                Origem do valor: {nextRenewalPriceSourceLabel}.
+                                            </p>
+                                        </div>
                                     )}
                                     {hasActiveSubscription && !resolvedAutoRenew && (
                                         <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                                            Acesso ate: {formatDateBR(subscriptionEndDate)}
+                                            Acesso até: {formatDateBR(subscriptionEndDate)}
                                         </p>
                                     )}
                                 </div>
@@ -1502,11 +1513,35 @@ const Profile: React.FC = () => {
 
     // Atualizar dados quando a aba mudar
     React.useEffect(() => {
-        if (activeTab === 'billing' || activeTab === 'personal') fetchUserCards();
-        if (activeTab === 'billing' || activeTab === 'billing-history') fetchUserTransactions();
-        if (activeTab === 'materials') fetchUserMaterials();
-        if (activeTab === 'referral' && canAccessReferralTab) fetchReferralStats();
-    }, [activeTab, canAccessReferralTab, isStripeBilling]);
+        if (!currentUser?.id) {
+            setUserCards([]);
+            setUserTransactions([]);
+            setUserMaterials([]);
+            return;
+        }
+
+        if (activeTab === 'billing' || activeTab === 'personal') {
+            void fetchUserCards();
+        }
+        if (activeTab === 'billing' || activeTab === 'billing-history') {
+            void fetchUserTransactions();
+        }
+        if (activeTab === 'materials') {
+            void fetchUserMaterials();
+        }
+        if (activeTab === 'referral' && canAccessReferralTab) {
+            void fetchReferralStats();
+        }
+    }, [
+        activeTab,
+        canAccessReferralTab,
+        currentUser?.id,
+        fetchReferralStats,
+        fetchUserCards,
+        fetchUserMaterials,
+        fetchUserTransactions,
+        isStripeBilling,
+    ]);
 
    const EXAM_AREAS = [
       { group: 'Carreiras', areas: ['Policial', 'Fiscal', 'Tribunais', 'Jurídico', 'Educação', 'Militar', 'Saúde', 'TI', 'Diplomata'] },

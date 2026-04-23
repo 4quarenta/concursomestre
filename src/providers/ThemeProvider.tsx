@@ -9,7 +9,7 @@
 *
 */
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useLayoutEffect, useState } from 'react';
 
 type Theme = 'light' | 'dark';
 
@@ -26,6 +26,14 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
  * @since 1.0.0
  */
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const applyThemeToDocument = useCallback((nextTheme: Theme) => {
+    const root = window.document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(nextTheme);
+    root.style.colorScheme = nextTheme;
+    localStorage.setItem('theme', nextTheme);
+  }, []);
+
   /**
    * Resolve o tema inicial a partir do storage ou da preferencia do sistema.
    * @since 1.0.0
@@ -47,20 +55,30 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
    * Mantem DOM e localStorage sincronizados sempre que o tema mudar.
    * @since 1.0.0
    */
-  useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+  useLayoutEffect(() => {
+    applyThemeToDocument(theme);
+  }, [applyThemeToDocument, theme]);
 
   /**
    * Alterna entre os dois modos suportados pela plataforma.
    * @since 1.0.0
    */
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  };
+  const toggleTheme = useCallback(() => {
+    const root = window.document.documentElement;
+    root.classList.add('theme-switching');
+
+    setTheme((prev) => {
+      const nextTheme = prev === 'light' ? 'dark' : 'light';
+      applyThemeToDocument(nextTheme);
+      return nextTheme;
+    });
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        root.classList.remove('theme-switching');
+      });
+    });
+  }, [applyThemeToDocument]);
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>

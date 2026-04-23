@@ -11,13 +11,14 @@
 *
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
-import { calculateSubscriptionProRatedCredit, getCanonicalPlanName, getConfiguredPlanDisplayName, planService, resolvePlanOffer } from '@services/plans';
+import { calculateSubscriptionProRatedCredit, getCanonicalPlanName, getConfiguredPlanDisplayName, planService, resolvePlanCycleKey, resolvePlanOffer } from '@services/plans';
+import { hasActivePlanAccess } from '@services/plans/planAccess';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { Plan, PlanConfig, PlanFeature, PlanName } from '@types';
 import { authFlowService } from '@services/auth';
@@ -36,6 +37,59 @@ import CheckoutStepTracker from './components/CheckoutStepTracker';
 import useCheckoutSummaryAction from './hooks/useCheckoutSummaryAction';
 import type { CheckoutAuthMode, CheckoutStep } from './types';
 import { buildProfilePath } from '../profile/profileNavigation';
+
+const getPlanTierScore = (name: string) => {
+    const normalized = String(name || '').toLowerCase();
+    if (normalized.includes('elite')) return 3;
+    if (normalized.includes('pro')) return 2;
+    if (normalized.includes('essencial')) return 1;
+    return 0;
+};
+
+const getPlanTimeScore = (currentPlan: Pick<Plan, 'interval_unit' | 'interval_count'>) => {
+    if (currentPlan.interval_unit === 'year') return 12;
+    if (currentPlan.interval_unit === 'month') return currentPlan.interval_count || 1;
+    return 1;
+};
+
+const isSameActiveSubscriptionPlan = (currentPlan: Plan | null | undefined, targetPlan: Plan | null | undefined, activePlanId?: number | null) => {
+    if (!targetPlan) return false;
+
+    if (activePlanId && Number(activePlanId) === Number(targetPlan.id)) {
+        return true;
+    }
+
+    if (!currentPlan) {
+        return false;
+    }
+
+    const currentCanonical = getCanonicalPlanName(currentPlan.name || currentPlan.canonical_name || '');
+    const targetCanonical = getCanonicalPlanName(targetPlan.name || targetPlan.canonical_name || '');
+
+    return currentCanonical === targetCanonical
+        && currentPlan.interval_unit === targetPlan.interval_unit
+        && Number(currentPlan.interval_count || 1) === Number(targetPlan.interval_count || 1);
+};
+
+const isSameBillingMirrorPlan = (
+    currentPlanName: string | null | undefined,
+    currentBillingCycle: string | null | undefined,
+    targetPlan: Plan | null | undefined,
+) => {
+    if (!targetPlan || !currentPlanName || !currentBillingCycle) {
+        return false;
+    }
+
+    const normalizedCurrentCycle = String(currentBillingCycle).trim().toLowerCase();
+    const targetCycle = resolvePlanCycleKey(targetPlan);
+
+    if (!targetCycle) {
+        return false;
+    }
+
+    return getCanonicalPlanName(currentPlanName) === getCanonicalPlanName(targetPlan.name || targetPlan.canonical_name || '')
+        && normalizedCurrentCycle === targetCycle;
+};
 
 const getActivePlanBenefits = (
     plan: Plan | null,
@@ -59,7 +113,7 @@ const getActivePlanBenefits = (
 
 const CheckoutPage: React.FC = () => {
     const { planId } = useParams<{ planId: string }>();
-    const { currentUser, login, logout, refreshUser, updateUser } = useAuth();
+    const { currentUser, isLoading: isAuthLoading, login, logout, refreshUser, updateUser } = useAuth();
     const { addToast } = useToast();
     const router = useRouter();
     const pathname = usePathname() || '/checkout';
@@ -206,9 +260,44 @@ const CheckoutPage: React.FC = () => {
     const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
     const [stripePixCapability, setStripePixCapability] = useState<any>(null);
 
+    const numericPlanId = useMemo(() => Number(planId), [planId]);
     const selectedStripeCard = useMemo(() => {
         return stripeCards.find((card: any) => card.id === selectedStripeCardId) || null;
     }, [stripeCards, selectedStripeCardId]);
+    const currentActiveSubscription = currentUser?.subscription && hasActivePlanAccess(currentUser) ? currentUser.subscription : null;
+    const currentSubscriptionPlan = currentActiveSubscription?.plan || null;
+    const currentComparablePlanName = useMemo(
+        () => currentActiveSubscription?.plan?.name
+            || currentUser?.planDisplayName
+            || currentUser?.billing?.plan
+            || currentUser?.plan
+            || null,
+        [currentActiveSubscription?.plan?.name, currentUser?.billing?.plan, currentUser?.plan, currentUser?.planDisplayName],
+    );
+    const currentComparableBillingCycle = useMemo(
+        () => currentUser?.billing?.billingCycle
+            || (currentSubscriptionPlan ? resolvePlanCycleKey(currentSubscriptionPlan) : null)
+            || null,
+        [currentSubscriptionPlan, currentUser?.billing?.billingCycle],
+    );
+    const hasComparablePaidPlanSnapshot = useMemo(
+        () => getCanonicalPlanName(currentComparablePlanName || '') !== 'Gratuito',
+        [currentComparablePlanName],
+    );
+    const hasExactCurrentPlanMatch = useMemo(() => (
+        Boolean(
+            currentActiveSubscription
+            && numericPlanId > 0
+            && Number(currentActiveSubscription.plan_id) === numericPlanId,
+        )
+    ), [currentActiveSubscription, numericPlanId]);
+    const hasBillingMirrorPlanMatch = useMemo(() => (
+        Boolean(
+            plan
+            && hasComparablePaidPlanSnapshot
+            && isSameBillingMirrorPlan(currentComparablePlanName, currentComparableBillingCycle, plan),
+        )
+    ), [currentComparableBillingCycle, currentComparablePlanName, hasComparablePaidPlanSnapshot, plan]);
 
     const formatCurrency = (value: number) => `R$ ${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const roundCurrency = (value: number) => Number(Number(value || 0).toFixed(2));
@@ -249,12 +338,17 @@ const CheckoutPage: React.FC = () => {
     const stripeRequiresSavedCard = autoRenew && !isUsingStripeSavedCard;
 
     useEffect(() => {
+        if (isAuthLoading) {
+            return;
+        }
+
         if (!planId) {
             router.push('/plans');
             return;
         }
+
         loadPlan();
-    }, [planId]);
+    }, [isAuthLoading, planId]);
 
     useEffect(() => {
         setSelectedStripeCardId(null);
@@ -282,29 +376,15 @@ const CheckoutPage: React.FC = () => {
                 setPaymentData(prev => ({ ...prev, installments: defaultInstallments }));
 
                 if (currentUser) {
-                    const getTier = (name: string) => {
-                        const n = name.toLowerCase();
-                        if (n.includes('elite')) return 3;
-                        if (n.includes('pro')) return 2;
-                        if (n.includes('essencial')) return 1;
-                        return 0;
-                    };
-
-                    const getTimeScore = (p: Plan) => {
-                        if (p.interval_unit === 'year') return 12;
-                        if (p.interval_unit === 'month') return p.interval_count || 1;
-                        return 1;
-                    };
-
                     const currentPlanInList = plans.find(p => p.id === currentUser?.subscription?.plan_id);
-                    const currentPlanTier = getTier(currentUser.subscription?.plan?.name || '');
-                    const currentTimeScore = currentPlanInList ? getTimeScore(currentPlanInList) : 1;
+                    const currentPlanTier = getPlanTierScore(currentUser.subscription?.plan?.name || '');
+                    const currentTimeScore = currentPlanInList ? getPlanTimeScore(currentPlanInList) : 1;
 
-                    const targetPlanTier = getTier(found.name);
-                    const targetPlanTimeScore = getTimeScore(found);
+                    const targetPlanTier = getPlanTierScore(found.name);
+                    const targetPlanTimeScore = getPlanTimeScore(found);
 
-                    if (currentUser.subscription?.status === 'active') {
-                        if (currentUser.subscription?.plan_id === found.id) {
+                    if (hasActivePlanAccess(currentUser)) {
+                        if (isSameActiveSubscriptionPlan(currentUser.subscription?.plan || currentPlanInList, found, currentUser.subscription?.plan_id)) {
                             addToast(`Voce ja possui o plano ${currentUser.subscription.plan?.name || 'Premium'} ativo.`, 'warning');
                             router.push(buildProfilePath('billing'));
                             return;
@@ -348,6 +428,57 @@ const CheckoutPage: React.FC = () => {
             setLoading(false);
         }
     };
+
+    const hasRepeatedActivePlanPurchase = useMemo(() => (
+        Boolean(
+            hasExactCurrentPlanMatch
+            || hasBillingMirrorPlanMatch
+            || (currentActiveSubscription && isSameActiveSubscriptionPlan(currentSubscriptionPlan, plan, currentActiveSubscription?.plan_id)),
+        )
+    ), [currentActiveSubscription, currentSubscriptionPlan, hasBillingMirrorPlanMatch, hasExactCurrentPlanMatch, plan]);
+
+    const repeatedPurchaseMessage = useMemo(() => {
+        if (!hasRepeatedActivePlanPurchase) {
+            return '';
+        }
+
+        const currentPlanName = currentActiveSubscription?.plan?.name || currentSubscriptionPlan?.name || currentComparablePlanName || 'seu plano atual';
+        return `Voce ja possui ${currentPlanName} ativo nesta conta. Para evitar cobranca repetida, essa compra foi bloqueada.`;
+    }, [currentActiveSubscription?.plan?.name, currentComparablePlanName, currentSubscriptionPlan?.name, hasRepeatedActivePlanPurchase]);
+
+    const hasTriggeredRepeatedPurchaseRedirectRef = useRef(false);
+
+    const ensurePlanPurchaseAllowed = React.useCallback(() => {
+        if (!hasRepeatedActivePlanPurchase) {
+            hasTriggeredRepeatedPurchaseRedirectRef.current = false;
+            return true;
+        }
+
+        if (!hasTriggeredRepeatedPurchaseRedirectRef.current) {
+            hasTriggeredRepeatedPurchaseRedirectRef.current = true;
+            addToast(repeatedPurchaseMessage || 'Esta assinatura ja esta ativa nesta conta.', 'warning');
+        }
+
+        router.replace(buildProfilePath('billing'));
+        return false;
+    }, [addToast, hasRepeatedActivePlanPurchase, repeatedPurchaseMessage, router]);
+
+    useEffect(() => {
+        if (loading) return;
+        if (!hasRepeatedActivePlanPurchase) {
+            hasTriggeredRepeatedPurchaseRedirectRef.current = false;
+            return;
+        }
+
+        ensurePlanPurchaseAllowed();
+    }, [ensurePlanPurchaseAllowed, hasRepeatedActivePlanPurchase, loading]);
+
+    useEffect(() => {
+        if (isAuthLoading) return;
+        if (!hasExactCurrentPlanMatch && !hasBillingMirrorPlanMatch) return;
+
+        ensurePlanPurchaseAllowed();
+    }, [ensurePlanPurchaseAllowed, hasBillingMirrorPlanMatch, hasExactCurrentPlanMatch, isAuthLoading]);
 
     const checkoutBaseOffer = useMemo(() => {
         if (!plan) return null;
@@ -842,6 +973,7 @@ const CheckoutPage: React.FC = () => {
 
     const handlePayment = async () => {
         if (!plan || !currentUser) return;
+        if (!ensurePlanPurchaseAllowed()) return;
         if (!ensureCheckoutRequirements()) return;
 
         if (isStripeInternalCheckout) {
@@ -876,6 +1008,7 @@ const CheckoutPage: React.FC = () => {
 
     const handleStripeInternalPayment = async (paymentMethodId: string) => {
         if (!plan || !currentUser) return;
+        if (!ensurePlanPurchaseAllowed()) return;
         if (!ensureCheckoutRequirements()) return;
 
         setProcessing(true);
@@ -978,6 +1111,9 @@ const CheckoutPage: React.FC = () => {
     const handleStripeSavedCardPayment = async ({ stripe, cvcElement }: { stripe: any; cvcElement: any }) => {
         if (!plan || !currentUser || !selectedStripeCard) {
       throw new Error('Selecione um cartão salvo para continuar.');
+        }
+        if (!ensurePlanPurchaseAllowed()) {
+            throw new Error(repeatedPurchaseMessage || 'Esta assinatura ja esta ativa nesta conta.');
         }
         if (!ensureCheckoutRequirements()) {
             throw new Error('Complete seu perfil e confirme o e-mail antes de concluir a compra.');
@@ -1377,6 +1513,10 @@ const CheckoutPage: React.FC = () => {
         handlePayment,
     });
 
+    if (isAuthLoading || hasExactCurrentPlanMatch || hasBillingMirrorPlanMatch || hasRepeatedActivePlanPurchase) {
+        return null;
+    }
+
     if (loading) return (
         <div className="min-h-screen bg-slate-50 dark:bg-[#0f1020] flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">
@@ -1520,14 +1660,41 @@ const CheckoutPage: React.FC = () => {
                                                         </p>
                                                     </div>
 
+                                                    {hasRepeatedActivePlanPurchase ? (
+                                                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+                                                            <div className="flex items-start gap-2.5">
+                                                                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+                                                                <div>
+                                                                    <p className="text-[8px] font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Compra bloqueada</p>
+                                                                    <p className="mt-1 text-[11px] font-semibold leading-relaxed text-amber-900 dark:text-amber-100">
+                                                                        {repeatedPurchaseMessage}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
+
                                                     <button
                                                         type="button"
-                                                        onClick={() => setStep('payment')}
-                                                        className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:bg-indigo-700 active:scale-[0.98]"
+                                                        onClick={() => {
+                                                            if (!ensurePlanPurchaseAllowed()) return;
+                                                            setStep('payment');
+                                                        }}
+                                                        disabled={hasRepeatedActivePlanPurchase}
+                                                        className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:bg-indigo-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none dark:disabled:bg-slate-700"
                                                     >
-                                                        Continuar para pagamento
+                                                        {hasRepeatedActivePlanPurchase ? 'Assinatura ja ativa' : 'Continuar para pagamento'}
                                                         <ArrowRight size={18} />
                                                     </button>
+                                                    {hasRepeatedActivePlanPurchase ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => router.push(buildProfilePath('billing'))}
+                                                            className="flex h-11 w-full items-center justify-center rounded-2xl border border-indigo-200 bg-white text-[10px] font-black uppercase tracking-widest text-indigo-600 transition-all hover:bg-indigo-50 dark:border-indigo-500/20 dark:bg-[#121528] dark:text-indigo-300 dark:hover:bg-slate-800"
+                                                        >
+                                                            Ir para minha assinatura
+                                                        </button>
+                                                    ) : null}
                                                     <button
                                                         type="button"
                                                         onClick={handleUseDifferentAccount}
@@ -1609,74 +1776,105 @@ const CheckoutPage: React.FC = () => {
 
                         {step === 'payment' && (
                             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                <CheckoutPaymentStage
-                                    planName={planDisplayLabel}
-                                    billingCycle={billingCycle}
-                                    planBenefits={displayedPlanBenefits}
-                                    subtotalLabel={formatCurrency(checkoutSubtotal)}
-                                    couponDiscountLabel={checkoutCouponSavingsAmount > 0 ? formatCurrency(checkoutCouponSavingsAmount) : null}
-                                    residualCreditDiscountLabel={checkoutResidualCreditAmount > 0 ? formatCurrency(checkoutResidualCreditAmount) : null}
-                                    totalLabel={formatCurrency(monetaryTotals.contractTotal)}
-                                    dueLabel={checkoutDueLabel}
-                                    couponCode={couponCode}
-                                    applyingCoupon={isApplyingCoupon}
-                                    appliedCouponCode={appliedCoupon?.code || null}
-                                    appliedCouponSource={appliedCouponSource}
-                                    couponSavingsLabel={checkoutCouponSavingsAmount > 0 ? formatCurrency(checkoutCouponSavingsAmount) : null}
-                                    autoRenew={autoRenew}
-                                    saveCard={saveCard}
-                                    stripeRequiresSavedCard={stripeRequiresSavedCard}
-                                    isStripeInternalCheckout={isStripeInternalCheckout}
-                                    isLoadingStripeCards={isLoadingStripeCards}
-                                    stripeCards={stripeCards}
-                                    selectedStripeCardId={selectedStripeCardId}
-                                    selectedStripeCard={selectedStripeCard}
-                                    stripePublishableKey={STRIPE_PUBLISHABLE_KEY}
-                                    currentUserName={currentUser?.name}
-                                    currentUserEmail={currentUser?.email}
-                                    currentUserCpf={currentUser?.cpf}
-                                    currentUserAddress={currentUser?.address}
-                                    emailVerified={currentUser?.emailVerified}
-                                    hasMissingRequirements={currentUser ? getMissingCheckoutRequirements().length > 0 : true}
-                                    nextRenewalLabel={nextRenewalSummaryLabel}
-                                    paymentBreakdownLabel={checkoutPaymentBreakdownLabel}
-                                    paymentProtectionLabel={checkoutPaymentProtectionLabel}
-                                    installmentOptions={checkoutInstallmentOptions}
-                                    selectedInstallmentValue={paymentData.installments}
-                                    processing={processing}
-                                    legalNotice={checkoutLegalNotice}
-                                    pixCapabilityStatus={stripePixCapability?.status}
-                                    pixCapabilityMessage={stripePixCapability?.message}
-                                    enabledPaymentMethodIds={checkoutEnabledPaymentMethodIds}
-                                    onCouponCodeChange={setCouponCode}
-                                    onApplyCoupon={handleApplyCoupon}
-                                    onRemoveCoupon={resetAppliedCoupon}
-                                    onAutoRenewChange={(enabled) => {
-                                        setAutoRenew(enabled);
-                                        if (enabled && !isUsingStripeSavedCard) {
-                                            setSaveCard(true);
-                                        }
-                                    }}
-                                    onSaveCardChange={setSaveCard}
-                                    onSelectSavedCard={(cardId) => {
-                                        setSelectedStripeCardId(cardId);
-                                        setSaveCard(false);
-                                    }}
-                                    onSelectNewCard={() => setSelectedStripeCardId(null)}
-                                    onConfirmSavedCard={handleStripeSavedCardPayment}
-                                    onPaymentMethodCreated={handleStripeInternalPayment}
-                                    onPaymentFinalized={(stripeStep) => finalizeStripeInternalCheckout({
-                                        subscriptionId: stripeStep?.subscriptionId || null,
-                                        paymentMethodId: stripeStep?.paymentMethodId || null,
-                                        paymentIntentId: stripeStep?.paymentIntentId || null,
-                                        saveCard: stripeStep?.saveCard,
-                                    })}
-                                    onConfirmClick={handleSummaryPaymentAction}
-                                    onInstallmentChange={(value) => setPaymentData((prev) => ({ ...prev, installments: value }))}
-                                    onEditBillingInfo={() => setShowCheckoutRequirementsModal(true)}
-                                    confirmLabel={summaryConfirmLabel}
-                                    processingLabel={processingLabel}
-                                />
+                                {hasRepeatedActivePlanPurchase ? (
+                                    <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 dark:border-amber-500/20 dark:bg-amber-500/10">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                                                <AlertTriangle size={18} />
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Compra repetida bloqueada</p>
+                                                <h3 className="mt-2 text-lg font-black text-slate-900 dark:text-slate-100">Esta assinatura ja esta ativa</h3>
+                                                <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">{repeatedPurchaseMessage}</p>
+                                                <div className="mt-5 flex flex-wrap gap-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => router.push(buildProfilePath('billing'))}
+                                                        className="inline-flex h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white transition-colors hover:bg-indigo-700"
+                                                    >
+                                                        Ir para minha assinatura
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setStep('identification')}
+                                                        className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 px-5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                                                    >
+                                                        Voltar
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <CheckoutPaymentStage
+                                        planName={planDisplayLabel}
+                                        billingCycle={billingCycle}
+                                        planBenefits={displayedPlanBenefits}
+                                        subtotalLabel={formatCurrency(checkoutSubtotal)}
+                                        couponDiscountLabel={checkoutCouponSavingsAmount > 0 ? formatCurrency(checkoutCouponSavingsAmount) : null}
+                                        residualCreditDiscountLabel={checkoutResidualCreditAmount > 0 ? formatCurrency(checkoutResidualCreditAmount) : null}
+                                        totalLabel={formatCurrency(monetaryTotals.contractTotal)}
+                                        dueLabel={checkoutDueLabel}
+                                        couponCode={couponCode}
+                                        applyingCoupon={isApplyingCoupon}
+                                        appliedCouponCode={appliedCoupon?.code || null}
+                                        appliedCouponSource={appliedCouponSource}
+                                        couponSavingsLabel={checkoutCouponSavingsAmount > 0 ? formatCurrency(checkoutCouponSavingsAmount) : null}
+                                        autoRenew={autoRenew}
+                                        saveCard={saveCard}
+                                        stripeRequiresSavedCard={stripeRequiresSavedCard}
+                                        isStripeInternalCheckout={isStripeInternalCheckout}
+                                        isLoadingStripeCards={isLoadingStripeCards}
+                                        stripeCards={stripeCards}
+                                        selectedStripeCardId={selectedStripeCardId}
+                                        selectedStripeCard={selectedStripeCard}
+                                        stripePublishableKey={STRIPE_PUBLISHABLE_KEY}
+                                        currentUserName={currentUser?.name}
+                                        currentUserEmail={currentUser?.email}
+                                        currentUserCpf={currentUser?.cpf}
+                                        currentUserAddress={currentUser?.address}
+                                        emailVerified={currentUser?.emailVerified}
+                                        hasMissingRequirements={currentUser ? getMissingCheckoutRequirements().length > 0 : true}
+                                        nextRenewalLabel={nextRenewalSummaryLabel}
+                                        paymentBreakdownLabel={checkoutPaymentBreakdownLabel}
+                                        paymentProtectionLabel={checkoutPaymentProtectionLabel}
+                                        installmentOptions={checkoutInstallmentOptions}
+                                        selectedInstallmentValue={paymentData.installments}
+                                        processing={processing}
+                                        legalNotice={checkoutLegalNotice}
+                                        pixCapabilityStatus={stripePixCapability?.status}
+                                        pixCapabilityMessage={stripePixCapability?.message}
+                                        enabledPaymentMethodIds={checkoutEnabledPaymentMethodIds}
+                                        onCouponCodeChange={setCouponCode}
+                                        onApplyCoupon={handleApplyCoupon}
+                                        onRemoveCoupon={resetAppliedCoupon}
+                                        onAutoRenewChange={(enabled) => {
+                                            setAutoRenew(enabled);
+                                            if (enabled && !isUsingStripeSavedCard) {
+                                                setSaveCard(true);
+                                            }
+                                        }}
+                                        onSaveCardChange={setSaveCard}
+                                        onSelectSavedCard={(cardId) => {
+                                            setSelectedStripeCardId(cardId);
+                                            setSaveCard(false);
+                                        }}
+                                        onSelectNewCard={() => setSelectedStripeCardId(null)}
+                                        onConfirmSavedCard={handleStripeSavedCardPayment}
+                                        onPaymentMethodCreated={handleStripeInternalPayment}
+                                        onPaymentFinalized={(stripeStep) => finalizeStripeInternalCheckout({
+                                            subscriptionId: stripeStep?.subscriptionId || null,
+                                            paymentMethodId: stripeStep?.paymentMethodId || null,
+                                            paymentIntentId: stripeStep?.paymentIntentId || null,
+                                            saveCard: stripeStep?.saveCard,
+                                        })}
+                                        onConfirmClick={handleSummaryPaymentAction}
+                                        onInstallmentChange={(value) => setPaymentData((prev) => ({ ...prev, installments: value }))}
+                                        onEditBillingInfo={() => setShowCheckoutRequirementsModal(true)}
+                                        confirmLabel={summaryConfirmLabel}
+                                        processingLabel={processingLabel}
+                                    />
+                                )}
                             </div>
                         )}
                         {step === 'success' && renderSuccessStep()}

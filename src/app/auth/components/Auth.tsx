@@ -351,10 +351,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         </div>
         <div className="relative text-white space-y-8 max-w-xs">
           <PublicBrandLink
-            className="flex items-center gap-3 transition-opacity hover:opacity-90"
-            iconSize={40}
-            iconClassName="opacity-90"
-            labelClassName="text-2xl font-black tracking-tight"
+            className="inline-flex items-center transition-opacity hover:opacity-90"
+            width={260}
+            surface="dark"
+            priority
           />
           <h1 className="text-4xl font-black leading-tight">
             Prepare‑se para a <span className="text-indigo-200">aprovação</span>
@@ -380,7 +380,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         <div className="w-full max-w-md">
           {/* Logo mobile */}
           <div className="flex lg:hidden items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xl mb-6 sm:mb-8 md:mb-10 justify-center">
-            <PublicBrandLink />
+            <PublicBrandLink width={220} priority />
           </div>
 
           {/* Card */}

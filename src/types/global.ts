@@ -395,6 +395,11 @@ export interface UserProfile {
     message?: string;
     code?: string;
     type?: string;
+    severity?: 'warning' | 'blocking' | string;
+    interactionLock?: boolean;
+    actionLabel?: string;
+    actionTarget?: string;
+    blockingReason?: string;
   };
   planDisplayName?: string;
   billing: {
@@ -910,6 +915,7 @@ export interface UserSubscription {
   card_vault_provider?: 'local' | 'stripe';
   provider_subscription_id?: string | null;
   provider_customer_id?: string | null;
+  provider_schedule_id?: string | null;
   provider_current_period_start?: string | number | null;
   provider_current_period_end?: string | number | null;
   next_billing_at?: string | number | null;
@@ -922,4 +928,11 @@ export interface UserSubscription {
   total_installments?: number;
   paid_installments?: number;
   recurring_amount?: number;
+  renewal_iteration?: number;
+  next_renewal_amount?: number;
+  next_renewal_date?: string | number | null;
+  next_renewal_price_source?: string | null;
+  next_renewal_cycle_label?: string | null;
+  payment_block_reason?: string | null;
+  payment_blocking?: boolean;
 }

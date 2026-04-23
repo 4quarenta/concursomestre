@@ -11,13 +11,14 @@
 
 
 import React, { useState } from 'react';
-import { LayoutDashboard, BookOpen, User, Menu, X, BrainCircuit, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, Menu, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import PromoBanner from '../feedback/PromoBanner';
+import GlobalPaymentIssueBanner from '../feedback/GlobalPaymentIssueBanner';
 import { Notification } from '@types';
 import Footer from './Footer';
 import AdBanner from '../feedback/AdBanner';
@@ -30,6 +31,7 @@ import LogoutConfirmButton from './LogoutConfirmButton';
 import { buildProfilePath, type ProfileTab } from '../../../app/profile/profileNavigation';
 import { buildAdminPath } from '../../../app/admin/config/adminPageNavigationConfig';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
+import PublicBrandLink from './PublicBrandLink';
 import {
   getEffectivePlanName,
   getEffectivePlanDisplayName,
@@ -37,6 +39,7 @@ import {
   hasActivePlanAccess,
   hasPlanBenefit,
 } from '@services/plans/planAccess';
+import { resolveUserPaymentIssue } from '@services/billing/paymentIssue';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -72,6 +75,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     };
   }, [pathname, searchParams]);
   const canOpenAdminPanel = canAccessAdminPanel(user);
+  const paymentIssue = React.useMemo(() => resolveUserPaymentIssue(user), [user]);
+  const hasGlobalPaymentIssueBanner = Boolean(paymentIssue);
+  const paymentIssueFixPath = React.useMemo(
+    () => paymentIssue?.actionTarget || `${buildProfilePath('personal')}#saved-cards-personal-section`,
+    [paymentIssue?.actionTarget],
+  );
   const simulationSearchParams = React.useMemo(
     () => new URLSearchParams(location.search),
     [location.search],
@@ -471,10 +480,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {hasMobileTopHeader && (
           <div className="fixed inset-x-0 top-0 z-20 border-b border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:hidden">
             <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xl">
-              <BrainCircuit />
-              <span>ConcursoMestre</span>
-            </div>
+            <PublicBrandLink width={190} priority />
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleTheme}
@@ -511,9 +517,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               ? 'translate-x-0 opacity-100'
               : '-translate-x-full opacity-100 md:translate-x-0'}
           `}>
-            <div className="hidden shrink-0 items-center gap-2 px-5 pb-4 pt-5 text-xl font-bold text-indigo-600 dark:text-indigo-400 md:flex">
-              <BrainCircuit className="h-7 w-7" />
-              <span>ConcursoMestre</span>
+            <div className="hidden shrink-0 px-5 pb-4 pt-5 md:flex">
+              <PublicBrandLink
+                width={215}
+                priority
+                className="inline-flex items-center transition-opacity hover:opacity-90"
+              />
             </div>
 
             <div className="mb-3 mt-4 shrink-0 px-4 md:hidden">
@@ -739,6 +748,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
           <div className={`no-scrollbar flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 transition-colors duration-300 dark:bg-slate-950 ${isSimulationFullscreenPage ? 'p-3 sm:p-4 md:p-6' : 'p-3 pt-[84px] sm:p-4 sm:pt-[88px] md:p-6 md:pt-6 lg:p-8'} ${hasMobileTopHeader ? '' : 'pt-3 sm:pt-4 md:pt-6'}`}>
             <div className={`${isSimulationFullscreenPage ? 'mx-auto w-full max-w-7xl pb-6' : `${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto pb-12`}`}>
+              {hasGlobalPaymentIssueBanner ? (
+                <GlobalPaymentIssueBanner
+                  message={paymentIssue?.message || 'Atualize seu cartão para manter o acesso e as próximas cobranças em dia.'}
+                  blocking={Boolean(paymentIssue?.interactionLock)}
+                  actionLabel={paymentIssue?.actionLabel || 'Cadastrar cartão'}
+                  onAction={() => router.push(paymentIssueFixPath)}
+                />
+              ) : null}
               {!isSimulationFullscreenPage && <AdBanner type="top" className="mb-8" />}
               {children}
               {!isSimulationFullscreenPage && <AdBanner type="bottom" className="mt-8" />}
