@@ -54,7 +54,7 @@ const resolveBackendRoot = (): string => resolveApiBaseUrl().replace(/\/api\/?$/
  * Essa funcao alimenta downloads, visualizacao de PDFs e aberturas autenticadas no browser.
  * @since v1.0.0
  */
-const resolveApiResourceUrl = (resource: string): string => {
+export const resolveApiResourceUrl = (resource: string): string => {
     if (/^https?:\/\//i.test(resource)) {
         return resource;
     }

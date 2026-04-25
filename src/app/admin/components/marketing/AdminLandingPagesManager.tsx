@@ -42,6 +42,11 @@ import {
   mergeMarketingLandingPages,
   normalizeLandingSlug,
 } from '@services/marketing/landingPages';
+import {
+  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+} from '../shared/adminPanelStyles';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 interface AdminLandingPagesManagerProps {
@@ -50,9 +55,9 @@ interface AdminLandingPagesManagerProps {
   saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
 }
 
-const inputClassName = 'w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
+const inputClassName = 'w-full rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-sky-700 focus:ring-1 focus:ring-sky-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
 const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500';
-const sectionClassName = 'rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900';
+const sectionClassName = ADMIN_PAGE_PANEL_CLASS;
 
 const listToTextareaValue = (items?: string[] | null) => (Array.isArray(items) ? items.join('\n') : '');
 const textAreaToList = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
@@ -308,7 +313,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
             <button
               type="button"
               onClick={handleCreateLanding}
-              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white"
+              className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}
             >
               <Plus size={14} />
               Nova
@@ -323,10 +328,10 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                   key={page.id}
                   type="button"
                   onClick={() => setSelectedLandingId(page.id)}
-                  className={`w-full rounded-[1.5rem] border px-4 py-4 text-left transition-all ${
+                  className={`w-full rounded-sm border px-4 py-4 text-left transition-all ${
                     isSelected
-                      ? 'border-indigo-500 bg-indigo-50 shadow-sm dark:border-indigo-500 dark:bg-indigo-500/10'
-                      : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/50 dark:hover:border-slate-700'
+                      ? 'border-sky-700 bg-sky-50 dark:border-sky-700 dark:bg-sky-950/20'
+                      : 'border-slate-300 bg-slate-50 hover:bg-white dark:border-slate-700 dark:bg-slate-950/40 dark:hover:bg-slate-900'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -353,7 +358,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
               type="button"
               onClick={handleDuplicateLanding}
               disabled={!selectedLanding}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em] disabled:cursor-not-allowed disabled:opacity-50`}
             >
               <Copy size={14} />
               Duplicar
@@ -362,7 +367,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
               type="button"
               onClick={() => selectedLanding && setPendingDelete(selectedLanding)}
               disabled={!selectedLanding}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-rose-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/30 dark:text-rose-300"
+              className="inline-flex items-center justify-center gap-2 rounded-sm border border-rose-300 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/30 dark:bg-slate-900 dark:text-rose-300"
             >
               <Trash2 size={14} />
               Remover
@@ -388,19 +393,19 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <a href={previewHref} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100">
+                    <a href={previewHref} target="_blank" rel="noreferrer" className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
                       <Eye size={14} />
                       Preview
                     </a>
-                    <a href={publishedHref} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100">
+                    <a href={publishedHref} target="_blank" rel="noreferrer" className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
                       <ExternalLink size={14} />
                       Publica
                     </a>
-                    <button type="button" onClick={() => void handleTogglePublish()} disabled={isSaving} className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-60 ${selectedLanding.status === 'published' ? 'bg-slate-700 hover:bg-slate-800' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                    <button type="button" onClick={() => void handleTogglePublish()} disabled={isSaving} className={`inline-flex items-center justify-center gap-2 rounded-sm border px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-60 ${selectedLanding.status === 'published' ? 'border-slate-700 bg-slate-700 hover:bg-slate-800' : 'border-emerald-700 bg-emerald-700 hover:bg-emerald-800'}`}>
                       {selectedLanding.status === 'published' ? <EyeOff size={14} /> : <Rocket size={14} />}
                       {selectedLanding.status === 'published' ? 'Despublicar' : 'Publicar'}
                     </button>
-                    <button type="button" onClick={() => void handleSaveSelectedLanding()} disabled={isSaving} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-60">
+                    <button type="button" onClick={() => void handleSaveSelectedLanding()} disabled={isSaving} className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center px-4 py-2 text-[10px] uppercase tracking-[0.18em] disabled:opacity-60`}>
                       <Save size={14} />
                       Salvar
                     </button>

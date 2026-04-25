@@ -47,14 +47,14 @@ interface AdminDatabaseModalsProps {
   filterSlug: string;
   filterDescription: string;
   filterWebsite: string;
-  selectedParentId: number | null;
+  selectedParentId: number | string | null;
   taxonomies: Record<string, any[]>;
   onActiveFilterTypeChange: (value: string) => void;
   onFilterInputChange: (value: string) => void;
   onFilterSlugChange: (value: string) => void;
   onFilterDescriptionChange: (value: string) => void;
   onFilterWebsiteChange: (value: string) => void;
-  onSelectedParentIdChange: (value: number | null) => void;
+  onSelectedParentIdChange: (value: number | string | null) => void;
   onCloseTaxonomyModal: () => void;
   onSaveFilter: () => Promise<any>;
   pendingDeleteFilter: { id: number; name: string } | null;

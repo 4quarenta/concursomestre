@@ -16,13 +16,26 @@ const LINE_STYLE_PATTERN = /(text-decoration\s*:\s*overline|border-top\s*:|borde
 const HEAVY_LAYOUT_PATTERN = /(width\s*:|display\s*:\s*(block|inline-block)|position\s*:\s*(absolute|relative)|left\s*:|right\s*:|top\s*:|bottom\s*:)/i;
 const STYLE_DECLARATION_SEPARATOR = ';';
 const LINE_DECLARATION_PATTERN = /^(text-decoration|border-top|border-bottom)\s*:/i;
-const HEAVY_DECLARATION_PATTERN = /^(width|left|right|top|bottom|position)\s*:/i;
+const HEAVY_DECLARATION_PATTERN = /^(width|min-width|max-width|left|right|top|bottom|position)\s*:/i;
 const BLOCK_DISPLAY_DECLARATION_PATTERN = /^display\s*:\s*(block|inline-block)$/i;
+const MATH_LAYOUT_TAGS = new Set(['math', 'msqrt', 'mroot', 'mrow', 'menclose', 'mi', 'mn', 'mo', 'mtext']);
+const MATH_LAYOUT_ATTRIBUTES = ['width', 'minwidth', 'maxwidth', 'min-width', 'max-width'];
 
 const stripDecorativeChars = (value: string): string => (
   value
     .replace(/\u00A0/g, ' ')
     .replace(/[\s_\-\u00AF\u203E\u2014\u2015\u2500\u2501\u0304\u0305\u0332]+/g, '')
+);
+
+const stripUnsafeLineAndLayoutStyles = (styleAttr: string, shouldStripLineStyles: boolean): string => (
+  styleAttr
+    .split(STYLE_DECLARATION_SEPARATOR)
+    .map((declaration) => declaration.trim())
+    .filter(Boolean)
+    .filter((declaration) => !shouldStripLineStyles || !LINE_DECLARATION_PATTERN.test(declaration))
+    .filter((declaration) => !HEAVY_DECLARATION_PATTERN.test(declaration))
+    .filter((declaration) => !BLOCK_DISPLAY_DECLARATION_PATTERN.test(declaration))
+    .join('; ')
 );
 
 const sanitizeLineStyledElement = (element: HTMLElement): void => {
@@ -32,30 +45,42 @@ const sanitizeLineStyledElement = (element: HTMLElement): void => {
   }
 
   const hasVisualChildren = Boolean(element.querySelector('img,svg,math,table,video,canvas,iframe,object'));
-  if (hasVisualChildren) {
-    return;
-  }
-
   const meaningfulText = stripDecorativeChars(element.textContent || '');
-  if (!meaningfulText) {
+  if (!hasVisualChildren && !meaningfulText) {
     element.remove();
     return;
   }
 
   const hasHeavyLayout = HEAVY_LAYOUT_PATTERN.test(styleAttr);
-  if (!hasHeavyLayout) {
+  if (!hasHeavyLayout && !hasVisualChildren) {
     return;
   }
 
-  const safeStyle = styleAttr
-    .split(STYLE_DECLARATION_SEPARATOR)
-    .map((declaration) => declaration.trim())
-    .filter(Boolean)
-    .filter((declaration) => !LINE_DECLARATION_PATTERN.test(declaration))
-    .filter((declaration) => !HEAVY_DECLARATION_PATTERN.test(declaration))
-    .filter((declaration) => !BLOCK_DISPLAY_DECLARATION_PATTERN.test(declaration))
-    .join('; ');
+  const safeStyle = stripUnsafeLineAndLayoutStyles(styleAttr, true);
 
+  if (safeStyle) {
+    element.setAttribute('style', safeStyle);
+  } else {
+    element.removeAttribute('style');
+  }
+};
+
+const sanitizeMathLayoutElement = (element: HTMLElement): void => {
+  const tagName = element.tagName.toLowerCase();
+  if (!MATH_LAYOUT_TAGS.has(tagName)) {
+    return;
+  }
+
+  MATH_LAYOUT_ATTRIBUTES.forEach((attribute) => {
+    element.removeAttribute(attribute);
+  });
+
+  const styleAttr = element.getAttribute('style') || '';
+  if (!styleAttr) {
+    return;
+  }
+
+  const safeStyle = stripUnsafeLineAndLayoutStyles(styleAttr, LINE_STYLE_PATTERN.test(styleAttr));
   if (safeStyle) {
     element.setAttribute('style', safeStyle);
   } else {
@@ -115,6 +140,7 @@ export const normalizeQuestionRichHtml = (rawHtml: string | null | undefined): s
     const elements = Array.from(root.querySelectorAll<HTMLElement>('*'));
     elements.forEach((element) => {
       sanitizeLineStyledElement(element);
+      sanitizeMathLayoutElement(element);
     });
 
     return root.innerHTML;

@@ -9,10 +9,10 @@
 *
 */
 
-import { BookOpen, Flag, User } from 'lucide-react';
+import { BookOpen, User } from 'lucide-react';
 
 export interface AdminDatabaseCategoryConfig {
-  id: 'content' | 'people' | 'moderation';
+  id: 'content' | 'people';
   label: string;
   description: string;
   icon: typeof BookOpen;
@@ -45,13 +45,6 @@ export const ADMIN_DATABASE_CATEGORIES: AdminDatabaseCategoryConfig[] = [
     description: 'Usuarios, perfis e acompanhamento da comunidade.',
     icon: User,
     tabs: ['users'],
-  },
-  {
-    id: 'moderation',
-    label: 'Moderacao',
-    description: 'Materiais, rankings e revisao operacional.',
-    icon: Flag,
-    tabs: ['materials', 'rankings', 'blocked'],
   },
 ];
 
@@ -94,22 +87,22 @@ export const ADMIN_DATABASE_SUBTAB_META: Record<string, AdminDatabaseSubTabMeta>
   rankings: {
     label: 'Rankings',
     description: 'Classificacoes, destaque competitivo e ajustes manuais.',
-    category: 'moderation',
+    category: 'people',
   },
   materials: {
     label: 'Materiais',
     description: 'Catalogo, moderacao e operacao do marketplace.',
-    category: 'moderation',
+    category: 'people',
   },
   reports: {
     label: 'Denuncias',
     description: 'Fila de moderacao com atalhos para acao imediata.',
-    category: 'moderation',
+    category: 'people',
   },
   blocked: {
     label: 'Revisao bloqueada',
     description: 'Materiais retidos aguardando nova analise.',
-    category: 'moderation',
+    category: 'people',
   },
 };
 

@@ -15,6 +15,19 @@ import { AlertCircle, AlertTriangle, Check, Image as ImageIcon, Loader2, Plus, S
 import type { Prova, Question } from '@types';
 import { SmartTagSelector } from '../database/SmartTagSelector';
 import { buildProvaSearchText, formatProvaLabel, normalizeProvaRecord } from '../exams/examBankUtils';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_MODAL_FOOTER_CLASS,
+  ADMIN_MODAL_HEADER_CLASS,
+  ADMIN_MODAL_PANEL_CLASS,
+  ADMIN_MUTED_SURFACE_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SURFACE_CLASS,
+  ADMIN_SURFACE_HEADER_CLASS,
+  ADMIN_TEXTAREA_CLASS,
+} from '../shared/adminPanelStyles';
+import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 
 interface ManualQuestionModalProps {
   manualQ: any;
@@ -241,11 +254,11 @@ const ManualQuestionModal = ({
       ? 'flex min-h-[100dvh] flex-col overflow-hidden bg-slate-50 dark:bg-slate-950'
       : 'fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-slate-50 animate-in fade-in slide-in-from-bottom-4 duration-300 dark:bg-slate-950'}
     >
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 bg-white p-8 transition-colors dark:border-slate-800 dark:bg-slate-900">
+      <div className={`${presentation === 'page' ? '' : 'm-4'} ${ADMIN_MODAL_PANEL_CLASS} flex flex-1 flex-col overflow-hidden`}>
+        <div className={ADMIN_MODAL_HEADER_CLASS}>
           <div>
-            <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">{manualTitle}</h3>
-            <p className="font-display text-sm font-medium text-slate-500 dark:text-slate-400">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">{manualTitle}</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Gerencie o conteúdo e os filtros inteligentes para garantir a qualidade.
             </p>
           </div>
@@ -255,10 +268,10 @@ const ManualQuestionModal = ({
               <button
                 type="button"
                 onClick={() => updateManualQ({ anulada: !manualQ.anulada })}
-                className={`rounded-xl border-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
                   manualQ.anulada
-                    ? 'border-red-600 bg-red-600 text-white shadow-lg'
-                    : 'border-slate-200 bg-white text-slate-400 hover:border-red-400 dark:border-slate-700 dark:bg-slate-800'
+                    ? 'border-red-600 bg-red-600 text-white'
+                    : 'border-slate-300 bg-white text-slate-500 hover:border-red-400 dark:border-slate-700 dark:bg-slate-900'
                 }`}
               >
                 {manualQ.anulada ? 'Questão Anulada' : 'Anular Questão'}
@@ -266,10 +279,10 @@ const ManualQuestionModal = ({
               <button
                 type="button"
                 onClick={() => updateManualQ({ desatualizada: !manualQ.desatualizada })}
-                className={`rounded-xl border-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                className={`rounded-sm border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
                   manualQ.desatualizada
-                    ? 'border-amber-600 bg-amber-600 text-white shadow-lg'
-                    : 'border-slate-200 bg-white text-slate-400 hover:border-amber-400 dark:border-slate-700 dark:bg-slate-800'
+                    ? 'border-amber-600 bg-amber-600 text-white'
+                    : 'border-slate-300 bg-white text-slate-500 hover:border-amber-400 dark:border-slate-700 dark:bg-slate-900'
                 }`}
               >
                 {manualQ.desatualizada ? 'Desatualizada' : 'Marcar Desatualizada'}
@@ -279,7 +292,7 @@ const ManualQuestionModal = ({
             <button
               type="button"
               onClick={onClose}
-              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 transition-all hover:text-slate-600 dark:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300"
+              className="flex h-10 w-10 items-center justify-center rounded-sm bg-slate-100 text-slate-400 transition-all hover:text-slate-600 dark:bg-slate-800 dark:text-slate-500 dark:hover:text-slate-300"
             >
               <X size={24} />
             </button>
@@ -287,28 +300,28 @@ const ManualQuestionModal = ({
         </div>
 
         {reportContext ? (
-          <div className="border-b border-slate-100 bg-white px-8 py-5 dark:border-slate-800 dark:bg-slate-900">
+          <div className="border-b border-slate-300 bg-slate-100 px-5 py-4 dark:border-slate-700 dark:bg-slate-950/50">
             {reportContext}
           </div>
         ) : null}
 
-        <div className="no-scrollbar flex-1 overflow-y-auto space-y-8 bg-slate-50 p-8 dark:bg-slate-950">
+        <div className="no-scrollbar flex-1 overflow-y-auto space-y-6 bg-slate-50 p-5 dark:bg-slate-950">
           {(manualQ.anulada || manualQ.desatualizada) && (
             <div className="flex flex-col gap-2">
               {manualQ.anulada && (
-                <div className="flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50 p-4 text-xs font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-400">
+                <div className="flex items-center gap-3 rounded-sm border border-red-200 bg-red-50 p-4 text-xs font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-400">
                   <AlertCircle size={18} /> Esta questão sera exibida como ANULADA para os alunos.
                 </div>
               )}
               {manualQ.desatualizada && (
-                <div className="flex items-center gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs font-bold text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-400">
+                <div className="flex items-center gap-3 rounded-sm border border-amber-200 bg-amber-50 p-4 text-xs font-bold text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-400">
                   <AlertTriangle size={18} /> Esta questão sera exibida como DESATUALIZADA.
                 </div>
               )}
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:grid-cols-2">
+          <div className={`grid grid-cols-1 gap-6 p-5 md:grid-cols-2 ${ADMIN_MUTED_SURFACE_CLASS}`}>
             <SmartTagSelector
               label="Banca(s)"
               options={existingAgencies}
@@ -352,27 +365,27 @@ const ManualQuestionModal = ({
                     }}
                     onFocus={() => setIsProvaSearchOpen(true)}
                     placeholder="Digite nome, banca, orgao, cargo, ano ou ID"
-                    className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-24 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className={`${ADMIN_FIELD_CLASS} h-10 w-full pl-10 pr-24 font-semibold`}
                   />
                   <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
                     {manualQ.provaId ? (
                       <button
                         type="button"
                         onClick={handleClearProva}
-                        className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 transition-all hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                        className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition-all hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                       >
                         Limpar
                       </button>
                     ) : null}
                     {manualQ.provaId ? (
-                      <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
+                      <span className="rounded-sm border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300">
                         #{manualQ.provaId}
                       </span>
                     ) : null}
                   </div>
 
                   {isProvaSearchOpen ? (
-                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-sm border border-slate-300 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
                       <div className="max-h-72 overflow-y-auto">
                         {filteredProvas.map((prova) => (
                           <button
@@ -424,14 +437,14 @@ const ManualQuestionModal = ({
                     type="text"
                     value={manualQ.provaId || ''}
                     onChange={(event) => updateManualQ({ provaId: event.target.value })}
-                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                     placeholder="ID manual, se necessario"
                   />
                 </div>
               </div>
               </div>
             {manualQ.provaId && (
-              <div className="md:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 text-slate-700 shadow-sm dark:border-indigo-900/40 dark:bg-indigo-900/10 dark:text-slate-200">
+              <div className="md:col-span-2 rounded-sm border border-sky-200 bg-sky-50/70 p-4 text-slate-700 dark:border-sky-900/40 dark:bg-sky-900/10 dark:text-slate-200">
                 <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">
                   Prova vinculada
                 </p>
@@ -478,7 +491,7 @@ const ManualQuestionModal = ({
                 <select
                   value={manualQ.difficulty}
                   onChange={(event) => updateManualQ({ difficulty: Number(event.target.value) })}
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 >
                   <option value={1}>Facil</option>
                   <option value={2}>Medio</option>
@@ -501,7 +514,7 @@ const ManualQuestionModal = ({
                 <select
                   value={manualQ.modality || (manualItems.length === 2 ? 'Certo/Errado' : MULTIPLE_CHOICE_LABEL)}
                   onChange={(event) => handleTypeChange(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 >
                   <option value={MULTIPLE_CHOICE_LABEL}>Multipla Escolha</option>
                   <option value="Certo/Errado">Certo/Errado</option>
@@ -512,7 +525,7 @@ const ManualQuestionModal = ({
                 <select
                   value={manualQ.level}
                   onChange={(event) => updateManualQ({ level: event.target.value })}
-                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 >
                   <option value="Superior">Superior</option>
                   <option value={MID_LEVEL_LABEL}>Medio</option>
@@ -528,7 +541,7 @@ const ManualQuestionModal = ({
               <textarea
                 value={manualQ.introText || ''}
                 onChange={(event) => updateManualQ({ introText: event.target.value })}
-                className="min-h-[100px] w-full rounded-2xl border border-slate-300 bg-white p-4 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className={`${ADMIN_TEXTAREA_CLASS} min-h-[100px] font-medium`}
                 placeholder="Insira textos auxiliares aqui..."
               />
             </div>
@@ -544,13 +557,13 @@ const ManualQuestionModal = ({
                     enunciado_clean: event.target.value.replace(/<[^>]*>?/gm, ''),
                   })
                 }
-                className="min-h-[140px] w-full rounded-2xl border border-slate-300 bg-white p-4 text-base font-bold text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                className={`${ADMIN_TEXTAREA_CLASS} min-h-[140px] text-base font-semibold`}
                 placeholder="Qual o comando da questão? Aceita HTML."
               />
             </div>
 
             <div className="flex items-center gap-4">
-              <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-300 bg-white px-6 py-3 text-xs font-bold text-slate-600 shadow-sm transition-all hover:border-indigo-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700">
+              <label className={ADMIN_SECONDARY_BUTTON_CLASS}>
                 <ImageIcon size={18} className="text-indigo-500" /> Upload de Imagem
                 <input type="file" className="hidden" onChange={(event) => handleImageSelected(event.target.files?.[0] || null)} />
               </label>
@@ -594,7 +607,7 @@ const ManualQuestionModal = ({
                       type="text"
                       value={item.corpo}
                       onChange={(event) => handleOptionChange(index, event.target.value)}
-                      className="h-10 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-xs font-medium text-slate-900 outline-none focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                      className={`${ADMIN_FIELD_CLASS} h-10 flex-1 text-xs font-medium`}
                       placeholder={`Corpo da alternativa ${item.rotulo}...`}
                     />
                     <button
@@ -625,7 +638,7 @@ const ManualQuestionModal = ({
                 <textarea
                   value={manualQ.teacherComment || ''}
                   onChange={(event) => updateManualQ({ teacherComment: event.target.value })}
-                  className="min-h-[120px] w-full rounded-3xl border border-slate-200 bg-slate-50 p-6 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-indigo-300 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-200"
+                  className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] bg-slate-50 font-medium dark:bg-slate-950/40`}
                   placeholder="Breve comentário ou dica do professor..."
                 />
               </div>
@@ -645,7 +658,7 @@ const ManualQuestionModal = ({
                 <textarea
                   value={manualQ.detailedComment || ''}
                   onChange={(event) => updateManualQ({ detailedComment: event.target.value })}
-                  className="min-h-[150px] w-full rounded-3xl border border-indigo-100 bg-indigo-50/50 p-6 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-indigo-300 dark:border-indigo-900/30 dark:bg-indigo-900/10 dark:text-slate-200"
+                  className={`${ADMIN_TEXTAREA_CLASS} min-h-[150px] border-sky-200 bg-sky-50/60 font-medium dark:border-sky-900/30 dark:bg-sky-900/10`}
                   placeholder="Análise alternativa por alternativa..."
                 />
               </div>
@@ -653,18 +666,18 @@ const ManualQuestionModal = ({
           </div>
         </div>
 
-        <div className="flex justify-end gap-4 rounded-b-[2.4rem] border-t border-slate-100 bg-white p-8 transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
+        <div className={`${ADMIN_MODAL_FOOTER_CLASS} flex justify-end gap-3`}>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-2xl px-8 py-3 text-xs font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
+            className={ADMIN_SECONDARY_BUTTON_CLASS}
           >
             Descartar
           </button>
           <button
             type="button"
             onClick={onSave}
-            className="flex items-center gap-2 rounded-2xl bg-slate-900 px-10 py-4 text-xs font-black uppercase tracking-widest text-white shadow-2xl shadow-slate-200 transition-all hover:bg-indigo-600 dark:bg-indigo-600 dark:shadow-none dark:hover:bg-indigo-700"
+            className={ADMIN_PRIMARY_BUTTON_CLASS}
           >
             <Save size={18} /> {editingExtractedIndex !== null ? 'Atualizar Revisao' : 'Salvar Questão'}
           </button>

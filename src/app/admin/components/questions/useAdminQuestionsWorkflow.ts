@@ -36,6 +36,77 @@ const DEFAULT_PAGINATION: QuestionsPagination = {
   page: 1,
 };
 
+const resolveQuestionPublicationInput = (question: any) => {
+  if (!question) return '';
+
+  const editorialState = String(
+    question.publishState
+      || question.publicationStatus
+      || question.status
+      || question.estadoEditorial
+      || '',
+  ).toLowerCase();
+
+  if (editorialState.includes('scheduled') || editorialState.includes('program')) {
+    return question.scheduledAt
+      || question.scheduled_at
+      || question.publishAt
+      || question.publish_at
+      || question.publicationDate
+      || question.publication_date
+      || '';
+  }
+
+  return question.publishedAt
+    || question.published_at
+    || question.published_on
+    || question.publicationDate
+    || question.publication_date
+    || question.data_publicacao
+    || question.publicado_em
+    || question.dataPublicacao
+    || question.timestamp
+    || question.createdAt
+    || question.created_at
+    || question.created
+    || question.data_criacao
+    || question.criado_em
+    || '';
+};
+
+const parsePublicationTimestamp = (value: unknown) => {
+  if (!value) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+
+  const rawValue = String(value).trim();
+  if (!rawValue) return 0;
+
+  const numericValue = Number(rawValue);
+  if (Number.isFinite(numericValue) && rawValue.length >= 10) {
+    return numericValue < 100000000000 ? numericValue * 1000 : numericValue;
+  }
+
+  const parsed = new Date(rawValue.includes('T') ? rawValue : rawValue.replace(' ', 'T')).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const withAdminPublicationMetadata = (question: Question) => {
+  const publicationInput = resolveQuestionPublicationInput(question as any);
+  const publicationTimestamp = parsePublicationTimestamp(publicationInput);
+
+  return {
+    ...(question as any),
+    adminPublicationDate: publicationInput || '',
+    adminPublicationTimestamp: publicationTimestamp,
+  } as Question;
+};
+
+const sortQuestionsByPublicationDesc = (questions: Question[]) => [...questions]
+  .map(withAdminPublicationMetadata)
+  .sort((a: any, b: any) => (
+    Number(b.adminPublicationTimestamp || 0) - Number(a.adminPublicationTimestamp || 0)
+  ));
+
 export const useAdminQuestionsWorkflow = ({
   keyword,
   activeSubTab,
@@ -51,7 +122,7 @@ export const useAdminQuestionsWorkflow = ({
         keyword,
       });
 
-      setAdminQuestions(response.rows);
+      setAdminQuestions(sortQuestionsByPublicationDesc(response.rows || []));
       setPagination({
         total: response.total,
         perPage: response.perPage,
@@ -68,6 +139,21 @@ export const useAdminQuestionsWorkflow = ({
     await loadQuestions(pagination.page || 1);
   };
 
+  const removeQuestionFromPage = (questionId: string | number) => {
+    setAdminQuestions((current) => current.filter((question: any) => String(question.id) !== String(questionId)));
+    setPagination((current) => {
+      const nextTotal = Math.max(0, Number(current.total || 0) - 1);
+      const nextPages = Math.max(1, Math.ceil(nextTotal / Math.max(1, Number(current.perPage || 20))));
+
+      return {
+        ...current,
+        total: nextTotal,
+        pages: nextPages,
+        page: Math.min(current.page, nextPages),
+      };
+    });
+  };
+
   useEffect(() => {
     if (activeSubTab === 'questions') {
       void loadQuestions(1);
@@ -79,5 +165,6 @@ export const useAdminQuestionsWorkflow = ({
     pagination,
     loadQuestions,
     reloadCurrentPage,
+    removeQuestionFromPage,
   };
 };

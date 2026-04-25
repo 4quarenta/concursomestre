@@ -22,6 +22,7 @@ Snapshots de codigo antigo que ficavam em `docs/legacy/workspace-backups` tambem
 - `ADMIN_PANEL_REBUILD_BLUEPRINT.md`
 - `PRODUTO_E_MODULOS.md`
 - `BILLING_E_VALIDACAO.md`
+- `IMPLEMENTATION_LOG_2026_04_ADMIN_BILLING_LEI_QUESTOES.md`
 - `STRIPE_CARD_VAULT_OPERATIONS.md`
 - `STRIPE_TESTING_MATRIX_ADMIN.md`
 - `ENCODING_E_TEXTO.md`

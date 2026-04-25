@@ -44,15 +44,14 @@ interface AdminDatabaseSectionsProps {
   importWorkflowProps: any;
   renderSortableHeader: (label: string, sortKey: string) => React.ReactNode;
   sortData: <T>(data: T[]) => T[];
+  filter: string;
+  onFilterChange: (value: string) => void;
   onQuestionsPageChange: (page: number) => void;
+  onCreateQuestion: () => void;
   onQuestionEdit: (question?: any) => void;
+  onQuestionUpdate: (question: any) => Promise<any> | any;
   onQuestionDelete: (questionId: any) => Promise<any> | any;
-  editingExamId: string | null;
-  examDraft: any;
-  onExamDraftChange: (value: any) => void;
-  onStartEditExam: (exam: any) => void;
-  onCancelEditExam: () => void;
-  onSaveEditExam: () => void;
+  onQuestionsRefresh?: () => Promise<void> | void;
   deletingExam: any;
   onRequestDeleteExam: (exam: any) => void;
   onCancelDeleteExam: () => void;
@@ -95,15 +94,14 @@ const AdminDatabaseSections = ({
   importWorkflowProps,
   renderSortableHeader,
   sortData,
+  filter,
+  onFilterChange,
   onQuestionsPageChange,
+  onCreateQuestion,
   onQuestionEdit,
+  onQuestionUpdate,
   onQuestionDelete,
-  editingExamId,
-  examDraft,
-  onExamDraftChange,
-  onStartEditExam,
-  onCancelEditExam,
-  onSaveEditExam,
+  onQuestionsRefresh,
   deletingExam,
   onRequestDeleteExam,
   onCancelDeleteExam,
@@ -131,10 +129,15 @@ const AdminDatabaseSections = ({
       <AdminQuestionsSection
         questions={sortData(adminQuestions)}
         pagination={pagination}
+        filter={filter}
+        onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
+        onCreate={onCreateQuestion}
         onEdit={onQuestionEdit}
+        onUpdate={onQuestionUpdate}
         onDelete={onQuestionDelete}
         onPageChange={onQuestionsPageChange}
+        onRefresh={onQuestionsRefresh}
       />
     );
   }
@@ -145,12 +148,8 @@ const AdminDatabaseSections = ({
         exams={filteredExams}
         totalExams={totalExams}
         linkedCountByExamId={linkedCountByExamId}
-        editingExamId={editingExamId}
-        examDraft={examDraft}
-        onExamDraftChange={onExamDraftChange}
-        onStartEdit={onStartEditExam}
-        onCancelEdit={onCancelEditExam}
-        onSaveEdit={onSaveEditExam}
+        filter={filter}
+        onFilterChange={onFilterChange}
         deletingExam={deletingExam}
         onRequestDelete={onRequestDeleteExam}
         onCancelDelete={onCancelDeleteExam}
@@ -164,6 +163,8 @@ const AdminDatabaseSections = ({
     return (
       <AdminUsersSection
         users={sortData(filteredUsers)}
+        filter={filter}
+        onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
         onOpenProfile={onOpenUserProfile}
       />
@@ -174,6 +175,8 @@ const AdminDatabaseSections = ({
     return (
       <AdminMaterialsSection
         materials={sortData(filteredMaterials)}
+        filter={filter}
+        onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
         onModerate={onModerateMaterial}
         onDelete={onDeleteMaterial}
@@ -185,6 +188,8 @@ const AdminDatabaseSections = ({
     return (
       <AdminReportsSection
         reports={sortData(groupedReports)}
+        filter={filter}
+        onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
         getReportTargetBadgeClass={getReportTargetBadgeClass}
         getReportTargetLabel={getReportTargetLabel}
@@ -198,6 +203,8 @@ const AdminDatabaseSections = ({
     return (
       <AdminRankingsSection
         rankings={sortData(rankings)}
+        filter={filter}
+        onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
         onEdit={onEditRanking}
       />

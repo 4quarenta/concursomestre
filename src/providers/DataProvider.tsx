@@ -264,7 +264,7 @@ type DataAction =
   | { type: 'ADD_QUESTION'; payload: Question }
   | { type: 'ADD_QUESTIONS'; payload: Question[] }
   | { type: 'UPDATE_QUESTION'; payload: Question }
-  | { type: 'DELETE_QUESTION'; payload: number }
+  | { type: 'DELETE_QUESTION'; payload: number | string }
   | { type: 'SAVE_NOTE'; payload: { questionId: number; text: string } }
   | { type: 'REPORT_ERROR'; payload: ErrorReport }
   | { type: 'RESOLVE_REPORT'; payload: { id: string; action: 'resolved' | 'ignored' } }
@@ -617,7 +617,7 @@ interface DataContextType extends DataState {
   addQuestion: (payload: Question) => Promise<any>;
   addQuestions: (qs: Question[]) => Promise<any>;
   updateQuestion: (q: Question) => Promise<any>;
-  deleteQuestion: (id: number) => void;
+  deleteQuestion: (id: number | string) => Promise<any>;
   toggleSaveQuestion: (id: number) => void;
   saveNote: (qId: number, text: string) => void;
   resetAnswers: () => Promise<void>;
@@ -1077,7 +1077,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * Exclui uma questão da base oficial e do estado local.
    * @since 1.0.0
    */
-  const deleteQuestion = useCallback(async (payload: number) => {
+  const deleteQuestion = useCallback(async (payload: number | string) => {
     try {
       const result = await questionService.deleteQuestion(payload);
       if (!result.success) {
@@ -1085,9 +1085,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       dispatch({ type: 'DELETE_QUESTION', payload });
       addToast('Questão removida.', 'info');
+      return result;
     } catch (error) {
       console.error("Failed to delete question:", error);
       addToast('Erro ao remover questão do servidor.', 'error');
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Erro ao remover questão do servidor.',
+      };
     }
   }, [addToast]);
 
@@ -1354,8 +1359,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
     lastCommentTime.current = now;
 
-    dispatch({ type: 'ADD_COMMENT', payload: { questionId, comment, parentId } });
-
     // Persist to Backend
     commentService.addComment({
       questionId: String(questionId),
@@ -1364,8 +1367,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       userName: currentUser?.name || comment.userName,
       parentId,
       targetType: 'question',
-    }).then(() => {
-        // Refresh global user activity for dashboard
+    }).then((result) => {
+        if (result.comment) {
+          dispatch({ type: 'ADD_COMMENT', payload: { questionId, comment: result.comment, parentId } });
+        }
+
+        addToast(
+          result.message || (result.requiresModeration ? 'Comentário enviado para moderação.' : 'Comentário publicado com sucesso.'),
+          'success',
+        );
+
         if (currentUser?.id) {
           fetchUserComments(currentUser.id);
         }

@@ -24,7 +24,18 @@ import {
   Users,
 } from 'lucide-react';
 import type { SystemSettings } from '@types';
-import { adminService, type AdminFeedbackThread, type AdminStatsPayload } from '@services/admin/adminService';
+import {
+  adminService,
+  type AdminDashboardAnalyticsPayload,
+  type AdminFeedbackThread,
+  type AdminStatsPayload,
+} from '@services/admin/adminService';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_SURFACE_CLASS,
+  ADMIN_TAB_BUTTON_ACTIVE_CLASS,
+} from '../shared/adminPanelStyles';
 
 interface AdminDashboardProps {
   questions: any[];
@@ -77,6 +88,21 @@ const EMPTY_STATS: AdminStatsPayload = {
   available_platform_revenue: 0,
 };
 
+const EMPTY_DASHBOARD_ANALYTICS: AdminDashboardAnalyticsPayload = {
+  period: 'all',
+  counts: {},
+  trends: [],
+  insights: [],
+  funnelSummary: [],
+  billingHealth: {
+    failedPayments: 0,
+    pastDueSubscribers: 0,
+    recoveredSubscribers: 0,
+    refundRequestedCount: 0,
+    refundedCount: 0,
+  },
+};
+
 const formatNumber = (value: number) => value.toLocaleString('pt-BR');
 
 const formatCurrency = (value: number) => (
@@ -86,35 +112,6 @@ const formatCurrency = (value: number) => (
     minimumFractionDigits: 2,
   })
 );
-
-const getQuestionTitle = (question: any) =>
-  question?.enunciado_clean
-  || question?.enunciado
-  || question?.text
-  || 'Questao sem enunciado';
-
-const getQuestionSubject = (question: any) => (
-  question?.assuntos?.find?.((assunto: any) => assunto?.materia)?.nome
-  || question?.assuntos?.[0]?.nome
-  || question?.bancas?.[0]?.sigla
-  || 'Sem materia'
-);
-
-const getQuestionStatus = (question: any) => {
-  if (Number(question?.anulada) === 1 || question?.isCanceled) {
-    return { label: 'Anulada', tone: 'rose' as const };
-  }
-
-  if (Number(question?.desatualizada) === 1 || question?.isOutdated) {
-    return { label: 'Revisao', tone: 'amber' as const };
-  }
-
-  if (question?.teacherComment || question?.detailedComment || question?.hasTeacherComment) {
-    return { label: 'Publicada', tone: 'emerald' as const };
-  }
-
-  return { label: 'Rascunho', tone: 'slate' as const };
-};
 
 const getStatusBadgeClassName = (tone: 'emerald' | 'amber' | 'rose' | 'slate' | 'blue') => {
   if (tone === 'emerald') {
@@ -161,7 +158,7 @@ const DashboardCard = ({
   action?: React.ReactNode;
   className?: string;
 }) => (
-  <section className={`rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 ${className}`}>
+  <section className={`${ADMIN_SURFACE_CLASS} ${className}`}>
     <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
       <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
       {action}
@@ -184,6 +181,7 @@ const AdminDashboard = ({
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [stats, setStats] = useState<AdminStatsPayload>(EMPTY_STATS);
+  const [dashboardAnalytics, setDashboardAnalytics] = useState<AdminDashboardAnalyticsPayload>(EMPTY_DASHBOARD_ANALYTICS);
   const [feedbackThreads, setFeedbackThreads] = useState<AdminFeedbackThread[]>([]);
   const [isStatsLoading, setIsStatsLoading] = useState(false);
 
@@ -192,20 +190,27 @@ const AdminDashboard = ({
 
     setIsStatsLoading(true);
 
-    adminService.getStats({
-      period: selectedPeriod,
-      startDate: customStartDate || undefined,
-      endDate: customEndDate || undefined,
-    })
-      .then((payload) => {
-        if (isCurrent) {
-          setStats(payload);
-        }
+    Promise.all([
+      adminService.getStats({
+        period: selectedPeriod,
+        startDate: customStartDate || undefined,
+        endDate: customEndDate || undefined,
+      }),
+      adminService.getDashboardAnalytics({
+        period: selectedPeriod,
+        startDate: customStartDate || undefined,
+        endDate: customEndDate || undefined,
+      }),
+    ])
+      .then(([statsPayload, dashboardPayload]) => {
+        if (!isCurrent) return;
+        setStats(statsPayload);
+        setDashboardAnalytics(dashboardPayload);
       })
       .catch(() => {
-        if (isCurrent) {
-          setStats(EMPTY_STATS);
-        }
+        if (!isCurrent) return;
+        setStats(EMPTY_STATS);
+        setDashboardAnalytics(EMPTY_DASHBOARD_ANALYTICS);
       })
       .finally(() => {
         if (isCurrent) {
@@ -251,37 +256,71 @@ const AdminDashboard = ({
     (allMaterials || []).filter((material: any) => String(material?.status || '').toLowerCase() === 'pending').length
   ), [allMaterials]);
 
-  const recentQuestions = useMemo(() => (
-    [...(questions || [])]
-      .sort((left: any, right: any) => Number(right?.id || 0) - Number(left?.id || 0))
-      .slice(0, 5)
-  ), [questions]);
-
   const recentFeedback = useMemo(() => (
     [...feedbackThreads]
       .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
       .slice(0, 4)
   ), [feedbackThreads]);
 
+  const examsCount = useMemo(() => {
+    const registry = new Set<string>();
+
+    (questions || []).forEach((question: any) => {
+      const provas = Array.isArray(question?.provas) ? question.provas : [];
+
+      if (provas.length > 0) {
+        provas.forEach((prova: any) => {
+          const key = prova?.id ?? prova?.nome ?? prova?.title ?? prova?.slug;
+          if (key) {
+            registry.add(String(key));
+          }
+        });
+        return;
+      }
+
+      const fallbackKey = question?.prova_id ?? question?.exam_id ?? question?.prova_nome ?? question?.provaNome;
+      if (fallbackKey) {
+        registry.add(String(fallbackKey));
+      }
+    });
+
+    return registry.size;
+  }, [questions]);
+
+  const platformTotals = useMemo(() => ({
+    questions: Number(dashboardAnalytics.counts.questions_count || stats.questions_count || questions.length || 0),
+    users: Number(dashboardAnalytics.counts.users_count || stats.users_count || allUsers.length || 0),
+    laws: Number(dashboardAnalytics.counts.laws_count || stats.laws_count || 0),
+    comments: Number(dashboardAnalytics.counts.comments_count || 0),
+    pendingComments: Number(dashboardAnalytics.counts.pending_comments_count || 0),
+    approvedComments: Number(dashboardAnalytics.counts.approved_comments_count || 0),
+    spamComments: Number(dashboardAnalytics.counts.spam_comments_count || 0),
+    materials: Number(dashboardAnalytics.counts.materials_count || stats.materials_count || allMaterials.length || 0),
+    publishedMaterials: Number(dashboardAnalytics.counts.published_marketplace_materials_count || 0),
+    rankings: Number(stats.rankings_count || allRankings.length || 0),
+    vendors: Number(dashboardAnalytics.counts.active_vendors_count || 0),
+    exams: examsCount,
+  }), [allMaterials.length, allRankings.length, allUsers.length, dashboardAnalytics.counts, examsCount, questions.length, stats.laws_count, stats.materials_count, stats.questions_count, stats.rankings_count, stats.users_count]);
+
   const summaryCards = useMemo(() => ([
     {
-      label: 'Questoes publicadas',
-      value: formatNumber(stats.questions_count || questions.length || 0),
-      helper: `${formatNumber((questions || []).filter((question: any) => question?.teacherComment || question?.hasTeacherComment).length)} com comentario`,
+      label: 'Questoes no banco',
+      value: formatNumber(platformTotals.questions),
+      helper: `${formatNumber(platformTotals.exams)} provas mapeadas`,
       icon: FileQuestion,
       iconClassName: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300',
     },
     {
-      label: 'Usuarios ativos',
-      value: formatNumber(stats.users_count || allUsers.length || 0),
+      label: 'Usuarios cadastrados',
+      value: formatNumber(platformTotals.users),
       helper: `${formatNumber(stats.new_users || 0)} novos no periodo`,
       icon: Users,
       iconClassName: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300',
     },
     {
-      label: 'Feedback pendente',
-      value: formatNumber(stats.feedback_count || recentFeedback.length || 0),
-      helper: `${formatNumber(unresolvedReportsCount)} denuncias abertas`,
+      label: 'Comentarios pendentes',
+      value: formatNumber(platformTotals.pendingComments),
+      helper: `${formatNumber(platformTotals.comments)} comentarios no total`,
       icon: MessageSquare,
       iconClassName: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-300',
     },
@@ -292,7 +331,16 @@ const AdminDashboard = ({
       icon: DollarSign,
       iconClassName: 'bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-300',
     },
-  ]), [allUsers.length, questions, recentFeedback.length, stats, unresolvedReportsCount]);
+  ]), [platformTotals.comments, platformTotals.exams, platformTotals.pendingComments, platformTotals.questions, platformTotals.users, stats.available_platform_revenue, stats.mrr, stats.new_users, stats.platform_revenue]);
+
+  const platformOverviewItems = useMemo(() => ([
+    { label: 'Leis comentadas', value: formatNumber(platformTotals.laws), helper: 'Acervo legislativo publicado' },
+    { label: 'Banco de provas', value: formatNumber(platformTotals.exams), helper: 'Provas ligadas ao banco de questoes' },
+    { label: 'Rankings', value: formatNumber(platformTotals.rankings), helper: 'Estruturas competitivas ativas' },
+    { label: 'Materiais publicados', value: formatNumber(platformTotals.publishedMaterials), helper: `${formatNumber(platformTotals.materials)} materiais totais` },
+    { label: 'Vendedores ativos', value: formatNumber(platformTotals.vendors), helper: 'Marketplace habilitado para venda' },
+    { label: 'Comentarios aprovados', value: formatNumber(platformTotals.approvedComments), helper: `${formatNumber(platformTotals.spamComments)} em spam` },
+  ]), [platformTotals.approvedComments, platformTotals.exams, platformTotals.laws, platformTotals.materials, platformTotals.publishedMaterials, platformTotals.rankings, platformTotals.spamComments, platformTotals.vendors]);
 
   const quickAlerts = useMemo(() => ([
     {
@@ -311,21 +359,28 @@ const AdminDashboard = ({
       label: 'Materiais aguardando analise',
       value: pendingMaterialsCount,
       description: 'Fila de marketplace em revisao administrativa.',
-      onClick: () => onNavigate?.('operation', 'materials'),
+      onClick: () => onNavigate?.('support', 'materials'),
     },
-  ]), [onNavigate, pendingMaterialsCount, refundRequestsCount, unresolvedReportsCount]);
+    {
+      label: 'Comentários aguardando moderação',
+      value: Number(dashboardAnalytics.counts.pending_comments_count || 0),
+      description: 'Fila editorial de comentários em análise.',
+      onClick: () => onNavigate?.('support', 'comments'),
+    },
+  ]), [dashboardAnalytics.counts, onNavigate, pendingMaterialsCount, refundRequestsCount, unresolvedReportsCount]);
 
   const quickLinks = useMemo(() => ([
     { label: 'Gerenciar questoes', description: 'Banco principal e edicao manual.', onClick: () => onNavigate?.('operation', 'questions') },
     { label: 'Banco de provas', description: 'Cadastros e simulados.', onClick: () => onNavigate?.('operation', 'exams') },
     { label: 'Lei comentada', description: 'Acervo legislativo e conteudo editorial.', onClick: () => onNavigate?.('operation', 'lei-comentada') },
+    { label: 'Moderar comentarios', description: 'Fila unificada de comentarios do ecossistema.', onClick: () => onNavigate?.('support', 'comments') },
     { label: 'SEO e indexacao', description: 'Ajustes tecnicos e visibilidade.', onClick: () => onNavigate?.('settings', 'seo') },
   ]), [onNavigate]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className={`${ADMIN_SURFACE_CLASS} flex flex-wrap items-center gap-2 p-2`}>
           {PERIOD_OPTIONS.map((period) => (
             <button
               key={period.key}
@@ -333,7 +388,7 @@ const AdminDashboard = ({
               onClick={() => setSelectedPeriod(period.key)}
               className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 selectedPeriod === period.key
-                  ? 'bg-blue-600 text-white'
+                  ? ADMIN_TAB_BUTTON_ACTIVE_CLASS
                   : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
               }`}
             >
@@ -349,13 +404,13 @@ const AdminDashboard = ({
                 type="date"
                 value={customStartDate}
                 onChange={(event) => setCustomStartDate(event.target.value)}
-                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                className={ADMIN_FIELD_CLASS}
               />
               <input
                 type="date"
                 value={customEndDate}
                 onChange={(event) => setCustomEndDate(event.target.value)}
-                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                className={ADMIN_FIELD_CLASS}
               />
             </div>
           ) : null}
@@ -382,7 +437,7 @@ const AdminDashboard = ({
         {summaryCards.map((card) => (
           <section
             key={card.label}
-            className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+            className={ADMIN_PAGE_PANEL_CLASS}
           >
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
@@ -406,63 +461,48 @@ const AdminDashboard = ({
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.95fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
         <DashboardCard
-          title="Questoes recentes"
+          title="Visao geral da plataforma"
           action={(
             <button
               type="button"
-              onClick={() => onNavigate?.('operation', 'questions')}
+              onClick={() => onNavigate?.('panel', 'dashboard')}
               className="text-sm font-semibold text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
             >
-              Ver todas
+              Atualizar leitura
             </button>
           )}
         >
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left">
-              <thead>
-                <tr className="border-b border-slate-100 text-xs font-black uppercase tracking-[0.18em] text-slate-400 dark:border-slate-800 dark:text-slate-500">
-                  <th className="pb-3 pr-4">Titulo</th>
-                  <th className="pb-3 pr-4">Materia</th>
-                  <th className="pb-3 pr-4">Origem</th>
-                  <th className="pb-3 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentQuestions.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
-                      Nenhuma questao encontrada para compor o painel.
-                    </td>
-                  </tr>
-                ) : recentQuestions.map((question: any) => {
-                  const status = getQuestionStatus(question);
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {platformOverviewItems.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-sm border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40"
+              >
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                  {item.label}
+                </p>
+                <p className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">
+                  {item.value}
+                </p>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {item.helper}
+                </p>
+              </div>
+            ))}
 
-                  return (
-                    <tr key={question?.id || getQuestionTitle(question)} className="border-b border-slate-100 last:border-b-0 dark:border-slate-800">
-                      <td className="py-4 pr-4 align-top">
-                        <p className="max-w-xl truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                          {getQuestionTitle(question)}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">ID #{question?.id || '-'}</p>
-                      </td>
-                      <td className="py-4 pr-4 text-sm text-slate-600 dark:text-slate-300">
-                        {getQuestionSubject(question)}
-                      </td>
-                      <td className="py-4 pr-4 text-sm text-slate-600 dark:text-slate-300">
-                        {question?.provas?.[0]?.nome || question?.bancas?.[0]?.nome || 'Base interna'}
-                      </td>
-                      <td className="py-4 text-right">
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusBadgeClassName(status.tone)}`}>
-                          {status.label}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="rounded-sm border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 sm:col-span-2 xl:col-span-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                Panorama do ecossistema
+              </p>
+              <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+                A plataforma hoje opera com {formatNumber(platformTotals.questions)} questoes, {formatNumber(platformTotals.laws)} leis comentadas, {formatNumber(platformTotals.exams)} provas cadastradas, {formatNumber(platformTotals.rankings)} rankings e {formatNumber(platformTotals.publishedMaterials)} materiais publicados no marketplace.
+              </p>
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                No relacionamento, ha {formatNumber(platformTotals.comments)} comentarios registrados, sendo {formatNumber(platformTotals.pendingComments)} pendentes, {formatNumber(platformTotals.approvedComments)} aprovados e {formatNumber(platformTotals.spamComments)} marcados como spam.
+              </p>
+            </div>
           </div>
         </DashboardCard>
 
@@ -509,6 +549,28 @@ const AdminDashboard = ({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
+        <DashboardCard title="Insights do periodo">
+          <div className="space-y-3">
+            {dashboardAnalytics.insights.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400">Sem alertas relevantes para este recorte.</p>
+            ) : dashboardAnalytics.insights.map((insight) => (
+              <div
+                key={`${insight.title}-${insight.body}`}
+                className={`rounded-lg border px-4 py-3 ${
+                  insight.tone === 'warning'
+                    ? 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10'
+                    : insight.tone === 'success'
+                      ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10'
+                      : 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/60'
+                }`}
+              >
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{insight.title}</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{insight.body}</p>
+              </div>
+            ))}
+          </div>
+        </DashboardCard>
+
         <DashboardCard title="Fluxos que pedem atencao">
           <div className="space-y-3">
             {quickAlerts.map((item) => (
@@ -556,6 +618,10 @@ const AdminDashboard = ({
                 <span className="text-slate-500 dark:text-slate-400">Reembolsos solicitados</span>
                 <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(stats.refund_requested_amount || 0)}</span>
               </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Falhas de pagamento</span>
+                <span className="font-semibold text-slate-900 dark:text-slate-100">{dashboardAnalytics.billingHealth.failedPayments}</span>
+              </div>
             </div>
 
             <button
@@ -590,7 +656,7 @@ const AdminDashboard = ({
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <section className={ADMIN_PAGE_PANEL_CLASS}>
           <div className="flex items-center gap-3">
             <AlertTriangle size={18} className="text-amber-500" />
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Moderacao</p>
@@ -599,7 +665,7 @@ const AdminDashboard = ({
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Denuncias ainda abertas no painel.</p>
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <section className={ADMIN_PAGE_PANEL_CLASS}>
           <div className="flex items-center gap-3">
             <RefreshCcw size={18} className="text-rose-500" />
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Reembolso</p>
@@ -608,16 +674,18 @@ const AdminDashboard = ({
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Pedidos financeiros aguardando decisao.</p>
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <section className={ADMIN_PAGE_PANEL_CLASS}>
           <div className="flex items-center gap-3">
             <FileQuestion size={18} className="text-blue-500" />
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Acervo</p>
           </div>
-          <p className="mt-4 text-2xl font-black text-slate-900 dark:text-slate-100">{formatNumber(stats.materials_count || allMaterials.length || 0)}</p>
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Materiais e ativos cadastrados na plataforma.</p>
+          <p className="mt-4 text-2xl font-black text-slate-900 dark:text-slate-100">{formatNumber(Number(dashboardAnalytics.counts.materials_count || stats.materials_count || allMaterials.length || 0))}</p>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            {formatNumber(Number(dashboardAnalytics.counts.published_marketplace_materials_count || 0))} materiais publicados e {formatNumber(Number(dashboardAnalytics.counts.laws_count || 0))} leis no acervo.
+          </p>
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <section className={ADMIN_PAGE_PANEL_CLASS}>
           <div className="flex items-center gap-3">
             <BookOpen size={18} className="text-emerald-500" />
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Simulados e rankings</p>
@@ -625,6 +693,17 @@ const AdminDashboard = ({
           <p className="mt-4 text-2xl font-black text-slate-900 dark:text-slate-100">{formatNumber(stats.rankings_count || allRankings.length || 0)}</p>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
             Estruturas ativas para provas, ranking e desafio. {activeCouponsCount > 0 ? `${activeCouponsCount} cupom(ns) ativo(s).` : ''}
+          </p>
+        </section>
+
+        <section className={ADMIN_PAGE_PANEL_CLASS}>
+          <div className="flex items-center gap-3">
+            <MessageSquare size={18} className="text-violet-500" />
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Comentários</p>
+          </div>
+          <p className="mt-4 text-2xl font-black text-slate-900 dark:text-slate-100">{formatNumber(Number(dashboardAnalytics.counts.comments_count || 0))}</p>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            {formatNumber(Number(dashboardAnalytics.counts.approved_comments_count || 0))} aprovados e {formatNumber(Number(dashboardAnalytics.counts.spam_comments_count || 0))} em spam.
           </p>
         </section>
       </div>

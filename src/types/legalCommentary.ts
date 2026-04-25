@@ -228,9 +228,18 @@ export interface LegalUserComment {
   userName: string;
   body: string;
   status: LegalUserCommentStatus;
+  moderationStatus?: 'pending' | 'approved' | 'spam';
   createdAt: string;
   updatedAt?: string;
   reportedCount?: number;
+}
+
+export interface LegalUserCommentSubmissionResult {
+  id: string;
+  moderationStatus: 'pending' | 'approved' | 'spam';
+  requiresModeration: boolean;
+  message?: string;
+  comment?: LegalUserComment;
 }
 
 export interface LegalUserProgress {

@@ -25,8 +25,11 @@ export interface FilterSavePayload {
   id?: number;
   type: string;
   name: string;
+  sigla?: string;
   slug?: string;
   parent_id?: number | null;
+  materia?: boolean;
+  taxonomy_level?: 'materia' | 'topico' | 'assunto' | string;
   description?: string;
   website?: string;
   metadata?: Record<string, any>;
@@ -205,10 +208,79 @@ export const getEnemSubjectAreasForQuestion = (question: Question) => {
   return Array.from(new Set(matchedAreas));
 };
 
+const getTaxonomyParentId = (item: any) => {
+  const parentId = item?.pai ?? item?.parent_id ?? item?.parentId ?? item?.assunto_raiz ?? null;
+  return parentId === null || parentId === undefined || parentId === '' ? undefined : String(parentId);
+};
+
+const getTaxonomyLevelFromPayload = (item: any) => {
+  const rawLevel = String(
+    item?.taxonomy_level
+    || item?.taxonomyLevel
+    || item?.nivel_taxonomia
+    || item?.metadata?.taxonomy_level
+    || '',
+  ).toLowerCase();
+
+  return rawLevel === 'materia' || rawLevel === 'topico' || rawLevel === 'assunto'
+    ? rawLevel
+    : '';
+};
+
 /**
  * Converte o payload bruto da API para o formato de taxonomias usado no app.
+ * A hierarquia de estudo passa a ser: Materia -> Topico -> Assunto.
  */
-export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => ({
+export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
+  const rawSubjects = data.assuntos || [];
+  const subjectIds = new Set(
+    rawSubjects
+      .filter((item: any) => Boolean(item.materia))
+      .map((item: any) => String(item.id)),
+  );
+  const nonSubjectIds = new Set(
+    rawSubjects
+      .filter((item: any) => !item.materia)
+      .map((item: any) => String(item.id)),
+  );
+
+  const subjects = rawSubjects.filter((a: any) => a.materia).map((a: any) => ({
+    id: String(a.id),
+    name: a.nome || a.name,
+    slug: a.slug,
+    description: a.description,
+    website: a.website,
+    materia: true,
+    taxonomyLevel: 'materia',
+    type: 'subject',
+  })) || [];
+
+  const nonSubjectTaxonomies = rawSubjects.filter((a: any) => !a.materia).map((a: any) => {
+    const parentId = getTaxonomyParentId(a);
+    const explicitLevel = getTaxonomyLevelFromPayload(a);
+    const taxonomyLevel = explicitLevel || (parentId && nonSubjectIds.has(parentId) ? 'assunto' : 'topico');
+    const parentTopic = taxonomyLevel === 'assunto'
+      ? rawSubjects.find((item: any) => String(item.id) === parentId)
+      : null;
+    const rootSubjectId = taxonomyLevel === 'topico'
+      ? parentId
+      : getTaxonomyParentId(parentTopic);
+
+    return {
+      id: String(a.id),
+      name: a.nome || a.name,
+      slug: a.slug,
+      description: a.description,
+      website: a.website,
+      parentId,
+      rootSubjectId: rootSubjectId && subjectIds.has(String(rootSubjectId)) ? String(rootSubjectId) : undefined,
+      materia: false,
+      taxonomyLevel,
+      type: 'topic',
+    };
+  });
+
+  return {
   agencies: data.bancas?.map((b: any) => ({
     id: b.id,
     name: b.nome || b.name,
@@ -227,25 +299,10 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => ({
     website: o.website,
     type: 'organization',
   })) || [],
-  subjects: data.assuntos?.filter((a: any) => a.materia).map((a: any) => ({
-    id: a.id,
-    name: a.nome || a.name,
-    slug: a.slug,
-    description: a.description,
-    website: a.website,
-    materia: true,
-    type: 'subject',
-  })) || [],
-  topics: data.assuntos?.filter((a: any) => !a.materia).map((a: any) => ({
-    id: a.id,
-    name: a.nome || a.name,
-    slug: a.slug,
-    description: a.description,
-    website: a.website,
-    parentId: a.pai || a.parent_id,
-    materia: false,
-    type: 'topic',
-  })) || [],
+  subjects,
+  topics: nonSubjectTaxonomies,
+  subjectTopics: nonSubjectTaxonomies.filter((item: any) => item.taxonomyLevel === 'topico'),
+  specificSubjects: nonSubjectTaxonomies.filter((item: any) => item.taxonomyLevel === 'assunto'),
   roles: data.cargos?.map((c: any) => ({
     id: c.id,
     name: c['descrição'] || c.descricao || c.name,
@@ -266,7 +323,8 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => ({
   })) || [],
   years: data.anos?.map(String) || [],
   modalities: ['Múltipla Escolha', 'Certo/Errado'],
-});
+  };
+};
 
 export const filtersService = {
   async list(): Promise<FiltersApiPayload> {

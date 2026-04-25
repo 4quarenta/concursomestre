@@ -12,6 +12,8 @@
 import React from 'react';
 import { AlertTriangle, CheckCircle2, Image as ImageIcon, Shield } from 'lucide-react';
 import type { ErrorReport } from '@types';
+import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
+import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 
 interface GroupedReport {
   id: string;
@@ -23,6 +25,8 @@ interface GroupedReport {
 
 interface AdminReportsSectionProps {
   reports: GroupedReport[];
+  filter: string;
+  onFilterChange: (value: string) => void;
   renderSortableHeader: (label: string, sortKey: string) => React.ReactNode;
   getReportTargetBadgeClass: (targetType: ErrorReport['targetType']) => string;
   getReportTargetLabel: (targetType: ErrorReport['targetType']) => string;
@@ -32,6 +36,8 @@ interface AdminReportsSectionProps {
 
 const AdminReportsSection = ({
   reports,
+  filter,
+  onFilterChange,
   renderSortableHeader,
   getReportTargetBadgeClass,
   getReportTargetLabel,
@@ -39,8 +45,23 @@ const AdminReportsSection = ({
   onResolve,
 }: AdminReportsSectionProps) => {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors duration-300">
-      <table className="w-full text-left text-xs">
+    <div className="space-y-4">
+      <AdminCollectionToolbar
+        title="Denuncias"
+        description="Fila de revisao e moderacao de conteudos sinalizados pelos usuarios."
+        itemCount={reports.length}
+        itemCountLabel="denuncias"
+        searchValue={filter}
+        onSearchChange={onFilterChange}
+        searchPlaceholder="Buscar denuncias..."
+      />
+
+      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden animate-slide-up transition-colors duration-300`}>
+        <div className={ADMIN_SURFACE_HEADER_CLASS}>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Fila de denuncias</p>
+        </div>
+        <div className="overflow-x-auto">
+      <table className="w-full min-w-[980px] text-left text-xs">
         <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
           <tr>
             {renderSortableHeader('Alvo', 'targetType')}
@@ -116,6 +137,8 @@ const AdminReportsSection = ({
           )}
         </tbody>
       </table>
+        </div>
+      </div>
     </div>
   );
 };

@@ -66,4 +66,44 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  .question-rich-html math,
+  .question-rich-html math *,
+  .question-rich-html msqrt,
+  .question-rich-html mroot,
+  .question-rich-html mrow,
+  .question-rich-html menclose,
+  .question-rich-html :not(.katex):not(.katex *)[style*="text-decoration"][style*="overline"],
+  .question-rich-html :not(.katex):not(.katex *)[style*="border-top"],
+  .question-rich-html :not(.katex):not(.katex *)[style*="border-bottom"] {
+    width: auto !important;
+    inline-size: auto !important;
+    min-width: 0 !important;
+    max-width: min(100%, max-content) !important;
+    max-inline-size: min(100%, max-content) !important;
+  }
+
+  .question-rich-html math,
+  .question-rich-html msqrt,
+  .question-rich-html mroot,
+  .question-rich-html menclose {
+    display: inline-block !important;
+    vertical-align: middle;
+  }
+
+  .question-rich-html :not(.katex):not(.katex *)[style*="text-decoration"][style*="overline"],
+  .question-rich-html :not(.katex):not(.katex *)[style*="border-top"],
+  .question-rich-html :not(.katex):not(.katex *)[style*="border-bottom"] {
+    display: inline !important;
+    box-decoration-break: clone;
+  }
+
+  .question-rich-html .katex {
+    max-width: 100%;
+  }
+
+  .question-rich-html .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
 }

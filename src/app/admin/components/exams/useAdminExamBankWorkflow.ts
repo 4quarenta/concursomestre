@@ -23,14 +23,19 @@ import {
 
 type ToastHandler = (message: string, type?: string) => void;
 
-interface ExamDraftState {
+export interface ExamDraftState {
   id: string;
   nome: string;
   ano: string;
   nivel: string;
   index: string;
+  publishStatus: 'published' | 'draft' | 'scheduled';
+  visibilityStatus: 'public' | 'elite' | 'internal';
+  scheduledAt: string;
+  bancaId: string;
   bancaSigla: string;
   bancaNome: string;
+  orgaoId: string;
   orgaoSigla: string;
   orgaoNome: string;
   cargoDescricao: string;
@@ -46,17 +51,40 @@ interface UseAdminExamBankWorkflowOptions {
   addToast: ToastHandler;
 }
 
-const createDraftFromProva = (prova: Prova): ExamDraftState => ({
+export const createDraftFromProva = (prova: Prova): ExamDraftState => ({
   id: String(prova.id),
   nome: prova.nome || '',
   ano: String(prova.ano || ''),
   nivel: prova.nivel || '',
   index: prova.index || '',
+  publishStatus: prova.publishStatus || 'published',
+  visibilityStatus: prova.visibilityStatus || 'public',
+  scheduledAt: prova.scheduledAt || '',
+  bancaId: String((prova.banca as any)?.id || ''),
   bancaSigla: prova.banca?.sigla || '',
   bancaNome: prova.banca?.nome || prova.banca?.name || '',
+  orgaoId: String((prova.orgao as any)?.id || ''),
   orgaoSigla: prova.orgao?.sigla || '',
   orgaoNome: prova.orgao?.nome || prova.orgao?.name || '',
   cargoDescricao: prova.cargo?.descricao || prova.cargo?.['descrição'] || '',
+});
+
+export const createEmptyExamDraft = (): ExamDraftState => ({
+  id: '',
+  nome: '',
+  ano: '',
+  nivel: '',
+  index: '',
+  publishStatus: 'published',
+  visibilityStatus: 'public',
+  scheduledAt: '',
+  bancaId: '',
+  bancaSigla: '',
+  bancaNome: '',
+  orgaoId: '',
+  orgaoSigla: '',
+  orgaoNome: '',
+  cargoDescricao: '',
 });
 
 /**
@@ -116,6 +144,11 @@ export const useAdminExamBankWorkflow = ({
     setExamDraft(createDraftFromProva(exam));
   };
 
+  const startCreatingExam = () => {
+    setEditingExamId('new');
+    setExamDraft(createEmptyExamDraft());
+  };
+
   const cancelEditingExam = () => {
     setEditingExamId(null);
     setExamDraft(null);
@@ -141,10 +174,12 @@ export const useAdminExamBankWorkflow = ({
       nivel: examDraft.nivel,
       index: examDraft.index,
       banca: {
+        id: examDraft.bancaId || undefined,
         sigla: examDraft.bancaSigla || examDraft.bancaNome,
         nome: examDraft.bancaNome || examDraft.bancaSigla,
       },
       orgao: {
+        id: examDraft.orgaoId || undefined,
         sigla: examDraft.orgaoSigla || examDraft.orgaoNome,
         nome: examDraft.orgaoNome || examDraft.orgaoSigla,
       },
@@ -152,6 +187,9 @@ export const useAdminExamBankWorkflow = ({
         descricao: examDraft.cargoDescricao,
         ['descrição']: examDraft.cargoDescricao,
       },
+      publishStatus: examDraft.publishStatus,
+      visibilityStatus: examDraft.visibilityStatus,
+      scheduledAt: examDraft.scheduledAt,
     });
 
     if (!nextExam) {
@@ -161,9 +199,10 @@ export const useAdminExamBankWorkflow = ({
 
     setActionLoading('save');
     try {
-      const nextExamBank = examBank.map((exam) => (
-        String(exam.id) === String(nextExam.id) ? nextExam : exam
-      ));
+      const hasExistingExam = examBank.some((exam) => String(exam.id) === String(nextExam.id));
+      const nextExamBank = hasExistingExam
+        ? examBank.map((exam) => (String(exam.id) === String(nextExam.id) ? nextExam : exam))
+        : [nextExam, ...examBank];
 
       const failedQuestions = await syncLinkedQuestions(nextExam, String(nextExam.id), 'save');
 
@@ -178,7 +217,12 @@ export const useAdminExamBankWorkflow = ({
       if (failedQuestions.length > 0) {
         addToast(`Banco de provas salvo, mas ${failedQuestions.length} questoes nao sincronizaram.`, 'error');
       } else {
-        addToast(`Prova "${formatProvaLabel(nextExam)}" atualizada com sucesso.`, 'success');
+        addToast(
+          hasExistingExam
+            ? `Prova "${formatProvaLabel(nextExam)}" atualizada com sucesso.`
+            : `Prova "${formatProvaLabel(nextExam)}" criada com sucesso.`,
+          'success',
+        );
       }
 
       cancelEditingExam();
@@ -245,6 +289,7 @@ export const useAdminExamBankWorkflow = ({
     examDraft,
     setExamDraft,
     startEditingExam,
+    startCreatingExam,
     cancelEditingExam,
     handleSaveExam,
     deletingExam,

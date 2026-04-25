@@ -11,21 +11,43 @@
 
 import React from 'react';
 import { Edit3 } from 'lucide-react';
+import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
+import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
+import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 
 interface AdminRankingsSectionProps {
   rankings: any[];
+  filter: string;
+  onFilterChange: (value: string) => void;
   renderSortableHeader: (label: string, sortKey: string) => React.ReactNode;
   onEdit: (ranking: any) => void;
 }
 
 const AdminRankingsSection = ({
   rankings,
+  filter,
+  onFilterChange,
   renderSortableHeader,
   onEdit,
 }: AdminRankingsSectionProps) => {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors duration-300">
-      <table className="w-full text-left text-xs">
+    <div className="space-y-4">
+      <AdminCollectionToolbar
+        title="Rankings"
+        description="Editais publicados, gabaritos e configuracoes operacionais de ranking."
+        itemCount={rankings.length}
+        itemCountLabel="rankings"
+        searchValue={filter}
+        onSearchChange={onFilterChange}
+        searchPlaceholder="Buscar rankings..."
+      />
+
+      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden animate-slide-up transition-colors duration-300`}>
+        <div className={ADMIN_SURFACE_HEADER_CLASS}>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Rankings publicados</p>
+        </div>
+        <div className="overflow-x-auto">
+      <table className="w-full min-w-[900px] text-left text-xs">
         <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
           <tr>
             {renderSortableHeader('Ranking', 'name')}
@@ -49,9 +71,12 @@ const AdminRankingsSection = ({
               <td className="p-4 text-slate-600 dark:text-slate-400">{ranking.vacancies} + {ranking.reserveLimit}</td>
               <td className="p-4 font-bold text-indigo-600 dark:text-indigo-400">{ranking.entries?.length || 0}</td>
               <td className="p-4">
-                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${ranking.keyStatus === 'official' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'}`}>
-                  {ranking.keyStatus === 'official' ? 'Gabarito Oficial' : 'Preliminar'}
-                </span>
+                <div className="flex flex-col gap-1">
+                  <AdminPublishStateBadge state={resolveAdminPublishState(ranking as Record<string, any>)} />
+                  <span className={`w-fit rounded-sm border px-2 py-0.5 text-[10px] font-semibold ${ranking.keyStatus === 'official' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300'}`}>
+                    {ranking.keyStatus === 'official' ? 'Gabarito oficial' : 'Preliminar'}
+                  </span>
+                </div>
               </td>
               <td className="p-4 text-center">
                 <button
@@ -71,6 +96,8 @@ const AdminRankingsSection = ({
           )}
         </tbody>
       </table>
+        </div>
+      </div>
     </div>
   );
 };

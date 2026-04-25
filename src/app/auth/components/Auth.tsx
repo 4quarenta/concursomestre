@@ -19,6 +19,7 @@ import ReCAPTCHA from 'react-google-recaptcha';
 import type { UserProfile } from '@types';
 import { useData } from '@providers/DataProvider';
 import { apiClient, ENDPOINTS } from '@services/api';
+import analyticsTrackingService from '@services/analytics/analyticsTrackingService';
 import { canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from '@services/auth';
 import { useToast } from '@providers/ToastProvider';
 import { useTheme } from '@providers/ThemeProvider';
@@ -30,6 +31,8 @@ type AuthMode = 'login' | 'signup' | 'forgot' | 'forgot-success' | 'two-factor';
 interface AuthProps {
   onLogin: (user: UserProfile | null, token?: string | null) => Promise<void>;
 }
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Monta UserProfile com valores padrão a partir do objeto retornado pela API */
 const buildUserProfile = (user: any): UserProfile => {
@@ -97,6 +100,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const recaptchaRef = useRef<ReCAPTCHA>(null);
+  const analyticsSessionKeyRef = useRef('');
+  const trackedAuthVisitRef = useRef(false);
+  const trackedSignupStartRef = useRef(false);
+  const trackedSignupEmailsRef = useRef<Set<string>>(new Set());
 
   const [twoFactorEmail, setTwoFactorEmail] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
@@ -114,6 +121,63 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setError('');
   };
+
+  const getAnalyticsSessionKey = () => {
+    if (!analyticsSessionKeyRef.current) {
+      analyticsSessionKeyRef.current = analyticsTrackingService.getSessionKey();
+    }
+
+    return analyticsSessionKeyRef.current;
+  };
+
+  useEffect(() => {
+    if (trackedAuthVisitRef.current) {
+      return;
+    }
+
+    trackedAuthVisitRef.current = true;
+    void analyticsTrackingService.trackLifecycleEvent({
+      eventName: 'identifiable_visit',
+      source: 'auth',
+      sessionKey: getAnalyticsSessionKey(),
+      email: formData.email.trim() || null,
+      metadata: { mode },
+    });
+  }, [formData.email, mode]);
+
+  useEffect(() => {
+    if (mode !== 'signup' || trackedSignupStartRef.current) {
+      return;
+    }
+
+    trackedSignupStartRef.current = true;
+    void analyticsTrackingService.trackLifecycleEvent({
+      eventName: 'signup_started',
+      source: 'auth',
+      sessionKey: getAnalyticsSessionKey(),
+      email: formData.email.trim() || null,
+    });
+  }, [formData.email, mode]);
+
+  useEffect(() => {
+    if (mode !== 'signup') {
+      return;
+    }
+
+    const normalizedEmail = formData.email.trim().toLowerCase();
+    if (!EMAIL_REGEX.test(normalizedEmail) || trackedSignupEmailsRef.current.has(normalizedEmail)) {
+      return;
+    }
+
+    trackedSignupEmailsRef.current.add(normalizedEmail);
+    void analyticsTrackingService.trackLifecycleEvent({
+      eventName: 'email_captured',
+      source: 'auth',
+      sessionKey: getAnalyticsSessionKey(),
+      email: normalizedEmail,
+      metadata: { mode },
+    });
+  }, [formData.email, mode]);
 
   // ----- LOGIN -----
   const handleLogin = async () => {
@@ -177,6 +241,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       });
       if (result.success && result.data) {
         const { user, token } = result.data;
+        void analyticsTrackingService.trackLifecycleEvent({
+          eventName: 'signup_completed',
+          source: 'auth',
+          sessionKey: getAnalyticsSessionKey(),
+          userId: user?.id ? String(user.id) : null,
+          email: user?.email || formData.email.trim(),
+          metadata: { mode: 'signup' },
+        });
         // Auto-login imediato após o cadastro
         await onLogin(buildUserProfile(user), token);
       } else {

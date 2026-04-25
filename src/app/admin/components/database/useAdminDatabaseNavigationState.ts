@@ -24,7 +24,7 @@ type AdminDatabaseSubTab =
   | 'filters'
   | 'lei-comentada';
 
-type AdminDatabaseCategory = 'content' | 'people' | 'moderation';
+type AdminDatabaseCategory = 'content' | 'people';
 
 interface UseAdminDatabaseNavigationStateOptions {
   initialTab?: AdminDatabaseSubTab;

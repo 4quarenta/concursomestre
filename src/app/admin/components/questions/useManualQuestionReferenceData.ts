@@ -30,6 +30,20 @@ export const useManualQuestionReferenceData = (systemSettings: SystemSettings, q
     return (systemSettings.taxonomies?.topics || []).map((taxonomy: any) => taxonomy.name);
   }, [systemSettings.taxonomies?.topics]);
 
+  const existingSubjectTopics = useMemo(() => {
+    const source = systemSettings.taxonomies?.subjectTopics?.length
+      ? systemSettings.taxonomies.subjectTopics
+      : (systemSettings.taxonomies?.topics || []).filter((taxonomy: any) => taxonomy.taxonomyLevel === 'topico');
+    return source.map((taxonomy: any) => taxonomy.name);
+  }, [systemSettings.taxonomies?.subjectTopics, systemSettings.taxonomies?.topics]);
+
+  const existingSpecificSubjects = useMemo(() => {
+    const source = systemSettings.taxonomies?.specificSubjects?.length
+      ? systemSettings.taxonomies.specificSubjects
+      : (systemSettings.taxonomies?.topics || []).filter((taxonomy: any) => taxonomy.taxonomyLevel === 'assunto');
+    return source.map((taxonomy: any) => taxonomy.name);
+  }, [systemSettings.taxonomies?.specificSubjects, systemSettings.taxonomies?.topics]);
+
   const existingYears = useMemo(() => {
     return systemSettings.taxonomies?.years || [];
   }, [systemSettings.taxonomies?.years]);
@@ -47,6 +61,8 @@ export const useManualQuestionReferenceData = (systemSettings: SystemSettings, q
     existingOrgaos,
     existingSubjects,
     existingTopics,
+    existingSubjectTopics,
+    existingSpecificSubjects,
     existingYears,
     existingRoles,
     existingProvas,

@@ -10,6 +10,7 @@
 */
 
 import React from 'react';
+import Link from 'next/link';
 import { ChevronRight, Edit3, Eye } from 'lucide-react';
 import {
   getAdminUserRoleBadgeClass,
@@ -17,6 +18,9 @@ import {
   getAdminUserStatusBadgeClass,
   getAdminUserStatusLabel,
 } from './userAdminOptions';
+import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
+import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
+import { buildAdminUserEditPath } from '../../config/adminPageNavigationConfig';
 
 const getInitials = (name: string) => (
   String(name || '')
@@ -29,6 +33,8 @@ const getInitials = (name: string) => (
 
 interface AdminUsersSectionProps {
   users: any[];
+  filter: string;
+  onFilterChange: (value: string) => void;
   renderSortableHeader: (label: string, sortKey: string) => React.ReactNode;
   onOpenProfile: (userId: string) => void;
 }
@@ -41,12 +47,30 @@ interface AdminUsersSectionProps {
  */
 const AdminUsersSection = ({
   users,
+  filter,
+  onFilterChange,
   renderSortableHeader,
-  onOpenProfile,
 }: AdminUsersSectionProps) => {
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
-      <table className="w-full text-left text-xs">
+    <div className="space-y-4">
+      <AdminCollectionToolbar
+        title="Usuarios"
+        description="Base de contas, papeis, planos e engajamento da plataforma."
+        itemCount={users.length}
+        itemCountLabel="usuarios"
+        searchValue={filter}
+        onSearchChange={onFilterChange}
+        searchPlaceholder="Buscar usuarios..."
+        primaryActionLabel="Adicionar usuario"
+        primaryActionHref={buildAdminUserEditPath('new')}
+      />
+
+      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden transition-colors duration-300`}>
+        <div className={ADMIN_SURFACE_HEADER_CLASS}>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Usuarios da plataforma</p>
+        </div>
+        <div className="overflow-x-auto">
+      <table className="w-full min-w-[960px] text-left text-xs">
         <thead className="border-b border-slate-100 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
           <tr>
             {renderSortableHeader('Usuario', 'name')}
@@ -110,30 +134,27 @@ const AdminUsersSection = ({
                 </td>
                 <td className="p-4 text-center">
                   <div className="flex items-center justify-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onOpenProfile(user.id)}
+                    <Link
+                      href={buildAdminUserEditPath(user.id)}
                       className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                      title="Abrir perfil detalhado"
+                      title="Abrir perfil completo"
                     >
                       <Eye size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenProfile(user.id)}
+                    </Link>
+                    <Link
+                      href={buildAdminUserEditPath(user.id)}
                       className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                       title="Editar usuario"
                     >
                       <Edit3 size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenProfile(user.id)}
+                    </Link>
+                    <Link
+                      href={buildAdminUserEditPath(user.id)}
                       className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                       title="Abrir operacao completa"
                     >
                       <ChevronRight size={16} />
-                    </button>
+                    </Link>
                   </div>
                 </td>
               </tr>
@@ -148,6 +169,8 @@ const AdminUsersSection = ({
           )}
         </tbody>
       </table>
+        </div>
+      </div>
     </div>
   );
 };

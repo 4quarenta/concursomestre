@@ -40,7 +40,7 @@ interface AdminTopBarProps {
   showSidebarToggle?: boolean;
   onToggleSidebar?: () => void;
   searchTargets?: AdminTopBarSearchTarget[];
-  primaryActionLabel?: string;
+  primaryActionLabel?: string | null;
   primaryActionPath?: string;
 }
 
@@ -170,14 +170,16 @@ const AdminTopBar = ({
         </div>
 
         <div className="flex items-center gap-2 md:gap-3">
-          <button
-            type="button"
-            onClick={() => navigate(primaryActionPath)}
-            className="hidden h-9 items-center gap-2 rounded-md bg-blue-600 px-3.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 sm:inline-flex"
-          >
-            <Plus size={16} />
-            {primaryActionLabel}
-          </button>
+          {primaryActionLabel ? (
+            <button
+              type="button"
+              onClick={() => navigate(primaryActionPath)}
+              className="hidden h-9 items-center gap-2 rounded-md bg-blue-600 px-3.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 sm:inline-flex"
+            >
+              <Plus size={16} />
+              {primaryActionLabel}
+            </button>
+          ) : null}
 
           <button
             onClick={onToggleTheme}

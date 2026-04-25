@@ -64,12 +64,20 @@ describe('filtersService', () => {
   it('normalizes taxonomy payload into app structure', () => {
     const taxonomies = normalizeFiltersToTaxonomies({
       bancas: [{ id: 1, nome: 'FGV', sigla: 'FGV', slug: 'fgv' }],
-      assuntos: [{ id: 2, nome: 'Direito', slug: 'direito', materia: true }],
+      assuntos: [
+        { id: 2, nome: 'Direito', slug: 'direito', materia: true },
+        { id: 3, nome: 'Direito Constitucional', slug: 'direito-constitucional', materia: false, parent_id: 2 },
+        { id: 4, nome: 'Controle de constitucionalidade', slug: 'controle-de-constitucionalidade', materia: false, parent_id: 3 },
+      ],
       anos: [2024],
     });
 
     expect(taxonomies.agencies[0].name).toBe('FGV');
     expect(taxonomies.subjects[0].name).toBe('Direito');
+    expect(taxonomies.subjectTopics?.[0].name).toBe('Direito Constitucional');
+    expect(taxonomies.subjectTopics?.[0].taxonomyLevel).toBe('topico');
+    expect(taxonomies.specificSubjects?.[0].name).toBe('Controle de constitucionalidade');
+    expect(taxonomies.specificSubjects?.[0].rootSubjectId).toBe('2');
     expect(taxonomies.years).toEqual(['2024']);
   });
 

@@ -23,14 +23,22 @@ type AddCommentInput = {
   targetType?: 'question' | 'material';
 };
 
+export interface CommentSubmissionResult {
+  id: string;
+  moderationStatus: 'pending' | 'approved' | 'spam';
+  requiresModeration: boolean;
+  message?: string;
+  comment?: QuestaoComentario;
+}
+
 /**
- * Fachada oficial do dominio de comentários.
- * Conecta questões, materiais e fluxo de denúncias ao backend consolidado.
+ * Fachada oficial do dominio de comentarios.
+ * Conecta questoes, materiais e fluxo de denuncias ao backend consolidado.
  * @since 1.0.0
  */
 export const commentService = {
   /**
-   * Carrega comentários de um alvo especifico no formato aninhado esperado
+   * Carrega comentarios de um alvo especifico no formato aninhado esperado
    * pelo frontend.
    * @since 1.0.0
    */
@@ -50,7 +58,7 @@ export const commentService = {
   },
 
   /**
-   * Lista os comentários publicados por um usuário para alimentar dashboard e
+   * Lista os comentarios publicados por um usuario para alimentar dashboard e
    * sessoes de atividade.
    * @since 1.0.0
    */
@@ -65,11 +73,10 @@ export const commentService = {
   },
 
   /**
-   * Persiste um novo comentário e devolve um contrato pronto para o estado
-   * local do app.
+   * Persiste um novo comentario e devolve o contrato de moderacao.
    * @since 1.0.0
    */
-  async addComment(commentData: AddCommentInput): Promise<QuestaoComentario> {
+  async addComment(commentData: AddCommentInput): Promise<CommentSubmissionResult> {
     const response = await apiClient.post<any>(
       ENDPOINTS.comments.create,
       {
@@ -83,21 +90,39 @@ export const commentService = {
       },
     ) as any;
 
-    const envelope = assertApiSuccess<{ id?: string | number }>(response, 'Falha ao criar comentário.');
-    const payload = readApiData<{ id?: string | number }>(response, {});
-    const commentId = payload?.id ?? envelope.raw?.id;
+    const envelope = assertApiSuccess<Record<string, any>>(response, 'Falha ao criar comentario.');
+    const payload = readApiData<Record<string, any>>(response, {});
+    const commentId = String(payload?.id ?? envelope.raw?.id ?? '');
+    const moderationStatus = String(payload?.moderationStatus || envelope.raw?.moderationStatus || 'approved') as 'pending' | 'approved' | 'spam';
+    const requiresModeration = Boolean(payload?.requiresModeration ?? envelope.raw?.requiresModeration ?? moderationStatus === 'pending');
+
+    if (!requiresModeration && moderationStatus === 'approved') {
+      return {
+        id: commentId,
+        moderationStatus,
+        requiresModeration,
+        message: String(payload?.message || envelope.message || ''),
+        comment: {
+          id: commentId,
+          userId: commentData.userId,
+          userName: commentData.userName,
+          userPlan: 'Gratuito',
+          text: commentData.content,
+          date: 'Agora',
+          likes: 0,
+          replies: [],
+          isLiked: false,
+          parentId: commentData.parentId,
+          moderationStatus,
+        },
+      };
+    }
 
     return {
       id: commentId,
-      userId: commentData.userId,
-      userName: commentData.userName,
-      userPlan: 'Gratuito',
-      text: commentData.content,
-      date: 'Agora',
-      likes: 0,
-      replies: [],
-      isLiked: false,
-      parentId: commentData.parentId,
+      moderationStatus,
+      requiresModeration,
+      message: String(payload?.message || envelope.message || ''),
     };
   },
 
@@ -111,12 +136,12 @@ export const commentService = {
       { action: 'like', commentId, userId },
     );
 
-    assertApiSuccess(response, 'Falha ao curtir comentário.');
+    assertApiSuccess(response, 'Falha ao curtir comentario.');
     return { success: true };
   },
 
   /**
-   * Registra a denúncia de um comentário na camada oficial do dominio.
+   * Registra a denuncia de um comentario na camada oficial do dominio.
    * @since 1.0.0
    */
   async reportComment(
@@ -140,7 +165,7 @@ export const commentService = {
   },
 
   /**
-   * Deleta um comentário respeitando a validação de ownership do backend.
+   * Deleta um comentario respeitando a validacao de ownership do backend.
    * @since 1.0.0
    */
   async deleteComment(commentId: string, userId?: string): Promise<{ success: boolean }> {
@@ -149,13 +174,12 @@ export const commentService = {
       { action: 'delete', commentId, userId },
     );
 
-    assertApiSuccess(response, 'Falha ao deletar comentário.');
+    assertApiSuccess(response, 'Falha ao deletar comentario.');
     return { success: true };
   },
 
   /**
    * Adiciona resposta em arvore no estado local.
-   * Esse helper evita remontar a arvore inteira de comentários em cada reply.
    * @since 1.0.0
    */
   addReplyToComments(
@@ -183,7 +207,7 @@ export const commentService = {
   },
 
   /**
-   * Atualiza a curtida localmente na arvore de comentários.
+   * Atualiza a curtida localmente na arvore de comentarios.
    * @since 1.0.0
    */
   likeCommentInTree(comments: QuestaoComentario[], commentId: string): QuestaoComentario[] {
@@ -204,7 +228,7 @@ export const commentService = {
   },
 
   /**
-   * Localiza o dono de um comentário na arvore para disparo de notificação.
+   * Localiza o dono de um comentario na arvore para disparo de notificacao.
    * @since 1.0.0
    */
   findCommentOwner(comments: QuestaoComentario[], commentId: string): string | null {
@@ -225,7 +249,7 @@ export const commentService = {
   },
 
   /**
-   * Remove um comentário da arvore local.
+   * Remove um comentario da arvore local.
    * @since 1.0.0
    */
   deleteCommentFromTree(comments: QuestaoComentario[], commentId: string): QuestaoComentario[] {

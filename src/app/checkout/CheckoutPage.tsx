@@ -17,6 +17,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
+import analyticsTrackingService from '@services/analytics/analyticsTrackingService';
 import { calculateSubscriptionProRatedCredit, getCanonicalPlanName, getConfiguredPlanDisplayName, planService, resolvePlanCycleKey, resolvePlanOffer } from '@services/plans';
 import { hasActivePlanAccess } from '@services/plans/planAccess';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
@@ -45,6 +46,8 @@ const getPlanTierScore = (name: string) => {
     if (normalized.includes('essencial')) return 1;
     return 0;
 };
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const getPlanTimeScore = (currentPlan: Pick<Plan, 'interval_unit' | 'interval_count'>) => {
     if (currentPlan.interval_unit === 'year') return 12;
@@ -151,6 +154,17 @@ const CheckoutPage: React.FC = () => {
     });
 
     const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+    const analyticsSessionKeyRef = useRef('');
+    const checkoutAnalyticsRef = useRef({
+        planViewed: false,
+        checkoutStarted: false,
+        paymentStarted: false,
+        purchaseCompleted: false,
+        signupStarted: false,
+        checkoutAbandoned: false,
+    });
+    const trackedCheckoutEmailsRef = useRef<Set<string>>(new Set());
+    const trackedPaymentFailuresRef = useRef<Set<string>>(new Set());
     
     // Coupon & Review State
     const [couponCode, setCouponCode] = useState('');
@@ -336,6 +350,47 @@ const CheckoutPage: React.FC = () => {
 
     const isUsingStripeSavedCard = Boolean(selectedStripeCard);
     const stripeRequiresSavedCard = autoRenew && !isUsingStripeSavedCard;
+    const analyticsEmail = (currentUser?.email || formData.email || '').trim() || null;
+    const analyticsCycleLabel = useMemo(() => (plan ? resolvePlanCycleKey(plan) : null), [plan]);
+
+    const getAnalyticsSessionKey = React.useCallback(() => {
+        if (!analyticsSessionKeyRef.current) {
+            analyticsSessionKeyRef.current = analyticsTrackingService.getSessionKey();
+        }
+
+        return analyticsSessionKeyRef.current;
+    }, []);
+
+    const trackCheckoutLifecycleEvent = React.useCallback((
+        eventName: Parameters<typeof analyticsTrackingService.trackLifecycleEvent>[0]['eventName'],
+        metadata?: Record<string, unknown>,
+    ) => {
+        void analyticsTrackingService.trackLifecycleEvent({
+            eventName,
+            source: 'checkout',
+            sessionKey: getAnalyticsSessionKey(),
+            userId: currentUser?.id || null,
+            email: analyticsEmail,
+            planId: plan?.id || null,
+            cycleLabel: analyticsCycleLabel,
+            metadata,
+        });
+    }, [analyticsCycleLabel, analyticsEmail, currentUser?.id, getAnalyticsSessionKey, plan?.id]);
+
+    const trackPaymentFailure = React.useCallback((stage: string, reason?: string | null) => {
+        const normalizedReason = String(reason || 'unknown').trim();
+        const failureKey = `${stage}:${normalizedReason}`;
+
+        if (trackedPaymentFailuresRef.current.has(failureKey)) {
+            return;
+        }
+
+        trackedPaymentFailuresRef.current.add(failureKey);
+        trackCheckoutLifecycleEvent('payment_failed', {
+            stage,
+            reason: normalizedReason,
+        });
+    }, [trackCheckoutLifecycleEvent]);
 
     useEffect(() => {
         if (isAuthLoading) {
@@ -349,6 +404,95 @@ const CheckoutPage: React.FC = () => {
 
         loadPlan();
     }, [isAuthLoading, planId]);
+
+    useEffect(() => {
+        if (!plan) {
+            return;
+        }
+
+        if (!checkoutAnalyticsRef.current.planViewed) {
+            checkoutAnalyticsRef.current.planViewed = true;
+            trackCheckoutLifecycleEvent('plan_viewed', {
+                step,
+                authMode,
+            });
+        }
+
+        if (!checkoutAnalyticsRef.current.checkoutStarted) {
+            checkoutAnalyticsRef.current.checkoutStarted = true;
+            trackCheckoutLifecycleEvent('checkout_started', {
+                step,
+                authMode,
+            });
+        }
+    }, [authMode, plan, step, trackCheckoutLifecycleEvent]);
+
+    useEffect(() => {
+        if (authMode !== 'register' || checkoutAnalyticsRef.current.signupStarted) {
+            return;
+        }
+
+        checkoutAnalyticsRef.current.signupStarted = true;
+        trackCheckoutLifecycleEvent('signup_started', {
+            step,
+        });
+    }, [authMode, step, trackCheckoutLifecycleEvent]);
+
+    useEffect(() => {
+        const normalizedEmail = (formData.email || '').trim().toLowerCase();
+        if (!EMAIL_REGEX.test(normalizedEmail) || trackedCheckoutEmailsRef.current.has(normalizedEmail)) {
+            return;
+        }
+
+        trackedCheckoutEmailsRef.current.add(normalizedEmail);
+        void analyticsTrackingService.trackLifecycleEvent({
+            eventName: 'email_captured',
+            source: 'checkout',
+            sessionKey: getAnalyticsSessionKey(),
+            userId: currentUser?.id || null,
+            email: normalizedEmail,
+            planId: plan?.id || null,
+            cycleLabel: analyticsCycleLabel,
+            metadata: {
+                authMode,
+                step,
+            },
+        });
+    }, [analyticsCycleLabel, authMode, currentUser?.id, formData.email, getAnalyticsSessionKey, plan?.id, step]);
+
+    useEffect(() => {
+        if (step !== 'payment' || checkoutAnalyticsRef.current.paymentStarted) {
+            return;
+        }
+
+        checkoutAnalyticsRef.current.paymentStarted = true;
+        trackCheckoutLifecycleEvent('payment_method_started', {
+            authMode,
+        });
+    }, [authMode, step, trackCheckoutLifecycleEvent]);
+
+    useEffect(() => {
+        const handlePageHide = () => {
+            if (
+                !checkoutAnalyticsRef.current.checkoutStarted
+                || checkoutAnalyticsRef.current.purchaseCompleted
+                || checkoutAnalyticsRef.current.checkoutAbandoned
+            ) {
+                return;
+            }
+
+            checkoutAnalyticsRef.current.checkoutAbandoned = true;
+            trackCheckoutLifecycleEvent('checkout_abandoned', {
+                step,
+                authMode,
+            });
+        };
+
+        window.addEventListener('pagehide', handlePageHide);
+        return () => {
+            window.removeEventListener('pagehide', handlePageHide);
+        };
+    }, [authMode, step, trackCheckoutLifecycleEvent]);
 
     useEffect(() => {
         setSelectedStripeCardId(null);
@@ -769,6 +913,18 @@ const CheckoutPage: React.FC = () => {
 
                 if (result.user) {
                     const { user, token } = result;
+                    void analyticsTrackingService.trackLifecycleEvent({
+                        eventName: 'signup_completed',
+                        source: 'checkout',
+                        sessionKey: getAnalyticsSessionKey(),
+                        userId: user?.id || null,
+                        email: user?.email || formData.email.trim(),
+                        planId: plan?.id || null,
+                        cycleLabel: analyticsCycleLabel,
+                        metadata: {
+                            authMode: 'register',
+                        },
+                    });
                     await login(user, token);
                     addToast('Conta criada com sucesso e login realizado!', 'success');
                     setStep('payment');
@@ -807,6 +963,7 @@ const CheckoutPage: React.FC = () => {
             }
         } catch (error) {
             console.error(error);
+            trackPaymentFailure('authentication', error instanceof Error ? error.message : 'Erro ao realizar autenticação.');
             addToast('Erro ao realizar autenticação.', 'error');
             if (recaptchaRef.current) recaptchaRef.current.reset();
             setCaptchaToken(null);
@@ -1000,6 +1157,7 @@ const CheckoutPage: React.FC = () => {
         } catch (error: any) {
             console.error('Stripe checkout error:', error);
             const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao iniciar o checkout Stripe.';
+            trackPaymentFailure('stripe_checkout_redirect', errorMsg);
             addToast(errorMsg, 'error');
         } finally {
             setProcessing(false);
@@ -1043,6 +1201,7 @@ const CheckoutPage: React.FC = () => {
         } catch (error: any) {
             console.error('Stripe internal checkout error:', error);
             const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar assinatura Stripe.';
+            trackPaymentFailure('stripe_internal', errorMsg);
             addToast(errorMsg, 'error');
             return undefined;
         } finally {
@@ -1103,6 +1262,16 @@ const CheckoutPage: React.FC = () => {
         if (payload?.access_granted === false) {
             addToast('Pagamento confirmado. Estamos concluindo a sincronizacao final da assinatura com a Stripe.', 'info');
             return;
+        }
+
+        if (!checkoutAnalyticsRef.current.purchaseCompleted) {
+            checkoutAnalyticsRef.current.purchaseCompleted = true;
+            checkoutAnalyticsRef.current.checkoutAbandoned = false;
+            trackCheckoutLifecycleEvent('purchase_completed', {
+                subscriptionId,
+                paymentMethodId: options?.paymentMethodId || pendingStripePaymentMethodId || null,
+                paymentIntentId: options?.paymentIntentId || null,
+            });
         }
 
         setStep('success');
@@ -1179,6 +1348,7 @@ const CheckoutPage: React.FC = () => {
         } catch (error: any) {
             console.error('Stripe saved card checkout error:', error);
     const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar o cartão salvo.';
+            trackPaymentFailure('stripe_saved_card', errorMsg);
             addToast(errorMsg, 'error');
             throw error;
         } finally {

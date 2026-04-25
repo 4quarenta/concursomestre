@@ -38,11 +38,25 @@ export const FILTER_TYPES = [
   { key: 'banca', label: 'Bancas' },
   { key: 'orgao', label: 'Orgaos' },
   { key: 'cargo', label: 'Cargos' },
-  { key: 'assunto', label: 'Assuntos (Materias/Topicos)', hierarchical: true },
+  { key: 'materia', label: 'Materias', hierarchical: true },
+  { key: 'topico', label: 'Topicos', hierarchical: true },
+  { key: 'assunto', label: 'Assuntos', hierarchical: false },
   { key: 'ano', label: 'Anos' },
   { key: 'carreira', label: 'Carreiras' },
   { key: 'area', label: 'Areas' },
 ];
+
+const KNOWLEDGE_TAXONOMY_TYPES = ['materia', 'topico', 'assunto'];
+
+const getSaveTypeForFilterType = (type: string) => (
+  KNOWLEDGE_TAXONOMY_TYPES.includes(type) ? 'assunto' : type
+);
+
+const getChildFilterType = (type: string) => {
+  if (type === 'materia') return 'topico';
+  if (type === 'topico') return 'assunto';
+  return type;
+};
 
 export const useAdminTaxonomyWorkflow = ({
   addToast,
@@ -57,7 +71,7 @@ export const useAdminTaxonomyWorkflow = ({
   const [editingFilterItem, setEditingFilterItem] = useState<EditingFilterItem | null>(null);
   const [pendingDeleteFilter, setPendingDeleteFilter] = useState<PendingDeleteFilterItem | null>(null);
   const [isDeletingFilter, setIsDeletingFilter] = useState(false);
-  const [selectedParentId, setSelectedParentId] = useState<number | null>(null);
+  const [selectedParentId, setSelectedParentId] = useState<number | string | null>(null);
   const [showTaxonomyModal, setShowTaxonomyModal] = useState(false);
 
   const fetchFilters = async () => {
@@ -82,21 +96,39 @@ export const useAdminTaxonomyWorkflow = ({
     if (!filterInput.trim()) return;
 
     try {
-      const typeToSave = editingFilterItem?.type || activeFilterType;
+      const uiTypeToSave = editingFilterItem?.type || activeFilterType;
+      const typeToSave = getSaveTypeForFilterType(uiTypeToSave);
       if (typeToSave === 'all') {
         addToast('Selecione um tipo de filtro especifico no modal.', 'error');
         return;
       }
+
+      if (uiTypeToSave === 'topico' && !selectedParentId) {
+        addToast('Todo topico precisa estar vinculado a uma materia.', 'error');
+        return;
+      }
+
+      if (uiTypeToSave === 'assunto' && !selectedParentId) {
+        addToast('Todo assunto precisa estar vinculado a um topico.', 'error');
+        return;
+      }
+
+      const parentIdToSave = uiTypeToSave === 'materia' || !selectedParentId ? null : Number(selectedParentId);
 
       await filtersService.save({
         id: editingFilterItem?.id,
         type: typeToSave,
         name: filterInput.trim(),
         slug: filterSlug,
+        materia: uiTypeToSave === 'materia',
+        taxonomy_level: KNOWLEDGE_TAXONOMY_TYPES.includes(uiTypeToSave) ? uiTypeToSave : undefined,
         description: filterDescription,
         website: filterWebsite,
-        parent_id: selectedParentId,
-        metadata: editingFilterItem?.item?.metadata || {},
+        parent_id: parentIdToSave,
+        metadata: {
+          ...(editingFilterItem?.item?.metadata || {}),
+          ...(KNOWLEDGE_TAXONOMY_TYPES.includes(uiTypeToSave) ? { taxonomy_level: uiTypeToSave } : {}),
+        },
       });
 
       resetTaxonomyForm();
@@ -158,12 +190,15 @@ export const useAdminTaxonomyWorkflow = ({
 
   const openCreateFilterModal = () => {
     cancelEditingFilter();
+    if (activeFilterType === 'all') {
+      setActiveFilterType('materia');
+    }
     setShowTaxonomyModal(true);
   };
 
-  const openCreateChildFilterModal = (type: string, parentId: number) => {
+  const openCreateChildFilterModal = (type: string, parentId: number | string) => {
     cancelEditingFilter();
-    setActiveFilterType(type);
+    setActiveFilterType(getChildFilterType(type));
     setSelectedParentId(parentId);
     setShowTaxonomyModal(true);
   };

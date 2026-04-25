@@ -49,6 +49,7 @@ export interface AdminDatabaseManagerControllerProps {
   updateRanking: (ranking: any) => Promise<void> | void;
   ensureUsersLoaded?: (force?: boolean) => Promise<void>;
   initialTab?: string;
+  standaloneSection?: boolean;
 }
 
 /**
@@ -74,6 +75,7 @@ export const useAdminDatabaseManagerController = ({
   updateRanking,
   ensureUsersLoaded = async () => undefined,
   initialTab = 'questions',
+  standaloneSection = false,
 }: AdminDatabaseManagerControllerProps) => {
   const { addToast } = useToast();
   const router = useRouter();
@@ -204,6 +206,7 @@ export const useAdminDatabaseManagerController = ({
     pagination,
     loadQuestions,
     reloadCurrentPage,
+    removeQuestionFromPage,
   } = useAdminQuestionsWorkflow({
     keyword: filter,
     activeSubTab,
@@ -232,12 +235,6 @@ export const useAdminDatabaseManagerController = ({
     examBank,
     filteredExamBank,
     linkedCountByExamId,
-    editingExamId,
-    examDraft,
-    setExamDraft,
-    startEditingExam,
-    cancelEditingExam,
-    handleSaveExam,
     deletingExam,
     requestDeleteExam,
     cancelDeleteExam,
@@ -282,6 +279,20 @@ export const useAdminDatabaseManagerController = ({
     router.push(buildAdminQuestionEditPath(questionId, report?.id));
   }, [addToast, router]);
 
+  const handleDeleteQuestion = React.useCallback(async (questionId: any) => {
+    const result = await onDeleteQuestion(questionId);
+
+    if (result?.success === false) {
+      throw new Error(result?.message || 'Nao foi possivel remover a questao.');
+    }
+
+    removeQuestionFromPage(questionId);
+    if (adminQuestions.length <= 1 && pagination.page > 1) {
+      await loadQuestions(pagination.page - 1);
+    }
+    return result;
+  }, [adminQuestions.length, loadQuestions, onDeleteQuestion, pagination.page, removeQuestionFromPage]);
+
   /**
    * Concentra a moderação cruzada de materiais e reports, incluindo atalhos para questões e perfis.
    */
@@ -313,10 +324,8 @@ export const useAdminDatabaseManagerController = ({
     onSelectSubTab: handleSelectSubTab,
     subTabLabels: ADMIN_DATABASE_SUBTAB_LABELS,
     subTabMeta: ADMIN_DATABASE_SUBTAB_META,
-    filter,
-    onFilterChange: setFilter,
     bulkImportEnabled: Boolean(systemSettings.features?.bulkImportEnabled),
-    onCreateQuestion: () => openManualModal(),
+    standaloneSection,
   };
 
   /**
@@ -341,15 +350,14 @@ export const useAdminDatabaseManagerController = ({
     importWorkflowProps,
     renderSortableHeader,
     sortData,
+    filter,
+    onFilterChange: setFilter,
     onQuestionsPageChange: loadQuestions,
+    onCreateQuestion: () => router.push(buildAdminQuestionEditPath('new')),
     onQuestionEdit: openQuestionEditPage,
-    onQuestionDelete: onDeleteQuestion,
-    editingExamId,
-    examDraft,
-    onExamDraftChange: setExamDraft,
-    onStartEditExam: startEditingExam,
-    onCancelEditExam: cancelEditingExam,
-    onSaveEditExam: handleSaveExam,
+    onQuestionUpdate: onUpdateQuestion,
+    onQuestionDelete: handleDeleteQuestion,
+    onQuestionsRefresh: reloadCurrentPage,
     deletingExam,
     onRequestDeleteExam: requestDeleteExam,
     onCancelDeleteExam: cancelDeleteExam,

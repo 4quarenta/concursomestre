@@ -15,12 +15,13 @@
  *
  * @since 1.0.0
  */
-export type AdminPageTab = 'panel' | 'operation' | 'finance' | 'marketing' | 'support' | 'settings';
+export type AdminPageTab = 'panel' | 'operation' | 'marketplace' | 'finance' | 'marketing' | 'support' | 'settings';
 export type AdminPanelSection = 'dashboard' | 'alerts' | 'billing-health';
-export type AdminOperationSection = 'questions' | 'exams' | 'import' | 'filters' | 'lei-comentada' | 'users' | 'materials' | 'rankings';
-export type AdminFinanceSection = 'subscriptions' | 'transactions' | 'refunds' | 'plans-coupons' | 'automation';
-export type AdminMarketingSection = 'landing-pages';
-export type AdminSupportSection = 'feedback' | 'threads' | 'reports';
+export type AdminOperationSection = 'questions' | 'exams' | 'import' | 'filters' | 'lei-comentada' | 'users';
+export type AdminMarketplaceSection = 'vendors' | 'materials' | 'blocked';
+export type AdminFinanceSection = 'transactions' | 'plans' | 'coupons' | 'automation' | 'analytics';
+export type AdminMarketingSection = 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links';
+export type AdminSupportSection = 'feedback' | 'threads' | 'reports' | 'rankings' | 'refunds' | 'comments';
 export type AdminSettingsSection = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'ads' | 'seo' | 'performance' | 'logs';
 
 export type AdminNavigationTab = {
@@ -39,18 +40,20 @@ export type AdminNavigationSection = {
 
 export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
   panel: 'Visao executiva, alertas operacionais e saude do billing.',
-  operation: 'Questoes, importacao, usuarios, materiais e rankings.',
-  finance: 'Transacoes, assinaturas, reembolsos, planos e automacao.',
-  marketing: 'Landing pages, campanhas de aquisicao e ativos comerciais.',
-  support: 'Feedbacks, denuncias e threads operacionais.',
+  operation: 'Questoes, provas, importacao, taxonomias, lei comentada e usuarios.',
+  marketplace: 'Vendedores, catalogo publicado e revisoes bloqueadas do marketplace.',
+  finance: 'Transacoes, planos, cupons, analytics e automacao financeira.',
+  marketing: 'Landing pages, campanhas, temas visuais e redes sociais da homepage.',
+  support: 'Feedbacks, denuncias, comentarios moderados, rankings e reembolsos operacionais.',
   settings: 'Controles globais, integracoes, email, ads, SEO e logs.',
 };
 
 export const PANEL_SECTION_KEYS = ['dashboard', 'alerts', 'billing-health'] as const;
-export const OPERATION_SECTION_KEYS = ['questions', 'exams', 'import', 'filters', 'lei-comentada', 'users', 'materials', 'rankings'] as const;
-export const FINANCE_SECTION_KEYS = ['subscriptions', 'transactions', 'refunds', 'plans-coupons', 'automation'] as const;
-export const MARKETING_SECTION_KEYS = ['landing-pages'] as const;
-export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports'] as const;
+export const OPERATION_SECTION_KEYS = ['questions', 'exams', 'import', 'filters', 'lei-comentada', 'users'] as const;
+export const MARKETPLACE_SECTION_KEYS = ['vendors', 'materials', 'blocked'] as const;
+export const FINANCE_SECTION_KEYS = ['transactions', 'plans', 'coupons', 'automation', 'analytics'] as const;
+export const MARKETING_SECTION_KEYS = ['landing-pages', 'campaigns', 'visual-themes', 'social-links'] as const;
+export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports', 'rankings', 'refunds', 'comments'] as const;
 export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'security', 'integrations', 'email', 'ads', 'seo', 'performance', 'logs'] as const;
 
 /**
@@ -66,6 +69,13 @@ export const isPanelSection = (tab: string): tab is AdminPanelSection => PANEL_S
  * @since 1.0.0
  */
 export const isOperationSection = (tab: string): tab is AdminOperationSection => OPERATION_SECTION_KEYS.includes(tab as AdminOperationSection);
+
+/**
+ * Valida a secao do grupo Marketplace.
+ *
+ * @since 1.0.0
+ */
+export const isMarketplaceSection = (tab: string): tab is AdminMarketplaceSection => MARKETPLACE_SECTION_KEYS.includes(tab as AdminMarketplaceSection);
 
 /**
  * Valida a secao do grupo Financeiro.
@@ -100,7 +110,7 @@ export const isSettingsSection = (tab: string): tab is AdminSettingsSection => S
  *
  * @since 1.0.0
  */
-export const isAdminPageTab = (tab: string): tab is AdminPageTab => ['panel', 'operation', 'finance', 'marketing', 'support', 'settings'].includes(tab);
+export const isAdminPageTab = (tab: string): tab is AdminPageTab => ['panel', 'operation', 'marketplace', 'finance', 'marketing', 'support', 'settings'].includes(tab);
 
 /**
  * Mantem compatibilidade com links e atalhos legados do admin.
@@ -119,20 +129,43 @@ export const LEGACY_TAB_MAP: Record<string, { tab: AdminPageTab; section?: strin
   'legal-commentary': { tab: 'operation', section: 'lei-comentada' },
   'annotated-laws': { tab: 'operation', section: 'lei-comentada' },
   users: { tab: 'operation', section: 'users' },
-  materials: { tab: 'operation', section: 'materials' },
-  rankings: { tab: 'operation', section: 'rankings' },
+  marketplace: { tab: 'marketplace', section: 'vendors' },
+  vendors: { tab: 'marketplace', section: 'vendors' },
+  sellers: { tab: 'marketplace', section: 'vendors' },
+  subscriptions: { tab: 'marketplace', section: 'vendors' },
+  materials: { tab: 'marketplace', section: 'materials' },
+  blocked: { tab: 'marketplace', section: 'blocked' },
+  rankings: { tab: 'support', section: 'rankings' },
   reports: { tab: 'support', section: 'reports' },
-  blocked: { tab: 'operation', section: 'materials' },
-  finance: { tab: 'finance', section: 'subscriptions' },
-  balance: { tab: 'finance', section: 'subscriptions' },
+  finance: { tab: 'finance', section: 'transactions' },
+  balance: { tab: 'marketplace', section: 'vendors' },
   transactions: { tab: 'finance', section: 'transactions' },
-  refunds: { tab: 'finance', section: 'refunds' },
-  prices: { tab: 'finance', section: 'plans-coupons' },
+  refunds: { tab: 'support', section: 'refunds' },
+  prices: { tab: 'finance', section: 'plans' },
+  'plans-coupons': { tab: 'finance', section: 'plans' },
+  coupons: { tab: 'finance', section: 'coupons' },
+  'coupon-settings': { tab: 'finance', section: 'coupons' },
+  'coupon-config': { tab: 'finance', section: 'coupons' },
+  analytics: { tab: 'finance', section: 'analytics' },
+  'finance-analytics': { tab: 'finance', section: 'analytics' },
   marketing: { tab: 'marketing', section: 'landing-pages' },
   'landing-pages': { tab: 'marketing', section: 'landing-pages' },
+  campaigns: { tab: 'marketing', section: 'campaigns' },
+  campaign: { tab: 'marketing', section: 'campaigns' },
+  promo: { tab: 'marketing', section: 'campaigns' },
+  promotions: { tab: 'marketing', section: 'campaigns' },
+  themes: { tab: 'marketing', section: 'visual-themes' },
+  'visual-themes': { tab: 'marketing', section: 'visual-themes' },
+  'visual-theme': { tab: 'marketing', section: 'visual-themes' },
+  social: { tab: 'marketing', section: 'social-links' },
+  socials: { tab: 'marketing', section: 'social-links' },
+  'social-links': { tab: 'marketing', section: 'social-links' },
   automation: { tab: 'finance', section: 'automation' },
   feedback: { tab: 'support', section: 'feedback' },
   threads: { tab: 'support', section: 'threads' },
+  comments: { tab: 'support', section: 'comments' },
+  moderation: { tab: 'support', section: 'comments' },
+  'comment-moderation': { tab: 'support', section: 'comments' },
   settings: { tab: 'settings', section: 'general' },
   general: { tab: 'settings', section: 'general' },
   modules: { tab: 'settings', section: 'modules' },
@@ -163,23 +196,32 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'filters', label: 'Filtros' },
     { key: 'lei-comentada', label: 'Lei Comentada' },
     { key: 'users', label: 'Usuarios' },
+  ],
+  marketplace: [
+    { key: 'vendors', label: 'Vendedores' },
     { key: 'materials', label: 'Materiais' },
-    { key: 'rankings', label: 'Rankings' },
+    { key: 'blocked', label: 'Revisao bloqueada' },
   ],
   finance: [
-    { key: 'subscriptions', label: 'Assinaturas' },
     { key: 'transactions', label: 'Transacoes' },
-    { key: 'refunds', label: 'Reembolsos' },
-    { key: 'plans-coupons', label: 'Planos e cupons' },
+    { key: 'plans', label: 'Planos' },
+    { key: 'coupons', label: 'Cupons' },
+    { key: 'analytics', label: 'Analytics' },
     { key: 'automation', label: 'Automacao' },
   ],
   marketing: [
     { key: 'landing-pages', label: 'Landing Pages' },
+    { key: 'campaigns', label: 'Campanhas' },
+    { key: 'visual-themes', label: 'Temas visuais' },
+    { key: 'social-links', label: 'Redes sociais' },
   ],
   support: [
     { key: 'feedback', label: 'Feedback' },
+    { key: 'comments', label: 'Comentarios' },
     { key: 'reports', label: 'Denuncias' },
     { key: 'threads', label: 'Threads' },
+    { key: 'rankings', label: 'Rankings' },
+    { key: 'refunds', label: 'Reembolsos' },
   ],
   settings: [
     { key: 'general', label: 'Geral' },
@@ -202,7 +244,8 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
 export const DEFAULT_SECTION_BY_TAB: Record<AdminPageTab, string> = {
   panel: 'dashboard',
   operation: 'questions',
-  finance: 'subscriptions',
+  marketplace: 'vendors',
+  finance: 'transactions',
   marketing: 'landing-pages',
   support: 'feedback',
   settings: 'general',
@@ -221,6 +264,15 @@ export const buildAdminQuestionEditPath = (
   return `/admin/operation/questions/${encodeURIComponent(String(questionId))}/edit${query.size > 0 ? `?${query.toString()}` : ''}`;
 };
 
+export const buildAdminLawEditPath = (lawId: string | number) =>
+  `/admin/operation/lei-comentada/${encodeURIComponent(String(lawId))}/edit`;
+
+export const buildAdminExamEditPath = (examId: string | number) =>
+  `/admin/operation/exams/${encodeURIComponent(String(examId))}/edit`;
+
+export const buildAdminUserEditPath = (userId: string | number) =>
+  `/admin/operation/users/${encodeURIComponent(String(userId))}/edit`;
+
 const normalizeAdminRouteSegment = (value?: string | null) =>
   String(value || '').trim().toLowerCase();
 
@@ -233,6 +285,10 @@ const resolveSectionByTab = (tab: AdminPageTab, rawSection?: string | null) => {
 
   if (tab === 'operation') {
     return isOperationSection(section) ? section : DEFAULT_SECTION_BY_TAB.operation;
+  }
+
+  if (tab === 'marketplace') {
+    return isMarketplaceSection(section) ? section : DEFAULT_SECTION_BY_TAB.marketplace;
   }
 
   if (tab === 'finance') {
@@ -259,8 +315,41 @@ export const resolveAdminRoute = (rawTab?: string | null, rawSection?: string | 
   const normalizedTab = normalizeAdminRouteSegment(rawTab);
   const normalizedSection = normalizeAdminRouteSegment(rawSection);
 
+  if (normalizedTab === 'operation' && ['materials', 'blocked'].includes(normalizedSection)) {
+    return {
+      tab: 'marketplace' as const,
+      section: resolveSectionByTab('marketplace', normalizedSection),
+    };
+  }
+
+  if (normalizedTab === 'operation' && normalizedSection === 'rankings') {
+    return {
+      tab: 'support' as const,
+      section: resolveSectionByTab('support', normalizedSection),
+    };
+  }
+
   if (normalizedTab === 'operation' && normalizedSection === 'reports') {
     return { tab: 'support' as const, section: 'reports' as const };
+  }
+
+  if (normalizedTab === 'finance' && normalizedSection === 'subscriptions') {
+    return { tab: 'marketplace' as const, section: 'vendors' as const };
+  }
+
+  if (normalizedTab === 'finance' && normalizedSection === 'balance') {
+    return { tab: 'marketplace' as const, section: 'vendors' as const };
+  }
+
+  if (normalizedTab === 'finance' && normalizedSection === 'refunds') {
+    return { tab: 'support' as const, section: 'refunds' as const };
+  }
+
+  if (normalizedTab === 'support' && ['materials', 'blocked'].includes(normalizedSection)) {
+    return {
+      tab: 'marketplace' as const,
+      section: resolveSectionByTab('marketplace', normalizedSection),
+    };
   }
 
   if (isAdminPageTab(normalizedTab)) {

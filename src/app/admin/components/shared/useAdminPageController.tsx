@@ -18,6 +18,7 @@ import {
   Megaphone,
   MessageSquare,
   Settings,
+  ShoppingBag,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
@@ -30,6 +31,7 @@ import {
   DEFAULT_SECTION_BY_TAB,
   isFinanceSection,
   isMarketingSection,
+  isMarketplaceSection,
   isOperationSection,
   isPanelSection,
   isSettingsSection,
@@ -39,6 +41,7 @@ import {
   resolveAdminRoute,
   type AdminFinanceSection,
   type AdminMarketingSection,
+  type AdminMarketplaceSection,
   type AdminNavigationTab,
   type AdminPageTab,
   type AdminPanelSection,
@@ -53,6 +56,7 @@ const countPendingFeedbackThreads = (threads: AdminFeedbackThread[]) =>
 export type {
   AdminFinanceSection,
   AdminMarketingSection,
+  AdminMarketplaceSection,
   AdminPageTab,
   AdminPanelSection,
   AdminOperationSection,
@@ -112,7 +116,8 @@ export const useAdminPageController = () => {
   const [activeTab, setActiveTabState] = useState<AdminPageTab>('panel');
   const [initialPanelSection, setInitialPanelSection] = useState<AdminPanelSection>('dashboard');
   const [initialOperationSection, setInitialOperationSection] = useState<AdminOperationSection>('questions');
-  const [initialFinanceSection, setInitialFinanceSection] = useState<AdminFinanceSection>('subscriptions');
+  const [initialMarketplaceSection, setInitialMarketplaceSection] = useState<AdminMarketplaceSection>('vendors');
+  const [initialFinanceSection, setInitialFinanceSection] = useState<AdminFinanceSection>('transactions');
   const [initialMarketingSection, setInitialMarketingSection] = useState<AdminMarketingSection>('landing-pages');
   const [initialSupportSection, setInitialSupportSection] = useState<AdminSupportSection>('feedback');
   const [initialSettingsSection, setInitialSettingsSection] = useState<AdminSettingsSection>('general');
@@ -125,7 +130,7 @@ export const useAdminPageController = () => {
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(settingsFeedbackCount);
   const feedbackCount = pendingFeedbackCount;
   const panelAlertsCount = openReportsCount + refundRequestsCount;
-  const supportInboxCount = feedbackCount + openReportsCount;
+  const supportInboxCount = feedbackCount + openReportsCount + refundRequestsCount;
 
   useEffect(() => {
     setPendingFeedbackCount(settingsFeedbackCount);
@@ -157,12 +162,13 @@ export const useAdminPageController = () => {
 
   const adminTabs = useMemo<AdminNavigationTab[]>(() => ([
     { key: 'panel', label: 'Dashboard', icon: LayoutDashboard, badge: panelAlertsCount > 0 ? panelAlertsCount : undefined, group: 'Conteudo', description: 'Visao geral e saude operacional' },
-    { key: 'operation', label: 'Operacao', icon: BookOpen, group: 'Conteudo', description: 'Questoes, usuarios, materiais e lei comentada' },
-    { key: 'finance', label: 'Financeiro', icon: DollarSign, badge: refundRequestsCount > 0 ? refundRequestsCount : undefined, group: 'Comercial', description: 'Transacoes, planos, repasses e automacao' },
-    { key: 'marketing', label: 'Marketing', icon: Megaphone, group: 'Comercial', description: 'Landing pages e ativos de aquisicao' },
-    { key: 'support', label: 'Suporte', icon: MessageSquare, badge: supportInboxCount > 0 ? supportInboxCount : undefined, group: 'Relacionamento', description: 'Feedback, denuncias e threads' },
+    { key: 'operation', label: 'Conteudo', icon: BookOpen, group: 'Conteudo', description: 'Questoes, provas, importacao, taxonomias, lei comentada e usuarios' },
+    { key: 'marketplace', label: 'Marketplace', icon: ShoppingBag, group: 'Comercial', description: 'Vendedores, materiais publicados e revisao bloqueada' },
+    { key: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Comercial', description: 'Transacoes, planos, cupons, analytics e automacao' },
+    { key: 'marketing', label: 'Marketing', icon: Megaphone, group: 'Comercial', description: 'Landing pages, campanhas, temas visuais e redes sociais' },
+    { key: 'support', label: 'Suporte', icon: MessageSquare, badge: supportInboxCount > 0 ? supportInboxCount : undefined, group: 'Relacionamento', description: 'Feedback, comentarios, denuncias, rankings e reembolsos' },
     { key: 'settings', label: 'Configuracoes', icon: Settings, group: 'Sistema', description: 'Integracoes e controles globais' },
-  ]), [panelAlertsCount, refundRequestsCount, supportInboxCount]);
+  ]), [panelAlertsCount, supportInboxCount]);
 
   const activeTabLabel = adminTabs.find((tab) => tab.key === activeTab)?.label || 'Painel';
   const activeSections = ADMIN_SECTION_CONFIG[activeTab];
@@ -192,6 +198,8 @@ export const useAdminPageController = () => {
       ? initialPanelSection
       : activeTab === 'operation'
         ? initialOperationSection
+        : activeTab === 'marketplace'
+          ? initialMarketplaceSection
         : activeTab === 'finance'
           ? initialFinanceSection
           : activeTab === 'marketing'
@@ -201,7 +209,23 @@ export const useAdminPageController = () => {
             : initialSettingsSection;
 
     return ADMIN_SECTION_CONFIG[activeTab].find((section) => section.key === currentKey)?.label || '';
-  }, [activeTab, initialFinanceSection, initialMarketingSection, initialOperationSection, initialPanelSection, initialSettingsSection, initialSupportSection]);
+  }, [activeTab, initialFinanceSection, initialMarketingSection, initialMarketplaceSection, initialOperationSection, initialPanelSection, initialSettingsSection, initialSupportSection]);
+
+  const activeSectionKey = useMemo(() => (
+    activeTab === 'panel'
+      ? initialPanelSection
+      : activeTab === 'operation'
+        ? initialOperationSection
+        : activeTab === 'marketplace'
+          ? initialMarketplaceSection
+        : activeTab === 'finance'
+          ? initialFinanceSection
+          : activeTab === 'marketing'
+            ? initialMarketingSection
+            : activeTab === 'support'
+              ? initialSupportSection
+              : initialSettingsSection
+  ), [activeTab, initialFinanceSection, initialMarketingSection, initialMarketplaceSection, initialOperationSection, initialPanelSection, initialSettingsSection, initialSupportSection]);
 
   const syncAdminUrl = (tab: AdminPageTab, section?: string, options?: { replace?: boolean; hash?: string }) => {
     const nextPath = buildAdminPath(tab, section, options?.hash);
@@ -217,6 +241,8 @@ export const useAdminPageController = () => {
       setInitialPanelSection(section);
     } else if (tab === 'operation' && isOperationSection(section)) {
       setInitialOperationSection(section);
+    } else if (tab === 'marketplace' && isMarketplaceSection(section)) {
+      setInitialMarketplaceSection(section);
     } else if (tab === 'finance' && isFinanceSection(section)) {
       setInitialFinanceSection(section);
     } else if (tab === 'marketing' && isMarketingSection(section)) {
@@ -234,6 +260,15 @@ export const useAdminPageController = () => {
 
   const handleSectionChange = (tab: AdminPageTab, section: string) => {
     syncAdminUrl(tab, section);
+  };
+
+  const navigateAdminDestination = (tab: AdminPageTab, section?: string) => {
+    if (section) {
+      handleSectionChange(tab, section);
+      return;
+    }
+
+    handleTabChange(tab);
   };
 
   /**
@@ -282,6 +317,16 @@ export const useAdminPageController = () => {
    * @since 1.0.0
    */
   const handleDashboardNavigate = (tab: string, subTab?: string) => {
+    if ((tab === 'operation' || tab === 'database') && subTab && ['materials', 'blocked'].includes(subTab)) {
+      handleSectionChange('marketplace', subTab);
+      return;
+    }
+
+    if ((tab === 'operation' || tab === 'database') && subTab === 'rankings') {
+      handleSectionChange('support', 'rankings');
+      return;
+    }
+
     if (tab === 'database' && subTab === 'reports') {
       handleSectionChange('support', 'reports');
       return;
@@ -293,7 +338,22 @@ export const useAdminPageController = () => {
     }
 
     if (tab === 'finance') {
-      handleSectionChange('finance', subTab && isFinanceSection(subTab) ? subTab : 'subscriptions');
+      if (subTab === 'subscriptions') {
+        handleSectionChange('marketplace', 'vendors');
+        return;
+      }
+
+      if (subTab === 'refunds') {
+        handleSectionChange('support', 'refunds');
+        return;
+      }
+
+      handleSectionChange('finance', subTab && isFinanceSection(subTab) ? subTab : 'transactions');
+      return;
+    }
+
+    if (tab === 'marketplace') {
+      handleSectionChange('marketplace', subTab && isMarketplaceSection(subTab) ? subTab : 'vendors');
       return;
     }
 
@@ -325,6 +385,12 @@ export const useAdminPageController = () => {
   const navigate = useCallback((path: string) => {
     router.push(path);
   }, [router]);
+
+  const databaseBackedSection = activeTab === 'marketplace' && ['materials', 'blocked'].includes(initialMarketplaceSection)
+    ? initialMarketplaceSection
+    : activeTab === 'support' && ['rankings'].includes(initialSupportSection)
+      ? initialSupportSection
+      : initialOperationSection;
 
   return {
     activeTab,
@@ -377,6 +443,7 @@ export const useAdminPageController = () => {
       onNavigate: handleDashboardNavigate,
       initialSection: initialPanelSection,
       onSectionChange: (section: AdminPanelSection) => handleSectionChange('panel', section),
+      standaloneSection: true,
     },
     panelSectionKey: initialPanelSection,
     databaseSectionProps: {
@@ -397,9 +464,11 @@ export const useAdminPageController = () => {
       saveSystemSettingsNow,
       updateRanking,
       ensureUsersLoaded,
-      initialTab: initialOperationSection,
+      initialTab: databaseBackedSection,
+      standaloneSection: true,
     },
     databaseSectionKey: initialOperationSection,
+    marketplaceSectionKey: initialMarketplaceSection,
     financeSectionProps: {
       allTransactions: transactions,
       allUsers: users,
@@ -407,6 +476,7 @@ export const useAdminPageController = () => {
       updateSystemSettings,
       initialSection: initialFinanceSection,
       onSectionChange: (section: AdminFinanceSection) => handleSectionChange('finance', section),
+      standaloneSection: true,
     },
     financeSectionKey: initialFinanceSection,
     marketingSectionProps: {
@@ -415,6 +485,7 @@ export const useAdminPageController = () => {
       saveSystemSettingsNow,
       initialSection: initialMarketingSection,
       onSectionChange: (section: AdminMarketingSection) => handleSectionChange('marketing', section),
+      standaloneSection: true,
     },
     marketingSectionKey: initialMarketingSection,
     supportSectionProps: {
@@ -424,6 +495,7 @@ export const useAdminPageController = () => {
       onPendingFeedbackCountChange: setPendingFeedbackCount,
       onResolveReport: (report: any) => resolveReport(report.id, 'resolved', report.resolution || report.reason || 'Denuncia tratada pela equipe administrativa.'),
       onSectionChange: (section: AdminSupportSection) => handleSectionChange('support', section),
+      standaloneSection: true,
     },
     supportSectionKey: initialSupportSection,
     settingsSectionProps: {
@@ -433,7 +505,10 @@ export const useAdminPageController = () => {
       addToast,
       initialSection: initialSettingsSection,
       onSectionChange: (section: AdminSettingsSection) => handleSectionChange('settings', section),
+      standaloneSection: true,
     },
     settingsSectionKey: initialSettingsSection,
+    activeSectionKey,
+    navigateAdminDestination,
   };
 };

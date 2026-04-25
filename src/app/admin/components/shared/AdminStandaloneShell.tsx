@@ -1,0 +1,141 @@
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
+import React from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  BookOpen,
+  DollarSign,
+  LayoutDashboard,
+  Megaphone,
+  MessageSquare,
+  Settings,
+  ShoppingBag,
+} from 'lucide-react';
+import { useAuth } from '@providers/AuthProvider';
+import { useData } from '@providers/DataProvider';
+import { useTheme } from '@providers/ThemeProvider';
+import {
+  ADMIN_SECTION_CONFIG,
+  DEFAULT_SECTION_BY_TAB,
+  TAB_DESCRIPTIONS,
+  buildAdminPath,
+  type AdminNavigationTab,
+  type AdminPageTab,
+} from '../../config/adminPageNavigationConfig';
+import AdminShellLayout from './AdminShellLayout';
+
+interface AdminStandaloneShellProps {
+  activeTab: AdminPageTab;
+  activeSectionKey?: string;
+  pageTitle: string;
+  pageDescription?: string;
+  showPageHeader?: boolean;
+  children: React.ReactNode;
+}
+
+const buildSearchTargets = (adminTabs: AdminNavigationTab[]) => {
+  const tabTargets = adminTabs.map((tab) => ({
+    label: tab.label,
+    description: tab.description,
+    path: buildAdminPath(tab.key, DEFAULT_SECTION_BY_TAB[tab.key]),
+    group: tab.group || 'Admin',
+  }));
+
+  const sectionTargets = (Object.entries(ADMIN_SECTION_CONFIG) as [AdminPageTab, { key: string; label: string }[]][])
+    .flatMap(([tabKey, sections]) => (
+      sections.map((section) => ({
+        label: section.label,
+        description: adminTabs.find((tab) => tab.key === tabKey)?.label || tabKey,
+        path: buildAdminPath(tabKey, section.key),
+        group: adminTabs.find((tab) => tab.key === tabKey)?.group || 'Admin',
+      }))
+    ));
+
+  return [...tabTargets, ...sectionTargets];
+};
+
+const AdminStandaloneShell = ({
+  activeTab,
+  activeSectionKey,
+  pageTitle,
+  pageDescription,
+  showPageHeader = true,
+  children,
+}: AdminStandaloneShellProps) => {
+  const router = useRouter();
+  const { currentUser } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const {
+    notifications,
+    markNotificationAsRead,
+    systemSettings,
+  } = useData();
+  const [isNotifOpen, setIsNotifOpen] = React.useState(false);
+
+  const adminTabs = React.useMemo<AdminNavigationTab[]>(() => ([
+    { key: 'panel', label: 'Dashboard', icon: LayoutDashboard, group: 'Conteudo', description: TAB_DESCRIPTIONS.panel },
+    { key: 'operation', label: 'Conteudo', icon: BookOpen, group: 'Conteudo', description: TAB_DESCRIPTIONS.operation },
+    { key: 'marketplace', label: 'Marketplace', icon: ShoppingBag, group: 'Comercial', description: TAB_DESCRIPTIONS.marketplace },
+    { key: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Comercial', description: TAB_DESCRIPTIONS.finance },
+    { key: 'marketing', label: 'Marketing', icon: Megaphone, group: 'Comercial', description: TAB_DESCRIPTIONS.marketing },
+    { key: 'support', label: 'Suporte', icon: MessageSquare, group: 'Relacionamento', description: TAB_DESCRIPTIONS.support },
+    { key: 'settings', label: 'Configuracoes', icon: Settings, group: 'Sistema', description: TAB_DESCRIPTIONS.settings },
+  ]), []);
+
+  const searchTargets = React.useMemo(() => buildSearchTargets(adminTabs), [adminTabs]);
+  const unreadCount = (notifications || []).filter((notification: any) => !notification.isRead && !notification.deletedAt).length;
+  const activeSectionLabel = ADMIN_SECTION_CONFIG[activeTab]?.find((section) => section.key === activeSectionKey)?.label || '';
+
+  const navigateAdmin = React.useCallback((tab: string, section?: string) => {
+    const nextTab = tab as AdminPageTab;
+    router.push(buildAdminPath(nextTab, section || DEFAULT_SECTION_BY_TAB[nextTab]));
+  }, [router]);
+
+  const navigate = React.useCallback((path: string) => {
+    router.push(path);
+  }, [router]);
+
+  return (
+    <AdminShellLayout
+      activeTab={activeTab}
+      activeSectionKey={activeSectionKey}
+      onNavigateAdmin={navigateAdmin}
+      adminTabs={adminTabs}
+      pageTitle={pageTitle}
+      pageDescription={pageDescription}
+      showPageHeader={showPageHeader}
+      topBarProps={{
+        theme,
+        onToggleTheme: toggleTheme,
+        notificationsEnabled: Boolean(systemSettings?.features?.notificationsEnabled),
+        isNotifOpen,
+        setIsNotifOpen,
+        onCloseNotifications: () => setIsNotifOpen(false),
+        notifications,
+        markNotificationAsRead,
+        unreadCount,
+        navigate,
+        currentUserName: currentUser?.name,
+        currentUserFirstName: currentUser?.name?.trim().split(/\s+/)[0] || undefined,
+        currentTabLabel: adminTabs.find((tab) => tab.key === activeTab)?.label,
+        currentSectionLabel: activeSectionLabel,
+        userInitials: currentUser?.name?.charAt(0) || 'A',
+        searchTargets,
+        primaryActionLabel: null,
+      }}
+    >
+      {children}
+    </AdminShellLayout>
+  );
+};
+
+export default AdminStandaloneShell;

@@ -417,7 +417,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!currentUser) return null;
 
     try {
-      const newComment = await commentService.addComment({
+      const result = await commentService.addComment({
         questionId: materialId,
         content: text,
         userId: currentUser.id,
@@ -426,21 +426,28 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         targetType: 'material',
       });
 
-      setMaterials((prev) => mapMaterialById(prev, materialId, (material) => {
-        if (parentId) {
+      if (result.comment) {
+        setMaterials((prev) => mapMaterialById(prev, materialId, (material) => {
+          if (parentId) {
+            return {
+              ...material,
+              comments: commentService.addReplyToComments(material.comments || [], parentId, result.comment),
+            };
+          }
+
           return {
             ...material,
-            comments: commentService.addReplyToComments(material.comments || [], parentId, newComment),
+            comments: [result.comment, ...(material.comments || [])],
           };
-        }
+        }));
+      }
 
-        return {
-          ...material,
-          comments: [newComment, ...(material.comments || [])],
-        };
-      }));
+      addToast(
+        result.message || (result.requiresModeration ? 'Comentário enviado para moderação.' : 'Comentário publicado com sucesso.'),
+        'success',
+      );
 
-      return newComment;
+      return result.comment ?? result;
     } catch (error) {
       console.error('Failed to add comment:', error);
       addToast('Erro ao adicionar comentário.', 'error');

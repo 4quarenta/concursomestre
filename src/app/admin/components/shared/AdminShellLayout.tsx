@@ -17,23 +17,25 @@ import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 
 interface AdminShellLayoutProps {
   activeTab: string;
-  onTabChange: (tab: any) => void;
+  activeSectionKey?: string;
+  onNavigateAdmin: (tab: string, section?: string) => void;
   adminTabs: { key: string; label: string; icon: any; badge?: number; group?: string; description: string }[];
   pageTitle: string;
   pageDescription?: string;
-  activeSectionLabel?: string;
   topBarProps: React.ComponentProps<typeof AdminTopBar>;
+  showPageHeader?: boolean;
   children: React.ReactNode;
 }
 
 const AdminShellLayout = ({
   activeTab,
-  onTabChange,
+  activeSectionKey,
+  onNavigateAdmin,
   adminTabs,
   pageTitle,
   pageDescription,
-  activeSectionLabel,
   topBarProps,
+  showPageHeader = true,
   children,
 }: AdminShellLayoutProps) => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
@@ -42,7 +44,8 @@ const AdminShellLayout = ({
     <div className="flex min-h-[100dvh] w-full overflow-hidden bg-slate-100 transition-colors duration-300 dark:bg-slate-950">
       <AdminNavigationSidebar
         activeTab={activeTab}
-        onTabChange={onTabChange}
+        activeSectionKey={activeSectionKey}
+        onNavigateAdmin={onNavigateAdmin}
         tabs={adminTabs}
         isMobileOpen={isMobileSidebarOpen}
         onRequestClose={() => setIsMobileSidebarOpen(false)}
@@ -59,7 +62,7 @@ const AdminShellLayout = ({
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden">
           <div className={`no-scrollbar mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} px-3 py-5 sm:px-4 md:px-6 md:py-8 lg:px-8`}>
-          <AdminPageHeader title={pageTitle} description={pageDescription} activeSectionLabel={activeSectionLabel} />
+            {showPageHeader ? <AdminPageHeader title={pageTitle} description={pageDescription} /> : null}
 
             <div className="min-h-[500px] pb-10">{children}</div>
           </div>

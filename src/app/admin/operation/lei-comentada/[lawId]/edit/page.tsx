@@ -12,15 +12,16 @@
 */
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
   ArrowLeft,
-  BookOpen,
   Bot,
   CheckCircle2,
   Download,
+  ExternalLink,
   FileText,
   History,
   Loader2,
@@ -29,6 +30,7 @@ import {
   Save,
   Sparkles,
   Trash2,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -40,13 +42,28 @@ import type {
   ArticleJurisprudence,
   LawArticle,
   LawDetail,
+  LawUpdate,
   LegalArticleEditorialSnapshot,
   LegalArea,
   LegalEditorialBatchRun,
   LegalEditorialGenerationResult,
   LegalEditorialGenerationScope,
+  LegalSyncLog,
   TeacherComment,
 } from '@types';
+import {
+  ADMIN_MODAL_FOOTER_CLASS,
+  ADMIN_MODAL_HEADER_CLASS,
+  ADMIN_MODAL_PANEL_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SURFACE_CLASS,
+  ADMIN_SURFACE_HEADER_CLASS,
+  ADMIN_FIELD_CLASS,
+  ADMIN_TEXTAREA_CLASS,
+} from '../../../../components/shared/adminPanelStyles';
+import AdminStandaloneShell from '../../../../components/shared/AdminStandaloneShell';
+import { buildAdminLawEditPath } from '../../../../config/adminPageNavigationConfig';
 
 type AdminLawDraft = Partial<LawDetail> & {
   areaId?: string;
@@ -64,14 +81,118 @@ type AdminLawDraft = Partial<LawDetail> & {
 interface TaxonomyOption {
   id: string | number;
   name: string;
+  slug?: string;
   parentId?: string | number | null;
+  rootSubjectId?: string | number | null;
+  taxonomyLevel?: string;
 }
 
 type LegalAiGenerationKind = 'teacher-comment' | 'exam-tip' | 'jurisprudence' | 'sumula' | 'doctrine' | 'bundle';
+type LegalEditorialSection = 'teacher' | 'tips' | 'jurisprudence' | 'sumulas' | 'doctrine' | 'ai';
+
+const LEGAL_EDITORIAL_SECTIONS: Array<{
+  key: LegalEditorialSection;
+  label: string;
+  description: string;
+}> = [
+  { key: 'teacher', label: 'Professor', description: 'Comentario pedagogico principal do artigo.' },
+  { key: 'tips', label: 'Macetes', description: 'Chaves de prova, sem siglas artificiais.' },
+  { key: 'jurisprudence', label: 'Jurisprudencia', description: 'Somente decisoes ligadas ao artigo.' },
+  { key: 'sumulas', label: 'Sumulas', description: 'Enunciados relevantes para o dispositivo.' },
+  { key: 'doctrine', label: 'Doutrina', description: 'Apoio teorico curto e revisavel.' },
+  { key: 'ai', label: 'IA e lote', description: 'Geracao assistida e acompanhamento por artigo.' },
+];
 
 const createTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const normalizeParam = (value?: string | string[]) => Array.isArray(value) ? value[0] : value;
+
+const normalizeTaxonomyText = (value: unknown) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .trim();
+
+const slugifyTaxonomy = (value: string) => normalizeTaxonomyText(value)
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const isLikelyEditoriallyIrrelevantArticle = (article: Partial<LawArticle>) => {
+  const rawText = String(article.text || article.blocks?.map((block) => block.text).join(' ') || '');
+  const normalizedText = normalizeTaxonomyText(rawText);
+  if (!normalizedText) return true;
+
+  const signatureMarkers = [
+    'brasilia,',
+    'presidente -',
+    'vice-presidente',
+    'secretario',
+    'relator geral',
+    'relator adjunto',
+    'participantes:',
+    'in memoriam:',
+    'este texto nao substitui',
+  ];
+  const markerCount = signatureMarkers.filter((marker) => normalizedText.includes(marker)).length;
+  const dashSeparatedNames = (rawText.match(/\s-\s/g) || []).length;
+
+  return rawText.length > 800 && (markerCount >= 2 || dashSeparatedNames > 70);
+};
+
+const isEmptyJurisprudencePlaceholderText = (value: unknown) => {
+  const text = normalizeTaxonomyText(value);
+  if (!text) return false;
+
+  return [
+    'nao ha entendimento jurisprudencial',
+    'nao ha jurisprudencia',
+    'nao existe jurisprudencia',
+    'sem jurisprudencia',
+    'nenhum entendimento jurisprudencial',
+    'jurisprudencia nao localizada',
+    'entendimento especifico relevante para prova',
+  ].some((pattern) => text.includes(pattern));
+};
+
+const hasMeaningfulJurisprudenceContent = (item: Partial<ArticleJurisprudence>) => {
+  const title = String(item.title || '').trim();
+  const summary = String(item.summary || '').trim();
+  const examImpact = String(item.examImpact || '').trim();
+  const sourceUrl = String(item.sourceUrl || '').trim();
+  const precedentType = String(item.precedentType || '').trim();
+
+  if (isEmptyJurisprudencePlaceholderText(`${title} ${summary} ${examImpact}`)) {
+    return false;
+  }
+
+  return Boolean(sourceUrl || summary || examImpact || (title && title !== 'Jurisprudencia relevante') || (precedentType && precedentType !== 'Entendimento'));
+};
+
+const splitKnowledgeTaxonomies = (taxonomies: any) => ({
+  subjects: (taxonomies.subjects || []) as TaxonomyOption[],
+  topics: ((taxonomies.subjectTopics?.length
+    ? taxonomies.subjectTopics
+    : (taxonomies.topics || []).filter((item: any) => item.taxonomyLevel === 'topico')) || []) as TaxonomyOption[],
+  specificSubjects: ((taxonomies.specificSubjects?.length
+    ? taxonomies.specificSubjects
+    : (taxonomies.topics || []).filter((item: any) => item.taxonomyLevel === 'assunto')) || []) as TaxonomyOption[],
+});
+
+const buildLegalAreaFromTaxonomy = (subject?: TaxonomyOption, fallback?: Partial<LegalArea> | null): LegalArea | undefined => {
+  if (!subject && !fallback) return undefined;
+
+  return {
+    id: String(subject?.id || fallback?.id || ''),
+    slug: String(subject?.slug || fallback?.slug || 'constitucional') as LegalArea['slug'],
+    name: subject?.name || fallback?.name || 'Materia',
+    description: fallback?.description || '',
+    order: fallback?.order || 0,
+    iconTone: fallback?.iconTone || 'sky',
+    colorClass: fallback?.colorClass,
+    iconName: fallback?.iconName,
+    totalLaws: fallback?.totalLaws,
+  };
+};
 
 const buildEmptyArticle = (lawId = 'new'): LawArticle => {
   const id = createTempId('article');
@@ -101,10 +222,14 @@ const buildEmptyArticle = (lawId = 'new'): LawArticle => {
   };
 };
 
-const buildEmptyLaw = (areas: LegalArea[]): AdminLawDraft => ({
+const buildEmptyLaw = (areas: LegalArea[], subjects: TaxonomyOption[] = []): AdminLawDraft => {
+  const defaultSubject = subjects[0];
+  const defaultArea = buildLegalAreaFromTaxonomy(defaultSubject, areas[0]) || areas[0];
+
+  return {
   id: '',
   slug: '',
-  areaId: areas[0]?.id || '',
+  areaId: defaultSubject ? String(defaultSubject.id) : areas[0]?.id || '',
   title: '',
   shortTitle: '',
   number: '',
@@ -124,7 +249,7 @@ const buildEmptyLaw = (areas: LegalArea[]): AdminLawDraft => ({
   commentedArticleCount: 0,
   jurisprudenceCount: 0,
   examTipCount: 0,
-  area: areas[0],
+  area: defaultArea,
   articles: [buildEmptyArticle()],
   teacherComments: [],
   jurisprudence: [],
@@ -132,9 +257,41 @@ const buildEmptyLaw = (areas: LegalArea[]): AdminLawDraft => ({
   userComments: [],
   updates: [],
   sumulas: [],
-});
+  };
+};
 
-const hydrateDraftFromLaw = (law: Partial<LawDetail>, areas: LegalArea[]): AdminLawDraft => {
+const resolveLawMateria = (law: Partial<LawDetail>, areas: LegalArea[], subjects: TaxonomyOption[]) => {
+  const rawAreaId = String(law.areaId || law.area?.id || areas[0]?.id || '');
+  const directSubject = subjects.find((subject) => String(subject.id) === rawAreaId);
+  if (directSubject) {
+    return {
+      areaId: String(directSubject.id),
+      area: buildLegalAreaFromTaxonomy(directSubject, law.area || areas[0]),
+    };
+  }
+
+  const lawAreaName = normalizeTaxonomyText(law.area?.name || '');
+  const matchedByName = lawAreaName
+    ? subjects.find((subject) => {
+      const subjectName = normalizeTaxonomyText(subject.name);
+      return subjectName === lawAreaName || subjectName.includes(lawAreaName) || lawAreaName.includes(subjectName);
+    })
+    : null;
+
+  if (matchedByName) {
+    return {
+      areaId: String(matchedByName.id),
+      area: buildLegalAreaFromTaxonomy(matchedByName, law.area || areas[0]),
+    };
+  }
+
+  return {
+    areaId: rawAreaId,
+    area: areas.find((area) => String(area.id) === rawAreaId) || law.area || areas[0],
+  };
+};
+
+const hydrateDraftFromLaw = (law: Partial<LawDetail>, areas: LegalArea[], subjects: TaxonomyOption[] = []): AdminLawDraft => {
   const articleIdMap = new Map<string, string>();
   const articles = (law.articles || []).map((article, index) => {
     const nextId = String(article.id || createTempId(`article-${index + 1}`));
@@ -168,14 +325,13 @@ const hydrateDraftFromLaw = (law: Partial<LawDetail>, areas: LegalArea[]): Admin
     return articleIdMap.get(String(articleId)) || String(articleId);
   };
 
-  const resolvedAreaId = String(law.areaId || law.area?.id || areas[0]?.id || '');
-  const resolvedArea = areas.find((area) => String(area.id) === resolvedAreaId) || law.area || areas[0];
+  const resolvedMateria = resolveLawMateria(law, areas, subjects);
 
   return {
     ...law,
     id: String(law.id || ''),
-    areaId: resolvedAreaId,
-    area: resolvedArea,
+    areaId: resolvedMateria.areaId,
+    area: resolvedMateria.area,
     aliases: law.aliases || [],
     title: law.title || '',
     shortTitle: law.shortTitle || '',
@@ -234,22 +390,200 @@ const FieldLabel = ({ children }: { children: React.ReactNode }) => (
 const TextInput = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
   <input
     {...props}
-    className={`h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-900 outline-none transition-colors focus:border-indigo-300 focus:bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 ${props.className || ''}`}
+    className={`h-10 w-full ${ADMIN_FIELD_CLASS} ${props.className || ''}`}
   />
 );
 
 const TextArea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
   <textarea
     {...props}
-    className={`min-h-28 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-medium leading-6 text-slate-900 outline-none transition-colors focus:border-indigo-300 focus:bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 ${props.className || ''}`}
+    className={`min-h-28 resize-y ${ADMIN_TEXTAREA_CLASS} ${props.className || ''}`}
   />
 );
 
 const SelectInput = (props: React.SelectHTMLAttributes<HTMLSelectElement>) => (
   <select
     {...props}
-    className={`h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-900 outline-none transition-colors focus:border-indigo-300 focus:bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 ${props.className || ''}`}
+    className={`h-10 w-full ${ADMIN_FIELD_CLASS} ${props.className || ''}`}
   />
+);
+
+interface CreatableTaxonomySelectProps {
+  label: string;
+  options: TaxonomyOption[];
+  value?: string | number | null;
+  placeholder: string;
+  createLabel: string;
+  disabled?: boolean;
+  loading?: boolean;
+  helper?: string;
+  onChange: (value: string, option?: TaxonomyOption) => void;
+  onCreate: (name: string) => Promise<void> | void;
+}
+
+const CreatableTaxonomySelect = ({
+  label,
+  options,
+  value,
+  placeholder,
+  createLabel,
+  disabled = false,
+  loading = false,
+  helper,
+  onChange,
+  onCreate,
+}: CreatableTaxonomySelectProps) => {
+  const [inputValue, setInputValue] = React.useState('');
+  const [isOpen, setIsOpen] = React.useState(false);
+  const selectedValue = String(value || '');
+  const selectedOption = options.find((option) => String(option.id) === selectedValue);
+  const normalizedInput = normalizeTaxonomyText(inputValue);
+  const filteredOptions = options
+    .filter((option) => String(option.id) !== selectedValue)
+    .filter((option) => !normalizedInput || normalizeTaxonomyText(option.name).includes(normalizedInput))
+    .slice(0, 12);
+  const hasExactOption = options.some((option) => normalizeTaxonomyText(option.name) === normalizedInput);
+  const canCreate = Boolean(normalizedInput && !hasExactOption && !disabled && !loading);
+
+  const selectOption = (option: TaxonomyOption) => {
+    onChange(String(option.id), option);
+    setInputValue('');
+    setIsOpen(false);
+  };
+
+  const createOption = async () => {
+    const name = inputValue.trim();
+    if (!name || disabled || loading) return;
+
+    await onCreate(name);
+    setInputValue('');
+    setIsOpen(false);
+  };
+
+  return (
+    <div
+      className="space-y-1.5"
+      onBlur={(event) => {
+        const nextFocus = event.relatedTarget as HTMLElement | null;
+        if (!nextFocus || !event.currentTarget.contains(nextFocus)) {
+          setIsOpen(false);
+        }
+      }}
+    >
+      <FieldLabel>{label}</FieldLabel>
+      <div className="relative">
+        <div className={`min-h-[44px] rounded-xl border border-slate-300 bg-white p-1.5 transition-all focus-within:ring-2 focus-within:ring-indigo-500/20 dark:border-slate-800 dark:bg-slate-900 ${disabled ? 'opacity-60' : ''}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedValue ? (
+              <span className="flex items-center gap-1 rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-900/30 dark:text-indigo-300">
+                {selectedOption?.name || selectedValue}
+                <button
+                  type="button"
+                  onClick={() => onChange('', undefined)}
+                  disabled={disabled || loading}
+                  className="transition-colors hover:text-indigo-950 disabled:opacity-40 dark:hover:text-indigo-100"
+                  aria-label={`Remover ${label}`}
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ) : null}
+
+            <input
+              type="text"
+              value={inputValue}
+              disabled={disabled || loading}
+              onChange={(event) => {
+                setInputValue(event.target.value);
+                setIsOpen(true);
+              }}
+              onFocus={() => setIsOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                if (filteredOptions.length > 0 && hasExactOption) {
+                  selectOption(filteredOptions[0]);
+                  return;
+                }
+                if (canCreate) {
+                  void createOption();
+                }
+              }}
+              placeholder={selectedValue ? '' : placeholder}
+              className="min-w-[120px] flex-1 border-none bg-transparent px-2 py-1 text-sm font-semibold text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed dark:text-slate-100"
+            />
+          </div>
+        </div>
+
+        {isOpen && !disabled && (filteredOptions.length > 0 || canCreate) ? (
+          <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 shadow-xl dark:border-slate-700 dark:bg-slate-800">
+            {filteredOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectOption(option)}
+                className="w-full px-4 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                {option.name}
+              </button>
+            ))}
+            {canCreate ? (
+              <button
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => void createOption()}
+                className="flex w-full flex-col gap-0.5 px-4 py-2 text-left text-sm font-bold text-indigo-600 transition-colors hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
+              >
+                <span className="flex items-center gap-2">
+                  {loading ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
+                  {createLabel} "{inputValue.trim()}"
+                </span>
+                <span className="ml-6 text-[10px] font-normal italic text-slate-400">Slug: {slugifyTaxonomy(inputValue)}</span>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {helper ? <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{helper}</p> : null}
+    </div>
+  );
+};
+
+const formatLegalUpdateDate = (value?: string | null) => {
+  if (!value) return 'Sem registro';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('pt-BR');
+};
+
+const LEGAL_UPDATE_CHANGE_LABEL: Record<string, string> = {
+  created: 'Incluido',
+  changed: 'Alterado',
+  revoked: 'Revogado',
+  renumbered: 'Renumerado',
+};
+
+const EditorPanel = ({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) => (
+  <section className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+    <div className={ADMIN_SURFACE_HEADER_CLASS}>
+      <div className="space-y-1">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+        {description ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>
+        ) : null}
+      </div>
+    </div>
+    <div className="p-5">{children}</div>
+  </section>
+);
+
+const EditorMetaBox = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <section className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+    <div className={ADMIN_SURFACE_HEADER_CLASS}>
+      <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
+    </div>
+    <div className="p-4">{children}</div>
+  </section>
 );
 
 const AI_KIND_LABEL: Record<LegalAiGenerationKind, string> = {
@@ -362,20 +696,34 @@ const formatDoctrineEntry = (entry: { author?: string; work?: string; text?: str
 const AdminLegalCommentaryEditPage = () => {
   const params = useParams<{ lawId?: string | string[] }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentUser, isLoading: isAuthLoading } = useAuth();
   const { addToast } = useToast();
   const lawId = normalizeParam(params.lawId) || 'new';
   const isNew = lawId === 'new';
+  const shouldOpenUpdatesFromQuery = searchParams.get('updates') === '1';
   const [areas, setAreas] = React.useState<LegalArea[]>([]);
   const [subjects, setSubjects] = React.useState<TaxonomyOption[]>([]);
   const [topics, setTopics] = React.useState<TaxonomyOption[]>([]);
+  const [specificSubjects, setSpecificSubjects] = React.useState<TaxonomyOption[]>([]);
   const [draft, setDraft] = React.useState<AdminLawDraft | null>(null);
   const draftRef = React.useRef<AdminLawDraft | null>(null);
   const [activeArticleId, setActiveArticleId] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [isImportingFromPlanalto, setIsImportingFromPlanalto] = React.useState(false);
+  const [isSyncingFromOfficial, setIsSyncingFromOfficial] = React.useState(false);
+  const [isCreatingMateria, setIsCreatingMateria] = React.useState(false);
+  const [isCreatingTopic, setIsCreatingTopic] = React.useState(false);
+  const [isCreatingAssunto, setIsCreatingAssunto] = React.useState(false);
   const [aiLoading, setAiLoading] = React.useState<string | null>(null);
+  const [aiProgress, setAiProgress] = React.useState<{ kind: string; label: string; percent: number } | null>(null);
+  const [activeEditorialSection, setActiveEditorialSection] = React.useState<LegalEditorialSection>('teacher');
+  const [isUpdatesModalOpen, setIsUpdatesModalOpen] = React.useState(false);
+  const [isUpdatesModalLoading, setIsUpdatesModalLoading] = React.useState(false);
+  const [updatesModalItems, setUpdatesModalItems] = React.useState<LawUpdate[]>([]);
+  const [updatesModalLogs, setUpdatesModalLogs] = React.useState<LegalSyncLog[]>([]);
+  const hasOpenedUpdatesFromQueryRef = React.useRef(false);
   const [batchRun, setBatchRun] = React.useState<LegalEditorialBatchRun | null>(null);
   const [isBatchRunning, setIsBatchRunning] = React.useState(false);
   const [isBatchRefreshing, setIsBatchRefreshing] = React.useState(false);
@@ -383,6 +731,17 @@ const AdminLegalCommentaryEditPage = () => {
   const [batchOnlyMissingComments, setBatchOnlyMissingComments] = React.useState(true);
   const batchPauseRef = React.useRef(false);
   const batchStopRef = React.useRef(false);
+
+  const renderAdminShell = (children: React.ReactNode) => (
+    <AdminStandaloneShell
+      activeTab="operation"
+      activeSectionKey="lei-comentada"
+      pageTitle="Lei Comentada"
+      showPageHeader={false}
+    >
+      {children}
+    </AdminStandaloneShell>
+  );
 
   React.useEffect(() => {
     if (!isAuthLoading && !canAccessAdminPanel(currentUser)) {
@@ -406,11 +765,15 @@ const AdminLegalCommentaryEditPage = () => {
         if (!isCurrent) return;
 
         const nextAreas = payload.areas || [];
-        const nextLaw = payload.law ? hydrateDraftFromLaw(payload.law, nextAreas) : buildEmptyLaw(nextAreas);
+        const knowledgeTaxonomies = splitKnowledgeTaxonomies(taxonomies);
+        const nextLaw = payload.law
+          ? hydrateDraftFromLaw(payload.law, nextAreas, knowledgeTaxonomies.subjects)
+          : buildEmptyLaw(nextAreas, knowledgeTaxonomies.subjects);
 
         setAreas(nextAreas);
-        setSubjects((taxonomies.subjects || []) as TaxonomyOption[]);
-        setTopics((taxonomies.topics || []) as TaxonomyOption[]);
+        setSubjects(knowledgeTaxonomies.subjects);
+        setTopics(knowledgeTaxonomies.topics);
+        setSpecificSubjects(knowledgeTaxonomies.specificSubjects);
         setDraft(nextLaw);
         setActiveArticleId(nextLaw.articles?.[0]?.id || '');
       })
@@ -462,10 +825,247 @@ const AdminLegalCommentaryEditPage = () => {
     [activeArticleId, draft?.articles],
   );
 
-  const filteredTopics = React.useMemo(() => {
-    if (!activeArticle?.subjectFilterId) return topics;
-    return topics.filter((topic) => String(topic.parentId || '') === String(activeArticle.subjectFilterId));
-  }, [activeArticle?.subjectFilterId, topics]);
+  const lawMateriaOptions = React.useMemo(() => {
+    const options = [...subjects];
+    const currentMateriaId = String(draft?.areaId || '');
+    const hasCurrentMateria = currentMateriaId && options.some((subject) => String(subject.id) === currentMateriaId);
+
+    if (currentMateriaId && !hasCurrentMateria) {
+      options.unshift({
+        id: currentMateriaId,
+        name: draft?.area?.name ? `${draft.area.name} (area antiga)` : 'Materia atual sem taxonomia',
+      });
+    }
+
+    return options;
+  }, [draft?.area?.name, draft?.areaId, subjects]);
+
+  const articleTopicOptions = React.useMemo(() => {
+    const materiaId = String(draft?.areaId || '');
+    if (!materiaId) return topics;
+
+    return topics.filter((topic) => (
+      !topic.parentId
+      || String(topic.parentId) === materiaId
+      || String(topic.rootSubjectId || '') === materiaId
+    ));
+  }, [draft?.areaId, topics]);
+
+  const articleAssuntoOptions = React.useMemo(() => {
+    if (!activeArticle?.subjectFilterId) return [];
+
+    return specificSubjects.filter((subject) => String(subject.parentId || '') === String(activeArticle.subjectFilterId));
+  }, [activeArticle?.subjectFilterId, specificSubjects]);
+
+  const reloadKnowledgeTaxonomies = React.useCallback(async () => {
+    const taxonomies = await filtersService.listTaxonomies();
+    const knowledgeTaxonomies = splitKnowledgeTaxonomies(taxonomies);
+    setSubjects(knowledgeTaxonomies.subjects);
+    setTopics(knowledgeTaxonomies.topics);
+    setSpecificSubjects(knowledgeTaxonomies.specificSubjects);
+    return knowledgeTaxonomies;
+  }, []);
+
+  const updateActiveArticleTaxonomy = React.useCallback((patch: { subjectFilterId?: string | null; topicFilterId?: string | null }) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const nextArticles = (current.articles || []).map((article) => (
+        article.id === activeArticleId ? { ...article, ...patch } : article
+      ));
+      return { ...current, articles: nextArticles };
+    });
+  }, [activeArticleId]);
+
+  const updateLawMateria = (subjectId: string, explicitSubject?: TaxonomyOption) => {
+    if (!subjectId) {
+      setDraft((current) => current ? {
+        ...current,
+        areaId: '',
+        articles: (current.articles || []).map((article) => ({
+          ...article,
+          subjectFilterId: null,
+          topicFilterId: null,
+        })),
+      } : current);
+      return;
+    }
+
+    const subject = explicitSubject || subjects.find((item) => String(item.id) === String(subjectId));
+
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        areaId: subjectId,
+        area: buildLegalAreaFromTaxonomy(subject, current.area) || current.area,
+        articles: (current.articles || []).map((article) => {
+          const selectedTopic = topics.find((topic) => String(topic.id) === String(article.subjectFilterId || ''));
+          const topicBelongsToMateria = !selectedTopic
+            || String(selectedTopic.parentId || selectedTopic.rootSubjectId || '') === String(subjectId);
+
+          return topicBelongsToMateria
+            ? article
+            : { ...article, subjectFilterId: null, topicFilterId: null };
+        }),
+      };
+    });
+  };
+
+  const createMateria = async (rawName: string) => {
+    const name = rawName.trim();
+    if (!name) {
+      addToast('Informe o nome da materia.', 'info');
+      return;
+    }
+
+    const existing = subjects.find((subject) => normalizeTaxonomyText(subject.name) === normalizeTaxonomyText(name));
+    if (existing) {
+      updateLawMateria(String(existing.id));
+      addToast('Materia existente selecionada.', 'info');
+      return;
+    }
+
+    setIsCreatingMateria(true);
+    try {
+      const createdId = await filtersService.save({
+        type: 'assunto',
+        name,
+        slug: slugifyTaxonomy(name),
+        materia: true,
+        taxonomy_level: 'materia',
+        parent_id: null,
+        metadata: { taxonomy_level: 'materia' },
+      });
+      const knowledgeTaxonomies = await reloadKnowledgeTaxonomies();
+      const created = knowledgeTaxonomies.subjects.find((subject) => String(subject.id) === String(createdId))
+        || knowledgeTaxonomies.subjects.find((subject) => normalizeTaxonomyText(subject.name) === normalizeTaxonomyText(name))
+        || { id: createdId || name, name };
+      updateLawMateria(String(created.id), created);
+      addToast('Materia criada e vinculada a lei.', 'success');
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel criar a materia.', 'error');
+    } finally {
+      setIsCreatingMateria(false);
+    }
+  };
+
+  const createArticleTopic = async (rawName: string) => {
+    const name = rawName.trim();
+    const materiaId = String(draft?.areaId || '');
+    if (!name) {
+      addToast('Informe o nome do topico.', 'info');
+      return;
+    }
+    if (!materiaId) {
+      addToast('Selecione a materia da lei antes de criar um topico.', 'error');
+      return;
+    }
+
+    const existing = topics.find((topic) => (
+      normalizeTaxonomyText(topic.name) === normalizeTaxonomyText(name)
+      && (
+        String(topic.parentId || '') === materiaId
+        || String(topic.rootSubjectId || '') === materiaId
+      )
+    ));
+
+    if (existing) {
+      updateActiveArticleTaxonomy({ subjectFilterId: String(existing.id), topicFilterId: null });
+      addToast('Topico existente selecionado.', 'info');
+      return;
+    }
+
+    const parentId = Number(materiaId);
+    if (!Number.isFinite(parentId)) {
+      addToast('A materia selecionada precisa estar cadastrada nas taxonomias.', 'error');
+      return;
+    }
+
+    setIsCreatingTopic(true);
+    try {
+      const createdId = await filtersService.save({
+        type: 'assunto',
+        name,
+        slug: slugifyTaxonomy(name),
+        materia: false,
+        taxonomy_level: 'topico',
+        parent_id: parentId,
+        metadata: { taxonomy_level: 'topico' },
+      });
+      const knowledgeTaxonomies = await reloadKnowledgeTaxonomies();
+      const created = knowledgeTaxonomies.topics.find((topic) => String(topic.id) === String(createdId))
+        || knowledgeTaxonomies.topics.find((topic) => (
+          normalizeTaxonomyText(topic.name) === normalizeTaxonomyText(name)
+          && (
+            String(topic.parentId || '') === materiaId
+            || String(topic.rootSubjectId || '') === materiaId
+          )
+        ))
+        || { id: createdId || name, name, parentId: materiaId, rootSubjectId: materiaId };
+      updateActiveArticleTaxonomy({ subjectFilterId: String(created.id), topicFilterId: null });
+      addToast('Topico criado e vinculado ao artigo.', 'success');
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel criar o topico.', 'error');
+    } finally {
+      setIsCreatingTopic(false);
+    }
+  };
+
+  const createArticleAssunto = async (rawName: string) => {
+    const name = rawName.trim();
+    const topicId = String(activeArticle?.subjectFilterId || '');
+    if (!name) {
+      addToast('Informe o nome do assunto.', 'info');
+      return;
+    }
+    if (!topicId) {
+      addToast('Selecione um topico antes de criar o assunto.', 'error');
+      return;
+    }
+
+    const existing = specificSubjects.find((subject) => (
+      normalizeTaxonomyText(subject.name) === normalizeTaxonomyText(name)
+      && String(subject.parentId || '') === topicId
+    ));
+
+    if (existing) {
+      updateActiveArticleTaxonomy({ topicFilterId: String(existing.id) });
+      addToast('Assunto existente selecionado.', 'info');
+      return;
+    }
+
+    const parentId = Number(topicId);
+    if (!Number.isFinite(parentId)) {
+      addToast('O topico selecionado precisa estar cadastrado nas taxonomias.', 'error');
+      return;
+    }
+
+    setIsCreatingAssunto(true);
+    try {
+      const createdId = await filtersService.save({
+        type: 'assunto',
+        name,
+        slug: slugifyTaxonomy(name),
+        materia: false,
+        taxonomy_level: 'assunto',
+        parent_id: parentId,
+        metadata: { taxonomy_level: 'assunto' },
+      });
+      const knowledgeTaxonomies = await reloadKnowledgeTaxonomies();
+      const created = knowledgeTaxonomies.specificSubjects.find((subject) => String(subject.id) === String(createdId))
+        || knowledgeTaxonomies.specificSubjects.find((subject) => (
+          normalizeTaxonomyText(subject.name) === normalizeTaxonomyText(name)
+          && String(subject.parentId || '') === topicId
+        ))
+        || { id: createdId || name, name, parentId: topicId };
+      updateActiveArticleTaxonomy({ topicFilterId: String(created.id) });
+      addToast('Assunto criado e vinculado ao artigo.', 'success');
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel criar o assunto.', 'error');
+    } finally {
+      setIsCreatingAssunto(false);
+    }
+  };
 
   const updateLawField = (field: keyof AdminLawDraft, value: any) => {
     setDraft((current) => current ? { ...current, [field]: value } : current);
@@ -617,8 +1217,8 @@ const AdminLegalCommentaryEditPage = () => {
       id: createTempId('juris'),
       articleId: activeArticle.id,
       court: (item?.court || 'STJ') as ArticleJurisprudence['court'],
-      precedentType: item?.precedentType || 'Entendimento',
-      title: item?.title || 'Jurisprudencia relevante',
+      precedentType: item?.precedentType || '',
+      title: item?.title || '',
       summary: item?.summary || '',
       examImpact: item?.examImpact || '',
       isConsolidated: Boolean(item?.isConsolidated),
@@ -674,6 +1274,23 @@ const AdminLegalCommentaryEditPage = () => {
     return 'field-doutrina';
   };
 
+  const startAiProgress = (kind: string, label: string) => {
+    setAiProgress({ kind, label, percent: 8 });
+    window.setTimeout(() => {
+      setAiProgress((current) => current?.kind === kind ? { ...current, percent: Math.max(current.percent, 32) } : current);
+    }, 120);
+    window.setTimeout(() => {
+      setAiProgress((current) => current?.kind === kind ? { ...current, percent: Math.max(current.percent, 64) } : current);
+    }, 650);
+  };
+
+  const finishAiProgress = (kind: string, percent = 100) => {
+    setAiProgress((current) => current?.kind === kind ? { ...current, percent } : current);
+    window.setTimeout(() => {
+      setAiProgress((current) => current?.kind === kind ? null : current);
+    }, 900);
+  };
+
   const buildArticleEditorialSnapshot = React.useCallback((currentDraft: AdminLawDraft, article: LawArticle): LegalArticleEditorialSnapshot => ({
     articleId: article.id,
     articleNumber: article.number,
@@ -690,11 +1307,169 @@ const AdminLegalCommentaryEditPage = () => {
     return (snapshot.teacherComments || []).some((item) => String(item.body || '').trim().length > 0);
   }, [buildArticleEditorialSnapshot]);
 
+  const articleHasEditorialSection = React.useCallback((currentDraft: AdminLawDraft, article: LawArticle, section: LegalEditorialSection) => {
+    const snapshot = buildArticleEditorialSnapshot(currentDraft, article);
+    if (section === 'teacher') {
+      return (snapshot.teacherComments || []).some((item) => String(item.body || item.title || '').trim().length > 0);
+    }
+    if (section === 'tips') {
+      return (snapshot.examTips || []).some((item) => String(item.body || item.title || '').trim().length > 0);
+    }
+    if (section === 'jurisprudence') {
+      return (snapshot.jurisprudence || []).some(hasMeaningfulJurisprudenceContent)
+        || (snapshot.jurisprudenceNotes || []).some((item) => (
+          String(item || '').trim().length > 0
+          && !isEmptyJurisprudencePlaceholderText(item)
+        ));
+    }
+    if (section === 'sumulas') {
+      return (snapshot.sumulas || []).some((item) => String(item.text || item.number || '').trim().length > 0);
+    }
+    if (section === 'doctrine') {
+      return (snapshot.doctrine || []).some((item) => String(item || '').trim().length > 0);
+    }
+    return false;
+  }, [buildArticleEditorialSnapshot]);
+
+  const editorialCoverage = React.useMemo(() => {
+    if (!draft || activeEditorialSection === 'ai') {
+      return null;
+    }
+
+    const articles = draft.articles || [];
+    const relevantArticles = articles.filter((article) => !isLikelyEditoriallyIrrelevantArticle(article));
+    const missingArticles = relevantArticles.filter((article) => !articleHasEditorialSection(draft, article, activeEditorialSection));
+
+    return {
+      total: relevantArticles.length,
+      covered: relevantArticles.length - missingArticles.length,
+      missingArticles,
+      skippedArticles: articles.length - relevantArticles.length,
+    };
+  }, [activeEditorialSection, articleHasEditorialSection, draft]);
+
+  const addEditorialPlaceholdersToArticles = (section: LegalEditorialSection, onlyMissing: boolean) => {
+    if (!draft || section === 'ai') return;
+
+    const articles = (draft.articles || []).filter((article) => !isLikelyEditoriallyIrrelevantArticle(article));
+    const targets = articles.filter((article) => (
+      onlyMissing ? !articleHasEditorialSection(draft, article, section) : true
+    ));
+
+    if (targets.length === 0) {
+      addToast('Todos os artigos ja possuem esse bloco editorial.', 'info');
+      return;
+    }
+
+    const targetIds = new Set(targets.map((article) => article.id));
+
+    setDraft((current) => {
+      if (!current) return current;
+      const currentArticles = current.articles || [];
+
+      if (section === 'teacher') {
+        return {
+          ...current,
+          teacherComments: [
+            ...(current.teacherComments || []),
+            ...targets.map((article) => ({
+              id: createTempId('teacher'),
+              articleId: article.id,
+              title: 'Comentario do professor',
+              body: '',
+              examFocus: [],
+              pitfalls: [],
+              relatedRefs: [],
+              authorName: 'Equipe editorial',
+              authorRole: 'Professor especialista',
+              reviewedAt: new Date().toISOString(),
+            })),
+          ],
+        };
+      }
+
+      if (section === 'tips') {
+        return {
+          ...current,
+          examTips: [
+            ...(current.examTips || []),
+            ...targets.map((article) => ({
+              id: createTempId('tip'),
+              articleId: article.id,
+              title: 'Macete para prova',
+              body: '',
+              tags: [],
+            })),
+          ],
+        };
+      }
+
+      if (section === 'jurisprudence') {
+        return {
+          ...current,
+          jurisprudence: [
+            ...(current.jurisprudence || []),
+            ...targets.map((article) => ({
+              id: createTempId('juris'),
+              articleId: article.id,
+              court: 'STJ' as ArticleJurisprudence['court'],
+              precedentType: '',
+              title: '',
+              summary: '',
+              examImpact: '',
+              isConsolidated: false,
+              priority: 'medium' as ArticleJurisprudence['priority'],
+              sourceUrl: '',
+            })),
+          ],
+        };
+      }
+
+      if (section === 'sumulas') {
+        return {
+          ...current,
+          sumulas: [
+            ...(current.sumulas || []),
+            ...targets.map((article) => ({
+              id: createTempId('sumula'),
+              articleId: article.id,
+              court: 'STJ',
+              number: '',
+              text: '',
+              sourceUrl: '',
+              priority: 'medium',
+            })),
+          ],
+        };
+      }
+
+      if (section === 'doctrine') {
+        return {
+          ...current,
+          articles: currentArticles.map((article) => targetIds.has(article.id)
+            ? { ...article, doctrine: [...(article.doctrine || []), ''] }
+            : article),
+        };
+      }
+
+      return current;
+    });
+
+    addToast(
+      onlyMissing
+        ? `Bloco adicionado em ${targets.length} artigo(s) pendente(s).`
+        : `Bloco adicionado em ${targets.length} artigo(s).`,
+      'success',
+    );
+  };
+
   const batchEligibleArticlesCount = React.useMemo(() => {
     if (!draft?.articles?.length) return 0;
-    return (draft.articles || []).filter((article) => (
-      batchOnlyMissingComments ? !articleHasTeacherComment(draft, article) : true
-    )).length;
+    return (draft.articles || [])
+      .filter((article) => !isLikelyEditoriallyIrrelevantArticle(article))
+      .filter((article) => (
+        batchOnlyMissingComments ? !articleHasTeacherComment(draft, article) : true
+      )).length;
   }, [articleHasTeacherComment, batchOnlyMissingComments, draft]);
 
   const waitWhileBatchPaused = React.useCallback(async () => {
@@ -717,12 +1492,13 @@ const AdminLegalCommentaryEditPage = () => {
       articleId,
     })),
     doctrine: editorial.doctrine || [],
-    jurisprudenceNotes: editorial.jurisprudenceNotes || [],
+    jurisprudenceNotes: (editorial.jurisprudenceNotes || [])
+      .filter((item) => !isEmptyJurisprudencePlaceholderText(item)),
     jurisprudence: (editorial.jurisprudence || []).map((item) => ({
       ...item,
       id: item.id || createTempId('juris'),
       articleId,
-    })),
+    })).filter(hasMeaningfulJurisprudenceContent),
     sumulas: (editorial.sumulas || []).map((item) => ({
       ...item,
       id: item.id || createTempId('sumula'),
@@ -820,10 +1596,17 @@ const AdminLegalCommentaryEditPage = () => {
       return;
     }
 
+    if (isLikelyEditoriallyIrrelevantArticle(activeArticle)) {
+      addToast('Este artigo parece ser bloco final, assinatura ou expediente sem relevancia recorrente para prova. Nao e necessario gerar conteudo editorial.', 'info');
+      return;
+    }
+
     setAiLoading(kind);
+    startAiProgress(kind, AI_KIND_LABEL[kind]);
 
     try {
       const result = await generateArticleEditorial(activeArticle, resolveAiScope(kind));
+      setAiProgress((current) => current?.kind === kind ? { ...current, percent: 92 } : current);
       const warnings = result.summary.warnings || [];
 
       if (result.summary.approvedBlocks > 0) {
@@ -834,6 +1617,7 @@ const AdminLegalCommentaryEditPage = () => {
     } catch (error: any) {
       addToast(error?.message || 'Nao foi possivel gerar com IA agora.', 'error');
     } finally {
+      finishAiProgress(kind);
       setAiLoading(null);
     }
   };
@@ -844,10 +1628,17 @@ const AdminLegalCommentaryEditPage = () => {
       return;
     }
 
+    if (isLikelyEditoriallyIrrelevantArticle(activeArticle)) {
+      addToast('Este artigo parece ser bloco final, assinatura ou expediente sem relevancia recorrente para prova. Nao e necessario gerar pacote editorial.', 'info');
+      return;
+    }
+
     setAiLoading('bundle');
+    startAiProgress('bundle', AI_KIND_LABEL.bundle);
 
     try {
       const result = await generateArticleEditorial(activeArticle, 'article-full');
+      setAiProgress((current) => current?.kind === 'bundle' ? { ...current, percent: 92 } : current);
       const warnings = result.summary.warnings || [];
 
       if (result.summary.approvedBlocks > 0) {
@@ -861,6 +1652,7 @@ const AdminLegalCommentaryEditPage = () => {
     } catch (error: any) {
       addToast(error?.message || 'Nao foi possivel gerar o pacote com IA agora.', 'error');
     } finally {
+      finishAiProgress('bundle');
       setAiLoading(null);
     }
   };
@@ -885,6 +1677,9 @@ const AdminLegalCommentaryEditPage = () => {
         const currentDraft = draftRef.current;
         const article = currentDraft?.articles?.find((entry) => entry.id === item.articleId);
         if (!currentDraft || !article) {
+          continue;
+        }
+        if (isLikelyEditoriallyIrrelevantArticle(article)) {
           continue;
         }
 
@@ -937,9 +1732,11 @@ const AdminLegalCommentaryEditPage = () => {
 
     try {
       const onlyMissingComments = options?.onlyMissingComments ?? batchOnlyMissingComments;
-      const eligibleArticles = (draft.articles || []).filter((article) => (
-        onlyMissingComments ? !articleHasTeacherComment(draft, article) : true
-      ));
+      const eligibleArticles = (draft.articles || [])
+        .filter((article) => !isLikelyEditoriallyIrrelevantArticle(article))
+        .filter((article) => (
+          onlyMissingComments ? !articleHasTeacherComment(draft, article) : true
+        ));
 
       if (eligibleArticles.length === 0) {
         addToast(
@@ -1001,9 +1798,11 @@ const AdminLegalCommentaryEditPage = () => {
     try {
       const result = await legalCommentaryApiService.importLawFromPlanalto(officialUrl, false);
       const taxonomies = await filtersService.listTaxonomies();
-      const nextDraft = hydrateDraftFromLaw(result.law, areas);
-      setSubjects((taxonomies.subjects || []) as TaxonomyOption[]);
-      setTopics((taxonomies.topics || []) as TaxonomyOption[]);
+      const knowledgeTaxonomies = splitKnowledgeTaxonomies(taxonomies);
+      const nextDraft = hydrateDraftFromLaw(result.law, areas, knowledgeTaxonomies.subjects);
+      setSubjects(knowledgeTaxonomies.subjects);
+      setTopics(knowledgeTaxonomies.topics);
+      setSpecificSubjects(knowledgeTaxonomies.specificSubjects);
       setDraft(nextDraft);
       setActiveArticleId(nextDraft.articles?.[0]?.id || '');
       addToast('Lei importada do Planalto para revisao no editor.', 'success');
@@ -1014,6 +1813,86 @@ const AdminLegalCommentaryEditPage = () => {
     }
   };
 
+  const syncFromOfficialSource = async () => {
+    if (!draft?.id || isNew) {
+      addToast('Salve a lei antes de sincronizar com a fonte oficial.', 'info');
+      return;
+    }
+
+    setIsSyncingFromOfficial(true);
+
+    try {
+      const result = await legalCommentaryApiService.syncAdminLaw(String(draft.id));
+      const sync = result.sync || { insertedArticles: 0, changedArticles: 0, revokedArticles: 0 };
+      const hasChanges = sync.insertedArticles > 0 || sync.changedArticles > 0 || sync.revokedArticles > 0;
+      const nextDraft = hydrateDraftFromLaw(result.law, areas, subjects);
+
+      setDraft(nextDraft);
+      setActiveArticleId((current) => current && nextDraft.articles.some((article) => article.id === current)
+        ? current
+        : nextDraft.articles?.[0]?.id || '');
+
+      addToast(
+        hasChanges
+          ? `O que mudou atualizado: ${sync.changedArticles} alterado(s), ${sync.insertedArticles} novo(s), ${sync.revokedArticles} revogado(s).`
+          : 'Sincronizacao concluida sem mudancas no texto oficial.',
+        hasChanges ? 'success' : 'info',
+      );
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel sincronizar esta lei.', 'error');
+    } finally {
+      setIsSyncingFromOfficial(false);
+    }
+  };
+
+  const openUpdatesModal = async () => {
+    if (!draft?.id || isNew) {
+      return;
+    }
+
+    setIsUpdatesModalOpen(true);
+    setIsUpdatesModalLoading(true);
+
+    try {
+      const payload = await legalCommentaryApiService.getAdminLawUpdates(String(draft.id));
+      setUpdatesModalItems(payload.updates || []);
+      setUpdatesModalLogs(payload.syncLogs || []);
+
+      if (payload.law) {
+        const nextDraft = hydrateDraftFromLaw(payload.law, areas, subjects);
+        setDraft(nextDraft);
+        setActiveArticleId((current) => current && nextDraft.articles.some((article) => article.id === current)
+          ? current
+          : nextDraft.articles?.[0]?.id || '');
+      }
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel carregar o historico de atualizacoes.', 'error');
+    } finally {
+      setIsUpdatesModalLoading(false);
+    }
+  };
+
+  const closeUpdatesModal = () => {
+    if (isUpdatesModalLoading) return;
+    setIsUpdatesModalOpen(false);
+  };
+
+  React.useEffect(() => {
+    if (
+      !shouldOpenUpdatesFromQuery ||
+      hasOpenedUpdatesFromQueryRef.current ||
+      !draft?.id ||
+      isNew ||
+      isLoading
+    ) {
+      return;
+    }
+
+    hasOpenedUpdatesFromQueryRef.current = true;
+    void openUpdatesModal();
+    router.replace(buildAdminLawEditPath(draft.id), { scroll: false });
+  }, [draft?.id, isLoading, isNew, router, shouldOpenUpdatesFromQuery]);
+
   const saveLaw = async () => {
     if (!draft) return;
     setIsSaving(true);
@@ -1021,7 +1900,7 @@ const AdminLegalCommentaryEditPage = () => {
     try {
       const saved = await legalCommentaryApiService.saveAdminLaw({
         ...draft,
-        areaId: draft.areaId || draft.area?.id || areas[0]?.id,
+        areaId: String(draft.areaId || draft.area?.id || subjects[0]?.id || areas[0]?.id || ''),
         articles: draft.articles || [],
         teacherComments: draft.teacherComments || [],
         jurisprudence: draft.jurisprudence || [],
@@ -1030,9 +1909,9 @@ const AdminLegalCommentaryEditPage = () => {
       });
       addToast('Lei salva com sucesso.', 'success');
       if (isNew && saved.id) {
-        router.replace(`/admin/operation/lei-comentada/${saved.id}/edit`);
+        router.replace(buildAdminLawEditPath(saved.id));
       } else {
-        const nextDraft = hydrateDraftFromLaw(saved, areas);
+        const nextDraft = hydrateDraftFromLaw(saved, areas, subjects);
         setDraft(nextDraft);
         setActiveArticleId((current) => current && nextDraft.articles.some((article) => article.id === current)
           ? current
@@ -1046,12 +1925,10 @@ const AdminLegalCommentaryEditPage = () => {
   };
 
   if (isAuthLoading || isLoading || !draft) {
-    return (
-      <div className="min-h-[100dvh] bg-slate-50 p-6 dark:bg-slate-950">
-        <div className="mx-auto flex max-w-6xl items-center justify-center rounded-[2rem] border border-slate-200 bg-white p-12 text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+    return renderAdminShell(
+      <div className={`${ADMIN_SURFACE_CLASS} flex min-h-[360px] items-center justify-center p-12 text-slate-500 dark:text-slate-400`}>
           <Loader2 className="mr-3 animate-spin" size={18} /> Carregando editor da Lei Comentada...
-        </div>
-      </div>
+      </div>,
     );
   }
 
@@ -1059,67 +1936,140 @@ const AdminLegalCommentaryEditPage = () => {
   const articleTips = (draft.examTips || []).filter((item) => item.articleId === activeArticle?.id);
   const articleJurisprudence = (draft.jurisprudence || []).filter((item) => item.articleId === activeArticle?.id);
   const articleSumulas = (draft.sumulas || []).filter((item) => item.articleId === activeArticle?.id);
+  const recentLawUpdates = (draft.updates || []).slice(0, 3);
+  const activeSectionMeta = LEGAL_EDITORIAL_SECTIONS.find((section) => section.key === activeEditorialSection);
+  const editorialSectionCounts: Record<LegalEditorialSection, number> = {
+    teacher: articleComments.length,
+    tips: articleTips.length,
+    jurisprudence: articleJurisprudence.length + (activeArticle?.jurisprudenceNotes || []).length,
+    sumulas: articleSumulas.length,
+    doctrine: activeArticle?.doctrine?.length || 0,
+    ai: batchRun ? Math.max(batchRun.processedArticles, batchRun.totalArticles) : batchEligibleArticlesCount,
+  };
   const batchProgressPercent = batchRun?.totalArticles
     ? Math.min(100, Math.round((batchRun.processedArticles / batchRun.totalArticles) * 100))
     : 0;
   const batchStartLabel = batchOnlyMissingComments
     ? `Gerar comentarios pendentes (${batchEligibleArticlesCount})`
     : `Gerar comentarios de todos (${batchEligibleArticlesCount})`;
+  const lawStatusValue = String(draft.status || 'active');
+  const lastSyncedLabel = draft.lastSyncedAt
+    ? new Date(draft.lastSyncedAt).toLocaleString('pt-BR')
+    : 'Ainda nao sincronizada';
 
-  return (
-    <div className="min-h-[100dvh] bg-slate-50 px-4 py-6 dark:bg-slate-950 md:px-8">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <div className="flex flex-col gap-4 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
-            <Link href="/admin/operation/lei-comentada" className="mt-1 rounded-xl border border-slate-200 p-3 text-slate-500 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+  return renderAdminShell(
+      <div className="space-y-5">
+        <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+          <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between`}>
+            <div className="flex min-w-0 items-start gap-4">
+            <Link href="/admin/operation/lei-comentada" className={`${ADMIN_SECONDARY_BUTTON_CLASS} mt-0.5 h-9 w-9 justify-center p-0`}>
               <ArrowLeft size={18} />
             </Link>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Admin / Lei Comentada</p>
-              <h1 className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">
+              <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
                 {isNew ? 'Nova lei comentada' : draft.shortTitle || draft.title || 'Editar lei'}
               </h1>
-              <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-                Persistencia real no banco, fonte oficial do Planalto e conteudo editorial revisavel.
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                Base oficial, artigos, comentarios editoriais e sincronizacao com a fonte normativa.
               </p>
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
-            {!isNew && draft.id ? (
-              <Link
-                href={`/admin/operation/lei-comentada/${encodeURIComponent(String(draft.id))}/updates`}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {!isNew && draft.id ? (
+                <button type="button" onClick={() => void openUpdatesModal()} className={ADMIN_SECONDARY_BUTTON_CLASS}>
+                  <History size={14} /> Atualizacoes
+                </button>
+              ) : null}
+              {!isNew && draft.id ? (
+                <button
+                  type="button"
+                  onClick={() => void syncFromOfficialSource()}
+                  disabled={isSyncingFromOfficial}
+                  className={ADMIN_SECONDARY_BUTTON_CLASS}
+                >
+                  {isSyncingFromOfficial ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
+                  Sincronizar
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void saveLaw()}
+                disabled={isSaving}
+                className={ADMIN_PRIMARY_BUTTON_CLASS}
               >
-                <History size={15} /> Atualizacoes
-              </Link>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void saveLaw()}
-              disabled={isSaving}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-60"
-            >
-              {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-              Salvar lei
-            </button>
+                {isSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                Salvar lei
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="space-y-5">
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex items-center gap-2">
-                <BookOpen size={18} className="text-indigo-600 dark:text-indigo-300" />
-                <h2 className="text-sm font-black uppercase tracking-[0.16em] text-slate-700 dark:text-slate-200">Dados da lei</h2>
+        {!isNew && draft.id ? (
+          <div className={`${ADMIN_SURFACE_CLASS} p-4`}>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">O que mudou</p>
+                <h2 className="mt-1 text-base font-semibold text-slate-900 dark:text-slate-100">
+                  Novidades da ultima sincronizacao
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  Quando o Planalto altera, inclui ou remove artigo, essa area vira o resumo que o aluno ve na leitura.
+                </p>
               </div>
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => void syncFromOfficialSource()}
+                  disabled={isSyncingFromOfficial}
+                  className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center`}
+                >
+                  {isSyncingFromOfficial ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
+                  Sincronizar agora
+                </button>
+                <button type="button" onClick={() => void openUpdatesModal()} className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center`}>
+                  <History size={14} /> Historico completo
+                </button>
+              </div>
+            </div>
 
-              <div className="mt-5 space-y-4">
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {recentLawUpdates.length > 0 ? recentLawUpdates.map((update) => (
+                <div key={update.id} className="rounded-sm border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                    {update.changeType === 'created' ? 'Novo' : update.changeType === 'revoked' ? 'Revogado' : 'Alterado'}
+                  </p>
+                  <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{update.title}</p>
+                  <p className="mt-1 line-clamp-2 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">{update.summary}</p>
+                </div>
+              )) : (
+                <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 md:col-span-3">
+                  Nenhuma mudanca registrada ainda. Use a sincronizacao para comparar o texto oficial e preencher esta area automaticamente.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <main className="space-y-5">
+            <EditorPanel
+              title="Dados da lei"
+              description="Identificacao, fonte oficial e metadados basicos da norma."
+            >
+              <div className="space-y-4">
                 <div>
-                  <FieldLabel>Area</FieldLabel>
-                  <SelectInput value={draft.areaId || ''} onChange={(event) => updateLawField('areaId', event.target.value)}>
-                    {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
-                  </SelectInput>
+                  <CreatableTaxonomySelect
+                    label="Materia"
+                    options={lawMateriaOptions}
+                    value={draft.areaId || ''}
+                    placeholder="Selecionar ou criar materia"
+                    createLabel="Criar materia"
+                    loading={isCreatingMateria}
+                    helper="Essa materia e a raiz que vincula a lei ao banco de questoes."
+                    onChange={(value, option) => updateLawMateria(value, option)}
+                    onCreate={createMateria}
+                  />
                 </div>
                 <div>
                   <FieldLabel>Nome curto</FieldLabel>
@@ -1176,48 +2126,19 @@ const AdminLegalCommentaryEditPage = () => {
                   <TextArea value={draft.ementa || ''} onChange={(event) => updateLawField('ementa', event.target.value)} />
                 </div>
               </div>
-            </section>
-
-            <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Artigos</p>
-                  <h2 className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{draft.articles?.length || 0} cadastrados</h2>
-                </div>
-                <button type="button" onClick={addArticle} className="rounded-xl bg-indigo-600 p-3 text-white transition-colors hover:bg-indigo-700">
-                  <Plus size={16} />
-                </button>
-              </div>
-
-              <div className="mt-4 max-h-[480px] space-y-2 overflow-y-auto pr-1">
-                {(draft.articles || []).map((article) => (
-                  <button
-                    type="button"
-                    key={article.id}
-                    onClick={() => setActiveArticleId(article.id)}
-                    className={`w-full rounded-2xl border p-3 text-left transition-all ${article.id === activeArticle?.id ? 'border-indigo-500 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-500/10' : 'border-slate-200 bg-slate-50 hover:bg-white dark:border-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800'}`}
-                  >
-                    <p className="text-xs font-black text-slate-900 dark:text-slate-100">{getArticleLabel(article)}</p>
-                    <p className="mt-1 line-clamp-2 text-[11px] font-medium leading-4 text-slate-500 dark:text-slate-400">{article.title || article.text || 'Sem texto cadastrado'}</p>
-                  </button>
-                ))}
-              </div>
-            </section>
-          </aside>
-
-          <main className="space-y-5">
+            </EditorPanel>
             {activeArticle ? (
               <>
-                <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <EditorPanel title={getArticleLabel(activeArticle)} description="Texto legal, vinculos editoriais e estrutura do artigo.">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Texto legal</p>
-                      <h2 className="mt-1 text-xl font-black text-slate-900 dark:text-slate-100">{getArticleLabel(activeArticle)}</h2>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Texto legal</p>
+                      <h2 className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">{getArticleLabel(activeArticle)}</h2>
                     </div>
                     <button
                       type="button"
                       onClick={() => removeArticle(activeArticle.id)}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-200 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-red-600 transition-colors hover:bg-red-50 dark:border-red-900/60 dark:hover:bg-red-500/10"
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-red-300 bg-white px-3 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 dark:border-red-800 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-500/10"
                     >
                       <Trash2 size={14} /> Remover artigo
                     </button>
@@ -1233,56 +2154,68 @@ const AdminLegalCommentaryEditPage = () => {
                       <TextInput value={activeArticle.title || ''} onChange={(event) => updateArticleField('title', event.target.value)} placeholder="Anterioridade da lei" />
                     </div>
                     <div className="lg:col-span-3">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                      <div className="rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
                         <div className="flex flex-col gap-1">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Vinculo com questoes</p>
-                          <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Use apenas os filtros editoriais que relacionam este artigo ao banco de questoes: materia e assunto.</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Vinculo com questoes</p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            A materia vem da lei. No artigo, escolha o topico e o assunto especifico para relacionar com as questoes.
+                          </p>
                         </div>
                         <div className="mt-4 grid gap-4 lg:grid-cols-2">
                           <div>
-                            <FieldLabel>Materia</FieldLabel>
-                            <SelectInput value={activeArticle.subjectFilterId || ''} onChange={(event) => {
-                              updateArticleField('subjectFilterId', event.target.value || null);
-                              updateArticleField('topicFilterId', null);
-                            }}>
-                              <option value="">Selecionar materia</option>
-                              {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
-                            </SelectInput>
+                            <CreatableTaxonomySelect
+                              label="Topico"
+                              options={articleTopicOptions}
+                              value={activeArticle.subjectFilterId || ''}
+                              placeholder={draft.areaId ? 'Selecionar ou criar topico' : 'Selecione a materia da lei primeiro'}
+                              createLabel="Criar topico"
+                              disabled={!draft.areaId}
+                              loading={isCreatingTopic}
+                              onChange={(value) => {
+                                updateActiveArticleTaxonomy({
+                                  subjectFilterId: value || null,
+                                  topicFilterId: null,
+                                });
+                              }}
+                              onCreate={createArticleTopic}
+                            />
                           </div>
                           <div>
-                            <FieldLabel>Assunto</FieldLabel>
-                            <SelectInput
+                            <CreatableTaxonomySelect
+                              label="Assunto"
+                              options={articleAssuntoOptions}
                               value={activeArticle.topicFilterId || ''}
-                              onChange={(event) => updateArticleField('topicFilterId', event.target.value || null)}
+                              placeholder={activeArticle.subjectFilterId ? 'Selecionar ou criar assunto' : 'Selecione um topico primeiro'}
+                              createLabel="Criar assunto"
                               disabled={!activeArticle.subjectFilterId}
-                            >
-                              <option value="">{activeArticle.subjectFilterId ? 'Selecionar assunto' : 'Selecione uma materia primeiro'}</option>
-                              {filteredTopics.map((topic) => <option key={topic.id} value={topic.id}>{topic.name}</option>)}
-                            </SelectInput>
+                              loading={isCreatingAssunto}
+                              onChange={(value) => updateActiveArticleTaxonomy({ topicFilterId: value || null })}
+                              onCreate={createArticleAssunto}
+                            />
                           </div>
                         </div>
+                        <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+                          A quantidade de questoes relacionadas sera calculada automaticamente pelo vinculo de materia, topico e assunto.
+                        </p>
                       </div>
                     </div>
                     <div className="lg:col-span-3">
                       <FieldLabel>Texto oficial do artigo</FieldLabel>
                       <TextArea className="min-h-[220px]" value={activeArticle.text || ''} onChange={(event) => updateArticleField('text', event.target.value)} />
                     </div>
-                    <div>
-                      <FieldLabel>Questoes relacionadas</FieldLabel>
-                      <TextInput type="number" value={activeArticle.relatedQuestionCount || 0} onChange={(event) => updateArticleField('relatedQuestionCount', Number(event.target.value) || 0)} />
-                    </div>
                   </div>
-                </section>
+                </EditorPanel>
 
-                <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <EditorPanel title="Conteudo do artigo" description="IA, lote editorial e ajustes manuais do conteudo complementar.">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Editorial e IA</p>
-                      <h2 className="mt-1 text-xl font-black text-slate-900 dark:text-slate-100">Conteudo do artigo</h2>
-                      <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">Gere com IA e ajuste manualmente o conteudo editorial quando necessario.</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Editorial e IA</p>
+                      <h2 className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">Conteudo do artigo</h2>
+                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Gere com IA e ajuste manualmente o conteudo editorial quando necessario.</p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {!isNew && draft.id ? (
+                    {activeEditorialSection === 'ai' ? (
+                      <div className="flex flex-wrap gap-2">
+                        {!isNew && draft.id ? (
                         <>
                           <button
                             type="button"
@@ -1303,38 +2236,167 @@ const AdminLegalCommentaryEditPage = () => {
                             Gerar comentarios de todos os artigos
                           </button>
                         </>
-                      ) : null}
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void generateAiBundle()}
+                          disabled={Boolean(aiLoading) || isBatchRunning}
+                          className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
+                        >
+                          {aiLoading === 'bundle' ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                          Gerar pacote IA
+                        </button>
+                        {[
+                          ['teacher-comment', 'Comentario'],
+                          ['exam-tip', 'Macete'],
+                          ['jurisprudence', 'Jurisprudencia'],
+                          ['sumula', 'Sumula'],
+                          ['doctrine', 'Doutrina'],
+                        ].map(([kind, label]) => (
+                          <button
+                            key={kind}
+                            type="button"
+                            onClick={() => void generateWithAi(kind as Exclude<LegalAiGenerationKind, 'bundle'>)}
+                            disabled={Boolean(aiLoading) || isBatchRunning}
+                            className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-slate-700 disabled:opacity-60 dark:bg-white dark:text-slate-950"
+                          >
+                            {aiLoading === kind ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => void generateAiBundle()}
-                        disabled={Boolean(aiLoading) || isBatchRunning}
-                        className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
+                        onClick={() => setActiveEditorialSection('ai')}
+                        className={ADMIN_SECONDARY_BUTTON_CLASS}
                       >
-                        {aiLoading === 'bundle' ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                        Gerar pacote IA
+                        <Sparkles size={14} /> Abrir IA e lote
                       </button>
-                      {[
-                        ['teacher-comment', 'Comentario'],
-                        ['exam-tip', 'Macete'],
-                        ['jurisprudence', 'Jurisprudencia'],
-                        ['sumula', 'Sumula'],
-                        ['doctrine', 'Doutrina'],
-                      ].map(([kind, label]) => (
+                    )}
+                  </div>
+
+                  {aiProgress ? (
+                    <div className="mt-5 rounded-sm border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-500/30 dark:bg-indigo-500/10">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-indigo-700 dark:text-indigo-300">Geracao IA</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                            {aiProgress.label} em andamento
+                          </p>
+                        </div>
+                        <span className="text-sm font-black text-indigo-700 dark:text-indigo-200">{aiProgress.percent}%</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white dark:bg-slate-900">
+                        <div
+                          className="h-full rounded-full bg-indigo-600 transition-all duration-300"
+                          style={{ width: `${aiProgress.percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-5 rounded-sm border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-950">
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {LEGAL_EDITORIAL_SECTIONS.map((section) => (
                         <button
-                          key={kind}
+                          key={section.key}
                           type="button"
-                          onClick={() => void generateWithAi(kind as Exclude<LegalAiGenerationKind, 'bundle'>)}
-                          disabled={Boolean(aiLoading) || isBatchRunning}
-                          className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-slate-700 disabled:opacity-60 dark:bg-white dark:text-slate-950"
+                          onClick={() => setActiveEditorialSection(section.key)}
+                          className={`flex min-w-[138px] flex-col rounded-sm border px-3 py-2 text-left transition-colors ${
+                            activeEditorialSection === section.key
+                              ? 'border-sky-600 bg-white text-sky-700 shadow-sm dark:border-sky-500 dark:bg-slate-900 dark:text-sky-300'
+                              : 'border-transparent text-slate-500 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'
+                          }`}
                         >
-                          {aiLoading === kind ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                          {label}
+                          <span className="flex items-center justify-between gap-2 text-xs font-black">
+                            {section.label}
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                              {editorialSectionCounts[section.key]}
+                            </span>
+                          </span>
+                          <span className="mt-1 line-clamp-2 text-[11px] font-medium leading-4 text-slate-500 dark:text-slate-400">
+                            {section.description}
+                          </span>
                         </button>
                       ))}
                     </div>
+                    <p className="px-2 pt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                      {activeSectionMeta?.description}
+                    </p>
                   </div>
 
-                  {!isNew && draft.id ? (
+                  {editorialCoverage && activeSectionMeta ? (
+                    <div className="mt-5 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Cobertura editorial</p>
+                          <h3 className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
+                            {editorialCoverage.covered}/{editorialCoverage.total} artigo(s) com {activeSectionMeta.label.toLowerCase()}
+                          </h3>
+                          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Visualize os pendentes e adicione um bloco vazio em massa quando precisar revisar artigo por artigo.
+                            {editorialCoverage.skippedArticles > 0
+                              ? ` ${editorialCoverage.skippedArticles} artigo(s) finais de expediente foram ignorados.`
+                              : ''}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => addEditorialPlaceholdersToArticles(activeEditorialSection, true)}
+                            disabled={editorialCoverage.missingArticles.length === 0}
+                            className="inline-flex h-9 items-center gap-2 rounded-sm border border-sky-200 bg-sky-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
+                          >
+                            <Plus size={13} /> Adicionar nos pendentes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => addEditorialPlaceholdersToArticles(activeEditorialSection, false)}
+                            disabled={editorialCoverage.total === 0}
+                            className="inline-flex h-9 items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
+                          >
+                            <Plus size={13} /> Adicionar em todos
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                        <div
+                          className="h-full rounded-full bg-sky-700 transition-all"
+                          style={{
+                            width: editorialCoverage.total
+                              ? `${Math.round((editorialCoverage.covered / editorialCoverage.total) * 100)}%`
+                              : '0%',
+                          }}
+                        />
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {editorialCoverage.missingArticles.length > 0 ? editorialCoverage.missingArticles.slice(0, 18).map((article) => (
+                          <button
+                            key={article.id}
+                            type="button"
+                            onClick={() => setActiveArticleId(article.id)}
+                            className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                          >
+                            {getArticleLabel(article)}
+                          </button>
+                        )) : (
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                            Nenhum artigo pendente
+                          </span>
+                        )}
+                        {editorialCoverage.missingArticles.length > 18 ? (
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                            +{editorialCoverage.missingArticles.length - 18} pendente(s)
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {activeEditorialSection === 'ai' && !isNew && draft.id ? (
                     <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div>
@@ -1495,7 +2557,8 @@ const AdminLegalCommentaryEditPage = () => {
                     </div>
                   ) : null}
 
-                    <div className="mt-6 grid gap-5 xl:grid-cols-2">
+                    <div className="mt-6 space-y-5">
+                      {activeEditorialSection === 'teacher' ? (
                       <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
                         <div className="flex items-center justify-between gap-3">
                           <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Comentarios de professor</h3>
@@ -1521,7 +2584,9 @@ const AdminLegalCommentaryEditPage = () => {
                         </div>
                       ))}
                     </div>
+                      ) : null}
 
+                    {activeEditorialSection === 'tips' ? (
                     <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
                       <div className="flex items-center justify-between gap-3">
                         <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Macetes para prova</h3>
@@ -1535,7 +2600,9 @@ const AdminLegalCommentaryEditPage = () => {
                         </div>
                       ))}
                     </div>
+                    ) : null}
 
+                    {activeEditorialSection === 'jurisprudence' ? (
                     <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
                       <div className="flex items-center justify-between gap-3">
                         <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Jurisprudencia</h3>
@@ -1559,7 +2626,9 @@ const AdminLegalCommentaryEditPage = () => {
                         </div>
                       ))}
                     </div>
+                    ) : null}
 
+                    {activeEditorialSection === 'sumulas' ? (
                     <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
                       <div className="flex items-center justify-between gap-3">
                         <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Sumulas</h3>
@@ -1576,7 +2645,9 @@ const AdminLegalCommentaryEditPage = () => {
                         </div>
                       ))}
                     </div>
+                    ) : null}
 
+                    {activeEditorialSection === 'doctrine' ? (
                     <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
                       <div className="flex items-center justify-between gap-3">
                         <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Doutrina</h3>
@@ -1589,36 +2660,281 @@ const AdminLegalCommentaryEditPage = () => {
                         </div>
                       ))}
                     </div>
+                    ) : null}
+
+                    {activeEditorialSection === 'ai' ? (
+                      <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                        Use os botoes no topo desta aba para gerar conteudo. Depois revise cada resultado nas abas Professor, Macetes, Jurisprudencia, Sumulas e Doutrina.
+                      </div>
+                    ) : null}
                   </div>
-                </section>
+                </EditorPanel>
               </>
             ) : (
-              <section className="rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <section className={`${ADMIN_SURFACE_CLASS} p-10 text-center`}>
                 <FileText className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={36} />
                 <p className="text-sm font-black text-slate-900 dark:text-slate-100">Adicione um artigo para comecar.</p>
-                <button type="button" onClick={addArticle} className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white">
+                <button type="button" onClick={addArticle} className={`mt-4 ${ADMIN_PRIMARY_BUTTON_CLASS}`}>
                   <Plus size={16} /> Novo artigo
                 </button>
               </section>
             )}
           </main>
+
+          <aside className="space-y-5">
+            <EditorMetaBox title="Publicar">
+              <div className="space-y-4">
+                <div>
+                  <FieldLabel>Status da lei</FieldLabel>
+                  <SelectInput value={lawStatusValue} onChange={(event) => updateLawField('status', event.target.value)}>
+                    <option value="active">Ativa</option>
+                    <option value="monitoring">Em monitoramento</option>
+                    <option value="partially_revoked">Parcialmente revogada</option>
+                    <option value="revoked">Revogada</option>
+                  </SelectInput>
+                </div>
+                <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-medium text-slate-500 dark:text-slate-400">Fonte</span>
+                    <span className="text-right font-semibold text-slate-900 dark:text-slate-100">{draft.sourceName || 'Portal do Planalto'}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-medium text-slate-500 dark:text-slate-400">Ultima sincronizacao</span>
+                    <span className="text-right font-semibold text-slate-900 dark:text-slate-100">{lastSyncedLabel}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-medium text-slate-500 dark:text-slate-400">Artigos</span>
+                    <span className="text-right font-semibold text-slate-900 dark:text-slate-100">{draft.articles?.length || 0}</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {!isNew && draft.id ? (
+                    <button type="button" onClick={() => void openUpdatesModal()} className={ADMIN_SECONDARY_BUTTON_CLASS}>
+                      <History size={14} /> Ver atualizacoes
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void saveLaw()}
+                    disabled={isSaving}
+                    className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center`}
+                  >
+                    {isSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                    {isNew ? 'Publicar lei' : 'Atualizar lei'}
+                  </button>
+                </div>
+              </div>
+            </EditorMetaBox>
+
+            <EditorMetaBox title="Artigos">
+              <div className="space-y-3">
+                <button type="button" onClick={addArticle} className={`${ADMIN_PRIMARY_BUTTON_CLASS} w-full justify-center`}>
+                  <Plus size={14} /> Adicionar artigo
+                </button>
+                <div className="max-h-[540px] space-y-2 overflow-y-auto pr-1">
+                  {(draft.articles || []).map((article) => (
+                    <button
+                      type="button"
+                      key={article.id}
+                      onClick={() => setActiveArticleId(article.id)}
+                      className={`w-full rounded-sm border px-3 py-2 text-left transition-colors ${
+                        article.id === activeArticle?.id
+                          ? 'border-sky-700 bg-sky-50 text-sky-900 dark:border-sky-600 dark:bg-sky-950/40 dark:text-sky-100'
+                          : 'border-slate-300 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <p className="text-sm font-semibold">{getArticleLabel(article)}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{article.title || article.text || 'Sem texto cadastrado'}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </EditorMetaBox>
+          </aside>
         </div>
 
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className={`${ADMIN_SURFACE_CLASS} p-5`}>
           <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-indigo-50 p-3 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+            <div className="rounded-sm bg-slate-100 p-3 text-sky-700 dark:bg-slate-800 dark:text-sky-300">
               <Bot size={18} />
             </div>
             <div>
-              <p className="text-sm font-black text-slate-900 dark:text-slate-100">Revisao editorial obrigatoria</p>
-              <p className="mt-1 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Revisao editorial obrigatoria</p>
+              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
                 A IA acelera o rascunho, mas o conteudo publicado deve ser conferido contra fonte oficial, jurisprudencia real e criterio pedagogico antes de ficar disponivel aos alunos.
               </p>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+        {isUpdatesModalOpen && typeof document !== 'undefined' ? createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/65 px-4 py-8 backdrop-blur-sm">
+            <div className={`${ADMIN_MODAL_PANEL_CLASS} w-full max-w-6xl`}>
+              <div className={ADMIN_MODAL_HEADER_CLASS}>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">
+                    Lei Comentada / O que mudou
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold text-slate-900 dark:text-slate-100">
+                    Atualizacoes da lei
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    {draft.shortTitle || draft.title || 'Lei selecionada'} - ultima sincronizacao: {lastSyncedLabel}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeUpdatesModal}
+                  className="rounded-sm border border-slate-300 bg-white p-2 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                  aria-label="Fechar atualizacoes"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <section className="min-h-[420px] border-b border-slate-300 p-5 dark:border-slate-700 lg:border-b-0 lg:border-r">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Eventos de alteracao</h3>
+                      <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                        Diff resumido entre a redacao anterior e a redacao atual.
+                      </p>
+                    </div>
+                    <span className="inline-flex w-fit rounded-sm border border-slate-300 bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                      {updatesModalItems.length} evento(s)
+                    </span>
+                  </div>
+
+                  <div className="mt-4 max-h-[62vh] space-y-3 overflow-y-auto pr-1">
+                    {isUpdatesModalLoading ? (
+                      <div className="flex min-h-[260px] items-center justify-center text-sm font-semibold text-slate-500 dark:text-slate-400">
+                        <Loader2 className="mr-2 animate-spin" size={16} /> Carregando historico...
+                      </div>
+                    ) : updatesModalItems.length > 0 ? updatesModalItems.map((update) => (
+                      <article key={update.id} className="rounded-sm border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
+                        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
+                                {LEGAL_UPDATE_CHANGE_LABEL[update.changeType] || update.changeType} - {formatLegalUpdateDate(update.changedAt)}
+                              </p>
+                              <h4 className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{update.title}</h4>
+                            </div>
+                            {update.sourceUrl ? (
+                              <a
+                                href={update.sourceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.14em] text-sky-700 hover:underline dark:text-sky-300"
+                              >
+                                Fonte <ExternalLink size={12} />
+                              </a>
+                            ) : null}
+                          </div>
+                          <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">{update.summary}</p>
+                        </div>
+
+                        {(update.previousText || update.currentText) ? (
+                          <div className="grid gap-0 md:grid-cols-2">
+                            <div className="border-b border-slate-200 p-4 dark:border-slate-800 md:border-b-0 md:border-r">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-600 dark:text-rose-300">Antes</p>
+                              <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
+                                {update.previousText || 'Sem redacao anterior registrada.'}
+                              </p>
+                            </div>
+                            <div className="p-4">
+                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">Depois</p>
+                              <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
+                                {update.currentText || 'Sem redacao atual registrada.'}
+                              </p>
+                            </div>
+                          </div>
+                        ) : null}
+                      </article>
+                    )) : (
+                      <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 p-8 text-center dark:border-slate-700 dark:bg-slate-950">
+                        <FileText className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={30} />
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Nenhuma alteracao registrada.</p>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                          Quando a sincronizacao detectar mudanca no texto oficial, ela aparece aqui.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <aside className="p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Logs</h3>
+                      <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Sincronizacoes recentes.</p>
+                    </div>
+                    <span className="rounded-sm border border-slate-300 bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                      {updatesModalLogs.length}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 max-h-[62vh] space-y-2 overflow-y-auto pr-1">
+                    {isUpdatesModalLoading ? (
+                      <div className="rounded-sm border border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                        Atualizando logs...
+                      </div>
+                    ) : updatesModalLogs.length > 0 ? updatesModalLogs.map((log) => (
+                      <div key={log.id} className="rounded-sm border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                        <div className="flex items-start gap-2">
+                          {log.status === 'failed' ? (
+                            <AlertCircle className="mt-0.5 text-rose-500" size={15} />
+                          ) : (
+                            <CheckCircle2 className="mt-0.5 text-emerald-600" size={15} />
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                              {log.status} - {formatLegalUpdateDate(log.startedAt)}
+                            </p>
+                            <p className="mt-1 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">{log.message}</p>
+                            <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                              {log.changedArticles || 0} alt. - {log.insertedArticles || 0} novos - {log.revokedArticles || 0} revog.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="rounded-sm border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                        Nenhum log encontrado.
+                      </div>
+                    )}
+                  </div>
+                </aside>
+              </div>
+
+              <div className={`${ADMIN_MODAL_FOOTER_CLASS} flex flex-col gap-2 sm:flex-row sm:justify-end`}>
+                <button type="button" onClick={closeUpdatesModal} className={ADMIN_SECONDARY_BUTTON_CLASS}>
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openUpdatesModal()}
+                  disabled={isUpdatesModalLoading}
+                  className={ADMIN_SECONDARY_BUTTON_CLASS}
+                >
+                  {isUpdatesModalLoading ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
+                  Recarregar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void syncFromOfficialSource().then(() => openUpdatesModal())}
+                  disabled={isSyncingFromOfficial || isUpdatesModalLoading}
+                  className={ADMIN_PRIMARY_BUTTON_CLASS}
+                >
+                  {isSyncingFromOfficial ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
+                  Sincronizar agora
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        ) : null}
+      </div>,
   );
 };
 

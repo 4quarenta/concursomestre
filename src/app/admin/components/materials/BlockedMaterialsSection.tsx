@@ -12,6 +12,7 @@
 import React from 'react';
 import { ShieldAlert } from 'lucide-react';
 import type { Material } from '@types';
+import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
 
 interface BlockedMaterialsSectionProps {
   materials: Material[];
@@ -23,8 +24,8 @@ const BlockedMaterialsSection = ({
   onReanalyze,
 }: BlockedMaterialsSectionProps) => {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors duration-300">
-      <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-red-50/50 dark:bg-red-900/10 flex items-center gap-2 text-red-700 dark:text-red-400 font-bold text-xs uppercase tracking-widest">
+    <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden animate-slide-up transition-colors duration-300`}>
+      <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex items-center gap-2 text-red-700 dark:text-red-400`}>
         <ShieldAlert size={16} /> Materiais Bloqueados / Rejeitados
       </div>
       <table className="w-full text-left text-xs">

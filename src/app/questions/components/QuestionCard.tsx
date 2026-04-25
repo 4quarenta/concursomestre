@@ -612,13 +612,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <div className="mb-6 space-y-4">
                 {question.grupoQuestao.enunciado && (
                   <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium prose dark:prose-invert max-w-none">
-                    <div dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.grupoQuestao.enunciado) }} />
+                    <div className="question-rich-html" dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.grupoQuestao.enunciado) }} />
                   </div>
                 )}
 
                 {(question.grupoQuestao.texto && question.grupoQuestao.texto !== question.grupoQuestao.enunciado) && (
                   <div className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium italic prose dark:prose-invert max-w-none">
-                    <div dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.grupoQuestao.texto) }} />
+                    <div className="question-rich-html" dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.grupoQuestao.texto) }} />
                   </div>
                 )}
 
@@ -648,7 +648,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
         <div className="space-y-4">
           <div className="text-base text-slate-800 dark:text-slate-100 font-semibold leading-relaxed prose prose-indigo dark:prose-invert max-w-none">
-            <div dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.enunciado) }} />
+            <div className="question-rich-html" dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.enunciado) }} />
           </div>
           {question.imageUrl && (
             <div className="my-4 rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800">
@@ -719,7 +719,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                         </div>
                       ) : (
                         <div
-                          className={`text-sm font-medium leading-relaxed ${textClass}`}
+                          className={`question-rich-html text-sm font-medium leading-relaxed ${textClass}`}
                           dangerouslySetInnerHTML={{ __html: fixHtmlImages(item.corpo || item.corpo_clean || '') }}
                         />
                       )}

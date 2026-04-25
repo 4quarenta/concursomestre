@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { websiteManifest } from '@/config/platform';
 import { getConfiguredSiteUrl } from '@/config/siteUrl';
 import NextAppProviders from '@/providers/NextAppProviders';
+import 'katex/dist/katex.min.css';
 import './globals.css';
 
 const siteUrl = getConfiguredSiteUrl();

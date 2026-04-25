@@ -20,9 +20,14 @@ import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
 import { canAccessAdminPanel } from '@services/auth';
 import { questionService } from '@services/questions';
-import ManualQuestionModal from '../../../../components/questions/ManualQuestionModal';
+import AdminQuestionEditorPage from '../../../../components/questions/AdminQuestionEditorPage';
+import AdminStandaloneShell from '../../../../components/shared/AdminStandaloneShell';
 import { useAdminManualQuestionEditor } from '../../../../components/questions/useAdminManualQuestionEditor';
-import { buildAdminPath } from '../../../../config/adminPageNavigationConfig';
+import { buildAdminPath, buildAdminQuestionEditPath } from '../../../../config/adminPageNavigationConfig';
+import {
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+} from '../../../../components/shared/adminPanelStyles';
 
 const resolveQuestionId = (value?: string | string[]) =>
   Array.isArray(value) ? value[0] : value;
@@ -40,6 +45,7 @@ const AdminQuestionEditPage = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const questionId = resolveQuestionId(params.questionId);
+  const isNewQuestion = String(questionId || '') === 'new';
   const reportId = searchParams.get('report');
   const returnPath = reportId
     ? buildAdminPath('support', 'reports')
@@ -51,6 +57,7 @@ const AdminQuestionEditPage = () => {
     questions,
     reports,
     systemSettings,
+    addQuestion,
     updateQuestion,
     resolveReport,
     ensureReportsLoaded,
@@ -89,6 +96,13 @@ const AdminQuestionEditPage = () => {
       return;
     }
 
+    if (isNewQuestion) {
+      setQuestion(null);
+      setLoadError('');
+      setIsQuestionLoading(false);
+      return;
+    }
+
     let isCurrent = true;
     setIsQuestionLoading(true);
     setLoadError('');
@@ -103,7 +117,7 @@ const AdminQuestionEditPage = () => {
       };
     }
 
-    questionService.getQuestionById(questionId)
+    questionService.getQuestionForAdminEdit(questionId)
       .then((payload) => {
         if (!isCurrent) return;
 
@@ -129,7 +143,7 @@ const AdminQuestionEditPage = () => {
     return () => {
       isCurrent = false;
     };
-  }, [questionId, questions]);
+  }, [isNewQuestion, questionId, questions]);
 
   const referenceQuestions = React.useMemo(() => {
     if (!question) {
@@ -146,7 +160,18 @@ const AdminQuestionEditPage = () => {
     questions: referenceQuestions,
     systemSettings,
     addToast,
-    onAddQuestion: async () => undefined,
+    onAddQuestion: async (payload: Question) => {
+      const response = await addQuestion(payload);
+      const createdQuestion = response?.created?.[0];
+
+      if (createdQuestion?.id) {
+        router.replace(buildAdminQuestionEditPath(createdQuestion.id));
+      } else {
+        router.push(returnPath);
+      }
+
+      return response;
+    },
     onUpdateQuestion: async (payload: Question) => {
       const response = await updateQuestion(payload);
 
@@ -167,17 +192,38 @@ const AdminQuestionEditPage = () => {
   });
 
   React.useEffect(() => {
+    if (isNewQuestion) {
+      if (openedQuestionIdRef.current === 'new') {
+        return;
+      }
+
+      editor.openManualModal();
+      openedQuestionIdRef.current = 'new';
+      return;
+    }
+
     if (!question?.id || openedQuestionIdRef.current === String(question.id)) {
       return;
     }
 
     editor.openManualModal(question);
     openedQuestionIdRef.current = String(question.id);
-  }, [editor, question]);
+  }, [editor, isNewQuestion, question]);
 
   const closeEditor = () => {
     router.push(returnPath);
   };
+
+  const renderAdminShell = (children: React.ReactNode) => (
+    <AdminStandaloneShell
+      activeTab="operation"
+      activeSectionKey="questions"
+      pageTitle="Questoes"
+      showPageHeader={false}
+    >
+      {children}
+    </AdminStandaloneShell>
+  );
 
   const reportContext = (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -209,7 +255,7 @@ const AdminQuestionEditPage = () => {
             href={linkedReport.evidenceUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300"
+            className="inline-flex items-center gap-2 rounded-sm border border-emerald-200 bg-emerald-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300"
           >
             <ExternalLink size={13} /> Ver prova
           </a>
@@ -217,7 +263,7 @@ const AdminQuestionEditPage = () => {
         <button
           type="button"
           onClick={closeEditor}
-          className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+          className={ADMIN_SECONDARY_BUTTON_CLASS}
         >
           <ArrowLeft size={13} /> Voltar
         </button>
@@ -226,13 +272,13 @@ const AdminQuestionEditPage = () => {
   );
 
   if (isAuthLoading || isQuestionLoading) {
-    return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-slate-50 text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-        <div className="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    return renderAdminShell(
+      <div className="flex min-h-[360px] items-center justify-center text-slate-500 dark:text-slate-400">
+        <div className="inline-flex items-center gap-3 rounded-sm border border-slate-300 bg-white px-5 py-4 text-sm font-bold shadow-none dark:border-slate-700 dark:bg-slate-900">
           <Loader2 className="animate-spin" size={18} />
           Carregando editor da questao...
         </div>
-      </div>
+      </div>,
     );
   }
 
@@ -240,10 +286,10 @@ const AdminQuestionEditPage = () => {
     return null;
   }
 
-  if (loadError || !question || !editor.isManualQuestionModalOpen) {
-    return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-slate-50 p-4 dark:bg-slate-950">
-        <div className="w-full max-w-xl rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+  if (loadError || (!isNewQuestion && !question) || !editor.isManualQuestionModalOpen) {
+    return renderAdminShell(
+      <div className="flex min-h-[360px] items-center justify-center p-4">
+        <div className="w-full max-w-xl rounded-sm border border-slate-300 bg-white p-8 text-center shadow-none dark:border-slate-700 dark:bg-slate-900">
           <ShieldCheck className="mx-auto text-rose-500" size={32} />
           <h1 className="mt-4 text-xl font-black text-slate-900 dark:text-slate-100">
             Nao foi possivel abrir o editor
@@ -254,22 +300,21 @@ const AdminQuestionEditPage = () => {
           <button
             type="button"
             onClick={closeEditor}
-            className="mt-6 rounded-2xl bg-slate-900 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-colors hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700"
+            className={`mt-6 ${ADMIN_PRIMARY_BUTTON_CLASS}`}
           >
             Voltar ao admin
           </button>
         </div>
-      </div>
+      </div>,
     );
   }
 
-  return (
-    <ManualQuestionModal
+  return renderAdminShell(
+    <AdminQuestionEditorPage
       {...editor.manualQuestionModalProps}
-      presentation="page"
-      reportContext={reportContext}
+      reportContext={reportId ? reportContext : undefined}
       onClose={closeEditor}
-    />
+    />,
   );
 };
 

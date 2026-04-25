@@ -28,6 +28,7 @@ import type {
   LegalSearchResult,
   LegalSyncLog,
   LegalUserComment,
+  LegalUserCommentSubmissionResult,
   RelatedQuestionLawArticle,
   RelatedQuestionLawMatch,
   LawUpdate,
@@ -372,6 +373,7 @@ export const legalCommentaryApiService = {
       .map((law) => {
         const haystack = buildLawSummarySearchText(law);
         let score = 0;
+        const lawSubjectId = String(law.areaId || '');
         const matchedSubjectNames = subjectNames.filter((name, index) => {
           const normalized = subjectNamesNormalized[index];
           if (!normalized) return false;
@@ -381,6 +383,15 @@ export const legalCommentaryApiService = {
           }
           return isMatch;
         });
+
+        if (lawSubjectId && subjectIds.has(lawSubjectId)) {
+          score += 12;
+          const subjectName = subjects.find((item) => item.id === lawSubjectId)?.name;
+          if (subjectName && !matchedSubjectNames.includes(subjectName)) {
+            matchedSubjectNames.push(subjectName);
+          }
+        }
+
         const matchedTopicNames = topicNames.filter((name, index) => {
           const normalized = topicNamesNormalized[index];
           if (!normalized) return false;
@@ -429,10 +440,18 @@ export const legalCommentaryApiService = {
               const articleMatchedTopics = new Set<string>(summary.matchedTopicNames);
 
               if (article.subjectFilterId && subjectIds.has(String(article.subjectFilterId))) {
-                score += 12;
+                score += 6;
                 const subjectName = subjects.find((item) => item.id === String(article.subjectFilterId))?.name;
                 if (subjectName) {
                   articleMatchedSubjects.add(subjectName);
+                }
+              }
+
+              if (article.subjectFilterId && topicIds.has(String(article.subjectFilterId))) {
+                score += 12;
+                const topicName = topics.find((item) => item.id === String(article.subjectFilterId))?.name;
+                if (topicName) {
+                  articleMatchedTopics.add(topicName);
                 }
               }
 
@@ -524,13 +543,17 @@ export const legalCommentaryApiService = {
     await apiClient.post(ENDPOINTS.legalCommentary.progress, { lawId, articleId }) as any;
   },
 
-  async addUserComment(input: { articleId: string; body: string }): Promise<LegalUserComment> {
+  async addUserComment(input: { articleId: string; body: string }): Promise<LegalUserCommentSubmissionResult> {
     const response = await apiClient.post(ENDPOINTS.legalCommentary.comment, {
       action: 'create',
       ...input,
     }) as any;
-    const envelope = assertApiSuccess<LegalUserComment>(response, 'Nao foi possivel criar o comentario.');
-    return unwrap<LegalUserComment>(envelope.raw, {} as LegalUserComment);
+    const envelope = assertApiSuccess<LegalUserCommentSubmissionResult>(response, 'Nao foi possivel criar o comentario.');
+    return unwrap<LegalUserCommentSubmissionResult>(envelope.raw, {
+      id: '',
+      moderationStatus: 'pending',
+      requiresModeration: true,
+    });
   },
 
   async updateUserComment(commentId: string, body: string): Promise<LegalUserComment> {

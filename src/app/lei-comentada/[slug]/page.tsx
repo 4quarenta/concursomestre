@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -1925,6 +1925,11 @@ const LawDetailPage: React.FC = () => {
     });
   }, [articleQuery, law, updatedOnly]);
 
+  const latestLawUpdates = React.useMemo(
+    () => (law?.updates || []).slice(0, 3),
+    [law?.updates],
+  );
+
   const studyContentIndex = React.useMemo(
     () => (law ? buildArticleStudyContentIndex(law) : {
       commentsByArticle: {},
@@ -2370,14 +2375,17 @@ const LawDetailPage: React.FC = () => {
     }
 
     try {
-      await legalCommentaryApiService.addUserComment({
+      const result = await legalCommentaryApiService.addUserComment({
         articleId,
         body,
       });
       await reloadLaw({ force: true });
-      addToast('Comentário publicado.', 'success');
+      addToast(
+        result.message || (result.requiresModeration ? 'Comentario enviado para moderacao.' : 'Comentario publicado.'),
+        'success',
+      );
     } catch (error: any) {
-      addToast(error?.message || 'Não foi possível comentar.', 'error');
+      addToast(error?.message || 'Nao foi possivel comentar.', 'error');
     }
   }, [addToast, currentUser, reloadLaw]);
 
@@ -2385,9 +2393,9 @@ const LawDetailPage: React.FC = () => {
     try {
       await legalCommentaryApiService.updateUserComment(commentId, body);
       await reloadLaw({ force: true });
-      addToast('Comentário atualizado.', 'success');
+      addToast('Comentario atualizado.', 'success');
     } catch (error: any) {
-      addToast(error?.message || 'Não foi possível editar.', 'error');
+      addToast(error?.message || 'Nao foi possivel editar.', 'error');
     }
   }, [addToast, reloadLaw]);
 
@@ -2395,9 +2403,9 @@ const LawDetailPage: React.FC = () => {
     try {
       await legalCommentaryApiService.deleteUserComment(commentId);
       await reloadLaw({ force: true });
-      addToast('Comentário excluído.', 'success');
+      addToast('Comentario excluido.', 'success');
     } catch (error: any) {
-      addToast(error?.message || 'Não foi possível excluir.', 'error');
+      addToast(error?.message || 'Nao foi possivel excluir.', 'error');
     }
   }, [addToast, reloadLaw]);
 
@@ -2481,6 +2489,46 @@ const LawDetailPage: React.FC = () => {
           </aside>
         </div>
       </section>
+
+      {latestLawUpdates.length > 0 ? (
+        <section className="rounded-[2rem] border border-amber-200 bg-amber-50/90 p-5 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700 dark:text-amber-300">O que mudou</p>
+              <h2 className="mt-2 text-xl font-black text-slate-950 dark:text-white">
+                Esta lei teve atualização no texto oficial
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-700 dark:text-slate-200">
+                Separamos os artigos alterados, novos ou revogados para voce revisar primeiro antes de continuar a leitura normal.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setUpdatedOnly((current) => !current)}
+              className={`inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-black transition-colors ${
+                updatedOnly
+                  ? 'bg-amber-700 text-white hover:bg-amber-800'
+                  : 'border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-slate-950 dark:text-amber-200 dark:hover:bg-amber-500/10'
+              }`}
+            >
+              <AlertTriangle size={16} />
+              {updatedOnly ? 'Ver todos os artigos' : 'Ver apenas alterados'}
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {latestLawUpdates.map((update) => (
+              <article key={update.id} className="rounded-2xl border border-amber-200 bg-white p-4 dark:border-amber-500/20 dark:bg-slate-950/80">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">
+                  {update.changeType === 'created' ? 'Novo artigo' : update.changeType === 'revoked' ? 'Revogado' : 'Texto alterado'}
+                </p>
+                <h3 className="mt-2 text-sm font-black text-slate-950 dark:text-white">{update.title}</h3>
+                <p className="mt-2 line-clamp-3 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">{update.summary}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className="cm-legal-reading-body-grid grid items-start gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="cm-legal-reading-index-panel hidden xl:sticky xl:top-0 xl:block xl:h-fit">

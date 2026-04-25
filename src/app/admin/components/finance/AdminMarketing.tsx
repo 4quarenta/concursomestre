@@ -16,11 +16,22 @@ import type { AppPromotionTheme, DiscountCode, Plan, SystemSettings } from '@typ
 import { themeConfig } from '@constants/themes';
 import { planService } from '@services/plans';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_MUTED_SURFACE_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SEGMENTED_TABS_CLASS,
+  ADMIN_TAB_BUTTON_ACTIVE_CLASS,
+  ADMIN_TAB_BUTTON_IDLE_CLASS,
+} from '../shared/adminPanelStyles';
 
 interface AdminMarketingProps {
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => void;
   saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
+  forcedSection?: 'coupons' | 'promo' | 'themes';
+  hideSectionTabs?: boolean;
 }
 
 type CouponTargetType = 'all' | 'plan' | 'item';
@@ -136,9 +147,11 @@ const AdminMarketing = ({
   systemSettings,
   updateSystemSettings,
   saveSystemSettingsNow,
+  forcedSection,
+  hideSectionTabs = false,
 }: AdminMarketingProps) => {
   const { addToast } = useToast();
-  const [activeSection, setActiveSection] = useState<'coupons' | 'promo' | 'themes'>('coupons');
+  const [activeSection, setActiveSection] = useState<'coupons' | 'promo' | 'themes'>(forcedSection || 'coupons');
   const [draftPromotion, setDraftPromotion] = useState(systemSettings.activePromotion);
   const [draftTheme, setDraftTheme] = useState<AppPromotionTheme>(systemSettings.activeTheme || 'default');
   const [draftCoupons, setDraftCoupons] = useState<CouponDraft[]>((systemSettings.coupons || []).map((coupon) => normalizeCouponDraft(coupon)));
@@ -154,6 +167,12 @@ const AdminMarketing = ({
     setDraftCoupons((systemSettings.coupons || []).map((coupon) => normalizeCouponDraft(coupon)));
     setLimitedOfferCountdown(systemSettings.limitedOfferCountdown);
   }, [systemSettings.activePromotion, systemSettings.activeTheme, systemSettings.coupons, systemSettings.limitedOfferCountdown]);
+
+  useEffect(() => {
+    if (forcedSection) {
+      setActiveSection(forcedSection);
+    }
+  }, [forcedSection]);
 
   useEffect(() => {
     let active = true;
@@ -332,36 +351,38 @@ const AdminMarketing = ({
         onCancel={() => setPendingDeleteCoupon(null)}
       />
 
-      <div className="flex gap-2 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-sm transition-all no-scrollbar dark:border-slate-800 dark:bg-slate-900">
-        <button
-          onClick={() => setActiveSection('coupons')}
-          className={`flex items-center gap-2 rounded-lg px-6 py-2.5 text-xs font-black uppercase tracking-widest transition-all ${
-            activeSection === 'coupons' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Percent size={14} /> Cupons de Desconto
-        </button>
-        <button
-          onClick={() => setActiveSection('promo')}
-          className={`flex items-center gap-2 rounded-lg px-6 py-2.5 text-xs font-black uppercase tracking-widest transition-all ${
-            activeSection === 'promo' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Megaphone size={14} /> Campanhas
-        </button>
-        <button
-          onClick={() => setActiveSection('themes')}
-          className={`flex items-center gap-2 rounded-lg px-6 py-2.5 text-xs font-black uppercase tracking-widest transition-all ${
-            activeSection === 'themes' ? 'bg-slate-900 text-white shadow-md dark:bg-indigo-600' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Palette size={14} /> Temas Visuais
-        </button>
-      </div>
+      {!hideSectionTabs ? (
+        <div className={`${ADMIN_SEGMENTED_TABS_CLASS} overflow-hidden no-scrollbar`}>
+          <button
+            onClick={() => setActiveSection('coupons')}
+            className={`flex items-center gap-2 rounded-sm border px-5 py-2 text-xs font-black uppercase tracking-widest transition-all ${
+              activeSection === 'coupons' ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS
+            }`}
+          >
+            <Percent size={14} /> Cupons de Desconto
+          </button>
+          <button
+            onClick={() => setActiveSection('promo')}
+            className={`flex items-center gap-2 rounded-sm border px-5 py-2 text-xs font-black uppercase tracking-widest transition-all ${
+              activeSection === 'promo' ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS
+            }`}
+          >
+            <Megaphone size={14} /> Campanhas
+          </button>
+          <button
+            onClick={() => setActiveSection('themes')}
+            className={`flex items-center gap-2 rounded-sm border px-5 py-2 text-xs font-black uppercase tracking-widest transition-all ${
+              activeSection === 'themes' ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS
+            }`}
+          >
+            <Palette size={14} /> Temas Visuais
+          </button>
+        </div>
+      ) : null}
 
       {activeSection === 'coupons' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-sm border border-slate-300 bg-white p-5 shadow-none transition-colors dark:border-slate-700 dark:bg-slate-900">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Código</label>
@@ -369,7 +390,7 @@ const AdminMarketing = ({
                   type="text"
                   value={newCoupon.code}
                   onChange={(event) => setNewCoupon((current) => ({ ...current, code: event.target.value.toUpperCase() }))}
-                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 font-black uppercase text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} w-full font-black uppercase`}
                   placeholder="EX: APROVADO20"
                 />
               </div>
@@ -379,7 +400,7 @@ const AdminMarketing = ({
                   type="number"
                   value={newCoupon.discountPercentage}
                   onChange={(event) => setNewCoupon((current) => ({ ...current, discountPercentage: Number(event.target.value) }))}
-                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} w-full`}
                 />
               </div>
               <div className="space-y-1">
@@ -388,7 +409,7 @@ const AdminMarketing = ({
                   type="number"
                   value={newCoupon.maxUses}
                   onChange={(event) => setNewCoupon((current) => ({ ...current, maxUses: Number(event.target.value) }))}
-                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} w-full`}
                 />
               </div>
               <div className="space-y-1">
@@ -396,7 +417,7 @@ const AdminMarketing = ({
                 <button
                   type="button"
                   onClick={() => setNewCoupon((current) => ({ ...current, autoApply: !current.autoApply }))}
-                  className={`h-10 w-full rounded-lg border px-3 text-left text-xs font-black uppercase tracking-widest transition-colors ${
+                  className={`h-9 w-full rounded-sm border px-3 text-left text-xs font-black uppercase tracking-widest transition-colors ${
                     newCoupon.autoApply
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300'
                       : 'border-slate-300 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
@@ -417,7 +438,7 @@ const AdminMarketing = ({
                       targetId: nextTargetType === 'all' ? null : current.targetId,
                     }));
                   }}
-                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} w-full`}
                 >
                   <option value="all">Todos</option>
                   <option value="plan">Plano</option>
@@ -445,7 +466,7 @@ const AdminMarketing = ({
                     value={newCoupon.targetType === 'all' ? '' : (newCoupon.targetId || '')}
                     disabled={newCoupon.targetType === 'all'}
                     onChange={(event) => setNewCoupon((current) => ({ ...current, targetId: event.target.value.trim() || null }))}
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none transition-colors focus:border-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-900 dark:disabled:text-slate-600"
+                    className={`${ADMIN_FIELD_CLASS} w-full disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 dark:disabled:bg-slate-900 dark:disabled:text-slate-600`}
                     placeholder={newCoupon.targetType === 'item' ? 'Ex: 145' : 'Nao se aplica'}
                   />
                 )}
@@ -459,7 +480,7 @@ const AdminMarketing = ({
                     ...current,
                     expiresAt: toIsoDateTimeValue(event.target.value) || undefined,
                   }))}
-                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} w-full`}
                 />
               </div>
             </div>
@@ -467,7 +488,7 @@ const AdminMarketing = ({
               <button
                 onClick={() => void handleCreateCoupon()}
                 disabled={savingKey === 'create-coupon'}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-6 text-xs font-bold uppercase text-white transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-indigo-600 dark:hover:bg-indigo-700"
+                className={ADMIN_PRIMARY_BUTTON_CLASS}
               >
                 {savingKey === 'create-coupon' ? <Loader2 size={14} className="animate-spin" /> : <Percent size={14} />}
                 Criar cupom
@@ -478,7 +499,7 @@ const AdminMarketing = ({
             </p>
           </div>
 
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-6 shadow-sm transition-colors dark:border-amber-900/30 dark:bg-amber-900/10">
+          <div className="rounded-sm border border-amber-200 bg-amber-50/40 p-5 shadow-none transition-colors dark:border-amber-900/30 dark:bg-amber-900/10">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-2">
                 <h3 className="flex items-center gap-2 text-lg font-black text-amber-700 dark:text-amber-300"><Clock size={20} /> Oferta por tempo limitado</h3>
@@ -486,7 +507,7 @@ const AdminMarketing = ({
                   Countdown exibido na home e no checkout quando houver desconto aplicado.
                 </p>
               </div>
-              <label className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-white px-4 py-3 dark:border-amber-900/30 dark:bg-slate-900">
+              <label className="flex items-center justify-between gap-3 rounded-sm border border-amber-200 bg-white px-4 py-3 dark:border-amber-900/30 dark:bg-slate-900">
                 <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Countdown ativo</span>
                 <input
                   type="checkbox"
@@ -513,12 +534,12 @@ const AdminMarketing = ({
                     ...(current || { enabled: false }),
                     endsAt: toIsoDateTimeValue(event.target.value),
                   }))}
-                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} w-full`}
                 />
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-white/80 bg-white/80 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="rounded-sm border border-white/80 bg-white/80 p-4 shadow-none dark:border-slate-800 dark:bg-slate-900/70">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Status</p>
                   <p className="mt-2 text-lg font-black text-slate-900 dark:text-slate-100">
                     {limitedOfferCountdown?.enabled ? 'Ativo' : 'Desativado'}
@@ -527,7 +548,7 @@ const AdminMarketing = ({
                     O contador so aparece com desconto ativo e data final futura.
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/80 bg-white/80 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="rounded-sm border border-white/80 bg-white/80 p-4 shadow-none dark:border-slate-800 dark:bg-slate-900/70">
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Encerramento</p>
                   <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">
                     {limitedOfferCountdown?.endsAt
@@ -545,7 +566,7 @@ const AdminMarketing = ({
               <button
                 onClick={() => void handleSaveLimitedOfferCountdown()}
                 disabled={savingKey === 'save-limited-offer'}
-                className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex items-center gap-2 rounded-sm border border-amber-600 bg-amber-600 px-5 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {savingKey === 'save-limited-offer' ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
                 Salvar oferta limitada
@@ -597,18 +618,18 @@ const AdminMarketing = ({
 
       {activeSection === 'promo' && (
         <div className="space-y-6">
-          <div className="space-y-8 rounded-[2.5rem] border border-slate-200 bg-white p-8 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+          <div className="space-y-6 rounded-sm border border-slate-300 bg-white p-5 shadow-none transition-colors dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="flex items-center gap-2 text-xl font-black text-slate-900 dark:text-slate-100">
-                  <Megaphone size={20} className="text-indigo-600 dark:text-indigo-400" /> Campanha ativa
+                  <Megaphone size={20} className="text-sky-700 dark:text-sky-300" /> Campanha ativa
                 </h3>
                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Configure a campanha promocional global da plataforma.</p>
               </div>
               <button
                 onClick={() => setDraftPromotion((current) => ({ ...current, isActive: !current.isActive }))}
-                className={`rounded-xl px-6 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
-                  draftPromotion.isActive ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500 dark:bg-slate-800'
+                className={`rounded-sm border px-5 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                  draftPromotion.isActive ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800'
                 }`}
               >
                 {draftPromotion.isActive ? 'Ativada' : 'Desativada'}
@@ -622,7 +643,7 @@ const AdminMarketing = ({
                   type="text"
                   value={draftPromotion.name}
                   onChange={(event) => setDraftPromotion((current) => ({ ...current, name: event.target.value }))}
-                  className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 />
               </div>
               <div className="space-y-1.5">
@@ -631,16 +652,16 @@ const AdminMarketing = ({
                   type="text"
                   value={draftPromotion.bannerText}
                   onChange={(event) => setDraftPromotion((current) => ({ ...current, bannerText: event.target.value }))}
-                  className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 />
               </div>
             </div>
 
-            <div className="space-y-4 rounded-3xl border border-indigo-100 bg-indigo-50 p-6 dark:border-indigo-900/30 dark:bg-indigo-900/10">
-              <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-indigo-700 dark:text-indigo-400">
+            <div className="space-y-4 rounded-sm border border-sky-200 bg-sky-50 p-5 dark:border-sky-900/30 dark:bg-sky-900/10">
+              <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-sky-700 dark:text-sky-300">
                 <Zap size={14} /> Preview da notificação
               </h4>
-              <div className="rounded-2xl border border-indigo-100 bg-white p-4 dark:border-indigo-900/40 dark:bg-slate-900">
+              <div className="rounded-sm border border-sky-200 bg-white p-4 dark:border-sky-900/40 dark:bg-slate-900">
                 <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{draftPromotion.name}</p>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{draftPromotion.bannerText}</p>
               </div>
@@ -650,7 +671,7 @@ const AdminMarketing = ({
               <button
                 onClick={() => void handleSavePromotion()}
                 disabled={savingKey === 'save-promotion'}
-                className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+                className={ADMIN_PRIMARY_BUTTON_CLASS}
               >
                 {savingKey === 'save-promotion' ? <Loader2 size={14} className="animate-spin" /> : <Megaphone size={14} />}
                 Salvar campanha
@@ -661,15 +682,15 @@ const AdminMarketing = ({
       )}
 
       {activeSection === 'themes' && (
-        <div className="space-y-6 rounded-[2.5rem] border border-slate-200 bg-white p-8 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+        <div className="space-y-6 rounded-sm border border-slate-300 bg-white p-5 shadow-none transition-colors dark:border-slate-700 dark:bg-slate-900">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="flex items-center gap-2 text-xl font-black text-slate-900 dark:text-slate-100">
-                <Palette size={20} className="text-indigo-600 dark:text-indigo-400" /> Temas promocionais
+                <Palette size={20} className="text-sky-700 dark:text-sky-300" /> Temas promocionais
               </h3>
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Personalize a identidade visual da plataforma para eventos especiais.</p>
             </div>
-            <div className="rounded-xl bg-slate-100 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800">
+            <div className="rounded-sm bg-slate-100 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800">
               Rascunho: {draftTheme}
             </div>
           </div>
@@ -679,22 +700,22 @@ const AdminMarketing = ({
               <button
                 key={id}
                 onClick={() => setDraftTheme(id as AppPromotionTheme)}
-                className={`group relative flex flex-col items-center gap-4 overflow-hidden rounded-3xl border p-6 transition-all ${
+                className={`group relative flex flex-col items-center gap-4 overflow-hidden rounded-sm border p-5 transition-all ${
                   draftTheme === id
-                    ? 'border-indigo-500 bg-white ring-2 ring-indigo-500/20 dark:bg-slate-800'
-                    : 'border-slate-100 bg-slate-50/50 hover:scale-[1.02] hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900/30 dark:hover:border-slate-700'
+                    ? 'border-sky-700 bg-white ring-1 ring-sky-700/20 dark:bg-slate-800'
+                    : 'border-slate-300 bg-slate-50/50 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900/30 dark:hover:border-slate-600'
                 }`}
               >
-                <div className={`flex h-16 w-16 items-center justify-center rounded-2xl transition-transform group-hover:scale-110 ${
+                <div className={`flex h-16 w-16 items-center justify-center rounded-sm transition-transform group-hover:scale-110 ${
                   id === 'default' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800'
                     : id === 'black-friday' ? 'bg-black text-white dark:bg-zinc-950'
                     : id === 'black-november' ? 'bg-zinc-900 text-amber-500'
                     : id === 'estudante' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30'
                     : id === 'sao-joao' ? 'bg-orange-50 text-orange-600 dark:bg-orange-900/30'
                     : id === 'carnaval' ? 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-900/30'
-                    : id === 'ano-novo' ? 'bg-indigo-950 text-amber-500'
+                    : id === 'ano-novo' ? 'bg-slate-950 text-amber-500'
                     : id === 'pascoa' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30'
-                    : 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30'
+                    : 'bg-sky-50 text-sky-700 dark:bg-sky-900/30'
                 }`}>
                   <theme.icon size={32} />
                 </div>
@@ -703,7 +724,7 @@ const AdminMarketing = ({
                   <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">{id}</p>
                 </div>
                 {draftTheme === id && (
-                  <div className="absolute right-4 top-4 text-indigo-600">
+                  <div className="absolute right-4 top-4 text-sky-700 dark:text-sky-300">
                     <CheckCircle2 size={16} />
                   </div>
                 )}
@@ -711,8 +732,8 @@ const AdminMarketing = ({
             ))}
           </div>
 
-          <div className="flex items-start gap-4 rounded-3xl border border-amber-100 bg-amber-50 p-6 dark:border-amber-900/30 dark:bg-amber-900/10">
-            <div className="rounded-xl bg-white p-2 text-amber-600 dark:bg-amber-900/50">
+          <div className="flex items-start gap-4 rounded-sm border border-amber-100 bg-amber-50 p-5 dark:border-amber-900/30 dark:bg-amber-900/10">
+            <div className="rounded-sm bg-white p-2 text-amber-600 dark:bg-amber-900/50">
               <AlertCircle size={20} />
             </div>
             <div className="flex-1">
@@ -727,7 +748,7 @@ const AdminMarketing = ({
             <button
               onClick={() => void handleSaveTheme()}
               disabled={savingKey === 'save-theme'}
-              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+                className={ADMIN_PRIMARY_BUTTON_CLASS}
             >
               {savingKey === 'save-theme' ? <Loader2 size={14} className="animate-spin" /> : <Palette size={14} />}
               Aplicar tema visual

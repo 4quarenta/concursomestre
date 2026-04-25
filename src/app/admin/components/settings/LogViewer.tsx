@@ -13,6 +13,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Info, RefreshCcw, Terminal, X } from 'lucide-react';
 import { adminService } from '@services/admin/adminService';
+import {
+  ADMIN_MODAL_PANEL_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SURFACE_HEADER_CLASS,
+} from '../shared/adminPanelStyles';
 
 interface LogViewerProps {
   isOpen: boolean;
@@ -76,47 +82,48 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
   return createPortal(
     <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 md:p-10">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 flex h-full max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-2xl animate-scale-in dark:border-slate-800 dark:bg-slate-900">
-        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/20">
+      <div className={`relative z-10 flex h-full max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden ${ADMIN_MODAL_PANEL_CLASS}`}>
+        <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex items-center justify-between gap-4 px-5 py-4`}>
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl text-indigo-600 dark:text-indigo-400">
-              <Terminal size={20} />
+            <div className="rounded-sm bg-sky-50 p-2 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+              <Terminal size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">Visualizador de Logs</h2>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">C:\xampp\apache\logs\error.log</p>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-900 dark:text-white">Visualizador de logs</h2>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">C:\xampp\apache\logs\error.log</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${autoRefresh ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}
+              className={`${autoRefresh ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300' : ''} ${ADMIN_SECONDARY_BUTTON_CLASS}`}
             >
               <RefreshCcw size={12} className={autoRefresh ? 'animate-spin-slow' : ''} />
-              {autoRefresh ? 'Auto-refresh On' : 'Auto-refresh Off'}
+              {autoRefresh ? 'Auto-refresh on' : 'Auto-refresh off'}
             </button>
-            <button onClick={() => void fetchLogs()} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors text-slate-500">
-              <RefreshCcw size={18} className={loading ? 'animate-spin' : ''} />
+            <button onClick={() => void fetchLogs()} className={ADMIN_SECONDARY_BUTTON_CLASS}>
+              <RefreshCcw size={14} className={loading ? 'animate-spin' : ''} />
+              Atualizar
             </button>
-            <button onClick={onClose} className="p-2 hover:bg-red-50 hover:text-red-500 rounded-lg transition-colors text-slate-400">
-              <X size={20} />
+            <button onClick={onClose} className="rounded-sm p-2 text-slate-500 transition-colors hover:bg-slate-200 dark:hover:bg-slate-800">
+              <X size={18} />
             </button>
           </div>
         </div>
 
         <div
           ref={scrollRef}
-          className="flex-1 p-6 overflow-y-auto bg-slate-950 font-mono text-[11px] leading-relaxed selection:bg-indigo-500/30 selection:text-white scroll-smooth"
+          className="flex-1 overflow-y-auto bg-slate-950 p-5 font-mono text-[11px] leading-relaxed selection:bg-sky-700/30 selection:text-white"
         >
           {logs.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-slate-600 italic">
+            <div className="flex h-full items-center justify-center text-slate-600 italic">
               Nenhum log encontrado ou carregando...
             </div>
           ) : (
             logs.map((line, index) => (
-              <div key={`${index}-${line.slice(0, 24)}`} className="mb-1 text-slate-300 hover:text-white transition-colors border-l border-transparent hover:border-indigo-500/50 pl-3">
-                <span className="text-slate-600 mr-2 tabular-nums">[{index + 1}]</span>
+              <div key={`${index}-${line.slice(0, 24)}`} className="mb-1 border-l border-transparent pl-3 text-slate-300 transition-colors hover:border-sky-700/50 hover:text-white">
+                <span className="mr-2 tabular-nums text-slate-600">[{index + 1}]</span>
                 <span className={line.includes('[error]') ? 'text-red-400' : line.includes('[warn]') ? 'text-amber-400' : 'text-slate-300'}>
                   {line}
                 </span>
@@ -125,21 +132,21 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose }) => {
           )}
         </div>
 
-        <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-            <Info size={12} /> Exibindo as ultimas 100 linhas
+        <div className="flex items-center justify-between gap-4 border-t border-slate-300 bg-slate-100 px-5 py-4 dark:border-slate-700 dark:bg-slate-950/50">
+          <span className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+            <Info size={12} /> Exibindo as últimas 100 linhas
           </span>
           <div className="flex gap-4">
-            <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-              <span className="w-2 h-2 rounded-full bg-red-500" /> Erros
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+              <span className="h-2 w-2 rounded-full bg-red-500" /> Erros
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-              <span className="w-2 h-2 rounded-full bg-amber-500" /> Alertas
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+              <span className="h-2 w-2 rounded-full bg-amber-500" /> Alertas
             </div>
           </div>
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 };

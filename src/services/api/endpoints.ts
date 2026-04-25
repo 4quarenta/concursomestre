@@ -37,6 +37,7 @@ export const ENDPOINTS = {
     questions: {
         list: 'questionsList',
         show: 'questions/show.php',
+        edit: 'questions/edit.php',
         create: 'questionsCreate',
         update: 'questionsUpdate',
         delete: 'questionsDelete',
@@ -158,6 +159,15 @@ export const ENDPOINTS = {
         feedback: 'admin/feedback.php',
         reportActions: 'admin/report_actions.php',
         stats: 'admin/stats.php',
+        analyticsFinance: 'admin/analytics_finance.php',
+        analyticsDashboard: 'admin/analytics_dashboard.php',
+        analyticsFunnel: 'admin/analytics_funnel.php',
+        analyticsFunnelExport: 'admin/analytics_funnel_export.php',
+        analyticsSegments: 'admin/analytics_segments.php',
+        analyticsSegmentsExport: 'admin/analytics_segments_export.php',
+        commentsModeration: 'admin/comments_moderation.php',
+        commentsModerationBulk: 'admin/comments_moderation_bulk.php',
+        commentsModerationExport: 'admin/comments_moderation_export.php',
     },
 
     subscriptions: {
@@ -208,6 +218,10 @@ export const ENDPOINTS = {
 
     ai: {
         generate: 'aiGenerate',
+    },
+
+    analytics: {
+        track: 'analytics/track.php',
     },
 
     legalCommentary: {

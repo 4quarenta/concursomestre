@@ -26,7 +26,7 @@ const AdminDatabaseManager = (props: AdminDatabaseManagerControllerProps) => {
   const { navigationProps, sectionsProps, modalsProps } = useAdminDatabaseManagerController(props);
   return (
     <div className="relative space-y-6">
-      <AdminDatabaseNavigation {...navigationProps} />
+      {navigationProps.standaloneSection ? null : <AdminDatabaseNavigation {...navigationProps} />}
       <AdminDatabaseSections {...sectionsProps} />
       <AdminDatabaseModals {...modalsProps} />
     </div>

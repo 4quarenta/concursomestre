@@ -31,6 +31,15 @@ import {
   UploadCloud,
   Zap,
 } from 'lucide-react';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_MUTED_SURFACE_CLASS,
+  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SURFACE_CLASS,
+  ADMIN_SURFACE_HEADER_CLASS,
+} from '../shared/adminPanelStyles';
 
 type GenerateSpecificType = 'teacher' | 'detailed';
 
@@ -89,13 +98,13 @@ const AdminImportSection = ({
     <div className="space-y-6 animate-slide-up">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-6 lg:col-span-4">
-          <div className="space-y-6 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900">
+          <div className={`${ADMIN_PAGE_PANEL_CLASS} space-y-6 p-6 transition-colors duration-300`}>
             <div className="mb-2 flex items-center gap-2 border-b border-slate-100 pb-4 dark:border-slate-800">
-              <Database size={20} className="text-indigo-600 dark:text-indigo-400" />
+              <Database size={20} className="text-sky-700 dark:text-sky-300" />
               <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Extracao Inteligente</h3>
             </div>
 
-            <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700/50 dark:bg-slate-800/50">
+            <div className={`space-y-3 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   <Zap size={12} className={systemSettings.hasGeminiApiKeyConfigured || systemSettings.geminiApiKey ? 'text-emerald-500' : 'text-slate-400'} />
@@ -113,13 +122,13 @@ const AdminImportSection = ({
                   value={systemSettings.geminiApiKey || ''}
                   onChange={(event) => onGeminiApiKeyChange(event.target.value)}
                   placeholder={systemSettings.hasGeminiApiKeyConfigured ? 'Digite uma nova chave para substituir a atual' : 'Cole sua API Key aqui (AIza...)'}
-                  className="h-9 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 outline-none transition-colors focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                  className={`h-9 flex-1 text-xs font-medium ${ADMIN_FIELD_CLASS}`}
                 />
                 <button
                   type="button"
                   onClick={onSaveSettings}
                   disabled={isSavingSettings}
-                  className="h-9 rounded-xl bg-indigo-50 px-3 text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
+                  className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-9 px-3 text-sky-700 dark:text-sky-300`}
                 >
                   {isSavingSettings ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 </button>
@@ -142,7 +151,7 @@ const AdminImportSection = ({
                 <label className="ml-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   Arquivo da Prova <span className="font-black text-red-500">*</span>
                 </label>
-                <label className={`flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all ${qFile ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'border-slate-200 bg-slate-50 hover:border-indigo-400 dark:border-slate-700 dark:bg-slate-800/50'}`}>
+                <label className={`flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-sm border-2 border-dashed transition-all ${qFile ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'border-slate-300 bg-slate-50 hover:border-sky-700 dark:border-slate-700 dark:bg-slate-950/40'}`}>
                   <input type="file" accept=".pdf" className="hidden" onChange={(event) => onQFileChange(event.target.files?.[0] || null)} />
                   <UploadCloud size={24} className={qFile ? 'text-emerald-500' : 'text-slate-400'} />
                   <span className="mt-2 line-clamp-1 px-4 text-center text-[10px] font-bold text-slate-600 dark:text-slate-400">
@@ -155,7 +164,7 @@ const AdminImportSection = ({
                 <label className="ml-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
                   Gabarito Oficial <span className="font-black text-red-500">*</span>
                 </label>
-                <label className={`flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all ${kFile ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'border-slate-200 bg-slate-50 hover:border-indigo-400 dark:border-slate-700 dark:bg-slate-800/50'}`}>
+                <label className={`flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-sm border-2 border-dashed transition-all ${kFile ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'border-slate-300 bg-slate-50 hover:border-sky-700 dark:border-slate-700 dark:bg-slate-950/40'}`}>
                   <input type="file" accept=".pdf" className="hidden" onChange={(event) => onKFileChange(event.target.files?.[0] || null)} />
                   <FileCheck size={24} className={kFile ? 'text-emerald-500' : 'text-slate-400'} />
                   <span className="mt-2 line-clamp-1 px-4 text-center text-[10px] font-bold text-slate-600 dark:text-slate-400">
@@ -164,12 +173,12 @@ const AdminImportSection = ({
                 </label>
               </div>
 
-              <div className="flex items-center gap-2 rounded-xl border border-amber-100 bg-amber-50 p-3 dark:border-amber-900/30 dark:bg-amber-900/10">
+              <div className="flex items-center gap-2 rounded-sm border border-amber-300 bg-amber-50 p-3 dark:border-amber-900/30 dark:bg-amber-900/10">
                 <input
                   type="checkbox"
                   checked={extractWithComment}
                   onChange={(event) => onExtractWithCommentChange(event.target.checked)}
-                  className="h-4 w-4 rounded text-amber-600 focus:ring-amber-500"
+                  className="h-4 w-4 rounded-sm text-amber-600 focus:ring-amber-500"
                 />
                 <label
                   onClick={() => onExtractWithCommentChange(!extractWithComment)}
@@ -184,11 +193,11 @@ const AdminImportSection = ({
               <div className="space-y-4">
                 <div>
                   <div className="mb-1 flex justify-between items-end">
-                    <span className="text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400">Progresso da Prova</span>
+                    <span className="text-[9px] font-black uppercase text-sky-700 dark:text-sky-300">Progresso da Prova</span>
                     <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">{examProgress}%</span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                    <div className="h-full bg-indigo-600 transition-all duration-500 dark:bg-indigo-500" style={{ width: `${examProgress}%` }} />
+                    <div className="h-full bg-sky-700 transition-all duration-500 dark:bg-sky-500" style={{ width: `${examProgress}%` }} />
                   </div>
                 </div>
                 <div>
@@ -207,14 +216,14 @@ const AdminImportSection = ({
                 type="button"
                 onClick={onStartImport}
                 disabled={!qFile || !kFile}
-                className="flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-900 py-4 font-black uppercase tracking-widest text-white shadow-xl shadow-slate-200 transition-all hover:bg-slate-800 disabled:opacity-30 dark:bg-indigo-600 dark:shadow-none dark:hover:bg-indigo-700"
+                className={`${ADMIN_PRIMARY_BUTTON_CLASS} flex w-full items-center justify-center gap-3 py-4 font-black uppercase tracking-widest disabled:opacity-30`}
               >
                 <PlayCircle size={20} /> Iniciar Importacao
               </button>
             )}
           </div>
 
-          <div className="flex h-48 flex-col-reverse overflow-y-auto rounded-3xl border border-slate-800 bg-slate-900 p-6 font-mono text-[10px] text-emerald-400 shadow-inner transition-colors dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex h-48 flex-col-reverse overflow-y-auto rounded-md border border-slate-800 bg-slate-900 p-6 font-mono text-[10px] text-emerald-400 shadow-inner transition-colors dark:border-slate-800 dark:bg-slate-950">
             <div className="space-y-1">
               {logs.map((log, index) => (
                 <div key={index} className="animate-fade-in opacity-80">{log}</div>
@@ -227,9 +236,9 @@ const AdminImportSection = ({
         <div className="flex flex-col gap-6 lg:col-span-8">
           {extractedQuestions.length > 0 ? (
             <div className="flex flex-1 flex-col space-y-4 animate-slide-up">
-              <div className="flex flex-col items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors md:flex-row dark:border-slate-800 dark:bg-slate-900">
+              <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-col items-center justify-between gap-4 md:flex-row`}>
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-black uppercase text-emerald-600 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
+                  <div className="flex items-center gap-2 rounded-sm border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
                     <CheckCircle2 size={16} /> {extractedQuestions.length} Questões Extraidas
                   </div>
                 </div>
@@ -238,7 +247,7 @@ const AdminImportSection = ({
                     type="button"
                     onClick={onGenerateDetailedAll}
                     disabled={isBulkGenerating || isProcessing}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-[10px] font-black uppercase text-indigo-700 transition-all hover:bg-indigo-100 disabled:opacity-50 md:flex-none dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-sm border border-sky-300 bg-sky-50 px-4 py-2.5 text-[10px] font-black uppercase text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50 md:flex-none dark:border-sky-900/30 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/30"
                   >
                     {isBulkGenerating ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />} Gerar Análise Detalhada (Todas)
                   </button>
@@ -246,7 +255,7 @@ const AdminImportSection = ({
                     type="button"
                     onClick={onPublishAll}
                     disabled={isProcessing || isBulkGenerating}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-[10px] font-black uppercase text-white shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-500 disabled:opacity-50 md:flex-none"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-sm border border-emerald-700 bg-emerald-700 px-6 py-2.5 text-[10px] font-black uppercase text-white transition-colors hover:bg-emerald-800 disabled:opacity-50 md:flex-none"
                   >
                     <CheckCircle2 size={16} /> Publicar Tudo
                   </button>
@@ -254,33 +263,33 @@ const AdminImportSection = ({
               </div>
 
               {isBulkGenerating && (
-                <div className="animate-fade-in rounded-2xl border border-indigo-100 bg-white px-6 py-4 shadow-sm">
+                <div className={`${ADMIN_PAGE_PANEL_CLASS} animate-fade-in px-6 py-4`}>
                   <div className="mb-1 flex justify-between items-end">
-                    <span className="flex items-center gap-2 text-[10px] font-black uppercase text-indigo-600">
+                    <span className="flex items-center gap-2 text-[10px] font-black uppercase text-sky-700 dark:text-sky-300">
                       <Sparkles size={12} /> Gerando Comentários em Massa
                     </span>
                     <span className="text-[10px] font-bold text-slate-400">{bulkProgress}%</span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                    <div className="h-full bg-indigo-600 transition-all duration-300 dark:bg-indigo-500" style={{ width: `${bulkProgress}%` }} />
+                    <div className="h-full bg-sky-700 transition-all duration-300 dark:bg-sky-500" style={{ width: `${bulkProgress}%` }} />
                   </div>
                 </div>
               )}
 
               <div className="no-scrollbar flex-1 max-h-[800px] space-y-4 overflow-y-auto pr-2">
                 {extractedQuestions.map((question: any, index) => (
-                  <div key={index} className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-700">
-                    <div className="absolute left-0 top-0 h-full w-1 bg-slate-100 transition-colors group-hover:bg-indigo-500 dark:bg-slate-800 dark:group-hover:bg-indigo-600" />
+                  <div key={index} className="group relative overflow-hidden rounded-sm border border-slate-300 bg-white p-6 transition-colors hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-sky-700">
+                    <div className="absolute left-0 top-0 h-full w-1 bg-slate-200 transition-colors group-hover:bg-sky-700 dark:bg-slate-800 dark:group-hover:bg-sky-500" />
                     <div className="mb-4 flex items-start justify-between">
                       <div className="flex items-center gap-3">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-xs font-black text-white shadow-md dark:bg-indigo-600">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-slate-900 text-xs font-black text-white dark:bg-sky-700">
                           {index + 1}
                         </span>
                         <div className="flex flex-wrap gap-2">
                           <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                             {question.bancas?.map((banca: any) => banca.sigla || banca.name).join(' / ') || 'Banca N/I'}
                           </span>
-                          <span className="rounded-lg bg-indigo-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                          <span className="rounded-sm bg-sky-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
                             {question.assuntos?.filter((subject: any) => subject.materia).map((subject: any) => subject.name).join(', ') || 'Materia N/I'}
                           </span>
                           <span className="rounded-lg bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
@@ -291,13 +300,13 @@ const AdminImportSection = ({
                       <div className="flex items-center gap-2">
                         {(question.anulada || question.isCanceled) && <span className="rounded bg-red-100 px-2 py-0.5 text-[8px] font-black uppercase text-red-700 dark:bg-red-900/40 dark:text-red-400">Anulada</span>}
                         {(question.desatualizada || question.isOutdated) && <span className="rounded bg-amber-100 px-2 py-0.5 text-[8px] font-black uppercase text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">Desat.</span>}
-                        <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
+                        <div className="rounded-sm border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
                           Gabarito: {String.fromCharCode(65 + question.correctOptionIndex)}
                         </div>
                         <button
                           type="button"
                           onClick={() => onEditExtractedQuestion(question, index)}
-                          className="rounded-lg bg-slate-50 p-1.5 text-slate-400 transition-all hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-500 dark:hover:text-indigo-400"
+                          className="rounded-sm border border-slate-300 bg-white p-1.5 text-slate-500 transition-colors hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500 dark:hover:text-sky-300"
                           title="Editar Questão Extraida"
                         >
                           <Edit3 size={14} />
@@ -340,7 +349,7 @@ const AdminImportSection = ({
                         type="button"
                         onClick={() => onGenerateSpecific(index, 'teacher')}
                         disabled={!!generatingSpecific || isBulkGenerating}
-                        className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-amber-700 transition-all hover:bg-amber-100 disabled:opacity-50 dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/30"
+                        className="flex items-center gap-1.5 rounded-sm border border-amber-300 bg-amber-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-400 dark:hover:bg-amber-900/30"
                       >
                         {generatingSpecific?.index === index && generatingSpecific.type === 'teacher' ? <Loader2 className="animate-spin" size={12} /> : <GraduationCap size={12} />}
                         {question.teacherComment ? 'Regerar Professor' : 'Gerar Professor'}
@@ -349,7 +358,7 @@ const AdminImportSection = ({
                         type="button"
                         onClick={() => onGenerateSpecific(index, 'detailed')}
                         disabled={!!generatingSpecific || isBulkGenerating}
-                        className="flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-indigo-700 transition-all hover:bg-indigo-100 disabled:opacity-50 dark:bg-indigo-900/20 dark:text-indigo-400 dark:hover:bg-indigo-900/30"
+                        className="flex items-center gap-1.5 rounded-sm border border-sky-300 bg-sky-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50 dark:border-sky-900/30 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/30"
                       >
                         {generatingSpecific?.index === index && generatingSpecific.type === 'detailed' ? <Loader2 className="animate-spin" size={12} /> : <Sparkles size={12} />}
                         {question.detailedComment ? 'Regerar Detalhado' : 'Gerar Detalhado'}
@@ -366,7 +375,7 @@ const AdminImportSection = ({
                     )}
 
                     {question.detailedComment && (
-                      <div className="mt-2 animate-fade-in space-y-2 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-xs text-indigo-800 opacity-80 group-hover:opacity-100 dark:border-indigo-900/30 dark:bg-indigo-900/10 dark:text-indigo-200">
+                      <div className="mt-2 animate-fade-in space-y-2 rounded-sm border border-sky-300 bg-sky-50 p-4 text-xs text-sky-800 opacity-80 group-hover:opacity-100 dark:border-sky-900/30 dark:bg-sky-900/10 dark:text-sky-200">
                         <p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
                           <Sparkles size={14} /> Análise Detalhada (IA)
                         </p>
@@ -378,7 +387,7 @@ const AdminImportSection = ({
               </div>
             </div>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center space-y-4 rounded-[2.5rem] border-2 border-dashed border-slate-200 bg-white p-20 text-center transition-colors dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex flex-1 flex-col items-center justify-center space-y-4 rounded-md border-2 border-dashed border-slate-200 bg-white p-20 text-center transition-colors dark:border-slate-800 dark:bg-slate-900">
               <div className="rounded-full bg-slate-50 p-8 text-slate-300 dark:bg-slate-800 dark:text-slate-700">
                 <FileText size={80} />
               </div>

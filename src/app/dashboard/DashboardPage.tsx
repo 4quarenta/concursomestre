@@ -25,8 +25,10 @@ import {
 import {
   ArrowRight,
   Calendar,
+  Crown,
   Flame,
   Lightbulb,
+  Lock,
   MessageSquare,
   Target,
   TrendingUp,
@@ -36,6 +38,8 @@ import {
 import { useData } from '@providers/DataProvider';
 import { useAuth } from '@providers/AuthProvider';
 import { useStudyTracker } from '@providers/StudyTrackerProvider';
+import AuthModal from '../../components/shared/overlays/AuthModal';
+import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import {
   PLATFORM_METRIC_VALUE_CLASS,
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -57,6 +61,7 @@ import {
 } from '@services/dashboard/dashboardInsightsService';
 import { getStudyStreakSnapshot, touchStudyStreak, type StudyStreakSnapshot } from '@services/dashboard/studyStreakService';
 import { formatStudyDuration } from '@services/statistics/studyTimeFormatting';
+import { isPlanAtLeast } from '@services/plans/planAccess';
 
 const EMPTY_STREAK: StudyStreakSnapshot = {
   current: 0,
@@ -169,6 +174,8 @@ const Dashboard: React.FC = () => {
   const { currentUser } = useAuth();
   const { userAnswers, questions, userComments, systemSettings, ensureUserProgressLoaded } = useData();
   const { displayTotals, isLoading: isStudyTimeLoading } = useStudyTracker();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [timeRange, setTimeRange] = useState<DashboardTimeRange>('all');
   const [showCorrectTimeline, setShowCorrectTimeline] = useState<boolean>(true);
   const [dailyMotivationMarkdown, setDailyMotivationMarkdown] = useState<string>(systemSettings.dailyMotivationMarkdown || '');
@@ -281,6 +288,96 @@ const Dashboard: React.FC = () => {
     [dailyMotivationMarkdown],
   );
   const formattedToday = useMemo(() => formatDashboardDate(new Date()), []);
+  const hasDashboardEliteAccess = isPlanAtLeast(currentUser, 'Elite');
+
+  if (!hasDashboardEliteAccess) {
+    return (
+      <>
+        <div className="space-y-6 animate-fade-in">
+          <header className="flex flex-col gap-3">
+            <div className="space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-indigo-500 dark:text-indigo-400">
+                Painel do usuario
+              </p>
+              <h1 className={PLATFORM_PAGE_TITLE_CLASS}>
+                Dashboard premium
+              </h1>
+              <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
+                O resumo completo de desempenho, tempo de estudo e evolucao fica disponivel no pacote Elite.
+              </p>
+            </div>
+          </header>
+
+          <div className={`${PLATFORM_SURFACE_CARD_CLASS} relative overflow-hidden p-8 md:p-10`}>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(99,102,241,0.18),_transparent_42%),radial-gradient(circle_at_bottom_left,_rgba(168,85,247,0.14),_transparent_38%)]" />
+            <div className="relative z-10 mx-auto max-w-xl text-center space-y-5">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[1.5rem] border border-amber-200 bg-amber-50 text-amber-600 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                <Lock size={30} />
+              </div>
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600 dark:text-amber-300">
+                  Recurso Exclusivo Elite
+                </p>
+                <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">
+                  Desbloqueie o dashboard completo
+                </h2>
+                <p className="text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
+                  Veja motivacao diaria, sequencia de estudos, evolucao do desempenho, distribuicao por materia e insights mais profundos em um unico painel.
+                </p>
+              </div>
+
+              <div className="grid gap-3 text-left sm:grid-cols-2">
+                {[
+                  'Desempenho geral com insights',
+                  'Evolucao real por periodo',
+                  'Tempo total de estudo',
+                  'Top materias do recorte atual',
+                ].map((item) => (
+                  <div
+                    key={item}
+                    className="rounded-[1.25rem] border border-slate-200 bg-white/80 px-4 py-3 text-xs font-bold text-slate-700 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Crown size={14} className="text-amber-500" />
+                      <span>{item}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!currentUser) {
+                    setShowAuthModal(true);
+                    return;
+                  }
+                  setShowUpgradeModal(true);
+                }}
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-amber-500 px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-lg shadow-amber-200 transition-all hover:bg-amber-600 dark:shadow-none"
+              >
+                <Crown size={16} />
+                Quero ser Elite
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <AuthModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+          title="Entre para desbloquear o dashboard premium"
+          description="Acesse o painel completo do ConcursoMestre e acompanhe sua evolucao com o plano Elite."
+        />
+        <UpgradeModal
+          isOpen={showUpgradeModal}
+          onClose={() => setShowUpgradeModal(false)}
+          requiredPlan="Elite"
+          featureName="Dashboard premium"
+        />
+      </>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">

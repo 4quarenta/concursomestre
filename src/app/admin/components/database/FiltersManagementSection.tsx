@@ -12,6 +12,7 @@
 import React from 'react';
 import { ChevronDown, Edit3, Plus, PlusCircle, Search, Trash2 } from 'lucide-react';
 import type { SystemSettings } from '@types';
+import { ADMIN_FIELD_CLASS, ADMIN_PAGE_PANEL_CLASS, ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
 
 interface FilterTypeOption {
   key: string;
@@ -27,7 +28,7 @@ interface FiltersManagementSectionProps {
   filterSearch: string;
   onFilterSearchChange: (value: string) => void;
   onCreate: () => void;
-  onAddChild: (type: string, parentId: number) => void;
+  onAddChild: (type: string, parentId: number | string) => void;
   onEdit: (item: any) => void;
   onDelete: (item: any) => void;
 }
@@ -39,13 +40,20 @@ const getUnifiedTaxonomyList = (systemSettings: SystemSettings, activeFilterType
 
   const taxonomies = systemSettings.taxonomies;
   const safeMap = (items: any[] | undefined, type: string) => (items || []).map((item: any) => ({ ...item, type }));
+  const subjectTopics = taxonomies.subjectTopics?.length
+    ? taxonomies.subjectTopics
+    : (taxonomies.topics || []).filter((item: any) => item.taxonomyLevel === 'topico');
+  const specificSubjects = taxonomies.specificSubjects?.length
+    ? taxonomies.specificSubjects
+    : (taxonomies.topics || []).filter((item: any) => item.taxonomyLevel === 'assunto');
 
   const allItems = [
     ...safeMap(taxonomies.agencies, 'banca'),
     ...safeMap(taxonomies.organizations, 'orgao'),
     ...safeMap(taxonomies.roles, 'cargo'),
-    ...safeMap(taxonomies.subjects, 'assunto'),
-    ...safeMap(taxonomies.topics, 'assunto'),
+    ...safeMap(taxonomies.subjects, 'materia'),
+    ...safeMap(subjectTopics, 'topico'),
+    ...safeMap(specificSubjects, 'assunto'),
     ...safeMap(taxonomies.careers, 'carreira'),
     ...safeMap(taxonomies.areas, 'area'),
     ...(taxonomies.years || []).map((year: any) => ({
@@ -75,11 +83,13 @@ const getParentName = (systemSettings: SystemSettings, parentId: number | null |
     ...(taxonomies.roles || []),
     ...(taxonomies.subjects || []),
     ...(taxonomies.topics || []),
+    ...(taxonomies.subjectTopics || []),
+    ...(taxonomies.specificSubjects || []),
     ...(taxonomies.careers || []),
     ...(taxonomies.areas || []),
   ];
 
-  const parent = allLists.find((item: any) => item.id === parentId);
+  const parent = allLists.find((item: any) => String(item.id) === String(parentId));
   return parent ? parent.name : 'Item Raiz';
 };
 
@@ -102,7 +112,7 @@ const FiltersManagementSection = ({
 
   return (
     <div className="grid grid-cols-1 gap-6 animate-slide-up md:grid-cols-4">
-      <div className="h-fit rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:col-span-1">
+      <div className={`${ADMIN_PAGE_PANEL_CLASS} h-fit md:col-span-1`}>
         <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 ml-2">Filtrar por Tipo</h3>
         <div className="space-y-1">
           {filterTypes.map((type) => (
@@ -117,10 +127,17 @@ const FiltersManagementSection = ({
             </button>
           ))}
         </div>
+        <div className="mt-5 rounded-md border border-indigo-100 bg-indigo-50 p-4 text-xs font-medium text-indigo-900 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-200">
+          <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-indigo-500 dark:text-indigo-300">Regra de estudo</p>
+          <p className="font-bold">Materia -&gt; Topico -&gt; Assunto</p>
+          <p className="mt-2 text-indigo-700 dark:text-indigo-300">
+            Todo topico pertence a uma materia. Todo assunto pertence a um topico.
+          </p>
+        </div>
       </div>
 
       <div className="md:col-span-3 space-y-4">
-        <div className="flex flex-col items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:flex-row">
+        <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-col items-center justify-between gap-4 md:flex-row`}>
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={16} />
             <input
@@ -128,23 +145,26 @@ const FiltersManagementSection = ({
               placeholder="Pesquisar em todas as taxonomias..."
               value={filterSearch}
               onChange={(event) => onFilterSearchChange(event.target.value)}
-              className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              className={`${ADMIN_FIELD_CLASS} w-full pl-10 pr-4`}
             />
           </div>
           <button
             type="button"
             onClick={onCreate}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-6 text-sm font-semibold text-white transition-colors hover:bg-blue-700 md:w-auto"
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-6 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 md:w-auto"
           >
             <Plus size={18} /> Novo Filtro
           </button>
         </div>
 
-        <div className="overflow-hidden overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm no-scrollbar dark:border-slate-800 dark:bg-slate-900">
+        <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden overflow-x-auto no-scrollbar`}>
+          <div className={ADMIN_SURFACE_HEADER_CLASS}>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Taxonomias e filtros</p>
+          </div>
           <table className="w-full text-left text-xs min-w-[600px]">
             <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
               <tr>
-                <th className="p-4">Nome / Parentesco</th>
+                <th className="p-4">Nome / Hierarquia</th>
                 <th className="p-4">Tipo</th>
                 <th className="p-4">Slug (URL)</th>
                 <th className="p-4 text-center">Ações</th>
@@ -161,6 +181,12 @@ const FiltersManagementSection = ({
                         {getParentName(systemSettings, item.parentId || item.parent_id)}
                       </div>
                     )}
+                    {item.type === 'materia' && (
+                      <div className="text-[10px] text-slate-400 font-medium">Raiz do conhecimento</div>
+                    )}
+                    {(item.type === 'topico' || item.type === 'assunto') && !(item.parentId || item.parent_id) && (
+                      <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Sem raiz definida</div>
+                    )}
                   </td>
                   <td className="p-4">
                     <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border border-slate-200 dark:border-slate-700">
@@ -170,11 +196,11 @@ const FiltersManagementSection = ({
                   <td className="p-4 text-slate-500 dark:text-slate-400 font-mono text-[10px]">{item.slug}</td>
                   <td className="p-4 text-center">
                     <div className="flex justify-center gap-2">
-                      {filterTypes.find((type) => type.key === item.type)?.hierarchical && (
+                      {(item.type === 'materia' || item.type === 'topico') && (
                         <button
                           type="button"
                           onClick={() => onAddChild(item.type, item.id)}
-                          title="Adicionar Subitem"
+                          title={item.type === 'materia' ? 'Adicionar topico' : 'Adicionar assunto'}
                           className="rounded-md p-2 text-slate-400 transition-colors hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-500 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400"
                         >
                           <PlusCircle size={14} />

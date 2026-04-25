@@ -13,10 +13,24 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { AlertTriangle, BookOpen, CheckCircle2, Edit3, FileText, History, Loader2, Plus, RefreshCcw, Search, Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, BookOpen, CheckCircle2, Edit3, ExternalLink, FileText, History, Loader2, Plus, RefreshCcw, Search, Trash2, X, XCircle } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
 import { legalCommentaryApiService, type PlanaltoCatalogItem, type PlanaltoCatalogSource } from '@services/legal-commentary';
-import type { LawSummary, LegalHomeSnapshot } from '@types';
+import type { LawSummary, LawUpdate, LegalHomeSnapshot, LegalSyncLog } from '@types';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_MODAL_FOOTER_CLASS,
+  ADMIN_MODAL_HEADER_CLASS,
+  ADMIN_MODAL_PANEL_CLASS,
+  ADMIN_MUTED_SURFACE_CLASS,
+  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SURFACE_CLASS,
+  ADMIN_SURFACE_HEADER_CLASS,
+} from '../shared/adminPanelStyles';
+import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
+import { buildAdminLawEditPath } from '../../config/adminPageNavigationConfig';
 
 interface AdminLegalCommentarySectionProps {
   filter?: string;
@@ -53,10 +67,14 @@ const EMPTY_HOME: LegalHomeSnapshot = {
   },
 };
 
-const getLawEditPath = (lawId: string | number) =>
-  `/admin/operation/lei-comentada/${encodeURIComponent(String(lawId))}/edit`;
-const getLawUpdatesPath = (lawId: string | number) =>
-  `/admin/operation/lei-comentada/${encodeURIComponent(String(lawId))}/updates`;
+const getLawEditPath = (lawId: string | number) => buildAdminLawEditPath(lawId);
+
+const LAW_UPDATE_CHANGE_LABEL: Record<string, string> = {
+  created: 'Incluido',
+  changed: 'Alterado',
+  revoked: 'Revogado',
+  renumbered: 'Renumerado',
+};
 
 const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectionProps) => {
   const { addToast } = useToast();
@@ -67,6 +85,10 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [syncingId, setSyncingId] = React.useState<string | null>(null);
   const [isSyncModalOpen, setIsSyncModalOpen] = React.useState(false);
+  const [updatesModalLaw, setUpdatesModalLaw] = React.useState<LawSummary | null>(null);
+  const [isUpdatesModalLoading, setIsUpdatesModalLoading] = React.useState(false);
+  const [updatesModalItems, setUpdatesModalItems] = React.useState<LawUpdate[]>([]);
+  const [updatesModalLogs, setUpdatesModalLogs] = React.useState<LegalSyncLog[]>([]);
   const [catalogSources, setCatalogSources] = React.useState<PlanaltoCatalogSource[]>([]);
   const [selectedSourceIds, setSelectedSourceIds] = React.useState<string[]>([]);
   const [catalogItems, setCatalogItems] = React.useState<PlanaltoCatalogItem[]>([]);
@@ -129,11 +151,6 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
     ));
   }, []);
 
-  const handleSearchSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    void loadLaws(query);
-  };
-
   const handleDelete = async (law: LawSummary) => {
     const confirmed = window.confirm(`Remover "${law.shortTitle}" da base da Lei Comentada?`);
     if (!confirmed) return;
@@ -168,6 +185,44 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
     } finally {
       setSyncingId(null);
     }
+  };
+
+  const handleOpenUpdatesModal = async (law: LawSummary) => {
+    setUpdatesModalLaw(law);
+    setIsUpdatesModalLoading(true);
+
+    try {
+      const payload = await legalCommentaryApiService.getAdminLawUpdates(law.id);
+      setUpdatesModalItems(payload.updates || []);
+      setUpdatesModalLogs(payload.syncLogs || []);
+
+      if (payload.law) {
+        setUpdatesModalLaw((current) => current ? {
+          ...current,
+          title: payload.law?.title || current.title,
+          shortTitle: payload.law?.shortTitle || current.shortTitle,
+          lastSyncedAt: payload.law?.lastSyncedAt || current.lastSyncedAt,
+          officialUrl: payload.law?.officialUrl || current.officialUrl,
+        } : current);
+      }
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel carregar o historico de atualizacoes.', 'error');
+    } finally {
+      setIsUpdatesModalLoading(false);
+    }
+  };
+
+  const handleCloseUpdatesModal = () => {
+    if (isUpdatesModalLoading) return;
+    setUpdatesModalLaw(null);
+    setUpdatesModalItems([]);
+    setUpdatesModalLogs([]);
+  };
+
+  const handleSyncUpdatesModalLaw = async () => {
+    if (!updatesModalLaw) return;
+    await handleSyncLaw(updatesModalLaw);
+    await handleOpenUpdatesModal(updatesModalLaw);
   };
 
   const runUpdateCheck = async (items: PlanaltoCatalogItem[], runId: number) => {
@@ -441,77 +496,69 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
   return (
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className={ADMIN_PAGE_PANEL_CLASS}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Leis</p>
           <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{home.totals.laws}</p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className={ADMIN_PAGE_PANEL_CLASS}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Artigos</p>
           <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{home.totals.articles}</p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className={ADMIN_PAGE_PANEL_CLASS}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Comentados</p>
           <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{home.totals.commentedArticles}</p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className={ADMIN_PAGE_PANEL_CLASS}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Atualizadas</p>
           <p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{home.totals.updatedRecently}</p>
         </div>
       </div>
 
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Conteudo persistente</p>
-            <h2 className="mt-2 text-xl font-black text-slate-900 dark:text-slate-100">Lei Comentada</h2>
-            <p className="mt-1 max-w-3xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
-              Gerencie leis, artigos, comentarios de professor, jurisprudencia, sumulas, macetes e vinculos com materias/assuntos.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row">
+      <AdminCollectionToolbar
+        title="Lei Comentada"
+        description="Gerencie leis, artigos, comentarios editoriais, jurisprudencia, sumulas e vinculos com materias."
+        searchValue={query}
+        onSearchChange={setQuery}
+        searchPlaceholder="Buscar por nome, numero, apelido, area ou ementa"
+        primaryActionLabel="Adicionar nova"
+        primaryActionHref={getLawEditPath('new')}
+        itemCount={laws.length}
+        itemCountLabel="leis"
+        actions={(
+          <>
             <button
               type="button"
               onClick={() => void loadLaws(query)}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
             >
-              <RefreshCcw size={15} /> Recarregar
+              <Search size={14} />
+              Buscar
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadLaws(query)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <RefreshCcw size={14} />
+              Recarregar
             </button>
             <button
               type="button"
               onClick={() => void handleOpenSyncModal()}
               disabled={isConsultingCatalog}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-60 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-sky-700 bg-sky-700 px-3 text-xs font-semibold text-white transition-colors hover:border-sky-800 hover:bg-sky-800 disabled:opacity-60"
             >
-              {isConsultingCatalog ? <Loader2 className="animate-spin" size={15} /> : <RefreshCcw size={15} />}
+              {isConsultingCatalog ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
               Sincronizar leis
             </button>
-            <Link
-              href={getLawEditPath('new')}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-sm transition-colors hover:bg-indigo-700"
-            >
-              <Plus size={16} /> Nova lei
-            </Link>
-          </div>
+          </>
+        )}
+      />
+
+      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+        <div className={ADMIN_SURFACE_HEADER_CLASS}>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Leis cadastradas</p>
         </div>
-
-        <form onSubmit={handleSearchSubmit} className="mt-5 flex flex-col gap-3 sm:flex-row">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar por nome, numero, apelido, area ou ementa"
-              className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-semibold text-slate-900 outline-none transition-colors focus:border-indigo-300 focus:bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500"
-            />
-          </div>
-          <button type="submit" className="h-12 rounded-xl bg-slate-900 px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white dark:bg-white dark:text-slate-950">
-            Buscar
-          </button>
-        </form>
-      </div>
-
-      <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-xs">
             <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 dark:border-slate-800 dark:bg-slate-800/50">
@@ -534,7 +581,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                 <tr key={law.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
                   <td className="p-4">
                     <div className="flex items-start gap-3">
-                      <div className="rounded-2xl bg-indigo-50 p-3 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+                      <div className="rounded-md bg-indigo-50 p-3 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
                         <FileText size={17} />
                       </div>
                       <div className="min-w-0">
@@ -595,13 +642,14 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                       >
                         {syncingId === law.id ? <Loader2 className="animate-spin" size={16} /> : <RefreshCcw size={16} />}
                       </button>
-                      <Link
-                        href={getLawUpdatesPath(law.id)}
+                      <button
+                        type="button"
+                        onClick={() => void handleOpenUpdatesModal(law)}
                         className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
                         title="Ver atualizacoes"
                       >
                         <History size={16} />
-                      </Link>
+                      </button>
                       <button
                         type="button"
                         disabled={deletingId === law.id}
@@ -628,10 +676,188 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         </div>
       </div>
 
+      {updatesModalLaw ? (
+        <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-950/65 px-4 py-8 backdrop-blur-sm">
+          <div className={`${ADMIN_MODAL_PANEL_CLASS} w-full max-w-6xl`}>
+            <div className={ADMIN_MODAL_HEADER_CLASS}>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">
+                  Lei Comentada / O que mudou
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-slate-900 dark:text-slate-100">
+                  {updatesModalLaw.shortTitle || updatesModalLaw.title}
+                </h3>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Ultima sincronizacao: {formatDateTime(updatesModalLaw.lastSyncedAt)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseUpdatesModal}
+                className="rounded-sm border border-slate-300 bg-white p-2 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                aria-label="Fechar atualizacoes"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <section className="min-h-[420px] border-b border-slate-300 p-5 dark:border-slate-700 lg:border-b-0 lg:border-r">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h4 className="text-base font-semibold text-slate-900 dark:text-slate-100">Eventos de alteracao</h4>
+                    <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Historico em formato editorial, sem sair da listagem.
+                    </p>
+                  </div>
+                  <span className="inline-flex w-fit rounded-sm border border-slate-300 bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                    {updatesModalItems.length} evento(s)
+                  </span>
+                </div>
+
+                <div className="mt-4 max-h-[62vh] space-y-3 overflow-y-auto pr-1">
+                  {isUpdatesModalLoading ? (
+                    <div className="flex min-h-[260px] items-center justify-center text-sm font-semibold text-slate-500 dark:text-slate-400">
+                      <Loader2 className="mr-2 animate-spin" size={16} /> Carregando historico...
+                    </div>
+                  ) : updatesModalItems.length > 0 ? updatesModalItems.map((update) => (
+                    <article key={update.id} className="rounded-sm border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
+                      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
+                              {LAW_UPDATE_CHANGE_LABEL[update.changeType] || update.changeType} - {formatDateTime(update.changedAt)}
+                            </p>
+                            <h5 className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">{update.title}</h5>
+                          </div>
+                          {update.sourceUrl ? (
+                            <a
+                              href={update.sourceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.14em] text-sky-700 hover:underline dark:text-sky-300"
+                            >
+                              Fonte <ExternalLink size={12} />
+                            </a>
+                          ) : null}
+                        </div>
+                        <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">{update.summary}</p>
+                      </div>
+
+                      {(update.previousText || update.currentText) ? (
+                        <div className="grid gap-0 md:grid-cols-2">
+                          <div className="border-b border-slate-200 p-4 dark:border-slate-800 md:border-b-0 md:border-r">
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-600 dark:text-rose-300">Antes</p>
+                            <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
+                              {update.previousText || 'Sem redacao anterior registrada.'}
+                            </p>
+                          </div>
+                          <div className="p-4">
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">Depois</p>
+                            <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
+                              {update.currentText || 'Sem redacao atual registrada.'}
+                            </p>
+                          </div>
+                        </div>
+                      ) : null}
+                    </article>
+                  )) : (
+                    <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 p-8 text-center dark:border-slate-700 dark:bg-slate-950">
+                      <FileText className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={30} />
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Nenhuma alteracao registrada.</p>
+                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                        Quando uma sincronizacao detectar mudanca no texto oficial, o diff aparece aqui.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <aside className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-base font-semibold text-slate-900 dark:text-slate-100">Logs</h4>
+                    <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Sincronizacoes recentes.</p>
+                  </div>
+                  <span className="rounded-sm border border-slate-300 bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                    {updatesModalLogs.length}
+                  </span>
+                </div>
+
+                <div className="mt-4 max-h-[62vh] space-y-2 overflow-y-auto pr-1">
+                  {isUpdatesModalLoading ? (
+                    <div className="rounded-sm border border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                      Atualizando logs...
+                    </div>
+                  ) : updatesModalLogs.length > 0 ? updatesModalLogs.map((log) => (
+                    <div key={log.id} className="rounded-sm border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                      <div className="flex items-start gap-2">
+                        {log.status === 'failed' ? (
+                          <XCircle className="mt-0.5 text-rose-500" size={15} />
+                        ) : (
+                          <CheckCircle2 className="mt-0.5 text-emerald-600" size={15} />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                            {log.status} - {formatDateTime(log.startedAt)}
+                          </p>
+                          <p className="mt-1 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">{log.message}</p>
+                          <p className="mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                            {log.changedArticles || 0} alt. - {log.insertedArticles || 0} novos - {log.revokedArticles || 0} revog.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="rounded-sm border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                      Nenhum log encontrado.
+                    </div>
+                  )}
+                </div>
+              </aside>
+            </div>
+
+            <div className={`${ADMIN_MODAL_FOOTER_CLASS} flex flex-col gap-2 sm:flex-row sm:justify-end`}>
+              <button type="button" onClick={handleCloseUpdatesModal} className={ADMIN_SECONDARY_BUTTON_CLASS}>
+                Fechar
+              </button>
+              {updatesModalLaw.officialUrl ? (
+                <a
+                  href={updatesModalLaw.officialUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={ADMIN_SECONDARY_BUTTON_CLASS}
+                >
+                  <ExternalLink size={14} /> Fonte oficial
+                </a>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleOpenUpdatesModal(updatesModalLaw)}
+                disabled={isUpdatesModalLoading}
+                className={ADMIN_SECONDARY_BUTTON_CLASS}
+              >
+                {isUpdatesModalLoading ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
+                Recarregar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSyncUpdatesModalLaw()}
+                disabled={isUpdatesModalLoading || syncingId === updatesModalLaw.id}
+                className={ADMIN_PRIMARY_BUTTON_CLASS}
+              >
+                {syncingId === updatesModalLaw.id ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
+                Sincronizar agora
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {isSyncModalOpen ? (
         <div className="fixed inset-0 z-[70] overflow-y-auto bg-slate-950/70 backdrop-blur-sm">
           <div className="flex min-h-full items-start justify-center p-4">
-          <div className="my-2 flex max-h-[calc(100dvh-1rem)] w-full max-w-5xl flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="my-2 flex max-h-[calc(100dvh-1rem)] w-full max-w-5xl flex-col overflow-hidden rounded-md border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
             <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Portal do Planalto</p>
@@ -652,7 +878,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
             </div>
 
             <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
-            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+            <section className={`p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Fontes oficiais</p>

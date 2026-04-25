@@ -58,6 +58,8 @@ export const useAdminManualQuestionEditor = ({
       existingOrgaos: manualQuestionReferenceData.existingOrgaos,
       existingSubjects: manualQuestionReferenceData.existingSubjects,
       existingTopics: manualQuestionReferenceData.existingTopics,
+      existingSubjectTopics: manualQuestionReferenceData.existingSubjectTopics,
+      existingSpecificSubjects: manualQuestionReferenceData.existingSpecificSubjects,
       existingYears: manualQuestionReferenceData.existingYears,
       existingRoles: manualQuestionReferenceData.existingRoles,
       existingProvas: manualQuestionReferenceData.existingProvas,

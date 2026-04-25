@@ -10,61 +10,27 @@
 */
 
 import React from 'react';
+import Link from 'next/link';
 import { Edit3, FileText, Link2, Trash2 } from 'lucide-react';
 import type { Prova } from '@types';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
-
-interface ExamDraftState {
-  id: string;
-  nome: string;
-  ano: string;
-  nivel: string;
-  index: string;
-  bancaSigla: string;
-  bancaNome: string;
-  orgaoSigla: string;
-  orgaoNome: string;
-  cargoDescricao: string;
-}
+import { ADMIN_MUTED_SURFACE_CLASS, ADMIN_PAGE_PANEL_CLASS, ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
+import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
+import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
+import { buildAdminExamEditPath } from '../../config/adminPageNavigationConfig';
 
 interface AdminExamBankSectionProps {
   exams: Prova[];
   totalExams: number;
   linkedCountByExamId: Map<string, number>;
-  editingExamId: string | null;
-  examDraft: ExamDraftState | null;
-  onExamDraftChange: (nextDraft: ExamDraftState | null) => void;
-  onStartEdit: (exam: Prova) => void;
-  onCancelEdit: () => void;
-  onSaveEdit: () => void;
+  filter: string;
+  onFilterChange: (value: string) => void;
   deletingExam: Prova | null;
   onRequestDelete: (exam: Prova) => void;
   onCancelDelete: () => void;
   onConfirmDelete: () => void;
   actionLoading: 'save' | 'delete' | null;
 }
-
-const DraftInput = ({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) => (
-  <div className="space-y-1.5">
-    <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{label}</label>
-    <input
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder={placeholder}
-      className="h-10 w-full rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-    />
-  </div>
-);
 
 /**
  * Lista e edita o banco de provas da operacao.
@@ -76,12 +42,8 @@ const AdminExamBankSection = ({
   exams,
   totalExams,
   linkedCountByExamId,
-  editingExamId,
-  examDraft,
-  onExamDraftChange,
-  onStartEdit,
-  onCancelEdit,
-  onSaveEdit,
+  filter,
+  onFilterChange,
   deletingExam,
   onRequestDelete,
   onCancelDelete,
@@ -92,67 +54,36 @@ const AdminExamBankSection = ({
 
   return (
     <div className="space-y-5">
+      <AdminCollectionToolbar
+        title="Banco de provas"
+        description="Cadastro global de provas para vinculo, busca e manutencao editorial."
+        itemCount={totalExams}
+        itemCountLabel="provas"
+        searchValue={filter}
+        onSearchChange={onFilterChange}
+        searchPlaceholder="Buscar provas..."
+        primaryActionLabel="Adicionar nova"
+        primaryActionHref={buildAdminExamEditPath('new')}
+      />
+
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <div className={ADMIN_PAGE_PANEL_CLASS}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Banco de provas</p>
           <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{totalExams}</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <div className={ADMIN_PAGE_PANEL_CLASS}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Questoes vinculadas</p>
           <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{totalLinkedQuestions}</p>
         </div>
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-5 dark:border-blue-900/30 dark:bg-blue-900/10">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-600 dark:text-blue-300">Uso principal</p>
+        <div className={ADMIN_PAGE_PANEL_CLASS}>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Uso principal</p>
           <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Vinculo rapido no editar questao</p>
           <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">A busca de prova usa este mesmo cadastro.</p>
         </div>
       </div>
 
-      {examDraft ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Editar prova</p>
-              <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">Atualize os metadados do banco de provas</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onCancelEdit}
-                className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={onSaveEdit}
-                disabled={actionLoading === 'save'}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
-              >
-                {actionLoading === 'save' ? 'Salvando...' : 'Salvar prova'}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <DraftInput label="ID" value={examDraft.id} onChange={(value) => onExamDraftChange({ ...examDraft, id: value })} placeholder="54321" />
-            <DraftInput label="Nome" value={examDraft.nome} onChange={(value) => onExamDraftChange({ ...examDraft, nome: value })} placeholder="Nome da prova" />
-            <DraftInput label="Ano" value={examDraft.ano} onChange={(value) => onExamDraftChange({ ...examDraft, ano: value })} placeholder="2025" />
-            <DraftInput label="Nivel" value={examDraft.nivel} onChange={(value) => onExamDraftChange({ ...examDraft, nivel: value })} placeholder="Superior" />
-            <DraftInput label="Indice" value={examDraft.index} onChange={(value) => onExamDraftChange({ ...examDraft, index: value })} placeholder="TJSP-2025-01" />
-            <DraftInput label="Banca sigla" value={examDraft.bancaSigla} onChange={(value) => onExamDraftChange({ ...examDraft, bancaSigla: value })} placeholder="FGV" />
-            <DraftInput label="Banca nome" value={examDraft.bancaNome} onChange={(value) => onExamDraftChange({ ...examDraft, bancaNome: value })} placeholder="Fundacao Getulio Vargas" />
-            <DraftInput label="Orgao sigla" value={examDraft.orgaoSigla} onChange={(value) => onExamDraftChange({ ...examDraft, orgaoSigla: value })} placeholder="TJ-SP" />
-            <DraftInput label="Orgao nome" value={examDraft.orgaoNome} onChange={(value) => onExamDraftChange({ ...examDraft, orgaoNome: value })} placeholder="Tribunal de Justica de Sao Paulo" />
-            <div className="md:col-span-2 xl:col-span-3">
-              <DraftInput label="Cargo" value={examDraft.cargoDescricao} onChange={(value) => onExamDraftChange({ ...examDraft, cargoDescricao: value })} placeholder="Analista Judiciario" />
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <div className="border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+        <div className={ADMIN_SURFACE_HEADER_CLASS}>
           <p className="text-sm font-black text-slate-900 dark:text-slate-100">Lista de provas cadastradas</p>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Use editar para ajustar o cadastro e deletar para remover o vinculo do banco global.</p>
         </div>
@@ -166,12 +97,13 @@ const AdminExamBankSection = ({
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Orgao</th>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Cargo</th>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Vinculos</th>
+                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Visibilidade</th>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Acoes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {exams.map((exam) => (
-                <tr key={exam.id} className={editingExamId === String(exam.id) ? 'bg-blue-50/60 dark:bg-blue-900/10' : ''}>
+                <tr key={exam.id}>
                   <td className="p-4">
                     <div className="flex flex-col gap-1">
                       <span className="text-sm font-black text-slate-900 dark:text-slate-100">{exam.nome}</span>
@@ -190,15 +122,17 @@ const AdminExamBankSection = ({
                     </span>
                   </td>
                   <td className="p-4">
+                    <AdminPublishStateBadge state={resolveAdminPublishState(exam as Record<string, any>)} />
+                  </td>
+                  <td className="p-4">
                     <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onStartEdit(exam)}
+                      <Link
+                        href={buildAdminExamEditPath(exam.id)}
                         className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                       >
                         <Edit3 size={12} />
                         Editar
-                      </button>
+                      </Link>
                       <button
                         type="button"
                         onClick={() => onRequestDelete(exam)}
@@ -214,7 +148,7 @@ const AdminExamBankSection = ({
 
               {exams.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-10 text-center">
+                  <td colSpan={7} className="p-10 text-center">
                     <div className="flex flex-col items-center gap-3 text-slate-400 dark:text-slate-500">
                       <FileText size={20} />
                       <p className="text-sm font-black">Nenhuma prova encontrada</p>

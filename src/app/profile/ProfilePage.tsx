@@ -752,7 +752,8 @@ const Profile: React.FC = () => {
     const hasSubscriptionRecord = Boolean(activeSubscription?.id);
     const hasScheduledCancellation = Boolean(activeSubscription?.cancel_at_period_end);
     const isCanceledStatus = normalizedSubscriptionStatus === 'canceled' || normalizedSubscriptionStatus === 'cancelled';
-    const isCanceledButStillActive = hasActiveSubscription && (hasScheduledCancellation || isCanceledStatus);
+    const hasScheduledEnding = hasActiveSubscription && !resolvedAutoRenew && hasScheduledCancellation;
+    const isCanceledButStillActive = hasActiveSubscription && (hasScheduledEnding || isCanceledStatus);
     const renewalStateLabel = !hasSubscriptionRecord || !hasActiveSubscription
         ? 'Inexistente'
         : resolvedAutoRenew
@@ -763,13 +764,17 @@ const Profile: React.FC = () => {
         : renewalStateLabel === 'Desativada'
             ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
             : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300';
-    const cancellationImpactMessage = hasActiveSubscription
+    const cancellationImpactMessage = hasScheduledEnding
         ? (termCommitmentRemaining
-            ? 'Ao cancelar, o acesso continua ate o fim do termo contratado.'
-            : `Ao cancelar, o acesso continua ate ${formatDateBR(subscriptionEndDate)}.`)
-        : (isCanceledStatus
-            ? 'Assinatura encerrada. Para voltar, ative um novo plano.'
-            : 'Sem assinatura ativa para cancelamento.');
+            ? 'A renovação foi desligada. O termo atual segue até a última parcela já contratada.'
+            : `A renovação foi desligada. O acesso permanece normal até ${formatDateBR(subscriptionEndDate)}.`)
+        : hasActiveSubscription
+            ? (termCommitmentRemaining
+                ? 'Se você cancelar agora, o acesso continua até o fim do termo contratado.'
+                : `Se você cancelar agora, o acesso continua até ${formatDateBR(subscriptionEndDate)}.`)
+            : (isCanceledStatus
+                ? 'Assinatura encerrada. Para voltar, ative um novo plano.'
+                : 'Sem assinatura ativa para cancelamento.');
     const billingStatusLabel = currentUser?.paymentIssue
         ? 'Atencao no pagamento'
         : hasActiveSubscription
@@ -1007,8 +1012,8 @@ const Profile: React.FC = () => {
                                 <div className="space-y-2.5">
                                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Cancelamento</p>
                                     <h3 className="text-base font-black leading-tight text-slate-900 dark:text-slate-100">
-                                        {isCanceledButStillActive
-                                            ? 'Assinatura cancelada e vigente'
+                                        {hasScheduledEnding
+                                            ? 'Encerramento programado'
                                             : isWithinRefundWindow
                                                 ? 'Janela de reembolso aberta'
                                                 : hasActiveSubscription
@@ -1044,7 +1049,7 @@ const Profile: React.FC = () => {
                                         disabled={isUpdatingRenewal}
                                         className="h-10 rounded-xl bg-emerald-600 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-white transition-all hover:bg-emerald-700 disabled:opacity-60"
                                     >
-                                        {isUpdatingRenewal ? 'Processando...' : 'Reativar assinatura'}
+                                        {isUpdatingRenewal ? 'Processando...' : 'Religar renovação'}
                                     </button>
                                 ) : hasActiveSubscription ? (
                                     <button

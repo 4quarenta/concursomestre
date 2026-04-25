@@ -92,6 +92,7 @@ export interface QuestaoComentario {
   likes: number;
   isLiked?: boolean;
   parentId?: string;
+  moderationStatus?: 'pending' | 'approved' | 'spam';
   replies: QuestaoComentario[];
 }
 
@@ -131,6 +132,9 @@ export interface Prova {
   tipo: number;
   index: string;
   nivel: string;
+  publishStatus?: 'published' | 'draft' | 'scheduled';
+  visibilityStatus?: 'public' | 'elite' | 'internal';
+  scheduledAt?: string;
   banca: Banca;
   orgao: Orgao;
   cargo: Cargo;
@@ -214,6 +218,13 @@ export interface Question {
   isSaved?: boolean;
   savedCount?: number;
   commentsCount?: number;
+  publishStatus?: 'published' | 'draft' | 'scheduled';
+  visibilityStatus?: 'public' | 'elite' | 'internal';
+  scheduledAt?: string;
+  createdAt?: string;
+  created_at?: string;
+  publishedAt?: string;
+  published_at?: string;
 }
 
 export interface FilterResponse {
@@ -722,6 +733,8 @@ export interface TaxonomyItem {
   name: string;
   slug?: string;
   parentId?: string;
+  rootSubjectId?: string;
+  taxonomyLevel?: 'materia' | 'topico' | 'assunto' | string;
   type?: 'agency' | 'subject' | 'topic' | 'role' | 'year' | 'modality' | 'career' | string;
   description?: string;
   website?: string;
@@ -733,6 +746,8 @@ export interface GlobalTaxonomies {
   organizations: TaxonomyItem[];
   subjects: TaxonomyItem[];
   topics: TaxonomyItem[];
+  subjectTopics?: TaxonomyItem[];
+  specificSubjects?: TaxonomyItem[];
   roles: TaxonomyItem[];
   careers: TaxonomyItem[];
   years: string[];

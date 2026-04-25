@@ -50,6 +50,9 @@ export const normalizeProvaRecord = (raw: any): Prova | null => {
     tipo: toNumber(raw.tipo, 0),
     index: toText(raw.index),
     nivel: toText(raw.nivel ?? raw.level),
+    publishStatus: toText(raw.publishStatus) as Prova['publishStatus'] || 'published',
+    visibilityStatus: toText(raw.visibilityStatus) as Prova['visibilityStatus'] || 'public',
+    scheduledAt: toText(raw.scheduledAt),
     banca: {
       ...(raw.banca || {}),
       nome: bancaNome,

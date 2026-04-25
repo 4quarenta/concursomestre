@@ -28,6 +28,14 @@ import AdminSeoSettingsSection from './AdminSeoSettingsSection';
 import AdminLandingContentSection from './AdminLandingContentSection';
 import StripePaymentMethodsSettings from './StripePaymentMethodsSettings';
 import { mergeSeoSettings } from './seoSettings';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_MUTED_SURFACE_CLASS,
+  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_TEXTAREA_CLASS,
+} from '../shared/adminPanelStyles';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 type AdminSettingsTab = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'ads' | 'seo' | 'performance' | 'logs';
@@ -42,7 +50,7 @@ interface AdminSettingsProps {
   standaloneSection?: boolean;
 }
 
-const inputClassName = 'w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100';
+const inputClassName = `w-full ${ADMIN_FIELD_CLASS}`;
 const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500';
 const RESET_TABLE_EXCLUSIONS = new Set(['settings', 'system_settings']);
 const DEFAULT_LIMITED_OFFER_EXTENSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -353,42 +361,15 @@ const AdminSettings = ({
     { id: 'logs', label: 'Logs', icon: FileText },
   ] as const;
   const activeTabMeta = settingsTabs.find((tab) => tab.id === activeTab);
-  const activeTabDescription = activeTab === 'general'
-    ? 'Ambiente, identidade, parametros globais e conteudo base.'
-    : activeTab === 'modules'
-      ? 'Feature flags e modulos habilitados.'
-      : activeTab === 'security'
-        ? '2FA, blindagem administrativa e reset controlado.'
-        : activeTab === 'integrations'
-          ? 'Stripe, Gemini, analytics, pixel e reCAPTCHA.'
-          : activeTab === 'email'
-            ? 'SMTP, remetente e teste de envio.'
-            : activeTab === 'ads'
-              ? 'Banners, Ads e rastreio comercial.'
-              : activeTab === 'seo'
-                ? 'Metadados, indexacao e configuracao SEO.'
-                : activeTab === 'performance'
-                  ? 'Cache, manutencao e rotinas tecnicas.'
-                  : 'Visualizacao de logs e auditoria operacional.';
-
   return (
     <div className="space-y-5 md:space-y-6">
       <LogViewer isOpen={isLogViewerOpen} onClose={() => setIsLogViewerOpen(false)} />
       {standaloneSection ? (
-        <div className="mb-4 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-              Configuracoes / {activeTabMeta?.label || activeTab}
-            </p>
-            <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{activeTabMeta?.label || activeTab}</p>
-            <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-              {activeTabDescription}
-            </p>
-          </div>
+        <div className="mb-4 flex justify-end">
           <button
             onClick={() => void handlePersistSettings()}
             disabled={isSavingSettings}
-            className="flex items-center gap-2 rounded-2xl bg-indigo-600 px-8 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-xl shadow-indigo-200 transition-all active:scale-95 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70 dark:shadow-indigo-900/20"
+            className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-8 py-3 text-xs font-bold uppercase tracking-widest`}
           >
             <Save size={18} />
             {isSavingSettings ? 'Salvando...' : 'Salvar alteracoes'}
@@ -407,10 +388,10 @@ const AdminSettings = ({
       {activeTab === 'general' && (
         <div className="grid gap-6">
           <div className="grid gap-5 md:gap-6 lg:grid-cols-2">
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-4 sm:p-5 md:p-6 dark:border-slate-800 dark:bg-slate-900">
+            <div className={ADMIN_PAGE_PANEL_CLASS}>
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Terminal size={20} className="text-indigo-600 dark:text-indigo-400" /> Ambiente</h3>
-                <button type="button" onClick={() => setIsLogViewerOpen(true)} className="rounded-2xl border border-slate-200 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-700 dark:border-slate-700 dark:text-slate-100">Visualizar logs</button>
+                <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Terminal size={20} className="text-sky-700 dark:text-sky-300" /> Ambiente</h3>
+                <button type="button" onClick={() => setIsLogViewerOpen(true)} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>Visualizar logs</button>
               </div>
               <div className="space-y-4">
                 <div className="space-y-1.5"><label className={labelClassName}>Nome do site</label><input value={localSettings.siteName || ''} onChange={(e) => setField('siteName', e.target.value)} className={inputClassName} /></div>
@@ -424,11 +405,11 @@ const AdminSettings = ({
                 </div>
               </div>
             </div>
-            <div className="rounded-[2rem] border border-fuchsia-100 bg-fuchsia-50/40 p-4 sm:p-5 md:p-6 dark:border-fuchsia-900/30 dark:bg-fuchsia-900/10">
-              <div className="mb-4 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-black text-fuchsia-700 dark:text-fuchsia-300"><Sparkles size={20} /> Motivacao diaria</h3><label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-fuchsia-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-600"><Upload size={14} /> Carregar .md<input type="file" accept=".md,text/markdown,text/plain" className="hidden" onChange={handleDailyMotivationFileUpload} /></label></div>
+            <div className="rounded-sm border border-fuchsia-200 bg-fuchsia-50 p-4 sm:p-5 md:p-6 dark:border-fuchsia-900/30 dark:bg-fuchsia-900/10">
+              <div className="mb-4 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-black text-fuchsia-700 dark:text-fuchsia-300"><Sparkles size={20} /> Motivacao diaria</h3><label className="inline-flex cursor-pointer items-center gap-2 rounded-sm border border-fuchsia-300 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-700 dark:border-fuchsia-900/30 dark:bg-slate-900 dark:text-fuchsia-300"><Upload size={14} /> Carregar .md<input type="file" accept=".md,text/markdown,text/plain" className="hidden" onChange={handleDailyMotivationFileUpload} /></label></div>
               <div className="space-y-4">
-                <textarea value={localSettings.dailyMotivationMarkdown || ''} onChange={(e) => setField('dailyMotivationMarkdown', e.target.value)} className={`${inputClassName} min-h-[220px] resize-none font-mono text-xs`} />
-                <div className="rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Frases validas</p><p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{parseDailyMotivationMarkdown(localSettings.dailyMotivationMarkdown || '').length}</p></div>
+                <textarea value={localSettings.dailyMotivationMarkdown || ''} onChange={(e) => setField('dailyMotivationMarkdown', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[220px] resize-none font-mono text-xs`} />
+                <div className={`p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Frases validas</p><p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{parseDailyMotivationMarkdown(localSettings.dailyMotivationMarkdown || '').length}</p></div>
               </div>
             </div>
           </div>
@@ -441,38 +422,38 @@ const AdminSettings = ({
         </div>
       )}
 
-      {activeTab === 'modules' && <div className="grid gap-4 md:grid-cols-2">{featureItems.map((feature) => <button key={feature.id} type="button" onClick={() => setFeature(feature.id, !localSettings.features?.[feature.id])} className="flex items-center justify-between rounded-[2rem] border border-slate-200 bg-white p-5 text-left dark:border-slate-800 dark:bg-slate-900"><div className="flex items-center gap-3"><feature.icon size={18} className="text-indigo-500" /><div><p className="text-sm font-black text-slate-900 dark:text-slate-100">{feature.label}</p><p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{feature.id}</p></div></div><div className={`rounded-full px-3 py-1 text-[10px] font-black uppercase ${localSettings.features?.[feature.id] ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{localSettings.features?.[feature.id] ? 'Ativo' : 'Inativo'}</div></button>)}</div>}
+      {activeTab === 'modules' && <div className="grid gap-4 md:grid-cols-2">{featureItems.map((feature) => <button key={feature.id} type="button" onClick={() => setFeature(feature.id, !localSettings.features?.[feature.id])} className={`${ADMIN_PAGE_PANEL_CLASS} flex items-center justify-between p-5 text-left`}><div className="flex items-center gap-3"><feature.icon size={18} className="text-sky-700 dark:text-sky-300" /><div><p className="text-sm font-black text-slate-900 dark:text-slate-100">{feature.label}</p><p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{feature.id}</p></div></div><div className={`rounded-sm px-3 py-1 text-[10px] font-black uppercase ${localSettings.features?.[feature.id] ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{localSettings.features?.[feature.id] ? 'Ativo' : 'Inativo'}</div></button>)}</div>}
 
       {activeTab === 'security' && (
         <div className="grid gap-5 md:gap-6 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-4 sm:p-5 md:p-6 dark:border-slate-800 dark:bg-slate-900">
-            <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><ShieldCheck size={20} className="text-indigo-500" /> 2FA</h3>
+          <div className={ADMIN_PAGE_PANEL_CLASS}>
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><ShieldCheck size={20} className="text-sky-700 dark:text-sky-300" /> 2FA</h3>
             <p className="mb-4 text-xs font-medium text-slate-500 dark:text-slate-400">Status atual: {currentUser?.twoFactorEnabled ? 'ativo' : 'inativo'}.</p>
-            {twoFactorStep === 'status' && !currentUser?.twoFactorEnabled && <button type="button" onClick={initiate2FASetup} className="rounded-xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">Configurar 2FA</button>}
-            {twoFactorStep === 'setup' && twoFactorData && <div className="space-y-4"><img src={twoFactorData.qrCodeUrl} alt="QR 2FA" className="h-40 w-40 rounded-2xl border border-slate-200 bg-white p-3" /><code className="block rounded-xl bg-slate-100 px-4 py-3 text-sm font-black dark:bg-slate-950 dark:text-slate-100">{twoFactorData.secret}</code><button type="button" onClick={() => setTwoFactorStep('verify')} className="rounded-xl bg-slate-900 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white dark:bg-indigo-600">Ja escaneei</button></div>}
-            {twoFactorStep === 'verify' && <div className="space-y-4"><input type="text" maxLength={6} value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value)} placeholder="000000" className={`${inputClassName} text-center text-2xl font-black tracking-widest`} /><button type="button" onClick={verifyAndEnable2FA} className="rounded-xl bg-emerald-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">Ativar 2FA</button></div>}
+            {twoFactorStep === 'status' && !currentUser?.twoFactorEnabled && <button type="button" onClick={initiate2FASetup} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-6 py-2 text-[10px] uppercase tracking-[0.18em]`}>Configurar 2FA</button>}
+            {twoFactorStep === 'setup' && twoFactorData && <div className="space-y-4"><img src={twoFactorData.qrCodeUrl} alt="QR 2FA" className="h-40 w-40 rounded-sm border border-slate-300 bg-white p-3" /><code className="block rounded-sm bg-slate-100 px-4 py-3 text-sm font-black dark:bg-slate-950 dark:text-slate-100">{twoFactorData.secret}</code><button type="button" onClick={() => setTwoFactorStep('verify')} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-6 py-2 text-[10px] uppercase tracking-[0.18em] dark:bg-sky-700 dark:text-white dark:hover:bg-sky-800`}>Ja escaneei</button></div>}
+            {twoFactorStep === 'verify' && <div className="space-y-4"><input type="text" maxLength={6} value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value)} placeholder="000000" className={`${inputClassName} text-center text-2xl font-black tracking-widest`} /><button type="button" onClick={verifyAndEnable2FA} className="rounded-sm border border-emerald-700 bg-emerald-700 px-6 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">Ativar 2FA</button></div>}
           </div>
-          <div className="rounded-[2rem] border border-rose-100 bg-rose-50/50 p-4 sm:p-5 md:p-6 dark:border-rose-900/30 dark:bg-rose-900/10">
+          <div className="rounded-sm border border-rose-200 bg-rose-50 p-4 sm:p-5 md:p-6 dark:border-rose-900/30 dark:bg-rose-900/10">
             <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-rose-700 dark:text-rose-300"><Trash2 size={20} /> Reset geral</h3>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Apaga conteudo operacional com autenticacao forte.</p>
-            <button type="button" onClick={() => setIsResetModalOpen(true)} className="mt-5 rounded-2xl bg-rose-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">Resetar conteudo</button>
+            <button type="button" onClick={() => setIsResetModalOpen(true)} className="mt-5 rounded-sm border border-rose-700 bg-rose-700 px-6 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">Resetar conteudo</button>
           </div>
           {isResetModalOpen && createPortal(<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md"><div className="w-full max-w-2xl rounded-[2.5rem] border border-rose-100 bg-white p-8 shadow-2xl dark:border-rose-900/30 dark:bg-slate-900"><h3 className="text-xl font-black text-slate-900 dark:text-slate-100">Confirmacao de reset</h3>{resetError && <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4 dark:border-rose-900/30 dark:bg-rose-900/20"><XCircle size={18} className="mt-0.5 text-rose-600" /><p className="text-xs font-bold text-rose-800 dark:text-rose-300">{resetError}</p></div>}<div className="mt-6 space-y-4"><div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">{dbTables.map((table) => <label key={table} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300"><input type="checkbox" checked={selectedTables.has(table)} onChange={() => setSelectedTables((current) => { const next = new Set(current); next.has(table) ? next.delete(table) : next.add(table); return next; })} /><span className="font-mono">{table}</span></label>)}</div><div className="grid gap-4 md:grid-cols-2"><input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Senha do admin" className={inputClassName} /><input type="text" value={reset2FACode} onChange={(e) => setReset2FACode(e.target.value)} placeholder="Codigo 2FA" className={inputClassName} /></div><input type="text" value={resetConfirmText} onChange={(e) => setResetConfirmText(e.target.value)} placeholder="Digite RESETAR" className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-600 outline-none dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300" /></div><div className="mt-8 flex gap-3"><button type="button" onClick={() => { setIsResetModalOpen(false); setResetError(null); }} className="flex-1 py-4 text-[10px] font-black uppercase text-slate-400">Cancelar</button><button type="button" onClick={handleSystemReset} disabled={isResetting || resetConfirmText !== 'RESETAR'} className={`flex-[2] rounded-2xl py-4 text-[10px] font-black uppercase tracking-[0.18em] text-white ${resetConfirmText === 'RESETAR' ? 'bg-rose-600' : 'bg-slate-300'}`}>{isResetting ? <Loader2 size={14} className="mx-auto animate-spin" /> : 'Executar reset'}</button></div></div></div>, document.body)}
         </div>
       )}
 
       {activeTab === 'integrations' && (
-        <div className="space-y-6 rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <div className={`space-y-6 ${ADMIN_PAGE_PANEL_CLASS}`}>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Cpu size={20} className="text-indigo-600 dark:text-indigo-400" /> Integracoes</h3>
+              <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Cpu size={20} className="text-sky-700 dark:text-sky-300" /> Integracoes</h3>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Diagnostico oficial do backend.</p>
             </div>
-            <button type="button" onClick={() => void handleTestIntegrations()} disabled={isTestingIntegrations} className="rounded-2xl bg-indigo-600 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">{isTestingIntegrations ? 'Testando...' : 'Testar integracoes'}</button>
+            <button type="button" onClick={() => void handleTestIntegrations()} disabled={isTestingIntegrations} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>{isTestingIntegrations ? 'Testando...' : 'Testar integracoes'}</button>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <select value={localSettings.paymentCheckoutMode || 'internal'} onChange={(e) => setField('paymentCheckoutMode', e.target.value as 'internal' | 'redirect')} className={inputClassName}><option value="internal">Checkout interno</option><option value="redirect">Checkout externo</option></select>
-            <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950"><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">reCAPTCHA ativo</span><input type="checkbox" checked={!!localSettings.recaptchaEnabled} onChange={(e) => setField('recaptchaEnabled', e.target.checked)} className="h-5 w-5 rounded border-slate-300 text-indigo-600" /></label>
+            <label className={`flex items-center justify-between px-4 py-3 ${ADMIN_MUTED_SURFACE_CLASS}`}><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">reCAPTCHA ativo</span><input type="checkbox" checked={!!localSettings.recaptchaEnabled} onChange={(e) => setField('recaptchaEnabled', e.target.checked)} className="h-4 w-4 rounded-sm border-slate-300 text-sky-700" /></label>
             <input value={localSettings.stripePublishableKey || localSettings.stripeKey || ''} onChange={(e) => setField('stripePublishableKey', e.target.value)} className={inputClassName} placeholder="Stripe publishable key" />
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeSecretKey || ''} onChange={(e) => setField('stripeSecretKey', e.target.value)} className={inputClassName} placeholder={isStripeSecretConfigured ? 'Digite uma nova chave para substituir a atual' : 'Stripe secret key'} /></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe webhook secret</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeWebhookConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeWebhookConfigured ? 'Configurado' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeWebhookSecret || ''} onChange={(e) => setField('stripeWebhookSecret', e.target.value)} className={inputClassName} placeholder={isStripeWebhookConfigured ? 'Digite um novo segredo para substituir o atual' : 'Stripe webhook secret'} /></div>
@@ -482,19 +463,19 @@ const AdminSettings = ({
             <input value={localSettings.recaptchaSiteKey || ''} onChange={(e) => setField('recaptchaSiteKey', e.target.value)} className={inputClassName} placeholder="reCAPTCHA site key" />
             <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>reCAPTCHA secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isRecaptchaSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isRecaptchaSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.recaptchaSecretKey || ''} onChange={(e) => setField('recaptchaSecretKey', e.target.value)} className={inputClassName} placeholder={isRecaptchaSecretConfigured ? 'Digite um novo segredo para substituir o atual' : 'reCAPTCHA secret key'} /></div>
           </div>
-          <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4 dark:border-indigo-900/30 dark:bg-indigo-900/10"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Webhook oficial</p><p className="mt-2 break-all text-xs font-mono text-indigo-700 dark:text-indigo-300">{stripeWebhookUrl}</p></div>
-          {integrationsTestResult && <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{Object.entries(integrationsTestResult.data?.checks || {}).map(([key, check]: any) => <div key={key} className={`rounded-2xl border p-4 ${check.status === 'ok' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : check.status === 'critical' ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10' : 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10'}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{check.label}</p><p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{check.status}</p><p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{check.detail}</p></div>)}</div>}
+          <div className="rounded-sm border border-sky-300 bg-sky-50 p-4 dark:border-sky-900/30 dark:bg-sky-900/10"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Webhook oficial</p><p className="mt-2 break-all text-xs font-mono text-sky-700 dark:text-sky-300">{stripeWebhookUrl}</p></div>
+          {integrationsTestResult && <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{Object.entries(integrationsTestResult.data?.checks || {}).map(([key, check]: any) => <div key={key} className={`rounded-sm border p-4 ${check.status === 'ok' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : check.status === 'critical' ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10' : 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10'}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{check.label}</p><p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{check.status}</p><p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{check.detail}</p></div>)}</div>}
         </div>
       )}
 
       {activeTab === 'email' && (
-        <div className="space-y-6 rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+        <div className={`space-y-6 ${ADMIN_PAGE_PANEL_CLASS}`}>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Mail size={20} className="text-indigo-600 dark:text-indigo-400" /> SMTP</h3>
+              <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Mail size={20} className="text-sky-700 dark:text-sky-300" /> SMTP</h3>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Teste real via backend oficial. A senha salva fica oculta e so e substituida quando uma nova senha e informada.</p>
             </div>
-            <button type="button" onClick={() => void handleTestSmtp()} disabled={isTestingSmtp} className="rounded-2xl bg-indigo-600 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white">{isTestingSmtp ? 'Testando...' : 'Testar SMTP'}</button>
+            <button type="button" onClick={() => void handleTestSmtp()} disabled={isTestingSmtp} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>{isTestingSmtp ? 'Testando...' : 'Testar SMTP'}</button>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <input value={localSettings.smtpHost || ''} onChange={(e) => setField('smtpHost', e.target.value)} className={inputClassName} placeholder="Host SMTP" />
@@ -511,16 +492,16 @@ const AdminSettings = ({
             <input value={localSettings.mailFromAddress || ''} onChange={(e) => setField('mailFromAddress', e.target.value)} className={inputClassName} placeholder="E-mail remetente" />
             <input value={localSettings.mailFromName || ''} onChange={(e) => setField('mailFromName', e.target.value)} className={inputClassName} placeholder="Nome remetente" />
           </div>
-          {smtpTestResult && <div className={`rounded-2xl border p-4 ${smtpTestResult.ok ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10'}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Resultado do teste</p><p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{smtpTestResult.ok ? 'OK' : 'Falhou'}</p><p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{smtpTestResult.message}</p></div>}
+          {smtpTestResult && <div className={`rounded-sm border p-4 ${smtpTestResult.ok ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10'}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Resultado do teste</p><p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{smtpTestResult.ok ? 'OK' : 'Falhou'}</p><p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{smtpTestResult.message}</p></div>}
         </div>
       )}
 
-      {activeTab === 'ads' && <div className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 md:grid-cols-2"><input value={localSettings.adsenseClientId || ''} onChange={(e) => setField('adsenseClientId', e.target.value)} className={inputClassName} placeholder="AdSense Client ID" /><input value={localSettings.facebookAdsId || ''} onChange={(e) => setField('facebookAdsId', e.target.value)} className={inputClassName} placeholder="Facebook Ads ID" /><textarea value={localSettings.adBannerTop || ''} onChange={(e) => setField('adBannerTop', e.target.value)} className={`${inputClassName} min-h-[120px] resize-none font-mono text-xs md:col-span-2`} placeholder="Banner topo (HTML)" /><textarea value={localSettings.adBannerSidebar || ''} onChange={(e) => setField('adBannerSidebar', e.target.value)} className={`${inputClassName} min-h-[120px] resize-none font-mono text-xs`} placeholder="Banner lateral" /><textarea value={localSettings.adBannerBottom || ''} onChange={(e) => setField('adBannerBottom', e.target.value)} className={`${inputClassName} min-h-[120px] resize-none font-mono text-xs`} placeholder="Banner rodape" /></div>}
+      {activeTab === 'ads' && <div className={`grid gap-4 ${ADMIN_PAGE_PANEL_CLASS} md:grid-cols-2`}><input value={localSettings.adsenseClientId || ''} onChange={(e) => setField('adsenseClientId', e.target.value)} className={inputClassName} placeholder="AdSense Client ID" /><input value={localSettings.facebookAdsId || ''} onChange={(e) => setField('facebookAdsId', e.target.value)} className={inputClassName} placeholder="Facebook Ads ID" /><textarea value={localSettings.adBannerTop || ''} onChange={(e) => setField('adBannerTop', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] resize-none font-mono text-xs md:col-span-2`} placeholder="Banner topo (HTML)" /><textarea value={localSettings.adBannerSidebar || ''} onChange={(e) => setField('adBannerSidebar', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] resize-none font-mono text-xs`} placeholder="Banner lateral" /><textarea value={localSettings.adBannerBottom || ''} onChange={(e) => setField('adBannerBottom', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] resize-none font-mono text-xs`} placeholder="Banner rodape" /></div>}
 
       {activeTab === 'integrations' && <StripePaymentMethodsSettings value={localSettings.stripePaymentMethods} onChange={(stripePaymentMethods) => setField('stripePaymentMethods', stripePaymentMethods)} />}
       {activeTab === 'seo' && <AdminSeoSettingsSection seoSettings={localSeoSettings} onChange={setLocalSeoSettings} />}
-      {activeTab === 'performance' && <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900"><AdminCacheManagement /></div>}
-      {activeTab === 'logs' && <div className="grid gap-4 lg:grid-cols-3">{['Webhook', 'Cron', 'Auditoria'].map((item) => <div key={item} className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{item}</p><p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">Abra o visualizador para validar o estado real apos cada persistencia critica.</p></div>)}</div>}
+      {activeTab === 'performance' && <div className={ADMIN_PAGE_PANEL_CLASS}><AdminCacheManagement /></div>}
+      {activeTab === 'logs' && <div className="grid gap-4 lg:grid-cols-3">{['Webhook', 'Cron', 'Auditoria'].map((item) => <div key={item} className={ADMIN_PAGE_PANEL_CLASS}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{item}</p><p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">Abra o visualizador para validar o estado real apos cada persistencia critica.</p></div>)}</div>}
     </div>
   );
 };

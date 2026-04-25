@@ -9,8 +9,9 @@
 *
 */
 
-import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, resolveApiResourceUrl } from '@services/api';
 import type { ApiResponse } from '@services/api';
+import { withQuestionPublicationAliases } from '@services/questions/questionPublication';
 import type { ErrorReport, Question, Ranking, SystemSettings, UserProfile } from '@types';
 
 type FeedbackStatus = 'new' | 'read' | 'resolved';
@@ -79,6 +80,250 @@ export interface AdminStatsPayload {
   materials_count: number;
   rankings_count: number;
   available_platform_revenue: number;
+  laws_count?: number;
+  comments_count?: number;
+  pending_comments_count?: number;
+  approved_comments_count?: number;
+  spam_comments_count?: number;
+  active_vendors_count?: number;
+  published_marketplace_materials_count?: number;
+}
+
+export interface AdminAnalyticsRange {
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+export interface AdminFinanceAnalyticsSummary {
+  totalRevenue: number;
+  mrr: number;
+  arr: number;
+  projectedConfirmedRevenue: number;
+  projectedRemainingInstallments: number;
+  activeSubscribers: number;
+  churnedSubscribers: number;
+  churnRate: number;
+  pastDueSubscribers: number;
+  recoveredSubscribers: number;
+  avgTicket: number;
+  ltvOperational: number;
+  refundRequestedAmount: number;
+  refundedAmount: number;
+}
+
+export interface AdminAnalyticsFunnelStep {
+  key: string;
+  label: string;
+  count: number;
+  conversionFromPrevious: number | null;
+}
+
+export interface AdminFinanceFunnelLead {
+  leadKey: string;
+  userId?: string | null;
+  email: string;
+  name?: string | null;
+  referrerLabel: string;
+  referrerUrl?: string | null;
+  originUrl?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  currentStage: string;
+  emailCaptured: boolean;
+  createdAccount: boolean;
+  checkoutStarted: boolean;
+  paymentStarted: boolean;
+  purchased: boolean;
+  firstEventAt: string;
+  lastEventAt: string;
+}
+
+export interface AdminFinanceFunnelAttributionItem {
+  key: string;
+  label: string;
+  leads: number;
+  capturedEmails: number;
+  createdAccounts: number;
+  checkouts: number;
+  purchases: number;
+}
+
+export interface AdminFinanceFunnelDetails {
+  identifiedLeads: number;
+  capturedEmailsCount: number;
+  createdAccountsCount: number;
+  checkoutStartedCount: number;
+  paymentStartedCount: number;
+  purchasedCount: number;
+  recentLeads: AdminFinanceFunnelLead[];
+  topReferrers: AdminFinanceFunnelAttributionItem[];
+  topCampaigns: AdminFinanceFunnelAttributionItem[];
+}
+
+export interface AdminAnalyticsCycleConversion {
+  key: string;
+  label: string;
+  purchases: number;
+  activeSubscribers: number;
+}
+
+export interface AdminBillingHealthSnapshot {
+  failedPayments: number;
+  pastDueSubscribers: number;
+  recoveredSubscribers: number;
+  refundRequestedCount: number;
+  refundedCount: number;
+}
+
+export interface AdminAnalyticsAcquisitionCohort {
+  month: string;
+  capturedEmails: number;
+  createdAccounts: number;
+  checkoutStarted: number;
+  purchases: number;
+  signupRate: number;
+  purchaseRate: number;
+}
+
+export interface AdminAnalyticsRevenueCohort {
+  month: string;
+  buyers: number;
+  currentlyActive: number;
+  renewed: number;
+  retentionRate: number;
+}
+
+export interface AdminAnalyticsCohortsPayload {
+  acquisition: AdminAnalyticsAcquisitionCohort[];
+  revenue: AdminAnalyticsRevenueCohort[];
+}
+
+export interface AdminRevenueProjectionCycle {
+  key: string;
+  label: string;
+  subscriptions: number;
+  remainingInstallments: number;
+  projectedAmount: number;
+}
+
+export interface AdminRevenueProjectionMonth {
+  key: string;
+  label: string;
+  year: number;
+  month: number;
+  installments: number;
+  amount: number;
+  atRiskAmount: number;
+}
+
+export interface AdminRevenueProjectionItem {
+  subscriptionId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  planName: string;
+  status: string;
+  cycleKey: string;
+  cycleLabel: string;
+  totalInstallments: number;
+  paidInstallments: number;
+  remainingInstallments: number;
+  installmentAmount: number;
+  projectedAmount: number;
+  nextBillingAt?: string | null;
+  currentPeriodEnd?: string | null;
+}
+
+export interface AdminRevenueProjectionPayload {
+  totalProjectedAmount: number;
+  totalRemainingInstallments: number;
+  activeContracts: number;
+  atRiskProjectedAmount: number;
+  breakdownByCycle: AdminRevenueProjectionCycle[];
+  breakdownByMonth: AdminRevenueProjectionMonth[];
+  items: AdminRevenueProjectionItem[];
+}
+
+export interface AdminFinanceAnalyticsPayload {
+  period: string;
+  range: AdminAnalyticsRange;
+  summary: AdminFinanceAnalyticsSummary;
+  funnel: AdminAnalyticsFunnelStep[];
+  funnelDetails: AdminFinanceFunnelDetails;
+  conversionByCycle: AdminAnalyticsCycleConversion[];
+  billingHealth: AdminBillingHealthSnapshot;
+  cohorts: AdminAnalyticsCohortsPayload;
+  revenueProjection: AdminRevenueProjectionPayload;
+}
+
+export interface AdminDashboardTrend {
+  key: string;
+  label: string;
+  current: number;
+  previous: number;
+  deltaPercent: number;
+}
+
+export interface AdminDashboardInsight {
+  tone: 'success' | 'warning' | 'info';
+  title: string;
+  body: string;
+}
+
+export interface AdminDashboardAnalyticsPayload {
+  period: string;
+  counts: Record<string, number>;
+  trends: AdminDashboardTrend[];
+  insights: AdminDashboardInsight[];
+  funnelSummary: AdminAnalyticsFunnelStep[];
+  billingHealth: AdminBillingHealthSnapshot;
+}
+
+export interface AdminLeadSegmentItem {
+  userId?: string | null;
+  email: string;
+  name?: string | null;
+  lastEventAt: string;
+  notes: string;
+}
+
+export interface AdminLeadSegment {
+  key: string;
+  label: string;
+  count: number;
+  items: AdminLeadSegmentItem[];
+}
+
+export interface AdminAnalyticsExportParams {
+  period: 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
+  startDate?: string;
+  endDate?: string;
+}
+
+export type AdminCommentModerationStatus = 'pending' | 'approved' | 'spam';
+
+export interface AdminCommentModerationItem {
+  id: string;
+  origin: 'question' | 'material' | 'law';
+  sourceType: 'comment' | 'law';
+  sourceId: string;
+  authorId: string;
+  authorName: string;
+  excerpt: string;
+  targetLabel: string;
+  targetPath: string;
+  status: AdminCommentModerationStatus;
+  createdAt: string;
+}
+
+export interface AdminCommentModerationListPayload {
+  items: AdminCommentModerationItem[];
+  total: number;
+  page: number;
+  perPage: number;
+  pages: number;
+  counts: Record<AdminCommentModerationStatus, number>;
 }
 
 export interface AdminUserDetailsPayload {
@@ -99,6 +344,7 @@ export interface AdminUserActionPayload {
   transaction_id?: number;
   plan_id?: number;
   days?: number;
+  password?: string;
   name?: string;
   email?: string;
   cpf?: string;
@@ -144,6 +390,24 @@ export interface AdminQuestionListPayload {
  * @since v1.0.0
  */
 export const adminService = {
+  buildAnalyticsExportUrl(
+    endpoint: string,
+    params: AdminAnalyticsExportParams & { segmentKey?: string }
+  ): string {
+    const query = new URLSearchParams({ period: params.period });
+
+    if (params.period === 'custom' && params.startDate && params.endDate) {
+      query.set('startDate', params.startDate);
+      query.set('endDate', params.endDate);
+    }
+
+    if (params.segmentKey) {
+      query.set('segmentKey', params.segmentKey);
+    }
+
+    return resolveApiResourceUrl(`${endpoint}?${query.toString()}`);
+  },
+
   /**
    * Carrega as configurações globais exibidas na aba de settings do admin.
    * @since v1.0.0
@@ -330,7 +594,256 @@ export const adminService = {
       materials_count: 0,
       rankings_count: 0,
       available_platform_revenue: 0,
+      laws_count: 0,
+      comments_count: 0,
+      pending_comments_count: 0,
+      approved_comments_count: 0,
+      spam_comments_count: 0,
+      active_vendors_count: 0,
+      published_marketplace_materials_count: 0,
     });
+  },
+
+  /**
+   * Carrega o analytics financeiro/comercial do SaaS.
+   * @since v1.0.0
+   */
+  async getFinanceAnalytics(params: {
+    period: 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
+    startDate?: string;
+    endDate?: string;
+  }): Promise<AdminFinanceAnalyticsPayload> {
+    const query = new URLSearchParams({ period: params.period });
+
+    if (params.period === 'custom' && params.startDate && params.endDate) {
+      query.set('startDate', params.startDate);
+      query.set('endDate', params.endDate);
+    }
+
+    const response = await apiClient.get<ApiResponse<AdminFinanceAnalyticsPayload>>(`${ENDPOINTS.admin.analyticsFinance}?${query.toString()}`) as any;
+    return readApiData(response, {
+      period: params.period,
+      range: { startDate: null, endDate: null },
+      summary: {
+        totalRevenue: 0,
+        mrr: 0,
+        arr: 0,
+        projectedConfirmedRevenue: 0,
+        projectedRemainingInstallments: 0,
+        activeSubscribers: 0,
+        churnedSubscribers: 0,
+        churnRate: 0,
+        pastDueSubscribers: 0,
+        recoveredSubscribers: 0,
+        avgTicket: 0,
+        ltvOperational: 0,
+        refundRequestedAmount: 0,
+        refundedAmount: 0,
+      },
+      funnel: [],
+      funnelDetails: {
+        identifiedLeads: 0,
+        capturedEmailsCount: 0,
+        createdAccountsCount: 0,
+        checkoutStartedCount: 0,
+        paymentStartedCount: 0,
+        purchasedCount: 0,
+        recentLeads: [],
+        topReferrers: [],
+        topCampaigns: [],
+      },
+      conversionByCycle: [],
+      billingHealth: {
+        failedPayments: 0,
+        pastDueSubscribers: 0,
+        recoveredSubscribers: 0,
+        refundRequestedCount: 0,
+        refundedCount: 0,
+      },
+      cohorts: {
+        acquisition: [],
+        revenue: [],
+      },
+      revenueProjection: {
+        totalProjectedAmount: 0,
+        totalRemainingInstallments: 0,
+        activeContracts: 0,
+        atRiskProjectedAmount: 0,
+        breakdownByCycle: [],
+        breakdownByMonth: [],
+        items: [],
+      },
+    });
+  },
+
+  /**
+   * Carrega o dashboard analitico consolidado do admin.
+   * @since v1.0.0
+   */
+  async getDashboardAnalytics(params: {
+    period: 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
+    startDate?: string;
+    endDate?: string;
+  }): Promise<AdminDashboardAnalyticsPayload> {
+    const query = new URLSearchParams({ period: params.period });
+
+    if (params.period === 'custom' && params.startDate && params.endDate) {
+      query.set('startDate', params.startDate);
+      query.set('endDate', params.endDate);
+    }
+
+    const response = await apiClient.get<ApiResponse<AdminDashboardAnalyticsPayload>>(`${ENDPOINTS.admin.analyticsDashboard}?${query.toString()}`) as any;
+    return readApiData(response, {
+      period: params.period,
+      counts: {},
+      trends: [],
+      insights: [],
+      funnelSummary: [],
+      billingHealth: {
+        failedPayments: 0,
+        pastDueSubscribers: 0,
+        recoveredSubscribers: 0,
+        refundRequestedCount: 0,
+        refundedCount: 0,
+      },
+    });
+  },
+
+  /**
+   * Carrega o funil e a conversao por ciclo para a area comercial.
+   * @since v1.0.0
+   */
+  async getFunnelAnalytics(params: {
+    period: 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
+    startDate?: string;
+    endDate?: string;
+  }): Promise<Pick<AdminFinanceAnalyticsPayload, 'period' | 'range' | 'funnel' | 'funnelDetails' | 'conversionByCycle'>> {
+    const query = new URLSearchParams({ period: params.period });
+
+    if (params.period === 'custom' && params.startDate && params.endDate) {
+      query.set('startDate', params.startDate);
+      query.set('endDate', params.endDate);
+    }
+
+    const response = await apiClient.get<ApiResponse<Pick<AdminFinanceAnalyticsPayload, 'period' | 'range' | 'funnel' | 'funnelDetails' | 'conversionByCycle'>>>(`${ENDPOINTS.admin.analyticsFunnel}?${query.toString()}`) as any;
+    return readApiData(response, {
+      period: params.period,
+      range: { startDate: null, endDate: null },
+      funnel: [],
+      funnelDetails: {
+        identifiedLeads: 0,
+        capturedEmailsCount: 0,
+        createdAccountsCount: 0,
+        checkoutStartedCount: 0,
+        paymentStartedCount: 0,
+        purchasedCount: 0,
+        recentLeads: [],
+        topReferrers: [],
+        topCampaigns: [],
+      },
+      conversionByCycle: [],
+    });
+  },
+
+  /**
+   * Segmentos acionaveis para relacionamento e campanhas.
+   * @since v1.0.0
+   */
+  async getAnalyticsSegments(params: {
+    period: 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{ period: string; range: AdminAnalyticsRange; segments: AdminLeadSegment[] }> {
+    const query = new URLSearchParams({ period: params.period });
+
+    if (params.period === 'custom' && params.startDate && params.endDate) {
+      query.set('startDate', params.startDate);
+      query.set('endDate', params.endDate);
+    }
+
+    const response = await apiClient.get<ApiResponse<{ period: string; range: AdminAnalyticsRange; segments: AdminLeadSegment[] }>>(`${ENDPOINTS.admin.analyticsSegments}?${query.toString()}`) as any;
+    return readApiData(response, {
+      period: params.period,
+      range: { startDate: null, endDate: null },
+      segments: [],
+    });
+  },
+
+  getFunnelExportUrl(params: AdminAnalyticsExportParams): string {
+    return this.buildAnalyticsExportUrl(ENDPOINTS.admin.analyticsFunnelExport, params);
+  },
+
+  getSegmentsExportUrl(params: AdminAnalyticsExportParams & { segmentKey?: string }): string {
+    return this.buildAnalyticsExportUrl(ENDPOINTS.admin.analyticsSegmentsExport, params);
+  },
+
+  /**
+   * Lista a fila unificada de moderacao de comentarios.
+   * @since v1.0.0
+   */
+  async getModerationComments(params: {
+    status?: AdminCommentModerationStatus;
+    origin?: 'all' | 'question' | 'material' | 'law';
+    search?: string;
+    page?: number;
+    perPage?: number;
+  }): Promise<AdminCommentModerationListPayload> {
+    const response = await apiClient.get<ApiResponse<AdminCommentModerationListPayload>>(ENDPOINTS.admin.commentsModeration, {
+      params: {
+        status: params.status || 'pending',
+        origin: params.origin || 'all',
+        search: params.search || '',
+        page: params.page || 1,
+        perPage: params.perPage || 20,
+      },
+    }) as any;
+
+    return readApiData(response, {
+      items: [],
+      total: 0,
+      page: params.page || 1,
+      perPage: params.perPage || 20,
+      pages: 1,
+      counts: {
+        pending: 0,
+        approved: 0,
+        spam: 0,
+      },
+    });
+  },
+
+  /**
+   * Atualiza um comentario individual na caixa de moderacao.
+   * @since v1.0.0
+   */
+  async updateModerationComment(id: string, status: AdminCommentModerationStatus): Promise<AdminCommentModerationItem> {
+    const response = await apiClient.patch<ApiResponse<AdminCommentModerationItem>>(ENDPOINTS.admin.commentsModeration, { id, status }) as any;
+    const envelope = assertApiSuccess<AdminCommentModerationItem>(response, 'Nao foi possivel atualizar o comentario.');
+    return readApiData<AdminCommentModerationItem>(envelope.raw, {
+      id,
+      origin: 'question',
+      sourceType: 'comment',
+      sourceId: '',
+      authorId: '',
+      authorName: '',
+      excerpt: '',
+      targetLabel: '',
+      targetPath: '',
+      status,
+      createdAt: '',
+    });
+  },
+
+  /**
+   * Atualiza varios comentarios de uma vez.
+   * @since v1.0.0
+   */
+  async bulkUpdateModerationComments(ids: string[], status: AdminCommentModerationStatus): Promise<{ updated: number }> {
+    const response = await apiClient.post<ApiResponse<{ updated: number }>>(ENDPOINTS.admin.commentsModerationBulk, { ids, status }) as any;
+    return readApiData(
+      assertApiSuccess(response, 'Nao foi possivel atualizar os comentarios selecionados.').raw,
+      { updated: 0 },
+    );
   },
 
   /**
@@ -357,7 +870,7 @@ export const adminService = {
     });
 
     return {
-      rows: Array.isArray(payload.rows) ? payload.rows : [],
+      rows: Array.isArray(payload.rows) ? payload.rows.map((row: Question) => withQuestionPublicationAliases(row)) : [],
       total: Number(payload.total || 0),
       perPage: Number(payload.perPage || 20),
       pages: Number(payload.pages || 1),

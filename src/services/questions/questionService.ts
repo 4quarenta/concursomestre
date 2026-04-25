@@ -11,6 +11,7 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
 import type { Question, QuestionStats, UserAnswer } from 'types';
+import { isQuestionPubliclyVisible, withQuestionPublicationAliases } from './questionPublication';
 
 type QuestionListResult = {
   rows: Question[];
@@ -36,9 +37,18 @@ export const questionService = {
    * @since v1.0.0
    */
   async getQuestionPage(filters?: Record<string, any>): Promise<QuestionListResult> {
+    const includeUnpublished = Boolean(filters?.includeUnpublished || filters?.includeDrafts || filters?.admin);
     const response = await apiClient.get<any>(
       ENDPOINTS.questions.list,
-      { params: filters },
+      {
+        params: includeUnpublished
+          ? filters
+          : {
+            ...filters,
+            publication_scope: 'public',
+            publish_status: 'published',
+          },
+      },
     ) as any;
 
     const payload = readApiData<any>(response, {});
@@ -47,10 +57,14 @@ export const questionService = {
       : Array.isArray(payload?.rows)
         ? payload.rows
         : [];
-    const total = payload?.total || response?.total || rows.length;
+    const normalizedRows = rows.map((row: Question) => withQuestionPublicationAliases(row));
+    const visibleRows = includeUnpublished
+      ? normalizedRows
+      : normalizedRows.filter((row: Question) => isQuestionPubliclyVisible(row));
+    const total = payload?.total || response?.total || visibleRows.length;
 
     return {
-      rows,
+      rows: visibleRows,
       total,
     };
   },
@@ -79,11 +93,29 @@ export const questionService = {
       },
     ) as any;
 
-    return readApiData<Question>(response, {} as Question);
+    return withQuestionPublicationAliases(readApiData<Question>(response, {} as Question));
   },
 
   /**
-   * Persiste a resposta do usuário e devolve o snapshot de progressao
+   * Carrega uma questao pelo contrato administrativo de edicao.
+   * Esse endpoint preserva campos editoriais, comentarios completos e datas internas.
+   * @since v1.0.0
+   */
+  async getQuestionForAdminEdit(questionId: string | number): Promise<Question> {
+    const response = await apiClient.get<any>(
+      ENDPOINTS.questions.edit,
+      {
+        params: {
+          id: String(questionId),
+        },
+      },
+    ) as any;
+
+    return withQuestionPublicationAliases(readApiData<Question>(response, {} as Question));
+  },
+
+  /**
+   * Persiste a resposta do usuario e devolve o snapshot de progressao
    * necessario para atualizar XP e nivel no frontend.
    * @since v1.0.0
    */
@@ -192,16 +224,19 @@ export const questionService = {
    */
   async createQuestion(questionData: Question): Promise<{ success: boolean; question?: Question }> {
     try {
+      const normalizedQuestion = withQuestionPublicationAliases(questionData);
       const response = await apiClient.post<any>(
         ENDPOINTS.questions.create,
-        questionData,
+        normalizedQuestion,
       ) as any;
 
       const envelope = assertApiSuccess<{ question?: Question; id?: string | number }>(response, 'Não foi possível criar a questão.');
       const payload = readApiData<{ question?: Question; id?: string | number }>(response, {});
       return {
         success: true,
-        question: payload?.question ?? { ...questionData, id: payload?.id ?? envelope.raw?.id ?? questionData.id },
+        question: payload?.question
+          ? withQuestionPublicationAliases(payload.question)
+          : { ...normalizedQuestion, id: payload?.id ?? envelope.raw?.id ?? normalizedQuestion.id },
       };
     } catch {
       return { success: false };
@@ -237,15 +272,16 @@ export const questionService = {
    */
   async updateQuestion(id: string, questionData: Question): Promise<{ success: boolean; question?: Question }> {
     try {
+      const normalizedQuestion = withQuestionPublicationAliases(questionData);
       const response = await apiClient.post<any>(
         ENDPOINTS.questions.update,
-        { ...questionData, id },
+        { ...normalizedQuestion, id },
       ) as any;
 
       assertApiSuccess(response, 'Não foi possível atualizar a questão.');
       return {
         success: true,
-        question: { ...questionData, id: Number(id) || Number(questionData.id) } as Question,
+        question: { ...normalizedQuestion, id: Number(id) || Number(normalizedQuestion.id) } as Question,
       };
     } catch {
       return { success: false };

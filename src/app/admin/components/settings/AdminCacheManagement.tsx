@@ -13,6 +13,13 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Clock, Database, Loader2, RefreshCcw, Trash2, X } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
 import { adminService } from '@services/admin/adminService';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_MUTED_SURFACE_CLASS,
+  ADMIN_PAGE_PANEL_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+} from '../shared/adminPanelStyles';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 /**
@@ -102,30 +109,30 @@ const AdminCacheManagement = () => {
       />
 
       {message && (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/10 dark:text-emerald-300">
+        <div className="flex items-center gap-2 rounded-sm border border-emerald-300 bg-emerald-50 p-4 text-sm font-medium text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/10 dark:text-emerald-300">
           <CheckCircle2 size={16} />
           {message}
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+        <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Entradas</p>
           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.total_files || 0}</p>
         </div>
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/30 dark:bg-emerald-900/10">
+        <div className="rounded-sm border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-900/30 dark:bg-emerald-900/10">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">Válidas</p>
           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.valid_entries || 0}</p>
         </div>
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/30 dark:bg-amber-900/10">
+        <div className="rounded-sm border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/30 dark:bg-amber-900/10">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">Expiradas</p>
           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.expired_entries || 0}</p>
         </div>
-        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-900/30 dark:bg-indigo-900/10">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Tamanho</p>
+        <div className="rounded-sm border border-sky-300 bg-sky-50 p-4 dark:border-sky-900/30 dark:bg-sky-900/10">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Tamanho</p>
           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.total_size_mb || 0} MB</p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className={ADMIN_PAGE_PANEL_CLASS}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Tabela ativa</p>
           <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.table_name || 'Não encontrada'}</p>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{cacheStats.source || 'none'}</p>
@@ -133,7 +140,7 @@ const AdminCacheManagement = () => {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr),minmax(0,1fr)]">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className={ADMIN_PAGE_PANEL_CLASS}>
           <div className="flex items-center justify-between gap-4">
             <div>
               <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Status do cache</h4>
@@ -161,14 +168,14 @@ const AdminCacheManagement = () => {
                 min={1}
                 value={draftTtl}
                 onChange={(event) => setDraftTtl(event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                className={`w-full ${ADMIN_FIELD_CLASS}`}
               />
             </div>
             <button
               type="button"
               onClick={() => void runAction('settings', () => adminService.saveCacheSettings({ enabled: !!cacheStats.enabled, default_ttl: Number(draftTtl) || 300 }))}
               disabled={!!loadingKey}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center px-6 py-2 text-xs uppercase tracking-[0.18em] disabled:cursor-not-allowed`}
             >
               {loadingKey === 'settings' ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
               Salvar TTL
@@ -176,18 +183,18 @@ const AdminCacheManagement = () => {
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+            <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Expiração por linha</p>
               <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_expiration ? 'Suportada' : 'Não suportada'}</p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+            <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Estimativa de tamanho</p>
               <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_size_estimate ? 'Disponível' : 'Não suportada'}</p>
             </div>
           </div>
         </div>
 
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className={ADMIN_PAGE_PANEL_CLASS}>
           <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Operações</h4>
           <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Executa limpeza real e recarrega o estado vindo do backend oficial.</p>
           <div className="mt-6 space-y-3">
@@ -195,7 +202,7 @@ const AdminCacheManagement = () => {
               type="button"
               onClick={() => void runAction('clean', () => adminService.cleanExpiredCache())}
               disabled={!!loadingKey}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-500 px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-sm border border-amber-600 bg-amber-600 px-6 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loadingKey === 'clean' ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
               Limpar expirados
@@ -204,7 +211,7 @@ const AdminCacheManagement = () => {
               type="button"
               onClick={() => setIsClearCacheDialogOpen(true)}
               disabled={!!loadingKey}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-rose-600 px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-sm border border-rose-700 bg-rose-700 px-6 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-white transition-colors hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <X size={14} />
               Limpar todo cache
@@ -213,16 +220,16 @@ const AdminCacheManagement = () => {
               type="button"
               onClick={() => void fetchCacheStats()}
               disabled={!!loadingKey}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-slate-700 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-900"
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} flex w-full items-center justify-center px-6 py-3 text-xs uppercase tracking-[0.18em] disabled:cursor-not-allowed`}
             >
               {loadingKey === 'refresh' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
               Atualizar leitura
             </button>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+          <div className={`mt-6 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
             <div className="flex items-center gap-2">
-              <Database size={16} className="text-indigo-500" />
+              <Database size={16} className="text-sky-700 dark:text-sky-300" />
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Fonte detectada</p>
             </div>
             <p className="mt-3 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
