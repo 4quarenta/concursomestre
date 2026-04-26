@@ -124,6 +124,9 @@ const Profile: React.FC = () => {
     const isElitePlan = isPlanAtLeast(currentUser, 'Elite');
     const referralEnabled = parseFeatureFlag(systemSettings?.features?.referralEnabled);
     const canAccessReferralTab = referralEnabled;
+    const marketplaceEnabled = systemSettings?.features?.marketplaceEnabled === undefined
+        ? true
+        : parseFeatureFlag(systemSettings.features.marketplaceEnabled);
 
     const [activeTab, setActiveTab] = useState<ProfileTab>('personal');
     const [selectedCycle, setSelectedCycle] = useState<BillingCycle>('monthly');
@@ -250,9 +253,15 @@ const Profile: React.FC = () => {
         };
     }, []);
 
+    const normalizeProfileTabForAccess = React.useCallback((tab: Exclude<ProfileTab, 'evolution'>) => {
+        if (tab === 'referral' && !canAccessReferralTab) return 'personal';
+        if (tab === 'materials' && !marketplaceEnabled) return 'personal';
+        return tab;
+    }, [canAccessReferralTab, marketplaceEnabled]);
+
     const changeActiveTab = React.useCallback((nextTab: ProfileTab, options?: { replace?: boolean }) => {
         const resolvedTab = resolveProfileTab(nextTab);
-        const normalizedTab = resolvedTab === 'referral' && !canAccessReferralTab ? 'personal' : resolvedTab;
+        const normalizedTab = normalizeProfileTabForAccess(resolvedTab);
         const nextPath = buildProfilePath(normalizedTab);
 
         if (location.pathname !== nextPath || location.search) {
@@ -265,13 +274,13 @@ const Profile: React.FC = () => {
         }
 
         setActiveTab(normalizedTab);
-    }, [canAccessReferralTab, location.pathname, location.search, router]);
+    }, [location.pathname, location.search, normalizeProfileTabForAccess, router]);
 
     // Sincronizar aba com parâmetro da URL (?tab=)
     React.useEffect(() => {
         const legacyTab = new URLSearchParams(location.search).get('tab');
         const resolvedTab = resolveProfileTab(params.tab || legacyTab);
-        const normalizedTab = resolvedTab === 'referral' && !canAccessReferralTab ? 'personal' : resolvedTab;
+        const normalizedTab = normalizeProfileTabForAccess(resolvedTab);
         const canonicalPath = buildProfilePath(normalizedTab);
 
         if (location.pathname !== canonicalPath || location.search) {
@@ -280,7 +289,7 @@ const Profile: React.FC = () => {
         }
 
         setActiveTab(normalizedTab);
-    }, [canAccessReferralTab, location.pathname, location.search, router, params.tab]);
+    }, [location.pathname, location.search, normalizeProfileTabForAccess, router, params.tab]);
 
     // Handlers de API para Gerenciamento de Dados
     const primarySavedCardExpiryState = useMemo(() => getCardExpiryState(primarySavedCard), [getCardExpiryState, primarySavedCard]);
@@ -786,14 +795,18 @@ const Profile: React.FC = () => {
     }, [activeSubscription?.id, activeSubscription?.auto_renew, activeSubscription?.cancel_at_period_end]);
 
     const fetchUserMaterials = React.useCallback(async () => {
-        if (!currentUser?.id) return;
+        if (!marketplaceEnabled || !currentUser?.id) {
+            setUserMaterials([]);
+            return;
+        }
+
         try {
             const materials = await marketplaceService.listUserMaterials(currentUser.id);
             setUserMaterials(materials);
         } catch (err) {
             console.error('Error fetching materials:', err);
         }
-    }, [currentUser?.id]);
+    }, [currentUser?.id, marketplaceEnabled]);
 
     const fetchReferralStats = React.useCallback(async () => {
         try {
@@ -1531,7 +1544,7 @@ const Profile: React.FC = () => {
         if (activeTab === 'billing' || activeTab === 'billing-history') {
             void fetchUserTransactions();
         }
-        if (activeTab === 'materials') {
+        if (activeTab === 'materials' && marketplaceEnabled) {
             void fetchUserMaterials();
         }
         if (activeTab === 'referral' && canAccessReferralTab) {
@@ -1546,6 +1559,7 @@ const Profile: React.FC = () => {
         fetchUserMaterials,
         fetchUserTransactions,
         isStripeBilling,
+        marketplaceEnabled,
     ]);
 
    const EXAM_AREAS = [
@@ -1775,7 +1789,7 @@ const Profile: React.FC = () => {
                     <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 transition-colors">
                         <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Menu</div>
                         <SidebarItem id="notebook" label="Minhas Anotações" icon={StickyNote} />
-                        <SidebarItem id="materials" label="Meus Materiais" icon={Package} />
+                        {marketplaceEnabled && <SidebarItem id="materials" label="Meus Materiais" icon={Package} />}
                         
                         <div className="h-px bg-slate-50 dark:bg-slate-800 my-2 transition-colors" />
                         
@@ -2065,7 +2079,7 @@ const Profile: React.FC = () => {
                   </div>
                )}
 
-               {activeTab === 'materials' && (
+               {marketplaceEnabled && activeTab === 'materials' && (
                    <div className="space-y-6">
                        <div className="flex justify-between items-center">
                            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Meus Materiais</h2>
