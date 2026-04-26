@@ -33,3 +33,5 @@ stripe-listener*.log
 tmp_*.json
 .tmp/
 config/deploy/*.local.json
+
+.vercel
