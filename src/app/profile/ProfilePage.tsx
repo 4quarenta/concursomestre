@@ -46,11 +46,13 @@ import {
     removeLegalCommentaryArticleNote,
     type LegalCommentaryStoredNote,
 } from '@services/legal-commentary/legalCommentaryNotes';
+import { readerService } from '@services/materials';
 import { cardsService, formatMaskedCardLabelAscii } from '@services/billing';
 import { marketplaceService } from '@services/marketplace';
 import { profileService } from '@services/profile';
 import { transactionsService } from '@services/transactions';
 import { planService } from '@services/plans';
+import { buildQuestionPath } from '@services/seo';
 import {
     PLATFORM_PAGE_DESCRIPTION_CLASS,
     PLATFORM_PAGE_TITLE_CLASS,
@@ -87,14 +89,24 @@ const truncateText = (value: string, maxLength: number) => (
 
 type NotebookEntry = {
     id: string;
-    source: 'question' | 'law';
+    source: 'question' | 'law' | 'material';
     title: string;
     subtitle: string;
     text: string;
     timestamp: number;
+    href?: string;
     questionId?: number;
     articleId?: string;
     lawSlug?: string;
+    materialId?: string;
+};
+
+type MaterialNotebookNote = {
+    materialId: string;
+    title: string;
+    subtitle: string;
+    text: string;
+    timestamp: number;
 };
 
 const Profile: React.FC = () => {
@@ -161,6 +173,7 @@ const Profile: React.FC = () => {
     const cancelRequestInFlightRef = React.useRef(false);
     const renewalRequestInFlightRef = React.useRef(false);
     const [lawNotes, setLawNotes] = useState<LegalCommentaryStoredNote[]>([]);
+    const [materialNotes, setMaterialNotes] = useState<MaterialNotebookNote[]>([]);
 
     const currentUserKey = React.useMemo(() => {
         const legacyUserId = (currentUser as any)?.userId;
@@ -204,6 +217,7 @@ const Profile: React.FC = () => {
                 subtitle: assuntos.length > 0 ? assuntos.slice(0, 2).join(' • ') : 'Anotação em questão',
                 text: note.text,
                 timestamp: note.timestamp,
+                href: buildQuestionPath(question || { id: note.questionId, enunciado_clean: `Questão ${note.questionId}` }),
                 questionId: note.questionId,
             };
         });
@@ -217,12 +231,24 @@ const Profile: React.FC = () => {
             subtitle: [note.lawTitle || note.lawShortTitle || 'Lei Comentada', note.areaName].filter(Boolean).join(' • '),
             text: note.note,
             timestamp: note.updatedAt,
+            href: note.lawSlug ? `/lei-comentada/${note.lawSlug}${note.articleId ? `#${note.articleId}` : ''}` : undefined,
             articleId: note.articleId,
             lawSlug: note.lawSlug,
         }));
 
-        return [...questionEntries, ...legalEntries].sort((left, right) => right.timestamp - left.timestamp);
-    }, [lawNotes, questions, userNotes]);
+        const materialEntries = materialNotes.map((note) => ({
+            id: `material-${note.materialId}`,
+            source: 'material' as const,
+            title: note.title,
+            subtitle: note.subtitle || 'Anotação em material',
+            text: note.text,
+            timestamp: note.timestamp,
+            href: `/read/${note.materialId}`,
+            materialId: note.materialId,
+        }));
+
+        return [...questionEntries, ...legalEntries, ...materialEntries].sort((left, right) => right.timestamp - left.timestamp);
+    }, [lawNotes, materialNotes, questions, userNotes]);
 
     const handleRemoveLawNote = React.useCallback((articleId: string) => {
         if (!currentUserKey) return;
@@ -797,6 +823,7 @@ const Profile: React.FC = () => {
     const fetchUserMaterials = React.useCallback(async () => {
         if (!marketplaceEnabled || !currentUser?.id) {
             setUserMaterials([]);
+            setMaterialNotes([]);
             return;
         }
 
@@ -807,6 +834,62 @@ const Profile: React.FC = () => {
             console.error('Error fetching materials:', err);
         }
     }, [currentUser?.id, marketplaceEnabled]);
+
+    const fetchMaterialNotesForMaterials = React.useCallback(async (materials: any[]) => {
+        if (!marketplaceEnabled || !currentUser?.id || materials.length === 0) {
+            setMaterialNotes([]);
+            return;
+        }
+
+        const settledNotes = await Promise.allSettled(
+            materials.map(async (material: any) => {
+                const materialId = String(material?.id || '').trim();
+                if (!materialId) return null;
+
+                const note = await readerService.getNote(materialId, currentUser.id);
+                const noteText = String(note?.note_text || '').trim();
+                if (!noteText) return null;
+
+                const rawTimestamp = note?.updated_at
+                    || material.updatedAt
+                    || material.updated_at
+                    || material.purchasedAt
+                    || material.purchased_at
+                    || new Date().toISOString();
+                const parsedTimestamp = new Date(rawTimestamp).getTime();
+                const materialType = String(material.type || '').trim();
+                const materialKind = materialType.toLowerCase() === 'pdf'
+                    ? 'PDF Interativo'
+                    : (materialType || 'Material de estudo');
+
+                return {
+                    materialId,
+                    title: material.title || `Material #${materialId}`,
+                    subtitle: [materialKind, material.authorName || material.author_name].filter(Boolean).join(' • '),
+                    text: noteText,
+                    timestamp: Number.isFinite(parsedTimestamp) ? parsedTimestamp : Date.now(),
+                };
+            }),
+        );
+
+        const nextMaterialNotes = settledNotes
+            .map((result) => result.status === 'fulfilled' ? result.value : null)
+            .filter(Boolean) as MaterialNotebookNote[];
+
+        setMaterialNotes(nextMaterialNotes);
+    }, [currentUser?.id, marketplaceEnabled]);
+
+    const handleRemoveMaterialNote = React.useCallback(async (materialId: string) => {
+        if (!currentUser?.id) return;
+
+        try {
+            await readerService.saveNote(materialId, '', currentUser.id);
+            setMaterialNotes((currentNotes) => currentNotes.filter((note) => note.materialId !== materialId));
+            addToast('Anotação removida.', 'success');
+        } catch (err: any) {
+            addToast(readApiErrorMessage(err, 'Erro ao remover anotação do material.'), 'error');
+        }
+    }, [addToast, currentUser?.id]);
 
     const fetchReferralStats = React.useCallback(async () => {
         try {
@@ -1535,6 +1618,7 @@ const Profile: React.FC = () => {
             setUserCards([]);
             setUserTransactions([]);
             setUserMaterials([]);
+            setMaterialNotes([]);
             return;
         }
 
@@ -1545,6 +1629,9 @@ const Profile: React.FC = () => {
             void fetchUserTransactions();
         }
         if (activeTab === 'materials' && marketplaceEnabled) {
+            void fetchUserMaterials();
+        }
+        if (activeTab === 'notebook' && marketplaceEnabled) {
             void fetchUserMaterials();
         }
         if (activeTab === 'referral' && canAccessReferralTab) {
@@ -1560,6 +1647,23 @@ const Profile: React.FC = () => {
         fetchUserTransactions,
         isStripeBilling,
         marketplaceEnabled,
+    ]);
+
+    React.useEffect(() => {
+        if (activeTab !== 'notebook') return;
+
+        if (!marketplaceEnabled || !currentUser?.id || userMaterials.length === 0) {
+            setMaterialNotes([]);
+            return;
+        }
+
+        void fetchMaterialNotesForMaterials(userMaterials);
+    }, [
+        activeTab,
+        currentUser?.id,
+        fetchMaterialNotesForMaterials,
+        marketplaceEnabled,
+        userMaterials,
     ]);
 
    const EXAM_AREAS = [
@@ -1986,88 +2090,92 @@ const Profile: React.FC = () => {
                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{notebookEntries.length} notas</span>
                      </div>
                      {notebookEntries.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                           {notebookEntries.map((entry) => (
-                              <div
-                                 key={entry.id}
-                                 className={`p-6 rounded-2xl group relative hover:shadow-sm transition-all border ${
-                                    entry.source === 'law'
-                                       ? 'bg-indigo-50 dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/30'
-                                       : 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-100 dark:border-yellow-900/20'
-                                 }`}
-                              >
-                                 <div className="flex items-start justify-between gap-3">
-                                    <div className="space-y-2">
-                                       <div className="flex flex-wrap items-center gap-2">
-                                          <span
-                                             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
-                                                entry.source === 'law'
-                                                   ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
-                                                   : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
-                                             }`}
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
+                              <span>Anotação</span>
+                              <span>Ação</span>
+                           </div>
+
+                           <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {notebookEntries.map((entry) => {
+                                 const isLaw = entry.source === 'law';
+                                 const isMaterial = entry.source === 'material';
+                                 const sourceLabel = isLaw ? 'Lei' : isMaterial ? 'Material' : 'Questão';
+                                 const SourceIcon = isLaw ? BookOpen : isMaterial ? Package : StickyNote;
+                                 const badgeClassName = isLaw
+                                    ? 'bg-indigo-50 text-indigo-700 ring-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:ring-indigo-800/60'
+                                    : isMaterial
+                                       ? 'bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-900/25 dark:text-emerald-300 dark:ring-emerald-800/50'
+                                       : 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-900/25 dark:text-amber-300 dark:ring-amber-800/50';
+
+                                 return (
+                                    <article key={entry.id} className="grid grid-cols-1 gap-4 px-4 py-4 transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/30 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                                       <div className="min-w-0">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                             <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ring-1 ${badgeClassName}`}>
+                                                <SourceIcon size={12} />
+                                                {sourceLabel}
+                                             </span>
+                                             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                                {formatDateTimeInSaoPaulo(entry.timestamp)}
+                                             </span>
+                                          </div>
+
+                                          <button
+                                             type="button"
+                                             onClick={() => entry.href && router.push(entry.href)}
+                                             disabled={!entry.href}
+                                             className="mt-2 block max-w-full text-left text-sm font-black text-slate-900 transition-colors hover:text-indigo-600 disabled:cursor-default disabled:hover:text-slate-900 dark:text-slate-100 dark:hover:text-indigo-300 dark:disabled:hover:text-slate-100"
                                           >
-                                             {entry.source === 'law' ? <BookOpen size={11} /> : <StickyNote size={11} />}
-                                             {entry.source === 'law' ? 'Lei' : 'Questão'}
-                                          </span>
-                                          <span className={`text-[10px] font-bold uppercase ${
-                                             entry.source === 'law'
-                                                ? 'text-indigo-600/70 dark:text-indigo-400/70'
-                                                : 'text-yellow-600/70 dark:text-yellow-500/60'
-                                          }`}>
-                                             {new Date(entry.timestamp).toLocaleDateString()}
-                                          </span>
-                                       </div>
-                                       <div>
-                                          <h3 className={`text-sm font-bold ${
-                                             entry.source === 'law'
-                                                ? 'text-indigo-950 dark:text-indigo-100'
-                                                : 'text-yellow-950 dark:text-yellow-100'
-                                          }`}>
                                              {entry.title}
-                                          </h3>
-                                          <p className={`mt-1 text-[11px] font-medium ${
-                                             entry.source === 'law'
-                                                ? 'text-indigo-700/75 dark:text-indigo-300/70'
-                                                : 'text-yellow-700/75 dark:text-yellow-300/70'
-                                          }`}>
+                                          </button>
+
+                                          <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                                              {entry.subtitle}
                                           </p>
+
+                                          <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300">
+                                             {entry.text}
+                                          </p>
                                        </div>
-                                    </div>
 
-                                    <button
-                                       onClick={() => entry.source === 'law' && entry.articleId ? handleRemoveLawNote(entry.articleId) : saveNote(entry.questionId || 0, '')}
-                                       className={`shrink-0 transition-colors ${
-                                          entry.source === 'law'
-                                             ? 'text-indigo-600/60 hover:text-red-500 dark:text-indigo-300/60'
-                                             : 'text-yellow-600/60 hover:text-red-500 dark:text-yellow-500/60'
-                                       }`}
-                                       title="Remover anotação"
-                                    >
-                                       <X size={14} />
-                                    </button>
-                                 </div>
+                                       <div className="flex items-center justify-end gap-2">
+                                          <button
+                                             type="button"
+                                             onClick={() => entry.href && router.push(entry.href)}
+                                             disabled={!entry.href}
+                                             className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
+                                          >
+                                             <ExternalLink size={13} />
+                                             Abrir
+                                          </button>
 
-                                 <p className={`mt-4 text-xs font-medium leading-relaxed whitespace-pre-wrap ${
-                                    entry.source === 'law'
-                                       ? 'text-indigo-900 dark:text-indigo-100'
-                                       : 'text-yellow-800 dark:text-yellow-200'
-                                 }`}>
-                                    {entry.text}
-                                 </p>
+                                          <button
+                                             type="button"
+                                             onClick={() => {
+                                                if (entry.source === 'law' && entry.articleId) {
+                                                   handleRemoveLawNote(entry.articleId);
+                                                   return;
+                                                }
 
-                                 {entry.source === 'law' && entry.lawSlug ? (
-                                    <div className="mt-4 pt-3 border-t border-indigo-100/70 dark:border-indigo-900/40 flex justify-end">
-                                       <button
-                                          onClick={() => router.push(`/lei-comentada/${entry.lawSlug}${entry.articleId ? `#${entry.articleId}` : ''}`)}
-                                          className="text-[11px] font-bold text-indigo-700 transition-colors hover:text-indigo-500 dark:text-indigo-300"
-                                       >
-                                          Abrir na lei
-                                       </button>
-                                    </div>
-                                 ) : null}
-                              </div>
-                           ))}
+                                                if (entry.source === 'material' && entry.materialId) {
+                                                   void handleRemoveMaterialNote(entry.materialId);
+                                                   return;
+                                                }
+
+                                                saveNote(entry.questionId || 0, '');
+                                             }}
+                                             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-100 bg-rose-50 text-rose-500 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                                             title="Remover anotação"
+                                             aria-label="Remover anotação"
+                                          >
+                                             <Trash2 size={14} />
+                                          </button>
+                                       </div>
+                                    </article>
+                                 );
+                              })}
+                           </div>
                         </div>
                      ) : (
                         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
