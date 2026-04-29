@@ -35,6 +35,7 @@ type XrayChartDatum = {
 
 type XrayTopicDatum = {
   topic: string;
+  count: number;
   percent: number;
 };
 
@@ -68,6 +69,7 @@ const normalizeBreakdownDatum = (item: any): XrayBreakdownDatum => ({
   topics: Array.isArray(item?.topics)
     ? item.topics.map((topic: any) => ({
         topic: String(topic?.topic || 'Sem assunto'),
+        count: Number(topic?.count || 0),
         percent: Number(topic?.percent || 0),
       }))
     : [],

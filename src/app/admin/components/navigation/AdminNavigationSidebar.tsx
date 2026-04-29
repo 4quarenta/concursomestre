@@ -32,6 +32,7 @@ type SidebarSubmenuItem = {
   section: string;
   label: string;
   description: string;
+  badge?: number;
 };
 
 type SidebarSubmenuGroup = {
@@ -55,11 +56,17 @@ interface AdminNavigationSidebarProps {
   activeSectionKey?: string;
   onNavigateAdmin: (tab: string, section?: string) => void;
   tabs: AdminTabItem[];
+  sectionBadges?: Record<string, Record<string, number>>;
   isMobileOpen?: boolean;
   onRequestClose?: () => void;
 }
 
-const buildSidebarSubmenuGroups = (tabKey: string): SidebarSubmenuGroup[] => {
+const buildSidebarSubmenuGroups = (tabKey: string, sectionBadges: Record<string, number> = {}): SidebarSubmenuGroup[] => {
+  const getSectionBadge = (section: string) => {
+    const count = Number(sectionBadges[section] || 0);
+    return count > 0 ? count : undefined;
+  };
+
   if (tabKey === 'operation') {
     return ADMIN_DATABASE_CATEGORIES.map((category) => ({
       id: category.id,
@@ -75,9 +82,10 @@ const buildSidebarSubmenuGroups = (tabKey: string): SidebarSubmenuGroup[] => {
             section: tab,
             label: meta.label,
             description: meta.description,
+            badge: getSectionBadge(tab),
           };
         })
-        .filter((item): item is SidebarSubmenuItem => Boolean(item)),
+        .filter(Boolean) as SidebarSubmenuItem[],
     })).filter((group) => group.items.length > 0);
   }
 
@@ -87,9 +95,9 @@ const buildSidebarSubmenuGroups = (tabKey: string): SidebarSubmenuGroup[] => {
         id: 'marketplace-sections',
         label: 'Marketplace',
         items: [
-          { section: 'vendors', label: 'Vendedores', description: '' },
-          { section: 'materials', label: 'Materiais', description: '' },
-          { section: 'blocked', label: 'Revisao bloqueada', description: '' },
+          { section: 'vendors', label: 'Vendedores', description: '', badge: getSectionBadge('vendors') },
+          { section: 'materials', label: 'Materiais', description: '', badge: getSectionBadge('materials') },
+          { section: 'blocked', label: 'Revisao bloqueada', description: '', badge: getSectionBadge('blocked') },
         ],
       },
     ];
@@ -101,24 +109,24 @@ const buildSidebarSubmenuGroups = (tabKey: string): SidebarSubmenuGroup[] => {
         id: 'support-care',
         label: 'Atendimento',
         items: [
-          { section: 'feedback', label: 'Feedback', description: '' },
-          { section: 'reports', label: 'Denuncias', description: '' },
-          { section: 'threads', label: 'Threads', description: '' },
+          { section: 'feedback', label: 'Feedback', description: '', badge: getSectionBadge('feedback') },
+          { section: 'reports', label: 'Denuncias', description: '', badge: getSectionBadge('reports') },
+          { section: 'threads', label: 'Threads', description: '', badge: getSectionBadge('threads') },
         ],
       },
       {
         id: 'support-moderation',
         label: 'Moderacao',
         items: [
-          { section: 'comments', label: 'Comentarios', description: '' },
-          { section: 'rankings', label: 'Rankings', description: '' },
+          { section: 'comments', label: 'Comentarios', description: '', badge: getSectionBadge('comments') },
+          { section: 'rankings', label: 'Rankings', description: '', badge: getSectionBadge('rankings') },
         ],
       },
       {
         id: 'support-finance',
         label: 'Financeiro',
         items: [
-          { section: 'refunds', label: 'Reembolsos', description: '' },
+          { section: 'refunds', label: 'Reembolsos', description: '', badge: getSectionBadge('refunds') },
         ],
       },
     ];
@@ -136,6 +144,7 @@ const buildSidebarSubmenuGroups = (tabKey: string): SidebarSubmenuGroup[] => {
       section: section.key,
       label: section.label,
       description: '',
+      badge: getSectionBadge(section.key),
     })),
   }];
 };
@@ -145,6 +154,7 @@ const AdminNavigationSidebar = ({
   activeSectionKey,
   onNavigateAdmin,
   tabs,
+  sectionBadges = {},
   isMobileOpen = false,
   onRequestClose,
 }: AdminNavigationSidebarProps) => {
@@ -245,8 +255,8 @@ const AdminNavigationSidebar = ({
   }, [tabs]);
 
   const submenuGroupsByTab = React.useMemo(() => Object.fromEntries(
-    tabs.map((tab) => [tab.key, buildSidebarSubmenuGroups(tab.key)]),
-  ) as Record<string, SidebarSubmenuGroup[]>, [tabs]);
+    tabs.map((tab) => [tab.key, buildSidebarSubmenuGroups(tab.key, sectionBadges[tab.key] || {})]),
+  ) as Record<string, SidebarSubmenuGroup[]>, [tabs, sectionBadges]);
 
   const toggleMobileExpansion = (tabKey: string) => {
     setMobileExpandedKeys((current) => (
@@ -375,6 +385,7 @@ const AdminNavigationSidebar = ({
                             <div className="mt-2 space-y-1">
                               {groupConfig.items.map((item) => {
                                 const isActiveChild = isActiveTab && activeSectionKey === item.section;
+                                const itemBadge = Number(item.badge || 0);
 
                                 return (
                                   <button
@@ -388,7 +399,16 @@ const AdminNavigationSidebar = ({
                                     }`}
                                   >
                                     <span className="truncate text-[13px] font-medium">{item.label}</span>
-                                    <ChevronRight size={14} className={isActiveChild ? 'text-blue-300' : 'text-slate-500'} />
+                                    <span className="flex shrink-0 items-center gap-2">
+                                      {itemBadge > 0 ? (
+                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+                                          isActiveChild ? 'bg-blue-500/25 text-blue-100' : 'bg-slate-700 text-slate-200'
+                                        }`}>
+                                          {itemBadge > 99 ? '99+' : itemBadge}
+                                        </span>
+                                      ) : null}
+                                      <ChevronRight size={14} className={isActiveChild ? 'text-blue-300' : 'text-slate-500'} />
+                                    </span>
                                   </button>
                                 );
                               })}
@@ -466,6 +486,7 @@ const AdminNavigationSidebar = ({
                   <div className="mt-2 space-y-1">
                     {groupConfig.items.map((item) => {
                       const isActiveChild = activeTab === desktopFlyoutKey && activeSectionKey === item.section;
+                      const itemBadge = Number(item.badge || 0);
 
                       return (
                         <button
@@ -479,7 +500,16 @@ const AdminNavigationSidebar = ({
                           }`}
                         >
                           <span className="block min-w-0 truncate text-[13px] font-medium">{item.label}</span>
-                          <ChevronRight size={14} className={isActiveChild ? 'text-white' : 'text-slate-500'} />
+                          <span className="flex shrink-0 items-center gap-2">
+                            {itemBadge > 0 ? (
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+                                isActiveChild ? 'bg-white/20 text-white' : 'bg-slate-700 text-slate-200'
+                              }`}>
+                                {itemBadge > 99 ? '99+' : itemBadge}
+                              </span>
+                            ) : null}
+                            <ChevronRight size={14} className={isActiveChild ? 'text-white' : 'text-slate-500'} />
+                          </span>
                         </button>
                       );
                     })}

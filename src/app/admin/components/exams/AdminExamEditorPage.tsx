@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import { ArrowLeft, CalendarClock, FileText, Link2, Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Check, FileText, Link2, Loader2, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import type { Prova } from '@types';
 import type { ExamDraftState } from './useAdminExamBankWorkflow';
 import {
@@ -118,6 +118,137 @@ const getTaxonomyLabel = (item: ExamTaxonomyOption) => {
   const sigla = getTaxonomySigla(item);
   const name = getTaxonomyName(item);
   return sigla && name && sigla !== name ? `${sigla} - ${name}` : name || sigla || String(item.id || '');
+};
+
+const normalizeSearchText = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .trim();
+
+const SearchableTaxonomySelect = ({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: ExamTaxonomyOption[];
+  placeholder: string;
+}) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const selectedOption = React.useMemo(
+    () => options.find((item) => String(item.id || '') === value) || null,
+    [options, value],
+  );
+  const selectedLabel = selectedOption ? getTaxonomyLabel(selectedOption) : '';
+  const displayValue = isOpen ? searchTerm : selectedLabel;
+  const filteredOptions = React.useMemo(() => {
+    const needle = normalizeSearchText(searchTerm);
+    if (!needle) {
+      return options.slice(0, 80);
+    }
+
+    return options
+      .filter((option) => normalizeSearchText(getTaxonomyLabel(option)).includes(needle))
+      .slice(0, 80);
+  }, [options, searchTerm]);
+
+  React.useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+        setSearchTerm('');
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, []);
+
+  const handleSelect = (optionId: string) => {
+    onChange(optionId);
+    setSearchTerm('');
+    setIsOpen(false);
+  };
+
+  const clearSelection = () => {
+    onChange('');
+    setSearchTerm('');
+    setIsOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Search
+        size={15}
+        className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-slate-400"
+      />
+      <input
+        type="search"
+        value={displayValue}
+        onFocus={() => {
+          setIsOpen(true);
+          setSearchTerm('');
+        }}
+        onChange={(event) => {
+          setSearchTerm(event.target.value);
+          setIsOpen(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            setIsOpen(false);
+            setSearchTerm('');
+          }
+          if (event.key === 'Enter' && filteredOptions[0]) {
+            event.preventDefault();
+            handleSelect(String(filteredOptions[0].id || ''));
+          }
+        }}
+        placeholder={placeholder}
+        className={`h-10 w-full ${ADMIN_FIELD_CLASS} pl-9 pr-10`}
+      />
+      {value ? (
+        <button
+          type="button"
+          onClick={clearSelection}
+          className="absolute right-2 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          aria-label="Limpar banca"
+        >
+          <X size={14} />
+        </button>
+      ) : null}
+      {isOpen ? (
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-sm border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((option) => {
+              const optionId = String(option.id || '');
+              const isSelected = optionId === value;
+
+              return (
+                <button
+                  key={String(option.id || getTaxonomyLabel(option))}
+                  type="button"
+                  onClick={() => handleSelect(optionId)}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <span className="min-w-0 truncate">{getTaxonomyLabel(option)}</span>
+                  {isSelected ? <Check size={14} className="shrink-0 text-sky-700" /> : null}
+                </button>
+              );
+            })
+          ) : (
+            <div className="px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-400">
+              Nenhuma banca encontrada.
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 };
 
 const findSelectedTaxonomyId = (options: ExamTaxonomyOption[], id: string, sigla: string, name: string) => {
@@ -310,14 +441,12 @@ const AdminExamEditorPage = ({
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="md:col-span-3">
                     <FieldLabel>Banca cadastrada</FieldLabel>
-                    <SelectInput value={selectedAgencyId} onChange={selectAgency}>
-                      <option value="">Selecionar banca da taxonomia</option>
-                      {agencyOptions.map((agency) => (
-                        <option key={String(agency.id || getTaxonomyLabel(agency))} value={String(agency.id || '')}>
-                          {getTaxonomyLabel(agency)}
-                        </option>
-                      ))}
-                    </SelectInput>
+                    <SearchableTaxonomySelect
+                      value={selectedAgencyId}
+                      onChange={selectAgency}
+                      options={agencyOptions}
+                      placeholder="Buscar banca da taxonomia"
+                    />
                   </div>
                   <div>
                     <FieldLabel>Banca sigla</FieldLabel>

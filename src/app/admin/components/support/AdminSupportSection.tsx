@@ -15,7 +15,7 @@ import { AlertTriangle, CheckCircle2, LifeBuoy, MessageSquareText, Shield, X } f
 import { useRouter } from 'next/navigation';
 import { useToast } from '@providers/ToastProvider';
 import type { ErrorReport } from '@types';
-import { adminService } from '@services/admin/adminService';
+import { adminService, type AdminCommentModerationCounts } from '@services/admin/adminService';
 import { AdminFeedback } from './AdminFeedback';
 import AdminCommentsModerationSection from './AdminCommentsModerationSection';
 import {
@@ -49,6 +49,7 @@ interface AdminSupportSectionProps {
   allReports?: ErrorReport[];
   pendingFeedbackCount?: number;
   onPendingFeedbackCountChange?: (count: number) => void;
+  onPendingCommentsCountChange?: (count: number) => void;
   onResolveReport?: (report: ErrorReport) => Promise<any> | any;
   standaloneSection?: boolean;
 }
@@ -98,6 +99,7 @@ const AdminSupportSection = ({
   allReports = [],
   pendingFeedbackCount = 0,
   onPendingFeedbackCountChange,
+  onPendingCommentsCountChange,
   onResolveReport,
   standaloneSection = false,
 }: AdminSupportSectionProps) => {
@@ -108,10 +110,12 @@ const AdminSupportSection = ({
   const [moderatingReport, setModeratingReport] = useState<ErrorReport | null>(null);
   const [moderationResolution, setModerationResolution] = useState('');
   const [reportSearch, setReportSearch] = useState('');
-  const [moderationCounts, setModerationCounts] = useState<Record<'pending' | 'approved' | 'spam', number>>({
+  const [moderationCounts, setModerationCounts] = useState<AdminCommentModerationCounts>({
+    all: 0,
     pending: 0,
     approved: 0,
     spam: 0,
+    trash: 0,
   });
 
   useEffect(() => {
@@ -125,18 +129,25 @@ const AdminSupportSection = ({
       .then((response) => {
         if (isCurrent) {
           setModerationCounts(response.counts);
+          onPendingCommentsCountChange?.(Number(response.counts?.pending || 0));
         }
       })
       .catch(() => {
         if (isCurrent) {
-          setModerationCounts({ pending: 0, approved: 0, spam: 0 });
+          setModerationCounts({ all: 0, pending: 0, approved: 0, spam: 0, trash: 0 });
+          onPendingCommentsCountChange?.(0);
         }
       });
 
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [onPendingCommentsCountChange]);
+
+  const handleModerationCountsChange = (counts: AdminCommentModerationCounts) => {
+    setModerationCounts(counts);
+    onPendingCommentsCountChange?.(Number(counts.pending || 0));
+  };
 
   const groupedReports = useMemo(
     () => groupPendingReports(allReports as ErrorReport[]),
@@ -365,7 +376,7 @@ const AdminSupportSection = ({
           />
         </div>
       ) : activeSection === 'comments' ? (
-        <AdminCommentsModerationSection />
+        <AdminCommentsModerationSection onCountsChange={handleModerationCountsChange} />
       ) : (
         <AdminFeedback
           mode={activeSection === 'threads' ? 'threads' : 'feedback'}

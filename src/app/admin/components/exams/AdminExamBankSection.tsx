@@ -11,7 +11,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Edit3, FileText, Link2, Trash2 } from 'lucide-react';
+import { FileText, Link2 } from 'lucide-react';
 import type { Prova } from '@types';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 import { ADMIN_MUTED_SURFACE_CLASS, ADMIN_PAGE_PANEL_CLASS, ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
@@ -98,7 +98,6 @@ const AdminExamBankSection = ({
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Cargo</th>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Vinculos</th>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Visibilidade</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Acoes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -110,6 +109,22 @@ const AdminExamBankSection = ({
                       <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
                         #{exam.id} {exam.ano ? `- ${exam.ano}` : ''} {exam.nivel ? `- ${exam.nivel}` : ''}
                       </span>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                        <Link
+                          href={buildAdminExamEditPath(exam.id)}
+                          className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                        >
+                          Editar
+                        </Link>
+                        <span className="text-slate-300 dark:text-slate-700">|</span>
+                        <button
+                          type="button"
+                          onClick={() => onRequestDelete(exam)}
+                          className="font-medium text-red-600 hover:text-red-800 hover:underline dark:text-red-400 dark:hover:text-red-300"
+                        >
+                          Lixeira
+                        </button>
+                      </div>
                     </div>
                   </td>
                   <td className="p-4 text-slate-600 dark:text-slate-300">{exam.banca?.sigla || exam.banca?.nome || '-'}</td>
@@ -124,31 +139,12 @@ const AdminExamBankSection = ({
                   <td className="p-4">
                     <AdminPublishStateBadge state={resolveAdminPublishState(exam as Record<string, any>)} />
                   </td>
-                  <td className="p-4">
-                    <div className="flex gap-2">
-                      <Link
-                        href={buildAdminExamEditPath(exam.id)}
-                        className="inline-flex items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                      >
-                        <Edit3 size={12} />
-                        Editar
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => onRequestDelete(exam)}
-                        className="inline-flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300"
-                      >
-                        <Trash2 size={12} />
-                        Deletar
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               ))}
 
               {exams.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-10 text-center">
+                  <td colSpan={6} className="p-10 text-center">
                     <div className="flex flex-col items-center gap-3 text-slate-400 dark:text-slate-500">
                       <FileText size={20} />
                       <p className="text-sm font-black">Nenhuma prova encontrada</p>

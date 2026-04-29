@@ -20,6 +20,7 @@ interface AdminShellLayoutProps {
   activeSectionKey?: string;
   onNavigateAdmin: (tab: string, section?: string) => void;
   adminTabs: { key: string; label: string; icon: any; badge?: number; group?: string; description: string }[];
+  sectionBadges?: Record<string, Record<string, number>>;
   pageTitle: string;
   pageDescription?: string;
   topBarProps: React.ComponentProps<typeof AdminTopBar>;
@@ -32,6 +33,7 @@ const AdminShellLayout = ({
   activeSectionKey,
   onNavigateAdmin,
   adminTabs,
+  sectionBadges,
   pageTitle,
   pageDescription,
   topBarProps,
@@ -47,6 +49,7 @@ const AdminShellLayout = ({
         activeSectionKey={activeSectionKey}
         onNavigateAdmin={onNavigateAdmin}
         tabs={adminTabs}
+        sectionBadges={sectionBadges}
         isMobileOpen={isMobileSidebarOpen}
         onRequestClose={() => setIsMobileSidebarOpen(false)}
       />

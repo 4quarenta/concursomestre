@@ -14,6 +14,7 @@ import { ADMIN_DATABASE_SUBTAB_META } from './adminDatabaseNavigationConfig';
 
 type AdminDatabaseSubTab =
   | 'questions'
+  | 'question-groups'
   | 'exams'
   | 'users'
   | 'materials'
@@ -34,6 +35,7 @@ interface UseAdminDatabaseNavigationStateOptions {
 
 const VALID_SUBTABS: AdminDatabaseSubTab[] = [
   'questions',
+  'question-groups',
   'exams',
   'users',
   'materials',

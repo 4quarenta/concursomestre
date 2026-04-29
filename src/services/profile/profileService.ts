@@ -13,6 +13,14 @@ import { apiClient, assertApiSuccess, readApiData, ENDPOINTS } from '@services/a
 
 type ReferralStats = Record<string, any>;
 
+export type SubmitProfileTestimonialInput = {
+  rating: number;
+  testimonial: string;
+  userName?: string;
+  userEmail?: string;
+  planName?: string;
+};
+
 /**
  * Centraliza operações auxiliares do perfil que não pertencem a auth pura
  * nem ao dominio comercial do marketplace.
@@ -66,6 +74,31 @@ export const profileService = {
     const envelope = assertApiSuccess(response, 'Não foi possível alterar a senha.');
     return {
       message: envelope.message || 'Senha alterada com sucesso!',
+    };
+  },
+
+  /**
+   * Envia depoimento e avaliacao do aluno para a fila oficial de feedback.
+   */
+  async submitTestimonial(input: SubmitProfileTestimonialInput): Promise<{ message: string; id?: number }> {
+    const rating = Math.max(1, Math.min(5, Math.round(Number(input.rating) || 0)));
+    const testimonial = String(input.testimonial || '').trim();
+    const response = await apiClient.post<any>(ENDPOINTS.feedback.create, {
+      type: 'suggestion',
+      reason: `Avaliar plataforma - ${rating}/5`,
+      details: testimonial,
+      rating,
+      user_name: input.userName,
+      user_email: input.userEmail,
+      plan_name: input.planName,
+    }) as any;
+
+    const envelope = assertApiSuccess(response, 'Não foi possível enviar o depoimento.');
+    const payload = readApiData<any>(response, {});
+
+    return {
+      message: envelope.message || 'Avaliação enviada. Obrigado por compartilhar sua experiência!',
+      id: Number(payload?.id || payload?.feedback_id || payload?.thread_id || 0) || undefined,
     };
   },
 };

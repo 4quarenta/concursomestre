@@ -23,33 +23,37 @@ export const useManualQuestionReferenceData = (systemSettings: SystemSettings, q
   }, [systemSettings.taxonomies?.organizations]);
 
   const existingSubjects = useMemo(() => {
-    return (systemSettings.taxonomies?.subjects || []).map((taxonomy: any) => taxonomy.name);
+    return systemSettings.taxonomies?.subjects || [];
   }, [systemSettings.taxonomies?.subjects]);
 
   const existingTopics = useMemo(() => {
-    return (systemSettings.taxonomies?.topics || []).map((taxonomy: any) => taxonomy.name);
+    return systemSettings.taxonomies?.topics || [];
   }, [systemSettings.taxonomies?.topics]);
 
   const existingSubjectTopics = useMemo(() => {
     const source = systemSettings.taxonomies?.subjectTopics?.length
       ? systemSettings.taxonomies.subjectTopics
       : (systemSettings.taxonomies?.topics || []).filter((taxonomy: any) => taxonomy.taxonomyLevel === 'topico');
-    return source.map((taxonomy: any) => taxonomy.name);
+    return source;
   }, [systemSettings.taxonomies?.subjectTopics, systemSettings.taxonomies?.topics]);
 
   const existingSpecificSubjects = useMemo(() => {
     const source = systemSettings.taxonomies?.specificSubjects?.length
       ? systemSettings.taxonomies.specificSubjects
       : (systemSettings.taxonomies?.topics || []).filter((taxonomy: any) => taxonomy.taxonomyLevel === 'assunto');
-    return source.map((taxonomy: any) => taxonomy.name);
+    return source;
   }, [systemSettings.taxonomies?.specificSubjects, systemSettings.taxonomies?.topics]);
 
   const existingYears = useMemo(() => {
     return systemSettings.taxonomies?.years || [];
   }, [systemSettings.taxonomies?.years]);
 
+  const existingFocuses = useMemo(() => {
+    return systemSettings.taxonomies?.careers || [];
+  }, [systemSettings.taxonomies?.careers]);
+
   const existingRoles = useMemo(() => {
-    return (systemSettings.taxonomies?.roles || []).map((taxonomy: any) => taxonomy.name);
+    return systemSettings.taxonomies?.roles || [];
   }, [systemSettings.taxonomies?.roles]);
 
   const existingProvas = useMemo(() => {
@@ -64,6 +68,7 @@ export const useManualQuestionReferenceData = (systemSettings: SystemSettings, q
     existingSubjectTopics,
     existingSpecificSubjects,
     existingYears,
+    existingFocuses,
     existingRoles,
     existingProvas,
   };

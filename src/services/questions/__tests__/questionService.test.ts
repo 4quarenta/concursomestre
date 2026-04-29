@@ -88,7 +88,12 @@ describe('questionService', () => {
     const result = await questionService.getQuestionPage({ page: 2, limit: 50 });
 
     expect(mockGet).toHaveBeenCalledWith('questionsList', {
-      params: { page: 2, limit: 50 },
+      params: {
+        page: 2,
+        limit: 50,
+        publication_scope: 'public',
+        publish_status: 'published',
+      },
     });
     expect(result.rows).toHaveLength(1);
     expect(result.total).toBe(120);
@@ -181,10 +186,15 @@ describe('questionService', () => {
     const payload = { id: 33, enunciado: 'Questão atualizada' } as any;
     const result = await questionService.updateQuestion('33', payload);
 
-    expect(mockPost).toHaveBeenCalledWith('questionsUpdate', {
-      ...payload,
-      id: '33',
-    });
+    expect(mockPost).toHaveBeenCalledWith(
+      'questionsUpdate',
+      expect.objectContaining({
+        ...payload,
+        id: '33',
+        publishStatus: 'published',
+        visibilityStatus: 'public',
+      }),
+    );
     expect(result.success).toBe(true);
   });
 

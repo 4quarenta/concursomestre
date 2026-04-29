@@ -233,6 +233,8 @@ const ManualQuestionModal = ({
 
   const handleSelectProva = (prova: Prova) => {
     updateManualQ({
+      questionOrigin: 'exam',
+      question_origin: 'exam',
       provaId: prova.id,
       provas: [prova],
     });
@@ -242,6 +244,8 @@ const ManualQuestionModal = ({
 
   const handleClearProva = () => {
     updateManualQ({
+      questionOrigin: 'platform',
+      question_origin: 'platform',
       provaId: '',
       provas: [],
     });

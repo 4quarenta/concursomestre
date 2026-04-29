@@ -69,7 +69,7 @@ const TaxonomyModal = ({
 }: TaxonomyModalProps) => {
   const currentType = editingFilterItem?.type || activeFilterType;
   const isKnowledgeTaxonomy = currentType === 'materia' || currentType === 'topico' || currentType === 'assunto';
-  const requiresParent = currentType === 'topico' || currentType === 'assunto';
+  const requiresParent = currentType === 'topico' || currentType === 'assunto' || currentType === 'cargo';
 
   const getParentOptions = () => {
     if (!taxonomies) return [];
@@ -86,7 +86,7 @@ const TaxonomyModal = ({
         list = taxonomies.organizations || [];
         break;
       case 'cargo':
-        list = taxonomies.roles || [];
+        list = taxonomies.careers || [];
         break;
       case 'topico':
         list = taxonomies.subjects || [];
@@ -110,12 +110,14 @@ const TaxonomyModal = ({
   const getParentLabel = () => {
     if (currentType === 'topico') return 'Materia raiz';
     if (currentType === 'assunto') return 'Topico raiz';
+    if (currentType === 'cargo') return 'Foco raiz';
     return 'Filtro raiz / item pai';
   };
 
   const getParentHelper = () => {
     if (currentType === 'topico') return 'Todo topico precisa nascer dentro de uma materia.';
     if (currentType === 'assunto') return 'Todo assunto precisa nascer dentro de um topico.';
+    if (currentType === 'cargo') return 'Todo cargo precisa estar vinculado a um foco.';
     return 'Use apenas quando esta taxonomia tiver um agrupador acima dela.';
   };
 

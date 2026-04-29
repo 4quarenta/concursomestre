@@ -16,6 +16,7 @@ import BlockedMaterialsSection from '../materials/BlockedMaterialsSection';
 import AdminExamBankSection from '../exams/AdminExamBankSection';
 import AdminImportSection from '../import/AdminImportSection';
 import AdminLegalCommentarySection from '../legal-commentary/AdminLegalCommentarySection';
+import AdminQuestionGroupsSection from '../questions/AdminQuestionGroupsSection';
 import AdminQuestionsSection from '../questions/AdminQuestionsSection';
 import AdminRankingsSection from '../rankings/AdminRankingsSection';
 import AdminReportsSection from '../reports/AdminReportsSection';
@@ -49,6 +50,7 @@ interface AdminDatabaseSectionsProps {
   onQuestionsPageChange: (page: number) => void;
   onCreateQuestion: () => void;
   onQuestionEdit: (question?: any) => void;
+  onAddQuestions: (questions: any[]) => Promise<any> | any;
   onQuestionUpdate: (question: any) => Promise<any> | any;
   onQuestionDelete: (questionId: any) => Promise<any> | any;
   onQuestionsRefresh?: () => Promise<void> | void;
@@ -58,6 +60,7 @@ interface AdminDatabaseSectionsProps {
   onConfirmDeleteExam: () => void;
   examActionLoading: 'save' | 'delete' | null;
   onOpenUserProfile: (userId: string) => void;
+  onDeleteUser: (user: any) => Promise<any> | any;
   onModerateMaterial: (material: any) => void;
   onDeleteMaterial: (materialId: string) => Promise<any> | any;
   onInspectReport: (report: any) => void;
@@ -99,6 +102,7 @@ const AdminDatabaseSections = ({
   onQuestionsPageChange,
   onCreateQuestion,
   onQuestionEdit,
+  onAddQuestions,
   onQuestionUpdate,
   onQuestionDelete,
   onQuestionsRefresh,
@@ -108,6 +112,7 @@ const AdminDatabaseSections = ({
   onConfirmDeleteExam,
   examActionLoading,
   onOpenUserProfile,
+  onDeleteUser,
   onModerateMaterial,
   onDeleteMaterial,
   onInspectReport,
@@ -134,12 +139,18 @@ const AdminDatabaseSections = ({
         renderSortableHeader={renderSortableHeader}
         onCreate={onCreateQuestion}
         onEdit={onQuestionEdit}
+        onAddQuestions={onAddQuestions}
         onUpdate={onQuestionUpdate}
         onDelete={onQuestionDelete}
         onPageChange={onQuestionsPageChange}
         onRefresh={onQuestionsRefresh}
+        systemSettings={systemSettings}
       />
     );
+  }
+
+  if (activeSubTab === 'question-groups') {
+    return <AdminQuestionGroupsSection />;
   }
 
   if (activeSubTab === 'exams') {
@@ -167,6 +178,7 @@ const AdminDatabaseSections = ({
         onFilterChange={onFilterChange}
         renderSortableHeader={renderSortableHeader}
         onOpenProfile={onOpenUserProfile}
+        onDeleteUser={onDeleteUser}
       />
     );
   }

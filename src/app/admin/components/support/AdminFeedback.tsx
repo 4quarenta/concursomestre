@@ -116,6 +116,28 @@ interface AdminFeedbackProps {
 const countPendingFeedback = (items: AdminFeedbackThread[]) =>
   items.filter((item) => item.status !== 'resolved').length;
 
+const cleanFeedbackDetails = (item: AdminFeedbackThread) => {
+  const rawDetails = String(item.details || '').trim();
+  if (!rawDetails) {
+    return 'Sem detalhes fornecidos.';
+  }
+
+  const isPlatformRating = String(item.reason || '').toLowerCase().includes('avaliar plataforma');
+  if (!isPlatformRating) {
+    return rawDetails;
+  }
+
+  const cleaned = rawDetails
+    .replace(/\s*Avalia\S*:\s*\d+\s*\/\s*5\b/gi, '')
+    .replace(/\s*Aluno:\s*.*?(?=\s+Email:|\s+Plano:|$)/gi, '')
+    .replace(/\s*Email:\s*.*?(?=\s+Plano:|$)/gi, '')
+    .replace(/\s*Plano:\s*.*$/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return cleaned || 'Sem detalhes fornecidos.';
+};
+
 export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   mode = 'feedback',
   onPendingCountChange,
@@ -444,7 +466,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                     </div>
 
                     <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg text-sm text-slate-700 dark:text-slate-300 leading-relaxed border border-slate-100 dark:border-slate-800">
-                      {item.details || 'Sem detalhes fornecidos.'}
+                      {cleanFeedbackDetails(item)}
                     </div>
 
                     <div className="pt-2 flex items-center justify-between">

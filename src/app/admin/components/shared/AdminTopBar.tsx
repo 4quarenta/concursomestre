@@ -69,7 +69,7 @@ const AdminTopBar = ({
   showSidebarToggle = false,
   onToggleSidebar,
   searchTargets = [],
-  primaryActionLabel = 'Nova questao',
+  primaryActionLabel = null,
   primaryActionPath = '/admin/operation/questions',
 }: AdminTopBarProps) => {
   const [query, setQuery] = React.useState('');

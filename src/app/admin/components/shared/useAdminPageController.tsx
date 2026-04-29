@@ -128,9 +128,10 @@ export const useAdminPageController = () => {
   const openReportsCount = (reports || []).filter((report: any) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase())).length;
   const settingsFeedbackCount = Math.max(0, Number((systemSettings as any)?.adminFeedbackCount || 0));
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(settingsFeedbackCount);
+  const [pendingCommentsCount, setPendingCommentsCount] = useState(0);
   const feedbackCount = pendingFeedbackCount;
   const panelAlertsCount = openReportsCount + refundRequestsCount;
-  const supportInboxCount = feedbackCount + openReportsCount + refundRequestsCount;
+  const supportInboxCount = feedbackCount + openReportsCount + refundRequestsCount + pendingCommentsCount;
 
   useEffect(() => {
     setPendingFeedbackCount(settingsFeedbackCount);
@@ -159,6 +160,40 @@ export const useAdminPageController = () => {
       isCurrent = false;
     };
   }, [currentUser?.id, settingsFeedbackCount]);
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setPendingCommentsCount(0);
+      return;
+    }
+
+    let isCurrent = true;
+
+    adminService.getModerationComments({ status: 'pending', page: 1, perPage: 1 })
+      .then((payload) => {
+        if (isCurrent) {
+          setPendingCommentsCount(Number(payload.counts?.pending || payload.total || 0));
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setPendingCommentsCount(0);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentUser?.id]);
+
+  const sectionBadges = useMemo(() => ({
+    support: {
+      feedback: feedbackCount,
+      reports: openReportsCount,
+      comments: pendingCommentsCount,
+      refunds: refundRequestsCount,
+    },
+  }), [feedbackCount, openReportsCount, pendingCommentsCount, refundRequestsCount]);
 
   const adminTabs = useMemo<AdminNavigationTab[]>(() => ([
     { key: 'panel', label: 'Dashboard', icon: LayoutDashboard, badge: panelAlertsCount > 0 ? panelAlertsCount : undefined, group: 'Conteudo', description: 'Visao geral e saude operacional' },
@@ -401,6 +436,7 @@ export const useAdminPageController = () => {
     activeTabDescription: TAB_DESCRIPTIONS[activeTab],
     activeSectionLabel,
     adminTabs,
+    sectionBadges,
     theme,
     toggleTheme,
     isNotifOpen,
@@ -429,8 +465,7 @@ export const useAdminPageController = () => {
       currentSectionLabel: activeSectionLabel,
       userInitials,
       searchTargets,
-      primaryActionLabel: 'Nova questao',
-      primaryActionPath: buildAdminPath('operation', 'questions'),
+      primaryActionLabel: null,
     },
     panelSectionProps: {
       questions,
@@ -471,6 +506,7 @@ export const useAdminPageController = () => {
     marketplaceSectionKey: initialMarketplaceSection,
     financeSectionProps: {
       allTransactions: transactions,
+      allMaterials: materials,
       allUsers: users,
       systemSettings,
       updateSystemSettings,
@@ -493,6 +529,7 @@ export const useAdminPageController = () => {
       allReports: reports,
       pendingFeedbackCount: feedbackCount,
       onPendingFeedbackCountChange: setPendingFeedbackCount,
+      onPendingCommentsCountChange: setPendingCommentsCount,
       onResolveReport: (report: any) => resolveReport(report.id, 'resolved', report.resolution || report.reason || 'Denuncia tratada pela equipe administrativa.'),
       onSectionChange: (section: AdminSupportSection) => handleSectionChange('support', section),
       standaloneSection: true,

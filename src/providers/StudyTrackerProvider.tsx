@@ -36,10 +36,21 @@ const TICK_INTERVAL_MS = 1_000;
 const WIDGET_STORAGE_KEY = 'cm-study-widget-expanded';
 const buildStudySessionStorageKey = (userId: string) => `cm-study-session:${userId}`;
 
+const isLegalCommentaryReadingPath = (pathname: string): boolean => {
+  const normalizedPathname = pathname.replace(/\/+$/, '');
+
+  if (!normalizedPathname.startsWith('/lei-comentada/')) {
+    return false;
+  }
+
+  const lawSlug = normalizedPathname.slice('/lei-comentada/'.length).split('/')[0];
+  return lawSlug.trim() !== '';
+};
+
 const shouldRenderStudyWidget = (pathname: string): boolean => (
   pathname.startsWith('/practice')
   || pathname.startsWith('/simulation')
-  || pathname.startsWith('/lei-comentada')
+  || isLegalCommentaryReadingPath(pathname)
 );
 
 const resolveTrackedStudyMode = (pathname: string): 'practice' | 'reading' | null => {
@@ -47,7 +58,7 @@ const resolveTrackedStudyMode = (pathname: string): 'practice' | 'reading' | nul
     return 'practice';
   }
 
-  if (pathname.startsWith('/lei-comentada')) {
+  if (isLegalCommentaryReadingPath(pathname)) {
     return 'reading';
   }
 

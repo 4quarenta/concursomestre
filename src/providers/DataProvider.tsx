@@ -63,7 +63,37 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     landingPageTitle: 'Aprovação Garantida',
     landingPageHeadline: 'Promoção Exclusiva',
     landingPageSubheadline: 'Descontos imperdíveis nos planos Pro e Elite.',
-    featuresHighlight: ['IA Ilimitada', 'Raio-X da Banca', 'Simulados']
+    featuresHighlight: ['IA Ilimitada', 'Raio-X da Banca', 'Simulados'],
+    notificationTitle: 'Oferta especial ConcursoMestre',
+    notificationMessage: 'Aproveite a campanha ativa e acelere sua preparacao hoje.',
+    notificationActionUrl: '/pricing',
+    emailEnabled: false,
+    emailSubject: 'Sua preparacao pode ficar mais leve hoje',
+    emailPreview: 'Veja a campanha ativa antes que ela termine.',
+    emailBody: 'Selecionamos uma oferta para ajudar voce a continuar estudando com mais recursos.',
+    siteBanners: [
+      {
+        id: 'banner-topbar-default',
+        enabled: true,
+        placement: 'topbar',
+        headline: 'Oferta ativa no ConcursoMestre',
+        description: 'Plano com desconto por tempo limitado.',
+        ctaLabel: 'Ver oferta',
+        actionUrl: '/pricing',
+        backgroundColor: '#0f172a',
+      },
+    ],
+    automationRules: [
+      {
+        id: 'automation-recent-signup',
+        enabled: false,
+        condition: 'recent_signup',
+        channel: 'email',
+        delayHours: 24,
+        subject: 'Boas-vindas ao ConcursoMestre',
+        message: 'Mostre o caminho mais curto para comecar a estudar com uma oferta de entrada.',
+      },
+    ],
   },
   limitedOfferCountdown: {
     enabled: false,
@@ -151,6 +181,25 @@ const mergeSystemSettings = (
     (payload.landingPages as Partial<SystemSettings['landingPages']>) ?? base.landingPages,
     resolvedSiteName,
   );
+  const incomingPromotion = (
+    payload.activePromotion && typeof payload.activePromotion === 'object'
+      ? payload.activePromotion
+      : {}
+  ) as Partial<SystemSettings['activePromotion']>;
+  const mergedActivePromotion: SystemSettings['activePromotion'] = {
+    ...base.activePromotion,
+    ...incomingPromotion,
+    isActive: normalizeFeatureFlag(incomingPromotion.isActive, base.activePromotion.isActive),
+    featuresHighlight: Array.isArray(incomingPromotion.featuresHighlight)
+      ? incomingPromotion.featuresHighlight.map((item) => String(item || '').trim()).filter(Boolean)
+      : base.activePromotion.featuresHighlight,
+    siteBanners: Array.isArray(incomingPromotion.siteBanners)
+      ? incomingPromotion.siteBanners
+      : base.activePromotion.siteBanners,
+    automationRules: Array.isArray(incomingPromotion.automationRules)
+      ? incomingPromotion.automationRules
+      : base.activePromotion.automationRules,
+  };
   const incomingLimitedOfferCountdown = (
     payload.limitedOfferCountdown && typeof payload.limitedOfferCountdown === 'object'
       ? payload.limitedOfferCountdown
@@ -179,6 +228,7 @@ const mergeSystemSettings = (
 
   return {
     ...nextSettings,
+    activePromotion: mergedActivePromotion,
     features: mergedFeatures,
     landingPageContent: mergedLandingPageContent,
     landingPages: mergedLandingPages,
@@ -473,10 +523,15 @@ function dataReducer(state: DataState, action: DataAction): DataState {
         ...state,
         questions: [],
         userAnswers: [],
+        userComments: [],
         userNotes: [],
         reports: [],
         rankings: [],
         notifications: [],
+        totalQuestions: 0,
+        isReportsLoaded: false,
+        isRankingsLoaded: false,
+        isUserProgressLoaded: false,
         isSystemSettingsLoaded: false
       };
 
@@ -683,12 +738,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const { addToast } = useToast();
   const lastCommentTime = useRef<number>(0);
   const dataInitRef = useRef<string | null>(null);
-  const isFetchingNotificationsRef = useRef(false);
+  const activeDataOwnerRef = useRef<string>(currentUser?.id || 'guest');
+  const fetchingNotificationsForRef = useRef<string | null>(null);
   const settingsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSystemSettingsRef = useRef<SystemSettings | null>(null);
   const lastSavedSystemSettingsRef = useRef<SystemSettings>(DEFAULT_SYSTEM_SETTINGS);
   const isSavingSystemSettingsRef = useRef(false);
   const [state, dispatch] = useReducer(dataReducer, initialState);
+  activeDataOwnerRef.current = currentUser?.id || 'guest';
 
   /**
    * Persiste configurações do sistema em fila, garantindo serializacao de writes.
@@ -808,14 +865,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * @since 1.0.0
    */
   const ensureUserProgressLoaded = useCallback(async (force = false) => {
-    if (!currentUser?.id || (state.isUserProgressLoaded && !force)) return;
+    const userId = currentUser?.id;
+    if (!userId || (state.isUserProgressLoaded && !force)) return;
     try {
       // Parallel fetch for progress data
       const [answers, userComments, userNotes] = await Promise.all([
-        userProgressService.getUserAnswers(currentUser.id),
-        commentService.getUserComments(currentUser.id),
-        userProgressService.getUserQuestionNotes(currentUser.id)
+        userProgressService.getUserAnswers(userId),
+        commentService.getUserComments(userId),
+        userProgressService.getUserQuestionNotes(userId)
       ]);
+
+      if (activeDataOwnerRef.current !== userId) {
+        return;
+      }
 
       if (Array.isArray(answers)) dispatch({ type: 'SET_USER_ANSWERS', payload: answers });
 
@@ -839,6 +901,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const userId = currentUser?.id || 'guest';
     if (dataInitRef.current === userId) return;
     dataInitRef.current = userId;
+    activeDataOwnerRef.current = userId;
 
     dispatch({ type: 'RESET_USER_DATA' });
 
@@ -860,6 +923,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const params = currentUser?.id ? { user_id: currentUser.id } : {};
     questionService.getQuestionPage(params)
       .then(({ rows, total }) => {
+        if (activeDataOwnerRef.current !== userId) {
+          return;
+        }
+
         if (Array.isArray(rows)) {
           const sanitized = rows.map((q: any) => ({ ...q, comments: null }));
           dispatch({ type: 'ADD_QUESTIONS', payload: sanitized });
@@ -882,25 +949,32 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * @since 1.0.0
    */
   const fetchNotifications = useCallback(async (userId: string) => {
-    if (!currentUser?.id) {
+    if (!currentUser?.id || userId !== currentUser.id) {
       return;
     }
 
-    if (isFetchingNotificationsRef.current) {
+    if (fetchingNotificationsForRef.current === userId) {
       console.log('[DataContext] Skipping fetchNotifications - already in progress');
       return;
     }
 
     try {
-      isFetchingNotificationsRef.current = true;
+      fetchingNotificationsForRef.current = userId;
       console.log('[DataContext] Fetching notifications for:', userId);
       const notifs = await notificationService.getUserNotifications(userId);
+
+      if (activeDataOwnerRef.current !== userId) {
+        return;
+      }
+
       dispatch({ type: 'SET_NOTIFICATIONS', payload: notifs });
       console.log('[DataContext] Notifications fetched:', notifs.length);
     } catch (error) {
       console.error('[DataContext] Error fetching notifications:', error);
     } finally {
-      isFetchingNotificationsRef.current = false;
+      if (fetchingNotificationsForRef.current === userId) {
+        fetchingNotificationsForRef.current = null;
+      }
     }
   }, [currentUser?.id]);
 
@@ -1000,8 +1074,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     dispatch({ type: 'SUBMIT_ANSWER', payload });
 
     // Persist to API
-    if (currentUser) {
-      questionService.submitUserAnswer(currentUser.id, payload).then((result) => {
+    const userId = currentUser?.id;
+    if (userId) {
+      questionService.submitUserAnswer(userId, payload).then((result) => {
+        if (activeDataOwnerRef.current !== userId) {
+          return;
+        }
+
         const progressPatch: Partial<UserProfile> = {
           ...(result.newXp !== undefined ? { xp: result.newXp } : {}),
           ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
@@ -1016,7 +1095,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         addToast("Erro ao salvar resposta.", "error");
       });
     }
-  }, [currentUser?.id, addToast]);
+  }, [currentUser?.id, updateUser, addToast]);
 
   /**
    * Cria uma unica questão pelo fluxo administrativo/manual.
@@ -1025,6 +1104,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const addQuestion = useCallback(async (payload: Question): Promise<any> => {
     try {
       const res = await questionService.createQuestions([payload]);
+      if (!res.success) {
+        throw new Error('Falha ao criar a questao.');
+      }
       const createdQ = res.created && res.created.length > 0 ? res.created[0] : payload;
       dispatch({ type: 'ADD_QUESTION', payload: createdQ });
       addToast('Questão adicionada!', 'success');
@@ -1043,12 +1125,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const addQuestions = useCallback(async (payload: Question[]): Promise<any> => {
     try {
       const res = await questionService.createQuestions(payload);
-      dispatch({ type: 'ADD_QUESTIONS', payload });
-      addToast(`${payload.length} questões importadas!`, 'success');
+      if (!res.success) {
+        throw new Error('Falha ao salvar questoes.');
+      }
+      const savedQuestions = res.created && res.created.length > 0 ? res.created : payload;
+      dispatch({ type: 'ADD_QUESTIONS', payload: savedQuestions });
+      addToast(`${savedQuestions.length} questões salvas!`, 'success');
       return res;
     } catch (error) {
       console.error("Failed to save questions:", error);
-      addToast('Erro ao importar questões.', 'error');
+      addToast('Erro ao salvar questões.', 'error');
       throw error;
     }
   }, [addToast]);
@@ -1338,6 +1424,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const fetchUserComments = useCallback(async (userId: string) => {
     try {
       const comments = await commentService.getUserComments(userId);
+      if (activeDataOwnerRef.current !== userId) {
+        return;
+      }
+
       if (Array.isArray(comments)) {
         dispatch({ type: 'SET_USER_COMMENTS', payload: comments });
       }
@@ -1372,6 +1462,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           dispatch({ type: 'ADD_COMMENT', payload: { questionId, comment: result.comment, parentId } });
         }
 
+        if (result.requiresModeration) {
+          const authorName = currentUser?.name || comment.userName || 'Usuario';
+          const excerpt = String(comment.text || '').replace(/\s+/g, ' ').slice(0, 120);
+
+          void sendNotification(
+            'admin',
+            'Comentario aguardando moderacao',
+            `${authorName} enviou um comentario na questao #${questionId}${excerpt ? `: "${excerpt}"` : '.'}`,
+            'warning',
+            'report',
+            buildAdminPath('support', 'comments'),
+          ).catch((notificationError) => {
+            console.error('Failed to notify admin about moderated comment:', notificationError);
+          });
+        }
+
         addToast(
           result.message || (result.requiresModeration ? 'Comentário enviado para moderação.' : 'Comentário publicado com sucesso.'),
           'success',
@@ -1384,7 +1490,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       console.error("Failed to save comment", err);
       addToast(err.message || 'Erro de conexão ao salvar comentário.', 'error');
     });
-  }, [addToast, currentUser?.id, currentUser?.name, fetchUserComments]);
+  }, [addToast, currentUser?.id, currentUser?.name, fetchUserComments, sendNotification]);
 
   /**
    * Registra a curtida local e sincroniza a ação com o backend.
@@ -1647,6 +1753,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * @since 1.0.0
    */
   const fetchMoreQuestions = useCallback(async (page: number) => {
+    const userId = currentUser?.id || 'guest';
     const params = {
         user_id: currentUser?.id,
         page,
@@ -1655,6 +1762,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     try {
         const { rows } = await questionService.getQuestionPage(params);
+        if (activeDataOwnerRef.current !== userId) {
+          return;
+        }
+
         const questionsList = rows;
 
         if (Array.isArray(questionsList)) {

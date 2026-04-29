@@ -21,6 +21,13 @@ export interface DashboardSubjectMetric {
   accuracy: number;
 }
 
+export interface DashboardSubjectPeerMetric {
+  name: string;
+  total: number;
+  correct: number;
+  accuracy: number;
+}
+
 export interface DashboardTimelinePoint {
   date: string;
   questions: number;
@@ -51,6 +58,15 @@ export interface DashboardLevelProgress {
 }
 
 const XP_PER_LEVEL = 1000;
+
+const normalizeMetricCount = (value: unknown): number => {
+  const numericValue = Number(value || 0);
+  if (!Number.isFinite(numericValue)) {
+    return 0;
+  }
+
+  return Math.max(0, numericValue);
+};
 
 /**
  * Calcula o inicio do recorte temporal escolhido no dashboard.
@@ -155,6 +171,122 @@ export const buildSubjectPerformanceData = (
   });
 
   return Array.from(metrics.values()).sort((left, right) => right.total - left.total);
+};
+
+/**
+ * Consolida a media geral da plataforma por materia e desconta o usuario atual quando possivel.
+ * O resultado permite comparar o desempenho individual com os demais usuarios.
+ *
+ * @since 1.0.0
+ */
+export const buildSubjectPeerComparisonData = (
+  questions: Question[],
+  userSubjectMetrics: DashboardSubjectMetric[] = [],
+): Map<string, DashboardSubjectPeerMetric> => {
+  const userMetricsBySubject = new Map<string, DashboardSubjectMetric>();
+  userSubjectMetrics.forEach((metric) => userMetricsBySubject.set(metric.name, metric));
+
+  const aggregatedMetrics = new Map<string, DashboardSubjectPeerMetric>();
+
+  questions.forEach((question) => {
+    const totalAttempts = normalizeMetricCount(question.stats?.totalAttempts);
+    const correctCount = Math.min(totalAttempts, normalizeMetricCount(question.stats?.correctCount));
+
+    if (totalAttempts <= 0) {
+      return;
+    }
+
+    const subjectName = getQuestionPrimarySubject(question);
+    const metric = aggregatedMetrics.get(subjectName) || {
+      name: subjectName,
+      total: 0,
+      correct: 0,
+      accuracy: 0,
+    };
+
+    metric.total += totalAttempts;
+    metric.correct += correctCount;
+    aggregatedMetrics.set(subjectName, metric);
+  });
+
+  const peerMetrics = new Map<string, DashboardSubjectPeerMetric>();
+
+  aggregatedMetrics.forEach((metric, subjectName) => {
+    const userMetric = userMetricsBySubject.get(subjectName);
+    const peerTotal = Math.max(0, metric.total - normalizeMetricCount(userMetric?.total));
+    const peerCorrect = Math.max(0, Math.min(peerTotal, metric.correct - normalizeMetricCount(userMetric?.correct)));
+    const accuracy = peerTotal > 0 ? Math.round((peerCorrect / peerTotal) * 100) : 0;
+
+    peerMetrics.set(subjectName, {
+      name: subjectName,
+      total: peerTotal,
+      correct: peerCorrect,
+      accuracy,
+    });
+  });
+
+  return peerMetrics;
+};
+
+/**
+ * Gera uma leitura curta para cada materia combinando desempenho proprio e comparativo.
+ * A pagina detalhada usa esse texto como insight por materia para usuarios Elite.
+ *
+ * @since 1.0.0
+ */
+export const buildSubjectPerformanceInsight = (
+  subject: DashboardSubjectMetric,
+  peerMetric?: DashboardSubjectPeerMetric | null,
+): DashboardPerformanceInsight => {
+  const hasPeerData = Boolean(peerMetric && peerMetric.total > 0);
+  const peerAccuracy = peerMetric?.accuracy || 0;
+  const delta = hasPeerData ? subject.accuracy - peerAccuracy : 0;
+
+  if (subject.total < 5) {
+    return {
+      tone: 'indigo',
+      title: 'Base pequena',
+      description: `Voce ja tem um sinal inicial em ${subject.name}, mas resolva mais questoes antes de cravar uma tendencia.`,
+    };
+  }
+
+  if (hasPeerData && delta >= 12) {
+    return {
+      tone: 'emerald',
+      title: 'Acima da media',
+      description: `Seu acerto esta ${delta} p.p. acima dos outros usuarios. Mantenha revisoes leves para conservar essa vantagem.`,
+    };
+  }
+
+  if (subject.accuracy >= 80) {
+    return {
+      tone: 'emerald',
+      title: 'Ponto forte',
+      description: `A materia esta bem dominada. Use ${subject.name} para ganhar velocidade e atacar questoes mais dificeis.`,
+    };
+  }
+
+  if (hasPeerData && delta <= -12) {
+    return {
+      tone: 'rose',
+      title: 'Abaixo da media',
+      description: `Os outros usuarios estao em ${peerAccuracy}% e voce em ${subject.accuracy}%. Vale revisar a base antes de aumentar volume.`,
+    };
+  }
+
+  if (subject.accuracy >= 60) {
+    return {
+      tone: 'amber',
+      title: 'Faixa de consolidacao',
+      description: `Ha bom caminho em ${subject.name}, mas os erros ainda mostram pontos soltos. Reforce os assuntos com maior recorrencia.`,
+    };
+  }
+
+  return {
+    tone: 'rose',
+    title: 'Prioridade de revisao',
+    description: `O aproveitamento em ${subject.name} ainda esta baixo. Comece por comentarios, lei seca/resumos e poucas questoes bem corrigidas.`,
+  };
 };
 
 /**

@@ -79,6 +79,25 @@ describe('subscriptionsService', () => {
     expect(response.cron_url).toContain('cron.php');
   });
 
+  it('runs the automation routine through the official admin helper', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        summary: {
+          checked: 2,
+          synced_status: 1,
+          errors: 0,
+        },
+      },
+    });
+
+    const response = await subscriptionsService.runAutomationNow();
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/automation_helper.php?action=run_now', {});
+    expect(response.summary.checked).toBe(2);
+    expect(response.summary.synced_status).toBe(1);
+  });
+
   it('loads the official Stripe testing matrix through the subscriptions facade', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,

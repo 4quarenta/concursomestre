@@ -34,6 +34,8 @@ import {
   ADMIN_PAGE_PANEL_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SURFACE_CLASS,
+  ADMIN_SURFACE_HEADER_CLASS,
   ADMIN_TEXTAREA_CLASS,
 } from '../shared/adminPanelStyles';
 
@@ -386,30 +388,74 @@ const AdminSettings = ({
       )}
 
       {activeTab === 'general' && (
-        <div className="grid gap-6">
-          <div className="grid gap-5 md:gap-6 lg:grid-cols-2">
-            <div className={ADMIN_PAGE_PANEL_CLASS}>
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Terminal size={20} className="text-sky-700 dark:text-sky-300" /> Ambiente</h3>
-                <button type="button" onClick={() => setIsLogViewerOpen(true)} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>Visualizar logs</button>
+        <div className="space-y-5">
+          <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+            <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-3 md:flex-row md:items-center md:justify-between`}>
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
+                  <Terminal size={18} className="text-sky-700 dark:text-sky-300" />
+                  Ambiente
+                </h3>
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Configuracoes principais da plataforma.</p>
               </div>
-              <div className="space-y-4">
-                <div className="space-y-1.5"><label className={labelClassName}>Nome do site</label><input value={localSettings.siteName || ''} onChange={(e) => setField('siteName', e.target.value)} className={inputClassName} /></div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-1.5"><label className={labelClassName}>WhatsApp</label><input value={localSettings.supportPhone || ''} onChange={(e) => setField('supportPhone', e.target.value)} className={inputClassName} /></div>
-                  <div className="space-y-1.5"><label className={labelClassName}>Taxa (%)</label><input type="number" value={String(localSettings.platformFeePercent ?? 20)} onChange={(e) => setField('platformFeePercent', Number(e.target.value))} className={inputClassName} /></div>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-1.5"><label className={labelClassName}>PIX global</label><input value={localSettings.pixKey || ''} onChange={(e) => setField('pixKey', e.target.value)} className={inputClassName} /></div>
-                  <div className="space-y-1.5"><label className={labelClassName}>Modo</label><select value={localSettings.appMode || 'development'} onChange={(e) => setField('appMode', e.target.value as 'development' | 'production')} className={inputClassName}><option value="development">development</option><option value="production">production</option></select></div>
-                </div>
+              <button type="button" onClick={() => setIsLogViewerOpen(true)} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
+                <Terminal size={14} />
+                Visualizar logs
+              </button>
+            </div>
+            <div className="divide-y divide-slate-200 dark:divide-slate-800">
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>Nome do site</label>
+                <input value={localSettings.siteName || ''} onChange={(e) => setField('siteName', e.target.value)} className={inputClassName} />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>WhatsApp</label>
+                <input value={localSettings.supportPhone || ''} onChange={(e) => setField('supportPhone', e.target.value)} className={inputClassName} />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>Taxa da plataforma (%)</label>
+                <input type="number" value={String(localSettings.platformFeePercent ?? 20)} onChange={(e) => setField('platformFeePercent', Number(e.target.value))} className={inputClassName} />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>PIX global</label>
+                <input value={localSettings.pixKey || ''} onChange={(e) => setField('pixKey', e.target.value)} className={inputClassName} />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>Modo</label>
+                <select value={localSettings.appMode || 'development'} onChange={(e) => setField('appMode', e.target.value as 'development' | 'production')} className={inputClassName}>
+                  <option value="development">development</option>
+                  <option value="production">production</option>
+                </select>
               </div>
             </div>
-            <div className="rounded-sm border border-fuchsia-200 bg-fuchsia-50 p-4 sm:p-5 md:p-6 dark:border-fuchsia-900/30 dark:bg-fuchsia-900/10">
-              <div className="mb-4 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-black text-fuchsia-700 dark:text-fuchsia-300"><Sparkles size={20} /> Motivacao diaria</h3><label className="inline-flex cursor-pointer items-center gap-2 rounded-sm border border-fuchsia-300 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-700 dark:border-fuchsia-900/30 dark:bg-slate-900 dark:text-fuchsia-300"><Upload size={14} /> Carregar .md<input type="file" accept=".md,text/markdown,text/plain" className="hidden" onChange={handleDailyMotivationFileUpload} /></label></div>
-              <div className="space-y-4">
-                <textarea value={localSettings.dailyMotivationMarkdown || ''} onChange={(e) => setField('dailyMotivationMarkdown', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[220px] resize-none font-mono text-xs`} />
-                <div className={`p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Frases validas</p><p className="mt-2 text-3xl font-black text-slate-900 dark:text-slate-100">{parseDailyMotivationMarkdown(localSettings.dailyMotivationMarkdown || '').length}</p></div>
+          </div>
+
+          <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+            <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-3 md:flex-row md:items-center md:justify-between`}>
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
+                  <Sparkles size={18} className="text-sky-700 dark:text-sky-300" />
+                  Motivacao diaria
+                </h3>
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Arquivo Markdown usado nos cards motivacionais.</p>
+              </div>
+              <label className={`${ADMIN_SECONDARY_BUTTON_CLASS} inline-flex cursor-pointer px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
+                <Upload size={14} />
+                Carregar .md
+                <input type="file" accept=".md,text/markdown,text/plain" className="hidden" onChange={handleDailyMotivationFileUpload} />
+              </label>
+            </div>
+            <div className="divide-y divide-slate-200 dark:divide-slate-800">
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)]">
+                <label className={labelClassName}>Conteudo</label>
+                <textarea value={localSettings.dailyMotivationMarkdown || ''} onChange={(e) => setField('dailyMotivationMarkdown', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[220px] resize-y font-mono text-xs`} />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <span className={labelClassName}>Frases validas</span>
+                <div className={`inline-flex w-fit items-center gap-3 px-4 py-3 ${ADMIN_MUTED_SURFACE_CLASS}`}>
+                  <span className="text-2xl font-black text-slate-900 dark:text-slate-100">{parseDailyMotivationMarkdown(localSettings.dailyMotivationMarkdown || '').length}</span>
+                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">itens</span>
+                </div>
               </div>
             </div>
           </div>
@@ -501,7 +547,7 @@ const AdminSettings = ({
       {activeTab === 'integrations' && <StripePaymentMethodsSettings value={localSettings.stripePaymentMethods} onChange={(stripePaymentMethods) => setField('stripePaymentMethods', stripePaymentMethods)} />}
       {activeTab === 'seo' && <AdminSeoSettingsSection seoSettings={localSeoSettings} onChange={setLocalSeoSettings} />}
       {activeTab === 'performance' && <div className={ADMIN_PAGE_PANEL_CLASS}><AdminCacheManagement /></div>}
-      {activeTab === 'logs' && <div className="grid gap-4 lg:grid-cols-3">{['Webhook', 'Cron', 'Auditoria'].map((item) => <div key={item} className={ADMIN_PAGE_PANEL_CLASS}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{item}</p><p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">Abra o visualizador para validar o estado real apos cada persistencia critica.</p></div>)}</div>}
+      {activeTab === 'logs' && <LogViewer isOpen embedded />}
     </div>
   );
 };

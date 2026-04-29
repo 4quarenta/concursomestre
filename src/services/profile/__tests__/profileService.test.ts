@@ -28,6 +28,9 @@ vi.mock('@services/api', () => ({
       removePhoto: 'users/remove_photo.php',
       changePassword: 'users/change_password.php',
     },
+    feedback: {
+      create: 'feedback/create.php',
+    },
   },
   readApiData: (response: any, fallback: any) => {
     if (response?.data !== undefined) return response.data;
@@ -108,5 +111,32 @@ describe('profileService', () => {
       new: 'new-pass',
     });
     expect(result.message).toBe('Senha alterada!');
+  });
+
+  it('submits profile testimonial through feedback endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      message: 'Depoimento recebido!',
+      data: { id: 44 },
+    });
+
+    const result = await profileService.submitTestimonial({
+      rating: 5,
+      testimonial: 'A plataforma me ajudou a estudar com consistência.',
+      userName: 'Ana Silva',
+      userEmail: 'ana@example.com',
+      planName: 'Pro',
+    });
+
+    expect(mockPost).toHaveBeenCalledWith('feedback/create.php', {
+      type: 'suggestion',
+      reason: 'Avaliar plataforma - 5/5',
+      details: 'A plataforma me ajudou a estudar com consistência.',
+      rating: 5,
+      user_name: 'Ana Silva',
+      user_email: 'ana@example.com',
+      plan_name: 'Pro',
+    });
+    expect(result).toEqual({ message: 'Depoimento recebido!', id: 44 });
   });
 });

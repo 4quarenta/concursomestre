@@ -11,7 +11,6 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ChevronRight, Edit3, Eye } from 'lucide-react';
 import {
   getAdminUserRoleBadgeClass,
   getAdminUserRoleLabel,
@@ -21,6 +20,7 @@ import {
 import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import { buildAdminUserEditPath } from '../../config/adminPageNavigationConfig';
+import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 
 const getInitials = (name: string) => (
   String(name || '')
@@ -37,6 +37,7 @@ interface AdminUsersSectionProps {
   onFilterChange: (value: string) => void;
   renderSortableHeader: (label: string, sortKey: string) => React.ReactNode;
   onOpenProfile: (userId: string) => void;
+  onDeleteUser: (user: any) => Promise<any> | any;
 }
 
 /**
@@ -50,7 +51,42 @@ const AdminUsersSection = ({
   filter,
   onFilterChange,
   renderSortableHeader,
+  onOpenProfile,
+  onDeleteUser,
 }: AdminUsersSectionProps) => {
+  const [pendingDeleteUser, setPendingDeleteUser] = React.useState<any | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = React.useState(false);
+
+  const requestDeleteUser = (user: any) => {
+    setPendingDeleteUser(user);
+  };
+
+  const cancelDeleteUser = () => {
+    if (!isDeletingUser) {
+      setPendingDeleteUser(null);
+    }
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!pendingDeleteUser || isDeletingUser) {
+      return;
+    }
+
+    setIsDeletingUser(true);
+    try {
+      await onDeleteUser(pendingDeleteUser);
+      setPendingDeleteUser(null);
+    } catch {
+      // O controller superior exibe o toast; manter aberto permite nova tentativa.
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
+  const pendingDeleteUserLabel = String(
+    pendingDeleteUser?.name || pendingDeleteUser?.email || pendingDeleteUser?.id || 'usuario selecionado',
+  );
+
   return (
     <div className="space-y-4">
       <AdminCollectionToolbar
@@ -77,7 +113,6 @@ const AdminUsersSection = ({
             {renderSortableHeader('Papel e status', 'role')}
             {renderSortableHeader('Plano e meta', 'billing.plan')}
             {renderSortableHeader('Engajamento', 'level')}
-            <th className="p-4 text-center text-[10px] font-black uppercase tracking-widest">Acoes</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -95,6 +130,30 @@ const AdminUsersSection = ({
                       <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{user.name}</span>
                       <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{user.email}</span>
                       <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">ID: {user.id}</span>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => onOpenProfile(String(user.id))}
+                          className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                        >
+                          Ver
+                        </button>
+                        <span className="text-slate-300 dark:text-slate-700">|</span>
+                        <Link
+                          href={buildAdminUserEditPath(user.id)}
+                          className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                        >
+                          Editar
+                        </Link>
+                        <span className="text-slate-300 dark:text-slate-700">|</span>
+                        <button
+                          type="button"
+                          onClick={() => requestDeleteUser(user)}
+                          className="font-medium text-red-600 hover:text-red-800 hover:underline dark:text-red-400 dark:hover:text-red-300"
+                        >
+                          Lixeira
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </td>
@@ -132,37 +191,12 @@ const AdminUsersSection = ({
                     </span>
                   </div>
                 </td>
-                <td className="p-4 text-center">
-                  <div className="flex items-center justify-center gap-2">
-                    <Link
-                      href={buildAdminUserEditPath(user.id)}
-                      className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                      title="Abrir perfil completo"
-                    >
-                      <Eye size={16} />
-                    </Link>
-                    <Link
-                      href={buildAdminUserEditPath(user.id)}
-                      className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                      title="Editar usuario"
-                    >
-                      <Edit3 size={16} />
-                    </Link>
-                    <Link
-                      href={buildAdminUserEditPath(user.id)}
-                      className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                      title="Abrir operacao completa"
-                    >
-                      <ChevronRight size={16} />
-                    </Link>
-                  </div>
-                </td>
               </tr>
             );
           })}
           {users.length === 0 && (
             <tr>
-              <td colSpan={5} className="p-8 text-center text-slate-400 italic dark:text-slate-600">
+              <td colSpan={4} className="p-8 text-center text-slate-400 italic dark:text-slate-600">
                 Nenhum usuario encontrado.
               </td>
             </tr>
@@ -171,6 +205,18 @@ const AdminUsersSection = ({
       </table>
         </div>
       </div>
+
+      <AdminConfirmDialog
+        isOpen={Boolean(pendingDeleteUser)}
+        title="Remover usuario"
+        description={`O usuario "${pendingDeleteUserLabel}" sera removido da listagem administrativa e tera o acesso desativado. O historico permanece preservado para auditoria.`}
+        confirmLabel="Remover usuario"
+        cancelLabel="Cancelar"
+        tone="danger"
+        loading={isDeletingUser}
+        onCancel={cancelDeleteUser}
+        onConfirm={() => void confirmDeleteUser()}
+      />
     </div>
   );
 };

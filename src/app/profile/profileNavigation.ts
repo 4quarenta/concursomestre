@@ -12,8 +12,11 @@
 export type ProfileTab =
   | 'evolution'
   | 'notebook'
+  | 'saved-questions'
+  | 'favorite-laws'
   | 'materials'
   | 'personal'
+  | 'testimonial'
   | 'billing'
   | 'billing-history'
   | 'security'
@@ -22,8 +25,11 @@ export type ProfileTab =
 const VALID_PROFILE_TABS: ProfileTab[] = [
   'evolution',
   'notebook',
+  'saved-questions',
+  'favorite-laws',
   'materials',
   'personal',
+  'testimonial',
   'billing',
   'billing-history',
   'security',

@@ -24,7 +24,8 @@ import {
    Package, ExternalLink, BookOpen, Download, Trash2,
    AlertTriangle, XCircle, ArrowRight, CheckCircle2, Gift,
    Share2, Copy, Camera, Upload, AlertCircle, RotateCcw,
-   Loader2, ShieldAlert, MousePointer2, Wallet
+   Loader2, ShieldAlert, MousePointer2, Wallet, MessageSquare,
+   BookmarkCheck
 } from 'lucide-react';
 import {
    AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -33,7 +34,7 @@ import {
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
-import { Subject } from '../../types';
+import { Subject, type LawSummary, type Question } from '../../types';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import {
     readApiErrorMessage,
@@ -50,9 +51,12 @@ import { readerService } from '@services/materials';
 import { cardsService, formatMaskedCardLabelAscii } from '@services/billing';
 import { marketplaceService } from '@services/marketplace';
 import { profileService } from '@services/profile';
+import { questionService } from '@services/questions';
 import { transactionsService } from '@services/transactions';
 import { planService } from '@services/plans';
 import { buildQuestionPath } from '@services/seo';
+import { legalCommentaryApiService } from '@services/legal-commentary';
+import { buildAdminPath } from '../admin/config/adminPageNavigationConfig';
 import {
     PLATFORM_PAGE_DESCRIPTION_CLASS,
     PLATFORM_PAGE_TITLE_CLASS,
@@ -87,6 +91,38 @@ const truncateText = (value: string, maxLength: number) => (
     value.length > maxLength ? `${value.slice(0, maxLength).trimEnd()}...` : value
 );
 
+const getQuestionTitle = (question: Question | null, fallbackId: string) => (
+    question
+        ? truncateText(stripHtml(question.enunciado_clean || question.enunciado || `Questão #${fallbackId}`), 160)
+        : `Questão #${fallbackId}`
+);
+
+const getQuestionSubjectLabel = (question: Question | null) => {
+    const assuntos = Array.isArray(question?.assuntos)
+        ? question.assuntos.map((assunto) => assunto.nome || assunto.name).filter(Boolean)
+        : [];
+
+    return assuntos.length > 0 ? assuntos.slice(0, 2).join(' • ') : 'Assunto não informado';
+};
+
+const getQuestionBankLabel = (question: Question | null) => {
+    const bancas = Array.isArray(question?.bancas)
+        ? question.bancas.map((banca) => banca.sigla || banca.nome || banca.name).filter(Boolean)
+        : [];
+
+    return bancas.length > 0 ? bancas.slice(0, 2).join(' / ') : 'Banca não informada';
+};
+
+const getQuestionYearLabel = (question: Question | null) => {
+    const years = Array.isArray(question?.anos) ? question.anos.filter(Boolean) : [];
+    return years.length > 0 ? years.join(', ') : 'Ano não informado';
+};
+
+const getQuestionDifficultyLabel = (question: Question | null) => {
+    if (!question) return 'Dificuldade não informada';
+    return question.difficulty || ['', 'Muito Fácil', 'Fácil', 'Médio', 'Difícil', 'Muito Difícil'][Number(question.dificuldade)] || `Dificuldade ${question.dificuldade || '-'}`;
+};
+
 type NotebookEntry = {
     id: string;
     source: 'question' | 'law' | 'material';
@@ -110,8 +146,8 @@ type MaterialNotebookNote = {
 };
 
 const Profile: React.FC = () => {
-    const { currentUser, logout, login, refreshUser, updateUser } = useAuth();
-    const { questions, userNotes, userAnswers, systemSettings, saveNote } = useData();
+    const { currentUser, logout, refreshUser, updateUser, toggleSavedQuestion } = useAuth();
+    const { questions, userNotes, userAnswers, systemSettings, saveNote, ensureUserProgressLoaded, sendNotification } = useData();
     const { addToast } = useToast();
     const pathname = usePathname() || '/profile';
     const searchParams = useSearchParams();
@@ -160,6 +196,10 @@ const Profile: React.FC = () => {
     const [isSavingCard, setIsSavingCard] = useState(false);
     const [isRemovingProfilePhoto, setIsRemovingProfilePhoto] = useState(false);
     const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
+    const [testimonialRating, setTestimonialRating] = useState(5);
+    const [testimonialText, setTestimonialText] = useState('');
+    const [isSubmittingTestimonial, setIsSubmittingTestimonial] = useState(false);
+    const [showTestimonialModal, setShowTestimonialModal] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
     const [cancelDetails, setCancelDetails] = useState('');
@@ -174,6 +214,10 @@ const Profile: React.FC = () => {
     const renewalRequestInFlightRef = React.useRef(false);
     const [lawNotes, setLawNotes] = useState<LegalCommentaryStoredNote[]>([]);
     const [materialNotes, setMaterialNotes] = useState<MaterialNotebookNote[]>([]);
+    const [favoriteLaws, setFavoriteLaws] = useState<LawSummary[]>([]);
+    const [isLoadingFavoriteLaws, setIsLoadingFavoriteLaws] = useState(false);
+    const [savedQuestionDetails, setSavedQuestionDetails] = useState<Question[]>([]);
+    const [isLoadingSavedQuestions, setIsLoadingSavedQuestions] = useState(false);
 
     const currentUserKey = React.useMemo(() => {
         const legacyUserId = (currentUser as any)?.userId;
@@ -186,9 +230,99 @@ const Profile: React.FC = () => {
 
     const profilePhotoUrl = useMemo(() => getAssetUrl(currentUser?.photoUrl || ''), [currentUser?.photoUrl]);
 
+    const savedQuestionIds = React.useMemo(() => (
+        Array.from(new Set((currentUser?.savedQuestionIds || [])
+            .map((questionId) => String(questionId).trim())
+            .filter(Boolean)))
+    ), [currentUser?.savedQuestionIds]);
+
+    const savedQuestionsById = React.useMemo(() => {
+        const questionMap = new Map<string, Question>();
+
+        [...questions, ...savedQuestionDetails].forEach((question) => {
+            if (question?.id !== undefined && question?.id !== null) {
+                questionMap.set(String(question.id), question);
+            }
+        });
+
+        return questionMap;
+    }, [questions, savedQuestionDetails]);
+
+    const savedQuestionRows = React.useMemo(() => (
+        savedQuestionIds.map((questionId) => ({
+            id: questionId,
+            question: savedQuestionsById.get(questionId) || null,
+        }))
+    ), [savedQuestionIds, savedQuestionsById]);
+
+    const missingSavedQuestionIds = React.useMemo(() => (
+        savedQuestionIds.filter((questionId) => !savedQuestionsById.has(questionId))
+    ), [savedQuestionIds, savedQuestionsById]);
+
+    const savedAnsweredCount = React.useMemo(() => {
+        const answeredQuestionIds = new Set(userAnswers.map((answer) => String(answer.questionId)));
+        return savedQuestionIds.filter((questionId) => answeredQuestionIds.has(questionId)).length;
+    }, [savedQuestionIds, userAnswers]);
+
     React.useEffect(() => {
         setPhotoLoadFailed(false);
     }, [profilePhotoUrl]);
+
+    React.useEffect(() => {
+        if (!currentUser?.id) return;
+        void ensureUserProgressLoaded();
+    }, [currentUser?.id, ensureUserProgressLoaded]);
+
+    React.useEffect(() => {
+        if (activeTab !== 'saved-questions' || missingSavedQuestionIds.length === 0) {
+            return;
+        }
+
+        let isMounted = true;
+        setIsLoadingSavedQuestions(true);
+
+        Promise.all(
+            missingSavedQuestionIds.map(async (questionId) => {
+                try {
+                    return await questionService.getQuestionById(questionId);
+                } catch (error) {
+                    console.warn(`Failed to load saved question ${questionId}`, error);
+                    return null;
+                }
+            }),
+        ).then((loadedQuestions) => {
+            if (!isMounted) return;
+
+            const validQuestions = loadedQuestions.filter(Boolean) as Question[];
+            if (validQuestions.length === 0) {
+                return;
+            }
+
+            setSavedQuestionDetails((currentQuestions) => {
+                const nextQuestions = new Map<string, Question>();
+                currentQuestions.forEach((question) => {
+                    if (question?.id !== undefined && question?.id !== null) {
+                        nextQuestions.set(String(question.id), question);
+                    }
+                });
+                validQuestions.forEach((question) => {
+                    if (question?.id !== undefined && question?.id !== null) {
+                        nextQuestions.set(String(question.id), question);
+                    }
+                });
+
+                return Array.from(nextQuestions.values());
+            });
+        }).finally(() => {
+            if (isMounted) {
+                setIsLoadingSavedQuestions(false);
+            }
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [activeTab, missingSavedQuestionIds]);
 
     React.useEffect(() => {
         if (!currentUserKey) {
@@ -257,6 +391,59 @@ const Profile: React.FC = () => {
         setLawNotes((currentNotes) => currentNotes.filter((note) => note.articleId !== articleId));
         addToast('Anotação removida.', 'success');
     }, [addToast, currentUserKey]);
+
+    const fetchFavoriteLaws = React.useCallback(async () => {
+        if (!currentUserKey) {
+            setFavoriteLaws([]);
+            return;
+        }
+
+        setIsLoadingFavoriteLaws(true);
+        try {
+            const snapshot = await legalCommentaryApiService.getHomeSnapshot({ force: true });
+            const nextFavoriteLawsById = new Map<string, LawSummary>();
+
+            snapshot.favoriteLaws.forEach((law) => {
+                nextFavoriteLawsById.set(String(law.id), law);
+            });
+
+            snapshot.lawsByArea
+                .flatMap((group) => group.laws)
+                .filter((law) => law.isFavorite)
+                .forEach((law) => {
+                    nextFavoriteLawsById.set(String(law.id), law);
+                });
+
+            const nextFavoriteLaws = Array.from(nextFavoriteLawsById.values());
+            setFavoriteLaws(nextFavoriteLaws);
+        } catch {
+            addToast('Não foi possível carregar suas leis favoritas.', 'error');
+        } finally {
+            setIsLoadingFavoriteLaws(false);
+        }
+    }, [addToast, currentUserKey]);
+
+    const handleRemoveFavoriteLaw = React.useCallback(async (law: LawSummary) => {
+        if (!currentUserKey) return;
+
+        try {
+            const result = await legalCommentaryApiService.toggleFavorite('law', law.id);
+            if (!result.isFavorite) {
+                setFavoriteLaws((currentLaws) => currentLaws.filter((item) => item.id !== law.id));
+                addToast('Lei removida dos favoritos.', 'success');
+                return;
+            }
+
+            await fetchFavoriteLaws();
+        } catch {
+            addToast('Não foi possível atualizar o favorito.', 'error');
+        }
+    }, [addToast, currentUserKey, fetchFavoriteLaws]);
+
+    const handleRemoveSavedQuestion = React.useCallback((questionId: string) => {
+        toggleSavedQuestion(questionId);
+        addToast('Questão removida dos salvos.', 'success');
+    }, [addToast, toggleSavedQuestion]);
 
     const formatSavedCardLabel = React.useCallback((card: any) => {
         if (!card) return '';
@@ -417,6 +604,11 @@ const Profile: React.FC = () => {
         }, 120);
     };
 
+    const openTestimonialModal = React.useCallback(() => {
+        changeActiveTab('testimonial', { replace: true });
+        setShowTestimonialModal(true);
+    }, [changeActiveTab]);
+
     const handleRemoveProfilePhoto = async () => {
         if (isRemovingProfilePhoto) return;
         if (!window.confirm('Tem certeza que deseja remover sua foto de perfil?')) return;
@@ -431,6 +623,48 @@ const Profile: React.FC = () => {
             addToast(readApiErrorMessage(err, 'Erro ao remover foto.'), 'error');
         } finally {
             setIsRemovingProfilePhoto(false);
+        }
+    };
+
+    const handleSubmitTestimonial = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        if (!currentUser?.id || isSubmittingTestimonial) return;
+
+        const testimonial = testimonialText.trim();
+        if (testimonial.length < 20) {
+            addToast('Escreva um depoimento com pelo menos 20 caracteres.', 'error');
+            return;
+        }
+
+        setIsSubmittingTestimonial(true);
+        try {
+            const result = await profileService.submitTestimonial({
+                rating: testimonialRating,
+                testimonial,
+                userName: currentUser.name,
+                userEmail: currentUser.email,
+                planName: effectivePlanDisplayName,
+            });
+
+            void sendNotification(
+                'admin',
+                'Nova avaliacao da plataforma',
+                `${currentUser.name || currentUser.email || 'Aluno'} enviou uma avaliacao ${testimonialRating}/5 para moderacao.`,
+                'info',
+                'report',
+                buildAdminPath('support', 'feedback'),
+            ).catch((notificationError) => {
+                console.error('Failed to notify admin about platform testimonial:', notificationError);
+            });
+
+            addToast(result.message, 'success');
+            setTestimonialRating(5);
+            setTestimonialText('');
+            setShowTestimonialModal(false);
+        } catch (err: any) {
+            addToast(readApiErrorMessage(err, 'Não foi possível enviar seu depoimento agora.'), 'error');
+        } finally {
+            setIsSubmittingTestimonial(false);
         }
     };
 
@@ -1612,6 +1846,129 @@ const Profile: React.FC = () => {
         );
     };
 
+    const renderTestimonialModal = () => {
+        if (!showTestimonialModal) return null;
+
+        return createPortal(
+            <AnimatePresence>
+                <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => {
+                            if (!isSubmittingTestimonial) setShowTestimonialModal(false);
+                        }}
+                        className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm"
+                    />
+
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.96, y: 16 }}
+                        className="relative z-10 w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+                    >
+                        <header className="flex items-start justify-between gap-4 border-b border-slate-100 p-6 dark:border-slate-800">
+                            <div className="space-y-1">
+                                <span className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
+                                    <MessageSquare size={12} />
+                                    Avaliar plataforma
+                                </span>
+                                <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">
+                                    Avaliar plataforma
+                                </h3>
+                                <p className="max-w-xl text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+                                    Conte como tem sido sua experiência. Seu envio passa por avaliação antes de aparecer publicamente.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowTestimonialModal(false)}
+                                disabled={isSubmittingTestimonial}
+                                className="rounded-2xl border border-slate-200 bg-white/90 p-2 text-slate-400 transition-all hover:border-slate-300 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/80 dark:hover:text-slate-200"
+                                aria-label="Fechar avaliação"
+                            >
+                                <X size={18} />
+                            </button>
+                        </header>
+
+                        <form onSubmit={handleSubmitTestimonial} className="space-y-5 p-6">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase text-slate-500 transition-colors dark:text-slate-400">
+                                    Avaliação
+                                </label>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {[1, 2, 3, 4, 5].map((rating) => {
+                                        const isActive = rating <= testimonialRating;
+
+                                        return (
+                                            <button
+                                                key={rating}
+                                                type="button"
+                                                onClick={() => setTestimonialRating(rating)}
+                                                disabled={isSubmittingTestimonial}
+                                                aria-label={`Avaliar com ${rating} estrela${rating > 1 ? 's' : ''}`}
+                                                className={`flex h-11 w-11 items-center justify-center rounded-xl border transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                                                    isActive
+                                                        ? 'border-amber-200 bg-amber-50 text-amber-500 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
+                                                        : 'border-slate-200 bg-slate-50 text-slate-300 hover:border-amber-200 hover:text-amber-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600 dark:hover:border-amber-500/30 dark:hover:text-amber-300'
+                                                }`}
+                                            >
+                                                <Star size={18} className={isActive ? 'fill-current' : ''} />
+                                            </button>
+                                        );
+                                    })}
+                                    <span className="ml-1 text-xs font-black text-slate-500 dark:text-slate-400">
+                                        {testimonialRating}/5
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase text-slate-500 transition-colors dark:text-slate-400">
+                                    Comentário
+                                </label>
+                                <textarea
+                                    value={testimonialText}
+                                    onChange={(event) => setTestimonialText(event.target.value)}
+                                    disabled={isSubmittingTestimonial}
+                                    rows={6}
+                                    maxLength={700}
+                                    placeholder="Ex: A plataforma me ajudou a manter constância nos estudos..."
+                                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium leading-6 text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-indigo-500"
+                                />
+                                <div className="flex items-center justify-between gap-3 text-[10px] font-semibold text-slate-400 dark:text-slate-500">
+                                    <span>{testimonialText.trim().length < 20 ? 'Mínimo de 20 caracteres.' : 'Pronto para enviar.'}</span>
+                                    <span>{testimonialText.length}/700</span>
+                                </div>
+                            </div>
+
+                            <footer className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTestimonialModal(false)}
+                                    disabled={isSubmittingTestimonial}
+                                    className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 transition-all hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmittingTestimonial || testimonialText.trim().length < 20}
+                                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-indigo-500/10 transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+                                >
+                                    {isSubmittingTestimonial ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                    {isSubmittingTestimonial ? 'Enviando...' : 'Enviar avaliação'}
+                                </button>
+                            </footer>
+                        </form>
+                    </motion.div>
+                </div>
+            </AnimatePresence>,
+            document.body
+        );
+    };
+
     // Atualizar dados quando a aba mudar
     React.useEffect(() => {
         if (!currentUser?.id) {
@@ -1619,6 +1976,7 @@ const Profile: React.FC = () => {
             setUserTransactions([]);
             setUserMaterials([]);
             setMaterialNotes([]);
+            setFavoriteLaws([]);
             return;
         }
 
@@ -1634,6 +1992,9 @@ const Profile: React.FC = () => {
         if (activeTab === 'notebook' && marketplaceEnabled) {
             void fetchUserMaterials();
         }
+        if (activeTab === 'favorite-laws') {
+            void fetchFavoriteLaws();
+        }
         if (activeTab === 'referral' && canAccessReferralTab) {
             void fetchReferralStats();
         }
@@ -1642,12 +2003,19 @@ const Profile: React.FC = () => {
         canAccessReferralTab,
         currentUser?.id,
         fetchReferralStats,
+        fetchFavoriteLaws,
         fetchUserCards,
         fetchUserMaterials,
         fetchUserTransactions,
         isStripeBilling,
         marketplaceEnabled,
     ]);
+
+    React.useEffect(() => {
+        if (activeTab === 'testimonial') {
+            setShowTestimonialModal(true);
+        }
+    }, [activeTab]);
 
     React.useEffect(() => {
         if (activeTab !== 'notebook') return;
@@ -1778,9 +2146,13 @@ const Profile: React.FC = () => {
       );
    }
 
-    const SidebarItem = ({ id, label, icon: Icon }: any) => (
+    const renderSidebarItem = ({ id, label, icon: Icon, onSelect }: any) => (
         <button
             onClick={() => {
+                if (onSelect) {
+                    onSelect();
+                    return;
+                }
                 changeActiveTab(id, { replace: true });
             }}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === id ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'}`}
@@ -1892,17 +2264,20 @@ const Profile: React.FC = () => {
                     {/* Menu */}
                     <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1 transition-colors">
                         <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Menu</div>
-                        <SidebarItem id="notebook" label="Minhas Anotações" icon={StickyNote} />
-                        {marketplaceEnabled && <SidebarItem id="materials" label="Meus Materiais" icon={Package} />}
+                        {renderSidebarItem({ id: 'notebook', label: 'Minhas Anotações', icon: StickyNote })}
+                        {renderSidebarItem({ id: 'saved-questions', label: 'Questões salvas', icon: BookmarkCheck })}
+                        {renderSidebarItem({ id: 'favorite-laws', label: 'Leis Favoritas', icon: BookOpen })}
+                        {marketplaceEnabled && renderSidebarItem({ id: 'materials', label: 'Meus Materiais', icon: Package })}
                         
                         <div className="h-px bg-slate-50 dark:bg-slate-800 my-2 transition-colors" />
                         
                         <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Conta</div>
-                        <SidebarItem id="personal" label="Dados Pessoais" icon={User} />
-                        <SidebarItem id="billing" label="Assinatura" icon={CreditCard} />
-                        <SidebarItem id="billing-history" label="Transações" icon={BarChart3} />
-                        {canAccessReferralTab && <SidebarItem id="referral" label="Indique e Ganhe" icon={Gift} />}
-                        <SidebarItem id="security" label="Privacidade" icon={ShieldCheck} />
+                        {renderSidebarItem({ id: 'personal', label: 'Dados Pessoais', icon: User })}
+                        {renderSidebarItem({ id: 'testimonial', label: 'Avaliar plataforma', icon: Star, onSelect: openTestimonialModal })}
+                        {renderSidebarItem({ id: 'billing', label: 'Assinatura', icon: CreditCard })}
+                        {renderSidebarItem({ id: 'billing-history', label: 'Transações', icon: BarChart3 })}
+                        {canAccessReferralTab && renderSidebarItem({ id: 'referral', label: 'Indique e Ganhe', icon: Gift })}
+                        {renderSidebarItem({ id: 'security', label: 'Privacidade', icon: ShieldCheck })}
                     </div>
 
                     <button onClick={logout} className="w-full flex items-center justify-center gap-2 py-2.5 sm:py-3 text-red-500 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 font-bold text-xs rounded-xl transition-all border border-red-100 dark:border-red-900/30">
@@ -2182,6 +2557,233 @@ const Profile: React.FC = () => {
                            <StickyNote size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
                            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhuma anotação encontrada.</p>
                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Adicione notas em questões e artigos da Lei Comentada durante seus estudos.</p>
+                        </div>
+                     )}
+                  </div>
+               )}
+
+               {activeTab === 'saved-questions' && (
+                  <div className="space-y-6">
+                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                           <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Questões salvas</h2>
+                           <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
+                              Seu banco pessoal para voltar, revisar e resolver depois.
+                           </p>
+                        </div>
+                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">
+                           {savedQuestionIds.length} salvas
+                        </span>
+                     </div>
+
+                     <div className="grid gap-3 md:grid-cols-3">
+                        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Total salvo</p>
+                           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{savedQuestionIds.length}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Carregadas</p>
+                           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">
+                              {savedQuestionRows.filter((row) => row.question).length}
+                           </p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Respondidas</p>
+                           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{savedAnsweredCount}</p>
+                        </div>
+                     </div>
+
+                     {savedQuestionIds.length > 0 ? (
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
+                              <span>Questão</span>
+                              <span>Ação</span>
+                           </div>
+
+                           <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {savedQuestionRows.map(({ id, question }) => {
+                                 const title = getQuestionTitle(question, id);
+                                 const publicHref = question ? buildQuestionPath(question) : `/practice?questionId=${id}`;
+                                 const practiceHref = `/practice?questionId=${id}`;
+                                 const answer = userAnswers.find((item) => String(item.questionId) === id);
+
+                                 return (
+                                    <article key={id} className="grid grid-cols-1 gap-4 px-4 py-4 transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/30 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                                       <div className="min-w-0">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                             <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:ring-indigo-800/60">
+                                                <BookmarkCheck size={12} />
+                                                Salva
+                                             </span>
+                                             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                                Q{id}
+                                             </span>
+                                             {answer && (
+                                                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${answer.isCorrect ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-900/25 dark:text-emerald-300 dark:ring-emerald-800/50' : 'bg-rose-50 text-rose-700 ring-1 ring-rose-100 dark:bg-rose-900/25 dark:text-rose-300 dark:ring-rose-800/50'}`}>
+                                                   {answer.isCorrect ? 'Certa' : 'Errada'}
+                                                </span>
+                                             )}
+                                             {!question && isLoadingSavedQuestions && (
+                                                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                                                   <Loader2 size={11} className="animate-spin" />
+                                                   Carregando
+                                                </span>
+                                             )}
+                                          </div>
+
+                                          <button
+                                             type="button"
+                                             onClick={() => router.push(publicHref)}
+                                             className="mt-2 block max-w-full text-left text-sm font-black text-slate-900 transition-colors hover:text-indigo-600 dark:text-slate-100 dark:hover:text-indigo-300"
+                                          >
+                                             {title}
+                                          </button>
+
+                                          <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                                             {question ? getQuestionSubjectLabel(question) : 'Detalhes da questão ainda não carregados.'}
+                                          </p>
+
+                                          <div className="mt-3 flex flex-wrap gap-2">
+                                             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                                {getQuestionBankLabel(question)}
+                                             </span>
+                                             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                                {getQuestionYearLabel(question)}
+                                             </span>
+                                             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                                {getQuestionDifficultyLabel(question)}
+                                             </span>
+                                          </div>
+                                       </div>
+
+                                       <div className="flex items-center justify-end gap-2">
+                                          <button
+                                             type="button"
+                                             onClick={() => router.push(practiceHref)}
+                                             className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:bg-indigo-700"
+                                          >
+                                             <Target size={13} />
+                                             Resolver
+                                          </button>
+                                          <button
+                                             type="button"
+                                             onClick={() => router.push(publicHref)}
+                                             className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
+                                          >
+                                             <ExternalLink size={13} />
+                                             Abrir
+                                          </button>
+                                          <button
+                                             type="button"
+                                             onClick={() => handleRemoveSavedQuestion(id)}
+                                             className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-100 bg-rose-50 text-rose-500 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                                             title="Remover dos salvos"
+                                             aria-label="Remover dos salvos"
+                                          >
+                                             <Trash2 size={14} />
+                                          </button>
+                                       </div>
+                                    </article>
+                                 );
+                              })}
+                           </div>
+                        </div>
+                     ) : (
+                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                           <BookmarkCheck size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
+                           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhuma questão salva ainda.</p>
+                           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Use o botão de salvar nas questões para montar sua lista de revisão.</p>
+                        </div>
+                     )}
+                  </div>
+               )}
+
+               {activeTab === 'favorite-laws' && (
+                  <div className="space-y-6">
+                     <div className="flex justify-between items-center">
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Leis Favoritas</h2>
+                        <span className="text-xs font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full transition-colors">{favoriteLaws.length} leis</span>
+                     </div>
+
+                     {isLoadingFavoriteLaws ? (
+                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                           <Loader2 size={36} className="mx-auto mb-3 animate-spin text-slate-300 dark:text-slate-700" />
+                           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Carregando leis favoritas...</p>
+                        </div>
+                     ) : favoriteLaws.length > 0 ? (
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
+                              <span>Lei</span>
+                              <span>Ação</span>
+                           </div>
+
+                           <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {favoriteLaws.map((law) => (
+                                 <article key={law.id} className="grid grid-cols-1 gap-4 px-4 py-4 transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/30 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                                    <div className="min-w-0">
+                                       <div className="flex flex-wrap items-center gap-2">
+                                          <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700 ring-1 ring-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:ring-indigo-800/60">
+                                             <BookOpen size={12} />
+                                             Lei comentada
+                                          </span>
+                                          {(law.acronym || law.year) && (
+                                             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                                {[law.acronym, law.year].filter(Boolean).join(' • ')}
+                                             </span>
+                                          )}
+                                       </div>
+
+                                       <button
+                                          type="button"
+                                          onClick={() => router.push(`/lei-comentada/${law.slug}`)}
+                                          className="mt-2 block max-w-full text-left text-sm font-black text-slate-900 transition-colors hover:text-indigo-600 dark:text-slate-100 dark:hover:text-indigo-300"
+                                       >
+                                          {law.shortTitle || law.title}
+                                       </button>
+
+                                       <p className="mt-1 line-clamp-2 text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300">
+                                          {law.description || law.summary || law.ementa || 'Lei salva para consulta rápida.'}
+                                       </p>
+
+                                       <div className="mt-3 flex flex-wrap gap-2">
+                                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                             {law.articleCount} artigos
+                                          </span>
+                                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                             {law.progressPercent || 0}% lido
+                                          </span>
+                                       </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-end gap-2">
+                                       <button
+                                          type="button"
+                                          onClick={() => router.push(`/lei-comentada/${law.slug}`)}
+                                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-colors hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
+                                       >
+                                          <ExternalLink size={13} />
+                                          Abrir
+                                       </button>
+
+                                       <button
+                                          type="button"
+                                          onClick={() => handleRemoveFavoriteLaw(law)}
+                                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-100 bg-rose-50 text-rose-500 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                                          title="Remover dos favoritos"
+                                          aria-label="Remover dos favoritos"
+                                       >
+                                          <Trash2 size={14} />
+                                       </button>
+                                    </div>
+                                 </article>
+                              ))}
+                           </div>
+                        </div>
+                     ) : (
+                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed p-12 text-center transition-colors">
+                           <BookOpen size={40} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
+                           <p className="text-sm text-slate-500 dark:text-slate-400 font-medium transition-colors">Nenhuma lei favorita ainda.</p>
+                           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 transition-colors">Use o botão de favorito na Lei Comentada para montar sua lista.</p>
                         </div>
                      )}
                   </div>
@@ -2638,6 +3240,33 @@ const Profile: React.FC = () => {
                                 </>
                             )}
                         </div>
+                     </div>
+                  </div>
+               )}
+
+               {activeTab === 'testimonial' && (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
+                     <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                        <div className="max-w-2xl space-y-2">
+                           <span className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
+                              <MessageSquare size={12} />
+                              Avaliar plataforma
+                           </span>
+                           <h2 className="text-lg font-black text-slate-900 dark:text-slate-100">
+                              Avaliar plataforma
+                           </h2>
+                           <p className="text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
+                              Avalie a plataforma e envie seu depoimento para moderação. O formulário abre em uma janela dedicada para manter essa aba limpa.
+                           </p>
+                        </div>
+                        <button
+                           type="button"
+                           onClick={() => setShowTestimonialModal(true)}
+                           className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-indigo-500/10 transition-all hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+                        >
+                           <Star size={14} />
+                           Avaliar agora
+                        </button>
                      </div>
                   </div>
                )}
@@ -3379,6 +4008,7 @@ const Profile: React.FC = () => {
          )}
 
          {renderCancelSubscriptionModal()}
+         {renderTestimonialModal()}
 
          {/* Modal de Cancelamento de Assinatura (Portal) */}
          {false && createPortal(

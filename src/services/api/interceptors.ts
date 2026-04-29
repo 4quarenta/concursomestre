@@ -119,15 +119,21 @@ export const registerApiInterceptors = (apiClient: any): void => {
                 if (shouldAttemptRefresh) {
                     try {
                         requestConfig._retry = true;
-                        await refreshAuthSession({
-                            reason: 'http-401',
-                            force: true,
-                        });
-
                         const nextToken = getAccessToken();
-                        if (nextToken && requestConfig.headers) {
+                        if (nextToken && nextToken !== requestConfig._authTokenUsed && requestConfig.headers) {
                             requestConfig.headers.Authorization = `Bearer ${nextToken}`;
                             requestConfig.headers['X-Auth-Token'] = nextToken;
+                            return apiClient(requestConfig);
+                        }
+
+                        await refreshAuthSession({
+                            reason: 'http-401',
+                        });
+
+                        const refreshedToken = getAccessToken();
+                        if (refreshedToken && requestConfig.headers) {
+                            requestConfig.headers.Authorization = `Bearer ${refreshedToken}`;
+                            requestConfig.headers['X-Auth-Token'] = refreshedToken;
                         }
 
                         return apiClient(requestConfig);

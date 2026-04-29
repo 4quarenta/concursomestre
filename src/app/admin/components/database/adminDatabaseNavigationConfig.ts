@@ -37,7 +37,7 @@ export const ADMIN_DATABASE_CATEGORIES: AdminDatabaseCategoryConfig[] = [
     label: 'Conteudo',
     description: 'Banco de questoes, importacao e taxonomias.',
     icon: BookOpen,
-    tabs: ['questions', 'exams', 'import', 'filters', 'lei-comentada'],
+    tabs: ['questions', 'question-groups', 'exams', 'import', 'filters', 'lei-comentada'],
   },
   {
     id: 'people',
@@ -57,6 +57,11 @@ export const ADMIN_DATABASE_SUBTAB_META: Record<string, AdminDatabaseSubTabMeta>
   questions: {
     label: 'Questoes',
     description: 'Cadastro, edicao, paginacao e revisao do banco principal.',
+    category: 'content',
+  },
+  'question-groups': {
+    label: 'Contexto de questoes',
+    description: 'Textos e imagens reutilizaveis vinculados aos enunciados.',
     category: 'content',
   },
   import: {

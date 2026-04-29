@@ -144,11 +144,17 @@ export interface GrupoQuestao {
   id: number;
   enunciado: string;
   enunciado_clean: string;
+  enunciadoClean?: string;
   rotulo: string | null;
   texto: string | null;
   descrição: string;
   ordem: number;
   image_url?: string;
+  imageUrl?: string;
+  question_count?: number;
+  questionCount?: number;
+  question_ids?: Array<number | string> | string;
+  questionIds?: Array<number | string> | string;
 }
 
 export interface Question {
@@ -189,9 +195,13 @@ export interface Question {
   itens: QuestionItem[];
   resposta: number; // ID do item correto
 
-  provas?: Prova[];
-  provaId?: string | number;
-  grupoQuestao?: GrupoQuestao;
+    provas?: Prova[];
+    provaId?: string | number;
+    questionOrigin?: 'platform' | 'exam' | string;
+    question_origin?: 'platform' | 'exam' | string;
+    grupoQuestao?: GrupoQuestao;
+    grupoQuestaoId?: number | string | null;
+    grupo_questao_id?: number | string | null;
 
   teacherComment?: string;
   detailedComment?: string;
@@ -298,9 +308,10 @@ export interface SimulationSession {
   id: string;
   config: SimulationConfig;
   questions: Question[];
-  answers: Record<string, number>;
+  answers: Record<string, number | { index?: number; is_correct?: boolean | number; time_taken?: number }>;
   startTime: number;
   endTime?: number;
+  durationSeconds?: number;
   status: 'in_progress' | 'completed';
   score?: number;
 }
@@ -492,6 +503,36 @@ export interface Promotion {
   landingPageHeadline: string;
   landingPageSubheadline: string;
   featuresHighlight: string[];
+  notificationTitle?: string;
+  notificationMessage?: string;
+  notificationActionUrl?: string;
+  emailEnabled?: boolean;
+  emailSubject?: string;
+  emailPreview?: string;
+  emailBody?: string;
+  siteBanners?: MarketingCampaignBanner[];
+  automationRules?: MarketingCampaignAutomationRule[];
+}
+
+export interface MarketingCampaignBanner {
+  id: string;
+  enabled: boolean;
+  placement: 'topbar' | 'home-hero' | 'question-sidebar' | 'practice-sidebar' | 'checkout' | 'marketplace';
+  headline: string;
+  description?: string;
+  ctaLabel?: string;
+  actionUrl?: string;
+  backgroundColor?: string;
+}
+
+export interface MarketingCampaignAutomationRule {
+  id: string;
+  enabled: boolean;
+  condition: 'recent_signup' | 'near_subscription' | 'inactive_7_days' | 'trial_ending' | 'saved_questions' | 'elite_upgrade';
+  channel: 'email' | 'notification' | 'both';
+  delayHours: number;
+  subject: string;
+  message: string;
 }
 
 export interface LimitedOfferCountdownSettings {

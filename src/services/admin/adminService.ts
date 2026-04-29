@@ -9,7 +9,7 @@
 *
 */
 
-import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, resolveApiResourceUrl } from '@services/api';
+import { apiClient, ENDPOINTS, assertApiSuccess, downloadAuthenticatedFile, readApiData, resolveApiResourceUrl } from '@services/api';
 import type { ApiResponse } from '@services/api';
 import { withQuestionPublicationAliases } from '@services/questions/questionPublication';
 import type { ErrorReport, Question, Ranking, SystemSettings, UserProfile } from '@types';
@@ -51,6 +51,9 @@ export interface CacheStatsPayload {
 export interface SystemLogsPayload {
   lines: string[];
   path?: string;
+  size_bytes?: number;
+  updated_at?: string | null;
+  cleared?: boolean;
 }
 
 export interface AdminStatsPayload {
@@ -301,7 +304,9 @@ export interface AdminAnalyticsExportParams {
   endDate?: string;
 }
 
-export type AdminCommentModerationStatus = 'pending' | 'approved' | 'spam';
+export type AdminCommentModerationStatus = 'pending' | 'approved' | 'spam' | 'trash';
+export type AdminCommentModerationFilter = 'all' | AdminCommentModerationStatus;
+export type AdminCommentModerationCounts = Record<AdminCommentModerationFilter, number>;
 
 export interface AdminCommentModerationItem {
   id: string;
@@ -323,7 +328,7 @@ export interface AdminCommentModerationListPayload {
   page: number;
   perPage: number;
   pages: number;
-  counts: Record<AdminCommentModerationStatus, number>;
+  counts: AdminCommentModerationCounts;
 }
 
 export interface AdminUserDetailsPayload {
@@ -383,6 +388,76 @@ export interface AdminQuestionListPayload {
   pages: number;
   page: number;
 }
+
+export interface AdminQuestionGroupItem {
+  id: number;
+  enunciado: string;
+  enunciado_clean?: string;
+  enunciadoClean?: string;
+  texto?: string | null;
+  image_url?: string | null;
+  imageUrl?: string | null;
+  question_count?: number;
+  questionCount?: number;
+  question_ids?: Array<number | string> | string | null;
+  questionIds?: Array<number | string> | string | null;
+}
+
+export interface AdminQuestionGroupPayload {
+  id?: number | string | null;
+  enunciado?: string;
+  texto?: string;
+  image_url?: string;
+  imageUrl?: string;
+  question_ids?: Array<number | string>;
+  questionIds?: Array<number | string>;
+}
+
+const EMPTY_COMMENT_MODERATION_COUNTS: AdminCommentModerationCounts = {
+  all: 0,
+  pending: 0,
+  approved: 0,
+  spam: 0,
+  trash: 0,
+};
+
+/**
+ * Normaliza a resposta da fila de comentarios para aceitar backends antigos e novos.
+ * O admin usa essa base para tabs WordPress-like e acoes em massa sem depender de shape perfeito.
+ * @since v1.0.0
+ */
+const normalizeCommentModerationPayload = (
+  payload: Partial<AdminCommentModerationListPayload> | null | undefined,
+  fallbackPage: number,
+  fallbackPerPage: number,
+): AdminCommentModerationListPayload => {
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  const total = Number(payload?.total ?? items.length);
+  const page = Number(payload?.page ?? fallbackPage);
+  const perPage = Number(payload?.perPage ?? fallbackPerPage);
+  const rawPages = payload?.pages ?? Math.ceil(total / Math.max(1, perPage));
+  const pages = Math.max(1, Number(rawPages || 1));
+  const rawCounts = payload?.counts || {};
+  const counts = {
+    ...EMPTY_COMMENT_MODERATION_COUNTS,
+    ...Object.fromEntries(
+      Object.entries(rawCounts).map(([key, value]) => [key, Number(value || 0)]),
+    ),
+  } as AdminCommentModerationCounts;
+
+  if (!counts.all) {
+    counts.all = counts.pending + counts.approved + counts.spam + counts.trash;
+  }
+
+  return {
+    items,
+    total,
+    page,
+    perPage,
+    pages,
+    counts,
+  };
+};
 
 /**
  * Fachada oficial do painel administrativo.
@@ -541,13 +616,50 @@ export const adminService = {
   },
 
   /**
+   * Carrega o payload de logs exibido no viewer administrativo.
+   * @since v1.0.0
+   */
+  async getSystemLogPayload(): Promise<SystemLogsPayload> {
+    const response = await apiClient.get<ApiResponse<SystemLogsPayload>>(ENDPOINTS.admin.logs) as any;
+    return readApiData(response, {
+      lines: [],
+      path: '',
+      size_bytes: 0,
+      updated_at: null,
+    });
+  },
+
+  /**
    * Carrega as linhas de log exibidas no viewer administrativo.
    * @since v1.0.0
    */
   async getSystemLogs(): Promise<string[]> {
-    const response = await apiClient.get<ApiResponse<SystemLogsPayload>>(ENDPOINTS.system.logs) as any;
-    const payload = readApiData(response, { lines: [] });
+    const payload = await adminService.getSystemLogPayload();
     return payload.lines || [];
+  },
+
+  /**
+   * Baixa o arquivo de log usando o fluxo autenticado do backend.
+   * @since v1.0.0
+   */
+  async downloadSystemLogs(): Promise<void> {
+    await downloadAuthenticatedFile(`${ENDPOINTS.admin.logs}?action=download`, 'concurso-mestre-logs.log');
+  },
+
+  /**
+   * Limpa o arquivo de log pelo endpoint administrativo.
+   * @since v1.0.0
+   */
+  async clearSystemLogs(): Promise<SystemLogsPayload> {
+    const response = await apiClient.post<ApiResponse<SystemLogsPayload>>(`${ENDPOINTS.admin.logs}?action=clear`, {}) as any;
+    assertApiSuccess(response, 'Nao foi possivel limpar os logs.');
+    return readApiData(response, {
+      lines: [],
+      path: '',
+      size_bytes: 0,
+      updated_at: null,
+      cleared: true,
+    });
   },
 
   /**
@@ -782,7 +894,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async getModerationComments(params: {
-    status?: AdminCommentModerationStatus;
+    status?: AdminCommentModerationFilter;
     origin?: 'all' | 'question' | 'material' | 'law';
     search?: string;
     page?: number;
@@ -798,18 +910,14 @@ export const adminService = {
       },
     }) as any;
 
-    return readApiData(response, {
+    return normalizeCommentModerationPayload(readApiData(response, {
       items: [],
       total: 0,
       page: params.page || 1,
       perPage: params.perPage || 20,
       pages: 1,
-      counts: {
-        pending: 0,
-        approved: 0,
-        spam: 0,
-      },
-    });
+      counts: EMPTY_COMMENT_MODERATION_COUNTS,
+    }), params.page || 1, params.perPage || 20);
   },
 
   /**
@@ -817,7 +925,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async updateModerationComment(id: string, status: AdminCommentModerationStatus): Promise<AdminCommentModerationItem> {
-    const response = await apiClient.patch<ApiResponse<AdminCommentModerationItem>>(ENDPOINTS.admin.commentsModeration, { id, status }) as any;
+    const response = await apiClient.post<ApiResponse<AdminCommentModerationItem>>(ENDPOINTS.admin.commentsModeration, { id, status }) as any;
     const envelope = assertApiSuccess<AdminCommentModerationItem>(response, 'Nao foi possivel atualizar o comentario.');
     return readApiData<AdminCommentModerationItem>(envelope.raw, {
       id,
@@ -876,6 +984,78 @@ export const adminService = {
       pages: Number(payload.pages || 1),
       page: Number(payload.page || params.page || 1),
     };
+  },
+
+  /**
+   * Lista contextos reutilizaveis por questoes.
+   * @since v1.0.0
+   */
+  async getQuestionGroups(params: { keyword?: string } = {}): Promise<AdminQuestionGroupItem[]> {
+    const response = await apiClient.get<ApiResponse<{ items?: AdminQuestionGroupItem[] } | AdminQuestionGroupItem[]>>(
+      ENDPOINTS.questions.groups,
+      {
+        params: {
+          keyword: params.keyword || '',
+        },
+      },
+    ) as any;
+
+    const payload = readApiData(response, { items: [] as AdminQuestionGroupItem[] });
+    const items = Array.isArray(payload) ? payload : payload.items;
+    return Array.isArray(items) ? items : [];
+  },
+
+  /**
+   * Cria ou atualiza um contexto do banco de questoes.
+   * @since v1.0.0
+   */
+  async saveQuestionGroup(payload: AdminQuestionGroupPayload): Promise<AdminQuestionGroupItem> {
+    const response = await apiClient.post<ApiResponse<AdminQuestionGroupItem>>(ENDPOINTS.questions.groups, payload) as any;
+    const envelope = assertApiSuccess<AdminQuestionGroupItem>(response, 'Nao foi possivel salvar o contexto de questoes.');
+    return readApiData<AdminQuestionGroupItem>(envelope.raw, {
+      id: Number(payload.id || 0),
+      enunciado: payload.enunciado || '',
+      texto: payload.texto || '',
+      image_url: payload.image_url || payload.imageUrl || '',
+      question_count: 0,
+      question_ids: payload.question_ids || payload.questionIds || [],
+    });
+  },
+
+  /**
+   * Envia imagem para um contexto de questoes.
+   * @since v1.0.0
+   */
+  async uploadQuestionContextImage(file: File): Promise<string> {
+    const formData = new FormData();
+    formData.append('action', 'upload_image');
+    formData.append('image', file);
+
+    const response = await apiClient.post<ApiResponse<{ url?: string; image_url?: string; imageUrl?: string }>>(
+      ENDPOINTS.questions.groups,
+      formData,
+    ) as any;
+    const envelope = assertApiSuccess<{ url?: string; image_url?: string; imageUrl?: string }>(
+      response,
+      'Nao foi possivel enviar a imagem do contexto.',
+    );
+    const payload = readApiData<{ url?: string; image_url?: string; imageUrl?: string }>(envelope.raw, {});
+    const imageUrl = payload.url || payload.image_url || payload.imageUrl || '';
+
+    if (!imageUrl) {
+      throw new Error('O backend nao retornou a URL da imagem.');
+    }
+
+    return imageUrl;
+  },
+
+  /**
+   * Remove um contexto e desvincula as questoes associadas.
+   * @since v1.0.0
+   */
+  async deleteQuestionGroup(id: string | number): Promise<void> {
+    const response = await apiClient.post<ApiResponse>(ENDPOINTS.questions.groups, { action: 'delete', id }) as any;
+    assertApiSuccess(response, 'Nao foi possivel remover o contexto de questoes.');
   },
 
   /**

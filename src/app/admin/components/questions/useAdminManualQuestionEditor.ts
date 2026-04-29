@@ -61,6 +61,7 @@ export const useAdminManualQuestionEditor = ({
       existingSubjectTopics: manualQuestionReferenceData.existingSubjectTopics,
       existingSpecificSubjects: manualQuestionReferenceData.existingSpecificSubjects,
       existingYears: manualQuestionReferenceData.existingYears,
+      existingFocuses: manualQuestionReferenceData.existingFocuses,
       existingRoles: manualQuestionReferenceData.existingRoles,
       existingProvas: manualQuestionReferenceData.existingProvas,
       isGeneratingTeacher: manualQuestionWorkflow.isGeneratingTeacher,

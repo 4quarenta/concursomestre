@@ -9,7 +9,7 @@
 *
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Calendar,
@@ -53,7 +53,7 @@ import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useToast } from '@providers/ToastProvider';
-import type { PlanBenefitKey, PlanName, PlanUsageLimitKey, SystemSettings, UserProfile } from '@types';
+import type { Material, PlanBenefitKey, PlanName, PlanUsageLimitKey, SystemSettings, UserProfile } from '@types';
 import { adminService, type AdminRevenueProjectionPayload } from '@services/admin/adminService';
 import { subscriptionsService } from '@services/subscriptions';
 import { PLAN_DETAILS, PRICING } from '@constants';
@@ -66,6 +66,7 @@ import {
   normalizePlanEntitlements,
   normalizePlanUsageLimits,
 } from '@constants/subscriptions/planEntitlements';
+import { buildAdminMarketplaceSellerMetrics } from '../shared/adminMarketplaceMetrics';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 import AdminMarketing from './AdminMarketing';
 import AdminFinanceAnalyticsPanel from './AdminFinanceAnalyticsPanel';
@@ -90,6 +91,7 @@ interface AdminFinanceProps {
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => void;
   allTransactions: any[];
+  allMaterials?: Material[];
   allUsers: UserProfile[];
   initialSection?: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics' | 'balance' | 'prices' | 'marketing' | 'plans-coupons';
   onSectionChange?: (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics') => void;
@@ -295,6 +297,7 @@ const buildProjectionMonthBreakdownFromRows = (rows: any[]) => {
 const AdminFinance = ({
   systemSettings,
   allTransactions,
+  allMaterials = [],
   allUsers,
   initialSection = 'transactions',
   onSectionChange,
@@ -325,12 +328,17 @@ const AdminFinance = ({
   const [automationHelper, setAutomationHelper] = useState<any | null>(null);
   const [automationHelperLoading, setAutomationHelperLoading] = useState(false);
   const [automationHelperRequested, setAutomationHelperRequested] = useState(false);
+  const automationHelperRequestRef = useRef(false);
+  const [automationRunLoading, setAutomationRunLoading] = useState(false);
+  const [automationRunResult, setAutomationRunResult] = useState<any | null>(null);
   const [stripeTestingMatrix, setStripeTestingMatrix] = useState<any | null>(null);
   const [stripeTestingMatrixLoading, setStripeTestingMatrixLoading] = useState(false);
   const [stripeTestingMatrixRequested, setStripeTestingMatrixRequested] = useState(false);
+  const stripeTestingMatrixRequestRef = useRef(false);
   const [stripeTestingRuns, setStripeTestingRuns] = useState<any[]>([]);
   const [stripeTestingRunsLoading, setStripeTestingRunsLoading] = useState(false);
   const [stripeTestingRunsRequested, setStripeTestingRunsRequested] = useState(false);
+  const stripeTestingRunsRequestRef = useRef(false);
   const [stripeTestingRunSaving, setStripeTestingRunSaving] = useState(false);
   const [stripeTestingRunScenario, setStripeTestingRunScenario] = useState<any | null>(null);
   const [revenueProjection, setRevenueProjection] = useState<AdminRevenueProjectionPayload>(EMPTY_REVENUE_PROJECTION);
@@ -363,7 +371,6 @@ const AdminFinance = ({
   );
 
   // --- NOVOS CALCULOS POR VENDEDOR ---
-  const [sellersMetrics, setSellersMetrics] = useState<any[]>([]);
   const [viewingSellerDetails, setViewingSellerDetails] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'available_desc' | 'available_asc' | 'date_asc' | 'date_desc'>('available_desc');
   const paymentProvider = 'stripe' as const;
@@ -456,54 +463,17 @@ const AdminFinance = ({
     setDraftActivePromotion(nextSettings.activePromotion || undefined);
   };
 
-  useEffect(() => {
-    if (!allTransactions || !allUsers) return;
-
-    const metricsBySeller: Record<string, any> = {};
-
-    // 1. Identificar todos os vendedores que têm transações
-    allTransactions.forEach((t: any) => {
-      if (!isPaidTransactionStatus(t.status) || !isMarketplaceTransaction(t)) return;
-
-      const sellerId = String(t.sellerId || t.seller_id);
-      if (!sellerId) return;
-
-      if (!metricsBySeller[sellerId]) {
-        const seller = allUsers.find((u: any) => String(u.id) === sellerId);
-        const paymentDay = Number(seller?.billing?.paymentDay);
-        metricsBySeller[sellerId] = {
-          id: sellerId,
-          name: seller?.name || 'Desconhecido',
-          email: seller?.email || '-',
-          paymentDay: null,
-          totalSales: 0,
-          heldBalance: 0,
-          availablePayout: 0,
-          transactions: []
-        };
-        metricsBySeller[sellerId].paymentDay = Number.isFinite(paymentDay) && paymentDay > 0 ? paymentDay : null;
-      }
-
-      const amount = readTransactionAmount(t);
-      const sellerShare = Math.max(0, amount - readTransactionPlatformFee(t));
-      metricsBySeller[sellerId].totalSales += amount;
-      metricsBySeller[sellerId].transactions.push(t);
-
-      if (isAdminTransactionHeld(t)) {
-        metricsBySeller[sellerId].heldBalance += sellerShare;
-      } else {
-        metricsBySeller[sellerId].availablePayout += sellerShare;
-      }
-    });
-
-    const metricsArray = Object.values(metricsBySeller);
-    setSellersMetrics(metricsArray);
-  }, [allTransactions, allUsers]);
+  const sellersMetrics = useMemo(() => buildAdminMarketplaceSellerMetrics({
+    users: allUsers || [],
+    materials: allMaterials || [],
+    transactions: allTransactions || [],
+  }), [allMaterials, allTransactions, allUsers]);
 
   useEffect(() => {
-    if (activeSection !== 'automation' || automationHelper || automationHelperLoading || automationHelperRequested) return;
+    if (activeSection !== 'automation' || automationHelper || automationHelperRequestRef.current) return;
 
     let cancelled = false;
+    automationHelperRequestRef.current = true;
     setAutomationHelperRequested(true);
     setAutomationHelperLoading(true);
 
@@ -515,6 +485,8 @@ const AdminFinance = ({
       })
       .catch(() => {
         if (!cancelled) {
+          automationHelperRequestRef.current = false;
+          setAutomationHelperRequested(false);
           addToast('Não foi possível carregar as instrucoes oficiais de automacao.', 'error');
         }
       })
@@ -526,15 +498,17 @@ const AdminFinance = ({
 
     return () => {
       cancelled = true;
-      setAutomationHelperLoading(false);
-      setAutomationHelperRequested(false);
+      if (!automationHelper) {
+        automationHelperRequestRef.current = false;
+      }
     };
-  }, [activeSection, automationHelper, automationHelperLoading, automationHelperRequested, addToast]);
+  }, [activeSection, automationHelper, addToast]);
 
   useEffect(() => {
-    if (activeSection !== 'automation' || stripeTestingMatrix || stripeTestingMatrixLoading || stripeTestingMatrixRequested) return;
+    if (activeSection !== 'automation' || stripeTestingMatrix || stripeTestingMatrixRequestRef.current) return;
 
     let cancelled = false;
+    stripeTestingMatrixRequestRef.current = true;
     setStripeTestingMatrixRequested(true);
     setStripeTestingMatrixLoading(true);
 
@@ -546,6 +520,8 @@ const AdminFinance = ({
       })
       .catch(() => {
         if (!cancelled) {
+          stripeTestingMatrixRequestRef.current = false;
+          setStripeTestingMatrixRequested(false);
           addToast('Nao foi possivel carregar a matriz oficial de testes Stripe.', 'error');
         }
       })
@@ -557,16 +533,18 @@ const AdminFinance = ({
 
     return () => {
       cancelled = true;
-      setStripeTestingMatrixLoading(false);
-      setStripeTestingMatrixRequested(false);
+      if (!stripeTestingMatrix) {
+        stripeTestingMatrixRequestRef.current = false;
+      }
     };
-  }, [activeSection, addToast, stripeTestingMatrix, stripeTestingMatrixLoading, stripeTestingMatrixRequested]);
+  }, [activeSection, addToast, stripeTestingMatrix]);
 
   useEffect(() => {
-    if (!isAdminViewer || activeSection !== 'automation' || stripeTestingRunsLoading || stripeTestingRunsRequested) return;
+    if (!isAdminViewer || activeSection !== 'automation' || stripeTestingRunsRequestRef.current) return;
     if (stripeTestingRuns.length > 0) return;
 
     let cancelled = false;
+    stripeTestingRunsRequestRef.current = true;
     setStripeTestingRunsRequested(true);
     setStripeTestingRunsLoading(true);
 
@@ -578,6 +556,8 @@ const AdminFinance = ({
       })
       .catch(() => {
         if (!cancelled) {
+          stripeTestingRunsRequestRef.current = false;
+          setStripeTestingRunsRequested(false);
           addToast('Nao foi possivel carregar o historico de evidencias dos testes Stripe.', 'error');
         }
       })
@@ -589,10 +569,11 @@ const AdminFinance = ({
 
     return () => {
       cancelled = true;
-      setStripeTestingRunsLoading(false);
-      setStripeTestingRunsRequested(false);
+      if (stripeTestingRuns.length === 0) {
+        stripeTestingRunsRequestRef.current = false;
+      }
     };
-  }, [activeSection, addToast, isAdminViewer, stripeTestingRuns.length, stripeTestingRunsLoading, stripeTestingRunsRequested]);
+  }, [activeSection, addToast, isAdminViewer, stripeTestingRuns.length]);
 
   const sortedSellers = useMemo(() => {
     return [...sellersMetrics].sort((a, b) => {
@@ -1086,6 +1067,30 @@ const AdminFinance = ({
     }
   };
 
+  const handleRunAutomationNow = async () => {
+    if (!isAdminViewer || automationRunLoading) return;
+
+    setAutomationRunLoading(true);
+    setAutomationRunResult(null);
+
+    try {
+      const payload = await subscriptionsService.runAutomationNow();
+      const summary = payload?.summary || payload?.data?.summary || payload;
+      setAutomationRunResult(summary);
+      addToast(payload?.message || 'Rotina de automacao executada com sucesso.', 'success');
+    } catch (error: any) {
+      const message = String(
+        error?.response?.data?.message
+        || error?.response?.data?.details
+        || error?.message
+        || 'Nao foi possivel executar a rotina de automacao.',
+      );
+      addToast(message, 'error');
+    } finally {
+      setAutomationRunLoading(false);
+    }
+  };
+
   const openStripeTestingRunModal = (testCase: any) => {
     if (!isAdminViewer) return;
     if (String(testCase?.platform_status || '').toLowerCase() !== 'supported') return;
@@ -1362,7 +1367,12 @@ const AdminFinance = ({
           {/* LISTA DE REPASSES A VENDEDORES - Agora foco principal da aba "Vendedores" */}
           <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
             <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center`}>
-              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-slate-100"><Users size={18} className="text-sky-700 dark:text-sky-300" /> Repasses a vendedores</h3>
+              <div>
+                <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-slate-100"><Users size={18} className="text-sky-700 dark:text-sky-300" /> Vendedores</h3>
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Usuarios com perfil de vendedor/parceiro, mesmo sem vendas registradas.
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ordenar por:</span>
                 <select
@@ -1378,10 +1388,13 @@ const AdminFinance = ({
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-xs">
+              <table className="w-full min-w-[1040px] text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
                   <tr>
                     <th className="p-4 pl-4 sm:p-6 sm:pl-8">Vendedor</th>
+                    <th className="p-4 text-center sm:p-6">Status</th>
+                    <th className="p-4 text-center sm:p-6">Materiais</th>
+                    <th className="p-4 text-right sm:p-6">Vendas</th>
                     <th className="p-4 text-right sm:p-6">Saldo Preso</th>
                     <th className="p-6 text-right">Disponível</th>
                     <th className="p-6 text-center">Dia Pagamento</th>
@@ -1390,13 +1403,24 @@ const AdminFinance = ({
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                   {sortedSellers.length === 0 ? (
-                    <tr><td colSpan={5} className="p-6 text-center text-slate-400 italic sm:p-8">Nenhum vendedor com saldo encontrado.</td></tr>
+                    <tr><td colSpan={8} className="p-6 text-center text-slate-400 italic sm:p-8">Nenhum usuario vendedor encontrado.</td></tr>
                   ) : (
                     sortedSellers.map((seller: any) => (
                       <tr key={seller.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
                         <td className="p-4 pl-4 sm:p-6 sm:pl-8">
                           <div className="font-bold text-slate-900 dark:text-slate-100">{seller.name}</div>
                           <div className="text-[10px] text-slate-400">{seller.email}</div>
+                        </td>
+                        <td className="p-4 text-center sm:p-6">
+                          <span className="inline-flex rounded-sm border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300">
+                            {String(seller.status || 'active')}
+                          </span>
+                        </td>
+                        <td className="p-4 text-center text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 sm:p-6">
+                          {seller.publishedMaterialsCount || 0}/{seller.materialsCount || 0}
+                        </td>
+                        <td className="p-4 text-right font-medium text-slate-600 dark:text-slate-300 sm:p-6">
+                          R$ {seller.totalSales.toFixed(2)}
                         </td>
                         <td className="p-4 text-right font-medium text-amber-600 dark:text-amber-500 sm:p-6">
                           R$ {seller.heldBalance.toFixed(2)}
@@ -1439,7 +1463,7 @@ const AdminFinance = ({
               </div>
               <button onClick={() => setViewingSellerDetails(null)} className="rounded-sm p-2 text-slate-400 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700"><X size={22} /></button>
             </div>
-            <div className="grid grid-cols-1 gap-4 border-b border-slate-100 p-4 dark:border-slate-800 sm:grid-cols-2 sm:p-6 lg:grid-cols-3 md:p-8">
+            <div className="grid grid-cols-1 gap-4 border-b border-slate-100 p-4 dark:border-slate-800 sm:grid-cols-2 sm:p-6 lg:grid-cols-4 md:p-8">
               <div className="rounded-sm border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-900/30 dark:bg-emerald-900/20">
                 <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase mb-1">Disponível para Saque</p>
                 <p className="text-xl font-black text-emerald-700 dark:text-emerald-300">R$ {selectedSeller.availablePayout.toFixed(2)}</p>
@@ -1451,6 +1475,10 @@ const AdminFinance = ({
               <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
                 <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">Próximo Pagamento</p>
                 <p className="text-xl font-black text-slate-700 dark:text-slate-200">{selectedSeller.paymentDay ? `Dia ${selectedSeller.paymentDay}` : 'Nao definido'}</p>
+              </div>
+              <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
+                <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">Materiais</p>
+                <p className="text-xl font-black text-slate-700 dark:text-slate-200">{selectedSeller.publishedMaterialsCount || 0}/{selectedSeller.materialsCount || 0}</p>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-0">
@@ -1466,7 +1494,13 @@ const AdminFinance = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800 text-slate-600 dark:text-slate-400">
-                  {selectedSeller.transactions.map((t: any) => {
+                  {selectedSeller.transactions.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center italic text-slate-400 dark:text-slate-600">
+                        Nenhuma venda registrada para este vendedor ainda.
+                      </td>
+                    </tr>
+                  ) : selectedSeller.transactions.map((t: any) => {
                     const isHeld = isAdminTransactionHeld(t);
                     const amount = readTransactionAmount(t);
                     return (
@@ -2370,6 +2404,12 @@ const AdminFinance = ({
               </div>
             )}
 
+            {automationHelper?.warning && (
+              <div className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
+                {String(automationHelper.warning)}
+              </div>
+            )}
+
             {stripeTestingMatrixLoading && (
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400">
                 <Loader2 size={14} className="animate-spin" /> Carregando matriz oficial Stripe...
@@ -2669,20 +2709,25 @@ const AdminFinance = ({
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Execução manual para diagnóstico</p>
               <button
                 type="button"
-                onClick={() => {
-                  if (!automationCronUrl) {
-                    addToast('A URL oficial do cron ainda não foi carregada.', 'error');
-                    return;
-                  }
-
-                  window.open(automationCronUrl, '_blank', 'noopener,noreferrer');
-                }}
-                disabled={!automationCronUrl}
+                onClick={() => void handleRunAutomationNow()}
+                disabled={!isAdminViewer || automationRunLoading}
                 className={ADMIN_PRIMARY_BUTTON_CLASS + " px-8 py-3 text-[10px] font-black uppercase tracking-widest"}
               >
-                <Zap size={14} />
-                Executar rotina agora
+                {automationRunLoading ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                {automationRunLoading ? 'Executando...' : 'Executar rotina agora'}
               </button>
+              {automationRunResult && (
+                <div className="mt-4 grid gap-2 rounded-sm border border-slate-300 bg-white p-4 text-xs dark:border-slate-700 dark:bg-slate-900 md:grid-cols-3">
+                  {Object.entries(automationRunResult).slice(0, 6).map(([key, value]) => (
+                    <div key={key}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{key}</p>
+                      <p className="mt-1 break-words font-black text-slate-900 dark:text-slate-100">
+                        {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -19,6 +19,7 @@ interface SmartTagSelectorProps {
   onChange: (values: string[]) => void;
   placeholder?: string;
   multiple?: boolean;
+  disabled?: boolean;
 }
 
 /**
@@ -33,6 +34,7 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
   onChange,
   placeholder,
   multiple = true,
+  disabled = false,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -70,6 +72,10 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
   );
 
   const handleAdd = (value: string) => {
+    if (disabled) {
+      return;
+    }
+
     if (!value.trim()) {
       return;
     }
@@ -87,6 +93,10 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
   };
 
   const handleRemove = (value: string) => {
+    if (disabled) {
+      return;
+    }
+
     onChange(normalizedSelected.filter((selectedValue) => selectedValue !== value));
   };
 
@@ -99,7 +109,7 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
     <div className="space-y-1.5 flex-1" ref={containerRef}>
       <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">{label}</label>
       <div className="relative">
-        <div className="min-h-[44px] p-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl flex flex-wrap gap-2 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
+        <div className={`min-h-[44px] p-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl flex flex-wrap gap-2 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all ${disabled ? 'opacity-60' : ''}`}>
           {normalizedSelected.map((selectedValue, index) => (
             <span
               key={`${selectedValue}-${index}`}
@@ -109,7 +119,8 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
               <button
                 type="button"
                 onClick={() => handleRemove(selectedValue)}
-                className="hover:text-indigo-900 dark:hover:text-indigo-100 transition-colors"
+                disabled={disabled}
+                className="hover:text-indigo-900 disabled:cursor-not-allowed dark:hover:text-indigo-100 transition-colors"
               >
                 <X size={12} />
               </button>
@@ -131,11 +142,12 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
               }
             }}
             placeholder={normalizedSelected.length === 0 ? placeholder : ''}
-            className="flex-1 bg-transparent border-none outline-none text-sm font-bold text-slate-900 dark:text-slate-100 min-w-[80px] px-2"
+            disabled={disabled}
+            className="flex-1 bg-transparent border-none outline-none text-sm font-bold text-slate-900 dark:text-slate-100 min-w-[80px] px-2 disabled:cursor-not-allowed"
           />
         </div>
 
-        {isOpen && (inputValue || filteredOptions.length > 0) && (
+        {!disabled && isOpen && (inputValue || filteredOptions.length > 0) && (
           <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl max-h-48 overflow-y-auto no-scrollbar py-2">
             {filteredOptions.map((option) => (
               <button

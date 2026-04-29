@@ -36,6 +36,12 @@ import {
   ADMIN_SURFACE_CLASS,
   ADMIN_TAB_BUTTON_ACTIVE_CLASS,
 } from '../shared/adminPanelStyles';
+import { normalizeProvaRecord } from '../exams/examBankUtils';
+import {
+  buildAdminMarketplaceSellerMetrics,
+  countActiveAdminMarketplaceSellers,
+  countPublishedMarketplaceMaterials,
+} from '../shared/adminMarketplaceMetrics';
 
 interface AdminDashboardProps {
   questions: any[];
@@ -184,6 +190,7 @@ const AdminDashboard = ({
   const [dashboardAnalytics, setDashboardAnalytics] = useState<AdminDashboardAnalyticsPayload>(EMPTY_DASHBOARD_ANALYTICS);
   const [feedbackThreads, setFeedbackThreads] = useState<AdminFeedbackThread[]>([]);
   const [isStatsLoading, setIsStatsLoading] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
   useEffect(() => {
     let isCurrent = true;
@@ -221,7 +228,7 @@ const AdminDashboard = ({
     return () => {
       isCurrent = false;
     };
-  }, [customEndDate, customStartDate, selectedPeriod]);
+  }, [customEndDate, customStartDate, refreshVersion, selectedPeriod]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -265,27 +272,29 @@ const AdminDashboard = ({
   const examsCount = useMemo(() => {
     const registry = new Set<string>();
 
-    (questions || []).forEach((question: any) => {
-      const provas = Array.isArray(question?.provas) ? question.provas : [];
-
-      if (provas.length > 0) {
-        provas.forEach((prova: any) => {
-          const key = prova?.id ?? prova?.nome ?? prova?.title ?? prova?.slug;
-          if (key) {
-            registry.add(String(key));
-          }
-        });
-        return;
-      }
-
-      const fallbackKey = question?.prova_id ?? question?.exam_id ?? question?.prova_nome ?? question?.provaNome;
-      if (fallbackKey) {
-        registry.add(String(fallbackKey));
+    (systemSettings.examBank || []).forEach((rawProva: any) => {
+      const prova = normalizeProvaRecord(rawProva);
+      if (prova) {
+        registry.add(String(prova.id));
       }
     });
 
     return registry.size;
-  }, [questions]);
+  }, [systemSettings.examBank]);
+
+  const marketplaceSellerMetrics = useMemo(() => buildAdminMarketplaceSellerMetrics({
+    users: allUsers || [],
+    materials: allMaterials || [],
+    transactions: allTransactions || [],
+  }), [allMaterials, allTransactions, allUsers]);
+
+  const publishedMarketplaceMaterialsCount = useMemo(() => (
+    countPublishedMarketplaceMaterials(allMaterials || [])
+  ), [allMaterials]);
+
+  const activeMarketplaceVendorsCount = useMemo(() => (
+    countActiveAdminMarketplaceSellers(marketplaceSellerMetrics)
+  ), [marketplaceSellerMetrics]);
 
   const platformTotals = useMemo(() => ({
     questions: Number(dashboardAnalytics.counts.questions_count || stats.questions_count || questions.length || 0),
@@ -295,18 +304,31 @@ const AdminDashboard = ({
     pendingComments: Number(dashboardAnalytics.counts.pending_comments_count || 0),
     approvedComments: Number(dashboardAnalytics.counts.approved_comments_count || 0),
     spamComments: Number(dashboardAnalytics.counts.spam_comments_count || 0),
-    materials: Number(dashboardAnalytics.counts.materials_count || stats.materials_count || allMaterials.length || 0),
-    publishedMaterials: Number(dashboardAnalytics.counts.published_marketplace_materials_count || 0),
+    materials: Number(allMaterials.length || 0),
+    publishedMaterials: Number(publishedMarketplaceMaterialsCount || 0),
     rankings: Number(stats.rankings_count || allRankings.length || 0),
-    vendors: Number(dashboardAnalytics.counts.active_vendors_count || 0),
+    vendors: Number(activeMarketplaceVendorsCount || 0),
     exams: examsCount,
-  }), [allMaterials.length, allRankings.length, allUsers.length, dashboardAnalytics.counts, examsCount, questions.length, stats.laws_count, stats.materials_count, stats.questions_count, stats.rankings_count, stats.users_count]);
+  }), [
+    activeMarketplaceVendorsCount,
+    allMaterials.length,
+    allRankings.length,
+    allUsers.length,
+    dashboardAnalytics.counts,
+    examsCount,
+    publishedMarketplaceMaterialsCount,
+    questions.length,
+    stats.laws_count,
+    stats.questions_count,
+    stats.rankings_count,
+    stats.users_count,
+  ]);
 
   const summaryCards = useMemo(() => ([
     {
       label: 'Questoes no banco',
       value: formatNumber(platformTotals.questions),
-      helper: `${formatNumber(platformTotals.exams)} provas mapeadas`,
+      helper: `${formatNumber(platformTotals.exams)} provas cadastradas`,
       icon: FileQuestion,
       iconClassName: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300',
     },
@@ -335,7 +357,7 @@ const AdminDashboard = ({
 
   const platformOverviewItems = useMemo(() => ([
     { label: 'Leis comentadas', value: formatNumber(platformTotals.laws), helper: 'Acervo legislativo publicado' },
-    { label: 'Banco de provas', value: formatNumber(platformTotals.exams), helper: 'Provas ligadas ao banco de questoes' },
+    { label: 'Banco de provas', value: formatNumber(platformTotals.exams), helper: 'Provas cadastradas no admin' },
     { label: 'Rankings', value: formatNumber(platformTotals.rankings), helper: 'Estruturas competitivas ativas' },
     { label: 'Materiais publicados', value: formatNumber(platformTotals.publishedMaterials), helper: `${formatNumber(platformTotals.materials)} materiais totais` },
     { label: 'Vendedores ativos', value: formatNumber(platformTotals.vendors), helper: 'Marketplace habilitado para venda' },
@@ -467,7 +489,7 @@ const AdminDashboard = ({
           action={(
             <button
               type="button"
-              onClick={() => onNavigate?.('panel', 'dashboard')}
+              onClick={() => setRefreshVersion((version) => version + 1)}
               className="text-sm font-semibold text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
             >
               Atualizar leitura
@@ -679,9 +701,9 @@ const AdminDashboard = ({
             <FileQuestion size={18} className="text-blue-500" />
             <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Acervo</p>
           </div>
-          <p className="mt-4 text-2xl font-black text-slate-900 dark:text-slate-100">{formatNumber(Number(dashboardAnalytics.counts.materials_count || stats.materials_count || allMaterials.length || 0))}</p>
+          <p className="mt-4 text-2xl font-black text-slate-900 dark:text-slate-100">{formatNumber(platformTotals.materials)}</p>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-            {formatNumber(Number(dashboardAnalytics.counts.published_marketplace_materials_count || 0))} materiais publicados e {formatNumber(Number(dashboardAnalytics.counts.laws_count || 0))} leis no acervo.
+            {formatNumber(platformTotals.publishedMaterials)} materiais publicados e {formatNumber(platformTotals.laws)} leis no acervo.
           </p>
         </section>
 

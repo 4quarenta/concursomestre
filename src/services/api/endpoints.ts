@@ -49,6 +49,7 @@ export const ENDPOINTS = {
         history: 'questionsHistory',
         toggleSave: 'questionsToggleSave',
         resetAnswers: 'questionsResetAnswers',
+        groups: 'questions/groups.php',
     },
 
     comments: {
@@ -168,6 +169,7 @@ export const ENDPOINTS = {
         commentsModeration: 'admin/comments_moderation.php',
         commentsModerationBulk: 'admin/comments_moderation_bulk.php',
         commentsModerationExport: 'admin/comments_moderation_export.php',
+        logs: 'admin/logs.php',
     },
 
     subscriptions: {

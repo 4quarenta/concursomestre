@@ -42,7 +42,7 @@ export const FILTER_TYPES = [
   { key: 'topico', label: 'Topicos', hierarchical: true },
   { key: 'assunto', label: 'Assuntos', hierarchical: false },
   { key: 'ano', label: 'Anos' },
-  { key: 'carreira', label: 'Carreiras' },
+  { key: 'carreira', label: 'Focos' },
   { key: 'area', label: 'Areas' },
 ];
 
@@ -55,6 +55,7 @@ const getSaveTypeForFilterType = (type: string) => (
 const getChildFilterType = (type: string) => {
   if (type === 'materia') return 'topico';
   if (type === 'topico') return 'assunto';
+  if (type === 'carreira') return 'cargo';
   return type;
 };
 
@@ -110,6 +111,11 @@ export const useAdminTaxonomyWorkflow = ({
 
       if (uiTypeToSave === 'assunto' && !selectedParentId) {
         addToast('Todo assunto precisa estar vinculado a um topico.', 'error');
+        return;
+      }
+
+      if (uiTypeToSave === 'cargo' && !selectedParentId) {
+        addToast('Todo cargo precisa estar vinculado a um foco.', 'error');
         return;
       }
 

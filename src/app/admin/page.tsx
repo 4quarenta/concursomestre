@@ -27,6 +27,7 @@ const Admin: React.FC = () => {
       activeSectionKey={controller.activeSectionKey}
       onNavigateAdmin={controller.navigateAdminDestination}
       adminTabs={controller.adminTabs}
+      sectionBadges={controller.sectionBadges}
       pageTitle={controller.activeTabLabel ?? 'Admin'}
       pageDescription={controller.activeTabDescription}
       topBarProps={controller.topBarProps}

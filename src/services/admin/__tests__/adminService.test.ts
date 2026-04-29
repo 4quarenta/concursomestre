@@ -11,7 +11,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockGet, mockPost, mockPut } = vi.hoisted(() => ({
+const { mockDownloadAuthenticatedFile, mockGet, mockPost, mockPut } = vi.hoisted(() => ({
+  mockDownloadAuthenticatedFile: vi.fn(),
   mockGet: vi.fn(),
   mockPost: vi.fn(),
   mockPut: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock('@services/api', () => ({
     post: mockPost,
     put: mockPut,
   },
+  downloadAuthenticatedFile: mockDownloadAuthenticatedFile,
   readApiData: (response: any, fallback: any) => {
     if (response?.data !== undefined) return response.data;
     return response ?? fallback;
@@ -54,12 +56,19 @@ vi.mock('@services/api', () => ({
       userActions: 'admin/user_actions.php',
       feedback: 'admin/feedback.php',
       stats: 'admin/stats.php',
+      commentsModeration: 'admin/comments_moderation.php',
+      commentsModerationBulk: 'admin/comments_moderation_bulk.php',
+      logs: 'admin/logs.php',
     },
     cache: { manage: 'admin/cache.php' },
     settings: { get: 'settings.php', update: 'admin/settings.php' },
     rankings: { update: 'rankingsUpdate', delete: 'rankingsDelete' },
     system: { logs: 'system/logs.php' },
   },
+}));
+
+vi.mock('@services/questions/questionPublication', () => ({
+  withQuestionPublicationAliases: (question: any) => question,
 }));
 
 import { adminService } from '../adminService';
@@ -273,8 +282,49 @@ describe('adminService', () => {
 
     const logs = await adminService.getSystemLogs();
 
-    expect(mockGet).toHaveBeenCalledWith('system/logs.php');
+    expect(mockGet).toHaveBeenCalledWith('admin/logs.php');
     expect(logs).toEqual(['linha 1', 'linha 2']);
+  });
+
+  it('loads the complete system log payload for the viewer', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        lines: ['linha 1'],
+        path: 'C:\\xampp\\apache\\logs\\error.log',
+        size_bytes: 120,
+        updated_at: '2026-04-27T10:00:00+00:00',
+      },
+    });
+
+    const payload = await adminService.getSystemLogPayload();
+
+    expect(mockGet).toHaveBeenCalledWith('admin/logs.php');
+    expect(payload.size_bytes).toBe(120);
+    expect(payload.lines).toEqual(['linha 1']);
+  });
+
+  it('clears system logs through the official admin endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        lines: [],
+        cleared: true,
+      },
+    });
+
+    const payload = await adminService.clearSystemLogs();
+
+    expect(mockPost).toHaveBeenCalledWith('admin/logs.php?action=clear', {});
+    expect(payload.cleared).toBe(true);
+  });
+
+  it('downloads system logs through an authenticated file request', async () => {
+    mockDownloadAuthenticatedFile.mockResolvedValueOnce(undefined);
+
+    await adminService.downloadSystemLogs();
+
+    expect(mockDownloadAuthenticatedFile).toHaveBeenCalledWith('admin/logs.php?action=download', 'concurso-mestre-logs.log');
   });
 
   it('loads user details through the official admin endpoint', async () => {
@@ -465,5 +515,87 @@ describe('adminService', () => {
       parent_id: 10,
       details: 'Vamos seguir com a análise.',
     });
+  });
+
+  it('loads the WordPress-like comments moderation list with normalized counts', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        items: [
+          {
+            id: 'comment:1',
+            origin: 'question',
+            sourceType: 'comment',
+            sourceId: '1',
+            status: 'pending',
+          },
+        ],
+        total: 1,
+        page: 1,
+        perPage: 20,
+        pages: 1,
+        counts: {
+          pending: 1,
+          approved: 2,
+          spam: 0,
+        },
+      },
+    });
+
+    const payload = await adminService.getModerationComments({
+      status: 'all',
+      origin: 'all',
+      search: 'teste',
+      page: 1,
+      perPage: 20,
+    });
+
+    expect(mockGet).toHaveBeenCalledWith('admin/comments_moderation.php', {
+      params: {
+        status: 'all',
+        origin: 'all',
+        search: 'teste',
+        page: 1,
+        perPage: 20,
+      },
+    });
+    expect(payload.items).toHaveLength(1);
+    expect(payload.counts.all).toBe(3);
+    expect(payload.counts.trash).toBe(0);
+  });
+
+  it('updates a moderated comment status through the official admin endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: 'comment:1',
+        status: 'trash',
+      },
+    });
+
+    const result = await adminService.updateModerationComment('comment:1', 'trash');
+
+    expect(mockPost).toHaveBeenCalledWith('admin/comments_moderation.php', {
+      id: 'comment:1',
+      status: 'trash',
+    });
+    expect(result.status).toBe('trash');
+  });
+
+  it('bulk updates moderated comments through the official admin endpoint', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        updated: 2,
+      },
+    });
+
+    const result = await adminService.bulkUpdateModerationComments(['comment:1', 'law:2'], 'approved');
+
+    expect(mockPost).toHaveBeenCalledWith('admin/comments_moderation_bulk.php', {
+      ids: ['comment:1', 'law:2'],
+      status: 'approved',
+    });
+    expect(result.updated).toBe(2);
   });
 });

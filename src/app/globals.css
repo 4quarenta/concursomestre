@@ -106,4 +106,36 @@
     overflow-x: auto;
     overflow-y: hidden;
   }
+
+  .question-comment-math {
+    overflow-wrap: anywhere;
+  }
+
+  .question-comment-math p {
+    margin: 0 0 0.85rem;
+  }
+
+  .question-comment-math p:last-child {
+    margin-bottom: 0;
+  }
+
+  .question-comment-math ul,
+  .question-comment-math ol {
+    margin: 0.75rem 0;
+    padding-left: 1.25rem;
+  }
+
+  .question-comment-math li {
+    margin: 0.35rem 0;
+  }
+
+  .question-comment-math h4 {
+    margin: 0 0 0.65rem;
+    font-size: 0.9rem;
+    font-weight: 800;
+  }
+
+  .question-comment-math .katex {
+    white-space: normal;
+  }
 }

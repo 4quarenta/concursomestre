@@ -29,6 +29,7 @@ import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import AdBanner from '../../components/shared/feedback/AdBanner';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+import { simulationsService, type StoredSimulationSession } from '@services/simulations';
 import {
    ENEM_FOCUS_NAME,
    ENEM_SUBJECT_AREA_OPTIONS,
@@ -145,7 +146,25 @@ const getSimulationAccuracy = (session: SimulationSession) => {
    return Math.round((getSimulationScore(session) / total) * 100);
 };
 
+const getConfiguredSimulationSeconds = (session: Pick<SimulationSession, 'config'> | null | undefined) => (
+   Math.max(0, Math.round(Number(session?.config?.timerMinutes || 0) * 60))
+);
+
+const getActiveSimulationElapsedSeconds = (session: Pick<SimulationSession, 'config'> | null | undefined, currentTimeLeft: number) => {
+   const configuredSeconds = getConfiguredSimulationSeconds(session);
+   if (configuredSeconds <= 0) return 0;
+
+   const safeTimeLeft = Math.max(0, Math.round(Number(currentTimeLeft || 0)));
+   return Math.min(configuredSeconds, Math.max(0, configuredSeconds - safeTimeLeft));
+};
+
 const getSimulationDurationSeconds = (session: SimulationSession) => {
+   const sessionWithLegacyDuration = session as SimulationSession & { duration_seconds?: number };
+   const storedDuration = Number(sessionWithLegacyDuration.durationSeconds ?? sessionWithLegacyDuration.duration_seconds);
+   if (Number.isFinite(storedDuration) && storedDuration > 0) {
+      return Math.round(storedDuration);
+   }
+
    if (session.endTime && session.startTime) {
       return Math.max(0, Math.round((session.endTime - session.startTime) / 1000));
    }
@@ -236,27 +255,10 @@ const buildResultInsights = (session: SimulationSession, historicalAverage: numb
 
 const Simulation: React.FC = () => {
    const { currentUser, addSimulation } = useAuth();
-   const { questions, submitAnswer, systemSettings, ensureTaxonomiesLoaded } = useData();
+   const { questions, systemSettings, ensureTaxonomiesLoaded } = useData();
    const { addToast } = useToast();
    const { registerSimulationElapsed } = useStudyTrackerActions();
 
-   if (systemSettings.features.simulationsEnabled === false) {
-      return (
-         <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-fade-in">
-            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center text-slate-400 mb-6">
-               <GraduationCap size={40} />
-            </div>
-            <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 mb-2">Simulados Indisponíveis</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm font-medium">Esta funcionalidade foi desabilitada temporariamente pela administração da plataforma.</p>
-            <button
-               onClick={() => window.history.back()}
-               className="mt-8 flex items-center gap-2 px-6 py-2.5 bg-slate-900 dark:bg-indigo-600 text-white text-xs font-black uppercase rounded-xl hover:scale-105 transition-all shadow-lg"
-            >
-               <ArrowLeft size={16} /> Voltar
-            </button>
-         </div>
-      );
-   }
    const [activeSession, setActiveSession] = useState<SimulationSession | null>(null);
    const [step, setStep] = useState<'config' | 'active' | 'result' | 'review'>('config');
    const [currentIdx, setCurrentIdx] = useState(0);
@@ -272,6 +274,7 @@ const Simulation: React.FC = () => {
 
    const [viewMode, setViewMode] = useState<'focus' | 'list'>('focus');
    const [simulationTab, setSimulationTab] = useState<SimulationTab>('ready');
+   const [storedSimulations, setStoredSimulations] = useState<StoredSimulationSession[]>([]);
 
    const allAgencies = useMemo(() => Array.from(new Set(questions.flatMap(q => q.bancas?.map(b => b.sigla || b.nome) || []).filter(Boolean))).sort() as string[], [questions]);
    const allYears = useMemo(() => Array.from(new Set(questions.flatMap(q => q.anos || []).map(String))).sort().reverse(), [questions]);
@@ -371,11 +374,51 @@ const Simulation: React.FC = () => {
       return allTopics;
    }, [isEnemFocus, config.subjects, enemQuestions, allTopics, systemSettings.taxonomies?.topics, systemSettings.taxonomies?.subjects]);
 
+   const questionsById = useMemo(() => {
+      return new Map(questions.map((question) => [Number(question.id), question]));
+   }, [questions]);
+
+   useEffect(() => {
+      let isMounted = true;
+
+      if (!currentUser?.id) {
+         setStoredSimulations([]);
+         return;
+      }
+
+      simulationsService.listSimulations()
+         .then((sessions) => {
+            if (isMounted) setStoredSimulations(sessions);
+         })
+         .catch((error) => {
+            console.warn('Nao foi possivel carregar historico de simulados:', error);
+            if (isMounted) setStoredSimulations([]);
+         });
+
+      return () => {
+         isMounted = false;
+      };
+   }, [currentUser?.id]);
+
    const completedSimulations = useMemo(() => {
-      return ((currentUser as any)?.simulations || [])
-         .filter((session: SimulationSession) => session.status === 'completed' && session.questions?.length > 0)
+      const hydratedStored = storedSimulations.map((session) => ({
+         ...session,
+         questions: session.questionIds
+            .map((questionId) => questionsById.get(Number(questionId)))
+            .filter(Boolean) as Question[],
+      }));
+      const localSessions = ((currentUser as any)?.simulations || []) as SimulationSession[];
+      const byId = new Map<string, SimulationSession>();
+
+      [...hydratedStored, ...localSessions].forEach((session: SimulationSession) => {
+         if (session.status === 'completed' && session.questions?.length > 0) {
+            byId.set(session.id, session);
+         }
+      });
+
+      return Array.from(byId.values())
          .sort((a: SimulationSession, b: SimulationSession) => (b.endTime || b.startTime || 0) - (a.endTime || a.startTime || 0));
-   }, [(currentUser as any)?.simulations]);
+   }, [(currentUser as any)?.simulations, questionsById, storedSimulations]);
 
    const simulationStats = useMemo(() => {
       const completedCount = completedSimulations.length;
@@ -547,7 +590,7 @@ const Simulation: React.FC = () => {
          return matchSubject && matchAgency && matchYear && matchOrg && matchRole && matchLevel && matchTopic && matchCareer;
       });
 
-      if (filtered.length === 0) return addToast("`Nenhuma questão encontrada com esses filtros.", "warning");
+      if (filtered.length === 0) return addToast("Nenhuma questao encontrada com esses filtros.", "warning");
       const finalQs = filtered.sort(() => Math.random() - 0.5).slice(0, activeConfig.questionCount);
       setConfig(activeConfig);
       setActiveSession({ id: `sim-${Date.now()}`, config: activeConfig, questions: finalQs, answers: {}, startTime: Date.now(), status: 'in_progress' });
@@ -560,7 +603,7 @@ const Simulation: React.FC = () => {
       if (activeSession.status === 'completed') return;
 
       const finishedAt = Date.now();
-      const elapsedSimulationSeconds = Math.max(0, Math.round((finishedAt - activeSession.startTime) / 1000));
+      const elapsedSimulationSeconds = getActiveSimulationElapsedSeconds(activeSession, timeLeft);
 
       const results = activeSession.questions.map(q => {
          const selectedIndexOrObj = activeSession.answers[q.id];
@@ -593,6 +636,7 @@ const Simulation: React.FC = () => {
          ...activeSession,
          status: 'completed' as const,
          endTime: finishedAt,
+         durationSeconds: elapsedSimulationSeconds,
          score,
          answers: enrichedAnswers as any
       };
@@ -851,6 +895,24 @@ const Simulation: React.FC = () => {
       );
    };
 
+   if (systemSettings.features.simulationsEnabled === false) {
+      return (
+         <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-fade-in">
+            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center text-slate-400 mb-6">
+               <GraduationCap size={40} />
+            </div>
+            <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 mb-2">Simulados indisponiveis</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm font-medium">Esta funcionalidade foi desabilitada temporariamente pela administracao da plataforma.</p>
+            <button
+               onClick={() => window.history.back()}
+               className="mt-8 flex items-center gap-2 px-6 py-2.5 bg-slate-900 dark:bg-indigo-600 text-white text-xs font-black uppercase rounded-xl hover:scale-105 transition-all shadow-lg"
+            >
+               <ArrowLeft size={16} /> Voltar
+            </button>
+         </div>
+      );
+   }
+
    // if (!currentUser) return null; // Removed to allow guest access
 
    if (step === 'config') {
@@ -899,7 +961,7 @@ const Simulation: React.FC = () => {
                   <SearchableMultiSelect label="Matérias" icon={Target} options={simulationSubjects} selected={config.subjects} onChange={v => setConfig({ ...config, subjects: v as Subject[] })} placeholder={isEnemFocus ? 'Áreas do ENEM...' : 'Todas as matérias...'} />
                   <SearchableMultiSelect label="Bancas" icon={Filter} options={simulationAgencies} selected={config.filters.agencies} onChange={v => setConfig({ ...config, filters: { ...config.filters, agencies: v } })} placeholder={isEnemFocus ? 'Desativado para ENEM' : 'Todas as bancas...'} disabled={isEnemFocus} />
                   <SearchableMultiSelect label="Anos" icon={Calendar} options={simulationYears} selected={config.filters.years} onChange={v => setConfig({ ...config, filters: { ...config.filters, years: v } })} placeholder="Todos os anos..." />
-                  <SearchableMultiSelect label="Órgãos" icon={Building2} options={simulationOrgs} selected={config.filters.organizations} onChange={v => setConfig({ ...config, filters: { ...config.filters, organizations: v } })} placeholder={isEnemFocus ? 'Desativado para ENEM' : 'Todos os órgãos...'} disabled={isEnemFocus} />
+                  <SearchableMultiSelect label="Orgaos" icon={Building2} options={simulationOrgs} selected={config.filters.organizations} onChange={v => setConfig({ ...config, filters: { ...config.filters, organizations: v } })} placeholder={isEnemFocus ? 'Desativado para ENEM' : 'Todos os orgaos...'} disabled={isEnemFocus} />
                   <SearchableMultiSelect label="Cargos" icon={Briefcase} options={simulationRoles} selected={config.filters.roles} onChange={v => setConfig({ ...config, filters: { ...config.filters, roles: v } })} placeholder={isEnemFocus ? 'Desativado para ENEM' : 'Todos os cargos...'} disabled={isEnemFocus} />
                   <SearchableMultiSelect label="Níveis" icon={GraduationCap} options={allLevels} selected={config.filters.levels} onChange={v => setConfig({ ...config, filters: { ...config.filters, levels: v } })} placeholder={isEnemFocus ? 'Desativado para ENEM' : 'Todos os níveis...'} disabled={isEnemFocus} />
                   <SearchableMultiSelect label="Assuntos (Tópicos)" icon={BookOpen} options={simulationTopics} selected={config.filters.topics} onChange={v => setConfig({ ...config, filters: { ...config.filters, topics: v } })} placeholder="Todos os tópicos..." />
@@ -1026,17 +1088,16 @@ const Simulation: React.FC = () => {
                         onAnswerSubmit={(ans) => {
                            setActiveSession({
                               ...activeSession,
-                              answers: {
-                                 ...activeSession.answers,
-                                 [q.id]: { index: ans.selectedOptionIndex, is_correct: ans.isCorrect, time_taken: ans.timeTaken }
-                              }
-                           });
-                           submitAnswer({ ...ans, simulationId: activeSession.id });
-                        }}
+                           answers: {
+                              ...activeSession.answers,
+                              [q.id]: { index: ans.selectedOptionIndex, is_correct: ans.isCorrect, time_taken: ans.timeTaken }
+                           }
+                        });
+                     }}
                         existingAnswer={activeSession.answers[q.id] !== undefined ? {
                            questionId: q.id,
-                           selectedOptionIndex: typeof activeSession.answers[q.id] === 'object' ? (activeSession.answers[q.id] as any).index : activeSession.answers[q.id],
-                           isCorrect: typeof activeSession.answers[q.id] === 'object' ? (activeSession.answers[q.id] as any).is_correct : (activeSession.answers[q.id] === (q.itens || []).indexOf((q.itens || []).find((it, idx) => Number(it.id) === Number(q.resposta) || idx === Number(q.resposta)) as any)),
+                           selectedOptionIndex: Number(typeof activeSession.answers[q.id] === 'object' ? ((activeSession.answers[q.id] as any).index ?? -1) : activeSession.answers[q.id]),
+                            isCorrect: typeof activeSession.answers[q.id] === 'object' ? Boolean((activeSession.answers[q.id] as any).is_correct) : (activeSession.answers[q.id] === (q.itens || []).indexOf((q.itens || []).find((it, idx) => Number(it.id) === Number(q.resposta) || idx === Number(q.resposta)) as any)),
                            timestamp: Date.now()
                         } : undefined}
                         userPlan={(currentUser as any)?.plan || 'Gratuito'}
@@ -1063,17 +1124,16 @@ const Simulation: React.FC = () => {
                               onAnswerSubmit={(ans) => {
                                  setActiveSession({
                                     ...activeSession,
-                                    answers: {
-                                       ...activeSession.answers,
-                                       [question.id]: { index: ans.selectedOptionIndex, is_correct: ans.isCorrect, time_taken: ans.timeTaken }
-                                    }
-                                 });
-                                 submitAnswer({ ...ans, simulationId: activeSession.id });
+                                   answers: {
+                                      ...activeSession.answers,
+                                      [question.id]: { index: ans.selectedOptionIndex, is_correct: ans.isCorrect, time_taken: ans.timeTaken }
+                                   }
+                                });
                               }}
                               existingAnswer={activeSession.answers[question.id] !== undefined ? {
                                  questionId: question.id,
-                                 selectedOptionIndex: typeof activeSession.answers[question.id] === 'object' ? (activeSession.answers[question.id] as any).index : activeSession.answers[question.id],
-                                 isCorrect: typeof activeSession.answers[question.id] === 'object' ? (activeSession.answers[question.id] as any).is_correct : (activeSession.answers[question.id] === (question.itens || []).indexOf((question.itens || []).find((it, idx) => Number(it.id) === Number(question.resposta) || idx === Number(question.resposta)) as any)),
+                                 selectedOptionIndex: Number(typeof activeSession.answers[question.id] === 'object' ? ((activeSession.answers[question.id] as any).index ?? -1) : activeSession.answers[question.id]),
+                                  isCorrect: typeof activeSession.answers[question.id] === 'object' ? Boolean((activeSession.answers[question.id] as any).is_correct) : (activeSession.answers[question.id] === (question.itens || []).indexOf((question.itens || []).find((it, idx) => Number(it.id) === Number(question.resposta) || idx === Number(question.resposta)) as any)),
                                  timestamp: Date.now()
                               } : undefined}
                               userPlan={(currentUser as any)?.plan || 'Gratuito'}
@@ -1095,6 +1155,7 @@ const Simulation: React.FC = () => {
 
    if (step === 'result' && activeSession) {
       const accuracy = Math.round((activeSession.score! / activeSession.questions.length) * 100);
+      const durationSeconds = getSimulationDurationSeconds(activeSession);
       const resultInsights = buildResultInsights(activeSession, simulationStats.averageAccuracy);
       return (
          <div className="w-full space-y-6 px-2 py-4 animate-fade-in sm:px-3 md:space-y-8 md:px-0 md:py-6">
@@ -1122,7 +1183,7 @@ const Simulation: React.FC = () => {
                   </div>
                   <div className="space-y-1">
                      <p className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest transition-colors">Tempo Total</p>
-                     <p className="text-2xl font-black text-slate-800 dark:text-slate-100 transition-colors">{Math.floor((activeSession.config.timerMinutes * 60 - timeLeft) / 60)}m {((activeSession.config.timerMinutes * 60 - timeLeft) % 60)}s</p>
+                     <p className="text-2xl font-black text-slate-800 dark:text-slate-100 transition-colors">{formatSimulationDuration(durationSeconds)}</p>
                   </div>
                   <div className="col-span-2 p-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center gap-3 transition-colors">
                      <div className="w-10 h-10 bg-white dark:bg-slate-900 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm transition-colors"><Zap size={18} /></div>
@@ -1226,8 +1287,8 @@ const Simulation: React.FC = () => {
                   onAnswerSubmit={() => { }}
                   existingAnswer={{
                      questionId: q.id,
-                     selectedOptionIndex: typeof activeSession.answers[q.id] === 'object' ? (activeSession.answers[q.id] as any).index : activeSession.answers[q.id],
-                     isCorrect: typeof activeSession.answers[q.id] === 'object' ? (activeSession.answers[q.id] as any).is_correct : (activeSession.answers[q.id] === (q.itens || []).indexOf((q.itens || []).find((it, idx) => Number(it.id) === Number(q.resposta) || idx === Number(q.resposta)) as any)),
+                     selectedOptionIndex: Number(typeof activeSession.answers[q.id] === 'object' ? ((activeSession.answers[q.id] as any).index ?? -1) : activeSession.answers[q.id]),
+                     isCorrect: typeof activeSession.answers[q.id] === 'object' ? Boolean((activeSession.answers[q.id] as any).is_correct) : (activeSession.answers[q.id] === (q.itens || []).indexOf((q.itens || []).find((it, idx) => Number(it.id) === Number(q.resposta) || idx === Number(q.resposta)) as any)),
                      timestamp: Date.now()
                   }}
                   userPlan={currentUser?.billing?.plan || 'Gratuito'}

@@ -19,7 +19,7 @@ import { getAssetUrl } from '@services/api';
 import { legalCommentaryApiService } from '@services/legal-commentary';
 import { questionService } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
-import ReactMarkdown from 'react-markdown';
+import MathRichText from '@/components/shared/math/MathRichText';
 
 const fixHtmlImages = (html: string) => {
   const normalizedHtml = normalizeQuestionRichHtml(html);
@@ -66,6 +66,60 @@ interface QuestionCardProps {
   onGuestAction?: (action: string) => void;
   isHighlighted?: boolean;
 }
+
+const resolveCorrectOption = (question: Question) => {
+  const items = question.itens || [];
+  const rawAnswer = String(question.resposta ?? '').trim();
+  const numericAnswer = Number(rawAnswer);
+
+  const idIndex = items.findIndex((item) => String(item.id) === rawAnswer);
+  if (idIndex >= 0) {
+    return { item: items[idIndex], index: idIndex };
+  }
+
+  const labelIndex = items.findIndex((item) => String(item.rotulo || '').trim().toUpperCase() === rawAnswer.toUpperCase());
+  if (labelIndex >= 0) {
+    return { item: items[labelIndex], index: labelIndex };
+  }
+
+  if (Number.isInteger(numericAnswer) && numericAnswer >= 0 && numericAnswer < items.length) {
+    return { item: items[numericAnswer], index: numericAnswer };
+  }
+
+  const oneBasedIndex = numericAnswer - 1;
+  if (Number.isInteger(oneBasedIndex) && oneBasedIndex >= 0 && oneBasedIndex < items.length) {
+    return { item: items[oneBasedIndex], index: oneBasedIndex };
+  }
+
+  return null;
+};
+
+const isCorrectQuestionOption = (question: Question, index: number) => (
+  resolveCorrectOption(question)?.index === index
+);
+
+const normalizeQuestionFlag = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+const isQuestionCanceled = (question: Question) => Boolean(question.anulada || question.isCanceled);
+
+const isPlatformOriginalQuestion = (question: Question) => {
+  const source = normalizeQuestionFlag([
+    question.questionOrigin,
+    question.question_origin,
+    (question as any).sourceType,
+    (question as any).source_type,
+    (question as any).origin,
+    (question as any).origem,
+  ].find((value) => String(value ?? '').trim()));
+
+  return ['platform', 'inedita', 'original', 'generated', 'gerada'].includes(source)
+    || Boolean((question as any).isOriginal || (question as any).inedita);
+};
 
 const QuestionCard: React.FC<QuestionCardProps> = ({
   question, existingAnswer, onAnswerSubmit, onReportError, onAddComment, onLikeComment, indexDisplay,
@@ -159,6 +213,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const hasRelatedAnnotatedLaws = relatedAnnotatedLaws.length > 0;
   const hasQuestionTaxonomy = Array.isArray(question.assuntos) && question.assuntos.length > 0;
+  const isCanceledQuestion = isQuestionCanceled(question);
+  const isOriginalQuestion = isPlatformOriginalQuestion(question);
+  const cardBorderClass = isCanceledQuestion
+    ? 'border-red-400 ring-2 ring-red-100 dark:border-red-700 dark:ring-red-900/30'
+    : 'border-slate-200 dark:border-slate-800';
   const canShowAnnotatedLawsButton = systemSettings.features.annotatedLawsEnabled
     && (
       hasRelatedAnnotatedLaws
@@ -282,9 +341,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   useEffect(() => {
     if (mode === 'simulation' && existingAnswer && !sessionAnswer) {
-      setSelectedOptionId(existingAnswer.selectedOptionIndex);
+      const selectedItem = question.itens?.[existingAnswer.selectedOptionIndex];
+      setSelectedOptionId(selectedItem?.id ?? existingAnswer.selectedOptionIndex);
     }
-  }, [mode, existingAnswer, sessionAnswer, question.id]); // Keep simulation logic updated if needed.
+  }, [mode, existingAnswer, sessionAnswer, question.id, question.itens]); // Keep simulation logic updated if needed.
 
   const [showStats, setShowStats] = useState(false);
   const [localStats, setLocalStats] = useState<QuestionStats | null>(question.stats || null);
@@ -350,22 +410,23 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   }, [isHistoryModalOpen, question.id, existingAnswer]);
 
   const handleSubmit = () => {
+    if (isCanceledQuestion) {
+      return;
+    }
+
     if (!currentUser) {
       onGuestAction?.('answer');
       return;
     }
     if (selectedOptionId === null || isSubmitted) return;
 
-    // Find selected item index for robust checking
     const selectedItemIndex = question.itens?.findIndex(item => item.id === selectedOptionId) ?? -1;
-
-    // Check correctness by ID OR by Index
-    const isAnswerCorrect = Number(selectedOptionId) === Number(question.resposta) ||
-      (selectedItemIndex !== -1 && selectedItemIndex === Number(question.resposta));
+    const correctOption = resolveCorrectOption(question);
+    const isAnswerCorrect = Boolean(correctOption && selectedItemIndex === correctOption.index);
 
     const newAnswer = {
       questionId: Number(question.id),
-      selectedOptionIndex: Number(selectedOptionId),
+      selectedOptionIndex: selectedItemIndex >= 0 ? selectedItemIndex : Number(selectedOptionId),
       isCorrect: isAnswerCorrect,
       timestamp: Date.now(),
       timeTaken: Math.round((Date.now() - startTime.current) / 1000)
@@ -377,19 +438,37 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
 
   const handleOptionClick = (id: number | string) => {
+    if (isCanceledQuestion) {
+      return;
+    }
+
     if (!currentUser) {
       onGuestAction?.('answer');
       return;
     }
     if (isSubmitted) return;
+
+    const selectedItemIndex = question.itens?.findIndex(item => item.id === id) ?? -1;
+    const selectedOptionIndex = selectedItemIndex >= 0 ? selectedItemIndex : Number(id);
+    const correctOption = resolveCorrectOption(question);
+    const isAnswerCorrect = Boolean(correctOption && selectedItemIndex === correctOption.index);
+    const answerPayload = {
+      questionId: Number(question.id),
+      selectedOptionIndex,
+      isCorrect: isAnswerCorrect,
+      timestamp: Date.now(),
+      timeTaken: Math.round((Date.now() - startTime.current) / 1000)
+    };
+
     setSelectedOptionId(id);
-    if (hideFeedback) {
-      onAnswerSubmit({
-        questionId: Number(question.id),
-        selectedOptionIndex: id as number,
-        isCorrect: id === question.resposta,
-        timestamp: Date.now()
-      });
+
+    if (mode === 'simulation') {
+      if (!hideFeedback) {
+        setSessionAnswer(answerPayload);
+        setShowAnswerFeedback(true);
+      }
+
+      onAnswerSubmit(answerPayload);
     }
   };
 
@@ -450,7 +529,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   };
 
   const cardContent = (
-    <div id={String(question.id)} className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm w-full overflow-hidden flex flex-col transition-all relative">
+    <div id={String(question.id)} className={`bg-white dark:bg-slate-900 rounded-3xl border shadow-sm w-full overflow-hidden flex flex-col transition-all relative ${cardBorderClass}`}>
 
       {/* Header Compacto */}
       <div className="bg-slate-50/70 dark:bg-slate-800/50 p-4 border-b border-slate-100 dark:border-slate-800">
@@ -467,10 +546,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             <div className="flex gap-1.5">
               <span className="inline-flex items-center justify-center px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 text-[8px] font-bold rounded uppercase tracking-wide">{(question.assuntos && question.assuntos.length > 0) ? question.assuntos[0].nome : 'Geral'}</span>
               <span className="inline-flex items-center justify-center px-2 py-0.5 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-[8px] font-bold rounded border border-slate-200 dark:border-slate-600 uppercase">{['', 'Muito Fácil', 'Fácil', 'Médio', 'Difícil', 'Muito Difícil'][Number(question.dificuldade)] || 'Dificuldade ' + question.dificuldade}</span>
-              {!!question.anulada && <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Anulada</span>}
-              {!!question.desatualizada && <span className="bg-amber-500 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Desatualizada</span>}
-              {!!question.desatualizada && <span className="bg-amber-500 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Desatualizada</span>}
-              {(existingAnswer || sessionAnswer) && (
+              {isOriginalQuestion && <span className="bg-violet-600 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Inedita</span>}
+              {isCanceledQuestion && <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Anulada</span>}
+              {(question.desatualizada || question.isOutdated) && <span className="bg-amber-500 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Desatualizada</span>}
+              {(existingAnswer || sessionAnswer) && !(mode === 'simulation' && hideFeedback) && (
                 (sessionAnswer || existingAnswer)!.isCorrect
                   ? <span className="border border-emerald-500 text-emerald-600 bg-white dark:bg-emerald-900/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase flex items-center gap-1.5"><CheckCircle2 size={12} /> Resolvida (Certa)</span>
                   : <span className="border border-red-500 text-red-600 bg-white dark:bg-red-900/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase flex items-center gap-1.5"><XCircle size={12} /> Resolvida (Errada)</span>
@@ -658,11 +737,17 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
 
         <div className="space-y-2.5">
+          {isCanceledQuestion ? (
+            <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+              <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+              <span>Questao anulada. As alternativas ficam apenas para consulta e a resposta nao sera registrada.</span>
+            </div>
+          ) : null}
+
           {(question.itens || []).map((item, index) => {
             const isEliminated = eliminatedOptionIds.includes(item.id);
             const isSelected = selectedOptionId === item.id;
-            // Robust check: match by ID OR by Index (since database might store index as answer)
-            const isCorrect = Number(question.resposta) === Number(item.id) || Number(question.resposta) === index;
+            const isCorrect = isCorrectQuestionOption(question, index);
             const isImg = isImageOption(item.corpo);
 
             let btnClass = "border-slate-200 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-800 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10";
@@ -692,9 +777,15 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               }
             }
 
+            if (isCanceledQuestion) {
+              btnClass = "border-red-100 bg-red-50/40 dark:border-red-900/30 dark:bg-red-900/10";
+              circleClass = "bg-red-100 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-900/40";
+              textClass = "text-slate-600 dark:text-slate-300";
+            }
+
             return (
               <div key={index} className="flex gap-2 items-stretch group">
-                {!isSubmitted && mode === 'practice' && (
+                {!isCanceledQuestion && !isSubmitted && mode === 'practice' && (
                   <button
                     onClick={() => setEliminatedOptionIds(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id])}
                     className={`px-2 transition-all flex items-center justify-center rounded-xl ${isEliminated ? 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800' : 'text-slate-200 dark:text-slate-700 hover:text-indigo-400 group-hover:bg-slate-50 dark:group-hover:bg-slate-800'}`}
@@ -705,9 +796,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 )}
                 <div className={`flex-1 flex flex-col gap-2`}>
                   <button
-                    disabled={isSubmitted && !hideFeedback}
+                    disabled={isCanceledQuestion || (isSubmitted && !hideFeedback)}
                     onClick={() => !isEliminated && handleOptionClick(item.id)}
-                    className={`flex flex-col gap-2 p-4 rounded-xl border transition-all text-left relative overflow-hidden ${btnClass}`}
+                    className={`flex flex-col gap-2 p-4 rounded-xl border transition-all text-left relative overflow-hidden disabled:cursor-not-allowed ${isCanceledQuestion ? 'opacity-80' : ''} ${btnClass}`}
                   >
                     <div className="flex items-center gap-4 z-10 relative">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs border transition-all flex-shrink-0 ${circleClass}`}>
@@ -820,11 +911,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
           {!isSubmitted && mode === 'practice' ? (
             <button
-              disabled={selectedOptionId === null}
+              disabled={isCanceledQuestion || selectedOptionId === null}
               onClick={handleSubmit}
               className="px-8 py-3 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest rounded-xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all disabled:opacity-30 text-[10px] shadow-lg shadow-slate-200 dark:shadow-none"
             >
-              Responder
+              {isCanceledQuestion ? 'Questao anulada' : 'Responder'}
             </button>
           ) : null}
         </div>
@@ -848,13 +939,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                       <span className="text-3xl font-black text-slate-800 dark:text-slate-200">{localStats?.totalAttempts || 0}</span>
 
                       {(() => {
-                        // FIX: Use the EXACT SAME logic as the bars to find the count for the correct item.
-                        // 1. Identify Correct Item
-                        // Robust check: matches ID or Index
-                        const correctItem = (question.itens || []).find((it, idx) =>
-                          Number(it.id) === Number(question.resposta) || idx === Number(question.resposta)
-                        );
-                        const correctIndex = (question.itens || []).indexOf(correctItem as any);
+                        const correctOption = resolveCorrectOption(question);
+                        const correctItem = correctOption?.item;
+                        const correctIndex = correctOption?.index ?? -1;
 
                         const dist = localStats?.optionDistribution || {};
                         let calculatedCorrect = 0;
@@ -926,9 +1013,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <GraduationCap size={14} /> Comentário do Professor
                 </div>
                 {question.teacherComment ? (
-                  <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-amber-100/50 dark:border-amber-900/30 shadow-sm text-sm text-slate-700 dark:text-slate-300 leading-relaxed italic">
-                    {question.teacherComment}
-                  </div>
+                  <MathRichText
+                    content={question.teacherComment}
+                    className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-amber-100/50 dark:border-amber-900/30 shadow-sm text-sm text-slate-700 dark:text-slate-300 leading-relaxed"
+                  />
                 ) : (
                   <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-dashed border-amber-200 dark:border-amber-900/30 text-center">
                     <GraduationCap size={24} className="text-amber-300 dark:text-amber-700 mx-auto mb-2" />
@@ -944,9 +1032,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <BookOpen size={14} /> Análise Detalhada
                 </div>
                 {question.detailedComment ? (
-                  <div className="prose prose-indigo prose-sm max-w-none text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/30 shadow-sm">
-                    <ReactMarkdown>{question.detailedComment}</ReactMarkdown>
-                  </div>
+                  <MathRichText
+                    content={question.detailedComment}
+                    className="prose prose-indigo prose-sm max-w-none text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/30 shadow-sm"
+                  />
                 ) : (
                   <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/30 text-center">
                     <BookOpen size={24} className="text-indigo-300 dark:text-indigo-700 mx-auto mb-2" />
@@ -1424,6 +1513,14 @@ export default React.memo(QuestionCard, (prevProps, nextProps) => {
     prevProps.existingNote === nextProps.existingNote &&
     prevProps.question.commentsCount === nextProps.question.commentsCount &&
     prevProps.question.comments === nextProps.question.comments &&
+    prevProps.question.anulada === nextProps.question.anulada &&
+    prevProps.question.isCanceled === nextProps.question.isCanceled &&
+    prevProps.question.desatualizada === nextProps.question.desatualizada &&
+    prevProps.question.isOutdated === nextProps.question.isOutdated &&
+    prevProps.question.questionOrigin === nextProps.question.questionOrigin &&
+    prevProps.question.question_origin === nextProps.question.question_origin &&
+    (prevProps.question as any).sourceType === (nextProps.question as any).sourceType &&
+    (prevProps.question as any).source_type === (nextProps.question as any).source_type &&
     prevProps.isHighlighted === nextProps.isHighlighted
   );
 });

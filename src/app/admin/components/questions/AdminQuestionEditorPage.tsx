@@ -13,7 +13,11 @@ import React from 'react';
 import { flushSync } from 'react-dom';
 import { AlertCircle, AlertTriangle, Check, Image as ImageIcon, Loader2, Plus, Save, Search, Sparkles, Trash2 } from 'lucide-react';
 import type { Prova, Question } from '@types';
+import { resolveApiResourceUrl } from '@services/api';
+import { adminService, type AdminQuestionGroupItem } from '@services/admin/adminService';
+import MathRichText from '@/components/shared/math/MathRichText';
 import { SmartTagSelector } from '../database/SmartTagSelector';
+import { slugify } from '../database/slugify';
 import { buildProvaSearchText, formatProvaLabel, normalizeProvaRecord } from '../exams/examBankUtils';
 import {
   ADMIN_FIELD_CLASS,
@@ -32,12 +36,13 @@ interface AdminQuestionEditorPageProps {
   editingExtractedIndex: number | null;
   existingAgencies: string[];
   existingOrgaos: string[];
-  existingSubjects: string[];
-  existingTopics: string[];
-  existingSubjectTopics?: string[];
-  existingSpecificSubjects?: string[];
+  existingSubjects: QuestionTaxonomyOption[];
+  existingTopics: QuestionTaxonomyOption[];
+  existingSubjectTopics?: QuestionTaxonomyOption[];
+  existingSpecificSubjects?: QuestionTaxonomyOption[];
   existingYears: Array<string | number>;
-  existingRoles: string[];
+  existingFocuses: QuestionTaxonomyOption[];
+  existingRoles: QuestionTaxonomyOption[];
   existingProvas: Prova[];
   isGeneratingTeacher: boolean;
   isGeneratingDetailed: boolean;
@@ -47,6 +52,9 @@ interface AdminQuestionEditorPageProps {
   onSave: () => void;
   reportContext?: React.ReactNode;
 }
+
+type QuestionTaxonomyOption = string | number | Record<string, any> | null | undefined;
+type KnowledgeTaxonomyLevel = 'materia' | 'topico' | 'assunto';
 
 const getRoleDisplayLabel = (value: any) => {
   if (typeof value === 'string' || typeof value === 'number') {
@@ -65,6 +73,169 @@ const getRoleDisplayLabel = (value: any) => {
   }
 
   return '';
+};
+
+const normalizeTaxonomyKey = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+const getTaxonomyLabel = (value: QuestionTaxonomyOption) => {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+
+  if (value && typeof value === 'object') {
+    return String(
+      value.name
+      ?? value.nome
+      ?? value.descricao
+      ?? value['descrição']
+      ?? value.sigla
+      ?? value.label
+      ?? '',
+    ).trim();
+  }
+
+  return '';
+};
+
+const getTaxonomyId = (value: QuestionTaxonomyOption) => {
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+
+  const id = value.id ?? value.value ?? value.filterId ?? value.filter_id;
+  return id === null || id === undefined || id === '' ? '' : String(id);
+};
+
+const getTaxonomyParentValues = (value: QuestionTaxonomyOption) => {
+  if (!value || typeof value !== 'object') {
+    return [];
+  }
+
+  const directValues = [
+    value.parentId,
+    value.parent_id,
+    value.pai,
+    value.assunto_raiz,
+    value.rootSubjectId,
+    value.root_subject_id,
+    value.subjectId,
+    value.subject_id,
+    value.materiaId,
+    value.materia_id,
+    value.topicId,
+    value.topic_id,
+    value.parentName,
+    value.parent_name,
+  ];
+  const parent = value.parent || value.paiItem || value.rootSubject;
+
+  if (parent && typeof parent === 'object') {
+    directValues.push(parent.id, parent.name, parent.nome, parent.slug);
+  }
+
+  return directValues
+    .filter((item) => item !== null && item !== undefined && String(item).trim() !== '')
+    .map(String);
+};
+
+const mergeTaxonomyOptionSources = (...sources: QuestionTaxonomyOption[][]) => {
+  const optionMap = new Map<string, QuestionTaxonomyOption>();
+
+  sources.flat().forEach((item) => {
+    const label = getTaxonomyLabel(item);
+    if (!label) {
+      return;
+    }
+
+    const parentKey = getTaxonomyParentValues(item).map(normalizeTaxonomyKey).sort().join('|');
+    const key = `${normalizeTaxonomyKey(label)}::${parentKey}`;
+    const current = optionMap.get(key);
+    if (!current || (typeof current !== 'object' && item && typeof item === 'object')) {
+      optionMap.set(key, item);
+    }
+  });
+
+  return Array.from(optionMap.values());
+};
+
+const findTaxonomyOptionByLabel = (options: QuestionTaxonomyOption[], label: string) => {
+  const normalizedLabel = normalizeTaxonomyKey(label);
+  return options.find((option) => normalizeTaxonomyKey(getTaxonomyLabel(option)) === normalizedLabel) || null;
+};
+
+const resolveSelectedTaxonomyOption = (
+  selected: QuestionTaxonomyOption[],
+  options: QuestionTaxonomyOption[],
+) => {
+  const selectedItem = selected?.[0];
+  const selectedLabel = getTaxonomyLabel(selectedItem);
+
+  if (!selectedLabel) {
+    return null;
+  }
+
+  return findTaxonomyOptionByLabel(options, selectedLabel) || selectedItem;
+};
+
+const taxonomyOptionBelongsToParent = (
+  option: QuestionTaxonomyOption,
+  parent: QuestionTaxonomyOption | null,
+) => {
+  if (!parent) {
+    return false;
+  }
+
+  const parentValues = [getTaxonomyId(parent), getTaxonomyLabel(parent)]
+    .filter(Boolean)
+    .map(normalizeTaxonomyKey);
+  const optionParentValues = getTaxonomyParentValues(option).map(normalizeTaxonomyKey);
+
+  if (optionParentValues.length === 0) {
+    return true;
+  }
+
+  return optionParentValues.some((value) => parentValues.includes(value));
+};
+
+const buildQuestionTaxonomySelection = (
+  label: string,
+  options: QuestionTaxonomyOption[],
+  taxonomyLevel: KnowledgeTaxonomyLevel,
+  parent?: QuestionTaxonomyOption | null,
+  rootSubject?: QuestionTaxonomyOption | null,
+) => {
+  const existing = findTaxonomyOptionByLabel(options, label);
+  if (existing && typeof existing === 'object') {
+    return existing;
+  }
+
+  const parentId = getTaxonomyId(parent);
+  const parentLabel = getTaxonomyLabel(parent);
+  const rootSubjectId = getTaxonomyId(rootSubject || parent);
+  const rootSubjectLabel = getTaxonomyLabel(rootSubject || parent);
+
+  return {
+    id: null,
+    name: label,
+    nome: label,
+    slug: slugify(label),
+    materia: taxonomyLevel === 'materia',
+    taxonomyLevel,
+    taxonomy_level: taxonomyLevel,
+    parentId: parentId || null,
+    parent_id: parentId || null,
+    parentName: parentLabel || undefined,
+    parent_name: parentLabel || undefined,
+    rootSubjectId: rootSubjectId || undefined,
+    root_subject_id: rootSubjectId || undefined,
+    rootSubjectName: rootSubjectLabel || undefined,
+    root_subject_name: rootSubjectLabel || undefined,
+  };
 };
 
 const mergeProvaSources = (primary: Prova[], fallback: any[]) => {
@@ -114,6 +285,77 @@ const formatPublicationDate = (value: string) => {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('pt-BR');
 };
 
+const normalizeQuestionOrigin = (value: unknown, hasProva = false) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['exam', 'concurso', 'prova', 'retirada_de_prova'].includes(normalized)) {
+    return 'exam';
+  }
+
+  if (['platform', 'inedita', 'inédita', 'generated', 'gerada'].includes(normalized)) {
+    return 'platform';
+  }
+
+  return hasProva ? 'exam' : 'platform';
+};
+
+const getQuestionGroupId = (group: Partial<AdminQuestionGroupItem> | null | undefined) => {
+  const id = group?.id;
+  return id === null || id === undefined ? '' : String(id);
+};
+
+const getQuestionGroupTitle = (group: Partial<AdminQuestionGroupItem> | null | undefined) => {
+  const raw = String(
+    group?.enunciado_clean
+    ?? group?.enunciadoClean
+    ?? group?.texto
+    ?? group?.enunciado
+    ?? '',
+  ).replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim();
+
+  return raw || (getQuestionGroupId(group) ? `Contexto #${getQuestionGroupId(group)}` : '');
+};
+
+const buildRoleSelection = (
+  label: string,
+  options: QuestionTaxonomyOption[],
+  selectedFocus: QuestionTaxonomyOption | null,
+) => {
+  const existing = findTaxonomyOptionByLabel(options, label);
+  if (existing && typeof existing === 'object') {
+    return existing;
+  }
+
+  const focusId = getTaxonomyId(selectedFocus);
+  const focusLabel = getTaxonomyLabel(selectedFocus);
+
+  return {
+    id: null,
+    name: label,
+    nome: label,
+    descricao: label,
+    ['descrição']: label,
+    slug: slugify(label),
+    parentId: focusId || null,
+    parent_id: focusId || null,
+    parentName: focusLabel || undefined,
+    parent_name: focusLabel || undefined,
+  };
+};
+
+const buildFocusSelection = (label: string, options: QuestionTaxonomyOption[]) => {
+  const existing = findTaxonomyOptionByLabel(options, label);
+  if (existing && typeof existing === 'object') {
+    return existing;
+  }
+
+  return {
+    id: null,
+    name: label,
+    nome: label,
+    slug: slugify(label),
+  };
+};
+
 const AdminQuestionEditorPage = ({
   manualQ,
   setManualQ,
@@ -126,6 +368,7 @@ const AdminQuestionEditorPage = ({
   existingSubjectTopics,
   existingSpecificSubjects,
   existingYears,
+  existingFocuses,
   existingRoles,
   existingProvas,
   isGeneratingTeacher,
@@ -142,18 +385,93 @@ const AdminQuestionEditorPage = ({
 
   const [provaSearch, setProvaSearch] = React.useState('');
   const [isProvaSearchOpen, setIsProvaSearchOpen] = React.useState(false);
+  const [questionGroups, setQuestionGroups] = React.useState<AdminQuestionGroupItem[]>([]);
+  const [groupSearch, setGroupSearch] = React.useState('');
+  const [isGroupSearchOpen, setIsGroupSearchOpen] = React.useState(false);
+  const [isLoadingGroups, setIsLoadingGroups] = React.useState(false);
   const MULTIPLE_CHOICE_LABEL = 'Múltipla Escolha';
   const MID_LEVEL_LABEL = 'Médio';
   const publishState = resolveAdminPublishState(manualQ as Record<string, any>);
   const visibilityValue = String(manualQ.visibilityStatus || 'public');
+  const questionOrigin = normalizeQuestionOrigin(
+    manualQ.questionOrigin || manualQ.question_origin || manualQ.sourceType || manualQ.source_type,
+    Boolean(manualQ.provaId),
+  );
   const publicationDateValue = normalizeDateTimeLocalValue(
     publishState === 'scheduled'
       ? manualQ.scheduledAt
       : manualQ.publishedAt || manualQ.createdAt || manualQ.scheduledAt,
   );
   const publicationDateLabel = formatPublicationDate(publicationDateValue);
-  const topicOptions = existingSubjectTopics?.length ? existingSubjectTopics : existingTopics;
-  const assuntoOptions = existingSpecificSubjects?.length ? existingSpecificSubjects : existingTopics;
+  const subjectOptions = React.useMemo(
+    () => mergeTaxonomyOptionSources(existingSubjects || [], manualQ.subjects || []),
+    [existingSubjects, manualQ.subjects],
+  );
+  const rawTopicOptions = React.useMemo(
+    () => mergeTaxonomyOptionSources(
+      existingSubjectTopics?.length ? existingSubjectTopics : existingTopics,
+      manualQ.topics || [],
+    ),
+    [existingSubjectTopics, existingTopics, manualQ.topics],
+  );
+  const rawAssuntoOptions = React.useMemo(
+    () => mergeTaxonomyOptionSources(
+      existingSpecificSubjects?.length ? existingSpecificSubjects : existingTopics,
+      manualQ.assuntos || [],
+    ),
+    [existingSpecificSubjects, existingTopics, manualQ.assuntos],
+  );
+  const selectedSubjectOption = React.useMemo(
+    () => resolveSelectedTaxonomyOption(manualQ.subjects || [], subjectOptions),
+    [manualQ.subjects, subjectOptions],
+  );
+  const topicOptions = React.useMemo(
+    () => rawTopicOptions.filter((option) => taxonomyOptionBelongsToParent(option, selectedSubjectOption)),
+    [rawTopicOptions, selectedSubjectOption],
+  );
+  const selectedTopicOption = React.useMemo(
+    () => resolveSelectedTaxonomyOption(manualQ.topics || [], rawTopicOptions),
+    [manualQ.topics, rawTopicOptions],
+  );
+  const assuntoOptions = React.useMemo(
+    () => rawAssuntoOptions.filter((option) => taxonomyOptionBelongsToParent(option, selectedTopicOption)),
+    [rawAssuntoOptions, selectedTopicOption],
+  );
+  const focusOptions = React.useMemo(
+    () => mergeTaxonomyOptionSources(existingFocuses || [], manualQ.focos || [], manualQ.focuses || [], manualQ.carreiras || []),
+    [existingFocuses, manualQ.carreiras, manualQ.focos, manualQ.focuses],
+  );
+  const roleOptions = React.useMemo(
+    () => mergeTaxonomyOptionSources(existingRoles || [], manualQ.cargos || []),
+    [existingRoles, manualQ.cargos],
+  );
+  const selectedFocusOption = React.useMemo(
+    () => resolveSelectedTaxonomyOption([
+      ...(manualQ.focos || []),
+      ...(manualQ.focuses || []),
+      ...(manualQ.carreiras || []),
+    ], focusOptions),
+    [focusOptions, manualQ.carreiras, manualQ.focos, manualQ.focuses],
+  );
+  const filteredRoleOptions = React.useMemo(
+    () => roleOptions.filter((option) => taxonomyOptionBelongsToParent(option, selectedFocusOption)),
+    [roleOptions, selectedFocusOption],
+  );
+  const selectedGroupId = String(
+    manualQ.grupoQuestaoId
+    ?? manualQ.grupo_questao_id
+    ?? manualQ.grupoQuestao?.id
+    ?? '',
+  );
+  const selectedQuestionGroup = React.useMemo(() => {
+    if (!selectedGroupId) {
+      return null;
+    }
+
+    return questionGroups.find((group) => String(group.id) === selectedGroupId)
+      || manualQ.grupoQuestao
+      || null;
+  }, [manualQ.grupoQuestao, questionGroups, selectedGroupId]);
   const manualItems = manualQ.itens || [];
   const manualTitle =
     editingExtractedIndex !== null
@@ -182,6 +500,49 @@ const AdminQuestionEditorPage = ({
       .slice(0, 12);
   }, [provaList, provaSearch]);
 
+  const filteredQuestionGroups = React.useMemo(() => {
+    const normalizedSearch = groupSearch.trim().toLowerCase();
+    const source = questionGroups.length > 0 ? questionGroups : (manualQ.grupoQuestao ? [manualQ.grupoQuestao] : []);
+    if (!normalizedSearch) {
+      return source.slice(0, 12);
+    }
+
+    return source
+      .filter((group) => [
+        String(group?.id || ''),
+        getQuestionGroupTitle(group),
+        String(group?.enunciado || ''),
+        String(group?.texto || ''),
+        String(group?.image_url || group?.imageUrl || ''),
+      ].join(' ').toLowerCase().includes(normalizedSearch))
+      .slice(0, 12);
+  }, [groupSearch, manualQ.grupoQuestao, questionGroups]);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    setIsLoadingGroups(true);
+    adminService.getQuestionGroups()
+      .then((items) => {
+        if (isMounted) {
+          setQuestionGroups(items);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setQuestionGroups([]);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingGroups(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   React.useEffect(() => {
     if (selectedProva) {
       setProvaSearch(formatProvaLabel(selectedProva));
@@ -192,6 +553,17 @@ const AdminQuestionEditorPage = ({
       setProvaSearch('');
     }
   }, [manualQ.provaId, selectedProva]);
+
+  React.useEffect(() => {
+    if (selectedQuestionGroup) {
+      setGroupSearch(getQuestionGroupTitle(selectedQuestionGroup));
+      return;
+    }
+
+    if (!selectedGroupId) {
+      setGroupSearch('');
+    }
+  }, [selectedGroupId, selectedQuestionGroup]);
 
   const handleTypeChange = (newType: string) => {
     setManualQ((prev: any) => {
@@ -263,6 +635,8 @@ const AdminQuestionEditorPage = ({
 
   const handleSelectProva = (prova: Prova) => {
     updateManualQ({
+      questionOrigin: 'exam',
+      question_origin: 'exam',
       provaId: prova.id,
       provas: [prova],
     });
@@ -272,11 +646,96 @@ const AdminQuestionEditorPage = ({
 
   const handleClearProva = () => {
     updateManualQ({
+      questionOrigin: 'platform',
+      question_origin: 'platform',
       provaId: '',
       provas: [],
     });
     setProvaSearch('');
     setIsProvaSearchOpen(false);
+  };
+
+  const handleQuestionOriginChange = (value: 'platform' | 'exam') => {
+    updateManualQ(value === 'platform'
+      ? {
+          questionOrigin: value,
+          question_origin: value,
+          provaId: '',
+          provas: [],
+        }
+      : {
+          questionOrigin: value,
+          question_origin: value,
+        });
+  };
+
+  const handleSelectQuestionGroup = (group: AdminQuestionGroupItem) => {
+    updateManualQ({
+      grupoQuestao: group,
+      grupoQuestaoId: group.id,
+      grupo_questao_id: group.id,
+    });
+    setGroupSearch(getQuestionGroupTitle(group));
+    setIsGroupSearchOpen(false);
+  };
+
+  const handleClearQuestionGroup = () => {
+    updateManualQ({
+      grupoQuestao: null,
+      grupoQuestaoId: null,
+      grupo_questao_id: null,
+    });
+    setGroupSearch('');
+    setIsGroupSearchOpen(false);
+  };
+
+  const handleSubjectChange = (values: string[]) => {
+    const label = values.at(-1)?.trim() || '';
+    updateManualQ({
+      subjects: label ? [buildQuestionTaxonomySelection(label, subjectOptions, 'materia')] : [],
+      topics: [],
+      assuntos: [],
+    });
+  };
+
+  const handleTopicChange = (values: string[]) => {
+    const label = values.at(-1)?.trim() || '';
+    updateManualQ({
+      topics: label
+        ? [buildQuestionTaxonomySelection(label, topicOptions, 'topico', selectedSubjectOption, selectedSubjectOption)]
+        : [],
+      assuntos: [],
+    });
+  };
+
+  const handleAssuntoChange = (values: string[]) => {
+    const label = values.at(-1)?.trim() || '';
+    updateManualQ({
+      assuntos: label
+        ? [buildQuestionTaxonomySelection(label, assuntoOptions, 'assunto', selectedTopicOption, selectedSubjectOption)]
+        : [],
+    });
+  };
+
+  const handleFocusChange = (values: string[]) => {
+    const label = values.at(-1)?.trim() || '';
+    const focusSelection = label ? buildFocusSelection(label, focusOptions) : null;
+
+    updateManualQ({
+      focos: focusSelection ? [focusSelection] : [],
+      focuses: focusSelection ? [focusSelection] : [],
+      carreiras: focusSelection ? [focusSelection] : [],
+      cargos: [],
+    });
+  };
+
+  const handleRoleChange = (values: string[]) => {
+    updateManualQ({
+      cargos: values
+        .map((label) => label.trim())
+        .filter(Boolean)
+        .map((label) => buildRoleSelection(label, filteredRoleOptions, selectedFocusOption)),
+    });
   };
 
   const handlePersistWithPatch = (patch: Record<string, unknown>) => {
@@ -353,25 +812,30 @@ const AdminQuestionEditorPage = ({
                 placeholder="Ex: TJ-SP, PF..."
               />
               <SmartTagSelector
-                label="Matéria(s)"
-                options={existingSubjects}
-                selected={(manualQ.subjects || []).map((item: any) => (typeof item === 'string' ? item : item.name))}
-                onChange={(value) => updateManualQ({ subjects: value })}
+                label="Materia"
+                options={subjectOptions}
+                selected={(manualQ.subjects || []).slice(0, 1).map(getTaxonomyLabel).filter(Boolean)}
+                onChange={handleSubjectChange}
                 placeholder="Ex: Direito Administrativo..."
+                multiple={false}
               />
               <SmartTagSelector
-                label="Topico(s)"
+                label="Topico"
                 options={topicOptions}
-                selected={(manualQ.topics || []).map((item: any) => (typeof item === 'string' ? item : item.name))}
-                onChange={(value) => updateManualQ({ topics: value })}
-                placeholder="Ex: Leis especiais..."
+                selected={(manualQ.topics || []).slice(0, 1).map(getTaxonomyLabel).filter(Boolean)}
+                onChange={handleTopicChange}
+                placeholder={selectedSubjectOption ? 'Ex: Leis especiais...' : 'Selecione a materia primeiro'}
+                multiple={false}
+                disabled={!selectedSubjectOption}
               />
               <SmartTagSelector
-                label="Assunto(s)"
+                label="Assunto"
                 options={assuntoOptions}
-                selected={(manualQ.assuntos || []).map((item: any) => (typeof item === 'string' ? item : item.name))}
-                onChange={(value) => updateManualQ({ assuntos: value })}
-                placeholder="Ex: Lei Maria da Penha..."
+                selected={(manualQ.assuntos || []).slice(0, 1).map(getTaxonomyLabel).filter(Boolean)}
+                onChange={handleAssuntoChange}
+                placeholder={selectedTopicOption ? 'Ex: Lei Maria da Penha...' : 'Selecione o topico primeiro'}
+                multiple={false}
+                disabled={!selectedTopicOption}
               />
               <SmartTagSelector
                 label="Ano"
@@ -382,10 +846,23 @@ const AdminQuestionEditorPage = ({
                 multiple
               />
               <SmartTagSelector
+                label="Foco"
+                options={focusOptions}
+                selected={[
+                  ...(manualQ.focos || []),
+                  ...(manualQ.focuses || []),
+                  ...(manualQ.carreiras || []),
+                ].slice(0, 1).map(getTaxonomyLabel).filter(Boolean)}
+                onChange={handleFocusChange}
+                placeholder="Ex: Tribunais, Policial..."
+                multiple={false}
+              />
+              <SmartTagSelector
                 label="Cargo(s)"
-                options={existingRoles}
+                options={filteredRoleOptions}
                 selected={(manualQ.cargos || []).map(getRoleDisplayLabel).filter(Boolean)}
-                onChange={(value) => updateManualQ({ cargos: value })}
+                onChange={handleRoleChange}
+                disabled={!selectedFocusOption}
                 placeholder="Ex: Analista Judiciário..."
               />
             </div>
@@ -396,6 +873,89 @@ const AdminQuestionEditorPage = ({
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Enunciado e alternativas</p>
             </div>
             <div className="space-y-6 p-5">
+              <div className="space-y-2">
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Contexto de questao vinculado</label>
+                <div className="relative">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={15} />
+                    <input
+                      type="search"
+                      value={groupSearch}
+                      onFocus={() => setIsGroupSearchOpen(true)}
+                      onChange={(event) => {
+                        setGroupSearch(event.target.value);
+                        setIsGroupSearchOpen(true);
+                      }}
+                      placeholder={isLoadingGroups ? 'Carregando contextos...' : 'Pesquisar contexto de questao existente...'}
+                      className={`${ADMIN_FIELD_CLASS} h-10 w-full pl-9 pr-24`}
+                    />
+                    {selectedQuestionGroup ? (
+                      <button
+                        type="button"
+                        onClick={handleClearQuestionGroup}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-sky-700 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100"
+                      >
+                        Remover
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {isGroupSearchOpen ? (
+                    <div className="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded-sm border border-slate-300 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-950">
+                      {filteredQuestionGroups.length > 0 ? filteredQuestionGroups.map((group) => {
+                        const title = getQuestionGroupTitle(group);
+                        const imageUrl = String(group.image_url || group.imageUrl || '').trim();
+                        return (
+                          <button
+                            key={group.id}
+                            type="button"
+                            onClick={() => handleSelectQuestionGroup(group)}
+                            className="flex w-full items-start gap-3 border-b border-slate-100 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900"
+                          >
+                            <span className="mt-0.5 rounded-sm border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                              #{group.id}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{title || 'Contexto sem titulo'}</span>
+                              <span className="mt-0.5 block truncate text-xs text-slate-500 dark:text-slate-400">
+                                {imageUrl ? `Imagem: ${imageUrl}` : String(group.texto || '').slice(0, 120)}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      }) : (
+                        <div className="px-3 py-4 text-sm font-medium text-slate-500 dark:text-slate-400">
+                          Nenhum contexto encontrado.
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                {selectedQuestionGroup ? (
+                  <div className="rounded-sm border border-slate-300 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/40">
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      {String(selectedQuestionGroup.image_url || selectedQuestionGroup.imageUrl || '').trim() ? (
+                        <img
+                          src={resolveApiResourceUrl(String(selectedQuestionGroup.image_url || selectedQuestionGroup.imageUrl))}
+                          alt=""
+                          className="h-20 w-28 rounded-sm border border-slate-300 object-cover dark:border-slate-700"
+                        />
+                      ) : null}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Contexto #{selectedQuestionGroup.id}</div>
+                        <p className="mt-1 line-clamp-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          {getQuestionGroupTitle(selectedQuestionGroup)}
+                        </p>
+                        {selectedQuestionGroup.texto ? (
+                          <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{selectedQuestionGroup.texto}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               <div className="space-y-2">
                 <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Texto de apoio</label>
                 <textarea
@@ -502,6 +1062,12 @@ const AdminQuestionEditorPage = ({
                   className={`${ADMIN_TEXTAREA_CLASS} min-h-[180px]`}
                   placeholder="Breve comentário ou dica do professor..."
                 />
+                {manualQ.teacherComment ? (
+                  <MathRichText
+                    content={manualQ.teacherComment}
+                    className="rounded-sm border border-amber-200 bg-amber-50/50 p-3 text-sm leading-7 text-slate-700 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-slate-200"
+                  />
+                ) : null}
               </div>
 
               <div className="space-y-4">
@@ -523,6 +1089,12 @@ const AdminQuestionEditorPage = ({
                   className={`${ADMIN_TEXTAREA_CLASS} min-h-[220px]`}
                   placeholder="Análise alternativa por alternativa..."
                 />
+                {manualQ.detailedComment ? (
+                  <MathRichText
+                    content={manualQ.detailedComment}
+                    className="rounded-sm border border-indigo-200 bg-indigo-50/40 p-3 text-sm leading-7 text-slate-700 dark:border-indigo-900/40 dark:bg-indigo-950/20 dark:text-slate-200"
+                  />
+                ) : null}
               </div>
             </div>
           </div>
@@ -553,6 +1125,38 @@ const AdminQuestionEditorPage = ({
               </div>
 
               <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Origem da questao</label>
+                  <div className="grid gap-2">
+                    {[
+                      { value: 'platform', title: 'Inedita', detail: 'Gerada pela plataforma' },
+                      { value: 'exam', title: 'De concurso', detail: 'Retirada de prova' },
+                    ].map((option) => (
+                      <label
+                        key={option.value}
+                        className={`flex cursor-pointer items-start gap-3 rounded-sm border px-3 py-2.5 transition-colors ${
+                          questionOrigin === option.value
+                            ? 'border-indigo-300 bg-indigo-50 text-indigo-900 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-200'
+                            : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="question-origin"
+                          value={option.value}
+                          checked={questionOrigin === option.value}
+                          onChange={() => handleQuestionOriginChange(option.value as 'platform' | 'exam')}
+                          className="mt-1 h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-700"
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold">{option.title}</span>
+                          <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">{option.detail}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Status</span>
                   <AdminPublishStateBadge state={publishState} />

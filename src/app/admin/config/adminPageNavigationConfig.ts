@@ -17,7 +17,7 @@
  */
 export type AdminPageTab = 'panel' | 'operation' | 'marketplace' | 'finance' | 'marketing' | 'support' | 'settings';
 export type AdminPanelSection = 'dashboard' | 'alerts' | 'billing-health';
-export type AdminOperationSection = 'questions' | 'exams' | 'import' | 'filters' | 'lei-comentada' | 'users';
+export type AdminOperationSection = 'questions' | 'question-groups' | 'exams' | 'import' | 'filters' | 'lei-comentada' | 'users';
 export type AdminMarketplaceSection = 'vendors' | 'materials' | 'blocked';
 export type AdminFinanceSection = 'transactions' | 'plans' | 'coupons' | 'automation' | 'analytics';
 export type AdminMarketingSection = 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links';
@@ -49,7 +49,7 @@ export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
 };
 
 export const PANEL_SECTION_KEYS = ['dashboard', 'alerts', 'billing-health'] as const;
-export const OPERATION_SECTION_KEYS = ['questions', 'exams', 'import', 'filters', 'lei-comentada', 'users'] as const;
+export const OPERATION_SECTION_KEYS = ['questions', 'question-groups', 'exams', 'import', 'filters', 'lei-comentada', 'users'] as const;
 export const MARKETPLACE_SECTION_KEYS = ['vendors', 'materials', 'blocked'] as const;
 export const FINANCE_SECTION_KEYS = ['transactions', 'plans', 'coupons', 'automation', 'analytics'] as const;
 export const MARKETING_SECTION_KEYS = ['landing-pages', 'campaigns', 'visual-themes', 'social-links'] as const;
@@ -122,6 +122,9 @@ export const LEGACY_TAB_MAP: Record<string, { tab: AdminPageTab; section?: strin
   alerts: { tab: 'panel', section: 'alerts' },
   'billing-health': { tab: 'panel', section: 'billing-health' },
   questions: { tab: 'operation', section: 'questions' },
+  'question-groups': { tab: 'operation', section: 'question-groups' },
+  'questions-groups': { tab: 'operation', section: 'question-groups' },
+  groups: { tab: 'operation', section: 'question-groups' },
   exams: { tab: 'operation', section: 'exams' },
   import: { tab: 'operation', section: 'import' },
   filters: { tab: 'operation', section: 'filters' },
@@ -191,6 +194,7 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
   ],
   operation: [
     { key: 'questions', label: 'Questoes' },
+    { key: 'question-groups', label: 'Contexto de questoes' },
     { key: 'exams', label: 'Banco de provas' },
     { key: 'import', label: 'Importador' },
     { key: 'filters', label: 'Filtros' },
@@ -272,6 +276,9 @@ export const buildAdminExamEditPath = (examId: string | number) =>
 
 export const buildAdminUserEditPath = (userId: string | number) =>
   `/admin/operation/users/${encodeURIComponent(String(userId))}/edit`;
+
+export const buildAdminLandingPageEditPath = (landingId: string | number) =>
+  `/admin/operation/marketing/landing-pages/${encodeURIComponent(String(landingId))}/edit`;
 
 const normalizeAdminRouteSegment = (value?: string | null) =>
   String(value || '').trim().toLowerCase();

@@ -29,6 +29,7 @@ import { useAdminQuestionWorkbench } from '../questions/useAdminQuestionWorkbenc
 import { useRankingEditorWorkflow } from '../rankings/useRankingEditorWorkflow';
 import { useAdminUserProfileWorkflow } from '../users/useAdminUserProfileWorkflow';
 import { buildAdminQuestionEditPath } from '../../config/adminPageNavigationConfig';
+import { adminService } from '@services/admin/adminService';
 
 export interface AdminDatabaseManagerControllerProps {
   questions: any[];
@@ -254,7 +255,6 @@ export const useAdminDatabaseManagerController = ({
    * Unifica o fluxo de importacao e de criacao/edicao manual de questões.
    */
   const {
-    openManualModal,
     isManualQuestionModalOpen,
     manualQuestionModalProps,
     importWorkflowProps,
@@ -292,6 +292,28 @@ export const useAdminDatabaseManagerController = ({
     }
     return result;
   }, [adminQuestions.length, loadQuestions, onDeleteQuestion, pagination.page, removeQuestionFromPage]);
+
+  const handleDeleteUser = React.useCallback(async (user: any) => {
+    const userId = String(user?.id || '');
+
+    if (!userId) {
+      addToast('Nao foi possivel identificar o usuario para remocao.', 'error');
+      return null;
+    }
+
+    try {
+      const result = await adminService.performUserActionWithResult({
+        action: 'delete_user',
+        user_id: userId,
+      });
+      await ensureUsersLoaded(true);
+      addToast(result.message || 'Usuario removido com sucesso.', 'success');
+      return result;
+    } catch (error: any) {
+      addToast(error?.message || 'Nao foi possivel remover o usuario.', 'error');
+      throw error;
+    }
+  }, [addToast, ensureUsersLoaded]);
 
   /**
    * Concentra a moderação cruzada de materiais e reports, incluindo atalhos para questões e perfis.
@@ -355,6 +377,7 @@ export const useAdminDatabaseManagerController = ({
     onQuestionsPageChange: loadQuestions,
     onCreateQuestion: () => router.push(buildAdminQuestionEditPath('new')),
     onQuestionEdit: openQuestionEditPage,
+    onAddQuestions,
     onQuestionUpdate: onUpdateQuestion,
     onQuestionDelete: handleDeleteQuestion,
     onQuestionsRefresh: reloadCurrentPage,
@@ -364,6 +387,7 @@ export const useAdminDatabaseManagerController = ({
     onConfirmDeleteExam: handleDeleteExam,
     examActionLoading,
     onOpenUserProfile: openUserProfile,
+    onDeleteUser: handleDeleteUser,
     onModerateMaterial: openMaterialModerationFromList,
     onDeleteMaterial,
     onInspectReport: inspectReportTarget,

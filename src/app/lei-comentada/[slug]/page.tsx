@@ -49,7 +49,6 @@ import {
   PLATFORM_PAGE_DESCRIPTION_CLASS,
   PLATFORM_PAGE_TITLE_CLASS,
   PLATFORM_SECTION_TITLE_CLASS,
-  PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
 import { legalCommentaryApiService } from '@services/legal-commentary';
 import {
@@ -67,7 +66,6 @@ import {
   saveLegalReadingPreferences,
 } from '@services/legal-commentary/legalReadingPreferences';
 import type {
-  ArticleExamTip,
   ArticleJurisprudence,
   LegalCommentedViewMode,
   LawArticle,
@@ -78,7 +76,6 @@ import type {
   LegalReadingFlowMode,
   LegalReadingMode,
   LegalUserComment,
-  LegalReadingPreferences,
   TeacherComment,
 } from '@types';
 
@@ -126,6 +123,9 @@ type ArticleStudyContentIndex = {
 const LegalReadingToolsContext = React.createContext<LegalReadingToolsContextValue | null>(null);
 
 const useLegalReadingTools = () => React.useContext(LegalReadingToolsContext);
+
+const LEGAL_PANEL_CLASS = 'rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900';
+const LEGAL_MUTED_PANEL_CLASS = 'rounded-2xl bg-slate-50 dark:bg-slate-800/70';
 
 const HIGHLIGHT_COLORS: Array<{
   value: LegalHighlightColor;
@@ -326,6 +326,62 @@ const formatDate = (iso?: string) => {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(iso));
 };
 
+const applyFavoriteToLawDetail = (
+  law: LawDetail | null,
+  type: LegalFavoriteType,
+  targetId: string,
+  isFavorite: boolean,
+): LawDetail | null => {
+  if (!law) {
+    return law;
+  }
+
+  const matchesTarget = (id: unknown) => String(id) === String(targetId);
+  const updateTeacherComment = (comment: TeacherComment): TeacherComment => (
+    matchesTarget(comment.id) ? { ...comment, isFavorite } : comment
+  );
+  const updateJurisprudence = (item: ArticleJurisprudence): ArticleJurisprudence => (
+    matchesTarget(item.id) ? { ...item, isFavorite } : item
+  );
+
+  if (type === 'law') {
+    return matchesTarget(law.id) ? { ...law, isFavorite } : law;
+  }
+
+  if (type === 'article') {
+    return {
+      ...law,
+      articles: law.articles.map((article) => (
+        matchesTarget(article.id) ? { ...article, isFavorite } : article
+      )),
+    };
+  }
+
+  if (type === 'teacher_comment') {
+    return {
+      ...law,
+      teacherComments: law.teacherComments.map(updateTeacherComment),
+      articles: law.articles.map((article) => ({
+        ...article,
+        comentarios: article.comentarios?.map(updateTeacherComment),
+      })),
+    };
+  }
+
+  if (type === 'jurisprudence') {
+    return {
+      ...law,
+      jurisprudence: law.jurisprudence.map(updateJurisprudence),
+      articles: law.articles.map((article) => ({
+        ...article,
+        jurisprudencia: article.jurisprudencia?.map(updateJurisprudence),
+      })),
+    };
+  }
+
+  return law;
+};
+
 const getArticleSearchText = (article: LawArticle) => [
   article.number,
   article.title || '',
@@ -420,7 +476,7 @@ const AccordionRow: React.FC<{
     <details open={defaultOpen} className="group border-t border-slate-100 first:border-t-0 dark:border-slate-800">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-1 py-3">
         <span className="flex items-center gap-3 text-sm font-black text-slate-800 dark:text-slate-100">
-          <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${tones[tone]}`}>
+          <span className={`flex h-7 w-7 items-center justify-center rounded-xl ${tones[tone]}`}>
             <Icon size={15} />
           </span>
           {title}
@@ -563,7 +619,7 @@ const ArticleNotesContent: React.FC<{
         onChange={(event) => setNote(event.target.value)}
         placeholder={currentUser ? 'Escreva sua anotação privada sobre este artigo.' : 'Entre para salvar anotações privadas.'}
         disabled={!currentUser}
-        className="min-h-[96px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-indigo-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+        className="min-h-[96px] w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-indigo-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
       />
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs font-bold text-slate-400">{savedLabel || 'Suas anotações ficam privadas.'}</p>
@@ -602,7 +658,7 @@ const CommunityCommentsContent: React.FC<{
           onChange={(event) => setBody(event.target.value)}
           placeholder={currentUser ? 'Comente este artigo...' : 'Entre para comentar.'}
           disabled={!currentUser}
-          className="min-h-[88px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          className="min-h-[88px] w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
         />
         <div className="flex justify-end">
           <button
@@ -641,14 +697,14 @@ const CommunityCommentsContent: React.FC<{
                       setEditingId(comment.id);
                       setEditingBody(comment.body);
                     }}
-                    className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white hover:text-indigo-600 dark:hover:bg-slate-900"
+                    className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-white hover:text-indigo-600 dark:hover:bg-slate-900"
                     title="Editar"
                   >
                     <Pencil size={14} />
                   </button>
                   <button
                     onClick={() => onDelete(comment.id)}
-                    className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white hover:text-red-600 dark:hover:bg-slate-900"
+                    className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-white hover:text-red-600 dark:hover:bg-slate-900"
                     title="Excluir"
                   >
                     <Trash2 size={14} />
@@ -665,13 +721,13 @@ const CommunityCommentsContent: React.FC<{
                   className="min-h-[74px] w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none focus:border-indigo-300 dark:border-slate-700 dark:bg-slate-900"
                 />
                 <div className="flex justify-end gap-2">
-                  <button onClick={() => setEditingId(null)} className="rounded-lg bg-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 dark:bg-slate-700 dark:text-slate-200">Cancelar</button>
+                  <button onClick={() => setEditingId(null)} className="rounded-xl bg-slate-200 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 dark:bg-slate-700 dark:text-slate-200">Cancelar</button>
                   <button
                     onClick={() => {
                       onEdit(comment.id, editingBody);
                       setEditingId(null);
                     }}
-                    className="rounded-lg bg-indigo-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white"
+                    className="rounded-xl bg-indigo-600 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white"
                   >
                     Salvar
                   </button>
@@ -868,7 +924,7 @@ const PagedArticleNavigator = React.memo(({
   onPrevious,
   onNext,
 }: PagedArticleNavigatorProps) => (
-  <section className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between`}>
+  <section className={`${LEGAL_PANEL_CLASS} flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between`}>
     <div>
       <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Navegação</p>
       <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
@@ -928,7 +984,7 @@ const LegalReadingToolsBar = React.memo(({
   onClearActiveArticleHighlights,
 }: LegalReadingToolsBarProps) => (
   <section className="sticky bottom-4 z-20 mx-auto w-full max-w-[56rem] px-2 md:px-0">
-    <div className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden border border-slate-200/80 bg-white/94 px-3 py-2 shadow-xl shadow-slate-900/10 backdrop-blur dark:border-slate-800/80 dark:bg-slate-900/94 dark:shadow-black/20`}>
+    <div className={`${LEGAL_PANEL_CLASS} overflow-hidden border-slate-200/80 bg-white/94 px-3 py-2 shadow-lg shadow-slate-900/10 backdrop-blur dark:border-slate-800/80 dark:bg-slate-900/94 dark:shadow-black/20`}>
       <div className="no-scrollbar flex items-center gap-2 overflow-x-auto">
         <div className="min-w-max rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/70">
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Leitura</p>
@@ -960,14 +1016,14 @@ const LegalReadingToolsBar = React.memo(({
               <button
                 type="button"
                 onClick={() => onSetReadingFlowMode('paged')}
-                className={`rounded-lg px-3 py-2 text-[11px] font-black transition-colors ${readingFlowMode === 'paged' ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-900 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-300'}`}
+                className={`rounded-xl px-3 py-2 text-[11px] font-black transition-colors ${readingFlowMode === 'paged' ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-900 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-300'}`}
               >
                 Artigo por artigo
               </button>
               <button
                 type="button"
                 onClick={() => onSetReadingFlowMode('list')}
-                className={`rounded-lg px-3 py-2 text-[11px] font-black transition-colors ${readingFlowMode === 'list' ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-900 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-300'}`}
+                className={`rounded-xl px-3 py-2 text-[11px] font-black transition-colors ${readingFlowMode === 'list' ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-900 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-300'}`}
               >
                 Lista
               </button>
@@ -1057,7 +1113,7 @@ const DryLawDocument = React.memo(({
 
   return (
     <div className="mx-auto max-w-[980px]">
-      <section className="rounded-lg border border-slate-200 bg-slate-100/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
+      <section className="rounded-3xl border border-slate-200 bg-slate-100/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
         <div className="min-h-[calc(100vh-220px)] rounded-sm bg-white px-7 py-9 text-slate-950 shadow-[0_18px_50px_rgba(15,23,42,0.14)] sm:px-10 md:px-14 md:py-12 lg:px-16">
           <header className="mb-10 border-b border-slate-200 pb-8 text-center">
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Texto legal consolidado</p>
@@ -1156,6 +1212,8 @@ const DryLawDocument = React.memo(({
 
 DryLawDocument.displayName = 'DryLawDocument';
 
+// Mantido como alternativa sem colapso para uma leitura comentada contínua.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const CommentedLawDocument: React.FC<{
   law: LawDetail;
   articles: LawArticle[];
@@ -1194,7 +1252,7 @@ const CommentedLawDocument: React.FC<{
 
   return (
     <div className="mx-auto max-w-[1040px]">
-      <section className="rounded-lg border border-slate-200 bg-slate-100/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
+      <section className="rounded-3xl border border-slate-200 bg-slate-100/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
         <div className="min-h-[calc(100vh-220px)] rounded-sm bg-white px-7 py-9 text-slate-950 shadow-[0_18px_50px_rgba(15,23,42,0.14)] sm:px-10 md:px-14 md:py-12 lg:px-16">
           <header className="mb-10 border-b border-slate-200 pb-8 text-center">
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-indigo-600">Lei Comentada</p>
@@ -1419,7 +1477,7 @@ const CommentedLawDocumentCollapsible = React.memo(({
 
   return (
     <div className="mx-auto max-w-[1040px]">
-      <section className="rounded-lg border border-slate-200 bg-slate-100/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
+      <section className="rounded-3xl border border-slate-200 bg-slate-100/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
         <div className="min-h-[calc(100vh-220px)] rounded-sm bg-white px-7 py-9 text-slate-950 shadow-[0_18px_50px_rgba(15,23,42,0.14)] sm:px-10 md:px-14 md:py-12 lg:px-16">
           <header className="mb-10 border-b border-slate-200 pb-8 text-center">
             <p className="text-[10px] font-black uppercase tracking-[0.22em] text-indigo-600">Lei Comentada</p>
@@ -1596,7 +1654,7 @@ CommentedLawDocumentCollapsible.displayName = 'CommentedLawDocumentCollapsible';
 
 const LawDetailLoadingState: React.FC = () => (
   <div className="w-full space-y-6 animate-fade-in">
-    <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
+    <section className={`${LEGAL_PANEL_CLASS} overflow-hidden`}>
       <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6 px-6 py-7 md:px-8">
           <div className="h-4 w-36 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
@@ -1628,7 +1686,7 @@ const LawDetailLoadingState: React.FC = () => (
 
     <div className="grid items-start gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
       <aside className="hidden xl:sticky xl:top-0 xl:block xl:h-fit">
-        <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-4 shadow-xl shadow-slate-200/60 dark:shadow-none`}>
+        <section className={`${LEGAL_PANEL_CLASS} p-4`}>
           <div className="h-3 w-14 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
           <div className="mt-3 h-5 w-36 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
           <div className="mt-5 space-y-2">
@@ -1640,7 +1698,7 @@ const LawDetailLoadingState: React.FC = () => (
       </aside>
 
       <section className="space-y-5">
-        <section className={`${PLATFORM_SURFACE_CARD_CLASS} space-y-4 p-4 md:p-5`}>
+        <section className={`${LEGAL_PANEL_CLASS} space-y-4 p-4 md:p-5`}>
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
             <div className="h-12 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800/70" />
             <div className="h-12 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800/70" />
@@ -1648,7 +1706,7 @@ const LawDetailLoadingState: React.FC = () => (
           <div className="h-16 animate-pulse rounded-2xl bg-slate-50 dark:bg-slate-800/60" />
         </section>
 
-        <section className="mx-auto max-w-[1040px] rounded-lg border border-slate-200 bg-slate-100/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
+        <section className="mx-auto max-w-[1040px] rounded-3xl border border-slate-200 bg-slate-100/70 p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950/50">
           <div className="min-h-[calc(100vh-220px)] rounded-sm bg-white px-7 py-9 shadow-[0_18px_50px_rgba(15,23,42,0.14)] dark:bg-slate-900 sm:px-10 md:px-14 md:py-12 lg:px-16">
             <div className="mb-10 space-y-4 border-b border-slate-200 pb-8 dark:border-slate-800">
               <div className="mx-auto h-3 w-28 animate-pulse rounded-full bg-indigo-100 dark:bg-indigo-900/40" />
@@ -1703,7 +1761,6 @@ const LawDetailPage: React.FC = () => {
   const [selectionPopover, setSelectionPopover] = React.useState<SelectionPopoverState | null>(null);
   const [loadedReadingPreferencesKey, setLoadedReadingPreferencesKey] = React.useState('');
   const [listVisibleCount, setListVisibleCount] = React.useState(LIST_INITIAL_BATCH);
-  const [intersectionRoot, setIntersectionRoot] = React.useState<HTMLElement | null>(null);
   const pageRootRef = React.useRef<HTMLDivElement | null>(null);
   const scrollTargetRef = React.useRef<HTMLElement | Window | null>(null);
   const previousPagedArticleIdRef = React.useRef<string>('');
@@ -1867,7 +1924,6 @@ const LawDetailPage: React.FC = () => {
 
     const target = resolveScrollableParent(pageRootRef.current);
     scrollTargetRef.current = target;
-    setIntersectionRoot(target instanceof HTMLElement ? target : null);
 
     const getScrollTop = () => {
       if (target === window) return window.scrollY || document.documentElement.scrollTop || 0;
@@ -2268,12 +2324,18 @@ const LawDetailPage: React.FC = () => {
 
     try {
       const result = await legalCommentaryApiService.toggleFavorite(type, targetId);
-      await reloadLaw({ force: true });
+      setLaw((current) => applyFavoriteToLawDetail(current, type, targetId, result.isFavorite));
+      try {
+        const nextLaw = await legalCommentaryApiService.getLawDetail(slug, { force: true });
+        setLaw(applyFavoriteToLawDetail(nextLaw, type, targetId, result.isFavorite));
+      } catch {
+        // O favorito ja foi persistido; a UI local permanece coerente mesmo se o refetch falhar.
+      }
       addToast(result.isFavorite ? 'Item salvo nos favoritos.' : 'Item removido dos favoritos.', 'success');
     } catch {
       addToast('Nao foi possivel atualizar o favorito.', 'error');
     }
-  }, [addToast, currentUser, reloadLaw]);
+  }, [addToast, currentUser, slug]);
 
   const handleArticleFocus = React.useCallback((article: LawArticle) => {
     if (!law || activeArticleId === article.id) return;
@@ -2415,7 +2477,7 @@ const LawDetailPage: React.FC = () => {
 
   if (!law) {
     return (
-      <div className={`${PLATFORM_SURFACE_CARD_CLASS} p-10 text-center`}>
+      <div className={`${LEGAL_PANEL_CLASS} p-10 text-center`}>
         <BookOpen className="mx-auto mb-4 text-slate-300 dark:text-slate-600" size={42} />
         <h1 className={PLATFORM_PAGE_TITLE_CLASS}>Lei não encontrada</h1>
         <Link href="/lei-comentada" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-indigo-700">
@@ -2432,7 +2494,7 @@ const LawDetailPage: React.FC = () => {
       data-reading-focus={isImmersiveMode ? 'true' : 'false'}
       className={`cm-legal-reading-page w-full animate-fade-in ${isImmersiveMode ? 'space-y-4' : 'space-y-6'}`}
     >
-      <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
+      <section className={`${LEGAL_PANEL_CLASS} overflow-hidden`}>
         <div className="cm-legal-reading-top-grid grid gap-0 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="px-6 py-7 md:px-8">
             <Link href="/lei-comentada" className="mb-5 inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-slate-400 transition-colors hover:text-indigo-600 dark:text-slate-500 dark:hover:text-indigo-300">
@@ -2457,25 +2519,31 @@ const LawDetailPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-800/70">
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className={LEGAL_MUTED_PANEL_CLASS}>
+                <div className="p-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Promulgada</p>
                 <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{formatDate(law.date)}</p>
+                </div>
               </div>
-              <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-800/70">
+              <div className={LEGAL_MUTED_PANEL_CLASS}>
+                <div className="p-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Comentados</p>
                 <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{law.commentedArticleCount}/{law.articleCount}</p>
+                </div>
               </div>
-              <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-800/70">
+              <div className={LEGAL_MUTED_PANEL_CLASS}>
+                <div className="p-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Progresso</p>
                 <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{law.progress?.progressPercent || 0}% lido</p>
+                </div>
               </div>
             </div>
           </div>
 
           <aside className="cm-legal-reading-source-panel border-t border-slate-200 bg-slate-50 px-6 py-7 dark:border-slate-800 dark:bg-slate-950/70 md:px-8 xl:border-l xl:border-t-0">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Fonte oficial</p>
-            <a href={law.officialUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm font-black text-slate-700 transition-colors hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-indigo-500/40 dark:hover:text-indigo-300">
+            <a href={law.officialUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition-colors hover:border-indigo-200 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-indigo-500/40 dark:hover:text-indigo-300">
               Portal do Planalto
               <ExternalLink size={16} />
             </a>
@@ -2491,7 +2559,7 @@ const LawDetailPage: React.FC = () => {
       </section>
 
       {latestLawUpdates.length > 0 ? (
-        <section className="rounded-[2rem] border border-amber-200 bg-amber-50/90 p-5 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+        <section className="rounded-3xl border border-amber-200 bg-amber-50/90 p-5 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700 dark:text-amber-300">O que mudou</p>
@@ -2505,7 +2573,7 @@ const LawDetailPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setUpdatedOnly((current) => !current)}
-              className={`inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-black transition-colors ${
+              className={`inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl px-4 text-sm font-black transition-colors ${
                 updatedOnly
                   ? 'bg-amber-700 text-white hover:bg-amber-800'
                   : 'border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-slate-950 dark:text-amber-200 dark:hover:bg-amber-500/10'
@@ -2532,7 +2600,7 @@ const LawDetailPage: React.FC = () => {
 
       <div className="cm-legal-reading-body-grid grid items-start gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="cm-legal-reading-index-panel hidden xl:sticky xl:top-0 xl:block xl:h-fit">
-          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-4 shadow-xl shadow-slate-200/60 dark:shadow-none`}>
+          <section className={`${LEGAL_PANEL_CLASS} p-4`}>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Índice</p>
               <h2 className="mt-2 text-base font-black text-slate-900 dark:text-slate-100">Artigos desta lei</h2>
               <nav className="no-scrollbar mt-4 max-h-[calc(100vh-7rem)] space-y-1 overflow-y-auto pr-1">
@@ -2552,7 +2620,7 @@ const LawDetailPage: React.FC = () => {
         </aside>
 
         <section className={`min-w-0 space-y-5 pb-28 md:pb-32 ${isImmersiveMode ? 'xl:max-w-none' : ''}`}>
-          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-4 md:p-5`}>
+          <section className={`${LEGAL_PANEL_CLASS} p-4 md:p-5`}>
             <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -2560,7 +2628,7 @@ const LawDetailPage: React.FC = () => {
                   value={articleQuery}
                   onChange={(event) => setArticleQuery(event.target.value)}
                   placeholder={readingMode === 'dry' ? 'Buscar artigo ou termo no texto legal' : 'Buscar artigo, termo, jurisprudência ou macete'}
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 dark:focus:bg-slate-900"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 dark:focus:bg-slate-900"
                 />
               </div>
 
@@ -2621,7 +2689,7 @@ const LawDetailPage: React.FC = () => {
               {law.updates.length > 0 ? (
                 <button
                   onClick={() => setUpdatedOnly((current) => !current)}
-                  className={`flex h-11 min-w-[220px] items-center justify-between rounded-2xl border px-4 text-sm font-black transition-colors ${updatedOnly ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200' : 'border-slate-200 bg-slate-50 text-slate-500 hover:text-amber-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:text-amber-300'}`}
+                  className={`flex h-11 min-w-[220px] items-center justify-between rounded-xl border px-4 text-sm font-black transition-colors ${updatedOnly ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200' : 'border-slate-200 bg-slate-50 text-slate-500 hover:text-amber-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 dark:hover:text-amber-300'}`}
                 >
                   <span className="inline-flex items-center gap-2"><AlertTriangle size={16} /> Atualizações</span>
                   <span>{law.updates.length}</span>
@@ -2696,7 +2764,7 @@ const LawDetailPage: React.FC = () => {
                   key={article.id}
                   id={article.id}
                   onClick={() => handleArticleClick(article)}
-                  className="scroll-mt-6 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:p-6"
+                  className="scroll-mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:p-6"
                 >
                   <header className="mb-4 flex items-start justify-between gap-4">
                     <div>
@@ -2860,7 +2928,7 @@ const LawDetailPage: React.FC = () => {
       {selectionPopover ? (
         <div
           ref={selectionPopoverRef}
-          className="fixed z-50 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-2xl backdrop-blur dark:border-slate-800 dark:bg-slate-900/95"
+          className="fixed z-50 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur dark:border-slate-800 dark:bg-slate-900/95"
           style={{
             left: Math.max(84, Math.min(selectionPopover.x, (typeof window !== 'undefined' ? window.innerWidth : selectionPopover.x) - 84)),
             top: Math.max(16, selectionPopover.y),

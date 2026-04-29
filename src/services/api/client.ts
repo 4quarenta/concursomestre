@@ -60,9 +60,24 @@ export const resolveApiResourceUrl = (resource: string): string => {
     }
 
     const normalizedResource = resource.replace(/^\/+/, '');
+    const backendRoot = resolveBackendRoot();
+
+    if (normalizedResource.startsWith('uploads/')) {
+        return `${backendRoot}/${normalizedResource}`;
+    }
+
+    try {
+        const backendRootUrl = new URL(backendRoot);
+        const backendPath = backendRootUrl.pathname.replace(/^\/+|\/+$/g, '');
+        if (backendPath && normalizedResource.startsWith(`${backendPath}/`)) {
+            return `${backendRootUrl.origin}/${normalizedResource}`;
+        }
+    } catch {
+        // Mantem o fallback historico abaixo quando a URL base nao puder ser parseada.
+    }
 
     if (normalizedResource.startsWith('api/')) {
-        return `${resolveBackendRoot()}/${normalizedResource}`;
+        return `${backendRoot}/${normalizedResource}`;
     }
 
     return `${resolveApiBaseUrl()}${normalizedResource}`;

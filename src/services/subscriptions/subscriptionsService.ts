@@ -11,6 +11,10 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 
+let automationHelperRequest: Promise<any> | null = null;
+let automationHelperCache: { payload: any; cachedAt: number } | null = null;
+const AUTOMATION_HELPER_CACHE_TTL_MS = 60_000;
+
 /**
  * Consolida payloads do backend em um objeto unico e previsivel.
  * Essa normalizacao evita que checkout e billing precisem conhecer todos os formatos legados.
@@ -53,10 +57,42 @@ export const subscriptionsService = {
    * @since 1.0.0
    */
   async getAutomationHelperInfo(): Promise<any> {
+    if (automationHelperCache && (Date.now() - automationHelperCache.cachedAt) < AUTOMATION_HELPER_CACHE_TTL_MS) {
+      return automationHelperCache.payload;
+    }
+    if (automationHelperRequest) {
+      return automationHelperRequest;
+    }
+
+    automationHelperRequest = (async () => {
     const response = await apiClient.get<any>(ENDPOINTS.subscriptions.automationHelper);
     assertApiSuccess(
       response,
       'Não foi possível carregar as instruções de automação.',
+    );
+
+    const payload = mergeResponsePayload(response, {});
+    automationHelperCache = {
+      payload,
+      cachedAt: Date.now(),
+    };
+    return payload;
+    })().finally(() => {
+      automationHelperRequest = null;
+    });
+
+    return automationHelperRequest;
+  },
+
+  /**
+   * Executa manualmente a reconciliacao Stripe pelo painel admin.
+   * @since 1.0.0
+   */
+  async runAutomationNow(): Promise<any> {
+    const response = await apiClient.post<any>(`${ENDPOINTS.subscriptions.automationHelper}?action=run_now`, {});
+    assertApiSuccess(
+      response,
+      'Nao foi possivel executar a rotina de automacao.',
     );
 
     return mergeResponsePayload(response, {});

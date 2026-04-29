@@ -10,6 +10,12 @@
 */
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
+import {
+  getAccessToken,
+  getCurrentUserSnapshot,
+  isAccessTokenExpired,
+  refreshAuthSession,
+} from '@services/auth/session';
 import type {
   ArticleExamTip,
   ArticleJurisprudence,
@@ -106,8 +112,8 @@ const unwrap = <T>(response: any, fallback: T): T => readApiData<T>(response, fa
 const lawDetailCache = new Map<string, LawDetail | null>();
 const lawDetailPromiseCache = new Map<string, Promise<LawDetail | null>>();
 const relatedQuestionLawsCache = new Map<string, RelatedQuestionLawMatch[]>();
-let homeSnapshotCache: LegalHomeSnapshot | null = null;
-let homeSnapshotPromise: Promise<LegalHomeSnapshot> | null = null;
+const homeSnapshotCache = new Map<string, LegalHomeSnapshot>();
+const homeSnapshotPromiseCache = new Map<string, Promise<LegalHomeSnapshot>>();
 
 const normalizeText = (value: unknown) => String(value || '')
   .normalize('NFD')
@@ -252,6 +258,42 @@ const normalizeAiGenerationErrorMessage = (message: string): string => {
 
 const ensureArray = <T>(value: unknown): T[] => (Array.isArray(value) ? value as T[] : []);
 
+const getUserScopedCacheKey = () => {
+  const user = getCurrentUserSnapshot();
+  return String(user?.id || user?.email || 'guest');
+};
+
+const buildLawDetailCacheKey = (slug: string) => `${getUserScopedCacheKey()}:${slug}`;
+
+const ensureAuthenticatedOptionalRead = async () => {
+  const user = getCurrentUserSnapshot();
+  if (!user) {
+    return;
+  }
+
+  const token = getAccessToken();
+  if (token && !isAccessTokenExpired(token, 30)) {
+    return;
+  }
+
+  try {
+    await refreshAuthSession({
+      reason: 'manual',
+      force: true,
+      allowAnonymousFailure: true,
+    });
+  } catch {
+    // Leituras opcionais continuam publicas se a sessao nao puder ser renovada.
+  }
+};
+
+const invalidateLegalUserStateCaches = () => {
+  homeSnapshotCache.clear();
+  homeSnapshotPromiseCache.clear();
+  lawDetailCache.clear();
+  lawDetailPromiseCache.clear();
+};
+
 const normalizeEditorialSnapshot = (payload: any): LegalArticleEditorialSnapshot => ({
   articleId: String(payload?.articleId || ''),
   articleNumber: payload?.articleNumber ? String(payload.articleNumber) : undefined,
@@ -264,16 +306,26 @@ const normalizeEditorialSnapshot = (payload: any): LegalArticleEditorialSnapshot
 });
 
 export const legalCommentaryApiService = {
-  async getHomeSnapshot(): Promise<LegalHomeSnapshot> {
-    if (homeSnapshotCache) {
-      return homeSnapshotCache;
+  async getHomeSnapshot(options?: { force?: boolean }): Promise<LegalHomeSnapshot> {
+    const cacheKey = getUserScopedCacheKey();
+
+    if (options?.force) {
+      homeSnapshotCache.delete(cacheKey);
+      homeSnapshotPromiseCache.delete(cacheKey);
     }
 
-    if (homeSnapshotPromise) {
-      return homeSnapshotPromise;
+    const cachedSnapshot = homeSnapshotCache.get(cacheKey);
+    if (cachedSnapshot) {
+      return cachedSnapshot;
     }
 
-    homeSnapshotPromise = (async () => {
+    const existingRequest = homeSnapshotPromiseCache.get(cacheKey);
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    const request = (async () => {
+      await ensureAuthenticatedOptionalRead();
       const response = await apiClient.get(ENDPOINTS.legalCommentary.list) as any;
       const payload = unwrap<LegalHomeSnapshot>(response, {
         areas: [],
@@ -284,14 +336,16 @@ export const legalCommentaryApiService = {
         recentlyUpdated: [],
         totals: { laws: 0, articles: 0, commentedArticles: 0, updatedRecently: 0 },
       });
-      homeSnapshotCache = payload;
+      homeSnapshotCache.set(cacheKey, payload);
       return payload;
     })();
 
+    homeSnapshotPromiseCache.set(cacheKey, request);
+
     try {
-      return await homeSnapshotPromise;
+      return await request;
     } finally {
-      homeSnapshotPromise = null;
+      homeSnapshotPromiseCache.delete(cacheKey);
     }
   },
 
@@ -307,35 +361,38 @@ export const legalCommentaryApiService = {
     const normalizedSlug = String(slug || '').trim();
     if (!normalizedSlug) return null;
 
+    const cacheKey = buildLawDetailCacheKey(normalizedSlug);
+
     if (options?.force) {
-      lawDetailCache.delete(normalizedSlug);
-      lawDetailPromiseCache.delete(normalizedSlug);
+      lawDetailCache.delete(cacheKey);
+      lawDetailPromiseCache.delete(cacheKey);
     }
 
-    if (lawDetailCache.has(normalizedSlug)) {
-      return lawDetailCache.get(normalizedSlug) ?? null;
+    if (lawDetailCache.has(cacheKey)) {
+      return lawDetailCache.get(cacheKey) ?? null;
     }
 
-    const existingRequest = lawDetailPromiseCache.get(normalizedSlug);
+    const existingRequest = lawDetailPromiseCache.get(cacheKey);
     if (existingRequest) {
       return existingRequest;
     }
 
     const request = (async () => {
+      await ensureAuthenticatedOptionalRead();
       const response = await apiClient.get(ENDPOINTS.legalCommentary.detail, {
         params: { slug: normalizedSlug },
       }) as any;
       const lawDetail = unwrap<LawDetail | null>(response, null);
-      lawDetailCache.set(normalizedSlug, lawDetail);
+      lawDetailCache.set(cacheKey, lawDetail);
       return lawDetail;
     })();
 
-    lawDetailPromiseCache.set(normalizedSlug, request);
+    lawDetailPromiseCache.set(cacheKey, request);
 
     try {
       return await request;
     } finally {
-      lawDetailPromiseCache.delete(normalizedSlug);
+      lawDetailPromiseCache.delete(cacheKey);
     }
   },
 
@@ -532,15 +589,19 @@ export const legalCommentaryApiService = {
   async toggleFavorite(type: LegalFavoriteType, targetId: string): Promise<{ isFavorite: boolean }> {
     const response = await apiClient.post(ENDPOINTS.legalCommentary.favorite, { type, targetId }) as any;
     const envelope = assertApiSuccess<{ isFavorite: boolean }>(response, 'Nao foi possivel atualizar o favorito.');
-    return unwrap(envelope.raw, { isFavorite: false });
+    const payload = unwrap(envelope.raw, { isFavorite: false });
+    invalidateLegalUserStateCaches();
+    return payload;
   },
 
   async recordLawView(lawId: string): Promise<void> {
     await apiClient.post(ENDPOINTS.legalCommentary.progress, { lawId }) as any;
+    invalidateLegalUserStateCaches();
   },
 
   async recordArticleView(lawId: string, articleId: string): Promise<void> {
     await apiClient.post(ENDPOINTS.legalCommentary.progress, { lawId, articleId }) as any;
+    invalidateLegalUserStateCaches();
   },
 
   async addUserComment(input: { articleId: string; body: string }): Promise<LegalUserCommentSubmissionResult> {
@@ -549,11 +610,13 @@ export const legalCommentaryApiService = {
       ...input,
     }) as any;
     const envelope = assertApiSuccess<LegalUserCommentSubmissionResult>(response, 'Nao foi possivel criar o comentario.');
-    return unwrap<LegalUserCommentSubmissionResult>(envelope.raw, {
+    const payload = unwrap<LegalUserCommentSubmissionResult>(envelope.raw, {
       id: '',
       moderationStatus: 'pending',
       requiresModeration: true,
     });
+    invalidateLegalUserStateCaches();
+    return payload;
   },
 
   async updateUserComment(commentId: string, body: string): Promise<LegalUserComment> {
@@ -563,7 +626,9 @@ export const legalCommentaryApiService = {
       body,
     }) as any;
     const envelope = assertApiSuccess<LegalUserComment>(response, 'Nao foi possivel atualizar o comentario.');
-    return unwrap<LegalUserComment>(envelope.raw, {} as LegalUserComment);
+    const payload = unwrap<LegalUserComment>(envelope.raw, {} as LegalUserComment);
+    invalidateLegalUserStateCaches();
+    return payload;
   },
 
   async deleteUserComment(commentId: string): Promise<void> {
@@ -572,6 +637,7 @@ export const legalCommentaryApiService = {
       commentId,
     }) as any;
     assertApiSuccess(response, 'Nao foi possivel excluir o comentario.');
+    invalidateLegalUserStateCaches();
   },
 
   async reportUserComment(commentId: string): Promise<void> {

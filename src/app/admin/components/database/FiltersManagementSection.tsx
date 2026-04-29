@@ -184,7 +184,7 @@ const FiltersManagementSection = ({
                     {item.type === 'materia' && (
                       <div className="text-[10px] text-slate-400 font-medium">Raiz do conhecimento</div>
                     )}
-                    {(item.type === 'topico' || item.type === 'assunto') && !(item.parentId || item.parent_id) && (
+                    {(item.type === 'topico' || item.type === 'assunto' || item.type === 'cargo') && !(item.parentId || item.parent_id) && (
                       <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Sem raiz definida</div>
                     )}
                   </td>
@@ -196,11 +196,11 @@ const FiltersManagementSection = ({
                   <td className="p-4 text-slate-500 dark:text-slate-400 font-mono text-[10px]">{item.slug}</td>
                   <td className="p-4 text-center">
                     <div className="flex justify-center gap-2">
-                      {(item.type === 'materia' || item.type === 'topico') && (
+                      {(item.type === 'materia' || item.type === 'topico' || item.type === 'carreira') && (
                         <button
                           type="button"
                           onClick={() => onAddChild(item.type, item.id)}
-                          title={item.type === 'materia' ? 'Adicionar topico' : 'Adicionar assunto'}
+                          title={item.type === 'materia' ? 'Adicionar topico' : item.type === 'topico' ? 'Adicionar assunto' : 'Adicionar cargo'}
                           className="rounded-md p-2 text-slate-400 transition-colors hover:bg-emerald-50 hover:text-emerald-600 dark:text-slate-500 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400"
                         >
                           <PlusCircle size={14} />

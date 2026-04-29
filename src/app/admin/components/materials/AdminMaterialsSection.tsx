@@ -10,7 +10,6 @@
 */
 
 import React, { useState } from 'react';
-import { Download, Edit3, Trash2 } from 'lucide-react';
 import type { Material } from '@types';
 import { useToast } from '@providers/ToastProvider';
 import { buildMaterialAccessEndpoint, openAuthenticatedFile } from '@services/api';
@@ -28,6 +27,12 @@ interface AdminMaterialsSectionProps {
   onDelete: (materialId: string) => void;
 }
 
+/**
+ * Lista os materiais do marketplace no admin com acoes de linha no padrao WordPress.
+ * A secao conecta moderacao, visualizacao autenticada e remocao operacional.
+ *
+ * @since 1.0.0
+ */
 const AdminMaterialsSection = ({
   materials,
   filter,
@@ -94,7 +99,6 @@ const AdminMaterialsSection = ({
                   {renderSortableHeader('Autor/Preco', 'price')}
                   {renderSortableHeader('Vendas', 'salesCount')}
                   {renderSortableHeader('Status', 'status')}
-                  <th className="p-4 text-center">Acoes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
@@ -104,6 +108,39 @@ const AdminMaterialsSection = ({
                       <div className="flex flex-col">
                         <span className="font-bold text-slate-900 dark:text-slate-100">{material.title}</span>
                         <span className="text-[10px] text-slate-400 dark:text-slate-500">{material.subject}</span>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => onModerate(material)}
+                            className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                          >
+                            Moderar
+                          </button>
+                          {material.fileUrl ? (
+                            <>
+                              <span className="text-slate-300 dark:text-slate-700">|</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void openAuthenticatedFile(buildMaterialAccessEndpoint(material.id)).catch((error: any) => {
+                                    addToast(error?.message || 'Nao foi possivel abrir a visualizacao do material.', 'error');
+                                  });
+                                }}
+                                className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                              >
+                                Visualizar
+                              </button>
+                            </>
+                          ) : null}
+                          <span className="text-slate-300 dark:text-slate-700">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setPendingDeleteMaterial(material)}
+                            className="font-medium text-red-600 hover:text-red-800 hover:underline dark:text-red-400 dark:hover:text-red-300"
+                          >
+                            Lixeira
+                          </button>
+                        </div>
                       </div>
                     </td>
                     <td className="p-4">
@@ -127,43 +164,11 @@ const AdminMaterialsSection = ({
                         </span>
                       </div>
                     </td>
-                    <td className="p-4">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => onModerate(material)}
-                          className="inline-flex items-center gap-1 rounded-sm border border-sky-200 bg-sky-50 px-2 py-1.5 text-[10px] font-semibold text-sky-700 transition-colors hover:bg-sky-100 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300"
-                        >
-                          <Edit3 size={14} />
-                          Moderar
-                        </button>
-                        {material.fileUrl ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void openAuthenticatedFile(buildMaterialAccessEndpoint(material.id)).catch((error: any) => {
-                                addToast(error?.message || 'Nao foi possivel abrir a visualizacao do material.', 'error');
-                              });
-                            }}
-                            className="rounded-sm border border-emerald-200 bg-emerald-50 p-2 text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300"
-                          >
-                            <Download size={14} />
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => setPendingDeleteMaterial(material)}
-                          className="rounded-sm border border-rose-200 bg-rose-50 p-2 text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-900/40 dark:bg-rose-900/20 dark:text-rose-300"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
                   </tr>
                 ))}
                 {materials.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center italic text-slate-400 dark:text-slate-600">
+                    <td colSpan={4} className="p-8 text-center italic text-slate-400 dark:text-slate-600">
                       Nenhum material encontrado.
                     </td>
                   </tr>

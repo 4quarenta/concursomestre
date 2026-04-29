@@ -77,7 +77,7 @@ const StudySessionWidget: React.FC<StudySessionWidgetProps> = ({
           <p className="text-[9px] font-black uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Sessao atual</p>
           <h2 className="mt-1 text-base font-black text-slate-900 dark:text-slate-100">Tempo de estudos</h2>
           <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-            O contador soma pratica, simulados finalizados e leitura ativa.
+            O contador soma pratica, tempo efetivo de simulado em andamento e leitura ativa.
           </p>
         </div>
 

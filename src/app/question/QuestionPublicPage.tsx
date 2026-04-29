@@ -14,10 +14,12 @@
 import React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowRight, Building2, Calendar, FileQuestion, GraduationCap, Loader2, ShieldCheck, Tag } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BookOpenCheck, Building2, Calendar, CheckCircle2, FileQuestion, GraduationCap, Loader2, ShieldCheck, Sparkles, Tag, UserPlus } from 'lucide-react';
 import type { Question } from '@types';
+import { useAuth } from '@providers/AuthProvider';
 import { questionService } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+import AuthModal from '@/components/shared/overlays/AuthModal';
 import {
   PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -25,22 +27,66 @@ import {
   PLATFORM_SECTION_TITLE_CLASS,
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
-import { buildAbsoluteUrl, buildQuestionPath, buildQuestionSlug, getQuestionSeoLabel, summarizeSeoText, useDocumentSeo } from '@services/seo';
+import { buildAbsoluteUrl, buildQuestionPath, buildQuestionSlug, summarizeSeoText, useDocumentSeo } from '@services/seo';
+import {
+  buildQuestionKeywordPills,
+  buildQuestionKeywords,
+  buildQuestionMetaDescription,
+  buildQuestionMetaTitle,
+  buildQuestionPageHeading,
+  getQuestionContextLabels,
+} from './questionSeo';
 
 const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-const QuestionPublicPage: React.FC = () => {
+const normalizeQuestionFlag = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+const isQuestionCanceled = (question: Question) => Boolean(question.anulada || question.isCanceled);
+
+const isPlatformOriginalQuestion = (question: Question) => {
+  const source = normalizeQuestionFlag([
+    question.questionOrigin,
+    question.question_origin,
+    (question as any).sourceType,
+    (question as any).source_type,
+    (question as any).origin,
+    (question as any).origem,
+  ].find((value) => String(value ?? '').trim()));
+
+  return ['platform', 'inedita', 'original', 'generated', 'gerada'].includes(source)
+    || Boolean((question as any).isOriginal || (question as any).inedita);
+};
+
+type QuestionPublicPageProps = {
+  initialQuestion?: Question | null;
+};
+
+const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion = null }) => {
   const params = useParams<{ id?: string; slug?: string | string[] }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const routeSlug = Array.isArray(params.slug) ? params.slug.join('/') : params.slug;
   const router = useRouter();
-  const [question, setQuestion] = React.useState<Question | null>(null);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const { currentUser, isLoading: isAuthLoading } = useAuth();
+  const [question, setQuestion] = React.useState<Question | null>(initialQuestion);
+  const [isLoading, setIsLoading] = React.useState(!initialQuestion);
   const [error, setError] = React.useState<string | null>(null);
+  const [showAuthModal, setShowAuthModal] = React.useState(false);
 
   React.useEffect(() => {
     if (!id) {
       setError('Questao nao encontrada.');
+      setIsLoading(false);
+      return;
+    }
+
+    if (initialQuestion?.id && String(initialQuestion.id) === String(id)) {
+      setQuestion(initialQuestion);
+      setError(null);
       setIsLoading(false);
       return;
     }
@@ -73,7 +119,7 @@ const QuestionPublicPage: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [id]);
+  }, [id, initialQuestion]);
 
   const canonicalPath = React.useMemo(() => {
     if (!question?.id) {
@@ -94,12 +140,16 @@ const QuestionPublicPage: React.FC = () => {
     }
   }, [canonicalPath, question, routeSlug, router]);
 
+  const questionContext = React.useMemo(() => question ? getQuestionContextLabels(question) : null, [question]);
+  const questionKeywords = React.useMemo(() => question ? buildQuestionKeywords(question) : [], [question]);
+  const keywordPills = React.useMemo(() => question ? buildQuestionKeywordPills(question) : [], [question]);
+
   useDocumentSeo(question ? {
-    title: `${summarizeSeoText(getQuestionSeoLabel(question), 60)} | ConcursoMestre`,
-    description: summarizeSeoText(getQuestionSeoLabel(question), 160),
+    title: `${buildQuestionMetaTitle(question)} | ConcursoMestre`,
+    description: buildQuestionMetaDescription(question),
     canonical: buildAbsoluteUrl(canonicalPath || `/question/${question.id}`),
-    ogTitle: summarizeSeoText(getQuestionSeoLabel(question), 95),
-    ogDescription: summarizeSeoText(getQuestionSeoLabel(question), 180),
+    ogTitle: summarizeSeoText(buildQuestionMetaTitle(question), 95),
+    ogDescription: summarizeSeoText(buildQuestionMetaDescription(question), 180),
   } : null);
 
   const metadataItems = [
@@ -108,7 +158,48 @@ const QuestionPublicPage: React.FC = () => {
     { label: 'Cargo', value: question?.cargos?.map((item: any) => item.descricao || item['descrição'] || item.name).filter(Boolean).join(', ') },
     { label: 'Ano', value: question?.anos?.join(', ') },
     { label: 'Assuntos', value: question?.assuntos?.map((item) => item.nome).filter(Boolean).join(', ') },
+    { label: 'Modalidade', value: question?.tipo === 'certo ou errado' ? 'Certo ou errado' : 'Multipla escolha' },
   ].filter((item) => item.value);
+
+  const structuredData = React.useMemo(() => {
+    if (!question) return null;
+
+    return {
+      '@context': 'https://schema.org',
+      '@type': 'Quiz',
+      name: buildQuestionMetaTitle(question),
+      description: buildQuestionMetaDescription(question),
+      url: buildAbsoluteUrl(canonicalPath || `/question/${question.id}`),
+      educationalLevel: questionContext?.nivel || 'Concursos publicos',
+      about: keywordPills,
+      assesses: questionContext?.assuntos?.join(', ') || questionContext?.assunto || 'Conhecimentos para concursos',
+      provider: {
+        '@type': 'Organization',
+        name: 'ConcursoMestre',
+        url: buildAbsoluteUrl('/'),
+      },
+    };
+  }, [canonicalPath, keywordPills, question, questionContext]);
+  const showFreeAccountCta = !isAuthLoading && !currentUser;
+  const isCanceledQuestion = question ? isQuestionCanceled(question) : false;
+  const isOriginalQuestion = question ? isPlatformOriginalQuestion(question) : false;
+
+  const handleOpenPractice = React.useCallback(() => {
+    if (!question?.id || isAuthLoading) {
+      return;
+    }
+
+    if (isCanceledQuestion) {
+      return;
+    }
+
+    if (!currentUser) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    router.push(`/practice?questionId=${encodeURIComponent(String(question.id))}`);
+  }, [currentUser, isAuthLoading, isCanceledQuestion, question?.id, router]);
 
   if (isLoading) {
     return (
@@ -142,22 +233,54 @@ const QuestionPublicPage: React.FC = () => {
   }
 
   return (
+    <>
+    {structuredData && (
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+    )}
     <section className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-6 px-4 py-8 sm:px-6 lg:px-8`}>
-      <div className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
+      <div className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden ${isCanceledQuestion ? 'border-red-400 ring-2 ring-red-100 dark:border-red-700 dark:ring-red-900/30' : ''}`}>
         <div className="border-b border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-sky-50 p-4 sm:p-5 md:p-6 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Questao publica</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Questao comentada para concurso</p>
           <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-3">
-              <h1 className={PLATFORM_PAGE_TITLE_CLASS}>{summarizeSeoText(getQuestionSeoLabel(question), 110)}</h1>
+              <h1 className={PLATFORM_PAGE_TITLE_CLASS}>{buildQuestionPageHeading(question)}</h1>
               <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
-                Esta pagina publica ajuda a indexar o enunciado da questao. Para responder, salvar historico e ver sua evolucao, use o fluxo oficial de pratica.
+                Resolva esta questao de concurso com enunciado, alternativas e filtros por banca, orgao, cargo, ano e assunto. Na pratica, voce tambem acompanha historico, comentarios e evolucao dos seus acertos.
               </p>
+              {(keywordPills.length > 0 || isOriginalQuestion || isCanceledQuestion) && (
+                <div className="flex flex-wrap gap-2">
+                  {isOriginalQuestion && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-violet-600 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white shadow-sm dark:border-violet-500/20">
+                      Inedita
+                    </span>
+                  )}
+                  {isCanceledQuestion && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-600 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white shadow-sm dark:border-red-500/30">
+                      Anulada
+                    </span>
+                  )}
+                  {keywordPills.map((keyword) => (
+                    <span key={keyword} className="inline-flex items-center gap-1.5 rounded-full border border-indigo-100 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700 shadow-sm dark:border-indigo-500/20 dark:bg-slate-900 dark:text-indigo-300">
+                      <BookOpenCheck size={12} />
+                      {keyword}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <Link
               href={`/practice?questionId=${question.id}`}
-              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700"
+              onClick={(event) => {
+                event.preventDefault();
+                handleOpenPractice();
+              }}
+              aria-disabled={isCanceledQuestion}
+              className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all ${isCanceledQuestion ? 'cursor-not-allowed bg-red-500 opacity-80' : 'bg-indigo-600 hover:bg-indigo-700'}`}
             >
-              Resolver na pratica <ArrowRight size={14} />
+              {isCanceledQuestion ? 'Questao anulada' : 'Resolver na pratica'} {!isCanceledQuestion && <ArrowRight size={14} />}
             </Link>
           </div>
         </div>
@@ -188,8 +311,27 @@ const QuestionPublicPage: React.FC = () => {
               {Array.isArray(question.itens) && question.itens.length > 0 ? (
                 <div className="space-y-3">
                   <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Alternativas</h2>
+                  {isCanceledQuestion ? (
+                    <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+                      <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+                      <span>Questao anulada. As alternativas ficam disponiveis apenas para consulta.</span>
+                    </div>
+                  ) : null}
                   {question.itens.map((item, index) => (
-                    <div key={`${item.id}-${item.ordem}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
+                    <div
+                      key={`${item.id}-${item.ordem}-${index}`}
+                      role="button"
+                      tabIndex={isAuthLoading || isCanceledQuestion ? -1 : 0}
+                      aria-disabled={isAuthLoading || isCanceledQuestion}
+                      onClick={handleOpenPractice}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleOpenPractice();
+                        }
+                      }}
+                      className={`w-full rounded-2xl border p-4 text-left transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 ${isCanceledQuestion ? 'cursor-not-allowed border-red-100 bg-red-50/40 opacity-80 dark:border-red-900/30 dark:bg-red-900/10' : 'border-slate-200 bg-slate-50 hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-indigo-500/40 dark:hover:bg-indigo-500/10'} ${isAuthLoading ? 'cursor-wait opacity-70' : ''}`}
+                    >
                       <div className="flex items-start gap-3">
                         <span className="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-black text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
                           {item.rotulo || optionLetters[index] || String(index + 1)}
@@ -232,6 +374,50 @@ const QuestionPublicPage: React.FC = () => {
                 </div>
               </div>
 
+              {showFreeAccountCta && (
+                <div className="overflow-hidden rounded-[2rem] border border-indigo-200 bg-indigo-50 p-5 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-500/10">
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 dark:text-indigo-300">
+                    <Sparkles size={14} />
+                    Conta gratuita
+                  </div>
+                  <h2 className="mt-3 text-base font-black text-slate-900 dark:text-slate-100">
+                    Crie sua conta 100% gratuita
+                  </h2>
+                  <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
+                    Salve esta questao, acompanhe seu historico de acertos, monte cadernos de revisao e continue estudando por banca, assunto e dificuldade.
+                  </p>
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                      <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-300" />
+                      Banco de questoes e progresso pessoal
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
+                      <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-300" />
+                      Comentarios, anotacoes e estatisticas
+                    </div>
+                  </div>
+                  <Link
+                    href="/auth?mode=signup"
+                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700"
+                  >
+                    Criar conta gratuita <UserPlus size={14} />
+                  </Link>
+                </div>
+              )}
+
+              {questionKeywords.length > 0 && (
+                <div className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
+                  <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Temas relacionados</h2>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {questionKeywords.slice(0, 10).map((keyword) => (
+                      <span key={keyword} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
                 <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Continuar no fluxo oficial</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
@@ -240,9 +426,14 @@ const QuestionPublicPage: React.FC = () => {
                 <div className="mt-5 flex flex-col gap-3">
                   <Link
                     href={`/practice?questionId=${question.id}`}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-4 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      handleOpenPractice();
+                    }}
+                    aria-disabled={isCanceledQuestion}
+                    className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all ${isCanceledQuestion ? 'cursor-not-allowed bg-red-500 opacity-80' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                   >
-                    Abrir na pratica <ArrowRight size={14} />
+                    {isCanceledQuestion ? 'Questao anulada' : 'Abrir na pratica'} {!isCanceledQuestion && <ArrowRight size={14} />}
                   </Link>
                   <Link
                     href="/plans"
@@ -257,6 +448,14 @@ const QuestionPublicPage: React.FC = () => {
         </div>
       </div>
     </section>
+    <AuthModal
+      isOpen={showAuthModal}
+      onClose={() => setShowAuthModal(false)}
+      title="Entre para responder"
+      description="Crie uma conta gratuita ou acesse sua conta para responder esta questao no fluxo oficial da pratica e salvar seu progresso."
+      actionSource="questao-publica"
+    />
+    </>
   );
 };
 
