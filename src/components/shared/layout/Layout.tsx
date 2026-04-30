@@ -11,7 +11,7 @@
 
 
 import React, { useState } from 'react';
-import { LayoutDashboard, BookOpen, User, Menu, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, Menu, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -90,6 +90,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const annotatedLawsEnabled = resolveSystemFeatureFlag(systemSettings, 'annotatedLawsEnabled');
   const flashcardsEnabled = resolveSystemFeatureFlag(systemSettings, 'flashcardsEnabled');
   const simulationsEnabled = resolveSystemFeatureFlag(systemSettings, 'simulationsEnabled');
+  const studyScheduleEnabled = resolveSystemFeatureFlag(systemSettings, 'studyScheduleEnabled');
   const xRayEnabled = resolveSystemFeatureFlag(systemSettings, 'xRayEnabled');
   const rankingsEnabled = resolveSystemFeatureFlag(systemSettings, 'rankingsEnabled');
   const marketplaceEnabled = resolveSystemFeatureFlag(systemSettings, 'marketplaceEnabled');
@@ -192,6 +193,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled },
     { label: 'Flashcards', icon: Layers, path: '/flashcards', enabled: true, moduleEnabled: flashcardsEnabled },
     { label: 'Simulados', icon: Timer, path: '/simulation', enabled: simulationsEnabled },
+    { label: 'Cronograma', icon: CalendarDays, path: '/cronograma', enabled: true, moduleEnabled: studyScheduleEnabled },
     { label: 'Raio-X Banca', icon: Zap, path: '/x-ray', enabled: xRayEnabled },
     { label: 'Rankings', icon: Trophy, path: '/ranking', enabled: rankingsEnabled },
     { label: 'Loja', icon: ShoppingBag, path: '/marketplace', enabled: marketplaceEnabled },
@@ -555,7 +557,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
                 // Logic to lock/unlock features based on plan
                 // Raio-X Banca is exclusive to Tier 4 (Elite)
-                const isLocked = item.label === 'Raio-X Banca' && !hasXRayAccess;
+                const isLocked = (item.label === 'Raio-X Banca' && !hasXRayAccess)
+                  || (item.label === 'Cronograma' && currentTier < 4);
                 const isGloballyDisabled = item.enabled === false;
                 const isModuleDisabled = item.moduleEnabled === false;
                 const shouldShowDevBadge = isGloballyDisabled || isModuleDisabled;

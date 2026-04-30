@@ -851,6 +851,7 @@ export interface SystemSettings {
     reportsEnabled: boolean;
     notificationsEnabled: boolean;
     simulationsEnabled: boolean;
+    studyScheduleEnabled: boolean;
     maintenanceMode: boolean;
     registrationEnabled: boolean;
     landingPagePromoEnabled: boolean;
@@ -874,6 +875,8 @@ export interface SystemSettings {
   hasRecaptchaSecretConfigured?: boolean;
 
   googleAnalyticsId?: string;
+  googleAuthClientId?: string;
+  hasGoogleAuthClientConfigured?: boolean;
   metaPixelId?: string;
   supportPhone?: string;
   pixKey?: string;

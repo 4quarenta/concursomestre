@@ -17,6 +17,16 @@ interface PageTransitionProps {
 }
 
 const PageTransition: React.FC<PageTransitionProps> = ({ children }) => {
+    const [isMounted, setIsMounted] = React.useState(false);
+
+    React.useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
+    if (!isMounted) {
+        return <div className="w-full h-full">{children}</div>;
+    }
+
     return (
         <motion.div
             initial={{ opacity: 0, scale: 0.98 }}

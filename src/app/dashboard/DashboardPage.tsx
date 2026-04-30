@@ -567,7 +567,7 @@ const Dashboard: React.FC = () => {
 
           <div className="h-[280px] w-full min-w-0 overflow-hidden">
             {accuracySummary.totalQuestions > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={280} minWidth={0}>
                 <AreaChart data={timelineData} margin={{ top: 12, right: 12, left: -18, bottom: 0 }}>
                   <defs>
                     <linearGradient id="questionsFill" x1="0" y1="0" x2="0" y2="1">

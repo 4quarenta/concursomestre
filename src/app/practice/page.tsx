@@ -495,6 +495,7 @@ const Practice: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loaderRef = useRef<HTMLDivElement>(null);
   const pageRootRef = useRef<HTMLDivElement>(null);
+  const focusQuestionRef = useRef<HTMLDivElement>(null);
   const scrollTargetRef = useRef<HTMLElement | Window | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
 
@@ -657,6 +658,15 @@ const Practice: React.FC = () => {
     }
 
     (target as HTMLElement).scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const scrollToFocusQuestion = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      focusQuestionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
   }, []);
 
   const handleAnswer = useCallback((ans: UserAnswer) => {
@@ -1287,7 +1297,7 @@ const Practice: React.FC = () => {
                   </div>
                 </div>
               )}
-              <div className="">
+              <div ref={focusQuestionRef} className="scroll-mt-4 md:scroll-mt-6">
                 <QuestionCard
                   key={`${filteredQuestions[currentQuestionIndex].id}-${filterTimestamp}`}
                   question={filteredQuestions[currentQuestionIndex]}
@@ -1360,7 +1370,7 @@ const Practice: React.FC = () => {
                   <button
                     onClick={() => {
                       setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1));
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                      scrollToFocusQuestion();
                     }}
                     disabled={currentQuestionIndex === 0}
                     className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold text-[10px] sm:text-xs uppercase tracking-widest text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-all shadow-sm"
@@ -1371,7 +1381,7 @@ const Practice: React.FC = () => {
                   <button
                     onClick={() => {
                       setCurrentQuestionIndex(Math.min(filteredQuestions.length - 1, currentQuestionIndex + 1));
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                      scrollToFocusQuestion();
                     }}
                     disabled={currentQuestionIndex === filteredQuestions.length - 1}
                     className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl font-bold text-[10px] sm:text-xs uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-lg shadow-slate-200 dark:shadow-none"

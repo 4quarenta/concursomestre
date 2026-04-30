@@ -867,8 +867,8 @@ const ChartsPanel = ({
       <h2 className="mb-5 flex items-center gap-2 text-sm font-black uppercase tracking-wide text-slate-900 dark:text-slate-100">
         <PieIcon size={16} className="text-slate-400" /> Distribuição por matéria
       </h2>
-      <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-72 min-w-0">
+        <ResponsiveContainer width="100%" height={288} minWidth={0}>
           <PieChart>
             <Pie
               data={stats.subjectData}
@@ -894,8 +894,8 @@ const ChartsPanel = ({
       <h2 className="mb-5 flex items-center gap-2 text-sm font-black uppercase tracking-wide text-slate-900 dark:text-slate-100">
         <BarChart3 size={16} className="text-slate-400" /> Dificuldade observada
       </h2>
-      <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-72 min-w-0">
+        <ResponsiveContainer width="100%" height={288} minWidth={0}>
           <BarChart data={stats.difficultyData}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
             <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} />

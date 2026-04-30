@@ -627,8 +627,8 @@ const PartnerDashboard: React.FC = () => {
                         Desempenho Mensal
                       </h3>
                     </div>
-                    <div className="w-full h-[320px]">
-                      <ResponsiveContainer width="100%" height="100%">
+                    <div className="w-full h-[320px] min-w-0">
+                      <ResponsiveContainer width="100%" height={320} minWidth={0}>
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                           <defs>
                             <linearGradient id="colorReceita" x1="0" y1="0" x2="0" y2="1">

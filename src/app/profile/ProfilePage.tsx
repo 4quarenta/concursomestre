@@ -2435,8 +2435,8 @@ const Profile: React.FC = () => {
                               </div>
                               <div className="pt-4 space-y-2">
                                  <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 leading-relaxed uppercase tracking-widest">Desempenho por Período</p>
-                                 <div className="h-24 w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                 <div className="h-24 w-full min-w-0">
+                                    <ResponsiveContainer width="100%" height={96} minWidth={0}>
                                        <AreaChart data={timelineData}>
                                           <defs>
                                              <linearGradient id="colorTotalProfile" x1="0" y1="0" x2="0" y2="1">

@@ -12,7 +12,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bell, BookOpen, Clock, Cpu, Database, FileText, Flag, Globe, LayoutDashboard, Loader2,
+  Bell, BookOpen, CalendarDays, Clock, Cpu, Database, FileText, Flag, Globe, LayoutDashboard, Loader2,
   Layers, Lock, Mail, Megaphone, MessageSquare, RefreshCcw, Repeat, Save, Settings, ShieldAlert, ShieldCheck,
   ShoppingBag, ShoppingCart, Sparkles, Terminal, Trash2, Trophy, Upload, Users, XCircle, Zap,
 } from 'lucide-react';
@@ -92,6 +92,7 @@ const resolveFutureLimitedOfferEndsAt = (value?: string | null) => {
 const featureItems = [
   { id: 'practiceEnabled', label: 'Pratica', icon: BookOpen },
   { id: 'simulationsEnabled', label: 'Simulados', icon: Clock },
+  { id: 'studyScheduleEnabled', label: 'Cronograma', icon: CalendarDays },
   { id: 'marketplaceEnabled', label: 'Marketplace', icon: ShoppingCart },
   { id: 'rankingsEnabled', label: 'Rankings', icon: Trophy },
   { id: 'referralEnabled', label: 'Indique e ganhe', icon: Users },
@@ -503,6 +504,7 @@ const AdminSettings = ({
             <input value={localSettings.stripePublishableKey || localSettings.stripeKey || ''} onChange={(e) => setField('stripePublishableKey', e.target.value)} className={inputClassName} placeholder="Stripe publishable key" />
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeSecretKey || ''} onChange={(e) => setField('stripeSecretKey', e.target.value)} className={inputClassName} placeholder={isStripeSecretConfigured ? 'Digite uma nova chave para substituir a atual' : 'Stripe secret key'} /></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe webhook secret</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeWebhookConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeWebhookConfigured ? 'Configurado' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeWebhookSecret || ''} onChange={(e) => setField('stripeWebhookSecret', e.target.value)} className={inputClassName} placeholder={isStripeWebhookConfigured ? 'Digite um novo segredo para substituir o atual' : 'Stripe webhook secret'} /></div>
+            <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>Google OAuth Client ID</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${localSettings.hasGoogleAuthClientConfigured || localSettings.googleAuthClientId ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{localSettings.hasGoogleAuthClientConfigured || localSettings.googleAuthClientId ? 'Configurado' : 'Ausente'}</span></div><input value={localSettings.googleAuthClientId || ''} onChange={(e) => setField('googleAuthClientId', e.target.value)} className={inputClassName} placeholder="000000000000-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use o Client ID do aplicativo Web do Google Cloud. Origens autorizadas: http://localhost:3000 e o domínio de produção.</p></div>
             <input value={localSettings.googleAnalyticsId || ''} onChange={(e) => setField('googleAnalyticsId', e.target.value)} className={inputClassName} placeholder="Google Analytics ID" />
             <input value={localSettings.metaPixelId || ''} onChange={(e) => setField('metaPixelId', e.target.value)} className={inputClassName} placeholder="Meta Pixel ID" />
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Gemini API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isGeminiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isGeminiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.geminiApiKey || ''} onChange={(e) => setField('geminiApiKey', e.target.value)} className={inputClassName} placeholder={isGeminiConfigured ? 'Digite uma nova chave para substituir a atual' : 'Gemini API key'} />{localSettings.hasGeminiApiKeyConfigured && !localSettings.geminiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend e as chamadas de IA agora passam pelo backend.</p>}</div>

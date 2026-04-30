@@ -117,6 +117,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     reportsEnabled: true,
     notificationsEnabled: true,
     simulationsEnabled: true,
+    studyScheduleEnabled: true,
     maintenanceMode: false,
     registrationEnabled: true,
     landingPagePromoEnabled: true,
@@ -132,6 +133,8 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   recaptchaSiteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI', // Chave de teste pública do Google
   recaptchaSecretKey: '',
   hasRecaptchaSecretConfigured: false,
+  googleAuthClientId: '',
+  hasGoogleAuthClientConfigured: false,
   hasSmtpPasswordConfigured: false
 };
 

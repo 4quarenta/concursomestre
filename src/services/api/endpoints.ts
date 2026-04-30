@@ -23,6 +23,7 @@ export const ENDPOINTS = {
         confirmEmail: 'auth/confirm-email.php',
         logout: 'auth/logout.php',
         refresh: 'auth/refresh.php',
+        google: 'auth/google.php',
         resetPassword: 'auth/reset-password.php',
         user: 'auth/me.php',
         resendConfirmation: 'auth/resend-confirmation.php',

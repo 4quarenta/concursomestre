@@ -327,28 +327,23 @@ const AnnotatedLawsPage: React.FC = () => {
 
   return (
     <div className="w-full space-y-5 animate-fade-in">
-      <header className={`${PANEL_CLASS} p-4 md:p-5`}>
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
-              <FileText size={21} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">
-                Biblioteca legislativa
-              </p>
-              <h1 className={`${PLATFORM_PAGE_TITLE_CLASS} mt-1`}>Lei Comentada</h1>
-              <p className={`${PLATFORM_PAGE_DESCRIPTION_CLASS} mt-1 max-w-3xl`}>
-                Legislação comentada artigo por artigo, com texto oficial, conteúdo de prova e leitura organizada.
-              </p>
-            </div>
-          </div>
+      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">
+            Biblioteca legislativa
+          </p>
+          <h1 className={`${PLATFORM_PAGE_TITLE_CLASS} mt-1 flex items-center gap-2`}>
+            <FileText className="text-indigo-600 dark:text-indigo-300" size={24} /> Lei Comentada
+          </h1>
+          <p className={`${PLATFORM_PAGE_DESCRIPTION_CLASS} mt-1 max-w-3xl`}>
+            Legislação comentada artigo por artigo, com texto oficial, conteúdo de prova e leitura organizada.
+          </p>
+        </div>
 
-          <div className="grid gap-2 sm:grid-cols-3 xl:w-[430px]">
-            <MetricBox label="Leis" value={snapshot.totals.laws} />
-            <MetricBox label="Artigos" value={snapshot.totals.articles} />
-            <MetricBox label="Atualizadas" value={snapshot.totals.updatedRecently} />
-          </div>
+        <div className="grid gap-2 sm:grid-cols-3 md:w-[430px]">
+          <MetricBox label="Leis" value={snapshot.totals.laws} />
+          <MetricBox label="Artigos" value={snapshot.totals.articles} />
+          <MetricBox label="Atualizadas" value={snapshot.totals.updatedRecently} />
         </div>
       </header>
 
