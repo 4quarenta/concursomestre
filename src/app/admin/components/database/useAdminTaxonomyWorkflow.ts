@@ -9,7 +9,7 @@
 *
 */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useData } from '@providers/DataProvider';
 import { filtersService } from '@services/filters';
 import { readApiErrorMessage } from '@services/api';
@@ -19,7 +19,7 @@ type ToastHandler = (message: string, type?: string) => void;
 
 interface EditingFilterItem {
   id?: number;
-  item: any;
+  item: TaxonomyItem;
   originalName: string;
   type?: string;
 }
@@ -32,6 +32,18 @@ interface PendingDeleteFilterItem {
 interface UseAdminTaxonomyWorkflowOptions {
   addToast: ToastHandler;
 }
+
+type TaxonomyItem = {
+  id?: number;
+  name?: string;
+  slug?: string;
+  type?: string;
+  description?: string;
+  website?: string;
+  parent_id?: number | string | null;
+  parentId?: number | string | null;
+  metadata?: Record<string, unknown>;
+};
 
 export const FILTER_TYPES = [
   { key: 'all', label: 'Todos os Tipos' },
@@ -75,14 +87,14 @@ export const useAdminTaxonomyWorkflow = ({
   const [selectedParentId, setSelectedParentId] = useState<number | string | null>(null);
   const [showTaxonomyModal, setShowTaxonomyModal] = useState(false);
 
-  const fetchFilters = async () => {
+  const fetchFilters = useCallback(async () => {
     try {
       const taxonomies = await filtersService.listTaxonomies();
       dispatch({ type: 'SET_TAXONOMIES', payload: taxonomies });
     } catch (error) {
       console.error('Error fetching filters:', error);
     }
-  };
+  }, [dispatch]);
 
   const resetTaxonomyForm = () => {
     setFilterInput('');
@@ -141,7 +153,7 @@ export const useAdminTaxonomyWorkflow = ({
       setShowTaxonomyModal(false);
       await fetchFilters();
       addToast(editingFilterItem ? 'Item atualizado!' : 'Item adicionado!', 'success');
-    } catch (error: any) {
+    } catch (error: unknown) {
       addToast(readApiErrorMessage(error, 'Erro ao salvar filtro'), 'error');
     }
   };
@@ -179,15 +191,23 @@ export const useAdminTaxonomyWorkflow = ({
     }
   };
 
-  const startEditingFilter = (item: any) => {
-    setFilterInput(item.name);
-    setFilterSlug(item.slug || slugify(item.name));
+  const startEditingFilter = (item: TaxonomyItem) => {
+    const itemName = item.name || '';
+    setFilterInput(itemName);
+    setFilterSlug(item.slug || slugify(itemName));
     setFilterDescription(item.description || '');
     setFilterWebsite(item.website || '');
-    setEditingFilterItem({ id: item.id, item, originalName: item.name, type: item.type });
+    setEditingFilterItem({ id: item.id, item, originalName: itemName, type: item.type });
     setSelectedParentId(item.parent_id || item.parentId);
     setShowTaxonomyModal(true);
   };
+
+  const handleFilterInputChange = useCallback((nextValue: string) => {
+    setFilterInput(nextValue);
+    if (showTaxonomyModal && !editingFilterItem) {
+      setFilterSlug(slugify(nextValue));
+    }
+  }, [editingFilterItem, showTaxonomyModal]);
 
   const cancelEditingFilter = () => {
     resetTaxonomyForm();
@@ -211,20 +231,14 @@ export const useAdminTaxonomyWorkflow = ({
 
   useEffect(() => {
     fetchFilters();
-  }, []);
-
-  useEffect(() => {
-    if (showTaxonomyModal && !editingFilterItem) {
-      setFilterSlug(slugify(filterInput));
-    }
-  }, [filterInput, showTaxonomyModal, editingFilterItem]);
+  }, [fetchFilters]);
 
   return {
     filterTypes: FILTER_TYPES,
     activeFilterType,
     setActiveFilterType,
     filterInput,
-    setFilterInput,
+    setFilterInput: handleFilterInputChange,
     filterSlug,
     setFilterSlug,
     filterDescription,

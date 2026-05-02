@@ -123,6 +123,9 @@ describe('profileService', () => {
     const result = await profileService.submitTestimonial({
       rating: 5,
       testimonial: 'A plataforma me ajudou a estudar com consistência.',
+      publicDisplayName: 'Ana S.',
+      publicHeadline: 'Aprovada Tribunal de Justiça',
+      photoUrl: 'uploads/profiles/ana.jpg',
       userName: 'Ana Silva',
       userEmail: 'ana@example.com',
       planName: 'Pro',
@@ -130,9 +133,12 @@ describe('profileService', () => {
 
     expect(mockPost).toHaveBeenCalledWith('feedback/create.php', {
       type: 'suggestion',
-      reason: 'Avaliar plataforma - 5/5',
+      reason: 'Avaliar plataforma',
       details: 'A plataforma me ajudou a estudar com consistência.',
       rating: 5,
+      public_display_name: 'Ana S.',
+      public_headline: 'Aprovada Tribunal de Justiça',
+      public_photo_url: 'uploads/profiles/ana.jpg',
       user_name: 'Ana Silva',
       user_email: 'ana@example.com',
       plan_name: 'Pro',

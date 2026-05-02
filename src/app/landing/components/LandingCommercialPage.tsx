@@ -41,6 +41,8 @@ import {
 } from 'lucide-react';
 import type { Plan } from '@types';
 import { useData } from '@providers/DataProvider';
+import { getAssetUrl } from '@services/api';
+import { homeTestimonialsService, resolveHomeTestimonials, type HomeTestimonial } from '@services/marketing/homeTestimonials';
 import {
   getCanonicalPlanName,
   getConfiguredPlanDisplayName,
@@ -147,45 +149,6 @@ const APPROVAL_CONTEXTS = [
     title: 'OAB',
     text: 'Na primeira fase, lei comentada e questões por assunto encurtam o caminho entre leitura, entendimento e aplicação prática.',
     icon: Scale,
-  },
-];
-
-const TESTIMONIALS = [
-  {
-    name: 'Lucas N.',
-    role: 'Aprovado Receita Federal',
-    text: 'Eu parei de estudar no chute. O relatório mostrava onde eu estava perdendo ponto e isso mudou minha revisão.',
-    photoUrl: 'https://i.pravatar.cc/96?img=12',
-  },
-  {
-    name: 'Carolina R.',
-    role: 'Aprovada Polícia Federal',
-    text: 'Os simulados ficaram parecidos com a rotina real de prova. Não era só acertar questão, era entender o padrão da banca.',
-    photoUrl: 'https://i.pravatar.cc/96?img=32',
-  },
-  {
-    name: 'Rafael M.',
-    role: 'Aprovado Tribunal de Justiça',
-    text: 'O cronograma organizou meu estudo sem complicar. Eu sabia o que fazer no dia e conseguia medir se estava evoluindo.',
-    photoUrl: 'https://i.pravatar.cc/96?img=15',
-  },
-  {
-    name: 'Marina A.',
-    role: 'Aprovada Prefeitura de Curitiba',
-    text: 'Gostei porque a plataforma não promete milagre. Ela mostra os dados e ajuda a ajustar o estudo com clareza.',
-    photoUrl: 'https://i.pravatar.cc/96?img=47',
-  },
-  {
-    name: 'Eduardo P.',
-    role: 'Aprovado Polícia Penal',
-    text: 'O Raio-X da banca me ajudou a parar de perder tempo com assunto pouco cobrado. Foi bem direto ao ponto.',
-    photoUrl: 'https://i.pravatar.cc/96?img=18',
-  },
-  {
-    name: 'Bianca S.',
-    role: 'Aprovada Tribunal Regional',
-    text: 'Eu usava principalmente para revisar erros. Ver minha taxa de acerto por matéria deixou a rotina muito mais honesta.',
-    photoUrl: 'https://i.pravatar.cc/96?img=44',
   },
 ];
 
@@ -600,25 +563,61 @@ export const ProcessSection = () => (
   </section>
 );
 
-const StarsRating = () => (
-  <div className="flex items-center gap-1" aria-label="Avaliação 5 de 5">
-    {Array.from({ length: 5 }).map((_, index) => (
-      <Star key={index} size={15} className="fill-amber-400 text-amber-400" />
-    ))}
-  </div>
-);
+const getTestimonialInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const initials = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : parts[0]?.slice(0, 2);
+  return (initials || 'CM').toUpperCase();
+};
+
+const StarsRating = ({ rating = 5 }: { rating?: number }) => {
+  const safeRating = Math.max(1, Math.min(5, Math.round(Number(rating) || 5)));
+
+  return (
+    <div className="flex items-center gap-1" aria-label={`Avaliação ${safeRating} de 5`}>
+      {Array.from({ length: 5 }).map((_, index) => (
+        <Star
+          key={index}
+          size={15}
+          className={index < safeRating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}
+        />
+      ))}
+    </div>
+  );
+};
 
 export const TestimonialsSection = () => {
   const [activeSlide, setActiveSlide] = React.useState(0);
+  const [approvedTestimonials, setApprovedTestimonials] = React.useState<HomeTestimonial[]>([]);
   const testimonialsPerSlide = 3;
-  const totalSlides = Math.ceil(TESTIMONIALS.length / testimonialsPerSlide);
+  const testimonials = React.useMemo(() => resolveHomeTestimonials(approvedTestimonials), [approvedTestimonials]);
+  const totalSlides = Math.max(1, Math.ceil(testimonials.length / testimonialsPerSlide));
+  const currentSlide = Math.min(activeSlide, totalSlides - 1);
   const visibleTestimonials = React.useMemo(() => {
-    const start = activeSlide * testimonialsPerSlide;
-    return TESTIMONIALS.slice(start, start + testimonialsPerSlide);
-  }, [activeSlide]);
+    const start = currentSlide * testimonialsPerSlide;
+    return testimonials.slice(start, start + testimonialsPerSlide);
+  }, [currentSlide, testimonials]);
 
-  const goToPrevious = () => setActiveSlide((current) => (current === 0 ? totalSlides - 1 : current - 1));
-  const goToNext = () => setActiveSlide((current) => (current + 1) % totalSlides);
+  React.useEffect(() => {
+    let isMounted = true;
+
+    homeTestimonialsService.getApproved()
+      .then((items) => {
+        if (isMounted) setApprovedTestimonials(items);
+      })
+      .catch(() => {
+        if (isMounted) setApprovedTestimonials([]);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const goToPrevious = () => setActiveSlide((current) => {
+    const safeCurrent = Math.min(current, totalSlides - 1);
+    return safeCurrent === 0 ? totalSlides - 1 : safeCurrent - 1;
+  });
+  const goToNext = () => setActiveSlide((current) => (Math.min(current, totalSlides - 1) + 1) % totalSlides);
 
   return (
     <section id="depoimentos" className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8">
@@ -635,7 +634,8 @@ export const TestimonialsSection = () => {
             <button
               type="button"
               onClick={goToPrevious}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-100 bg-white text-[#07103a] shadow-sm transition hover:border-[#684cff] hover:text-[#684cff]"
+              disabled={totalSlides <= 1}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-100 bg-white text-[#07103a] shadow-sm transition hover:border-[#684cff] hover:text-[#684cff] disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="Depoimentos anteriores"
             >
               <ChevronLeft size={18} />
@@ -643,7 +643,8 @@ export const TestimonialsSection = () => {
             <button
               type="button"
               onClick={goToNext}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-100 bg-white text-[#07103a] shadow-sm transition hover:border-[#684cff] hover:text-[#684cff]"
+              disabled={totalSlides <= 1}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-indigo-100 bg-white text-[#07103a] shadow-sm transition hover:border-[#684cff] hover:text-[#684cff] disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="Próximos depoimentos"
             >
               <ChevronRight size={18} />
@@ -652,33 +653,45 @@ export const TestimonialsSection = () => {
         </div>
 
         <div className="mt-8 grid gap-5 lg:grid-cols-3">
-          {visibleTestimonials.map((testimonial) => (
-            <article key={testimonial.name} className="flex min-h-[260px] flex-col rounded-2xl border border-indigo-100 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <img
-                    src={testimonial.photoUrl}
-                    alt={`Foto de ${testimonial.name}`}
-                    className="h-12 w-12 rounded-full border border-indigo-100 object-cover"
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div>
-                    <p className="text-sm font-black text-[#07103a]">{testimonial.name}</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">{testimonial.role}</p>
-                  </div>
-                </div>
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
-                  Verificado
-                </span>
-              </div>
+          {visibleTestimonials.map((testimonial) => {
+            const photoUrl = getAssetUrl(testimonial.photoUrl || '');
 
-              <div className="mt-5">
-                <StarsRating />
-              </div>
-              <p className="mt-5 flex-1 text-sm font-medium leading-7 text-[#1d284f]">{testimonial.text}</p>
-            </article>
-          ))}
+            return (
+              <article key={testimonial.id} className="flex min-h-[260px] flex-col rounded-2xl border border-indigo-100 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    {photoUrl ? (
+                      // Testimonial avatars can come from user uploads or Google accounts, so the host list is intentionally dynamic.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={photoUrl}
+                        alt={`Foto de ${testimonial.name}`}
+                        className="h-12 w-12 rounded-full border border-indigo-100 object-cover"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-indigo-100 bg-[#f3f1ff] text-xs font-black uppercase tracking-wider text-[#684cff]">
+                        {getTestimonialInitials(testimonial.name)}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-black text-[#07103a]">{testimonial.name}</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">{testimonial.role}</p>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                    Verificado
+                  </span>
+                </div>
+
+                <div className="mt-5">
+                  <StarsRating rating={testimonial.rating} />
+                </div>
+                <p className="mt-5 flex-1 text-sm font-medium leading-7 text-[#1d284f]">{testimonial.text}</p>
+              </article>
+            );
+          })}
         </div>
 
         <div className="mt-6 flex items-center justify-center gap-2">
@@ -687,9 +700,9 @@ export const TestimonialsSection = () => {
               key={index}
               type="button"
               onClick={() => setActiveSlide(index)}
-              className={`h-2.5 rounded-full transition-all ${activeSlide === index ? 'w-8 bg-[#684cff]' : 'w-2.5 bg-indigo-200'}`}
+              className={`h-2.5 rounded-full transition-all ${currentSlide === index ? 'w-8 bg-[#684cff]' : 'w-2.5 bg-indigo-200'}`}
               aria-label={`Ir para grupo de depoimentos ${index + 1}`}
-              aria-current={activeSlide === index}
+              aria-current={currentSlide === index}
             />
           ))}
         </div>

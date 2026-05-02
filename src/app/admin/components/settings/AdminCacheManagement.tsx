@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -9,10 +9,10 @@
 *
 */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, Clock, Database, Loader2, RefreshCcw, Trash2, X } from 'lucide-react';
 import { useToast } from '@providers/ToastProvider';
-import { adminService } from '@services/admin/adminService';
+import { adminService, type CacheStatsPayload } from '@services/admin/adminService';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_MUTED_SURFACE_CLASS,
@@ -28,19 +28,19 @@ import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
  */
 const AdminCacheManagement = () => {
   const { addToast } = useToast();
-  const [cacheStats, setCacheStats] = useState<any>(null);
+  const [cacheStats, setCacheStats] = useState<CacheStatsPayload | null>(null);
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [draftTtl, setDraftTtl] = useState('300');
   const [isClearCacheDialogOpen, setIsClearCacheDialogOpen] = useState(false);
 
-  const fetchCacheStats = async () => {
+  const fetchCacheStats = useCallback(async () => {
     setLoadingKey((current) => current || 'refresh');
     try {
       const data = await adminService.getCacheStats();
       setCacheStats(data);
       setDraftTtl(String(data.default_ttl || 300));
-    } catch (error) {
+    } catch {
       setCacheStats({
         total_files: 0,
         valid_entries: 0,
@@ -53,15 +53,19 @@ const AdminCacheManagement = () => {
         supports_expiration: false,
         supports_size_estimate: false,
       });
-      addToast('Não foi possível carregar as estatísticas de cache.', 'error');
+      addToast('Nao foi possivel carregar as estatisticas de cache.', 'error');
     } finally {
       setLoadingKey(null);
     }
-  };
+  }, [addToast]);
 
   useEffect(() => {
-    void fetchCacheStats();
-  }, []);
+    const frameId = window.requestAnimationFrame(() => {
+      void fetchCacheStats();
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [fetchCacheStats]);
 
   const runAction = async (actionKey: string, operation: () => Promise<string>) => {
     if (loadingKey) {
@@ -75,8 +79,10 @@ const AdminCacheManagement = () => {
       addToast(nextMessage, 'success');
       await fetchCacheStats();
       window.setTimeout(() => setMessage(''), 3500);
-    } catch (error: any) {
-      const errorMessage = error?.message || 'Não foi possível executar a operação de cache.';
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error && error.message
+        ? error.message
+        : 'Nao foi possivel executar a operacao de cache.';
       setMessage(errorMessage);
       addToast(errorMessage, 'error');
     } finally {
@@ -100,7 +106,7 @@ const AdminCacheManagement = () => {
       <AdminConfirmDialog
         isOpen={isClearCacheDialogOpen}
         title="Limpar todo o cache"
-        description="Essa ação remove todas as entradas do cache administrativo e operacional. Use apenas quando precisar forçar uma nova reconstrução do runtime."
+        description="Essa acao remove todas as entradas do cache administrativo e operacional. Use apenas quando precisar forcar uma nova reconstrucao do runtime."
         confirmLabel="Limpar cache"
         tone="danger"
         loading={loadingKey === 'clear'}
@@ -121,7 +127,7 @@ const AdminCacheManagement = () => {
           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.total_files || 0}</p>
         </div>
         <div className="rounded-sm border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-900/30 dark:bg-emerald-900/10">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">Válidas</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">Validas</p>
           <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{cacheStats.valid_entries || 0}</p>
         </div>
         <div className="rounded-sm border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/30 dark:bg-amber-900/10">
@@ -134,7 +140,7 @@ const AdminCacheManagement = () => {
         </div>
         <div className={ADMIN_PAGE_PANEL_CLASS}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Tabela ativa</p>
-          <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.table_name || 'Não encontrada'}</p>
+          <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.table_name || 'Nao encontrada'}</p>
           <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{cacheStats.source || 'none'}</p>
         </div>
       </div>
@@ -145,7 +151,7 @@ const AdminCacheManagement = () => {
             <div>
               <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Status do cache</h4>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                {cacheStats.enabled ? 'Cache ativo e pronto para servir respostas.' : 'Cache desligado. As respostas serão calculadas sem armazenamento intermediário.'}
+                {cacheStats.enabled ? 'Cache ativo e pronto para servir respostas.' : 'Cache desligado. As respostas serao calculadas sem armazenamento intermediario.'}
               </p>
             </div>
             <button
@@ -162,7 +168,7 @@ const AdminCacheManagement = () => {
 
           <div className="mt-6 grid gap-4 md:grid-cols-[minmax(0,1fr),auto]">
             <div className="space-y-1.5">
-              <label className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">TTL padrão (segundos)</label>
+              <label className="ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">TTL padrao (segundos)</label>
               <input
                 type="number"
                 min={1}
@@ -184,18 +190,18 @@ const AdminCacheManagement = () => {
 
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Expiração por linha</p>
-              <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_expiration ? 'Suportada' : 'Não suportada'}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Expiracao por linha</p>
+              <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_expiration ? 'Suportada' : 'Nao suportada'}</p>
             </div>
             <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Estimativa de tamanho</p>
-              <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_size_estimate ? 'Disponível' : 'Não suportada'}</p>
+              <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_size_estimate ? 'Disponivel' : 'Nao suportada'}</p>
             </div>
           </div>
         </div>
 
         <div className={ADMIN_PAGE_PANEL_CLASS}>
-          <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Operações</h4>
+          <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Operacoes</h4>
           <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Executa limpeza real e recarrega o estado vindo do backend oficial.</p>
           <div className="mt-6 space-y-3">
             <button

@@ -18,6 +18,30 @@ type SaveSimulationResult = {
   message?: string;
 };
 
+type SaveSimulationResponse = {
+  id?: string | number;
+  data?: {
+    id?: string | number;
+  };
+};
+
+type SimulationsListResponse = {
+  simulations?: SimulationListItem[];
+};
+
+type SimulationListItem = {
+  id?: string | number;
+  config?: Record<string, unknown>;
+  questionIds?: Array<string | number>;
+  answers?: Record<string, StoredSimulationAnswer>;
+  startTime?: string | number;
+  endTime?: string | number;
+  durationSeconds?: string | number;
+  duration_seconds?: string | number;
+  status?: string;
+  score?: string | number;
+};
+
 export type StoredSimulationAnswer = {
   index?: number;
   is_correct?: boolean | number;
@@ -37,27 +61,26 @@ export type StoredSimulationSession = Omit<SimulationSession, 'questions' | 'ans
 export const simulationsService = {
   /**
    * Lista o historico persistido de simulados do usuario autenticado.
-   * O backend devolve IDs de questoes; a tela hidrata com o banco local ja carregado.
    * @since v1.0.0
    */
   async listSimulations(): Promise<StoredSimulationSession[]> {
-    const response = await apiClient.get<any>(ENDPOINTS.simulations.list) as any;
+    const response = await apiClient.get<SimulationsListResponse | SimulationListItem[]>(ENDPOINTS.simulations.list);
     assertApiSuccess(response, 'Nao foi possivel carregar os simulados.');
-    const payload = readApiData<any>(response, {});
+    const payload = readApiData<SimulationsListResponse | SimulationListItem[]>(response, {});
     const simulations = Array.isArray(payload)
       ? payload
-      : Array.isArray(payload?.simulations)
+      : Array.isArray(payload.simulations)
         ? payload.simulations
         : [];
 
-    return simulations.map((simulation: any) => {
+    return simulations.map((simulation) => {
       const durationSeconds = Number(simulation.durationSeconds ?? simulation.duration_seconds ?? 0);
 
       return {
         id: String(simulation.id || ''),
-        config: simulation.config || {},
+        config: (simulation.config as unknown as SimulationSession['config']) || {} as SimulationSession['config'],
         questionIds: Array.isArray(simulation.questionIds)
-          ? simulation.questionIds.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id))
+          ? simulation.questionIds.map((id) => Number(id)).filter((id) => Number.isFinite(id))
           : [],
         answers: simulation.answers && typeof simulation.answers === 'object' ? simulation.answers : {},
         startTime: Number(simulation.startTime || 0),
@@ -70,20 +93,20 @@ export const simulationsService = {
   },
 
   /**
-   * Persiste uma sessão de simulado do usuário autenticado.
-   * O fluxo e consumido pelo encerramento do simulado para salvar score, respostas e metadados da sessão.
+   * Persiste uma sessao de simulado do usuario autenticado.
    * @since v1.0.0
    */
   async saveSimulation(simulation: SimulationSession): Promise<SaveSimulationResult> {
     const payload = typeof simulation.durationSeconds === 'number'
       ? { ...simulation, duration_seconds: simulation.durationSeconds }
       : simulation;
-    const response = await apiClient.post<any>(ENDPOINTS.simulations.create, payload) as any;
-    const envelope = assertApiSuccess(response, 'Não foi possível salvar o simulado.');
+    const response = await apiClient.post<SaveSimulationResponse>(ENDPOINTS.simulations.create, payload);
+    const envelope = assertApiSuccess(response, 'Nao foi possivel salvar o simulado.');
+    const result = readApiData<SaveSimulationResponse>(response, {});
 
     return {
       success: true,
-      id: envelope.raw?.data?.id || envelope.raw?.id,
+      id: String(result.data?.id ?? result.id ?? envelope.raw.id ?? ''),
       message: envelope.message,
     };
   },

@@ -16,6 +16,10 @@ import type { AppPromotionTheme, DiscountCode, MarketingCampaignAutomationRule, 
 import { themeConfig } from '@constants/themes';
 import { planService } from '@services/plans';
 import { notificationService } from '@services/notifications';
+import {
+  normalizeCampaignBannerActionUrl,
+  normalizePromotionNotificationActionUrl,
+} from '@services/marketing/promotionCampaign';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 import {
   ADMIN_FIELD_CLASS,
@@ -92,7 +96,7 @@ const createDefaultCampaignBanner = (): MarketingCampaignBanner => ({
   headline: 'Oferta ativa no ConcursoMestre',
   description: 'Mostre a mensagem principal da campanha nesta area.',
   ctaLabel: 'Ver oferta',
-  actionUrl: '/pricing',
+  actionUrl: '/planos',
   backgroundColor: '#0f172a',
 });
 
@@ -110,12 +114,16 @@ const normalizePromotionDraft = (promotion: SystemSettings['activePromotion']): 
   ...promotion,
   notificationTitle: promotion.notificationTitle || promotion.name || 'Campanha ConcursoMestre',
   notificationMessage: promotion.notificationMessage || promotion.bannerText || '',
-  notificationActionUrl: promotion.notificationActionUrl || '/pricing',
+  notificationActionUrl: normalizePromotionNotificationActionUrl(promotion.notificationActionUrl, promotion),
   emailEnabled: Boolean(promotion.emailEnabled),
   emailSubject: promotion.emailSubject || promotion.name || 'Campanha ConcursoMestre',
   emailPreview: promotion.emailPreview || promotion.bannerText || '',
   emailBody: promotion.emailBody || 'Escreva a mensagem principal da campanha de email.',
-  siteBanners: Array.isArray(promotion.siteBanners) ? promotion.siteBanners : [createDefaultCampaignBanner()],
+  siteBanners: (Array.isArray(promotion.siteBanners) ? promotion.siteBanners : [createDefaultCampaignBanner()])
+    .map((banner) => ({
+      ...banner,
+      actionUrl: normalizeCampaignBannerActionUrl(banner.actionUrl, promotion),
+    })),
   automationRules: Array.isArray(promotion.automationRules) ? promotion.automationRules : [],
 });
 
@@ -223,16 +231,26 @@ const AdminMarketing = ({
   const [pendingDeleteCoupon, setPendingDeleteCoupon] = useState<CouponDraft | null>(null);
 
   useEffect(() => {
-    setDraftPromotion(normalizePromotionDraft(systemSettings.activePromotion));
-    setDraftTheme(systemSettings.activeTheme || 'default');
-    setDraftCoupons((systemSettings.coupons || []).map((coupon) => normalizeCouponDraft(coupon)));
-    setLimitedOfferCountdown(systemSettings.limitedOfferCountdown);
+    const frameId = window.requestAnimationFrame(() => {
+      setDraftPromotion(normalizePromotionDraft(systemSettings.activePromotion));
+      setDraftTheme(systemSettings.activeTheme || 'default');
+      setDraftCoupons((systemSettings.coupons || []).map((coupon) => normalizeCouponDraft(coupon)));
+      setLimitedOfferCountdown(systemSettings.limitedOfferCountdown);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [systemSettings.activePromotion, systemSettings.activeTheme, systemSettings.coupons, systemSettings.limitedOfferCountdown]);
 
   useEffect(() => {
-    if (forcedSection) {
-      setActiveSection(forcedSection);
+    if (!forcedSection) {
+      return;
     }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setActiveSection(forcedSection);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [forcedSection]);
 
   useEffect(() => {
@@ -244,7 +262,7 @@ const AdminMarketing = ({
         if (active) {
           setAvailablePlans(plans);
         }
-      } catch (error) {
+      } catch {
         if (active) {
           setAvailablePlans([]);
         }
@@ -300,7 +318,7 @@ const AdminMarketing = ({
       updateSystemSettings(persistedSettings);
       addToast(successMessage, 'success');
       return true;
-    } catch (error) {
+    } catch {
       addToast('Não foi possível salvar as alterações de marketing.', 'error');
       return false;
     } finally {
@@ -375,8 +393,13 @@ const AdminMarketing = ({
   };
 
   const handleSavePromotion = async () => {
-    const nextSettings = { ...systemSettings, activePromotion: draftPromotion };
-    await persistMarketingSettings(nextSettings, 'Campanha salva com sucesso.', 'save-promotion');
+    const normalizedPromotion = normalizePromotionDraft(draftPromotion);
+    const nextSettings = { ...systemSettings, activePromotion: normalizedPromotion };
+    const saved = await persistMarketingSettings(nextSettings, 'Campanha salva com sucesso.', 'save-promotion');
+
+    if (saved) {
+      setDraftPromotion(normalizedPromotion);
+    }
   };
 
   const handleSendCampaignNotification = async () => {
@@ -401,7 +424,7 @@ const AdminMarketing = ({
         message,
         'info',
         'system',
-        draftPromotion.notificationActionUrl || '/pricing',
+        normalizePromotionNotificationActionUrl(draftPromotion.notificationActionUrl, draftPromotion),
       );
 
       if (result.success) {
@@ -830,7 +853,7 @@ const AdminMarketing = ({
                     value={draftPromotion.notificationActionUrl || ''}
                     onChange={(event) => setDraftPromotion((current) => ({ ...current, notificationActionUrl: event.target.value }))}
                     className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
-                    placeholder="/pricing"
+                        placeholder="/planos"
                   />
                 </div>
               </section>

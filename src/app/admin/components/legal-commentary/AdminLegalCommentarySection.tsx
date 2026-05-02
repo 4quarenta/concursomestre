@@ -18,7 +18,6 @@ import { useToast } from '@providers/ToastProvider';
 import { legalCommentaryApiService, type PlanaltoCatalogItem, type PlanaltoCatalogSource } from '@services/legal-commentary';
 import type { LawSummary, LawUpdate, LegalHomeSnapshot, LegalSyncLog } from '@types';
 import {
-  ADMIN_FIELD_CLASS,
   ADMIN_MODAL_FOOTER_CLASS,
   ADMIN_MODAL_HEADER_CLASS,
   ADMIN_MODAL_PANEL_CLASS,
@@ -68,6 +67,10 @@ const EMPTY_HOME: LegalHomeSnapshot = {
 };
 
 const getLawEditPath = (lawId: string | number) => buildAdminLawEditPath(lawId);
+
+const getErrorMessage = (error: unknown, fallback: string) => (
+  error instanceof Error && error.message ? error.message : fallback
+);
 
 const LAW_UPDATE_CHANGE_LABEL: Record<string, string> = {
   created: 'Incluido',
@@ -130,8 +133,12 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
   }, [addToast, query]);
 
   React.useEffect(() => {
-    void loadLaws(query);
-  }, []);
+    const frameId = window.requestAnimationFrame(() => {
+      void loadLaws(query);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [loadLaws, query]);
 
   const appendSyncLog = React.useCallback((entry: Omit<SyncLogEntry, 'id'>) => {
     setSyncLogs((current) => [
@@ -180,8 +187,8 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         hasChanges ? 'success' : 'info',
       );
       await loadLaws(query);
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel sincronizar esta lei.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel sincronizar esta lei.'), 'error');
     } finally {
       setSyncingId(null);
     }
@@ -205,8 +212,8 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
           officialUrl: payload.law?.officialUrl || current.officialUrl,
         } : current);
       }
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel carregar o historico de atualizacoes.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel carregar o historico de atualizacoes.'), 'error');
     } finally {
       setIsUpdatesModalLoading(false);
     }
@@ -261,11 +268,11 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
             message: `${sync.changedArticles} alterados, ${sync.insertedArticles} novos e ${sync.revokedArticles} revogados disponiveis para atualizar.`,
           });
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         appendSyncLog({
           label: item.platformTitle || item.label,
           status: 'error',
-          message: error?.message || 'Nao foi possivel verificar atualizacoes desta lei.',
+          message: getErrorMessage(error, 'Nao foi possivel verificar atualizacoes desta lei.'),
         });
       } finally {
         completed += 1;
@@ -322,13 +329,14 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         status: 'success',
         message: `${sources.length} fonte(s) oficiais prontas para consulta. Selecione as categorias desejadas e inicie a varredura.`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, 'Nao foi possivel consultar as leis do Planalto.');
       appendSyncLog({
         label: 'Catalogo oficial',
         status: 'error',
-        message: error?.message || 'Nao foi possivel montar o catalogo do Planalto.',
+        message: getErrorMessage(error, 'Nao foi possivel montar o catalogo do Planalto.'),
       });
-      addToast(error?.message || 'Nao foi possivel consultar as leis do Planalto.', 'error');
+      addToast(message, 'error');
     } finally {
       if (syncRunRef.current === runId) {
         setIsConsultingCatalog(false);
@@ -392,13 +400,14 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         message: `${items.length} norma(s) localizadas nas categorias selecionadas.`,
       });
       void runUpdateCheck(items, runId);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, 'Nao foi possivel consultar as leis do Planalto.');
       appendSyncLog({
         label: 'Catalogo oficial',
         status: 'error',
-        message: error?.message || 'Nao foi possivel consultar as categorias selecionadas.',
+        message: getErrorMessage(error, 'Nao foi possivel consultar as categorias selecionadas.'),
       });
-      addToast(error?.message || 'Nao foi possivel consultar as leis do Planalto.', 'error');
+      addToast(message, 'error');
       setIsConsultingCatalog(false);
     }
   };
@@ -452,13 +461,13 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
           status: 'success',
           message: result.created ? 'Lei adicionada na plataforma.' : 'Lei atualizada com sucesso.',
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         completed += 1;
         failed += 1;
         appendSyncLog({
           label: item.platformTitle || item.label,
           status: 'error',
-          message: error?.message || 'Falha ao importar esta lei.',
+          message: getErrorMessage(error, 'Falha ao importar esta lei.'),
         });
       } finally {
         setImportProgress({

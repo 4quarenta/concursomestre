@@ -12,6 +12,7 @@
 */
 
 import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
 import {
   AlertTriangle,
   ArrowRight,
@@ -35,6 +36,39 @@ import type { Notification } from '@types';
 
 type TabType = 'all' | 'system' | 'social' | 'marketplace' | 'report' | 'trash';
 
+const TRASH_RETENTION_DAYS = 30;
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+const getTrashDaysLeft = (deletedAt: number, referenceTimeMs: number): number | null => {
+  if (!referenceTimeMs) {
+    return null;
+  }
+
+  return Math.max(0, TRASH_RETENTION_DAYS - Math.floor((referenceTimeMs - deletedAt) / MS_PER_DAY));
+};
+
+type TabButtonProps = {
+  id: TabType;
+  label: string;
+  icon: React.ComponentType<{ size?: number }>;
+  activeTab: TabType;
+  onSelect: (id: TabType) => void;
+};
+
+const TabButton: React.FC<TabButtonProps> = ({ id, label, icon: Icon, activeTab, onSelect }) => (
+  <button
+    onClick={() => onSelect(id)}
+    className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+      activeTab === id
+        ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-lg'
+        : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-800'
+    }`}
+  >
+    <Icon size={14} />
+    {label}
+  </button>
+);
+
 const Page: React.FC = () => {
   const {
     notifications,
@@ -50,11 +84,16 @@ const Page: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [referenceTimeMs, setReferenceTimeMs] = useState(0);
   const itemsPerPage = 7;
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab]);
+    const frame = window.requestAnimationFrame(() => {
+      setReferenceTimeMs(Date.now());
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   if (!currentUser) {
     return null;
@@ -123,19 +162,10 @@ const Page: React.FC = () => {
     }
   };
 
-  const TabButton = ({ id, label, icon: Icon }: { id: TabType; label: string; icon: React.ComponentType<{ size?: number }> }) => (
-    <button
-      onClick={() => setActiveTab(id)}
-      className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
-        activeTab === id
-          ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-lg'
-          : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-800'
-      }`}
-    >
-      <Icon size={14} />
-      {label}
-    </button>
-  );
+  const handleSelectTab = (tab: TabType) => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+  };
 
   return (
     <div className="max-w-4xl mx-auto animate-fade-in pb-20 space-y-6">
@@ -174,12 +204,12 @@ const Page: React.FC = () => {
       </header>
 
       <div className="flex flex-wrap gap-2 pb-2 overflow-x-auto no-scrollbar">
-        <TabButton id="all" label="Geral" icon={Inbox} />
-        <TabButton id="system" label="Sistema" icon={Info} />
-        <TabButton id="social" label="Social" icon={MessageSquare} />
-        <TabButton id="marketplace" label="Loja" icon={ShoppingBag} />
-        <TabButton id="report" label="Relatórios" icon={Shield} />
-        <TabButton id="trash" label="Lixeira" icon={Trash2} />
+        <TabButton id="all" label="Geral" icon={Inbox} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="system" label="Sistema" icon={Info} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="social" label="Social" icon={MessageSquare} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="marketplace" label="Loja" icon={ShoppingBag} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="report" label="Relatorios" icon={Shield} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="trash" label="Lixeira" icon={Trash2} activeTab={activeTab} onSelect={handleSelectTab} />
       </div>
 
       <div className="space-y-4">
@@ -212,9 +242,12 @@ const Page: React.FC = () => {
                     <p className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 mb-1 flex items-center gap-1 transition-colors">
                       <Info size={10} /> Prova anexada
                     </p>
-                    <img
+                    <Image
                       src={notification.evidenceUrl}
                       alt="Prova"
+                      width={420}
+                      height={192}
+                      unoptimized
                       className="rounded-xl border border-slate-200 dark:border-slate-800 max-h-48 object-contain bg-slate-50 dark:bg-slate-800 transition-colors"
                     />
                   </div>
@@ -235,7 +268,7 @@ const Page: React.FC = () => {
                   {activeTab === 'trash' && notification.deletedAt && (
                     <span className="flex items-center gap-1 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-md border border-amber-100 dark:border-amber-800/30 transition-colors">
                       <RefreshCcw size={10} />
-                      {Math.max(0, 30 - Math.floor((Date.now() - notification.deletedAt) / (1000 * 60 * 60 * 24)))} dias p/ excluir
+                      {getTrashDaysLeft(notification.deletedAt, referenceTimeMs) ?? TRASH_RETENTION_DAYS} dias p/ excluir
                     </span>
                   )}
                 </div>

@@ -118,6 +118,12 @@ export const ENDPOINTS = {
         submit: 'simulationsSubmit',
     },
 
+    studySchedule: {
+        get: 'study-schedule/get.php',
+        save: 'study-schedule/save.php',
+        delete: 'study-schedule/delete.php',
+    },
+
     users: {
         list: 'usersList',
         profile: 'users/profile.php',
@@ -205,6 +211,7 @@ export const ENDPOINTS = {
     feedback: {
         list: 'feedback/list.php',
         create: 'feedback/create.php',
+        testimonials: 'feedback/testimonials.php',
     },
 
     cache: {

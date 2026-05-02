@@ -1,10 +1,19 @@
 import path from 'node:path';
 import type { NextConfig } from 'next';
+import { buildFrontendSecurityHeaders } from './src/config/securityHeaders';
 
 const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   turbopack: {
     root: path.join(__dirname),
+  },
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: buildFrontendSecurityHeaders(process.env.NEXT_PUBLIC_API_BASE_URL),
+      },
+    ];
   },
 };
 

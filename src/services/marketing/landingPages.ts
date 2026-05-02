@@ -26,8 +26,28 @@ const buildLandingId = (prefix: string) => {
 };
 
 const sanitizeText = (value: unknown, fallback: string) => {
-  const normalized = String(value || '').trim();
+  const normalized = String(value || '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<\/?[^>]+>/g, ' ')
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   return normalized !== '' ? normalized : fallback;
+};
+
+const sanitizeMarketingUrl = (value: unknown, fallback = '') => {
+  const normalized = sanitizeText(value, '').trim();
+  if (normalized === '') {
+    return fallback;
+  }
+
+  if (/^(https?:\/\/|\/)/i.test(normalized)) {
+    return normalized;
+  }
+
+  return fallback;
 };
 
 export const normalizeLandingSlug = (value: string) => (
@@ -641,7 +661,7 @@ export const normalizeMarketingLandingPage = (page?: Partial<MarketingLandingPag
     seo: {
       title: sanitizeText(page?.seo?.title, fallback.seo.title),
       metaDescription: sanitizeText(page?.seo?.metaDescription, fallback.seo.metaDescription),
-      canonicalUrl: sanitizeText(page?.seo?.canonicalUrl, fallback.seo.canonicalUrl || ''),
+      canonicalUrl: sanitizeMarketingUrl(page?.seo?.canonicalUrl, fallback.seo.canonicalUrl || ''),
       ogTitle: sanitizeText(page?.seo?.ogTitle, fallback.seo.ogTitle || ''),
       ogDescription: sanitizeText(page?.seo?.ogDescription, fallback.seo.ogDescription || ''),
     },

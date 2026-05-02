@@ -12,7 +12,7 @@
 /**
  * Tipos compartilhados da camada HTTP oficial.
  */
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
     success: boolean;
     data?: T;
     error?: string;
@@ -35,5 +35,5 @@ export interface PaginatedResponse<T> {
 export interface ApiError {
     success: false;
     message: string;
-    details?: any;
+    details?: unknown;
 }

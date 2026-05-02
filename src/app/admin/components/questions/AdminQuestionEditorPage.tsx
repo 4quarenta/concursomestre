@@ -520,49 +520,60 @@ const AdminQuestionEditorPage = ({
 
   React.useEffect(() => {
     let isMounted = true;
-    setIsLoadingGroups(true);
-    adminService.getQuestionGroups()
-      .then((items) => {
-        if (isMounted) {
-          setQuestionGroups(items);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setQuestionGroups([]);
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsLoadingGroups(false);
-        }
-      });
+    const frameId = window.requestAnimationFrame(() => {
+      setIsLoadingGroups(true);
+      adminService.getQuestionGroups()
+        .then((items) => {
+          if (isMounted) {
+            setQuestionGroups(items);
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setQuestionGroups([]);
+          }
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsLoadingGroups(false);
+          }
+        });
+    });
 
     return () => {
       isMounted = false;
+      window.cancelAnimationFrame(frameId);
     };
   }, []);
 
   React.useEffect(() => {
-    if (selectedProva) {
-      setProvaSearch(formatProvaLabel(selectedProva));
-      return;
-    }
+    const frameId = window.requestAnimationFrame(() => {
+      if (selectedProva) {
+        setProvaSearch(formatProvaLabel(selectedProva));
+        return;
+      }
 
-    if (!manualQ.provaId) {
-      setProvaSearch('');
-    }
+      if (!manualQ.provaId) {
+        setProvaSearch('');
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [manualQ.provaId, selectedProva]);
 
   React.useEffect(() => {
-    if (selectedQuestionGroup) {
-      setGroupSearch(getQuestionGroupTitle(selectedQuestionGroup));
-      return;
-    }
+    const frameId = window.requestAnimationFrame(() => {
+      if (selectedQuestionGroup) {
+        setGroupSearch(getQuestionGroupTitle(selectedQuestionGroup));
+        return;
+      }
 
-    if (!selectedGroupId) {
-      setGroupSearch('');
-    }
+      if (!selectedGroupId) {
+        setGroupSearch('');
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [selectedGroupId, selectedQuestionGroup]);
 
   const handleTypeChange = (newType: string) => {

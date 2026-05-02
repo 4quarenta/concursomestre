@@ -32,6 +32,10 @@ import { DEFAULT_PLAN_ENTITLEMENTS, DEFAULT_PLAN_USAGE_LIMITS } from '@constants
 import { buildAdminPath } from '../app/admin/config/adminPageNavigationConfig';
 import { createDefaultLandingPageContent, mergeLandingPageContent } from '../app/landing/landingContent';
 import { mergeMarketingLandingPages } from '@services/marketing/landingPages';
+import {
+  normalizeCampaignBannerActionUrl,
+  normalizePromotionNotificationActionUrl,
+} from '@services/marketing/promotionCampaign';
 
 import { useAuth } from './AuthProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -66,7 +70,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     featuresHighlight: ['IA Ilimitada', 'Raio-X da Banca', 'Simulados'],
     notificationTitle: 'Oferta especial ConcursoMestre',
     notificationMessage: 'Aproveite a campanha ativa e acelere sua preparacao hoje.',
-    notificationActionUrl: '/pricing',
+    notificationActionUrl: '/planos',
     emailEnabled: false,
     emailSubject: 'Sua preparacao pode ficar mais leve hoje',
     emailPreview: 'Veja a campanha ativa antes que ela termine.',
@@ -79,7 +83,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
         headline: 'Oferta ativa no ConcursoMestre',
         description: 'Plano com desconto por tempo limitado.',
         ctaLabel: 'Ver oferta',
-        actionUrl: '/pricing',
+        actionUrl: '/planos',
         backgroundColor: '#0f172a',
       },
     ],
@@ -196,9 +200,20 @@ const mergeSystemSettings = (
     featuresHighlight: Array.isArray(incomingPromotion.featuresHighlight)
       ? incomingPromotion.featuresHighlight.map((item) => String(item || '').trim()).filter(Boolean)
       : base.activePromotion.featuresHighlight,
-    siteBanners: Array.isArray(incomingPromotion.siteBanners)
+    notificationActionUrl: normalizePromotionNotificationActionUrl(
+      incomingPromotion.notificationActionUrl ?? base.activePromotion.notificationActionUrl,
+      { slug: String(incomingPromotion.slug || base.activePromotion.slug || '') },
+    ),
+    siteBanners: (Array.isArray(incomingPromotion.siteBanners)
       ? incomingPromotion.siteBanners
-      : base.activePromotion.siteBanners,
+      : base.activePromotion.siteBanners
+    ).map((banner) => ({
+      ...banner,
+      actionUrl: normalizeCampaignBannerActionUrl(
+        banner.actionUrl,
+        { slug: String(incomingPromotion.slug || base.activePromotion.slug || '') },
+      ),
+    })),
     automationRules: Array.isArray(incomingPromotion.automationRules)
       ? incomingPromotion.automationRules
       : base.activePromotion.automationRules,
@@ -901,15 +916,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
    * @since 1.0.0
    */
   const fetchInitialData = useCallback(async () => {
-    const userId = currentUser?.id || 'guest';
-    if (dataInitRef.current === userId) return;
-    dataInitRef.current = userId;
-    activeDataOwnerRef.current = userId;
+    const accountId = currentUser?.id || 'guest';
+    const accountRole = currentUser?.role || 'guest';
+    const dataOwnerKey = `${accountId}:${accountRole}`;
+    if (dataInitRef.current === dataOwnerKey) return;
+    dataInitRef.current = dataOwnerKey;
+    activeDataOwnerRef.current = dataOwnerKey;
 
     dispatch({ type: 'RESET_USER_DATA' });
 
     // 1. Fetch System Settings (Essential)
-    adminService.getSystemSettings()
+    const isAdminSettingsContext = currentUser?.role === 'admin' || currentUser?.role === 'staff';
+    const settingsRequest = isAdminSettingsContext
+      ? adminService.getSystemSettings()
+      : adminService.getPublicSystemSettings();
+
+    settingsRequest
       .then((settingsPayload) => {
         if (settingsPayload && Object.keys(settingsPayload).length > 0) {
           const normalizedSettings = resolvePersistedSystemSettings(DEFAULT_SYSTEM_SETTINGS, settingsPayload);
@@ -926,7 +948,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const params = currentUser?.id ? { user_id: currentUser.id } : {};
     questionService.getQuestionPage(params)
       .then(({ rows, total }) => {
-        if (activeDataOwnerRef.current !== userId) {
+        if (activeDataOwnerRef.current !== dataOwnerKey) {
           return;
         }
 
@@ -979,7 +1001,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         fetchingNotificationsForRef.current = null;
       }
     }
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.role]);
 
   // 3. Fetch Notifications with Adaptive Polling
   /**

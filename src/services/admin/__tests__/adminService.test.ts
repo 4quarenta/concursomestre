@@ -107,7 +107,7 @@ describe('adminService', () => {
     expect(threads[0].reply_count).toBe(2);
   });
 
-  it('unwraps public system settings from the settings endpoint', async () => {
+  it('unwraps public system settings from the public settings endpoint', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
       data: {
@@ -116,7 +116,7 @@ describe('adminService', () => {
       },
     });
 
-    const settings = await adminService.getSystemSettings();
+    const settings = await adminService.getPublicSystemSettings();
 
     expect(mockGet).toHaveBeenCalledWith('settings.php', {
       params: {
@@ -125,6 +125,26 @@ describe('adminService', () => {
     });
     expect(settings.paymentProvider).toBe('stripe');
     expect(settings.recaptchaEnabled).toBe(true);
+  });
+
+  it('loads admin system settings through the protected admin endpoint', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        hasStripeSecretConfigured: true,
+        hasGeminiApiKeyConfigured: true,
+      },
+    });
+
+    const settings = await adminService.getSystemSettings();
+
+    expect(mockGet).toHaveBeenCalledWith('admin/settings.php', {
+      params: {
+        _: expect.any(Number),
+      },
+    });
+    expect(settings.hasStripeSecretConfigured).toBe(true);
+    expect(settings.hasGeminiApiKeyConfigured).toBe(true);
   });
 
   it('saves system settings through the official admin settings endpoint', async () => {

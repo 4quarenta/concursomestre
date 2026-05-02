@@ -34,6 +34,33 @@ type UploadMaterialFileResult = {
   pageCount?: number;
 };
 
+type MaterialMutationResponse = {
+  material?: Material;
+  data?: {
+    material?: Material;
+  };
+};
+
+type UserMaterialsResponse = {
+  materials?: Material[];
+};
+
+type MaterialRatingResponse = {
+  userRating?: number | string;
+  newRating?: number | string;
+  totalRatings?: number | string;
+};
+
+type MaterialsListResponse = {
+  rows?: Material[];
+};
+
+type UploadMaterialResponse = {
+  success?: boolean;
+  url?: string;
+  pageCount?: number;
+};
+
 /**
  * Fachada oficial do dominio de marketplace e materiais.
  * Centraliza os contratos ativos para evitar chamadas cruas espalhadas.
@@ -42,16 +69,15 @@ type UploadMaterialFileResult = {
 export const marketplaceService = {
   /**
    * Lista materiais publicados com filtros opcionais do marketplace.
-   * Essa consulta alimenta vitrines, busca e listagens administrativas.
    * @since 1.0.0
    */
   async listMaterials(filters?: { subject?: string }): Promise<Material[]> {
-    const response = await apiClient.get<any>(ENDPOINTS.materials.list, {
+    const response = await apiClient.get<Material[] | MaterialsListResponse>(ENDPOINTS.materials.list, {
       params: filters,
-    }) as any;
+    });
 
-    const payload = readApiData<any>(response, []);
-    return Array.isArray(payload) ? payload : payload?.rows || [];
+    const payload = readApiData<Material[] | { rows?: Material[] }>(response, []);
+    return Array.isArray(payload) ? payload : payload.rows || [];
   },
 
   /**
@@ -64,14 +90,18 @@ export const marketplaceService = {
   },
 
   /**
-   * Pública um novo material no backend oficial.
-   * O retorno normalizado permite que o contexto atualize a vitrine sem parsing extra.
+   * Publica um novo material no backend oficial.
    * @since 1.0.0
    */
   async createMaterial(material: Partial<Material>): Promise<Material> {
-    const response = await apiClient.post<any>(ENDPOINTS.materials.create, material) as any;
-    const raw = assertApiSuccess(response, 'Erro ao publicar material.').raw;
-    return raw?.data?.material ?? raw?.material ?? material;
+    const response = await apiClient.post<MaterialMutationResponse>(ENDPOINTS.materials.create, material);
+    const envelope = assertApiSuccess(response, 'Erro ao publicar material.');
+    const payload = readApiData<MaterialMutationResponse>(response, {});
+
+    return payload.data?.material
+      ?? payload.material
+      ?? envelope.raw.material as Material
+      ?? material as Material;
   },
 
   /**
@@ -79,18 +109,21 @@ export const marketplaceService = {
    * @since 1.0.0
    */
   async updateMaterial(materialId: string, updates: Partial<Material>): Promise<Material> {
-    const response = await apiClient.post<any>(ENDPOINTS.materials.update, {
+    const response = await apiClient.post<MaterialMutationResponse>(ENDPOINTS.materials.update, {
       id: materialId,
       ...updates,
-    }) as any;
+    });
+    const envelope = assertApiSuccess(response, 'Erro ao atualizar material.');
+    const payload = readApiData<MaterialMutationResponse>(response, {});
 
-    const raw = assertApiSuccess(response, 'Erro ao atualizar material.').raw;
-    return raw?.data?.material ?? raw?.material ?? { id: materialId, ...updates };
+    return payload.data?.material
+      ?? payload.material
+      ?? envelope.raw.material as Material
+      ?? { id: materialId, ...updates } as Material;
   },
 
   /**
-   * Executa a moderação administrativa de um material denunciado.
-   * Esse resultado alimenta os modais de aprovação, rejeicao e bloqueio no painel.
+   * Executa a moderacao administrativa de um material denunciado.
    * @since 1.0.0
    */
   async moderateMaterial(
@@ -99,19 +132,23 @@ export const marketplaceService = {
     reason?: string,
     evidenceUrl?: string,
   ): Promise<Partial<Material>> {
-    const response = await apiClient.post<any>(ENDPOINTS.materials.moderate, {
+    const response = await apiClient.post<MaterialMutationResponse>(ENDPOINTS.materials.moderate, {
       id: materialId,
       status,
       reason,
       evidence_url: evidenceUrl,
-    }) as any;
+    });
+    const envelope = assertApiSuccess(response, 'Erro ao moderar material.');
+    const payload = readApiData<MaterialMutationResponse>(response, {});
 
-    const raw = assertApiSuccess(response, 'Erro ao moderar material.').raw;
-    return raw?.data?.material ?? raw?.material ?? {
-      id: materialId,
-      status,
-      rejectionReason: reason,
-    };
+    return payload.data?.material
+      ?? payload.material
+      ?? envelope.raw.material as Partial<Material>
+      ?? {
+        id: materialId,
+        status,
+        rejectionReason: reason,
+      };
   },
 
   /**
@@ -119,13 +156,12 @@ export const marketplaceService = {
    * @since 1.0.0
    */
   async deleteMaterial(materialId: string): Promise<void> {
-    const response = await apiClient.post<any>(ENDPOINTS.materials.delete, { id: materialId }) as any;
+    const response = await apiClient.post(ENDPOINTS.materials.delete, { id: materialId });
     assertApiSuccess(response, 'Erro ao excluir material.');
   },
 
   /**
-   * Centraliza a leitura de transações do marketplace para que contexts e telas
-   * não precisem conhecer o endpoint bruto de transações.
+   * Lista transacoes do marketplace.
    * @since 1.0.0
    */
   async listTransactions(params: MarketplaceTransactionListParams = {}): Promise<Transaction[]> {
@@ -133,39 +169,39 @@ export const marketplaceService = {
   },
 
   /**
-   * Busca a avaliação do usuário atual para um material especifico.
+   * Busca a avaliacao do usuario atual para um material especifico.
    * @since 1.0.0
    */
   async getUserMaterialRating(materialId: string): Promise<number> {
-    const response = await apiClient.get<any>(ENDPOINTS.materials.rate, {
+    const response = await apiClient.get<MaterialRatingResponse>(ENDPOINTS.materials.rate, {
       params: { material_id: materialId },
-    }) as any;
+    });
 
-    const payload = readApiData<any>(response, {});
-    return Number(payload?.userRating || 0);
+    const payload = readApiData<MaterialRatingResponse>(response, {});
+    return Number(payload.userRating || 0);
   },
 
   /**
-   * Registra uma avaliação de material e devolve o agregado atualizado.
+   * Registra uma avaliacao de material e devolve o agregado atualizado.
    * @since 1.0.0
    */
   async rateMaterial(materialId: string, rating: number): Promise<{ newRating: number; totalRatings: number }> {
-    const response = await apiClient.post<any>(ENDPOINTS.materials.rate, {
+    const response = await apiClient.post<MaterialRatingResponse>(ENDPOINTS.materials.rate, {
       materialId,
       rating,
-    }) as any;
+    });
 
-    const raw = assertApiSuccess(response, 'Erro ao registrar avaliação.').raw;
-    const payload = readApiData<any>(raw, {});
+    assertApiSuccess(response, 'Erro ao registrar avaliacao.');
+    const payload = readApiData<MaterialRatingResponse>(response, {});
 
     return {
-      newRating: Number(payload?.newRating || 0),
-      totalRatings: Number(payload?.totalRatings || 0),
+      newRating: Number(payload.newRating || 0),
+      totalRatings: Number(payload.totalRatings || 0),
     };
   },
 
   /**
-   * Compatibiliza chamadas antigas que ainda passam `number` como id de usuário.
+   * Compatibiliza chamadas antigas que ainda passam number como id de usuario.
    * @since 1.0.0
    */
   async getTransactions(userId: number): Promise<Transaction[]> {
@@ -173,7 +209,7 @@ export const marketplaceService = {
   },
 
   /**
-   * Lista transações relacionadas a um usuário especifico.
+   * Lista transacoes relacionadas a um usuario especifico.
    * @since 1.0.0
    */
   async getUserTransactions(userId: string): Promise<Transaction[]> {
@@ -181,20 +217,20 @@ export const marketplaceService = {
   },
 
   /**
-   * Busca os materiais publicados por um usuário no fluxo de perfil/admin.
+   * Busca os materiais publicados por um usuario no fluxo de perfil/admin.
    * @since 1.0.0
    */
-  async listUserMaterials(userId: string): Promise<any[]> {
-    const response = await apiClient.get<any>(ENDPOINTS.users.materials, {
+  async listUserMaterials(userId: string): Promise<Material[]> {
+    const response = await apiClient.get<UserMaterialsResponse>(ENDPOINTS.users.materials, {
       params: { userId },
-    }) as any;
+    });
+    const envelope = assertApiSuccess(response, 'Erro ao carregar os materiais do usuario.');
+    const payload = readApiData<UserMaterialsResponse>(response, {});
 
-    const raw = assertApiSuccess(response, 'Erro ao carregar os materiais do usuário.').raw;
-    const payload = readApiData<any>(raw, {});
-    return Array.isArray(payload?.materials)
+    return Array.isArray(payload.materials)
       ? payload.materials
-      : Array.isArray(raw?.materials)
-        ? raw.materials
+      : Array.isArray(envelope.raw.materials)
+        ? envelope.raw.materials as Material[]
         : [];
   },
 
@@ -202,7 +238,7 @@ export const marketplaceService = {
    * Solicita estorno de uma compra do marketplace.
    * @since 1.0.0
    */
-  async requestRefund(transactionId: string, reason: string): Promise<any> {
+  async requestRefund(transactionId: string, reason: string): Promise<{ message?: string }> {
     return transactionsService.requestRefund(transactionId, reason);
   },
 
@@ -210,7 +246,7 @@ export const marketplaceService = {
    * Cancela uma solicitacao de estorno ainda pendente.
    * @since 1.0.0
    */
-  async cancelRefundRequest(transactionId: string | number): Promise<any> {
+  async cancelRefundRequest(transactionId: string | number): Promise<{ message?: string }> {
     return transactionsService.cancelRefundRequest(transactionId);
   },
 
@@ -218,13 +254,12 @@ export const marketplaceService = {
    * Resolve administrativamente uma solicitacao de estorno.
    * @since 1.0.0
    */
-  async processRefund(transactionId: string, resolution: 'approved' | 'retention_offer'): Promise<any> {
+  async processRefund(transactionId: string, resolution: 'approved' | 'retention_offer'): Promise<{ message?: string }> {
     return transactionsService.resolveRefund(transactionId, resolution);
   },
 
   /**
-   * Mantem a compra oficial dentro do dominio de marketplace e devolve a
-   * transação criada para o contexto sincronizar estado local e notificações.
+   * Mantem a compra oficial dentro do dominio de marketplace.
    * @since 1.0.0
    */
   async createMaterialPurchase(materialId: string | number, couponCode?: string): Promise<Transaction> {
@@ -243,17 +278,16 @@ export const marketplaceService = {
   },
 
   /**
-   * Pública material usando a ponte antiga esperada por alguns fluxos da UI.
+   * Publica material usando a ponte antiga esperada por alguns fluxos da UI.
    * @since 1.0.0
    */
   async uploadMaterial(material: Partial<Material>): Promise<boolean> {
-    const response = await apiClient.post<any>(ENDPOINTS.materials.create, material) as any;
+    const response = await apiClient.post<MaterialMutationResponse>(ENDPOINTS.materials.create, material);
     return assertApiSuccess(response, 'Erro ao publicar material pela ponte legada.').success;
   },
 
   /**
-   * Centraliza o upload de materiais/capas e a normalizacao do retorno do
-   * endpoint legado de upload.
+   * Centraliza o upload de materiais/capas e a normalizacao do retorno do endpoint legado.
    * @since 1.0.0
    */
   async uploadFile(
@@ -267,7 +301,7 @@ export const marketplaceService = {
       formData.append('password', options.password);
     }
 
-    const response: any = await apiClient.post(ENDPOINTS.materials.upload, formData, {
+    const response = await apiClient.post<UploadMaterialResponse>(ENDPOINTS.materials.upload, formData, {
       onUploadProgress: (progressEvent) => {
         if (!options.onProgress) {
           return;
@@ -280,35 +314,35 @@ export const marketplaceService = {
       },
     });
 
-    const payload = readApiData<any>(response, {});
-    const uploadSucceeded = Boolean(response?.success ?? payload?.success ?? payload?.url);
+    const payload = readApiData<UploadMaterialResponse>(response, {});
+    const uploadSucceeded = Boolean(payload.success ?? payload.url);
     if (!uploadSucceeded) {
       return null;
     }
 
-    assertApiSuccess({ success: true, data: payload, raw: response }, 'Erro ao enviar arquivo.');
+    assertApiSuccess({ success: true, data: payload }, 'Erro ao enviar arquivo.');
 
     return {
-      url: payload?.url || response?.url,
-      pageCount: payload?.pageCount || response?.pageCount,
+      url: payload.url || '',
+      pageCount: payload.pageCount,
     };
   },
 
   /**
    * Placeholder mantido para o futuro painel de parceiros.
-   * Hoje não ha backend dedicado para esta listagem no frontend atual.
    * @since 1.0.0
    */
   async getPartnerTransactions(_partnerId: string): Promise<Transaction[]> {
+    void _partnerId;
     return [];
   },
 
   /**
    * Bridge legado mantido apenas para compatibilidade de interface.
-   * O estado real das transações hoje vive nos contexts e services oficiais.
    * @since 1.0.0
    */
   setTransactions(_transactions: Transaction[]) {
+    void _transactions;
     // Bridge mantido por compatibilidade com chamadas legadas.
   },
 

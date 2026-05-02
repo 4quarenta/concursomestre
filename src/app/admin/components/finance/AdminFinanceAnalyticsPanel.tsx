@@ -174,9 +174,10 @@ const AdminFinanceAnalyticsPanel = () => {
 
   useEffect(() => {
     let isCurrent = true;
-    setIsLoading(true);
+    const frameId = window.requestAnimationFrame(() => {
+      setIsLoading(true);
 
-    Promise.all([
+      Promise.all([
       adminService.getFinanceAnalytics({
         period,
         startDate: startDate || undefined,
@@ -206,9 +207,11 @@ const AdminFinanceAnalyticsPanel = () => {
           setIsLoading(false);
         }
       });
+    });
 
     return () => {
       isCurrent = false;
+      window.cancelAnimationFrame(frameId);
     };
   }, [addToast, endDate, period, startDate]);
 

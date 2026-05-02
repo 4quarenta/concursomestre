@@ -16,6 +16,9 @@ type ReferralStats = Record<string, any>;
 export type SubmitProfileTestimonialInput = {
   rating: number;
   testimonial: string;
+  publicDisplayName?: string;
+  publicHeadline?: string;
+  photoUrl?: string;
   userName?: string;
   userEmail?: string;
   planName?: string;
@@ -85,9 +88,12 @@ export const profileService = {
     const testimonial = String(input.testimonial || '').trim();
     const response = await apiClient.post<any>(ENDPOINTS.feedback.create, {
       type: 'suggestion',
-      reason: `Avaliar plataforma - ${rating}/5`,
+      reason: 'Avaliar plataforma',
       details: testimonial,
       rating,
+      public_display_name: input.publicDisplayName,
+      public_headline: input.publicHeadline,
+      public_photo_url: input.photoUrl,
       user_name: input.userName,
       user_email: input.userEmail,
       plan_name: input.planName,

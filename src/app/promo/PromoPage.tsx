@@ -11,92 +11,143 @@
 *
 */
 
-
 import React from 'react';
 import { useData } from '@providers/DataProvider';
-import { Check, Star, Zap, ShieldCheck } from 'lucide-react';
+import { Check, ShieldCheck, Star, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { buildProfilePath } from '../profile/profileNavigation';
+import { isPromotionActiveForSlug } from '@services/marketing/promotionCampaign';
 
-const PromoLanding: React.FC = () => {
-    const { systemSettings } = useData();
-    const router = useRouter();
-    const promo = systemSettings.activePromotion;
+interface PromoLandingProps {
+  slug?: string;
+}
 
-    if (!promo.isActive) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center animate-fade-in">
-                <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200 transition-colors">Nenhuma promoção ativa no momento.</h1>
-                <button onClick={() => router.push('/')} className="mt-4 text-indigo-600 dark:text-indigo-400 hover:underline transition-colors font-bold">Voltar ao início</button>
-            </div>
-        );
-    }
+const PromoLanding: React.FC<PromoLandingProps> = ({ slug = '' }) => {
+  const { systemSettings } = useData();
+  const router = useRouter();
+  const promo = systemSettings.activePromotion;
+  const promoEnabled = systemSettings.features.landingPagePromoEnabled;
+  const canShowPromotion = promoEnabled && isPromotionActiveForSlug(promo, slug);
 
+  if (!canShowPromotion) {
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 animate-fade-in transition-colors">
-            {/* Hero Section */}
-            <div className="w-full py-24 px-6 text-center text-white relative overflow-hidden" style={{ backgroundColor: promo.themeColor }}>
-                <div className="relative z-10 max-w-4xl mx-auto space-y-8">
-                    <span className="inline-block px-4 py-2 bg-white/20 backdrop-blur-md rounded-full text-xs font-black uppercase tracking-[0.2em] animate-pulse border border-white/10">Oferta por Tempo Limitado</span>
-                    <h1 className="text-5xl md:text-7xl font-black tracking-tight leading-none drop-shadow-sm">{promo.landingPageHeadline}</h1>
-                    <p className="text-xl md:text-2xl font-medium opacity-90 max-w-2xl mx-auto leading-relaxed">{promo.landingPageSubheadline}</p>
-                    <div className="pt-4">
-                        <button onClick={() => router.push(buildProfilePath('personal'))} className="px-12 py-5 bg-white text-slate-900 font-black uppercase tracking-widest text-sm rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all">
-                            Quero Aproveitar {promo.discountPercentage}% OFF
-                        </button>
-                    </div>
-                </div>
-                {/* Background Decor */}
-                <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-                    <div className="absolute -top-20 -left-20 w-96 h-96 bg-white rounded-full blur-3xl"></div>
-                    <div className="absolute top-1/2 right-0 w-80 h-80 bg-white rounded-full blur-3xl"></div>
-                </div>
-            </div>
-
-            {/* Features Grid */}
-            <div className="max-w-6xl mx-auto py-24 px-6">
-                <h2 className="text-4xl font-black text-slate-900 dark:text-slate-100 text-center mb-16 transition-colors">Por que assinar agora?</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {promo.featuresHighlight.map((feat, idx) => (
-                        <div key={idx} className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-xl hover:-translate-y-2 transition-all group overflow-hidden relative">
-                            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-8 text-slate-900 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">
-                                {idx === 0 ? <Zap size={32} /> : idx === 1 ? <ShieldCheck size={32} /> : <Star size={32} />}
-                            </div>
-                            <h3 className="text-2xl font-black text-slate-900 dark:text-slate-100 mb-3 transition-colors">{feat}</h3>
-                            <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medum transition-colors">Aproveite todos os recursos premium para acelerar sua aprovação com a melhor tecnologia do mercado.</p>
-                            <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-indigo-50 dark:bg-indigo-900/10 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-colors"></div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Pricing CTA */}
-            <div className="bg-slate-900 dark:bg-slate-950 py-24 px-6 text-center transition-colors">
-                <div className="max-w-4xl mx-auto bg-gradient-to-br from-indigo-600 to-purple-700 dark:from-indigo-700 dark:to-purple-900 p-12 md:p-20 rounded-[4rem] shadow-2xl text-white relative overflow-hidden transition-colors">
-                    <div className="relative z-10 flex flex-col items-center">
-                        <h2 className="text-4xl md:text-5xl font-black mb-8">Plano Elite Anual</h2>
-                        <div className="flex flex-col md:flex-row items-center justify-center gap-4 mb-10">
-                            <span className="text-2xl opacity-50 line-through font-bold">R$ {systemSettings.pricing.Elite.annual.toFixed(2).replace('.', ',')}</span>
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-xs uppercase font-black opacity-80 tracking-widest">Apenas</span>
-                                <span className="text-6xl md:text-8xl font-black">R$ {(systemSettings.pricing.Elite.annual * (1 - promo.discountPercentage / 100)).toFixed(2).replace('.', ',')}</span>
-                            </div>
-                        </div>
-                        <p className="text-indigo-100 font-medium mb-12 text-lg max-w-xl opacity-90">Sua jornada rumo à estabilidade começa com a melhor decisão do seu ano.</p>
-                        <button onClick={() => router.push(buildProfilePath('personal'))} className="w-full md:w-auto px-16 py-6 bg-white text-indigo-700 font-black uppercase tracking-widest text-sm rounded-2xl shadow-xl hover:bg-slate-50 hover:scale-105 active:scale-95 transition-all">
-                            Assinar com Desconto
-                        </button>
-                        <div className="flex items-center gap-2 mt-8 text-[11px] opacity-70 uppercase tracking-widest font-black">
-                            <Check size={14} /> Garantia incondicional de 7 dias
-                        </div>
-                    </div>
-                    {/* Background Decor */}
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-32 -mt-32"></div>
-                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl -ml-32 -mb-32"></div>
-                </div>
-            </div>
-        </div>
+      <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
+        <h1 className="text-2xl font-bold text-slate-800 transition-colors dark:text-slate-200">
+          Promocao indisponivel
+        </h1>
+        <p className="mt-3 max-w-md text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
+          Esta campanha nao esta ativa ou o link acessado nao corresponde a promocao publicada.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="mt-4 font-bold text-indigo-600 transition-colors hover:underline dark:text-indigo-400"
+        >
+          Voltar ao inicio
+        </button>
+      </div>
     );
+  }
+
+  const annualElitePrice = Number(systemSettings.pricing.Elite.annual || 0);
+  const discountedAnnualElitePrice = annualElitePrice * (1 - Number(promo.discountPercentage || 0) / 100);
+
+  return (
+    <div className="min-h-screen bg-slate-50 transition-colors dark:bg-slate-950">
+      <section
+        className="relative w-full overflow-hidden px-6 py-24 text-center text-white"
+        style={{ backgroundColor: promo.themeColor }}
+      >
+        <div className="relative z-10 mx-auto max-w-4xl space-y-8">
+          <span className="inline-block rounded-full border border-white/10 bg-white/20 px-4 py-2 text-xs font-black uppercase tracking-[0.2em] backdrop-blur-md">
+            Oferta por tempo limitado
+          </span>
+          <h1 className="text-5xl font-black leading-none tracking-tight drop-shadow-sm md:text-7xl">
+            {promo.landingPageHeadline}
+          </h1>
+          <p className="mx-auto max-w-2xl text-xl font-medium leading-relaxed opacity-90 md:text-2xl">
+            {promo.landingPageSubheadline}
+          </p>
+          <div className="pt-4">
+            <button
+              type="button"
+              onClick={() => router.push(buildProfilePath('personal'))}
+              className="px-12 py-5 text-sm font-black uppercase tracking-widest text-slate-900 transition-all hover:scale-105 active:scale-95 rounded-full bg-white shadow-2xl"
+            >
+              Quero aproveitar {promo.discountPercentage}% off
+            </button>
+          </div>
+        </div>
+        <div className="pointer-events-none absolute inset-0 opacity-10">
+          <div className="absolute -left-20 -top-20 h-96 w-96 rounded-full bg-white blur-3xl" />
+          <div className="absolute right-0 top-1/2 h-80 w-80 rounded-full bg-white blur-3xl" />
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-24">
+        <h2 className="mb-16 text-center text-4xl font-black text-slate-900 transition-colors dark:text-slate-100">
+          Por que assinar agora?
+        </h2>
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+          {promo.featuresHighlight.map((feature, index) => {
+            const Icon = index === 0 ? Zap : index === 1 ? ShieldCheck : Star;
+
+            return (
+              <article
+                key={`${feature}-${index}`}
+                className="group relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-10 shadow-xl transition-all hover:-translate-y-2 dark:border-slate-800 dark:bg-slate-900"
+              >
+                <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-900 shadow-sm transition-all group-hover:bg-indigo-600 group-hover:text-white dark:bg-slate-800 dark:text-indigo-400">
+                  <Icon size={32} />
+                </div>
+                <h3 className="mb-3 text-2xl font-black text-slate-900 transition-colors dark:text-slate-100">
+                  {feature}
+                </h3>
+                <p className="font-medium leading-relaxed text-slate-500 transition-colors dark:text-slate-400">
+                  Aproveite os recursos premium para estudar com mais foco, constancia e leitura clara do seu progresso.
+                </p>
+                <div className="absolute -bottom-6 -right-6 h-24 w-24 rounded-full bg-indigo-50 blur-2xl transition-colors group-hover:bg-indigo-500/10 dark:bg-indigo-900/10" />
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="bg-slate-900 px-6 py-24 text-center transition-colors dark:bg-slate-950">
+        <div className="relative mx-auto max-w-4xl overflow-hidden rounded-[2rem] bg-gradient-to-br from-indigo-600 to-purple-700 p-12 text-white shadow-2xl transition-colors dark:from-indigo-700 dark:to-purple-900 md:p-20">
+          <div className="relative z-10 flex flex-col items-center">
+            <h2 className="mb-8 text-4xl font-black md:text-5xl">Plano Elite Anual</h2>
+            <div className="mb-10 flex flex-col items-center justify-center gap-4 md:flex-row">
+              <span className="text-2xl font-bold opacity-50 line-through">
+                R$ {annualElitePrice.toFixed(2).replace('.', ',')}
+              </span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xs font-black uppercase tracking-widest opacity-80">Apenas</span>
+                <span className="text-6xl font-black md:text-8xl">
+                  R$ {discountedAnnualElitePrice.toFixed(2).replace('.', ',')}
+                </span>
+              </div>
+            </div>
+            <p className="mb-12 max-w-xl text-lg font-medium text-indigo-100 opacity-90">
+              Sua jornada rumo a estabilidade com uma rotina de estudo mais organizada e estrategica.
+            </p>
+            <button
+              type="button"
+              onClick={() => router.push(buildProfilePath('personal'))}
+              className="w-full rounded-2xl bg-white px-16 py-6 text-sm font-black uppercase tracking-widest text-indigo-700 shadow-xl transition-all hover:scale-105 hover:bg-slate-50 active:scale-95 md:w-auto"
+            >
+              Assinar com desconto
+            </button>
+            <div className="mt-8 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest opacity-70">
+              <Check size={14} /> Garantia de 7 dias
+            </div>
+          </div>
+          <div className="absolute right-0 top-0 -mr-32 -mt-32 h-64 w-64 rounded-full bg-white/5 blur-3xl" />
+          <div className="absolute bottom-0 left-0 -mb-32 -ml-32 h-64 w-64 rounded-full bg-purple-500/10 blur-3xl" />
+        </div>
+      </section>
+    </div>
+  );
 };
 
 export default PromoLanding;

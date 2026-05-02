@@ -16,7 +16,7 @@ const STATE_CLASS: Record<AdminPublishState, string> = {
 
 const normalizeStateToken = (value: unknown) => String(value || '').trim().toLowerCase();
 
-const resolveScheduledDate = (item: Record<string, any>) => {
+const resolveScheduledDate = (item: Record<string, unknown>) => {
   const candidate = item.scheduledAt
     || item.scheduled_for
     || item.scheduledFor
@@ -29,11 +29,15 @@ const resolveScheduledDate = (item: Record<string, any>) => {
     return null;
   }
 
+  if (!(candidate instanceof Date) && typeof candidate !== 'string' && typeof candidate !== 'number') {
+    return null;
+  }
+
   const date = new Date(candidate);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-export const resolveAdminPublishState = (item: Record<string, any>): AdminPublishState => {
+export const resolveAdminPublishState = (item: Record<string, unknown>): AdminPublishState => {
   const rawState = normalizeStateToken(
     item.publishStatus
     || item.publish_status

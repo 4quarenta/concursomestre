@@ -14,7 +14,8 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Subject, Difficulty, UserAnswer } from '../../types';
+import { Difficulty } from '../../types';
+import type { UserAnswer } from '../../types';
 import { ChevronRight, ChevronLeft, ChevronDown, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp } from 'lucide-react';
 import QuestionCard from '../questions/components/QuestionCard';
 import { useAuth } from '@providers/AuthProvider';
@@ -266,10 +267,14 @@ const SearchableFilterSelect = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (disabled) {
+    if (!disabled) return;
+
+    const frame = window.requestAnimationFrame(() => {
       setIsOpen(false);
       setQuery('');
-    }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [disabled]);
 
   const handleSelect = (nextValue: string) => {
@@ -403,6 +408,89 @@ const SearchableFilterSelect = ({
   );
 };
 
+type FilterSelectProps = {
+  label: string;
+  value: SearchableFilterValue;
+  onChange: (value: SearchableFilterValue) => void;
+  options: unknown[];
+  disabled?: boolean;
+  helperText?: string;
+};
+
+const FilterSelect = ({ label, value, onChange, options, disabled = false, helperText }: FilterSelectProps) => (
+  <SearchableFilterSelect
+    label={label}
+    value={value}
+    onChange={onChange}
+    groups={buildSearchableOptionGroup(String(label), (options || []).map(String))}
+    disabled={disabled}
+    helperText={helperText}
+  />
+);
+
+type CheckboxFilterTone = 'amber' | 'emerald' | 'indigo' | 'red';
+
+const CHECKBOX_FILTER_TONE_CLASSES: Record<CheckboxFilterTone, {
+  checked: string;
+  unchecked: string;
+  boxChecked: string;
+  boxUnchecked: string;
+}> = {
+  amber: {
+    checked: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400',
+    unchecked: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800',
+    boxChecked: 'bg-amber-600 border-amber-600',
+    boxUnchecked: 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700',
+  },
+  emerald: {
+    checked: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400',
+    unchecked: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800',
+    boxChecked: 'bg-emerald-600 border-emerald-600',
+    boxUnchecked: 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700',
+  },
+  indigo: {
+    checked: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-400',
+    unchecked: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800',
+    boxChecked: 'bg-indigo-600 border-indigo-600',
+    boxUnchecked: 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700',
+  },
+  red: {
+    checked: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-400',
+    unchecked: 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800',
+    boxChecked: 'bg-red-600 border-red-600',
+    boxUnchecked: 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700',
+  },
+};
+
+type CheckboxFilterProps = {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  icon?: React.ComponentType<{ size?: number; className?: string }>;
+  colorClass?: CheckboxFilterTone;
+};
+
+const CheckboxFilter = ({
+  label,
+  checked,
+  onChange,
+  icon: Icon,
+  colorClass = 'indigo',
+}: CheckboxFilterProps) => {
+  const tone = CHECKBOX_FILTER_TONE_CLASSES[colorClass] || CHECKBOX_FILTER_TONE_CLASSES.indigo;
+
+  return (
+    <label className={`flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 transition-all select-none ${checked ? tone.checked : tone.unchecked}`}>
+      <div className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${checked ? tone.boxChecked : tone.boxUnchecked}`}>
+        {checked && <Check size={10} className="text-white" />}
+      </div>
+      <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+      {Icon && <Icon size={14} className="ml-1 opacity-50" />}
+      <input type="checkbox" className="hidden" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    </label>
+  );
+};
+
 const sanitizePracticeFiltersForFocus = (nextFilters: typeof DEFAULT_FILTERS) => {
   if (!hasAnyFilterValue(nextFilters.subject) && hasAnyFilterValue(nextFilters.topic)) {
     nextFilters = {
@@ -426,7 +514,7 @@ const sanitizePracticeFiltersForFocus = (nextFilters: typeof DEFAULT_FILTERS) =>
 };
 
 const Practice: React.FC = () => {
-  const { currentUser, toggleSavedQuestion, addXp } = useAuth();
+  const { currentUser, toggleSavedQuestion } = useAuth();
   const {
     questions, userAnswers, userNotes, reports, systemSettings,
     submitAnswer: dispatchAnswer, reportError, addComment, likeComment, saveNote,
@@ -485,7 +573,7 @@ const Practice: React.FC = () => {
   const [filters, setFilters] = useState<any>(() => sanitizePracticeFiltersForFocus(initialFilters));
   const [pendingFilters, setPendingFilters] = useState<any>(() => sanitizePracticeFiltersForFocus(initialFilters)); // State for UI selection before submit
   const [isFiltering, setIsFiltering] = useState(false);
-  const [filterTimestamp, setFilterTimestamp] = useState(Date.now()); // Force reset on filter
+  const [filterTimestamp, setFilterTimestamp] = useState(0); // Force reset on filter
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -570,15 +658,6 @@ const Practice: React.FC = () => {
     setIsLoadingMore(false);
   }, [isLoadingMore, lastFetchedPage, filteredQuestions.length, totalQuestions, fetchMoreQuestions]);
 
-  const isFiltered = useMemo(() => {
-    return Object.entries(filters).some(([key, value]) => {
-      if (key === 'keyword') return value !== '';
-      if (Array.isArray(value)) return value.length > 0;
-      if (['onlySaved', 'hasTeacherComment', 'hasDetailedComment', 'excludeCanceled', 'excludeOutdated', 'excludeAnswered'].includes(key)) return value === true;
-      return value !== 'All';
-    });
-  }, [filters]);
-
   const paginatedList = useMemo(() => filteredQuestions.slice(0, visibleCount), [filteredQuestions, visibleCount]);
 
   useEffect(() => {
@@ -600,11 +679,15 @@ const Practice: React.FC = () => {
 
   // Load more when reaching end of cards in focus mode
   useEffect(() => {
-    if (viewMode === 'card' && currentQuestionIndex >= filteredQuestions.length - 1) {
-        if (filteredQuestions.length < totalQuestions) {
-            loadNextPage();
-        }
+    if (viewMode !== 'card' || currentQuestionIndex < filteredQuestions.length - 1 || filteredQuestions.length >= totalQuestions) {
+      return;
     }
+
+    const frame = window.requestAnimationFrame(() => {
+      void loadNextPage();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [currentQuestionIndex, filteredQuestions.length, totalQuestions, viewMode, loadNextPage]);
 
   useEffect(() => {
@@ -727,7 +810,7 @@ const Practice: React.FC = () => {
     setIsFiltering(true);
     setTimeout(() => {
       setFilters(sanitizeFiltersForFocus(pendingFilters));
-      setFilterTimestamp(Date.now());
+      setFilterTimestamp((timestamp) => timestamp + 1);
       setVisibleCount(PAGE_SIZE);
       setCurrentQuestionIndex(0);
       setIsFiltering(false);
@@ -778,28 +861,6 @@ const Practice: React.FC = () => {
       return sanitizeFiltersForFocus(nextFilters);
     });
   }, [filters, sanitizeFiltersForFocus]);
-
-  const FilterSelect = ({ label, value, onChange, options, disabled = false, helperText }: any) => (
-    <SearchableFilterSelect
-      label={label}
-      value={value}
-      onChange={onChange}
-      groups={buildSearchableOptionGroup(String(label), (options || []).map(String))}
-      disabled={disabled}
-      helperText={helperText}
-    />
-  );
-
-  const CheckboxFilter = ({ label, checked, onChange, icon: Icon, colorClass = 'indigo' }: any) => (
-    <label className={`flex items-center gap-2 px-4 py-2 rounded-xl border cursor-pointer transition-all select-none ${checked ? `bg-${colorClass}-50 dark:bg-${colorClass}-900/20 border-${colorClass}-200 dark:border-${colorClass}-800 text-${colorClass}-700 dark:text-${colorClass}-400` : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
-      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${checked ? `bg-${colorClass}-600 border-${colorClass}-600` : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700'}`}>
-        {checked && <Check size={10} className="text-white" />}
-      </div>
-      <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
-      {Icon && <Icon size={14} className="ml-1 opacity-50" />}
-      <input type="checkbox" className="hidden" checked={checked} onChange={e => onChange(e.target.checked)} />
-    </label>
-  );
 
   // if (!currentUser) return null; // Removed to allow guest access
 
@@ -1043,7 +1104,6 @@ const Practice: React.FC = () => {
 
   const careerOptionGroups = useMemo(() => buildSearchableOptionGroup('Focos', uniqueCareers), [uniqueCareers]);
   const agencyOptionGroups = useMemo(() => buildSearchableOptionGroup('Bancas', uniqueAgencies), [uniqueAgencies]);
-  const organizationOptionGroups = useMemo(() => buildSearchableOptionGroup('Orgaos', uniqueOrganizations), [uniqueOrganizations]);
   const yearOptionGroups = useMemo(() => buildSearchableOptionGroup('Anos', uniqueYears), [uniqueYears]);
   const roleOptionGroups = useMemo(() => buildSearchableOptionGroup('Cargos', uniqueRoles), [uniqueRoles]);
 

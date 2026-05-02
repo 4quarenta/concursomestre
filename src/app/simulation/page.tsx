@@ -14,11 +14,11 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Subject, SimulationSession, SimulationConfig, Difficulty, Question } from '../../types';
+import { Subject, SimulationSession, SimulationConfig, Question, TaxonomyItem, UserProfile } from '../../types';
 import {
    PlayCircle, Clock, ChevronRight, BrainCircuit, Filter, Target, RotateCcw, LayoutGrid,
-   ArrowRight, X, Search, ChevronDown, CheckCircle2, History, Timer, BarChart3, ChevronLeft, Flag, Zap, ArrowLeft,
-   Calendar, Building2, Briefcase, GraduationCap, BookOpen, List, Eye
+   ArrowRight, X, Search, ChevronDown, CheckCircle2, History, Timer, BarChart3, ChevronLeft, Zap, ArrowLeft,
+   Calendar, Building2, Briefcase, GraduationCap, BookOpen, List, Eye, LucideIcon
 } from 'lucide-react';
 import QuestionCard from '../questions/components/QuestionCard';
 import { useAuth } from '@providers/AuthProvider';
@@ -27,7 +27,6 @@ import { useToast } from '@providers/ToastProvider';
 import { useStudyTrackerActions } from '@providers/StudyTrackerProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
-import AdBanner from '../../components/shared/feedback/AdBanner';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import { simulationsService, type StoredSimulationSession } from '@services/simulations';
 import {
@@ -45,7 +44,7 @@ const SearchableMultiSelect: React.FC<{
    selected: string[];
    onChange: (values: string[]) => void;
    placeholder?: string;
-   icon: any;
+   icon: LucideIcon;
    disabled?: boolean;
 }> = ({ label, options, selected, onChange, placeholder, icon: Icon, disabled = false }) => {
    const [isOpen, setIsOpen] = useState(false);
@@ -106,6 +105,90 @@ type SimulationConfigOverrides = Partial<Omit<SimulationConfig, 'filters'>> & {
    filters?: Partial<SimulationConfig['filters']>;
 };
 
+type SimulationAnswerValue = SimulationSession['answers'][string];
+type SimulationAnswerObject = Exclude<SimulationAnswerValue, number | undefined>;
+type SimulationCurrentUser = UserProfile & {
+   billing?: {
+      plan?: string;
+   };
+};
+type SupportedUserPlan = 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
+
+const readSimulationTimeMs = () => Date.now();
+
+const getQuestionCorrectIndex = (question: Question) => {
+   const correctItem = (question.itens || []).find((item, index) => Number(item.id) === Number(question.resposta) || index === Number(question.resposta));
+   return (question.itens || []).indexOf(correctItem ?? null);
+};
+
+const getSimulationAnswerObject = (answer: SimulationAnswerValue): SimulationAnswerObject | null => {
+   if (answer !== null && answer !== undefined && typeof answer === 'object') {
+      return answer;
+   }
+
+   return null;
+};
+
+const getSimulationSelectedIndex = (answer: SimulationAnswerValue) => {
+   const answerObject = getSimulationAnswerObject(answer);
+   return answerObject ? Number(answerObject.index ?? -1) : typeof answer === 'number' ? Number(answer) : undefined;
+};
+
+const getSimulationAnswerState = (question: Question, answer: SimulationAnswerValue) => {
+   const selectedOptionIndex = getSimulationSelectedIndex(answer);
+
+   if (selectedOptionIndex === undefined || selectedOptionIndex < 0) {
+      return {
+         selectedOptionIndex: undefined,
+         isCorrect: false,
+      };
+   }
+
+   const answerObject = getSimulationAnswerObject(answer);
+   return {
+      selectedOptionIndex,
+      isCorrect: answerObject ? Boolean(answerObject.is_correct) : selectedOptionIndex === getQuestionCorrectIndex(question),
+   };
+};
+
+const getQuestionRoleLabel = (question: Question) => (
+   question.cargos?.map((cargo) => cargo.descricao || cargo.descrição || cargo.name).find(Boolean) || ''
+);
+
+const getQuestionLevelLabel = (question: Question) => {
+   if (typeof question.nivel === 'string') return question.nivel;
+   if (typeof question.level === 'string') return question.level;
+   return '';
+};
+
+const getTaxonomyNames = (items: TaxonomyItem[] | undefined, resolver: (item: TaxonomyItem) => string | undefined) => (
+   (items || []).map(resolver).filter((value): value is string => Boolean(value)).sort()
+);
+
+const isEnemSubjectArea = (value: string) => (
+   ENEM_SUBJECT_AREA_OPTIONS.includes(value as (typeof ENEM_SUBJECT_AREA_OPTIONS)[number])
+);
+
+const getCurrentUserPlan = (user: SimulationCurrentUser | null | undefined): SupportedUserPlan => {
+   const plan = user?.billing?.plan || user?.plan;
+   return plan === 'Essencial' || plan === 'Pro' || plan === 'Elite' ? plan : 'Gratuito';
+};
+
+const buildExistingSimulationAnswer = (question: Question, answer: SimulationAnswerValue, timestamp: number) => {
+   const answerState = getSimulationAnswerState(question, answer);
+
+   if (answerState.selectedOptionIndex === undefined) {
+      return undefined;
+   }
+
+   return {
+      questionId: Number(question.id),
+      selectedOptionIndex: answerState.selectedOptionIndex,
+      isCorrect: answerState.isCorrect,
+      timestamp,
+   };
+};
+
 const createSimulationConfig = (overrides: SimulationConfigOverrides = {}): SimulationConfig => {
    const base: SimulationConfig = {
       id: '',
@@ -132,10 +215,9 @@ const createSimulationConfig = (overrides: SimulationConfigOverrides = {}): Simu
 const getSimulationScore = (session: SimulationSession) => {
    if (typeof session.score === 'number') return session.score;
 
-   return Object.values((session.answers || {}) as Record<string, any>).filter((answer) => {
-      if (answer === null || answer === undefined) return false;
-      if (typeof answer === 'object') return Boolean(answer.is_correct);
-      return false;
+   return Object.values(session.answers || {}).filter((answer) => {
+      const answerObject = getSimulationAnswerObject(answer);
+      return answerObject ? Boolean(answerObject.is_correct) : false;
    }).length;
 };
 
@@ -169,8 +251,9 @@ const getSimulationDurationSeconds = (session: SimulationSession) => {
       return Math.max(0, Math.round((session.endTime - session.startTime) / 1000));
    }
 
-   const answerTime = Object.values((session.answers || {}) as Record<string, any>).reduce((total, answer) => {
-      const timeTaken = typeof answer === 'object' && answer ? Number(answer.time_taken || 0) : 0;
+   const answerTime = Object.values(session.answers || {}).reduce<number>((total, answer) => {
+      const answerObject = getSimulationAnswerObject(answer);
+      const timeTaken = answerObject ? Number(answerObject.time_taken || 0) : 0;
       return total + (Number.isFinite(timeTaken) ? timeTaken : 0);
    }, 0);
 
@@ -206,13 +289,8 @@ const getQuestionSubjectLabel = (question: Question) => {
 };
 
 const isQuestionCorrectInSession = (session: SimulationSession, question: Question) => {
-   const answer = ((session.answers || {}) as Record<string, any>)[question.id];
-   if (answer === null || answer === undefined) return false;
-   if (typeof answer === 'object') return Boolean(answer.is_correct);
-
-   const correctItem = (question.itens || []).find((item, index) => Number(item.id) === Number(question.resposta) || index === Number(question.resposta));
-   const correctIndex = (question.itens || []).indexOf(correctItem as any);
-   return Number(answer) === correctIndex;
+   const answer = (session.answers || {})[String(question.id)];
+   return getSimulationAnswerState(question, answer).isCorrect;
 };
 
 const buildResultInsights = (session: SimulationSession, historicalAverage: number) => {
@@ -254,10 +332,11 @@ const buildResultInsights = (session: SimulationSession, historicalAverage: numb
 };
 
 const Simulation: React.FC = () => {
-   const { currentUser, addSimulation } = useAuth();
+   const { currentUser: rawCurrentUser, addSimulation } = useAuth();
    const { questions, systemSettings, ensureTaxonomiesLoaded } = useData();
    const { addToast } = useToast();
    const { registerSimulationElapsed } = useStudyTrackerActions();
+   const currentUser = rawCurrentUser as SimulationCurrentUser | null;
 
    const [activeSession, setActiveSession] = useState<SimulationSession | null>(null);
    const [step, setStep] = useState<'config' | 'active' | 'result' | 'review'>('config');
@@ -275,17 +354,19 @@ const Simulation: React.FC = () => {
    const [viewMode, setViewMode] = useState<'focus' | 'list'>('focus');
    const [simulationTab, setSimulationTab] = useState<SimulationTab>('ready');
    const [storedSimulations, setStoredSimulations] = useState<StoredSimulationSession[]>([]);
+   const [referenceTimeMs, setReferenceTimeMs] = useState(0);
 
    const allAgencies = useMemo(() => Array.from(new Set(questions.flatMap(q => q.bancas?.map(b => b.sigla || b.nome) || []).filter(Boolean))).sort() as string[], [questions]);
-   const allYears = useMemo(() => Array.from(new Set(questions.flatMap(q => q.anos || []).map(String))).sort().reverse(), [questions]);
    const allOrgs = useMemo(() => Array.from(new Set(questions.flatMap(q => q.orgaos || []).map(o => o.sigla || o.nome).filter(Boolean))).sort(), [questions]);
-   const allRoles = useMemo(() => Array.from(new Set(questions.flatMap(q => q.cargos || []).map(c => c.descrição || (c as any).nome).filter(Boolean))).sort(), [questions]);
-   const allLevels = useMemo(() => Array.from(new Set(questions.map(q => q.nivel || (q as any).level).filter(Boolean))).sort(), [questions]);
+   const allRoles = useMemo(() => Array.from(new Set(questions.map(getQuestionRoleLabel).filter(Boolean))).sort(), [questions]);
+   const allLevels = useMemo(() => Array.from(new Set(questions.map(getQuestionLevelLabel).filter(Boolean))).sort(), [questions]);
 
    const [config, setConfig] = useState<SimulationConfig>(() => createSimulationConfig());
 
    const allTopics = useMemo(() => {
-      const relevantQuestions = config.subjects.length > 0 ? questions.filter(q => q.assuntos?.some(a => config.subjects.includes(a.nome as any))) : questions;
+      const relevantQuestions = config.subjects.length > 0
+         ? questions.filter((question) => question.assuntos?.some((assunto) => config.subjects.includes(assunto.nome as Subject)))
+         : questions;
       return Array.from(new Set(relevantQuestions.flatMap(q => q.assuntos?.map(a => a.nome) || []).filter(Boolean))).sort();
    }, [questions, config.subjects]);
 
@@ -296,56 +377,57 @@ const Simulation: React.FC = () => {
 
    const enemQuestions = useMemo(() => questions.filter(isEnemQuestion), [questions]);
 
-   const simulationCareers = useMemo(() => {
+   const simulationCareers = (() => {
       const baseCareers = systemSettings.taxonomies?.careers?.length
-         ? systemSettings.taxonomies.careers.map((career: any) => normalizeCareerSelectorLabel(career.name))
+         ? getTaxonomyNames(systemSettings.taxonomies.careers, (career) => normalizeCareerSelectorLabel(career.name))
          : Array.from(new Set(questions.flatMap((question) => question.carreiras?.map((career) => normalizeCareerSelectorLabel(career.nome)) || []).filter(Boolean)));
 
-      return injectEnemFocusOption(baseCareers as string[]);
-   }, [questions, systemSettings.taxonomies?.careers]);
+      return injectEnemFocusOption(baseCareers);
+   })();
 
-   const simulationSubjects = useMemo(() => {
+   const simulationSubjects = (() => {
       if (isEnemFocus) return [...ENEM_SUBJECT_AREA_OPTIONS] as string[];
 
       if (systemSettings.taxonomies?.subjects?.length) {
-         return systemSettings.taxonomies.subjects.map((subject: any) => subject.name).filter(Boolean).sort();
+         return getTaxonomyNames(systemSettings.taxonomies.subjects, (subject) => subject.name);
       }
 
       return Array.from(new Set(
          questions.flatMap((question) => question.assuntos?.filter((assunto) => assunto.materia).map((assunto) => assunto.nome) || []).filter(Boolean),
       )).sort();
-   }, [isEnemFocus, questions, systemSettings.taxonomies?.subjects]);
+   })();
 
-   const simulationAgencies = useMemo(() => {
+   const simulationAgencies = (() => {
       if (systemSettings.taxonomies?.agencies?.length) {
-         return systemSettings.taxonomies.agencies.map((agency: any) => agency.sigla || agency.name).filter(Boolean).sort();
+         return getTaxonomyNames(systemSettings.taxonomies.agencies, (agency) => agency.slug || agency.name);
       }
       return allAgencies;
-   }, [allAgencies, systemSettings.taxonomies?.agencies]);
+   })();
 
-   const simulationOrgs = useMemo(() => {
+   const simulationOrgs = (() => {
       if (systemSettings.taxonomies?.organizations?.length) {
-         return systemSettings.taxonomies.organizations.map((organization: any) => organization.sigla || organization.name).filter(Boolean).sort();
+         return getTaxonomyNames(systemSettings.taxonomies.organizations, (organization) => organization.slug || organization.name);
       }
       return allOrgs;
-   }, [allOrgs, systemSettings.taxonomies?.organizations]);
+   })();
 
-   const simulationRoles = useMemo(() => {
+   const simulationRoles = (() => {
       if (systemSettings.taxonomies?.roles?.length) {
+         // eslint-disable-next-line @typescript-eslint/no-explicit-any
          return systemSettings.taxonomies.roles.map((role: any) => role.descricao || role['descrição'] || role.name).filter(Boolean).sort();
       }
       return allRoles;
-   }, [allRoles, systemSettings.taxonomies?.roles]);
+   })();
 
-   const simulationYears = useMemo(() => {
+   const simulationYears = (() => {
       if (!isEnemFocus && systemSettings.taxonomies?.years?.length) {
          return systemSettings.taxonomies.years.map(String).sort().reverse();
       }
       const sourceQuestions = isEnemFocus ? enemQuestions : questions;
       return Array.from(new Set(sourceQuestions.flatMap((question) => question.anos || []).map(String).filter(Boolean))).sort().reverse();
-   }, [isEnemFocus, questions, enemQuestions, systemSettings.taxonomies?.years]);
+   })();
 
-   const simulationTopics = useMemo(() => {
+   const simulationTopics = (() => {
       if (isEnemFocus) {
          const scopedEnemQuestions = config.subjects.length > 0
             ? enemQuestions.filter((question) =>
@@ -363,16 +445,16 @@ const Simulation: React.FC = () => {
          if (config.subjects.length > 0) {
             const subjectIds = new Set(
                (systemSettings.taxonomies.subjects || [])
-                  .filter((subject: any) => config.subjects.includes(subject.name))
-                  .map((subject: any) => subject.id),
+                  .filter((subject) => config.subjects.includes(subject.name as Subject))
+                  .map((subject) => subject.id),
             );
-            availableTopics = availableTopics.filter((topic: any) => !topic.parentId || subjectIds.has(topic.parentId));
+            availableTopics = availableTopics.filter((topic) => !topic.parentId || subjectIds.has(topic.parentId));
          }
-         return availableTopics.map((topic: any) => topic.name).filter(Boolean).sort();
+         return getTaxonomyNames(availableTopics, (topic) => topic.name);
       }
 
       return allTopics;
-   }, [isEnemFocus, config.subjects, enemQuestions, allTopics, systemSettings.taxonomies?.topics, systemSettings.taxonomies?.subjects]);
+   })();
 
    const questionsById = useMemo(() => {
       return new Map(questions.map((question) => [Number(question.id), question]));
@@ -380,9 +462,12 @@ const Simulation: React.FC = () => {
 
    useEffect(() => {
       let isMounted = true;
+      let frameId = 0;
 
       if (!currentUser?.id) {
-         setStoredSimulations([]);
+         frameId = window.requestAnimationFrame(() => {
+            setStoredSimulations([]);
+         });
          return;
       }
 
@@ -397,6 +482,7 @@ const Simulation: React.FC = () => {
 
       return () => {
          isMounted = false;
+         window.cancelAnimationFrame(frameId);
       };
    }, [currentUser?.id]);
 
@@ -407,7 +493,7 @@ const Simulation: React.FC = () => {
             .map((questionId) => questionsById.get(Number(questionId)))
             .filter(Boolean) as Question[],
       }));
-      const localSessions = ((currentUser as any)?.simulations || []) as SimulationSession[];
+      const localSessions = currentUser?.simulations || [];
       const byId = new Map<string, SimulationSession>();
 
       [...hydratedStored, ...localSessions].forEach((session: SimulationSession) => {
@@ -418,7 +504,19 @@ const Simulation: React.FC = () => {
 
       return Array.from(byId.values())
          .sort((a: SimulationSession, b: SimulationSession) => (b.endTime || b.startTime || 0) - (a.endTime || a.startTime || 0));
-   }, [(currentUser as any)?.simulations, questionsById, storedSimulations]);
+   }, [currentUser?.simulations, questionsById, storedSimulations]);
+
+   useEffect(() => {
+      let frameId = 0;
+
+      frameId = window.requestAnimationFrame(() => {
+         setReferenceTimeMs(readSimulationTimeMs());
+      });
+
+      return () => {
+         window.cancelAnimationFrame(frameId);
+      };
+   }, [activeSession?.id, step, reviewIdx, currentIdx]);
 
    const simulationStats = useMemo(() => {
       const completedCount = completedSimulations.length;
@@ -524,13 +622,6 @@ const Simulation: React.FC = () => {
    }, [completedSimulations, simulationStats]);
 
    useEffect(() => {
-      let timer: any;
-      if (step === 'active' && timeLeft > 0) timer = setInterval(() => setTimeLeft(p => p - 1), 1000);
-      if (timeLeft === 0 && step === 'active') handleFinish();
-      return () => clearInterval(timer);
-   }, [step, timeLeft]);
-
-   useEffect(() => {
       ensureTaxonomiesLoaded();
    }, [ensureTaxonomiesLoaded]);
 
@@ -554,7 +645,7 @@ const Simulation: React.FC = () => {
    }, [step, isImmersiveEnabled, updateImmersiveMode]);
 
    // Verificar se o usuário pode criar sim personalizado (apenas Pro ou Elite)
-   const canCreateCustomSim = currentUser && (currentUser as any).plan && (currentUser as any).plan !== 'Gratuito' && (currentUser as any).plan !== 'Essencial';
+   const canCreateCustomSim = Boolean(currentUser && currentUser.plan && currentUser.plan !== 'Gratuito' && currentUser.plan !== 'Essencial');
 
    const handleCreate = (overrideConfig?: SimulationConfig) => {
       if (currentUser && !currentUser.emailVerified) {
@@ -568,18 +659,18 @@ const Simulation: React.FC = () => {
 
       const activeConfig = overrideConfig || config;
       const activeIsEnemFocus = activeConfig.filters.careers.some((career) => normalizeCareerSelectorLabel(career) === ENEM_FOCUS_NAME);
-      let filtered = questions.filter(q => {
+      const filtered = questions.filter(q => {
          const matchSubject = activeConfig.subjects.length === 0 || (
             activeIsEnemFocus
                ? getEnemSubjectAreasForQuestion(q).some((area) => activeConfig.subjects.includes(area as Subject))
-               : q.assuntos?.some(a => activeConfig.subjects.includes(a.nome as any))
+               : q.assuntos?.some((assunto) => activeConfig.subjects.includes(assunto.nome as Subject))
          );
          const matchAgency = activeIsEnemFocus || activeConfig.filters.agencies.length === 0 || q.bancas?.some(b => activeConfig.filters.agencies.includes(b.sigla || b.nome));
          const matchYear = activeConfig.filters.years.length === 0 || (q.anos && q.anos.some(y => activeConfig.filters.years.includes(String(y))));
          const matchOrg = activeIsEnemFocus || activeConfig.filters.organizations.length === 0 || q.orgaos?.some(o => activeConfig.filters.organizations.includes(o.sigla || o.nome));
-         const matchRole = activeIsEnemFocus || activeConfig.filters.roles.length === 0 || q.cargos?.some(c => activeConfig.filters.roles.includes((c as any).descricao || (c as any)['descrição'] || (c as any).nome));
-         const matchLevel = activeIsEnemFocus || activeConfig.filters.levels.length === 0 || activeConfig.filters.levels.includes(q.nivel || (q as any).level);
-         const matchTopic = activeConfig.filters.topics.length === 0 || q.assuntos?.some(a => activeConfig.filters.topics.includes(a.nome as any));
+         const matchRole = activeIsEnemFocus || activeConfig.filters.roles.length === 0 || q.cargos?.some((cargo) => activeConfig.filters.roles.includes(cargo.descricao || cargo.descrição || cargo.name || ''));
+         const matchLevel = activeIsEnemFocus || activeConfig.filters.levels.length === 0 || activeConfig.filters.levels.includes(getQuestionLevelLabel(q));
+         const matchTopic = activeConfig.filters.topics.length === 0 || q.assuntos?.some((assunto) => activeConfig.filters.topics.includes(assunto.nome as Subject));
          const matchCareer = activeConfig.filters.careers.length === 0
             || (
                activeIsEnemFocus
@@ -593,41 +684,42 @@ const Simulation: React.FC = () => {
       if (filtered.length === 0) return addToast("Nenhuma questao encontrada com esses filtros.", "warning");
       const finalQs = filtered.sort(() => Math.random() - 0.5).slice(0, activeConfig.questionCount);
       setConfig(activeConfig);
-      setActiveSession({ id: `sim-${Date.now()}`, config: activeConfig, questions: finalQs, answers: {}, startTime: Date.now(), status: 'in_progress' });
+      const startedAt = readSimulationTimeMs();
+      setActiveSession({ id: `sim-${startedAt}`, config: activeConfig, questions: finalQs, answers: {}, startTime: startedAt, status: 'in_progress' });
       setTimeLeft(activeConfig.timerMinutes * 60); setCurrentIdx(0); setStep('active');
       updateImmersiveMode(true);
    };
 
-   const handleFinish = () => {
+   const handleFinish = React.useCallback(() => {
       if (!activeSession) return;
       if (activeSession.status === 'completed') return;
 
-      const finishedAt = Date.now();
+      const finishedAt = readSimulationTimeMs();
       const elapsedSimulationSeconds = getActiveSimulationElapsedSeconds(activeSession, timeLeft);
 
-      const results = activeSession.questions.map(q => {
-         const selectedIndexOrObj = activeSession.answers[q.id];
-         const answerValue = selectedIndexOrObj as any;
-         const selectedIndex = answerValue !== null && answerValue !== undefined && typeof answerValue === 'object' ? answerValue.index : answerValue;
+      const results = activeSession.questions.map((question) => {
+         const answerValue = activeSession.answers[String(question.id)];
+         const selectedIndex = getSimulationSelectedIndex(answerValue);
 
          if (selectedIndex === undefined) return { isCorrect: false, index: undefined };
 
-         const correctItem = (q.itens || []).find((it, idx) => Number(it.id) === Number(q.resposta) || idx === Number(q.resposta));
-         const correctIndex = (q.itens || []).indexOf(correctItem as any);
+         const correctIndex = getQuestionCorrectIndex(question);
          return { isCorrect: selectedIndex === correctIndex, index: selectedIndex };
       });
 
       const score = results.filter(r => r.isCorrect && r.index !== undefined).length;
 
-      const enrichedAnswers: Record<string, any> = {};
-      activeSession.questions.forEach((q, i) => {
+      const enrichedAnswers: SimulationSession['answers'] = {};
+      activeSession.questions.forEach((question, i) => {
          const res = results[i];
          // Ensure we capture index even if it is 0
          if (res.index !== undefined) {
-            enrichedAnswers[q.id] = {
+            const answerObject = getSimulationAnswerObject(activeSession.answers[String(question.id)]);
+
+            enrichedAnswers[String(question.id)] = {
                index: res.index,
                is_correct: res.isCorrect ? 1 : 0,
-               time_taken: (activeSession.answers[q.id] as any)?.time_taken || 0
+               time_taken: answerObject?.time_taken || 0
             };
          }
       });
@@ -638,7 +730,7 @@ const Simulation: React.FC = () => {
          endTime: finishedAt,
          durationSeconds: elapsedSimulationSeconds,
          score,
-         answers: enrichedAnswers as any
+         answers: enrichedAnswers
       };
 
       registerSimulationElapsed(activeSession.id, elapsedSimulationSeconds);
@@ -646,7 +738,29 @@ const Simulation: React.FC = () => {
       addSimulation(completed);
       setStep('result');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-   };
+   }, [activeSession, addSimulation, registerSimulationElapsed, timeLeft]);
+
+   useEffect(() => {
+      if (step !== 'active' || timeLeft <= 0) {
+         return;
+      }
+
+      const timer = window.setInterval(() => {
+         setTimeLeft((previous) => {
+            if (previous <= 1) {
+               window.clearInterval(timer);
+               window.requestAnimationFrame(() => {
+                  handleFinish();
+               });
+               return 0;
+            }
+
+            return previous - 1;
+         });
+      }, 1000);
+
+      return () => clearInterval(timer);
+   }, [handleFinish, step, timeLeft]);
 
    const handleBackToConfig = React.useCallback(() => {
       setStep('config');
@@ -944,8 +1058,8 @@ const Simulation: React.FC = () => {
                         setConfig((prev) => ({
                            ...prev,
                            subjects: hasEnem
-                              ? prev.subjects.filter((subject) => ENEM_SUBJECT_AREA_OPTIONS.includes(subject as any))
-                              : prev.subjects.filter((subject) => !ENEM_SUBJECT_AREA_OPTIONS.includes(subject as any)),
+                              ? prev.subjects.filter((subject) => isEnemSubjectArea(subject))
+                              : prev.subjects.filter((subject) => !isEnemSubjectArea(subject)),
                            filters: {
                               ...prev.filters,
                               careers: hasEnem ? [ENEM_FOCUS_NAME] : values.map((value) => normalizeCareerSelectorLabel(value)),
@@ -980,7 +1094,7 @@ const Simulation: React.FC = () => {
                   </div>
                   <div className="space-y-1.5">
                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 transition-colors">Modo de Resposta</label>
-                     <select value={config.feedbackMode} onChange={e => setConfig({ ...config, feedbackMode: e.target.value as any })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all cursor-pointer transition-colors">
+                     <select value={config.feedbackMode} onChange={e => setConfig({ ...config, feedbackMode: e.target.value as SimulationConfig['feedbackMode'] })} className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-300 text-xs focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-indigo-400/10 outline-none transition-all cursor-pointer transition-colors">
                         <option value="after_all">Resultado no Final</option>
                         <option value="instant">Feedback Instantâneo</option>
                      </select>
@@ -1088,26 +1202,21 @@ const Simulation: React.FC = () => {
                         onAnswerSubmit={(ans) => {
                            setActiveSession({
                               ...activeSession,
-                           answers: {
-                              ...activeSession.answers,
-                              [q.id]: { index: ans.selectedOptionIndex, is_correct: ans.isCorrect, time_taken: ans.timeTaken }
-                           }
-                        });
-                     }}
-                        existingAnswer={activeSession.answers[q.id] !== undefined ? {
-                           questionId: q.id,
-                           selectedOptionIndex: Number(typeof activeSession.answers[q.id] === 'object' ? ((activeSession.answers[q.id] as any).index ?? -1) : activeSession.answers[q.id]),
-                            isCorrect: typeof activeSession.answers[q.id] === 'object' ? Boolean((activeSession.answers[q.id] as any).is_correct) : (activeSession.answers[q.id] === (q.itens || []).indexOf((q.itens || []).find((it, idx) => Number(it.id) === Number(q.resposta) || idx === Number(q.resposta)) as any)),
-                           timestamp: Date.now()
-                        } : undefined}
-                        userPlan={(currentUser as any)?.plan || 'Gratuito'}
+                              answers: {
+                                 ...activeSession.answers,
+                                 [q.id]: { index: ans.selectedOptionIndex, is_correct: ans.isCorrect, time_taken: ans.timeTaken }
+                              }
+                           });
+                        }}
+                        existingAnswer={buildExistingSimulationAnswer(q, activeSession.answers[String(q.id)], referenceTimeMs)}
+                        userPlan={getCurrentUserPlan(currentUser)}
                      />
 
                      <div className="mt-8 flex flex-wrap items-center justify-between gap-3 px-0 sm:px-2">
                         <button onClick={() => { setCurrentIdx(Math.max(0, currentIdx - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={currentIdx === 0} className="px-4 sm:px-6 py-2.5 sm:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-all flex items-center gap-2 transition-colors">
                            <ChevronLeft size={16} /> Anterior
                         </button>
-                        <button onClick={() => { currentIdx === activeSession.questions.length - 1 ? handleFinish() : setCurrentIdx(currentIdx + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="px-6 sm:px-10 py-2.5 sm:py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200 dark:shadow-none hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all flex items-center gap-2">
+                        <button onClick={() => { if (currentIdx === activeSession.questions.length - 1) { handleFinish(); } else { setCurrentIdx(currentIdx + 1); } window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="px-6 sm:px-10 py-2.5 sm:py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200 dark:shadow-none hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all flex items-center gap-2">
                            {currentIdx === activeSession.questions.length - 1 ? 'Entregar Prova' : 'Próxima'} <ChevronRight size={16} />
                         </button>
                      </div>
@@ -1130,13 +1239,8 @@ const Simulation: React.FC = () => {
                                    }
                                 });
                               }}
-                              existingAnswer={activeSession.answers[question.id] !== undefined ? {
-                                 questionId: question.id,
-                                 selectedOptionIndex: Number(typeof activeSession.answers[question.id] === 'object' ? ((activeSession.answers[question.id] as any).index ?? -1) : activeSession.answers[question.id]),
-                                  isCorrect: typeof activeSession.answers[question.id] === 'object' ? Boolean((activeSession.answers[question.id] as any).is_correct) : (activeSession.answers[question.id] === (question.itens || []).indexOf((question.itens || []).find((it, idx) => Number(it.id) === Number(question.resposta) || idx === Number(question.resposta)) as any)),
-                                 timestamp: Date.now()
-                              } : undefined}
-                              userPlan={(currentUser as any)?.plan || 'Gratuito'}
+                              existingAnswer={buildExistingSimulationAnswer(question, activeSession.answers[String(question.id)], referenceTimeMs)}
+                              userPlan={getCurrentUserPlan(currentUser)}
                            />
                         </div>
                      ))}
@@ -1228,9 +1332,9 @@ const Simulation: React.FC = () => {
                <div className={`space-y-3 ${viewMode === 'list' ? 'grid grid-cols-1 lg:grid-cols-2 gap-4 space-y-0' : ''}`}>
                   {activeSession.questions.map((q, i) => {
                      // Correctly find if answer is right
-                     const selectedIndexOrObj = activeSession.answers[q.id];
-                     const selectedIndex = typeof selectedIndexOrObj === 'object' ? (selectedIndexOrObj as any).index : selectedIndexOrObj;
-                     const isCorrect = typeof selectedIndexOrObj === 'object' ? (selectedIndexOrObj as any).is_correct : (selectedIndex === (q.itens || []).indexOf((q.itens || []).find((it, idx) => Number(it.id) === Number(q.resposta) || idx === Number(q.resposta)) as any));
+                     const answerState = getSimulationAnswerState(q, activeSession.answers[String(q.id)]);
+                     const selectedIndex = answerState.selectedOptionIndex;
+                     const isCorrect = answerState.isCorrect;
 
                      return (
                         <button
@@ -1285,13 +1389,8 @@ const Simulation: React.FC = () => {
                   mode="simulation"
                   hideFeedback={false}
                   onAnswerSubmit={() => { }}
-                  existingAnswer={{
-                     questionId: q.id,
-                     selectedOptionIndex: Number(typeof activeSession.answers[q.id] === 'object' ? ((activeSession.answers[q.id] as any).index ?? -1) : activeSession.answers[q.id]),
-                     isCorrect: typeof activeSession.answers[q.id] === 'object' ? Boolean((activeSession.answers[q.id] as any).is_correct) : (activeSession.answers[q.id] === (q.itens || []).indexOf((q.itens || []).find((it, idx) => Number(it.id) === Number(q.resposta) || idx === Number(q.resposta)) as any)),
-                     timestamp: Date.now()
-                  }}
-                  userPlan={currentUser?.billing?.plan || 'Gratuito'}
+                  existingAnswer={buildExistingSimulationAnswer(q, activeSession.answers[String(q.id)], referenceTimeMs)}
+                  userPlan={getCurrentUserPlan(currentUser)}
                />
             </div>
 

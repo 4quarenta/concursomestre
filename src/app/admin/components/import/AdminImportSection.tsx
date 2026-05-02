@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -37,11 +37,14 @@ import {
   ADMIN_PAGE_PANEL_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
-  ADMIN_SURFACE_CLASS,
-  ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
 
 type GenerateSpecificType = 'teacher' | 'detailed';
+type ExtractedQuestionPreview = Question & {
+  correctOptionIndex?: number;
+  role?: string;
+  year?: string | number;
+};
 
 interface AdminImportSectionProps {
   systemSettings: SystemSettings;
@@ -136,7 +139,7 @@ const AdminImportSection = ({
               {!systemSettings.hasGeminiApiKeyConfigured && !systemSettings.geminiApiKey && (
                 <p className="text-[9px] font-medium leading-tight text-amber-600 dark:text-amber-400">
                   <AlertTriangle size={10} className="mr-1 inline" />
-                  Necessario configurar uma chave valida para extrair questões.
+                  Necessario configurar uma chave valida para extrair questoes.
                 </p>
               )}
               {systemSettings.hasGeminiApiKeyConfigured && !systemSettings.geminiApiKey && (
@@ -184,7 +187,7 @@ const AdminImportSection = ({
                   onClick={() => onExtractWithCommentChange(!extractWithComment)}
                   className="cursor-pointer select-none text-xs font-bold text-amber-800 dark:text-amber-200"
                 >
-                  Extrair Comentário Resumido (Prof)
+                  Extrair Comentario Resumido (Prof)
                 </label>
               </div>
             </div>
@@ -239,7 +242,7 @@ const AdminImportSection = ({
               <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-col items-center justify-between gap-4 md:flex-row`}>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2 rounded-sm border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
-                    <CheckCircle2 size={16} /> {extractedQuestions.length} Questões Extraidas
+                    <CheckCircle2 size={16} /> {extractedQuestions.length} Questoes Extraidas
                   </div>
                 </div>
                 <div className="flex w-full gap-2 md:w-auto">
@@ -249,7 +252,7 @@ const AdminImportSection = ({
                     disabled={isBulkGenerating || isProcessing}
                     className="flex flex-1 items-center justify-center gap-2 rounded-sm border border-sky-300 bg-sky-50 px-4 py-2.5 text-[10px] font-black uppercase text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50 md:flex-none dark:border-sky-900/30 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/30"
                   >
-                    {isBulkGenerating ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />} Gerar Análise Detalhada (Todas)
+                    {isBulkGenerating ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />} Gerar Analise Detalhada (Todas)
                   </button>
                   <button
                     type="button"
@@ -266,7 +269,7 @@ const AdminImportSection = ({
                 <div className={`${ADMIN_PAGE_PANEL_CLASS} animate-fade-in px-6 py-4`}>
                   <div className="mb-1 flex justify-between items-end">
                     <span className="flex items-center gap-2 text-[10px] font-black uppercase text-sky-700 dark:text-sky-300">
-                      <Sparkles size={12} /> Gerando Comentários em Massa
+                      <Sparkles size={12} /> Gerando Comentarios em Massa
                     </span>
                     <span className="text-[10px] font-bold text-slate-400">{bulkProgress}%</span>
                   </div>
@@ -277,7 +280,7 @@ const AdminImportSection = ({
               )}
 
               <div className="no-scrollbar flex-1 max-h-[800px] space-y-4 overflow-y-auto pr-2">
-                {extractedQuestions.map((question: any, index) => (
+                {(extractedQuestions as ExtractedQuestionPreview[]).map((question, index) => (
                   <div key={index} className="group relative overflow-hidden rounded-sm border border-slate-300 bg-white p-6 transition-colors hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-sky-700">
                     <div className="absolute left-0 top-0 h-full w-1 bg-slate-200 transition-colors group-hover:bg-sky-700 dark:bg-slate-800 dark:group-hover:bg-sky-500" />
                     <div className="mb-4 flex items-start justify-between">
@@ -287,13 +290,13 @@ const AdminImportSection = ({
                         </span>
                         <div className="flex flex-wrap gap-2">
                           <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                            {question.bancas?.map((banca: any) => banca.sigla || banca.name).join(' / ') || 'Banca N/I'}
+                            {question.bancas?.map((banca) => banca.sigla || banca.name).join(' / ') || 'Banca N/I'}
                           </span>
                           <span className="rounded-sm bg-sky-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
-                            {question.assuntos?.filter((subject: any) => subject.materia).map((subject: any) => subject.name).join(', ') || 'Materia N/I'}
+                            {question.assuntos?.filter((subject) => subject.materia).map((subject) => subject.name).join(', ') || 'Materia N/I'}
                           </span>
                           <span className="rounded-lg bg-amber-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
-                            {question.assuntos?.filter((subject: any) => !subject.materia).map((subject: any) => subject.name).join(', ') || 'Assunto N/I'}
+                            {question.assuntos?.filter((subject) => !subject.materia).map((subject) => subject.name).join(', ') || 'Assunto N/I'}
                           </span>
                         </div>
                       </div>
@@ -301,13 +304,13 @@ const AdminImportSection = ({
                         {(question.anulada || question.isCanceled) && <span className="rounded bg-red-100 px-2 py-0.5 text-[8px] font-black uppercase text-red-700 dark:bg-red-900/40 dark:text-red-400">Anulada</span>}
                         {(question.desatualizada || question.isOutdated) && <span className="rounded bg-amber-100 px-2 py-0.5 text-[8px] font-black uppercase text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">Desat.</span>}
                         <div className="rounded-sm border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
-                          Gabarito: {String.fromCharCode(65 + question.correctOptionIndex)}
+                          Gabarito: {String.fromCharCode(65 + Number(question.correctOptionIndex || 0))}
                         </div>
                         <button
                           type="button"
                           onClick={() => onEditExtractedQuestion(question, index)}
                           className="rounded-sm border border-slate-300 bg-white p-1.5 text-slate-500 transition-colors hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500 dark:hover:text-sky-300"
-                          title="Editar Questão Extraida"
+                          title="Editar Questao Extraida"
                         >
                           <Edit3 size={14} />
                         </button>
@@ -317,7 +320,7 @@ const AdminImportSection = ({
                     <div className="mb-4 flex flex-wrap gap-3">
                       <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
                         <Briefcase size={12} />
-                        <span className="text-[10px] font-bold uppercase">{question.cargos?.map((role: any) => role.descrição).join(', ') || question.role || 'Cargo Geral'}</span>
+                        <span className="text-[10px] font-bold uppercase">{question.cargos?.map((role) => role.descricao || role.name).join(', ') || question.role || 'Cargo Geral'}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
                         <Calendar size={12} />
@@ -368,7 +371,7 @@ const AdminImportSection = ({
                     {question.teacherComment && (
                       <div className="mt-4 animate-fade-in space-y-2 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs text-amber-800 opacity-80 group-hover:opacity-100 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
                         <p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                          <BookOpen size={14} /> Comentário do Professor
+                          <BookOpen size={14} /> Comentario do Professor
                         </p>
                         <p className="font-medium italic leading-relaxed">{question.teacherComment}</p>
                       </div>
@@ -377,7 +380,7 @@ const AdminImportSection = ({
                     {question.detailedComment && (
                       <div className="mt-2 animate-fade-in space-y-2 rounded-sm border border-sky-300 bg-sky-50 p-4 text-xs text-sky-800 opacity-80 group-hover:opacity-100 dark:border-sky-900/30 dark:bg-sky-900/10 dark:text-sky-200">
                         <p className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                          <Sparkles size={14} /> Análise Detalhada (IA)
+                          <Sparkles size={14} /> Analise Detalhada (IA)
                         </p>
                         <p className="line-clamp-3 font-medium italic leading-relaxed">{question.detailedComment}</p>
                       </div>

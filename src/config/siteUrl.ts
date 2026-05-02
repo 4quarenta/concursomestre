@@ -43,6 +43,7 @@ export const normalizeSiteUrl = (value?: string | null, fallback = LOCAL_DEVELOP
 export const getConfiguredSiteUrl = (): URL => normalizeSiteUrl(
   readEnv('NEXT_PUBLIC_SITE_URL')
     || readEnv('NEXT_PUBLIC_APP_URL')
+    || readEnv('NEXT_PUBLIC_CANONICAL_URL')
     || readEnv('SITE_URL')
     || readEnv('APP_URL')
     || readEnv('VERCEL_PROJECT_PRODUCTION_URL')

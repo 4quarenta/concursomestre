@@ -100,16 +100,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   React.useEffect(() => {
-    if (user && !user.emailVerified && !window.sessionStorage.getItem('welcomeModalClosed')) {
-      setShowVerificationModal(true);
-    } else {
-      setShowVerificationModal(false);
-    }
+    const frameId = window.requestAnimationFrame(() => {
+      setShowVerificationModal(Boolean(user && !user.emailVerified && !window.sessionStorage.getItem('welcomeModalClosed')));
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [user]);
 
   React.useEffect(() => {
-    setIsMobileMenuOpen(false);
-    setIsProfileMenuOpen(false);
+    const frameId = window.requestAnimationFrame(() => {
+      setIsMobileMenuOpen(false);
+      setIsProfileMenuOpen(false);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [location.pathname]);
 
   React.useEffect(() => {

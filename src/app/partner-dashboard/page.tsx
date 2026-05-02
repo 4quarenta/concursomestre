@@ -12,18 +12,20 @@
 */
 
 import React, { useState, useMemo } from 'react';
-import { Material, Transaction, Subject, BankAccount } from '../../types';
+import Image from 'next/image';
+import { Material, BankAccount, Notification } from '../../types';
 import {
-  BarChart3, DollarSign, UploadCloud, FileText, CheckCircle2, XCircle,
-  Clock, AlertTriangle, ShieldCheck, TrendingUp, Package, Wallet, Eye,
-  Landmark, CreditCard, Lock, Edit, X, ChevronRight, ArrowUpRight,
-  Users, Activity, Download, LayoutDashboard, ShoppingBag, ListChecks, Store,
+  BarChart3, DollarSign, UploadCloud, FileText, CheckCircle2,
+  AlertTriangle, ShieldCheck, TrendingUp, Package, Wallet, Eye,
+  Landmark, Lock, Edit, X,
+  Activity, Download, LayoutDashboard, ShoppingBag, ListChecks, Store,
   Sun, Moon, Bell, HelpCircle, ArrowRight, MessageSquare, Send, CornerDownRight, Star
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, BarChart, Bar, Cell
+  AreaChart, Area, XAxis, YAxis, Tooltip,
+  CartesianGrid
 } from 'recharts';
+import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
@@ -36,27 +38,129 @@ import { DashboardSidebar } from '../../components/shared/layout/DashboardSideba
 import Footer from '../../components/shared/layout/Footer';
 import { getAssetUrl } from '@services/api';
 
+type FinanceSubTab = 'extrato' | 'pagamentos' | 'saque';
+
+type PartnerBankForm = BankAccount & {
+  pixKeyType: string;
+  pixKey: string;
+  birthDate: string;
+  zipCode: string;
+  street: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  isCnpj: boolean;
+  cnpj: string;
+  companyName: string;
+  docPhotoUrl: string;
+};
+
+type PartnerNotificationDropdownProps = {
+  notifications: Notification[];
+  unreadCount: number;
+  onNotificationClick: (notification: Notification) => void;
+  onViewAll: () => void;
+};
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+const createBankFormDefaults = (holderName = ''): PartnerBankForm => ({
+  bankCode: '',
+  bankName: '',
+  agency: '',
+  account: '',
+  accountDigit: '',
+  holderName,
+  holderDocument: '',
+  type: 'checking',
+  pixKeyType: '',
+  pixKey: '',
+  birthDate: '',
+  zipCode: '',
+  street: '',
+  number: '',
+  complement: '',
+  neighborhood: '',
+  city: '',
+  state: '',
+  isCnpj: false,
+  cnpj: '',
+  companyName: '',
+  docPhotoUrl: '',
+});
+
+const PartnerNotificationDropdown: React.FC<PartnerNotificationDropdownProps> = ({
+  notifications,
+  unreadCount,
+  onNotificationClick,
+  onViewAll,
+}) => {
+  const visibleNotifications = notifications.filter((notification) => !notification.deletedAt);
+
+  return (
+    <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in text-left">
+      <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificacoes</h3>
+        {unreadCount > 0 && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">{unreadCount} novas</span>}
+      </div>
+      <div className="max-h-80 overflow-y-auto no-scrollbar">
+        {visibleNotifications.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificacao.</div>
+        ) : (
+          visibleNotifications.slice(0, 5).map((notification) => (
+            <div key={notification.id} onClick={() => onNotificationClick(notification)} className={`p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!notification.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}>
+              <div className="flex gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className={`text-xs font-bold ${notification.type === 'error' ? 'text-red-600 dark:text-red-400' : notification.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{notification.title}</span>
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{new Date(notification.timestamp).toLocaleDateString()}</span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{notification.message}</p>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
+        <button
+          onClick={onViewAll}
+          className="w-full py-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex items-center justify-center gap-1"
+        >
+          Ver Todas <ArrowRight size={12} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const PartnerDashboard: React.FC = () => {
   const { materials, transactions, publishMaterial, updateMaterial, uploadFile, uploadProgress, addMaterialComment } = useMarketplace();
   const { currentUser, becomePartner, updateUser } = useAuth();
-  const { systemSettings } = useData();
+  const { systemSettings, notifications, markNotificationAsRead } = useData();
   const { addToast } = useToast();
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'upload' | 'finance' | 'reviews'>('overview');
-  const [financeSubTab, setFinanceSubTab] = useState<'extrato' | 'pagamentos' | 'saque'>('extrato');
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [financeSubTab, setFinanceSubTab] = useState<FinanceSubTab>('extrato');
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
-  const [isHovering, setIsHovering] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<{ materialId: string, commentId: string } | null>(null);
   const [replyText, setReplyText] = useState('');
   const [isReplying, setIsReplying] = useState(false);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [referenceTimeMs, setReferenceTimeMs] = useState(0);
 
   React.useEffect(() => {
-    if (!currentUser) {
-      setShowAuthModal(true);
-    }
-  }, [currentUser]);
+    const frame = window.requestAnimationFrame(() => {
+      setReferenceTimeMs(Date.now());
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   const [newMaterial, setNewMaterial] = useState<Partial<Material>>({
     title: '', description: '', price: 0, type: 'PDF',
@@ -68,24 +172,14 @@ const PartnerDashboard: React.FC = () => {
   const [fullFile, setFullFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
 
-  // Valores padrão para todos os campos do formulário de saque
-  const bankFormDefaults = {
-    bankCode: '', bankName: '', agency: '', account: '', accountDigit: '',
-    holderName: currentUser?.name || '', holderDocument: '',
-    type: 'checking',
-    pixKeyType: '', pixKey: '',
-    birthDate: '',
-    zipCode: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '',
-    isCnpj: false, cnpj: '', companyName: '',
-    docPhotoUrl: '',
-  };
+  const bankFormDefaults = useMemo(
+    () => createBankFormDefaults(currentUser?.name || ''),
+    [currentUser?.name]
+  );
 
   // Mescla defaults com dados já salvos: campos existentes preenchem o form,
   // novos campos recebem o valor padrão
-  const [bankForm, setBankForm] = useState<any>({
-    ...bankFormDefaults,
-    ...(currentUser?.bankAccount || {}),
-  });
+  const [bankForm, setBankForm] = useState<PartnerBankForm>(() => createBankFormDefaults());
   const [docFile, setDocFile] = useState<File | null>(null);
   const [savingBank, setSavingBank] = useState(false);
   const [bankAgeError, setBankAgeError] = useState('');
@@ -93,23 +187,25 @@ const PartnerDashboard: React.FC = () => {
   // Sincroniza o formulário quando o usuário for carregado/atualizado do contexto
   React.useEffect(() => {
     if (currentUser?.bankAccount) {
-      setBankForm((prev: any) => ({
-        ...bankFormDefaults,
-        ...currentUser.bankAccount,
-        // mantém qualquer alteração local ainda não salva se o objeto for o mesmo
-        ...Object.fromEntries(
-          Object.entries(prev).filter(([k]) => !(k in bankFormDefaults))
-        ),
-      }));
+      const frame = window.requestAnimationFrame(() => {
+        setBankForm((prev) => ({
+          ...bankFormDefaults,
+          ...currentUser.bankAccount,
+          // Mantem qualquer alteracao local ainda nao salva se o objeto for o mesmo.
+          ...Object.fromEntries(
+            Object.entries(prev).filter(([k]) => !(k in bankFormDefaults))
+          ),
+        }));
+      });
+
+      return () => window.cancelAnimationFrame(frame);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.bankAccount]);
+  }, [bankFormDefaults, currentUser?.bankAccount]);
 
   const myMaterials = useMemo(() => materials.filter(m => m.authorId === currentUser?.id), [materials, currentUser?.id]);
   const myTransactions = useMemo(() => transactions.filter(t => t.sellerId === currentUser?.id), [transactions, currentUser?.id]);
 
-  const now = Date.now();
-  const msPerDay = 1000 * 60 * 60 * 24;
+  const now = referenceTimeMs;
 
   const { availableBalance, heldBalance, totalRevenue } = useMemo(() => {
     return myTransactions.reduce((acc, curr) => {
@@ -117,7 +213,7 @@ const PartnerDashboard: React.FC = () => {
       if (curr.status === 'refunded') return acc;
 
       const netAmount = curr.amount - curr.platformFee;
-      const daysSincePurchase = (now - curr.timestamp) / msPerDay;
+      const daysSincePurchase = now ? (now - curr.timestamp) / MS_PER_DAY : 0;
       const isRefundUnderReview = curr.status === 'refund_requested';
 
       acc.totalRevenue += netAmount;
@@ -154,7 +250,7 @@ const PartnerDashboard: React.FC = () => {
     myTransactions.forEach(t => {
       // Ignorar reembolsados no gráfico
       if (t.status === 'refunded') return;
-      const diasAtras = (Date.now() - t.timestamp) / (1000 * 60 * 60 * 24);
+      const diasAtras = now ? (now - t.timestamp) / MS_PER_DAY : 0;
       const sem = data.find(s => diasAtras <= s.startDay && diasAtras >= s.endDay);
       if (sem) {
         sem.vendas += 1;
@@ -163,13 +259,13 @@ const PartnerDashboard: React.FC = () => {
     });
 
     return data;
-  }, [myTransactions]);
+  }, [myTransactions, now]);
 
   if (!currentUser) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 transition-colors">
         <AuthModal
-          isOpen={showAuthModal || !currentUser}
+          isOpen={!currentUser}
           onClose={() => { }}
           title="Acesso de Parceiros"
           description="Para acessar o painel de vendas, gerenciar produtos e financeiro, faça login na sua conta."
@@ -178,8 +274,6 @@ const PartnerDashboard: React.FC = () => {
       </div>
     );
   }
-
-  const [isPublishing, setIsPublishing] = useState(false);
 
   // ... (keeping methods below for briefly)
   // handlePublishSubmit, handleEditSubmit, handleSaveBank, isAlreadyPartner logic follows...
@@ -203,6 +297,7 @@ const PartnerDashboard: React.FC = () => {
     try {
       let fileUrl = '';
       let coverUrl = '';
+      let uploadedPageCount = newMaterial.pageCount || 0;
 
       if (fullFile) {
         const uploadResult = await uploadFile(fullFile, newMaterial.pdfPassword);
@@ -211,7 +306,7 @@ const PartnerDashboard: React.FC = () => {
           return; // Stop if upload fails
         }
         fileUrl = uploadResult.url;
-        newMaterial.pageCount = uploadResult.pageCount || 0;
+        uploadedPageCount = uploadResult.pageCount || 0;
       }
 
       // Upload Cover if exists
@@ -229,13 +324,13 @@ const PartnerDashboard: React.FC = () => {
         authorId: currentUser.id!,
         authorName: currentUser.name,
         price: Number(newMaterial.price),
-        type: newMaterial.type as any,
-        subject: newMaterial.subject as any,
+        type: newMaterial.type || 'PDF',
+        subject: newMaterial.subject || newMaterial.subjectText || '',
         subjectId: newMaterial.subjectId,
         subjectText: newMaterial.subjectText,
         topicId: newMaterial.topicId,
         topic: newMaterial.topic,
-        pageCount: newMaterial.pageCount,
+        pageCount: uploadedPageCount,
         year: newMaterial.year,
         examTarget: newMaterial.examTarget,
         previewUrl: newMaterial.previewUrl,
@@ -353,8 +448,9 @@ const PartnerDashboard: React.FC = () => {
       const dataToSave = { ...bankForm, docPhotoUrl: docUrl };
       updateUser({ bankAccount: dataToSave });
       addToast('Dados bancários salvos! Seus recebimentos futuros cairão nesta conta.', 'success');
-    } catch (err) {
+    } catch {
       addToast('Erro ao salvar dados bancários.', 'error');
+    } finally {
       setSavingBank(false);
     }
   };
@@ -369,7 +465,7 @@ const PartnerDashboard: React.FC = () => {
         setReplyingTo(null);
         setReplyText("");
       }
-    } catch (error) {
+    } catch {
       addToast("Erro ao enviar resposta.", "error");
     } finally {
       setIsReplying(false);
@@ -420,55 +516,21 @@ const PartnerDashboard: React.FC = () => {
     );
   }
 
-  const { theme, toggleTheme } = useTheme();
-  const { notifications, markNotificationAsRead } = useData();
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
   const unreadCount = (notifications || []).filter(n => !n.isRead && !n.deletedAt).length;
 
   const userInitials = currentUser?.name?.charAt(0) || 'A';
   const userLevel = currentUser?.level || 0;
 
-  const handleNotificationClick = (n: any) => {
+  const handleNotificationClick = (n: Notification) => {
     markNotificationAsRead(n.id);
     if (n.link) router.push(n.link);
     setIsNotifOpen(false);
   };
 
-  const NotificationDropdown = () => (
-    <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in text-left">
-      <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
-        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
-        {unreadCount > 0 && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">{unreadCount} novas</span>}
-      </div>
-      <div className="max-h-80 overflow-y-auto no-scrollbar">
-        {notifications.filter(n => !n.deletedAt).length === 0 ? (
-          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificação.</div>
-        ) : (
-          notifications.filter(n => !n.deletedAt).slice(0, 5).map(n => (
-            <div key={n.id} onClick={() => handleNotificationClick(n)} className={`p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!n.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}>
-              <div className="flex gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className={`text-xs font-bold ${n.type === 'error' ? 'text-red-600 dark:text-red-400' : n.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{n.title}</span>
-                    <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{new Date(n.timestamp).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{n.message}</p>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-      <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
-        <button
-          onClick={() => { setIsNotifOpen(false); router.push('/notifications'); }}
-          className="w-full py-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex items-center justify-center gap-1"
-        >
-          Ver Todas <ArrowRight size={12} />
-        </button>
-      </div>
-    </div>
-  );
+  const handleViewAllNotifications = () => {
+    setIsNotifOpen(false);
+    router.push('/notifications');
+  };
 
   return (
     <div className="flex h-[100dvh] max-h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden transition-colors duration-300">
@@ -512,7 +574,12 @@ const PartnerDashboard: React.FC = () => {
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
                     <div className="absolute right-0 top-full mt-2">
-                      <NotificationDropdown />
+                      <PartnerNotificationDropdown
+                        notifications={notifications}
+                        unreadCount={unreadCount}
+                        onNotificationClick={handleNotificationClick}
+                        onViewAll={handleViewAllNotifications}
+                      />
                     </div>
                   </>
                 )}
@@ -628,7 +695,7 @@ const PartnerDashboard: React.FC = () => {
                       </h3>
                     </div>
                     <div className="w-full h-[320px] min-w-0">
-                      <ResponsiveContainer width="100%" height={320} minWidth={0}>
+                      <StableResponsiveContainer height={320}>
                         <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                           <defs>
                             <linearGradient id="colorReceita" x1="0" y1="0" x2="0" y2="1">
@@ -670,7 +737,7 @@ const PartnerDashboard: React.FC = () => {
                             fill="url(#colorReceita)"
                           />
                         </AreaChart>
-                      </ResponsiveContainer>
+                      </StableResponsiveContainer>
                     </div>
                   </div>
 
@@ -806,7 +873,7 @@ const PartnerDashboard: React.FC = () => {
                         );
                       }
 
-                      return allComments.map((c, idx) => (
+                      return allComments.map((c) => (
                         <div key={c.id} className="py-8 first:pt-4 last:pb-4">
                           <div className="flex items-start gap-4">
                             <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 font-bold shrink-0">
@@ -1183,9 +1250,12 @@ const PartnerDashboard: React.FC = () => {
                         <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group overflow-hidden relative">
                           <input type="file" accept="image/*" className="hidden" onChange={e => setCoverFile(e.target.files?.[0] || null)} />
                           {coverFile ? (
-                            <img
+                            <Image
                               src={URL.createObjectURL(coverFile)}
                               alt="Preview"
+                              fill
+                              unoptimized
+                              sizes="320px"
                               className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity"
                             />
                           ) : null}
@@ -1295,7 +1365,10 @@ const PartnerDashboard: React.FC = () => {
                         </div>
                       </div>
                       <button
-                        onClick={() => { setBankForm(currentUser.bankAccount || bankForm); setFinanceSubTab('saque'); }}
+                        onClick={() => {
+                          setBankForm({ ...bankFormDefaults, ...(currentUser.bankAccount || {}) });
+                          setFinanceSubTab('saque');
+                        }}
                         className="w-full py-3 bg-white text-slate-900 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-50 transition-colors"
                       >
                         Alterar Dados Bancários
@@ -1314,7 +1387,7 @@ const PartnerDashboard: React.FC = () => {
                   ].map(tab => (
                     <button
                       key={tab.key}
-                      onClick={() => setFinanceSubTab(tab.key as any)}
+                      onClick={() => setFinanceSubTab(tab.key as FinanceSubTab)}
                       className={`flex items-center gap-2 px-5 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all -mb-px ${financeSubTab === tab.key
                         ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
                         : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
@@ -1609,7 +1682,7 @@ const PartnerDashboard: React.FC = () => {
                           </div>
                           <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipo de Conta</label>
-                            <select value={bankForm.type} onChange={e => setBankForm({ ...bankForm, type: e.target.value })}
+                            <select value={bankForm.type} onChange={e => setBankForm({ ...bankForm, type: e.target.value as BankAccount['type'] })}
                               className="w-full h-11 px-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 transition-all">
                               <option value="checking">Corrente</option>
                               <option value="savings">Poupança</option>
@@ -1847,9 +1920,12 @@ const PartnerDashboard: React.FC = () => {
                       <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group overflow-hidden relative">
                         <input type="file" accept="image/*" className="hidden" onChange={e => setCoverFile(e.target.files?.[0] || null)} />
                         {(coverFile || editingMaterial.coverUrl) ? (
-                          <img
+                          <Image
                             src={coverFile ? URL.createObjectURL(coverFile) : getAssetUrl(editingMaterial.coverUrl)}
                             alt="Preview"
+                            fill
+                            unoptimized
+                            sizes="320px"
                             className="w-full h-full object-cover opacity-50 group-hover:opacity-30 transition-opacity"
                           />
                         ) : null}

@@ -154,12 +154,14 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AdminFeedbackThread['status']>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | string>('all');
+  const [supportNowMs, setSupportNowMs] = useState(0);
   const deferredSearch = useDeferredValue(search);
 
   const fetchFeedback = useCallback(async () => {
     setLoading(true);
     try {
       const items = await adminService.getFeedbackThreads();
+      setSupportNowMs(Date.now());
       setFeedbacks(items);
     } catch (error) {
       console.error('Error fetching feedback:', error);
@@ -170,12 +172,20 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   }, [addToast]);
 
   useEffect(() => {
-    void fetchFeedback();
+    const frameId = window.requestAnimationFrame(() => {
+      void fetchFeedback();
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [fetchFeedback]);
 
   useEffect(() => {
     if (!loading) {
-      onPendingCountChange?.(countPendingFeedback(feedbacks));
+      const frameId = window.requestAnimationFrame(() => {
+        onPendingCountChange?.(countPendingFeedback(feedbacks));
+      });
+
+      return () => window.cancelAnimationFrame(frameId);
     }
   }, [feedbacks, loading, onPendingCountChange]);
 
@@ -188,8 +198,8 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   }, [feedbacks, mode]);
 
   const overdueCount = useMemo(
-    () => dataset.filter((item) => item.status !== 'resolved' && (Date.now() - new Date(item.created_at).getTime()) > 48 * 60 * 60 * 1000).length,
-    [dataset],
+    () => dataset.filter((item) => item.status !== 'resolved' && (supportNowMs - new Date(item.created_at).getTime()) > 48 * 60 * 60 * 1000).length,
+    [dataset, supportNowMs],
   );
 
   const withoutReplyCount = useMemo(

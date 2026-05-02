@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -255,7 +255,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
           <div className="space-y-3">
             <h1 className="text-4xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Manutencao</h1>
             <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
-              Estamos realizando melhorias tecnicas para garantir a melhor experiencia. Voltaremos em alguns instantes!
+              Estamos realizando melhorias técnicas para garantir a melhor experiência. Voltaremos em alguns instantes!
             </p>
           </div>
           <div className="flex flex-col gap-3">

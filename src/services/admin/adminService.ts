@@ -484,11 +484,24 @@ export const adminService = {
   },
 
   /**
-   * Carrega as configurações globais exibidas na aba de settings do admin.
+   * Carrega as configuracoes publicas usadas no bootstrap da aplicacao.
+   * @since v1.0.0
+   */
+  async getPublicSystemSettings(): Promise<Partial<SystemSettings>> {
+    const response = await apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.get, {
+      params: {
+        _: Date.now(),
+      },
+    }) as any;
+    return readApiData(response, {});
+  },
+
+  /**
+   * Carrega as configuracoes globais exibidas na aba de settings do admin.
    * @since v1.0.0
    */
   async getSystemSettings(): Promise<Partial<SystemSettings>> {
-    const response = await apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.get, {
+    const response = await apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.update, {
       params: {
         _: Date.now(),
       },

@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -27,6 +27,12 @@ import {
 } from '@services/auth/session';
 
 const XP_PER_LEVEL = 1000;
+const LEVEL_MILESTONES: Record<number, string> = {
+  5: 'Impressionante! Você atingiu o Nivel 5.',
+  10: 'Nivel 10 alcancado! Você esta entre os mais dedicados da plataforma.',
+  25: 'Nivel 25! Uma conquista rara.',
+  50: 'Nivel 50! Você virou lenda no ConcursoMestre.',
+};
 
 interface AuthState {
   currentUser: UserProfile | null;
@@ -69,7 +75,7 @@ type AuthAction =
 
 /**
  * Reducer central da sessão autenticada.
- * Ele consolida mutacoes de usuário que abastecem todo o site, incluindo perfil, XP, simulados e materiais comprados.
+ * Ele consolida mutações de usuário que abastecem todo o site, incluindo perfil, XP, simulados e materiais comprados.
  * @since 1.0.0
  */
 function authReducer(state: AuthState, action: AuthAction): AuthState {
@@ -275,13 +281,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
     });
   }, [addToast, state.currentUser]);
-
-  const LEVEL_MILESTONES: Record<number, string> = {
-    5: 'Impressionante! Você atingiu o Nivel 5.',
-    10: 'Nivel 10 alcancado! Você esta entre os mais dedicados da plataforma.',
-    25: 'Nivel 25! Uma conquista rara.',
-    50: 'Nivel 50! Você virou lenda no ConcursoMestre.',
-  };
 
   /**
    * Soma XP localmente e dispara notificações de recompensa e level up.

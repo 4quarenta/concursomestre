@@ -10,7 +10,7 @@
 */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, AlertTriangle, Maximize, FileText, Layout, List, StickyNote, Save, MessageSquare, Bookmark as BookmarkIcon, Clock, Trash2, GraduationCap } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, Layout, List, StickyNote, Save, MessageSquare, Bookmark as BookmarkIcon, Clock, Trash2, GraduationCap } from 'lucide-react';
 // import 'pdfjs-dist/web/pdf_viewer.css'; // Removed to prevent conflict
 import { apiClient, ENDPOINTS } from '@services/api'; // Ensure this path is correct based on project structure
 import { readerService } from '@services/materials';
@@ -18,11 +18,124 @@ import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import CommentsSection from '../feedback/CommentsSection';
+import type { QuestaoComentario } from '@types';
 
 type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDocumentProxy = import('pdfjs-dist/legacy/build/pdf.mjs').PDFDocumentProxy;
 
 let pdfJsModulePromise: Promise<PdfJsModule> | null = null;
+
+type PdfRenderTask = {
+    cancel: () => void;
+    promise: Promise<unknown>;
+};
+
+type PdfTextItem = {
+    fontName?: string;
+    str: string;
+    transform: number[];
+};
+
+type PdfTextLayerModule = PdfJsModule & {
+    renderTextLayer?: (params: {
+        container: HTMLElement;
+        textContentSource: unknown;
+        textDivs: HTMLElement[];
+        viewport: unknown;
+    }) => {
+        promise: Promise<unknown>;
+    };
+};
+
+type CommentsListResponse = {
+    data?: QuestaoComentario[];
+    success?: boolean;
+};
+
+type MaterialSubjectObject = {
+    name?: string;
+};
+
+const isPdfTextItem = (item: unknown): item is PdfTextItem => (
+    typeof item === 'object'
+    && item !== null
+    && typeof (item as PdfTextItem).str === 'string'
+    && Array.isArray((item as PdfTextItem).transform)
+);
+
+const isMaterialSubjectObject = (value: unknown): value is MaterialSubjectObject => (
+    typeof value === 'object'
+    && value !== null
+    && typeof (value as MaterialSubjectObject).name === 'string'
+);
+
+const normalizeCommentsListResponse = (response: unknown): CommentsListResponse => {
+    if (typeof response !== 'object' || response === null) {
+        return {};
+    }
+
+    if ('success' in response) {
+        return response as CommentsListResponse;
+    }
+
+    const nestedData = (response as { data?: unknown }).data;
+    if (typeof nestedData === 'object' && nestedData !== null) {
+        return nestedData as CommentsListResponse;
+    }
+
+    return {};
+};
+
+const countCommentsTree = (comments: QuestaoComentario[]): number => comments.reduce((total, comment) => (
+    total + 1 + countCommentsTree(comment.replies || [])
+), 0);
+
+const addReplyToCommentTree = (
+    comments: QuestaoComentario[],
+    parentId: string,
+    reply: QuestaoComentario,
+): QuestaoComentario[] => comments.map((comment) => {
+    if (comment.id === parentId) {
+        return { ...comment, replies: [reply, ...(comment.replies || [])] };
+    }
+
+    if (comment.replies?.length) {
+        return { ...comment, replies: addReplyToCommentTree(comment.replies, parentId, reply) };
+    }
+
+    return comment;
+});
+
+const toggleLikeInCommentTree = (
+    comments: QuestaoComentario[],
+    commentId: string,
+): QuestaoComentario[] => comments.map((comment) => {
+    if (comment.id === commentId) {
+        const likes = Number(comment.likes || 0);
+        return {
+            ...comment,
+            isLiked: !comment.isLiked,
+            likes: comment.isLiked ? Math.max(0, likes - 1) : likes + 1,
+        };
+    }
+
+    if (comment.replies?.length) {
+        return { ...comment, replies: toggleLikeInCommentTree(comment.replies, commentId) };
+    }
+
+    return comment;
+});
+
+const removeCommentFromTree = (
+    comments: QuestaoComentario[],
+    commentId: string,
+): QuestaoComentario[] => comments
+    .filter((comment) => comment.id !== commentId)
+    .map((comment) => (
+        comment.replies?.length
+            ? { ...comment, replies: removeCommentFromTree(comment.replies, commentId) }
+            : comment
+    ));
 
 // Estilos para TextLayer
 const styles = `
@@ -123,7 +236,7 @@ interface PdfPageProps {
 const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pdfjsModule, pageNum, scale }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const textLayerRef = useRef<HTMLDivElement>(null);
-    const renderTaskRef = useRef<any>(null);
+    const renderTaskRef = useRef<PdfRenderTask | null>(null);
 
     useEffect(() => {
         let isCancelled = false;
@@ -137,7 +250,7 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pdfjsModule, pageNum, scale }
                     renderTaskRef.current.cancel();
                     // Aguardar a promise do cancelamento para garantir que o canvas foi liberado
                     await renderTaskRef.current.promise;
-                } catch (error) {
+                } catch {
                     // RenderingCancelledException é esperado, ignorar
                 }
                 renderTaskRef.current = null;
@@ -185,10 +298,10 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pdfjsModule, pageNum, scale }
                     const textContent = await page.getTextContent();
 
                     try {
-                        const pdfjsAny = pdfjsModule as any;
+                        const pdfjsWithTextLayer = pdfjsModule as PdfTextLayerModule;
 
-                        if (false /* pdfjsAny.renderTextLayer */) {
-                            await pdfjsAny.renderTextLayer({
+                        if (pdfjsWithTextLayer.renderTextLayer) {
+                            await pdfjsWithTextLayer.renderTextLayer({
                                 textContentSource: textContent,
                                 container: textLayerRef.current,
                                 // Usar mesma rotação no text layer para alinhamento correto
@@ -197,7 +310,11 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pdfjsModule, pageNum, scale }
                             }).promise;
                         } else {
                             // Fallback manual — usar mesma rotação do canvas para alinhamento correto
-                            textContent.items.forEach((item: any) => {
+                            textContent.items.forEach((item) => {
+                                if (!isPdfTextItem(item)) {
+                                    return;
+                                }
+
                                 const tx = pdfjsModule.Util.transform(
                                     pdfjsModule.Util.transform(
                                         page.getViewport({ scale: scale, rotation: page.rotate }).transform, // Use same rotation as canvas
@@ -208,7 +325,7 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pdfjsModule, pageNum, scale }
                                 const fontHeight = Math.sqrt((tx[2] * tx[2]) + (tx[3] * tx[3]));
                                 const span = document.createElement('span');
                                 span.textContent = item.str;
-                                span.style.fontFamily = item.fontName;
+                                span.style.fontFamily = item.fontName || 'sans-serif';
                                 span.style.fontSize = `${fontHeight}px`;
                                 span.style.position = 'absolute';
                                 span.style.left = `${tx[4]}px`;
@@ -221,8 +338,9 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pdfjsModule, pageNum, scale }
                         console.warn("TextLayer render failed", e);
                     }
                 }
-            } catch (err: any) {
-                if (err.name !== 'RenderingCancelledException') {
+            } catch (err: unknown) {
+                const errorName = err instanceof Error ? err.name : '';
+                if (errorName !== 'RenderingCancelledException') {
                     console.error(`Page ${pageNum} render error:`, err);
                 }
             }
@@ -263,11 +381,13 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
     const { materials, addMaterialComment, likeMaterialComment, deleteMaterialComment } = useMarketplace();
 
     const material = materials.find(m => m.id === materialId);
-    const materialSubject = material?.subjectText || (typeof material?.subject === 'string' ? material.subject : (material?.subject as any)?.name || '');
+    const materialSubjectValue = material?.subject;
+    const materialSubject = material?.subjectText
+        || (typeof materialSubjectValue === 'string' ? materialSubjectValue : '')
+        || (isMaterialSubjectObject(materialSubjectValue) ? materialSubjectValue.name || '' : '');
 
     // Estado local para comentários do material — carregado ao abrir o viewer
-    const [localComments, setLocalComments] = useState<any[]>([]);
-    const [loadingComments, setLoadingComments] = useState(false);
+    const [localComments, setLocalComments] = useState<QuestaoComentario[]>([]);
     const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
     const [showComments, setShowComments] = useState(false);
     const [showBookmarks, setShowBookmarks] = useState(false);
@@ -278,9 +398,11 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
     const [noteText, setNoteText] = useState('');
     const [originalNoteText, setOriginalNoteText] = useState('');
     const [savingNote, setSavingNote] = useState(false);
+    const localCommentCount = useMemo(() => countCommentsTree(localComments), [localComments]);
 
     useEffect(() => {
-        if (isOpen && url) {
+        const frameId = window.requestAnimationFrame(() => {
+            if (isOpen && url) {
             // Resetar estado antes de carregar novo conteúdo
             setNoteText('');
             setOriginalNoteText('');
@@ -292,13 +414,18 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                 fetchNote();
                 fetchComments();
             }
-        } else {
-            setPdfjsModule(null);
-            setPdfDoc(null);
-            setPageNum(1);
-            setScale(1.0);
-            setLoading(false);
-        }
+            } else {
+                setPdfjsModule(null);
+                setPdfDoc(null);
+                setPageNum(1);
+                setScale(1.0);
+                setLoading(false);
+            }
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    // The callbacks are function declarations used through the frame scheduler above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, url, materialId, currentUser, password]);
 
     useEffect(() => {
@@ -328,39 +455,44 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
     }, [isOpen]);
 
     // Busca comentários do material no backend ao abrir o viewer
-    const fetchComments = async () => {
+    async function fetchComments() {
         if (!materialId || !currentUser) return;
-        setLoadingComments(true);
         try {
             // apiClient interceptor já retorna response.data, então res = { success, data: [...] }
-            const res = await apiClient.get<any>(ENDPOINTS.comments.list, {
+            const response = await apiClient.get<CommentsListResponse>(ENDPOINTS.comments.list, {
                 params: { target_id: materialId, user_id: currentUser.id }
-            }) as any;
+            });
+            const res = normalizeCommentsListResponse(response);
             if (res && res.success && Array.isArray(res.data)) {
                 setLocalComments(res.data);
             }
         } catch (err) {
             console.error('Falha ao carregar comentários:', err);
-        } finally {
-            setLoadingComments(false);
         }
-    };
+    }
 
     // Recarregar comentários sempre que o sidebar de comentários for aberto
     useEffect(() => {
-        if (showComments && materialId && currentUser) {
-            fetchComments();
+        if (!showComments || !materialId || !currentUser) {
+            return;
         }
-    }, [showComments]);
 
-    const loadPdf = async () => {
+        const frameId = window.requestAnimationFrame(() => {
+            fetchComments();
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showComments, materialId, currentUser]);
+
+    async function loadPdf() {
         setLoading(true);
         setError(null);
         try {
             console.log('[PdfViewer] loadPdf start. url:', url, '| password:', password);
             const pdfjs = await loadPdfJsModule();
             setPdfjsModule(pdfjs);
-            const getDocParams: any = { url };
+            const getDocParams: { password?: string; url: string } = { url };
             if (password) {
                 getDocParams.password = password;
             }
@@ -375,9 +507,9 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
             setError("Não foi possível carregar o documento PDF.");
             setLoading(false);
         }
-    };
+    }
 
-    const fetchNote = async () => {
+    async function fetchNote() {
         if (!materialId || !currentUser) return;
         try {
             const note = await readerService.getNote(materialId, currentUser.id);
@@ -387,7 +519,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
         } catch (err) {
             console.error("Failed to fetch note:", err);
         }
-    };
+    }
 
     // Prevent browser zoom
     useEffect(() => {
@@ -412,7 +544,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
         };
     }, []);
 
-    const fetchBookmarks = async () => {
+    async function fetchBookmarks() {
         if (!materialId || !currentUser) return;
         try {
             const nextBookmarks = await readerService.getBookmarks(materialId, currentUser.id);
@@ -420,7 +552,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
         } catch (err) {
             console.error("Failed to fetch bookmarks:", err);
         }
-    };
+    }
 
     const saveBookmark = async () => {
         if (!materialId || !currentUser) return;
@@ -478,14 +610,17 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
         setScale(prev => Math.max(0.5, Math.min(3.0, prev + delta)));
     };
 
-    const toggleDisplayMode = () => {
-        setDisplayMode(prev => prev === 'page' ? 'scroll' : 'page');
-    };
-
     useEffect(() => {
-        if (showBookmarks && materialId && currentUser) {
-            fetchBookmarks();
+        if (!showBookmarks || !materialId || !currentUser) {
+            return;
         }
+
+        const frameId = window.requestAnimationFrame(() => {
+            fetchBookmarks();
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [showBookmarks, materialId, currentUser]);
 
     if (!isOpen) return null;
@@ -540,9 +675,9 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                         <div className="relative">
                             <MessageSquare size={18} />
                             {/* Contar todos os comentários e respostas a partir do estado local */}
-                            {(localComments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0) + (c.replies?.reduce((subAcc: number, subC: any) => subAcc + (subC.replies?.length || 0), 0) || 0), 0) || 0) > 0 && (
+                            {localCommentCount > 0 && (
                                 <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                                    {localComments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0) + (c.replies?.reduce((subAcc: number, subC: any) => subAcc + (subC.replies?.length || 0), 0) || 0), 0)}
+                                    {localCommentCount}
                                 </span>
                             )}
                         </div>
@@ -715,16 +850,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                                     setLocalComments(prev => {
                                         if (parentId) {
                                             // Aninhar resposta no comentário pai correto
-                                            const addReply = (list: any[]): any[] => list.map(c => {
-                                                if (c.id === parentId) {
-                                                    return { ...c, replies: [newComment, ...(c.replies || [])] };
-                                                }
-                                                if (c.replies?.length) {
-                                                    return { ...c, replies: addReply(c.replies) };
-                                                }
-                                                return c;
-                                            });
-                                            return addReply(prev);
+                                            return addReplyToCommentTree(prev, parentId, newComment);
                                         }
                                         return [newComment, ...prev];
                                     });
@@ -735,20 +861,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                             onLikeComment={async (commentId) => {
                                 if (!materialId) return;
                                 // Atualização otimista: toggle isLiked e likes count em localComments
-                                const toggleLike = (list: any[]): any[] => list.map(c => {
-                                    if (c.id === commentId) {
-                                        return {
-                                            ...c,
-                                            isLiked: !c.isLiked,
-                                            likes: c.isLiked ? c.likes - 1 : c.likes + 1
-                                        };
-                                    }
-                                    if (c.replies?.length) {
-                                        return { ...c, replies: toggleLike(c.replies) };
-                                    }
-                                    return c;
-                                });
-                                setLocalComments(prev => toggleLike(prev));
+                                setLocalComments(prev => toggleLikeInCommentTree(prev, commentId));
                                 // Persistir no backend
                                 await likeMaterialComment(materialId, commentId);
                             }}
@@ -756,14 +869,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                             onDeleteComment={async (commentId) => {
                                 if (!materialId) return;
                                 // Filtro recursivo para remover comentário ou resposta aninhada
-                                const deepFilter = (list: any[]): any[] =>
-                                    list
-                                        .filter(c => c.id !== commentId)
-                                        .map(c => c.replies?.length
-                                            ? { ...c, replies: deepFilter(c.replies) }
-                                            : c
-                                        );
-                                setLocalComments(prev => deepFilter(prev));
+                                setLocalComments(prev => removeCommentFromTree(prev, commentId));
                                 // Persistir no backend em background
                                 deleteMaterialComment(materialId, commentId);
                             }}

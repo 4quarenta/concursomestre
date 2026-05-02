@@ -102,6 +102,10 @@ export const resolveQuestionScheduledAt = (question: Record<string, any>): Date 
 };
 
 export const isQuestionPubliclyVisible = (question: Record<string, any>): boolean => {
+  if (normalizeQuestionVisibilityStatus(question) !== 'public') {
+    return false;
+  }
+
   const publishStatus = normalizeQuestionPublishStatus(question);
 
   if (publishStatus === 'draft') {

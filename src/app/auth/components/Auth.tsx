@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -38,6 +38,7 @@ import { useData } from '@providers/DataProvider';
 import { apiClient, ENDPOINTS } from '@services/api';
 import analyticsTrackingService from '@services/analytics/analyticsTrackingService';
 import { canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from '@services/auth';
+import { hasInvalidGoogleClientIdCandidate, normalizeGoogleClientId } from '@/config/googleAuth';
 import { useToast } from '@providers/ToastProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
@@ -139,7 +140,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const { theme } = useTheme();
 
   const registrationEnabled = systemSettings?.features?.registrationEnabled !== false;
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || systemSettings?.googleAuthClientId || '';
+  const rawGoogleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || systemSettings?.googleAuthClientId || '';
+  const googleClientId = normalizeGoogleClientId(rawGoogleClientId);
+  const hasInvalidGoogleClientId = hasInvalidGoogleClientIdCandidate(rawGoogleClientId);
   const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
 
   const initialMode: AuthMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login';
@@ -147,6 +150,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [googleScriptReady, setGoogleScriptReady] = useState(false);
+  const [googleScriptFailed, setGoogleScriptFailed] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -524,9 +528,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           <span className="h-px bg-slate-200 dark:bg-slate-800" />
         </div>
         <div className="relative min-h-[44px]">
-          {googleClientId ? (
+          {googleClientId && !googleScriptFailed ? (
             <>
-              {isGoogleLoading && (
+              {(isGoogleLoading || !googleScriptReady) && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80">
                   <Loader2 size={18} className="animate-spin text-indigo-600" />
                 </div>
@@ -538,8 +542,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               type="button"
               disabled
               className="flex h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-900"
+              title={hasInvalidGoogleClientId ? 'Client ID do Google invalido.' : googleScriptFailed ? 'Nao foi possivel carregar o script do Google.' : 'Google OAuth ainda nao configurado.'}
             >
-              Google não configurado
+              Entrar com Google indisponível
             </button>
           )}
         </div>
@@ -553,7 +558,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         <Script
           src="https://accounts.google.com/gsi/client"
           strategy="afterInteractive"
-          onLoad={() => setGoogleScriptReady(true)}
+          onLoad={() => {
+            setGoogleScriptFailed(false);
+            setGoogleScriptReady(true);
+          }}
+          onError={() => {
+            setGoogleScriptReady(false);
+            setGoogleScriptFailed(true);
+          }}
         />
       )}
       <aside className="relative hidden min-h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_70%_20%,rgba(116,92,255,0.42),transparent_34%),linear-gradient(145deg,#0c0e43_0%,#12105f_48%,#19106f_100%)] px-10 py-9 text-white lg:flex lg:flex-col xl:px-16">

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -43,6 +43,7 @@ import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
 import { isPlanAtLeast } from '@services/plans/planAccess';
+import { studyScheduleService } from '@services/study-schedule';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import BetaFeaturePage from '../../components/shared/feedback/BetaFeaturePage';
 
@@ -164,11 +165,122 @@ const addDays = (date: Date, amount: number) => {
 
 const getStorageKey = (userId?: string | null) => `concursomestre:cronograma:${userId || 'guest'}`;
 
+const normalizePriority = (value: unknown): SubjectPriority => {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  if (normalized.includes('alta')) return 'Alta';
+  if (normalized.includes('baixa')) return 'Baixa';
+  return 'Média';
+};
+
 const cloneForm = (form: StudyPlanForm): StudyPlanForm => ({
   ...form,
   weekdays: [...form.weekdays],
-  subjects: form.subjects.map((subject) => ({ ...subject })),
+  subjects: form.subjects.map((subject) => ({ ...subject, priority: normalizePriority(subject.priority) })),
 });
+
+const normalizeWeekdays = (value: unknown): WeekdayKey[] => {
+  const valid = new Set(WEEKDAYS.map((weekday) => weekday.key));
+  const weekdays = Array.isArray(value)
+    ? value.filter((weekday): weekday is WeekdayKey => valid.has(weekday as WeekdayKey))
+    : [];
+
+  return weekdays.length > 0 ? Array.from(new Set(weekdays)) : [...DEFAULT_FORM.weekdays];
+};
+
+const normalizeStudyPlanForm = (value: unknown): StudyPlanForm => {
+  const raw = value && typeof value === 'object' ? value as Partial<StudyPlanForm> : {};
+  const subjects = Array.isArray(raw.subjects) && raw.subjects.length > 0
+    ? raw.subjects.map((subject, index) => {
+        const item = subject && typeof subject === 'object' ? subject as Partial<StudySubject> : {};
+        return {
+          id: normalizeText(item.id) || `subject-${index + 1}`,
+          name: normalizeText(item.name),
+          topics: String(item.topics || ''),
+          priority: normalizePriority(item.priority),
+          weeklyBlocks: Math.max(1, Math.min(8, Number(item.weeklyBlocks || 1))),
+        };
+      })
+    : DEFAULT_FORM.subjects;
+
+  const strategy = ['balanced', 'weakness', 'revision'].includes(String(raw.strategy))
+    ? raw.strategy as StudyStrategy
+    : DEFAULT_FORM.strategy;
+
+  return {
+    objective: normalizeText(raw.objective),
+    examDate: normalizeText(raw.examDate),
+    hoursPerDay: Math.max(0.5, Math.min(10, Number(raw.hoursPerDay || DEFAULT_FORM.hoursPerDay))),
+    sessionMinutes: Math.max(25, Math.min(120, Number(raw.sessionMinutes || DEFAULT_FORM.sessionMinutes))),
+    questionGoal: Math.max(0, Math.min(150, Number(raw.questionGoal || DEFAULT_FORM.questionGoal))),
+    weekdays: normalizeWeekdays(raw.weekdays),
+    strategy,
+    subjects,
+  };
+};
+
+const normalizeGeneratedPlan = (value: unknown): GeneratedStudyPlan | null => {
+  if (!value || typeof value !== 'object') return null;
+
+  const raw = value as Partial<GeneratedStudyPlan>;
+  const sessions = Array.isArray(raw.sessions)
+    ? raw.sessions.map((session, index) => {
+        const item = session && typeof session === 'object' ? session as Partial<StudySession> : {};
+        return {
+          id: normalizeText(item.id) || `session-${index + 1}`,
+          weekNumber: Math.max(1, Number(item.weekNumber || 1)),
+          dateLabel: normalizeText(item.dateLabel),
+          weekdayLabel: normalizeText(item.weekdayLabel),
+          subject: normalizeText(item.subject),
+          topic: normalizeText(item.topic),
+          kind: normalizeText(item.kind),
+          durationMinutes: Math.max(1, Number(item.durationMinutes || DEFAULT_FORM.sessionMinutes)),
+          questionGoal: Math.max(0, Number(item.questionGoal || 0)),
+          priority: normalizePriority(item.priority),
+        };
+      })
+    : [];
+
+  const form = normalizeStudyPlanForm(raw.form);
+  const summary = (raw.summary && typeof raw.summary === 'object' ? raw.summary : {}) as Partial<GeneratedStudyPlan['summary']>;
+  const totalMinutes = sessions.reduce((sum, session) => sum + session.durationMinutes, 0);
+  const inferredWeeks = sessions.reduce((maxWeek, session) => Math.max(maxWeek, session.weekNumber), 0);
+
+  return {
+    id: normalizeText(raw.id) || `plan-${normalizeText(raw.generatedAt) || new Date().toISOString()}`,
+    generatedAt: normalizeText(raw.generatedAt) || new Date().toISOString(),
+    form,
+    sessions,
+    summary: {
+      weeks: Math.max(1, Number(summary.weeks || inferredWeeks || 1)),
+      totalSessions: Math.max(0, Number(summary.totalSessions || sessions.length)),
+      totalHours: Math.max(0, Number(summary.totalHours || Math.round((totalMinutes / 60) * 10) / 10)),
+      totalQuestions: Math.max(0, Number(summary.totalQuestions || sessions.reduce((sum, session) => sum + session.questionGoal, 0))),
+      subjects: Math.max(0, Number(summary.subjects || form.subjects.filter((subject) => normalizeText(subject.name)).length)),
+    },
+  };
+};
+
+const readLocalSchedule = (userId?: string | null): { form: StudyPlanForm; generatedPlan: GeneratedStudyPlan | null } | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(getStorageKey(userId));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as { form?: unknown; generatedPlan?: unknown };
+    return {
+      form: normalizeStudyPlanForm(parsed.form),
+      generatedPlan: normalizeGeneratedPlan(parsed.generatedPlan),
+    };
+  } catch (error) {
+    console.error('Failed to load local study schedule:', error);
+    return null;
+  }
+};
 
 const splitTopics = (value: string) => value
   .split(/\n|,/)
@@ -306,6 +418,9 @@ const CronogramaPage: React.FC = () => {
   const [form, setForm] = useState<StudyPlanForm>(() => cloneForm(DEFAULT_FORM));
   const [generatedPlan, setGeneratedPlan] = useState<GeneratedStudyPlan | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const [saveSource, setSaveSource] = useState<'backend' | 'local' | null>(null);
   const hasEliteAccess = isPlanAtLeast(currentUser, 'Elite');
   const isAdminPreview = Boolean(currentUser?.isAdmin || currentUser?.role === 'admin' || currentUser?.role === 'staff');
   const isFeatureEnabled = resolveSystemFeatureFlag(systemSettings, 'studyScheduleEnabled', true);
@@ -316,27 +431,62 @@ const CronogramaPage: React.FC = () => {
   }, [ensureTaxonomiesLoaded, isAdminPreview, isFeatureEnabled]);
 
   React.useEffect(() => {
-    if ((!isFeatureEnabled && !isAdminPreview) || !hasEliteAccess || typeof window === 'undefined') return;
+    if ((!isFeatureEnabled && !isAdminPreview) || !hasEliteAccess || !currentUser?.id) return;
 
-    let timeoutId: number | undefined;
+    let cancelled = false;
+    const loadSchedule = async () => {
+      setIsLoadingSchedule(true);
 
-    try {
-      const raw = window.localStorage.getItem(getStorageKey(currentUser?.id));
-      if (!raw) return;
+      try {
+        const remoteSchedule = await studyScheduleService.get<StudyPlanForm, GeneratedStudyPlan>();
+        if (cancelled) return;
 
-      const parsed = JSON.parse(raw) as { form?: StudyPlanForm; generatedPlan?: GeneratedStudyPlan };
-      timeoutId = window.setTimeout(() => {
-        if (parsed?.form) setForm(cloneForm(parsed.form));
-        if (parsed?.generatedPlan) setGeneratedPlan(parsed.generatedPlan);
-      }, 0);
-    } catch (error) {
-      console.error('Failed to load study schedule:', error);
-    }
+        if (remoteSchedule?.form) {
+          setForm(normalizeStudyPlanForm(remoteSchedule.form));
+          setGeneratedPlan(normalizeGeneratedPlan(remoteSchedule.generatedPlan));
+          setSaveSource('backend');
+          return;
+        }
 
-    return () => {
-      if (typeof timeoutId === 'number') {
-        window.clearTimeout(timeoutId);
+        const localSchedule = readLocalSchedule(currentUser.id);
+        if (!localSchedule || cancelled) {
+          setSaveSource(null);
+          return;
+        }
+
+        setForm(localSchedule.form);
+        setGeneratedPlan(localSchedule.generatedPlan);
+        setSaveSource('local');
+
+        try {
+          await studyScheduleService.save(localSchedule.form, localSchedule.generatedPlan);
+          if (!cancelled && typeof window !== 'undefined') {
+            window.localStorage.removeItem(getStorageKey(currentUser.id));
+            setSaveSource('backend');
+          }
+        } catch (migrationError) {
+          console.error('Failed to migrate local study schedule:', migrationError);
+        }
+      } catch (error) {
+        console.error('Failed to load study schedule:', error);
+        if (cancelled) return;
+
+        const localSchedule = readLocalSchedule(currentUser.id);
+        if (localSchedule) {
+          setForm(localSchedule.form);
+          setGeneratedPlan(localSchedule.generatedPlan);
+          setSaveSource('local');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSchedule(false);
+        }
       }
+    };
+
+    void loadSchedule();
+    return () => {
+      cancelled = true;
     };
   }, [currentUser?.id, hasEliteAccess, isAdminPreview, isFeatureEnabled]);
 
@@ -406,7 +556,45 @@ const CronogramaPage: React.FC = () => {
     });
   };
 
-  const persistPlan = (nextForm: StudyPlanForm, nextPlan: GeneratedStudyPlan | null) => {
+  const persistPlan = async (nextForm: StudyPlanForm, nextPlan: GeneratedStudyPlan | null): Promise<'backend' | 'local'> => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(getStorageKey(currentUser?.id), JSON.stringify({
+        form: nextForm,
+        generatedPlan: nextPlan,
+        savedAt: new Date().toISOString(),
+      }));
+    }
+
+    if (!currentUser?.id || !hasEliteAccess) {
+      setSaveSource('local');
+      return 'local';
+    }
+
+    try {
+      setIsSavingSchedule(true);
+      const savedSchedule = await studyScheduleService.save<StudyPlanForm, GeneratedStudyPlan>(nextForm, nextPlan);
+
+      if (savedSchedule?.form) {
+        setForm(normalizeStudyPlanForm(savedSchedule.form));
+        setGeneratedPlan(normalizeGeneratedPlan(savedSchedule.generatedPlan));
+      }
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(getStorageKey(currentUser.id));
+      }
+
+      setSaveSource('backend');
+      return 'backend';
+    } catch (error) {
+      console.error('Failed to persist study schedule:', error);
+      setSaveSource('local');
+      return 'local';
+    } finally {
+      setIsSavingSchedule(false);
+    }
+  };
+
+  const persistLocalPlan = (nextForm: StudyPlanForm, nextPlan: GeneratedStudyPlan | null) => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(getStorageKey(currentUser?.id), JSON.stringify({
       form: nextForm,
@@ -415,34 +603,64 @@ const CronogramaPage: React.FC = () => {
     }));
   };
 
-  const handleGeneratePlan = () => {
+  const handleGeneratePlan = async () => {
     if (!form.subjects.some((subject) => normalizeText(subject.name))) {
       addToast('Adicione pelo menos uma matéria para gerar o cronograma.', 'warning');
       return;
     }
 
     setIsGenerating(true);
-    window.setTimeout(() => {
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+
+    try {
       const nextPlan = generateStudyPlan(form);
       setGeneratedPlan(nextPlan);
-      persistPlan(form, nextPlan);
+      const source = await persistPlan(form, nextPlan);
+      addToast(
+        source === 'backend'
+          ? 'Cronograma gerado e salvo na sua conta.'
+          : 'Cronograma gerado. Salvo localmente ate a conexao voltar.',
+        source === 'backend' ? 'success' : 'warning'
+      );
+    } finally {
       setIsGenerating(false);
-      addToast('Cronograma gerado e salvo.', 'success');
-    }, 250);
+    }
   };
 
-  const handleSaveDraft = () => {
-    persistPlan(form, generatedPlan);
-    addToast('Rascunho do cronograma salvo.', 'success');
+  const handleSaveDraft = async () => {
+    const source = await persistPlan(form, generatedPlan);
+    addToast(
+      source === 'backend'
+        ? 'Rascunho do cronograma salvo na sua conta.'
+        : 'Rascunho salvo localmente ate a conexao voltar.',
+      source === 'backend' ? 'success' : 'warning'
+    );
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     const nextForm = cloneForm(DEFAULT_FORM);
     setForm(nextForm);
     setGeneratedPlan(null);
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(getStorageKey(currentUser?.id));
     }
+
+    if (currentUser?.id && hasEliteAccess) {
+      try {
+        setIsSavingSchedule(true);
+        await studyScheduleService.remove();
+      } catch (error) {
+        console.error('Failed to remove study schedule:', error);
+        persistLocalPlan(nextForm, null);
+        setSaveSource('local');
+        addToast('Cronograma limpo neste dispositivo. Tente salvar novamente para sincronizar.', 'warning');
+        return;
+      } finally {
+        setIsSavingSchedule(false);
+      }
+    }
+
+    setSaveSource(null);
     addToast('Cronograma reiniciado.', 'info');
   };
 
@@ -780,7 +998,7 @@ const CronogramaPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleGeneratePlan}
-                disabled={isGenerating}
+                disabled={isGenerating || isSavingSchedule || isLoadingSchedule}
                 className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-indigo-700 disabled:opacity-60"
               >
                 {isGenerating ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
@@ -789,15 +1007,17 @@ const CronogramaPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleSaveDraft}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:text-slate-200"
+                disabled={isSavingSchedule || isLoadingSchedule}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200"
               >
-                <Save size={15} />
-                Salvar
+                {isSavingSchedule ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                {isSavingSchedule ? 'Salvando' : 'Salvar'}
               </button>
               <button
                 type="button"
                 onClick={handleReset}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-500 transition hover:border-rose-200 hover:text-rose-600 dark:border-slate-700 dark:text-slate-300"
+                disabled={isSavingSchedule || isLoadingSchedule}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-black uppercase tracking-[0.14em] text-slate-500 transition hover:border-rose-200 hover:text-rose-600 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
               >
                 <RotateCcw size={15} />
                 Limpar
@@ -815,9 +1035,11 @@ const CronogramaPage: React.FC = () => {
               <div>
                 <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Agenda gerada</h2>
                 <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-                  {generatedPlan
-                    ? `${STRATEGY_LABELS[generatedPlan.form.strategy]}${generatedPlan.form.objective ? ` para ${generatedPlan.form.objective}` : ''}.`
-                    : 'Gere um cronograma para visualizar seus blocos semanais.'}
+                  {isLoadingSchedule
+                    ? 'Carregando seu cronograma salvo...'
+                    : generatedPlan
+                      ? `${STRATEGY_LABELS[generatedPlan.form.strategy]}${generatedPlan.form.objective ? ` para ${generatedPlan.form.objective}` : ''}.`
+                      : 'Gere um cronograma para visualizar seus blocos semanais.'}
                 </p>
               </div>
             </div>
@@ -831,7 +1053,11 @@ const CronogramaPage: React.FC = () => {
                     <CheckCircle2 size={18} className="mt-0.5 text-emerald-500" />
                     <div>
                       <p className="text-sm font-black text-slate-900 dark:text-slate-100">Plano salvo</p>
-                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Seu cronograma fica salvo neste dispositivo.</p>
+                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {saveSource === 'local'
+                          ? 'Salvo localmente ate a sincronizacao voltar.'
+                          : 'Seu cronograma fica salvo na sua conta.'}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">

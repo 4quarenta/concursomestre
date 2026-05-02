@@ -10,14 +10,15 @@
 */
 
 import React, { useState, useEffect, useRef } from 'react';
-import type { Question, UserAnswer, QuestaoComentario as Comment, ErrorReport, UserNote, QuestionStats, RelatedQuestionLawMatch } from '@types';
+import Image from 'next/image';
+import type { Assunto, Material, Question, Transaction, UserAnswer, ErrorReport, UserNote, QuestionStats, RelatedQuestionLawMatch, UserProfile } from '@types';
 import {
   CheckCircle2, XCircle, Flag, BookOpen, GraduationCap,
-  Eye, EyeOff, Building2, Calendar, Briefcase, ThumbsUp, MessageSquare, BarChart3, AlertTriangle, Share2, Lock, StickyNote, Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Layers, Tag, Crown, Zap, Star, Reply, History, PlusCircle, MinusCircle, FileText, Loader2
+  Eye, EyeOff, Building2, Calendar, Briefcase, MessageSquare, BarChart3, AlertTriangle, Share2, Lock, StickyNote, Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Layers, Tag, History, PlusCircle, MinusCircle, FileText, Loader2
 } from 'lucide-react';
 import { getAssetUrl } from '@services/api';
 import { legalCommentaryApiService } from '@services/legal-commentary';
-import { questionService } from '@services/questions';
+import { isPlatformOriginalQuestion, isQuestionCanceled, questionService } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import MathRichText from '@/components/shared/math/MathRichText';
 
@@ -32,10 +33,38 @@ const fixHtmlImages = (html: string) => {
     return match.replace(src, absoluteUrl);
   });
 };
-import RichTextEditor from '../../../components/shared/ui/RichTextEditor';
+
+type QuestionSourceMetadata = Question & {
+  sourceType?: string;
+  source_type?: string;
+};
+
+const readCurrentTimeMs = () => Date.now();
+
+const getAssuntoNome = (assunto: Assunto) => (assunto.nome || assunto.name || '').trim().toLowerCase();
+
+const getAssuntoTopico = (assunto: Assunto & { topico?: string }) => (
+  typeof assunto.topico === 'string' ? assunto.topico : ''
+).trim().toLowerCase();
+
+const getMaterialSubjectText = (material: Pick<Material, 'subject' | 'subjectText'>): string => {
+  const { subject } = material;
+
+  if (typeof subject === 'string') {
+    return subject;
+  }
+
+  if (subject && typeof subject === 'object') {
+    const subjectRecord = subject as { name?: string; nome?: string };
+    return subjectRecord.name || subjectRecord.nome || material.subjectText || '';
+  }
+
+  return material.subjectText || '';
+};
+
+const getQuestionSourceMetadata = (question: Question): QuestionSourceMetadata => question as QuestionSourceMetadata;
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
-import AuthModal from '../../../components/shared/overlays/AuthModal';
 import CommentsSection from '../../../components/shared/feedback/CommentsSection';
 import { createPortal } from 'react-dom';
 import { useMarketplace } from '@providers/MarketplaceProvider';
@@ -98,32 +127,9 @@ const isCorrectQuestionOption = (question: Question, index: number) => (
   resolveCorrectOption(question)?.index === index
 );
 
-const normalizeQuestionFlag = (value: unknown) =>
-  String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-
-const isQuestionCanceled = (question: Question) => Boolean(question.anulada || question.isCanceled);
-
-const isPlatformOriginalQuestion = (question: Question) => {
-  const source = normalizeQuestionFlag([
-    question.questionOrigin,
-    question.question_origin,
-    (question as any).sourceType,
-    (question as any).source_type,
-    (question as any).origin,
-    (question as any).origem,
-  ].find((value) => String(value ?? '').trim()));
-
-  return ['platform', 'inedita', 'original', 'generated', 'gerada'].includes(source)
-    || Boolean((question as any).isOriginal || (question as any).inedita);
-};
-
 const QuestionCard: React.FC<QuestionCardProps> = ({
   question, existingAnswer, onAnswerSubmit, onReportError, onAddComment, onLikeComment, indexDisplay,
-  isAlreadyReported = false, userPlan = 'Gratuito', existingNote, onSaveNote, onToggleSave, isSaved = false,
+  isAlreadyReported = false, existingNote, onSaveNote, onToggleSave, isSaved = false,
   mode = 'practice', hideFeedback = false, currentUserId, currentUserName, onGuestAction, isHighlighted = false
 }) => {
   const router = useRouter();
@@ -143,14 +149,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const hasRelatedMaterials = React.useMemo(() => {
     if (!systemSettings.features.marketplaceEnabled || !materials || materials.length === 0) return false;
-    const questionSubjects = question.assuntos?.map((a: any) => a?.nome?.toLowerCase()).filter(Boolean) || [];
-    const questionTopics = question.assuntos?.map((a: any) => a?.topico ? a.topico.toLowerCase() : '').filter(Boolean) || [];
+    const questionSubjects = question.assuntos?.map(getAssuntoNome).filter(Boolean) || [];
+    const questionTopics = question.assuntos?.map(getAssuntoTopico).filter(Boolean) || [];
     if (questionSubjects.length === 0) return false;
 
     return materials.some(m => {
       // Relaxed status check matching availableMaterials logic
       if (m.status !== 'approved' && m.status !== undefined) return false;
-      const matSubjectInfo = typeof m.subject === 'string' ? m.subject : ((m.subject as any)?.name || m.subjectText || '');
+      const matSubjectInfo = getMaterialSubjectText(m);
       const matSubject = matSubjectInfo.toLowerCase();
       const matTopic = (m.topic || '').toLowerCase();
 
@@ -170,14 +176,21 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   useEffect(() => {
     if (!systemSettings.features.annotatedLawsEnabled) {
-      setRelatedAnnotatedLaws([]);
-      setShowAnnotatedLaws(false);
-      setIsLoadingAnnotatedLaws(false);
-      return;
+      const frame = window.requestAnimationFrame(() => {
+        setRelatedAnnotatedLaws([]);
+        setShowAnnotatedLaws(false);
+        setIsLoadingAnnotatedLaws(false);
+      });
+
+      return () => window.cancelAnimationFrame(frame);
     }
 
     let isMounted = true;
-    setIsLoadingAnnotatedLaws(true);
+    const loadingFrame = window.requestAnimationFrame(() => {
+      if (isMounted) {
+        setIsLoadingAnnotatedLaws(true);
+      }
+    });
 
     legalCommentaryApiService.getRelatedLawsForQuestion(question)
       .then((payload) => {
@@ -208,6 +221,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
     return () => {
       isMounted = false;
+      window.cancelAnimationFrame(loadingFrame);
     };
   }, [question, systemSettings.features.annotatedLawsEnabled]);
 
@@ -239,7 +253,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     const hasCommentHash = hash.includes('comment-');
 
     if (isHighlighted || hasCommentQuery || hasCommentHash) {
-      setShowComments(true);
+      const frame = window.requestAnimationFrame(() => {
+        setShowComments(true);
+      });
 
       // Scroll to comment if hash exists
       if (hasCommentHash) {
@@ -251,6 +267,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           }
         }, 300);
       }
+
+      return () => window.cancelAnimationFrame(frame);
     }
   }, [isHighlighted]);
   const [noteText, setNoteText] = useState('');
@@ -260,15 +278,17 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const [isReporting, setIsReporting] = useState(false);
   const [reportDetails, setReportDetails] = useState({ reason: 'Gabarito Errado', details: '' });
-  const [reportEvidence, setReportEvidence] = useState<string | null>(null);
 
-  const commentEditorRef = useRef<HTMLDivElement>(null);
-  const startTime = useRef<number>(Date.now());
+  const startTime = useRef<number>(0);
 
   useEffect(() => {
     // Reset timer when question ID changes
-    startTime.current = Date.now();
-    setSelectedOptionId(null); // Ensure unselected
+    const frame = window.requestAnimationFrame(() => {
+      startTime.current = readCurrentTimeMs();
+      setSelectedOptionId(null); // Ensure unselected
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [question.id]);
 
   // New state to track if the user submitted an answer in THIS session
@@ -300,8 +320,6 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   // What about "box com histórico"?
 
-  const showHistoryTag = !!existingAnswer;
-
   const accuracyRate = (question.stats && question.stats.totalAttempts > 0)
     ? Math.round((question.stats.correctCount / question.stats.totalAttempts) * 100)
     : 0;
@@ -318,37 +336,44 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   // Análise Detalhada: apenas Elite
   const canSeeDetailed = hasPlanBenefit(currentUser, 'detailed_analysis', systemSettings.planEntitlements);
 
+  const [showStats, setShowStats] = useState(false);
+  const [localStats, setLocalStats] = useState<QuestionStats | null>(question.stats || null);
+  const [loadingStats, setLoadingStats] = useState(false);
+
   useEffect(() => {
     // Reset session state ONLY when question changes
-    setSessionAnswer(null);
-    setShowAnswerFeedback(false);
-    setSelectedOptionId(null);
-    setEliminatedOptionIds([]);
-    setIsReporting(false);
-    setShowTeacherComment(false);
-    setShowDetailedComment(false);
-    setShowFilters(false);
-    setShowStats(false);
-    setShowMaterials(false);
-    setShowAnnotatedLaws(false);
-    setLocalStats(question.stats || null);
-    setIsContextExpanded(false); // Reset context expansion when question changes
+    const frame = window.requestAnimationFrame(() => {
+      setSessionAnswer(null);
+      setShowAnswerFeedback(false);
+      setSelectedOptionId(null);
+      setEliminatedOptionIds([]);
+      setIsReporting(false);
+      setShowTeacherComment(false);
+      setShowDetailedComment(false);
+      setShowFilters(false);
+      setShowStats(false);
+      setShowMaterials(false);
+      setShowAnnotatedLaws(false);
+      setLocalStats(question.stats || null);
+      setIsContextExpanded(false); // Reset context expansion when question changes
+    });
 
     // In simulation mode, we might want to pre-load the answer if it exists.
     // However, for Practice, we want a clean slate.
     // We do NOT want to reset if existingAnswer changes (which happens when we just answered).
-  }, [question.id]);
+    return () => window.cancelAnimationFrame(frame);
+  }, [question.id, question.stats]);
 
   useEffect(() => {
     if (mode === 'simulation' && existingAnswer && !sessionAnswer) {
       const selectedItem = question.itens?.[existingAnswer.selectedOptionIndex];
-      setSelectedOptionId(selectedItem?.id ?? existingAnswer.selectedOptionIndex);
+      const frame = window.requestAnimationFrame(() => {
+        setSelectedOptionId(selectedItem?.id ?? existingAnswer.selectedOptionIndex);
+      });
+
+      return () => window.cancelAnimationFrame(frame);
     }
   }, [mode, existingAnswer, sessionAnswer, question.id, question.itens]); // Keep simulation logic updated if needed.
-
-  const [showStats, setShowStats] = useState(false);
-  const [localStats, setLocalStats] = useState<QuestionStats | null>(question.stats || null);
-  const [loadingStats, setLoadingStats] = useState(false);
 
   const handleToggleStats = async () => {
     const nextState = !showStats;
@@ -373,11 +398,15 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   };
 
   useEffect(() => {
-    if (existingNote) {
-      setNoteText(existingNote.text);
-    } else {
-      setNoteText('');
-    }
+    const frame = window.requestAnimationFrame(() => {
+      if (existingNote) {
+        setNoteText(existingNote.text);
+      } else {
+        setNoteText('');
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [existingNote, question.id]);
 
   useEffect(() => {
@@ -389,7 +418,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   useEffect(() => {
     if (isHistoryModalOpen) {
-      setIsLoadingHistory(true);
+      const frame = window.requestAnimationFrame(() => {
+        setIsLoadingHistory(true);
+      });
       // Try to fetch history from backend, fallback to existingAnswer if fail or offline
       questionService.getQuestionHistory(question.id, currentUser?.id || '')
         .then(data => {
@@ -406,8 +437,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           setHistory(existingAnswer ? [existingAnswer] : []);
         })
         .finally(() => setIsLoadingHistory(false));
+
+      return () => window.cancelAnimationFrame(frame);
     }
-  }, [isHistoryModalOpen, question.id, existingAnswer]);
+  }, [isHistoryModalOpen, question.id, existingAnswer, currentUser?.id]);
 
   const handleSubmit = () => {
     if (isCanceledQuestion) {
@@ -424,12 +457,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     const correctOption = resolveCorrectOption(question);
     const isAnswerCorrect = Boolean(correctOption && selectedItemIndex === correctOption.index);
 
+    const submittedAt = readCurrentTimeMs();
+    const startedAt = startTime.current || submittedAt;
     const newAnswer = {
       questionId: Number(question.id),
       selectedOptionIndex: selectedItemIndex >= 0 ? selectedItemIndex : Number(selectedOptionId),
       isCorrect: isAnswerCorrect,
-      timestamp: Date.now(),
-      timeTaken: Math.round((Date.now() - startTime.current) / 1000)
+      timestamp: submittedAt,
+      timeTaken: Math.round((submittedAt - startedAt) / 1000)
     };
     setSessionAnswer(newAnswer); // Lock interaction locally
     setShowAnswerFeedback(true); // Show correct/incorrect highlighting
@@ -452,12 +487,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     const selectedOptionIndex = selectedItemIndex >= 0 ? selectedItemIndex : Number(id);
     const correctOption = resolveCorrectOption(question);
     const isAnswerCorrect = Boolean(correctOption && selectedItemIndex === correctOption.index);
+    const submittedAt = readCurrentTimeMs();
+    const startedAt = startTime.current || submittedAt;
     const answerPayload = {
       questionId: Number(question.id),
       selectedOptionIndex,
       isCorrect: isAnswerCorrect,
-      timestamp: Date.now(),
-      timeTaken: Math.round((Date.now() - startTime.current) / 1000)
+      timestamp: submittedAt,
+      timeTaken: Math.round((submittedAt - startedAt) / 1000)
     };
 
     setSelectedOptionId(id);
@@ -482,7 +519,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       return;
     }
     if (onReportError) {
-      (onReportError as any)({
+      onReportError({
         targetType: 'question',
         questionId: Number(question.id),
         userName: currentUserName || 'Usuário',
@@ -703,10 +740,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
                 {question.grupoQuestao.image_url && (
                   <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1">
-                    <img
+                    <Image
                       src={getAssetUrl(question.grupoQuestao.image_url)}
-                      className="w-full h-auto max-h-[400px] object-contain mx-auto"
                       alt="Texto de apoio"
+                      width={900}
+                      height={420}
+                      unoptimized
+                      className="w-full h-auto max-h-[400px] object-contain mx-auto"
                     />
                   </div>
                 )}
@@ -731,7 +771,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
           {question.imageUrl && (
             <div className="my-4 rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800">
-              <img src={getAssetUrl(question.imageUrl)} alt="Anexo" className="max-w-full h-auto mx-auto max-h-[400px]" />
+              <Image src={getAssetUrl(question.imageUrl)} alt="Anexo" width={900} height={420} unoptimized className="max-w-full h-auto mx-auto max-h-[400px]" />
             </div>
           )}
         </div>
@@ -806,7 +846,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                       </div>
                       {isImg ? (
                         <div className="max-w-[200px] rounded-lg overflow-hidden border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-1">
-                          <img src={item.corpo} className="w-full h-auto" alt="" />
+                          <Image src={item.corpo} className="w-full h-auto" alt="" width={320} height={180} unoptimized />
                         </div>
                       ) : (
                         <div
@@ -1056,7 +1096,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               />
             )}
 
-            {showMaterials && <RelatedMaterialsSection question={question} currentUser={currentUser} onClose={() => setShowMaterials(false)} />}
+            {showMaterials && <RelatedMaterialsSection question={question} currentUser={currentUser} />}
             {showAnnotatedLaws && <RelatedAnnotatedLawsSection question={question} onClose={() => setShowAnnotatedLaws(false)} initialMatches={relatedAnnotatedLaws} />}
             <div className="px-6 py-4">
               <AdBanner type="bottom" />
@@ -1187,16 +1227,22 @@ const RelatedAnnotatedLawsSection = ({ question, onClose, initialMatches = [] }:
   useEffect(() => {
     let isMounted = true;
     if (initialMatches.length > 0) {
-      setMatches(initialMatches);
-      setIsLoading(false);
-      setError(null);
+      const frame = window.requestAnimationFrame(() => {
+        setMatches(initialMatches);
+        setIsLoading(false);
+        setError(null);
+      });
+
       return () => {
         isMounted = false;
+        window.cancelAnimationFrame(frame);
       };
     }
 
-    setIsLoading(true);
-    setError(null);
+    const loadingFrame = window.requestAnimationFrame(() => {
+      setIsLoading(true);
+      setError(null);
+    });
 
     legalCommentaryApiService.getRelatedLawsForQuestion(question)
       .then((payload) => {
@@ -1221,6 +1267,7 @@ const RelatedAnnotatedLawsSection = ({ question, onClose, initialMatches = [] }:
 
     return () => {
       isMounted = false;
+      window.cancelAnimationFrame(loadingFrame);
     };
   }, [initialMatches, question]);
 
@@ -1365,7 +1412,12 @@ const RelatedAnnotatedLawsSection = ({ question, onClose, initialMatches = [] }:
   );
 };
 
-const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
+type RelatedMaterialsSectionProps = {
+  question: Question;
+  currentUser: UserProfile | null;
+};
+
+const RelatedMaterialsSection = ({ question, currentUser }: RelatedMaterialsSectionProps) => {
   const { materials, transactions } = useMarketplace();
   const router = useRouter();
 
@@ -1382,12 +1434,12 @@ const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
     console.log('[QuestionCard] Available materials for match:', availableMaterials.length);
 
     // Critérios de combinação - Removemos itens vazios para evitar matches coringa (includes(""))
-    const questionSubjects = question.assuntos?.map((a: any) => a.nome?.trim().toLowerCase()).filter(Boolean) || [];
-    const questionTopics = question.assuntos?.map((a: any) => a.topico?.trim().toLowerCase()).filter(Boolean) || [];
+    const questionSubjects = question.assuntos?.map(getAssuntoNome).filter(Boolean) || [];
+    const questionTopics = question.assuntos?.map(getAssuntoTopico).filter(Boolean) || [];
 
     // Tentar encontrar matches fortes (Assunto/Materia ou Tópico)
     let matches = availableMaterials.filter(m => {
-      const matSubjectInfo = typeof m.subject === 'string' ? m.subject : ((m.subject as any)?.name || m.subjectText || '');
+      const matSubjectInfo = getMaterialSubjectText(m);
       const matSubject = matSubjectInfo?.trim().toLowerCase();
       const matTopic = (m.topic || '')?.trim().toLowerCase();
 
@@ -1444,7 +1496,7 @@ const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
       <div className="flex flex-col gap-2">
         {relatedMaterials.map(m => {
           // Robust access check considering refunds via transactions array
-          const validTransaction = transactions?.find((t: any) =>
+          const validTransaction = transactions?.find((t: Transaction) =>
             t.materialId === m.id &&
             t.buyerId === currentUser?.id &&
             (t.status === 'completed' || t.status === 'approved')
@@ -1460,7 +1512,7 @@ const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
               <div className="flex items-center gap-4 flex-1 min-w-0">
                 <div className="w-10 h-10 rounded-lg bg-slate-50 dark:bg-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-600 group-hover:border-indigo-200 dark:group-hover:border-indigo-600 transition-colors flex-shrink-0 overflow-hidden">
                   {m.coverUrl ? (
-                    <img src={m.coverUrl} className="w-full h-full object-cover" alt="" />
+                    <Image src={m.coverUrl} className="w-full h-full object-cover" alt="" width={80} height={80} unoptimized />
                   ) : (
                     <BookOpen size={18} />
                   )}
@@ -1505,6 +1557,9 @@ const RelatedMaterialsSection = ({ question, currentUser, onClose }: any) => {
 };
 
 export default React.memo(QuestionCard, (prevProps, nextProps) => {
+  const prevSource = getQuestionSourceMetadata(prevProps.question);
+  const nextSource = getQuestionSourceMetadata(nextProps.question);
+
   return (
     prevProps.question.id === nextProps.question.id &&
     prevProps.existingAnswer?.selectedOptionIndex === nextProps.existingAnswer?.selectedOptionIndex &&
@@ -1519,8 +1574,8 @@ export default React.memo(QuestionCard, (prevProps, nextProps) => {
     prevProps.question.isOutdated === nextProps.question.isOutdated &&
     prevProps.question.questionOrigin === nextProps.question.questionOrigin &&
     prevProps.question.question_origin === nextProps.question.question_origin &&
-    (prevProps.question as any).sourceType === (nextProps.question as any).sourceType &&
-    (prevProps.question as any).source_type === (nextProps.question as any).source_type &&
+    prevSource.sourceType === nextSource.sourceType &&
+    prevSource.source_type === nextSource.source_type &&
     prevProps.isHighlighted === nextProps.isHighlighted
   );
 });

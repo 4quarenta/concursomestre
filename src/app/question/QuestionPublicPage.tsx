@@ -17,7 +17,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { AlertTriangle, ArrowRight, BookOpenCheck, Building2, Calendar, CheckCircle2, FileQuestion, GraduationCap, Loader2, ShieldCheck, Sparkles, Tag, UserPlus } from 'lucide-react';
 import type { Question } from '@types';
 import { useAuth } from '@providers/AuthProvider';
-import { questionService } from '@services/questions';
+import { isPlatformOriginalQuestion, isQuestionCanceled, questionService } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import AuthModal from '@/components/shared/overlays/AuthModal';
 import {
@@ -39,29 +39,6 @@ import {
 
 const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-const normalizeQuestionFlag = (value: unknown) =>
-  String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-
-const isQuestionCanceled = (question: Question) => Boolean(question.anulada || question.isCanceled);
-
-const isPlatformOriginalQuestion = (question: Question) => {
-  const source = normalizeQuestionFlag([
-    question.questionOrigin,
-    question.question_origin,
-    (question as any).sourceType,
-    (question as any).source_type,
-    (question as any).origin,
-    (question as any).origem,
-  ].find((value) => String(value ?? '').trim()));
-
-  return ['platform', 'inedita', 'original', 'generated', 'gerada'].includes(source)
-    || Boolean((question as any).isOriginal || (question as any).inedita);
-};
-
 type QuestionPublicPageProps = {
   initialQuestion?: Question | null;
 };
@@ -78,46 +55,51 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
   const [showAuthModal, setShowAuthModal] = React.useState(false);
 
   React.useEffect(() => {
-    if (!id) {
-      setError('Questao nao encontrada.');
-      setIsLoading(false);
-      return;
-    }
-
-    if (initialQuestion?.id && String(initialQuestion.id) === String(id)) {
-      setQuestion(initialQuestion);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
-
     let isMounted = true;
-    setIsLoading(true);
+    const frameId = window.requestAnimationFrame(() => {
+      if (!isMounted) return;
 
-    questionService.getQuestionById(id)
-      .then((payload) => {
-        if (!isMounted) {
-          return;
-        }
+      if (!id) {
+        setError('Questao nao encontrada.');
+        setIsLoading(false);
+        return;
+      }
 
-        setQuestion(payload);
+      if (initialQuestion?.id && String(initialQuestion.id) === String(id)) {
+        setQuestion(initialQuestion);
         setError(null);
-      })
-      .catch((requestError) => {
-        if (!isMounted) {
-          return;
-        }
+        setIsLoading(false);
+        return;
+      }
 
-        setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel carregar a questao.');
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      });
+      setIsLoading(true);
+
+      questionService.getQuestionById(id)
+        .then((payload) => {
+          if (!isMounted) {
+            return;
+          }
+
+          setQuestion(payload);
+          setError(null);
+        })
+        .catch((requestError) => {
+          if (!isMounted) {
+            return;
+          }
+
+          setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel carregar a questao.');
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsLoading(false);
+          }
+        });
+    });
 
     return () => {
       isMounted = false;
+      window.cancelAnimationFrame(frameId);
     };
   }, [id, initialQuestion]);
 

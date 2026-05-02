@@ -18,6 +18,7 @@ import type { QuestaoComentario as Comment } from '@types';
 import { useAuth } from '@providers/AuthProvider';
 import { useConfirm } from '@providers/ModalProvider';
 import { getAssetUrl } from '@services/api';
+import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 
 interface CommentItemProps {
     comment: Comment;
@@ -80,7 +81,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
                     </div>
                     {isHighlighted && <span className="bg-indigo-600 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase animate-pulse">Novo</span>}
                 </div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed" dangerouslySetInnerHTML={{ __html: comment.text }} />
+                <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed" dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(comment.text) }} />
                 <div className="flex gap-3 mt-1">
                     <button onClick={() => onLike(comment.id)}
                         className={`flex items-center gap-1 text-[10px] font-bold transition-all ${comment.isLiked ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'}`}>

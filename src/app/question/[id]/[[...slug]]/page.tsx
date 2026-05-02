@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+﻿import type { Metadata } from 'next';
 import type { Question } from '@types';
 import { ENDPOINTS } from '@services/api/endpoints';
 import { isQuestionPubliclyVisible, withQuestionPublicationAliases } from '@services/questions/questionPublication';

@@ -1,8 +1,10 @@
-import type { Material, Question, Ranking } from '@types';
+import type { MarketingLandingPage, Material, Question, Ranking } from '@types';
 import { buildMaterialPath, buildQuestionPath, buildRankingPath } from './slug';
 import { buildSiteUrl, getConfiguredSiteUrl, normalizeSiteUrl } from '../../config/siteUrl';
+import { isQuestionPubliclyVisible } from '../questions/questionPublication';
+import { buildMarketingLandingPath, mergeMarketingLandingPages, normalizeLandingSlug } from '../marketing/landingPages';
 
-type SitemapCategory = 'institutional' | 'questions' | 'rankings' | 'materials';
+type SitemapCategory = 'institutional' | 'questions' | 'rankings' | 'materials' | 'landings';
 type ChangeFrequency = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
 
 export interface SeoSitemapEntry {
@@ -65,6 +67,7 @@ export const SEO_ROBOT_DISALLOW_PATHS = [
   '/admin',
   '/auth',
   '/confirm-email',
+  '/cronograma',
   '/dashboard',
   '/bank-analysis',
   '/flashcards',
@@ -84,6 +87,43 @@ export const SEO_ROBOT_DISALLOW_PATHS = [
 ];
 
 const stripHtml = (value: unknown) => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+const normalizePublicationToken = (value: unknown) => String(value || '').trim().toLowerCase();
+
+export const isQuestionEligibleForPublicSitemap = (question: Question) => isQuestionPubliclyVisible(question);
+
+export const isMaterialEligibleForPublicSitemap = (material: Material) => {
+  const status = normalizePublicationToken((material as any).status);
+
+  if (!status) {
+    return true;
+  }
+
+  return ['approved', 'published', 'publicado', 'active', 'ativo'].includes(status);
+};
+
+export const isRankingEligibleForPublicSitemap = (ranking: Ranking) => {
+  const status = normalizePublicationToken((ranking as any).status);
+
+  if (!status) {
+    return true;
+  }
+
+  return ['approved', 'published', 'publicado', 'active', 'ativo'].includes(status);
+};
+
+export const isMarketingLandingEligibleForPublicSitemap = (landing: MarketingLandingPage) => {
+  if (normalizePublicationToken(landing.status) !== 'published') {
+    return false;
+  }
+
+  const slug = normalizeLandingSlug(landing.slug);
+  if (!slug || ['planos', 'elite'].includes(slug)) {
+    return false;
+  }
+
+  return buildMarketingLandingPath(slug).startsWith('/l/');
+};
 
 const readEnv = (key: string): string => {
   if (typeof process === 'undefined' || !process.env) {
@@ -136,6 +176,16 @@ const fetchList = async <TItem,>(endpoint: string): Promise<TItem[]> => {
   try {
     const payload = readEnvelopeData<unknown>(await fetchJson(endpoint), []);
     return Array.isArray(payload) ? payload as TItem[] : [];
+  } catch {
+    return [];
+  }
+};
+
+const fetchMarketingLandingPages = async (): Promise<MarketingLandingPage[]> => {
+  try {
+    const payload = readEnvelopeData<Record<string, any>>(await fetchJson('settings.php'), {});
+    const siteName = String(payload.siteName || 'ConcursoMestre').trim();
+    return mergeMarketingLandingPages(payload.landingPages, siteName);
   } catch {
     return [];
   }
@@ -224,16 +274,21 @@ const buildDynamicEntries = <TItem,>(
 
 export const buildSeoSitemapEntries = async (): Promise<SeoSitemapBuildResult> => {
   const now = new Date();
-  const [questions, rankings, materials] = await Promise.all([
+  const [questions, rankings, materials, landingPages] = await Promise.all([
     fetchAllQuestions(),
     fetchList<Ranking>('rankingsList'),
     fetchList<Material>('materialsList'),
+    fetchMarketingLandingPages(),
   ]);
 
   const institutionalEntries = SEO_PUBLIC_ROUTES.map((route) =>
     createEntry(route.path, 'institutional', route.changeFrequency, route.priority, now));
+  const publicQuestions = questions.filter(isQuestionEligibleForPublicSitemap);
+  const publicRankings = rankings.filter(isRankingEligibleForPublicSitemap);
+  const publicMaterials = materials.filter(isMaterialEligibleForPublicSitemap);
+  const publicLandings = landingPages.filter(isMarketingLandingEligibleForPublicSitemap);
   const questionResult = buildDynamicEntries(
-    questions,
+    publicQuestions,
     (question) => question.id,
     buildQuestionPath,
     (question) => stripHtml(question.enunciado_clean || question.enunciado || `questao-sem-id`),
@@ -241,7 +296,7 @@ export const buildSeoSitemapEntries = async (): Promise<SeoSitemapBuildResult> =
     now,
   );
   const rankingResult = buildDynamicEntries(
-    rankings,
+    publicRankings,
     (ranking) => ranking.id,
     buildRankingPath,
     (ranking) => ranking.name || ranking.institution || 'ranking-sem-id',
@@ -249,11 +304,19 @@ export const buildSeoSitemapEntries = async (): Promise<SeoSitemapBuildResult> =
     now,
   );
   const materialResult = buildDynamicEntries(
-    materials,
+    publicMaterials,
     (material) => material.id,
     buildMaterialPath,
     (material) => material.title || material.description || 'material-sem-id',
     'materials',
+    now,
+  );
+  const landingResult = buildDynamicEntries(
+    publicLandings,
+    (landing) => landing.id || landing.slug,
+    (landing) => buildMarketingLandingPath(landing.slug),
+    (landing) => landing.title || landing.slug || 'landing-sem-slug',
+    'landings',
     now,
   );
 
@@ -263,17 +326,20 @@ export const buildSeoSitemapEntries = async (): Promise<SeoSitemapBuildResult> =
       ...questionResult.indexedEntries,
       ...rankingResult.indexedEntries,
       ...materialResult.indexedEntries,
+      ...landingResult.indexedEntries,
     ],
     coverage: {
       institutional: createCoverageBucket(SEO_PUBLIC_ROUTES.length, institutionalEntries.length),
       questions: createCoverageBucket(questionResult.total, questionResult.indexedEntries.length),
       rankings: createCoverageBucket(rankingResult.total, rankingResult.indexedEntries.length),
       materials: createCoverageBucket(materialResult.total, materialResult.indexedEntries.length),
+      landings: createCoverageBucket(landingResult.total, landingResult.indexedEntries.length),
     },
     missingSamples: {
       questions: questionResult.missingLabels.slice(0, 10),
       rankings: rankingResult.missingLabels.slice(0, 10),
       materials: materialResult.missingLabels.slice(0, 10),
+      landings: landingResult.missingLabels.slice(0, 10),
     },
   };
 };

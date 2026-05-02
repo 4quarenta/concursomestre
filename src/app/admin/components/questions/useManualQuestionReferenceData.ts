@@ -10,51 +10,59 @@
 */
 
 import { useMemo } from 'react';
-import type { Question, SystemSettings } from '@types';
+import type { Question, SystemSettings, TaxonomyItem } from '@types';
 import { mergeExamBankSources } from '../exams/examBankUtils';
 
+type TaxonomyItemWithSigla = TaxonomyItem & {
+  sigla?: string;
+};
+
+const getTaxonomyShortLabel = (taxonomy: TaxonomyItemWithSigla) => taxonomy.sigla || taxonomy.name;
+
 export const useManualQuestionReferenceData = (systemSettings: SystemSettings, questions: Question[] = []) => {
+  const taxonomies = systemSettings.taxonomies;
+
   const existingAgencies = useMemo(() => {
-    return (systemSettings.taxonomies?.agencies || []).map((taxonomy: any) => taxonomy.sigla || taxonomy.name);
-  }, [systemSettings.taxonomies?.agencies]);
+    return (taxonomies?.agencies || []).map(getTaxonomyShortLabel);
+  }, [taxonomies]);
 
   const existingOrgaos = useMemo(() => {
-    return (systemSettings.taxonomies?.organizations || []).map((taxonomy: any) => taxonomy.sigla || taxonomy.name);
-  }, [systemSettings.taxonomies?.organizations]);
+    return (taxonomies?.organizations || []).map(getTaxonomyShortLabel);
+  }, [taxonomies]);
 
   const existingSubjects = useMemo(() => {
-    return systemSettings.taxonomies?.subjects || [];
-  }, [systemSettings.taxonomies?.subjects]);
+    return taxonomies?.subjects || [];
+  }, [taxonomies]);
 
   const existingTopics = useMemo(() => {
-    return systemSettings.taxonomies?.topics || [];
-  }, [systemSettings.taxonomies?.topics]);
+    return taxonomies?.topics || [];
+  }, [taxonomies]);
 
   const existingSubjectTopics = useMemo(() => {
-    const source = systemSettings.taxonomies?.subjectTopics?.length
-      ? systemSettings.taxonomies.subjectTopics
-      : (systemSettings.taxonomies?.topics || []).filter((taxonomy: any) => taxonomy.taxonomyLevel === 'topico');
+    const source = taxonomies?.subjectTopics?.length
+      ? taxonomies.subjectTopics
+      : (taxonomies?.topics || []).filter((taxonomy) => taxonomy.taxonomyLevel === 'topico');
     return source;
-  }, [systemSettings.taxonomies?.subjectTopics, systemSettings.taxonomies?.topics]);
+  }, [taxonomies]);
 
   const existingSpecificSubjects = useMemo(() => {
-    const source = systemSettings.taxonomies?.specificSubjects?.length
-      ? systemSettings.taxonomies.specificSubjects
-      : (systemSettings.taxonomies?.topics || []).filter((taxonomy: any) => taxonomy.taxonomyLevel === 'assunto');
+    const source = taxonomies?.specificSubjects?.length
+      ? taxonomies.specificSubjects
+      : (taxonomies?.topics || []).filter((taxonomy) => taxonomy.taxonomyLevel === 'assunto');
     return source;
-  }, [systemSettings.taxonomies?.specificSubjects, systemSettings.taxonomies?.topics]);
+  }, [taxonomies]);
 
   const existingYears = useMemo(() => {
-    return systemSettings.taxonomies?.years || [];
-  }, [systemSettings.taxonomies?.years]);
+    return taxonomies?.years || [];
+  }, [taxonomies]);
 
   const existingFocuses = useMemo(() => {
-    return systemSettings.taxonomies?.careers || [];
-  }, [systemSettings.taxonomies?.careers]);
+    return taxonomies?.careers || [];
+  }, [taxonomies]);
 
   const existingRoles = useMemo(() => {
-    return systemSettings.taxonomies?.roles || [];
-  }, [systemSettings.taxonomies?.roles]);
+    return taxonomies?.roles || [];
+  }, [taxonomies]);
 
   const existingProvas = useMemo(() => {
     return mergeExamBankSources(systemSettings, questions);

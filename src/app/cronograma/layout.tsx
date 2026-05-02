@@ -1,12 +1,9 @@
-import type { Metadata } from 'next';
+import { buildNoIndexMetadata } from '../seoMetadata';
 
-export const metadata: Metadata = {
+export const metadata = buildNoIndexMetadata({
   title: 'Cronograma de estudos',
   description: 'Crie um plano de estudos semanal com matérias, prioridades, revisões e metas de questões.',
-  alternates: {
-    canonical: '/cronograma',
-  },
-};
+});
 
 export default function CronogramaLayout({
   children,

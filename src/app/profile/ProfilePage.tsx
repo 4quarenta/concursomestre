@@ -28,9 +28,9 @@ import {
    BookmarkCheck
 } from 'lucide-react';
 import {
-   AreaChart, Area, XAxis, YAxis, Tooltip,
-   ResponsiveContainer
+   AreaChart, Area, XAxis, YAxis, Tooltip
 } from 'recharts';
+import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -56,7 +56,6 @@ import { transactionsService } from '@services/transactions';
 import { planService } from '@services/plans';
 import { buildQuestionPath } from '@services/seo';
 import { legalCommentaryApiService } from '@services/legal-commentary';
-import { buildAdminPath } from '../admin/config/adminPageNavigationConfig';
 import {
     PLATFORM_PAGE_DESCRIPTION_CLASS,
     PLATFORM_PAGE_TITLE_CLASS,
@@ -123,6 +122,16 @@ const getQuestionDifficultyLabel = (question: Question | null) => {
     return question.difficulty || ['', 'Muito Fácil', 'Fácil', 'Médio', 'Difícil', 'Muito Difícil'][Number(question.dificuldade)] || `Dificuldade ${question.dificuldade || '-'}`;
 };
 
+const buildDefaultTestimonialName = (name?: string, email?: string) => {
+    const source = String(name || email || '').trim();
+    if (!source) return '';
+
+    const parts = source.split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) return parts[0] || '';
+
+    return `${parts[0]} ${parts[1]?.charAt(0) || ''}.`.trim();
+};
+
 type NotebookEntry = {
     id: string;
     source: 'question' | 'law' | 'material';
@@ -147,7 +156,7 @@ type MaterialNotebookNote = {
 
 const Profile: React.FC = () => {
     const { currentUser, logout, refreshUser, updateUser, toggleSavedQuestion } = useAuth();
-    const { questions, userNotes, userAnswers, systemSettings, saveNote, ensureUserProgressLoaded, sendNotification } = useData();
+    const { questions, userNotes, userAnswers, systemSettings, saveNote, ensureUserProgressLoaded } = useData();
     const { addToast } = useToast();
     const pathname = usePathname() || '/profile';
     const searchParams = useSearchParams();
@@ -195,9 +204,11 @@ const Profile: React.FC = () => {
     const [isAddingCard, setIsAddingCard] = useState(false);
     const [isSavingCard, setIsSavingCard] = useState(false);
     const [isRemovingProfilePhoto, setIsRemovingProfilePhoto] = useState(false);
-    const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
+    const [failedProfilePhotoUrl, setFailedProfilePhotoUrl] = useState<string | null>(null);
     const [testimonialRating, setTestimonialRating] = useState(5);
     const [testimonialText, setTestimonialText] = useState('');
+    const [testimonialDisplayName, setTestimonialDisplayName] = useState('');
+    const [testimonialHeadline, setTestimonialHeadline] = useState('');
     const [isSubmittingTestimonial, setIsSubmittingTestimonial] = useState(false);
     const [showTestimonialModal, setShowTestimonialModal] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
@@ -218,17 +229,40 @@ const Profile: React.FC = () => {
     const [isLoadingFavoriteLaws, setIsLoadingFavoriteLaws] = useState(false);
     const [savedQuestionDetails, setSavedQuestionDetails] = useState<Question[]>([]);
     const [isLoadingSavedQuestions, setIsLoadingSavedQuestions] = useState(false);
+    const [profileNowMs, setProfileNowMs] = useState(0);
 
     const currentUserKey = React.useMemo(() => {
         const legacyUserId = (currentUser as any)?.userId;
         return String(currentUser?.id || legacyUserId || currentUser?.email || '');
     }, [currentUser]);
 
+    React.useEffect(() => {
+        const updateNow = () => setProfileNowMs(Date.now());
+        const frameId = window.requestAnimationFrame(updateNow);
+        const intervalId = window.setInterval(updateNow, 60_000);
+
+        return () => {
+            window.cancelAnimationFrame(frameId);
+            window.clearInterval(intervalId);
+        };
+    }, []);
+
     const primarySavedCard = useMemo(() => {
         return userCards.find((card: any) => Number(card.is_default) === 1) || userCards[0] || null;
     }, [userCards]);
 
     const profilePhotoUrl = useMemo(() => getAssetUrl(currentUser?.photoUrl || ''), [currentUser?.photoUrl]);
+    const photoLoadFailed = Boolean(profilePhotoUrl && failedProfilePhotoUrl === profilePhotoUrl);
+
+    const defaultTestimonialDisplayName = React.useMemo(
+        () => buildDefaultTestimonialName(currentUser?.name, currentUser?.email),
+        [currentUser?.name, currentUser?.email]
+    );
+
+    const defaultTestimonialHeadline = React.useMemo(() => {
+        const planName = String(effectivePlanDisplayName || '').trim();
+        return planName ? `Aluno ${planName}` : 'Estudante da plataforma';
+    }, [effectivePlanDisplayName]);
 
     const savedQuestionIds = React.useMemo(() => (
         Array.from(new Set((currentUser?.savedQuestionIds || [])
@@ -265,10 +299,6 @@ const Profile: React.FC = () => {
     }, [savedQuestionIds, userAnswers]);
 
     React.useEffect(() => {
-        setPhotoLoadFailed(false);
-    }, [profilePhotoUrl]);
-
-    React.useEffect(() => {
         if (!currentUser?.id) return;
         void ensureUserProgressLoaded();
     }, [currentUser?.id, ensureUserProgressLoaded]);
@@ -279,7 +309,12 @@ const Profile: React.FC = () => {
         }
 
         let isMounted = true;
-        setIsLoadingSavedQuestions(true);
+        let hasFinished = false;
+        const loadingFrameId = window.requestAnimationFrame(() => {
+            if (isMounted && !hasFinished) {
+                setIsLoadingSavedQuestions(true);
+            }
+        });
 
         Promise.all(
             missingSavedQuestionIds.map(async (questionId) => {
@@ -314,6 +349,8 @@ const Profile: React.FC = () => {
                 return Array.from(nextQuestions.values());
             });
         }).finally(() => {
+            hasFinished = true;
+            window.cancelAnimationFrame(loadingFrameId);
             if (isMounted) {
                 setIsLoadingSavedQuestions(false);
             }
@@ -321,16 +358,16 @@ const Profile: React.FC = () => {
 
         return () => {
             isMounted = false;
+            window.cancelAnimationFrame(loadingFrameId);
         };
     }, [activeTab, missingSavedQuestionIds]);
 
     React.useEffect(() => {
-        if (!currentUserKey) {
-            setLawNotes([]);
-            return;
-        }
+        const frameId = window.requestAnimationFrame(() => {
+            setLawNotes(currentUserKey ? listLegalCommentaryNotesForUser(currentUserKey) : []);
+        });
 
-        setLawNotes(listLegalCommentaryNotesForUser(currentUserKey));
+        return () => window.cancelAnimationFrame(frameId);
     }, [currentUserKey]);
 
     const notebookEntries = React.useMemo<NotebookEntry[]>(() => {
@@ -501,7 +538,11 @@ const Profile: React.FC = () => {
             return;
         }
 
-        setActiveTab(normalizedTab);
+        const frameId = window.requestAnimationFrame(() => {
+            setActiveTab(normalizedTab);
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
     }, [location.pathname, location.search, normalizeProfileTabForAccess, router, params.tab]);
 
     // Handlers de API para Gerenciamento de Dados
@@ -604,10 +645,16 @@ const Profile: React.FC = () => {
         }, 120);
     };
 
+    const prepareTestimonialModal = React.useCallback(() => {
+        setTestimonialDisplayName((current) => current.trim() || defaultTestimonialDisplayName);
+        setTestimonialHeadline((current) => current.trim() || defaultTestimonialHeadline);
+    }, [defaultTestimonialDisplayName, defaultTestimonialHeadline]);
+
     const openTestimonialModal = React.useCallback(() => {
+        prepareTestimonialModal();
         changeActiveTab('testimonial', { replace: true });
         setShowTestimonialModal(true);
-    }, [changeActiveTab]);
+    }, [changeActiveTab, prepareTestimonialModal]);
 
     const handleRemoveProfilePhoto = async () => {
         if (isRemovingProfilePhoto) return;
@@ -618,7 +665,7 @@ const Profile: React.FC = () => {
             const res = await profileService.removeProfilePhoto();
             addToast(res.message || 'Foto de perfil removida!', 'success');
             await refreshUser();
-            setPhotoLoadFailed(false);
+            setFailedProfilePhotoUrl(null);
         } catch (err: any) {
             addToast(readApiErrorMessage(err, 'Erro ao remover foto.'), 'error');
         } finally {
@@ -631,8 +678,19 @@ const Profile: React.FC = () => {
         if (!currentUser?.id || isSubmittingTestimonial) return;
 
         const testimonial = testimonialText.trim();
+        const publicDisplayName = testimonialDisplayName.trim();
+        const publicHeadline = testimonialHeadline.trim();
+
         if (testimonial.length < 20) {
             addToast('Escreva um depoimento com pelo menos 20 caracteres.', 'error');
+            return;
+        }
+        if (publicDisplayName.length < 2) {
+            addToast('Informe o nome que pode aparecer publicamente.', 'error');
+            return;
+        }
+        if (publicHeadline.length < 3) {
+            addToast('Informe o contexto do depoimento, como seu concurso, prova ou objetivo.', 'error');
             return;
         }
 
@@ -641,25 +699,19 @@ const Profile: React.FC = () => {
             const result = await profileService.submitTestimonial({
                 rating: testimonialRating,
                 testimonial,
+                publicDisplayName,
+                publicHeadline,
+                photoUrl: currentUser.photoUrl,
                 userName: currentUser.name,
                 userEmail: currentUser.email,
                 planName: effectivePlanDisplayName,
             });
 
-            void sendNotification(
-                'admin',
-                'Nova avaliacao da plataforma',
-                `${currentUser.name || currentUser.email || 'Aluno'} enviou uma avaliacao ${testimonialRating}/5 para moderacao.`,
-                'info',
-                'report',
-                buildAdminPath('support', 'feedback'),
-            ).catch((notificationError) => {
-                console.error('Failed to notify admin about platform testimonial:', notificationError);
-            });
-
             addToast(result.message, 'success');
             setTestimonialRating(5);
             setTestimonialText('');
+            setTestimonialDisplayName(defaultTestimonialDisplayName);
+            setTestimonialHeadline(defaultTestimonialHeadline);
             setShowTestimonialModal(false);
         } catch (err: any) {
             addToast(readApiErrorMessage(err, 'Não foi possível enviar seu depoimento agora.'), 'error');
@@ -1051,7 +1103,11 @@ const Profile: React.FC = () => {
             : 'Sem cobranca ativa';
 
     React.useEffect(() => {
-        setOptimisticAutoRenew(null);
+        const frameId = window.requestAnimationFrame(() => {
+            setOptimisticAutoRenew(null);
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
     }, [activeSubscription?.id, activeSubscription?.auto_renew, activeSubscription?.cancel_at_period_end]);
 
     const fetchUserMaterials = React.useCallback(async () => {
@@ -1924,6 +1980,40 @@ const Profile: React.FC = () => {
                                 </div>
                             </div>
 
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase text-slate-500 transition-colors dark:text-slate-400">
+                                        Nome público
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={testimonialDisplayName}
+                                        onChange={(event) => setTestimonialDisplayName(event.target.value)}
+                                        disabled={isSubmittingTestimonial}
+                                        maxLength={120}
+                                        placeholder="Ex: Ana S."
+                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-indigo-500"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold uppercase text-slate-500 transition-colors dark:text-slate-400">
+                                        Contexto
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={testimonialHeadline}
+                                        onChange={(event) => setTestimonialHeadline(event.target.value)}
+                                        disabled={isSubmittingTestimonial}
+                                        maxLength={180}
+                                        placeholder="Ex: Aprovada Polícia Federal"
+                                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-indigo-500"
+                                    />
+                                </div>
+                            </div>
+                            <p className="-mt-2 text-[11px] font-medium leading-5 text-slate-500 dark:text-slate-400">
+                                Esses dados aparecem na home somente se o depoimento for aprovado pela equipe.
+                            </p>
+
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase text-slate-500 transition-colors dark:text-slate-400">
                                     Comentário
@@ -1954,7 +2044,7 @@ const Profile: React.FC = () => {
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={isSubmittingTestimonial || testimonialText.trim().length < 20}
+                                    disabled={isSubmittingTestimonial || testimonialText.trim().length < 20 || testimonialDisplayName.trim().length < 2 || testimonialHeadline.trim().length < 3}
                                     className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-indigo-500/10 transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-500 dark:hover:bg-indigo-600"
                                 >
                                     {isSubmittingTestimonial ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
@@ -1972,32 +2062,39 @@ const Profile: React.FC = () => {
     // Atualizar dados quando a aba mudar
     React.useEffect(() => {
         if (!currentUser?.id) {
-            setUserCards([]);
-            setUserTransactions([]);
-            setUserMaterials([]);
-            setMaterialNotes([]);
-            setFavoriteLaws([]);
-            return;
+            const frameId = window.requestAnimationFrame(() => {
+                setUserCards([]);
+                setUserTransactions([]);
+                setUserMaterials([]);
+                setMaterialNotes([]);
+                setFavoriteLaws([]);
+            });
+
+            return () => window.cancelAnimationFrame(frameId);
         }
 
-        if (activeTab === 'billing' || activeTab === 'personal') {
-            void fetchUserCards();
-        }
-        if (activeTab === 'billing' || activeTab === 'billing-history') {
-            void fetchUserTransactions();
-        }
-        if (activeTab === 'materials' && marketplaceEnabled) {
-            void fetchUserMaterials();
-        }
-        if (activeTab === 'notebook' && marketplaceEnabled) {
-            void fetchUserMaterials();
-        }
-        if (activeTab === 'favorite-laws') {
-            void fetchFavoriteLaws();
-        }
-        if (activeTab === 'referral' && canAccessReferralTab) {
-            void fetchReferralStats();
-        }
+        const frameId = window.requestAnimationFrame(() => {
+            if (activeTab === 'billing' || activeTab === 'personal') {
+                void fetchUserCards();
+            }
+            if (activeTab === 'billing' || activeTab === 'billing-history') {
+                void fetchUserTransactions();
+            }
+            if (activeTab === 'materials' && marketplaceEnabled) {
+                void fetchUserMaterials();
+            }
+            if (activeTab === 'notebook' && marketplaceEnabled) {
+                void fetchUserMaterials();
+            }
+            if (activeTab === 'favorite-laws') {
+                void fetchFavoriteLaws();
+            }
+            if (activeTab === 'referral' && canAccessReferralTab) {
+                void fetchReferralStats();
+            }
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
     }, [
         activeTab,
         canAccessReferralTab,
@@ -2012,20 +2109,34 @@ const Profile: React.FC = () => {
     ]);
 
     React.useEffect(() => {
-        if (activeTab === 'testimonial') {
-            setShowTestimonialModal(true);
+        if (activeTab !== 'testimonial') {
+            return;
         }
-    }, [activeTab]);
+
+        const frameId = window.requestAnimationFrame(() => {
+            prepareTestimonialModal();
+            setShowTestimonialModal(true);
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [activeTab, prepareTestimonialModal]);
 
     React.useEffect(() => {
         if (activeTab !== 'notebook') return;
 
         if (!marketplaceEnabled || !currentUser?.id || userMaterials.length === 0) {
-            setMaterialNotes([]);
-            return;
+            const frameId = window.requestAnimationFrame(() => {
+                setMaterialNotes([]);
+            });
+
+            return () => window.cancelAnimationFrame(frameId);
         }
 
-        void fetchMaterialNotesForMaterials(userMaterials);
+        const frameId = window.requestAnimationFrame(() => {
+            void fetchMaterialNotesForMaterials(userMaterials);
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
     }, [
         activeTab,
         currentUser?.id,
@@ -2207,7 +2318,7 @@ const Profile: React.FC = () => {
                                             const res = await profileService.uploadProfilePhoto(file);
                                             addToast(res.message || 'Foto de perfil atualizada!', 'success');
                                             await refreshUser();
-                                            setPhotoLoadFailed(false);
+                                            setFailedProfilePhotoUrl(null);
                                         } catch (err: any) {
                                             addToast(readApiErrorMessage(err, 'Erro ao enviar foto.'), 'error');
                                         }
@@ -2222,7 +2333,7 @@ const Profile: React.FC = () => {
                                         src={profilePhotoUrl}
                                         alt={currentUser.name}
                                         className="w-full h-full object-cover"
-                                        onError={() => setPhotoLoadFailed(true)}
+                                        onError={() => setFailedProfilePhotoUrl(profilePhotoUrl)}
                                     />
                                 ) : (
                                     <span className="text-2xl font-black">{currentUser.name?.charAt(0) || 'U'}</span>
@@ -2436,7 +2547,7 @@ const Profile: React.FC = () => {
                               <div className="pt-4 space-y-2">
                                  <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 leading-relaxed uppercase tracking-widest">Desempenho por Período</p>
                                  <div className="h-24 w-full min-w-0">
-                                    <ResponsiveContainer width="100%" height={96} minWidth={0}>
+                                    <StableResponsiveContainer height={96}>
                                        <AreaChart data={timelineData}>
                                           <defs>
                                              <linearGradient id="colorTotalProfile" x1="0" y1="0" x2="0" y2="1">
@@ -2449,7 +2560,7 @@ const Profile: React.FC = () => {
                                           <Area type="monotone" dataKey="total" stroke="#f97316" strokeWidth={2} fill="url(#colorTotalProfile)" name="Quantidade" fillOpacity={1} />
                                           <Area type="monotone" dataKey="taxa" stroke="#6366f1" strokeWidth={1} fillOpacity={0} name="Precisão (%)" />
                                        </AreaChart>
-                                    </ResponsiveContainer>
+                                    </StableResponsiveContainer>
                                  </div>
                               </div>
                            </div>
@@ -2808,7 +2919,10 @@ const Profile: React.FC = () => {
                                    </thead>
                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                        {userMaterials.map((material: any) => {
-                                           const daysSince = (Date.now() - new Date(material.purchasedAt).getTime()) / (1000 * 60 * 60 * 24);
+                                           const purchasedAtTimestamp = new Date(material.purchasedAt).getTime();
+                                           const daysSince = profileNowMs > 0 && Number.isFinite(purchasedAtTimestamp)
+                                               ? (profileNowMs - purchasedAtTimestamp) / (1000 * 60 * 60 * 24)
+                                               : 0;
                                            const canDownload = daysSince >= 7;
                                            
                                            return (
@@ -3261,7 +3375,7 @@ const Profile: React.FC = () => {
                         </div>
                         <button
                            type="button"
-                           onClick={() => setShowTestimonialModal(true)}
+                           onClick={openTestimonialModal}
                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-indigo-500/10 transition-all hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
                         >
                            <Star size={14} />
@@ -3350,7 +3464,7 @@ const Profile: React.FC = () => {
                                                                         refreshUser();
                                                                         fetchUserTransactions();
                                                                     }
-                                                                } catch (err: any) {
+                                                                } catch {
                                                                     addToast('Erro ao cancelar solicitação.', 'error');
                                                                 }
                                                             }

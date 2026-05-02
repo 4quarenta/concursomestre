@@ -78,7 +78,11 @@ const AdminMarketingSection = ({
   const [activeSection, setActiveSection] = useState<AdminMarketingSectionKey>(initialSection);
 
   useEffect(() => {
-    setActiveSection(initialSection);
+    const frameId = window.requestAnimationFrame(() => {
+      setActiveSection(initialSection);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [initialSection]);
 
   const changeSection = (section: AdminMarketingSectionKey) => {

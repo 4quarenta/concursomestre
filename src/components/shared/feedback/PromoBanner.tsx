@@ -14,14 +14,16 @@ import React from 'react';
 import { useData } from '@providers/DataProvider';
 import Link from 'next/link';
 import { Timer, ArrowRight, X } from 'lucide-react';
+import { buildPromotionPath } from '@services/marketing/promotionCampaign';
 
 const PromoBanner: React.FC = () => {
   const { systemSettings } = useData();
   const [isVisible, setIsVisible] = React.useState(true);
   const promo = systemSettings.activePromotion;
   const promoEnabled = systemSettings.features.landingPagePromoEnabled;
+  const promotionPath = buildPromotionPath(promo);
 
-  if (!promo.isActive || !isVisible || !promoEnabled) return null;
+  if (!promo.isActive || !isVisible || !promoEnabled || !promotionPath) return null;
 
   return (
     <div
@@ -34,7 +36,7 @@ const PromoBanner: React.FC = () => {
           <span className="uppercase tracking-[0.1em] text-[10px]">{promo.bannerText}</span>
         </div>
         <Link
-          href={`/promo/${promo.slug}`}
+          href={promotionPath}
           className="bg-white text-slate-900 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 shadow-sm"
         >
           Aproveitar Agora <ArrowRight size={10} />

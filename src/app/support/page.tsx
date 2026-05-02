@@ -27,6 +27,7 @@ import {
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useData } from '@providers/DataProvider';
+import { useSearchParams } from 'next/navigation';
 import {
   PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -136,6 +137,7 @@ const mergeSupportThreads = (officialThreads: SupportThread[], localThreads: Sup
 const Support: React.FC = () => {
   const { currentUser, isLoading } = useAuth();
   const { addToast } = useToast();
+  const searchParams = useSearchParams();
   const { systemSettings } = useData();
   const pixKey = systemSettings?.pixKey || 'pix@concursomestre.com.br';
   const [activeTab, setActiveTab] = useState<SupportTab>('bug');
@@ -149,11 +151,13 @@ const Support: React.FC = () => {
   const [loadingReplies, setLoadingReplies] = useState<number | null>(null);
   const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
   const [sendingReplyId, setSendingReplyId] = useState<number | null>(null);
+  const autoOpenedThreadRef = React.useRef<number | null>(null);
 
   const activeCategory = useMemo(
     () => SUPPORT_CATEGORIES.find((category) => category.id === activeTab) ?? SUPPORT_CATEGORIES[0],
     [activeTab],
   );
+  const requestedThreadId = useMemo(() => Number(searchParams?.get('threadId') || 0), [searchParams]);
   const canSubmitThread = Boolean(currentUser && !isLoading && activeCategory.serviceType);
 
   /**
@@ -192,9 +196,15 @@ const Support: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'donation') {
-      void fetchHistory(false);
+    if (activeTab === 'donation') {
+      return;
     }
+
+    const historyTimer = window.setTimeout(() => {
+      void fetchHistory(false);
+    }, 0);
+
+    return () => window.clearTimeout(historyTimer);
   }, [activeTab, fetchHistory]);
 
   /**
@@ -322,6 +332,39 @@ const Support: React.FC = () => {
   };
 
   const filteredHistory = useMemo(() => feedbackHistory, [feedbackHistory]);
+
+  useEffect(() => {
+    if (!requestedThreadId || autoOpenedThreadRef.current === requestedThreadId) {
+      return;
+    }
+
+    const targetThread = feedbackHistory.find((thread) => thread.id === requestedThreadId);
+    if (!targetThread) {
+      return;
+    }
+
+    autoOpenedThreadRef.current = requestedThreadId;
+    const openTimer = window.setTimeout(() => {
+      setExpandedFeedbackId(requestedThreadId);
+
+      if (replies[requestedThreadId]) {
+        return;
+      }
+
+      setLoadingReplies(requestedThreadId);
+      supportService.listReplies(requestedThreadId)
+        .then((threadReplies) => {
+          setReplies((currentReplies) => ({ ...currentReplies, [requestedThreadId]: threadReplies }));
+        })
+        .catch((error) => {
+          console.error('Error opening support thread from notification', error);
+          addToast(readApiErrorMessage(error, 'Nao foi possivel abrir a conversa de suporte.'), 'error');
+        })
+        .finally(() => setLoadingReplies(null));
+    }, 0);
+
+    return () => window.clearTimeout(openTimer);
+  }, [addToast, feedbackHistory, replies, requestedThreadId]);
 
   const supportStats = useMemo(() => ({
     total: feedbackHistory.length,

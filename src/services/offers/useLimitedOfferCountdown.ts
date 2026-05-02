@@ -50,34 +50,39 @@ export const useLimitedOfferCountdown = (
   endsAt?: string | null,
 ): LimitedOfferCountdownState => {
   const expiresAt = useMemo(() => parseEndsAt(endsAt), [endsAt]);
-  const [remainingMs, setRemainingMs] = useState(() => {
-    if (!enabled || expiresAt <= 0) {
-      return 0;
-    }
-
-    return Math.max(0, expiresAt - Date.now());
-  });
+  const [remainingMs, setRemainingMs] = useState(0);
 
   useEffect(() => {
-    if (!enabled || expiresAt <= Date.now()) {
-      setRemainingMs(0);
-      return;
-    }
+    let intervalId: number | undefined;
 
     const tick = () => {
-      setRemainingMs(Math.max(0, expiresAt - Date.now()));
+      const nextRemainingMs = enabled && expiresAt > 0
+        ? Math.max(0, expiresAt - Date.now())
+        : 0;
+
+      setRemainingMs(nextRemainingMs);
+
+      if (nextRemainingMs <= 0 && intervalId) {
+        window.clearInterval(intervalId);
+        intervalId = undefined;
+      }
     };
 
-    tick();
-    const intervalId = window.setInterval(tick, 1000);
+    const frameId = window.requestAnimationFrame(tick);
+    if (enabled && expiresAt > 0) {
+      intervalId = window.setInterval(tick, 1000);
+    }
 
     return () => {
-      window.clearInterval(intervalId);
+      window.cancelAnimationFrame(frameId);
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
     };
   }, [enabled, expiresAt]);
 
   const parts = useMemo(() => splitRemainingTime(remainingMs), [remainingMs]);
-  const isActive = enabled && expiresAt > Date.now() && remainingMs > 0;
+  const isActive = enabled && remainingMs > 0;
 
   return {
     isActive,

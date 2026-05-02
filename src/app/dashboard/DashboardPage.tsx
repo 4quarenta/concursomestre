@@ -17,11 +17,11 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
+import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import {
   ArrowRight,
   Calendar,
@@ -567,7 +567,7 @@ const Dashboard: React.FC = () => {
 
           <div className="h-[280px] w-full min-w-0 overflow-hidden">
             {accuracySummary.totalQuestions > 0 ? (
-              <ResponsiveContainer width="100%" height={280} minWidth={0}>
+              <StableResponsiveContainer height={280}>
                 <AreaChart data={timelineData} margin={{ top: 12, right: 12, left: -18, bottom: 0 }}>
                   <defs>
                     <linearGradient id="questionsFill" x1="0" y1="0" x2="0" y2="1">
@@ -600,7 +600,7 @@ const Dashboard: React.FC = () => {
                     <Area type="linear" dataKey="correct" stroke="#0ea5a4" fill="url(#correctFill)" strokeWidth={2} name="correct" />
                   ) : null}
                 </AreaChart>
-              </ResponsiveContainer>
+              </StableResponsiveContainer>
             ) : (
               <div className="flex h-full flex-col items-center justify-center rounded-[2rem] border border-dashed border-slate-200 bg-slate-50 text-center dark:border-slate-700 dark:bg-slate-950">
                 <p className="text-base font-bold text-slate-700 dark:text-slate-200">Nenhuma questao respondida no periodo.</p>

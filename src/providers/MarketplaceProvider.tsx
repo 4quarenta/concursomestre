@@ -9,7 +9,7 @@
 *
 */
 
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { Material, Transaction } from '@types';
 import { useAuth } from './AuthProvider';
 import { useData } from './DataProvider';
@@ -145,7 +145,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
    * Recarrega as transações do usuário autenticado para biblioteca e histórico.
    * @since 1.0.0
    */
-  const fetchUserTransactions = async () => {
+  const fetchUserTransactions = useCallback(async () => {
     if (!currentUser) return;
 
     try {
@@ -154,7 +154,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } catch (error) {
       console.error('Error fetching user transactions:', error);
     }
-  };
+  }, [currentUser]);
 
   // Carrega transações do usuário atual ou todas as transações quando o admin abre o painel.
   /**
@@ -165,31 +165,49 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   useEffect(() => {
     if (authLoading) return;
 
-    if (currentUser) {
-      setIsLoadingTransactions(true);
+    let isCancelled = false;
+    const frameId = window.requestAnimationFrame(() => {
+      if (currentUser) {
+        setIsLoadingTransactions(true);
 
-      if (isPrivilegedTransactionViewer(currentUser)) {
-        Promise.all([
-          marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
-          marketplaceService.listTransactions({
-            scope: 'all',
-            status: 'refund_requested',
-            limit: ADMIN_TRANSACTION_LIST_LIMIT,
-          }),
-        ])
-          .then(([latestTransactions, pendingRefundTransactions]) => {
-            setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
-          })
-          .catch((error) => console.error('Failed to load all transactions:', error))
-          .finally(() => setIsLoadingTransactions(false));
+        if (isPrivilegedTransactionViewer(currentUser)) {
+          Promise.all([
+            marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
+            marketplaceService.listTransactions({
+              scope: 'all',
+              status: 'refund_requested',
+              limit: ADMIN_TRANSACTION_LIST_LIMIT,
+            }),
+          ])
+            .then(([latestTransactions, pendingRefundTransactions]) => {
+              if (!isCancelled) {
+                setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
+              }
+            })
+            .catch((error) => console.error('Failed to load all transactions:', error))
+            .finally(() => {
+              if (!isCancelled) {
+                setIsLoadingTransactions(false);
+              }
+            });
+        } else {
+          fetchUserTransactions().finally(() => {
+            if (!isCancelled) {
+              setIsLoadingTransactions(false);
+            }
+          });
+        }
       } else {
-        fetchUserTransactions().finally(() => setIsLoadingTransactions(false));
+        setTransactions([]);
+        setIsLoadingTransactions(false);
       }
-    } else {
-      setTransactions([]);
-      setIsLoadingTransactions(false);
-    }
-  }, [authLoading, currentUser?.id, currentUser?.isAdmin, currentUser?.role]);
+    });
+
+    return () => {
+      isCancelled = true;
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [authLoading, currentUser, fetchUserTransactions]);
 
   /**
    * Efetiva a compra local de um material e dispara as notificações relacionadas.

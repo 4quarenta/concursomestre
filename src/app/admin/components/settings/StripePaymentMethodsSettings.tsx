@@ -65,7 +65,14 @@ const StripePaymentMethodsSettings = ({ value, onChange }: StripePaymentMethodsS
       return;
     }
 
-    const id = `custom_${stripeType.replace(/[^a-z0-9_:-]/g, '_')}_${Date.now()}`;
+    const baseId = `custom_${stripeType.replace(/[^a-z0-9_:-]/g, '_')}`;
+    let suffix = normalized.methods.length + 1;
+    let id = `${baseId}_${suffix}`;
+    while (normalized.methods.some((method) => method.id === id)) {
+      suffix += 1;
+      id = `${baseId}_${suffix}`;
+    }
+
     onChange({
       methods: [
         ...normalized.methods,

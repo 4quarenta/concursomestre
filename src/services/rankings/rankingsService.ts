@@ -12,6 +12,18 @@
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 import type { Ranking, RankingEntry } from '@types';
 
+type RankingsListResponse = {
+  rankings?: Ranking[];
+  items?: Ranking[];
+};
+
+type RankingMutationResponse = {
+  id?: string | number;
+  data?: {
+    id?: string | number;
+  };
+};
+
 /**
  * Normaliza cargas de rankings enquanto o backend ainda pode devolver
  * array puro, `{ rankings }`, `{ items }` ou um objeto unico por legado.
@@ -49,7 +61,7 @@ export const rankingsService = {
    * @since v1.0.0
    */
   async list(): Promise<Ranking[]> {
-    const response = await apiClient.get<any>(ENDPOINTS.rankings.list) as any;
+    const response = await apiClient.get<RankingsListResponse | Ranking[]>(ENDPOINTS.rankings.list);
     return normalizeRankingsList(readApiData(response, []));
   },
 
@@ -68,10 +80,11 @@ export const rankingsService = {
    * @since v1.0.0
    */
   async create(payload: Ranking): Promise<string> {
-    const response = await apiClient.post<any>(ENDPOINTS.rankings.create, payload) as any;
-    const raw = assertApiSuccess(response, 'Erro ao criar ranking.').raw;
+    const response = await apiClient.post<RankingMutationResponse>(ENDPOINTS.rankings.create, payload);
+    const envelope = assertApiSuccess(response, 'Erro ao criar ranking.');
+    const result = readApiData<RankingMutationResponse>(response, {});
 
-    return raw?.data?.id ?? raw?.id ?? payload.id;
+    return String(result.data?.id ?? result.id ?? envelope.raw.id ?? payload.id);
   },
 
   /**
@@ -80,15 +93,16 @@ export const rankingsService = {
    * @since v1.0.0
    */
   async join(rankingId: string, userId: string, entry: RankingEntry): Promise<string> {
-    const response = await apiClient.post<any>(ENDPOINTS.rankings.join, {
+    const response = await apiClient.post<RankingMutationResponse>(ENDPOINTS.rankings.join, {
       rankingId,
       userId,
       entry,
-    }) as any;
+    });
 
-    const raw = assertApiSuccess(response, 'Erro ao enviar gabarito.').raw;
+    const envelope = assertApiSuccess(response, 'Erro ao enviar gabarito.');
+    const result = readApiData<RankingMutationResponse>(response, {});
 
-    return raw?.data?.id ?? raw?.id ?? entry.id;
+    return String(result.data?.id ?? result.id ?? envelope.raw.id ?? entry.id);
   },
 
   /**
@@ -96,7 +110,7 @@ export const rankingsService = {
    * @since v1.0.0
    */
   async moderate(rankingId: string, status: 'approved' | 'rejected'): Promise<void> {
-    const response = await apiClient.post<any>(ENDPOINTS.rankings.moderate, { id: rankingId, status }) as any;
+    const response = await apiClient.post(ENDPOINTS.rankings.moderate, { id: rankingId, status });
     assertApiSuccess(response, 'Erro ao moderar ranking.');
   },
 
@@ -105,7 +119,7 @@ export const rankingsService = {
    * @since v1.0.0
    */
   async update(payload: Ranking): Promise<void> {
-    const response = await apiClient.post<any>(ENDPOINTS.rankings.update, payload) as any;
+    const response = await apiClient.post(ENDPOINTS.rankings.update, payload);
     assertApiSuccess(response, 'Erro ao atualizar ranking.');
   },
 
@@ -114,7 +128,7 @@ export const rankingsService = {
    * @since v1.0.0
    */
   async remove(rankingId: string): Promise<void> {
-    const response = await apiClient.post<any>(ENDPOINTS.rankings.delete, { id: rankingId }) as any;
+    const response = await apiClient.post(ENDPOINTS.rankings.delete, { id: rankingId });
     assertApiSuccess(response, 'Erro ao excluir ranking.');
   },
 };

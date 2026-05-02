@@ -24,7 +24,6 @@ import {
   ADMIN_MUTED_SURFACE_CLASS,
   ADMIN_PAGE_PANEL_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
-  ADMIN_SECONDARY_BUTTON_CLASS,
 } from '../shared/adminPanelStyles';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
@@ -54,7 +53,11 @@ const AdminSocialLinksManager = ({
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setDraftLinks(mergeLandingPageContent(systemSettings.landingPageContent).socialLinks);
+    const frameId = window.requestAnimationFrame(() => {
+      setDraftLinks(mergeLandingPageContent(systemSettings.landingPageContent).socialLinks);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [systemSettings.landingPageContent]);
 
   const enabledCount = useMemo(

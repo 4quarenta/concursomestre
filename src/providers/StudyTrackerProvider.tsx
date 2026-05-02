@@ -87,10 +87,14 @@ export const StudyTrackerBridge: React.FC = () => {
   const { currentUser } = useAuth();
   const { addToast } = useToast();
   const tracker = useStudyTracker();
-  const lastInteractionAtRef = React.useRef<number>(Date.now());
-  const lastTickAtRef = React.useRef<number>(Date.now());
+  const lastInteractionAtRef = React.useRef<number>(0);
+  const lastTickAtRef = React.useRef<number>(0);
 
   React.useEffect(() => {
+    const now = Date.now();
+    lastInteractionAtRef.current = now;
+    lastTickAtRef.current = now;
+
     const storedWidgetState = window.localStorage.getItem(WIDGET_STORAGE_KEY);
     setStudyTrackerWidgetExpanded(storedWidgetState === '1');
   }, []);
@@ -209,16 +213,6 @@ export const StudyTrackerBridge: React.FC = () => {
     };
   }, [currentUser?.id, pathname]);
 
-  const refreshPersistedTotals = React.useCallback(async () => {
-    if (!currentUser?.id) {
-      syncPersistedStudyTotals(null);
-      return;
-    }
-
-    const statistics = await statisticsService.getUserStatistics(currentUser.id);
-    syncPersistedStudyTotals(statistics);
-  }, [currentUser?.id]);
-
   const stopStudySession = React.useCallback(async () => {
     if (!currentUser?.id) {
       return;
@@ -256,8 +250,8 @@ export const StudyTrackerBridge: React.FC = () => {
       syncPersistedStudyTotals(result.statistics);
       resetStudyTrackerSession();
       addToast('Tempo de estudo registrado com sucesso.', 'success');
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel registrar o tempo de estudo.', 'error');
+    } catch (error: unknown) {
+      addToast(error instanceof Error ? error.message : 'Nao foi possivel registrar o tempo de estudo.', 'error');
     } finally {
       setStudyTrackerSaving(false);
       lastInteractionAtRef.current = Date.now();
@@ -267,10 +261,6 @@ export const StudyTrackerBridge: React.FC = () => {
 
   const handleWidgetToggle = React.useCallback(() => {
     setStudyTrackerWidgetExpanded(!getStudyTrackerSnapshot().isWidgetExpanded);
-  }, []);
-
-  const registerSimulationElapsed = React.useCallback((simulationId: string, elapsedSeconds: number) => {
-    recordSimulationStudyTime(simulationId, elapsedSeconds);
   }, []);
 
   if (!currentUser || !shouldRenderStudyWidget(pathname)) {

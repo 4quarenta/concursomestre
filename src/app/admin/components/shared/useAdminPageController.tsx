@@ -26,6 +26,7 @@ import { useTheme } from '@providers/ThemeProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { adminService, type AdminFeedbackThread } from '@services/admin/adminService';
+import type { ErrorReport, Transaction } from '@types';
 import {
   ADMIN_SECTION_CONFIG,
   DEFAULT_SECTION_BY_TAB,
@@ -36,6 +37,7 @@ import {
   isPanelSection,
   isSettingsSection,
   isSupportSection,
+  resolveSupportLandingSection,
   TAB_DESCRIPTIONS,
   buildAdminPath,
   resolveAdminRoute,
@@ -52,6 +54,15 @@ import {
 
 const countPendingFeedbackThreads = (threads: AdminFeedbackThread[]) =>
   threads.filter((thread) => String(thread.status || '').toLowerCase() !== 'resolved').length;
+
+type AdminNotificationSummary = {
+  deletedAt?: number | string | null;
+  isRead?: boolean;
+};
+
+type AdminSettingsWithFeedbackCount = {
+  adminFeedbackCount?: number | string | null;
+};
 
 export type {
   AdminFinanceSection,
@@ -122,11 +133,14 @@ export const useAdminPageController = () => {
   const [initialSupportSection, setInitialSupportSection] = useState<AdminSupportSection>('feedback');
   const [initialSettingsSection, setInitialSettingsSection] = useState<AdminSettingsSection>('general');
 
-  const unreadCount = (notifications || []).filter((notification) => !notification.isRead && !notification.deletedAt).length;
+  const unreadCount = ((notifications || []) as AdminNotificationSummary[])
+    .filter((notification) => !notification.isRead && !notification.deletedAt).length;
   const userInitials = currentUser?.name?.charAt(0) || 'A';
-  const refundRequestsCount = (transactions || []).filter((transaction: any) => transaction.status === 'refund_requested').length;
-  const openReportsCount = (reports || []).filter((report: any) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase())).length;
-  const settingsFeedbackCount = Math.max(0, Number((systemSettings as any)?.adminFeedbackCount || 0));
+  const refundRequestsCount = ((transactions || []) as Transaction[])
+    .filter((transaction) => transaction.status === 'refund_requested').length;
+  const openReportsCount = ((reports || []) as ErrorReport[])
+    .filter((report) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase())).length;
+  const settingsFeedbackCount = Math.max(0, Number((systemSettings as AdminSettingsWithFeedbackCount | undefined)?.adminFeedbackCount || 0));
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(settingsFeedbackCount);
   const [pendingCommentsCount, setPendingCommentsCount] = useState(0);
   const feedbackCount = pendingFeedbackCount;
@@ -134,7 +148,11 @@ export const useAdminPageController = () => {
   const supportInboxCount = feedbackCount + openReportsCount + refundRequestsCount + pendingCommentsCount;
 
   useEffect(() => {
-    setPendingFeedbackCount(settingsFeedbackCount);
+    const frameId = window.requestAnimationFrame(() => {
+      setPendingFeedbackCount(settingsFeedbackCount);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [settingsFeedbackCount]);
 
   useEffect(() => {
@@ -144,48 +162,55 @@ export const useAdminPageController = () => {
 
     let isCurrent = true;
 
-    adminService.getFeedbackThreads()
-      .then((threads) => {
-        if (isCurrent) {
-          setPendingFeedbackCount(countPendingFeedbackThreads(threads));
-        }
-      })
-      .catch(() => {
-        if (isCurrent) {
-          setPendingFeedbackCount(settingsFeedbackCount);
-        }
-      });
+    const frameId = window.requestAnimationFrame(() => {
+      adminService.getFeedbackThreads()
+        .then((threads) => {
+          if (isCurrent) {
+            setPendingFeedbackCount(countPendingFeedbackThreads(threads));
+          }
+        })
+        .catch(() => {
+          if (isCurrent) {
+            setPendingFeedbackCount(settingsFeedbackCount);
+          }
+        });
+    });
 
     return () => {
       isCurrent = false;
+      window.cancelAnimationFrame(frameId);
     };
   }, [currentUser?.id, settingsFeedbackCount]);
 
   useEffect(() => {
     if (!currentUser?.id) {
-      setPendingCommentsCount(0);
-      return;
+      const frameId = window.requestAnimationFrame(() => {
+        setPendingCommentsCount(0);
+      });
+
+      return () => window.cancelAnimationFrame(frameId);
     }
 
     let isCurrent = true;
-
-    adminService.getModerationComments({ status: 'pending', page: 1, perPage: 1 })
-      .then((payload) => {
-        if (isCurrent) {
-          setPendingCommentsCount(Number(payload.counts?.pending || payload.total || 0));
-        }
-      })
-      .catch(() => {
-        if (isCurrent) {
-          setPendingCommentsCount(0);
-        }
-      });
+    const frameId = window.requestAnimationFrame(() => {
+      adminService.getModerationComments({ status: 'pending', page: 1, perPage: 1 })
+        .then((payload) => {
+          if (isCurrent) {
+            setPendingCommentsCount(Number(payload.counts?.pending || payload.total || 0));
+          }
+        })
+        .catch(() => {
+          if (isCurrent) {
+            setPendingCommentsCount(0);
+          }
+        });
+    });
 
     return () => {
       isCurrent = false;
+      window.cancelAnimationFrame(frameId);
     };
   }, [currentUser?.id]);
-
   const sectionBadges = useMemo(() => ({
     support: {
       feedback: feedbackCount,
@@ -194,6 +219,7 @@ export const useAdminPageController = () => {
       refunds: refundRequestsCount,
     },
   }), [feedbackCount, openReportsCount, pendingCommentsCount, refundRequestsCount]);
+  const supportLandingSection = useMemo(() => resolveSupportLandingSection(sectionBadges.support), [sectionBadges]);
 
   const adminTabs = useMemo<AdminNavigationTab[]>(() => ([
     { key: 'panel', label: 'Dashboard', icon: LayoutDashboard, badge: panelAlertsCount > 0 ? panelAlertsCount : undefined, group: 'Conteudo', description: 'Visao geral e saude operacional' },
@@ -290,7 +316,7 @@ export const useAdminPageController = () => {
   };
 
   const handleTabChange = (nextTab: AdminPageTab) => {
-    syncAdminUrl(nextTab, DEFAULT_SECTION_BY_TAB[nextTab]);
+    syncAdminUrl(nextTab, nextTab === 'support' ? supportLandingSection : DEFAULT_SECTION_BY_TAB[nextTab]);
   };
 
   const handleSectionChange = (tab: AdminPageTab, section: string) => {
@@ -316,22 +342,25 @@ export const useAdminPageController = () => {
       routeTab || legacySearchParams.get('tab'),
       routeSection || legacySearchParams.get('section'),
     );
+    const frameId = window.requestAnimationFrame(() => {
+      setActiveTabState(route.tab);
+      setGroupSection(route.tab, route.section);
 
-    setActiveTabState(route.tab);
-    setGroupSection(route.tab, route.section);
+      const canonicalAdminPath = buildAdminPath(route.tab, route.section, location.hash);
+      const currentAdminPath = `${location.pathname}${location.hash}`;
 
-    const canonicalAdminPath = buildAdminPath(route.tab, route.section, location.hash);
-    const currentAdminPath = `${location.pathname}${location.hash}`;
+      if (location.search || canonicalAdminPath !== currentAdminPath) {
+        router.replace(canonicalAdminPath);
+        return;
+      }
 
-    if (location.search || canonicalAdminPath !== currentAdminPath) {
-      router.replace(canonicalAdminPath);
-      return;
-    }
+      void ensureUsersLoaded();
+      void ensureReportsLoaded();
+      void ensureRankingsLoaded();
+      void ensureTaxonomiesLoaded();
+    });
 
-    void ensureUsersLoaded();
-    void ensureReportsLoaded();
-    void ensureRankingsLoaded();
-    void ensureTaxonomiesLoaded();
+    return () => window.cancelAnimationFrame(frameId);
   }, [
     routeSection,
     routeTab,
@@ -530,7 +559,7 @@ export const useAdminPageController = () => {
       pendingFeedbackCount: feedbackCount,
       onPendingFeedbackCountChange: setPendingFeedbackCount,
       onPendingCommentsCountChange: setPendingCommentsCount,
-      onResolveReport: (report: any) => resolveReport(report.id, 'resolved', report.resolution || report.reason || 'Denuncia tratada pela equipe administrativa.'),
+      onResolveReport: (report: ErrorReport) => resolveReport(report.id, 'resolved', report.resolution || report.reason || 'Denuncia tratada pela equipe administrativa.'),
       onSectionChange: (section: AdminSupportSection) => handleSectionChange('support', section),
       standaloneSection: true,
     },

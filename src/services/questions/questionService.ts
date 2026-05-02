@@ -25,20 +25,49 @@ type SubmitAnswerResult = {
   newLevel?: number;
 };
 
+type QuestionCreateResponse = {
+  question?: Question;
+  id?: string | number;
+};
+
+type ToggleSavedQuestionResponse = {
+  isSaved?: boolean;
+};
+
+type QuestionFilters = Record<string, string | number | boolean | undefined | null>;
+
+type QuestionPageResponse = {
+  rows?: Question[];
+  total?: number;
+};
+
+type SubmitAnswerApiResponse = {
+  new_xp?: number;
+  new_level?: number;
+};
+
+const getUserAnswerUserId = (answer: UserAnswer): string | null => {
+  if (!('userId' in answer)) {
+    return null;
+  }
+
+  const userId = answer.userId;
+  return typeof userId === 'string' && userId.trim() ? userId : null;
+};
+
 /**
- * Fachada oficial do domínio de questões.
- * Ela conecta prática, histórico, estatísticas e manutenção administrativa ao backend oficial.
+ * Fachada oficial do dominio de questoes.
+ * Ela conecta pratica, historico, estatisticas e manutencao administrativa ao backend oficial.
  * @since v1.0.0
  */
 export const questionService = {
   /**
-   * Carrega uma página de questões com total, preservando compatibilidade com
-   * respostas que retornam `rows`, `data.rows` ou arrays crus.
+   * Carrega uma pagina de questoes com total.
    * @since v1.0.0
    */
-  async getQuestionPage(filters?: Record<string, any>): Promise<QuestionListResult> {
+  async getQuestionPage(filters?: QuestionFilters): Promise<QuestionListResult> {
     const includeUnpublished = Boolean(filters?.includeUnpublished || filters?.includeDrafts || filters?.admin);
-    const response = await apiClient.get<any>(
+    const response = await apiClient.get<QuestionPageResponse | Question[]>(
       ENDPOINTS.questions.list,
       {
         params: includeUnpublished
@@ -49,19 +78,19 @@ export const questionService = {
             publish_status: 'published',
           },
       },
-    ) as any;
+    );
 
-    const payload = readApiData<any>(response, {});
+    const payload = readApiData<QuestionPageResponse | Question[]>(response, {});
     const rows = Array.isArray(payload)
       ? payload
-      : Array.isArray(payload?.rows)
+      : Array.isArray(payload.rows)
         ? payload.rows
         : [];
-    const normalizedRows = rows.map((row: Question) => withQuestionPublicationAliases(row));
+    const normalizedRows = rows.map((row) => withQuestionPublicationAliases(row));
     const visibleRows = includeUnpublished
       ? normalizedRows
-      : normalizedRows.filter((row: Question) => isQuestionPubliclyVisible(row));
-    const total = payload?.total || response?.total || visibleRows.length;
+      : normalizedRows.filter((row) => isQuestionPubliclyVisible(row));
+    const total = Array.isArray(payload) ? visibleRows.length : Number(payload.total || visibleRows.length);
 
     return {
       rows: visibleRows,
@@ -70,57 +99,54 @@ export const questionService = {
   },
 
   /**
-   * Mantem a compatibilidade com consumidores antigos que esperam apenas a
-   * lista de questões.
+   * Mantem a compatibilidade com consumidores antigos que esperam apenas a lista.
    * @since v1.0.0
    */
-  async getQuestions(filters?: Record<string, any>): Promise<Question[]> {
+  async getQuestions(filters?: QuestionFilters): Promise<Question[]> {
     const result = await this.getQuestionPage(filters);
     return result.rows;
   },
 
   /**
-   * Carrega uma questao publica isolada pelo endpoint oficial de detalhe.
+   * Carrega uma questao publica isolada.
    * @since v1.0.0
    */
   async getQuestionById(questionId: string | number): Promise<Question> {
-    const response = await apiClient.get<any>(
+    const response = await apiClient.get<Question>(
       ENDPOINTS.questions.show,
       {
         params: {
           id: String(questionId),
         },
       },
-    ) as any;
+    );
 
     return withQuestionPublicationAliases(readApiData<Question>(response, {} as Question));
   },
 
   /**
    * Carrega uma questao pelo contrato administrativo de edicao.
-   * Esse endpoint preserva campos editoriais, comentarios completos e datas internas.
    * @since v1.0.0
    */
   async getQuestionForAdminEdit(questionId: string | number): Promise<Question> {
-    const response = await apiClient.get<any>(
+    const response = await apiClient.get<Question>(
       ENDPOINTS.questions.edit,
       {
         params: {
           id: String(questionId),
         },
       },
-    ) as any;
+    );
 
     return withQuestionPublicationAliases(readApiData<Question>(response, {} as Question));
   },
 
   /**
-   * Persiste a resposta do usuario e devolve o snapshot de progressao
-   * necessario para atualizar XP e nivel no frontend.
+   * Persiste a resposta do usuario e devolve o snapshot de progressao.
    * @since v1.0.0
    */
   async submitUserAnswer(userId: string, answer: UserAnswer): Promise<SubmitAnswerResult> {
-    const response = await apiClient.post<any>(
+    const response = await apiClient.post<SubmitAnswerApiResponse>(
       ENDPOINTS.questions.submit,
       {
         user_id: userId,
@@ -137,7 +163,7 @@ export const questionService = {
           return null;
         })(),
       },
-    ) as any;
+    );
     const backendErrorMessage = readApiErrorMessage(response, '');
     if (
       typeof backendErrorMessage === 'string'
@@ -149,23 +175,22 @@ export const questionService = {
       };
     }
 
-    const envelope = assertApiSuccess(response, 'Não foi possível salvar a resposta.');
-    const payload = readApiData<any>(response, {});
+    const envelope = assertApiSuccess(response, 'Nao foi possivel salvar a resposta.');
+    const payload = readApiData<SubmitAnswerApiResponse>(response, {});
     return {
       success: true,
       message: envelope.message,
-      newXp: payload?.new_xp ?? envelope.raw?.new_xp,
-      newLevel: payload?.new_level ?? envelope.raw?.new_level,
+      newXp: payload.new_xp ?? (typeof envelope.raw.new_xp === 'number' ? envelope.raw.new_xp : undefined),
+      newLevel: payload.new_level ?? (typeof envelope.raw.new_level === 'number' ? envelope.raw.new_level : undefined),
     };
   },
 
   /**
-   * Carrega o histórico de respostas do usuário para uma questão especifica.
-   * Quando o backend estiver em modo convidado, ele devolve uma lista vazia.
+   * Carrega o historico de respostas do usuario para uma questao especifica.
    * @since v1.0.0
    */
   async getQuestionHistory(questionId: string | number, userId?: string): Promise<UserAnswer[]> {
-    const response = await apiClient.get<any>(
+    const response = await apiClient.get<UserAnswer[]>(
       ENDPOINTS.questions.history,
       {
         params: {
@@ -173,25 +198,25 @@ export const questionService = {
           user_id: userId || '',
         },
       },
-    ) as any;
+    );
 
-    const payload = readApiData<any>(response, []);
+    const payload = readApiData<UserAnswer[]>(response, []);
     return Array.isArray(payload) ? payload : [];
   },
 
   /**
-   * Carrega as estatisticas agregadas de uma questão para o grafico da UI.
+   * Carrega as estatisticas agregadas de uma questao.
    * @since v1.0.0
    */
   async getQuestionStats(questionId: string | number): Promise<QuestionStats> {
-    const response = await apiClient.get<any>(
+    const response = await apiClient.get<QuestionStats>(
       ENDPOINTS.questions.stats,
       {
         params: {
           question_id: String(questionId),
         },
       },
-    ) as any;
+    );
 
     return readApiData<QuestionStats>(response, {
       totalAttempts: 0,
@@ -202,41 +227,44 @@ export const questionService = {
   },
 
   /**
-   * Bridge legado para usos antigos do serviço.
+   * Bridge legado para usos antigos do servico.
    * @since v1.0.0
    */
   async submitAnswer(answer: UserAnswer): Promise<{ success: boolean; message?: string }> {
     try {
-      if (!('userId' in answer) || !(answer as any).userId) {
-        return { success: false, message: 'User ID obrigatório para salvar resposta.' };
+      const userId = getUserAnswerUserId(answer);
+      if (!userId) {
+        return { success: false, message: 'User ID obrigatorio para salvar resposta.' };
       }
 
-      const result = await this.submitUserAnswer((answer as any).userId, answer);
+      const result = await this.submitUserAnswer(userId, answer);
       return { success: result.success, message: result.message };
-    } catch (error: any) {
-      return { success: false, message: error.message };
+    } catch (error: unknown) {
+      return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel salvar a resposta.') };
     }
   },
 
   /**
-   * Cria uma unica questão usando o endpoint oficial de persistencia.
+   * Cria uma unica questao usando o endpoint oficial de persistencia.
    * @since v1.0.0
    */
   async createQuestion(questionData: Question): Promise<{ success: boolean; question?: Question }> {
     try {
       const normalizedQuestion = withQuestionPublicationAliases(questionData);
-      const response = await apiClient.post<any>(
+      const response = await apiClient.post<QuestionCreateResponse>(
         ENDPOINTS.questions.create,
         normalizedQuestion,
-      ) as any;
+      );
 
-      const envelope = assertApiSuccess<{ question?: Question; id?: string | number }>(response, 'Não foi possível criar a questão.');
-      const payload = readApiData<{ question?: Question; id?: string | number }>(response, {});
+      const envelope = assertApiSuccess<QuestionCreateResponse>(response, 'Nao foi possivel criar a questao.');
+      const payload = readApiData<QuestionCreateResponse>(response, {});
+      const resolvedId = Number(payload.id ?? envelope.raw.id ?? normalizedQuestion.id) || Number(normalizedQuestion.id);
+
       return {
         success: true,
-        question: payload?.question
+        question: payload.question
           ? withQuestionPublicationAliases(payload.question)
-          : { ...normalizedQuestion, id: payload?.id ?? envelope.raw?.id ?? normalizedQuestion.id },
+          : { ...normalizedQuestion, id: resolvedId },
       };
     } catch {
       return { success: false };
@@ -244,7 +272,7 @@ export const questionService = {
   },
 
   /**
-   * Cria varias questões preservando o contrato antigo usado pelo app.
+   * Cria varias questoes preservando o contrato antigo usado pelo app.
    * @since v1.0.0
    */
   async createQuestions(questions: Question[]): Promise<{ success: boolean; count?: number; created?: Question[] }> {
@@ -267,18 +295,18 @@ export const questionService = {
   },
 
   /**
-   * Atualiza uma questão usando o endpoint oficial de update.
+   * Atualiza uma questao usando o endpoint oficial de update.
    * @since v1.0.0
    */
   async updateQuestion(id: string, questionData: Question): Promise<{ success: boolean; question?: Question }> {
     try {
       const normalizedQuestion = withQuestionPublicationAliases(questionData);
-      const response = await apiClient.post<any>(
+      const response = await apiClient.post<Question>(
         ENDPOINTS.questions.update,
         { ...normalizedQuestion, id },
-      ) as any;
+      );
 
-      assertApiSuccess(response, 'Não foi possível atualizar a questão.');
+      assertApiSuccess(response, 'Nao foi possivel atualizar a questao.');
       return {
         success: true,
         question: { ...normalizedQuestion, id: Number(id) || Number(normalizedQuestion.id) } as Question,
@@ -289,72 +317,73 @@ export const questionService = {
   },
 
   /**
-   * Exclui uma questão usando o contrato real do backend, que ainda espera
-   * o id na query string.
+   * Exclui uma questao usando o contrato real do backend.
    * @since v1.0.0
    */
   async deleteQuestion(id: string | number): Promise<{ success: boolean; message?: string }> {
     try {
-      const response = await apiClient.get<any>(
+      const response = await apiClient.get(
         ENDPOINTS.questions.delete,
         { params: { id: String(id) } },
-      ) as any;
+      );
 
-      const envelope = assertApiSuccess(response, 'Não foi possível excluir a questão.');
+      const envelope = assertApiSuccess(response, 'Nao foi possivel excluir a questao.');
       return {
         success: true,
         message: envelope.message,
       };
-    } catch (error: any) {
-      return { success: false, message: error.message };
+    } catch (error: unknown) {
+      return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel excluir a questao.') };
     }
   },
 
   /**
-   * Alterna o estado salvo de uma questão para o usuário atual.
+   * Alterna o estado salvo de uma questao para o usuario atual.
    * @since v1.0.0
    */
   async toggleSavedQuestion(userId: string, questionId: string | number): Promise<{ success: boolean; isSaved?: boolean; message?: string }> {
     try {
-      const response = await apiClient.post<any>(
+      const response = await apiClient.post<ToggleSavedQuestionResponse>(
         ENDPOINTS.questions.toggleSave,
         {
           user_id: userId,
           question_id: questionId,
         },
-      ) as any;
+      );
 
-      const envelope = assertApiSuccess<{ isSaved?: boolean }>(response, 'Não foi possível atualizar os salvos.');
-      const payload = readApiData<{ isSaved?: boolean }>(response, {});
+      const envelope = assertApiSuccess<ToggleSavedQuestionResponse>(response, 'Nao foi possivel atualizar os salvos.');
+      const payload = readApiData<ToggleSavedQuestionResponse>(response, {});
+      const resolvedSaved = payload.isSaved ?? envelope.raw.isSaved;
+
       return {
         success: true,
-        isSaved: payload?.isSaved ?? envelope.raw?.isSaved,
+        isSaved: typeof resolvedSaved === 'boolean' ? resolvedSaved : undefined,
         message: envelope.message,
       };
-    } catch (error: any) {
-      return { success: false, message: error.message };
+    } catch (error: unknown) {
+      return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel atualizar os salvos.') };
     }
   },
 
   /**
-   * Limpa o progresso de respostas do usuário atual.
+   * Limpa o progresso de respostas do usuario atual.
    * @since v1.0.0
    */
   async resetAnswers(userId: string): Promise<{ success: boolean; message?: string }> {
     try {
-      const response = await apiClient.post<any>(
+      const response = await apiClient.post(
         ENDPOINTS.questions.resetAnswers,
         { user_id: userId },
-      ) as any;
+      );
 
-      const envelope = assertApiSuccess(response, 'Não foi possível limpar as respostas.');
+      const envelope = assertApiSuccess(response, 'Nao foi possivel limpar as respostas.');
 
       return {
         success: true,
         message: envelope.message,
       };
-    } catch (error: any) {
-      return { success: false, message: error.message };
+    } catch (error: unknown) {
+      return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel limpar as respostas.') };
     }
   },
 };

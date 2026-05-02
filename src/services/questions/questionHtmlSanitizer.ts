@@ -20,6 +20,22 @@ const HEAVY_DECLARATION_PATTERN = /^(width|min-width|max-width|left|right|top|bo
 const BLOCK_DISPLAY_DECLARATION_PATTERN = /^display\s*:\s*(block|inline-block)$/i;
 const MATH_LAYOUT_TAGS = new Set(['math', 'msqrt', 'mroot', 'mrow', 'menclose', 'mi', 'mn', 'mo', 'mtext']);
 const MATH_LAYOUT_ATTRIBUTES = ['width', 'minwidth', 'maxwidth', 'min-width', 'max-width'];
+const UNSAFE_TAGS = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'form', 'input', 'button', 'textarea', 'select', 'option', 'video', 'audio', 'canvas']);
+const SAFE_TAGS = new Set([
+  'a', 'abbr', 'article', 'aside', 'b', 'blockquote', 'br', 'caption', 'code', 'col', 'colgroup',
+  'dd', 'del', 'details', 'div', 'dl', 'dt', 'em', 'figcaption', 'figure', 'h1', 'h2', 'h3', 'h4',
+  'h5', 'h6', 'hr', 'i', 'img', 'ins', 'kbd', 'li', 'mark', 'math', 'menclose', 'mi', 'mn', 'mo',
+  'mroot', 'mrow', 'msqrt', 'mtext', 'ol', 'p', 'pre', 's', 'section', 'small', 'span', 'strong',
+  'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'u', 'ul',
+]);
+const URI_ATTRIBUTES = new Set(['href', 'src', 'xlink:href', 'srcset']);
+const SAFE_ATTRIBUTE_PREFIXES = ['aria-', 'data-'];
+const SAFE_ATTRIBUTES = new Set([
+  'alt', 'class', 'colspan', 'height', 'id', 'loading', 'rel', 'role', 'rowspan', 'scope',
+  'style', 'target', 'title', 'width',
+]);
+const UNSAFE_STYLE_PATTERN = /(expression\s*\(|url\s*\(|javascript\s*:|vbscript\s*:|behavior\s*:|-moz-binding\s*:)/i;
+const SAFE_URI_PATTERN = /^(https?:|mailto:|tel:|\/|#|uploads\/|assets\/|images\/|_next\/)/i;
 
 const stripDecorativeChars = (value: string): string => (
   value
@@ -35,8 +51,100 @@ const stripUnsafeLineAndLayoutStyles = (styleAttr: string, shouldStripLineStyles
     .filter((declaration) => !shouldStripLineStyles || !LINE_DECLARATION_PATTERN.test(declaration))
     .filter((declaration) => !HEAVY_DECLARATION_PATTERN.test(declaration))
     .filter((declaration) => !BLOCK_DISPLAY_DECLARATION_PATTERN.test(declaration))
+    .filter((declaration) => !UNSAFE_STYLE_PATTERN.test(declaration))
     .join('; ')
 );
+
+const stripUnsafeHtmlByRegex = (inputHtml: string): string => (
+  inputHtml
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+    .replace(/<\/?(?:iframe|object|embed|link|meta|form|input|button|textarea|select|option|video|audio|canvas)\b[^>]*>/gi, '')
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s+(href|src|xlink:href)\s*=\s*(["'])\s*(?:javascript|vbscript|data):[^"']*\2/gi, ' $1="#"')
+    .replace(/\s+srcset\s*=\s*(["'])[^"']*(?:javascript|vbscript|data):[^"']*\1/gi, '')
+    .replace(/\s+style\s*=\s*(["'])[^"']*(?:expression\s*\(|javascript\s*:|vbscript\s*:|behavior\s*:|-moz-binding\s*:)[^"']*\1/gi, '')
+);
+
+const isSafeAttribute = (name: string) => (
+  SAFE_ATTRIBUTES.has(name)
+  || SAFE_ATTRIBUTE_PREFIXES.some((prefix) => name.startsWith(prefix))
+);
+
+const sanitizeUriAttribute = (element: HTMLElement, attributeName: string): void => {
+  const value = (element.getAttribute(attributeName) || '').trim();
+  if (value === '') {
+    element.removeAttribute(attributeName);
+    return;
+  }
+
+  if (attributeName === 'srcset') {
+    const hasUnsafeSource = value
+      .split(',')
+      .map((source) => source.trim().split(/\s+/)[0] || '')
+      .some((source) => source !== '' && !SAFE_URI_PATTERN.test(source));
+
+    if (hasUnsafeSource) {
+      element.removeAttribute(attributeName);
+    }
+
+    return;
+  }
+
+  if (!SAFE_URI_PATTERN.test(value)) {
+    element.removeAttribute(attributeName);
+  }
+};
+
+const sanitizeElementAttributes = (element: HTMLElement): void => {
+  Array.from(element.attributes).forEach((attribute) => {
+    const attributeName = attribute.name.toLowerCase();
+
+    if (attributeName.startsWith('on')) {
+      element.removeAttribute(attribute.name);
+      return;
+    }
+
+    if (!isSafeAttribute(attributeName) && !URI_ATTRIBUTES.has(attributeName)) {
+      element.removeAttribute(attribute.name);
+      return;
+    }
+
+    if (URI_ATTRIBUTES.has(attributeName)) {
+      sanitizeUriAttribute(element, attribute.name);
+      return;
+    }
+
+    if (attributeName === 'style' && UNSAFE_STYLE_PATTERN.test(attribute.value)) {
+      element.removeAttribute(attribute.name);
+    }
+  });
+
+  if (element.tagName.toLowerCase() === 'a') {
+    element.setAttribute('rel', 'nofollow noopener noreferrer');
+    if (element.getAttribute('target') === '_blank') {
+      element.setAttribute('rel', 'nofollow noopener noreferrer');
+    }
+  }
+};
+
+const sanitizeElementTree = (root: HTMLElement): void => {
+  Array.from(root.querySelectorAll<HTMLElement>('*')).forEach((element) => {
+    const tagName = element.tagName.toLowerCase();
+
+    if (UNSAFE_TAGS.has(tagName)) {
+      element.remove();
+      return;
+    }
+
+    if (!SAFE_TAGS.has(tagName)) {
+      element.replaceWith(...Array.from(element.childNodes));
+      return;
+    }
+
+    sanitizeElementAttributes(element);
+  });
+};
 
 const sanitizeLineStyledElement = (element: HTMLElement): void => {
   const styleAttr = element.getAttribute('style') || '';
@@ -123,7 +231,7 @@ export const normalizeQuestionRichHtml = (rawHtml: string | null | undefined): s
     return '';
   }
 
-  const normalizedByRegex = regexNormalizeRadicalArtifacts(String(rawHtml));
+  const normalizedByRegex = stripUnsafeHtmlByRegex(regexNormalizeRadicalArtifacts(String(rawHtml)));
 
   if (typeof DOMParser === 'undefined') {
     return normalizedByRegex;
@@ -136,6 +244,8 @@ export const normalizeQuestionRichHtml = (rawHtml: string | null | undefined): s
     if (!root) {
       return normalizedByRegex;
     }
+
+    sanitizeElementTree(root);
 
     const elements = Array.from(root.querySelectorAll<HTMLElement>('*'));
     elements.forEach((element) => {

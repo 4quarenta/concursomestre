@@ -51,19 +51,31 @@ const getCategoryFromSubTab = (subTab: string): AdminDatabaseCategory => {
   return (ADMIN_DATABASE_SUBTAB_META[subTab]?.category as AdminDatabaseCategory) || 'content';
 };
 
+const resolveSubTab = (searchTab: string | null | undefined, fallback: AdminDatabaseSubTab): AdminDatabaseSubTab => (
+  searchTab && VALID_SUBTABS.includes(searchTab as AdminDatabaseSubTab)
+    ? (searchTab as AdminDatabaseSubTab)
+    : fallback
+);
+
 export const useAdminDatabaseNavigationState = ({
   initialTab = 'questions',
   searchTab,
   locationHash,
 }: UseAdminDatabaseNavigationStateOptions) => {
-  const [activeSubTab, setActiveSubTab] = useState<AdminDatabaseSubTab>(initialTab);
-  const [activeCategory, setActiveCategory] = useState<AdminDatabaseCategory>(getCategoryFromSubTab(initialTab));
+  const resolvedInitialSubTab = resolveSubTab(searchTab, initialTab);
+  const [activeSubTab, setActiveSubTab] = useState<AdminDatabaseSubTab>(resolvedInitialSubTab);
+  const [activeCategory, setActiveCategory] = useState<AdminDatabaseCategory>(getCategoryFromSubTab(resolvedInitialSubTab));
   const [filter, setFilter] = useState('');
 
   useEffect(() => {
-    const nextTab = searchTab && VALID_SUBTABS.includes(searchTab as AdminDatabaseSubTab) ? (searchTab as AdminDatabaseSubTab) : initialTab;
-    setActiveSubTab(nextTab);
-    setActiveCategory(getCategoryFromSubTab(nextTab));
+    const nextTab = resolveSubTab(searchTab, initialTab);
+    const nextCategory = getCategoryFromSubTab(nextTab);
+    const frameId = window.requestAnimationFrame(() => {
+      setActiveSubTab((current) => (current === nextTab ? current : nextTab));
+      setActiveCategory((current) => (current === nextCategory ? current : nextCategory));
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [initialTab, searchTab]);
 
   useEffect(() => {

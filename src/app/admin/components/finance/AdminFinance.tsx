@@ -199,6 +199,11 @@ const addProjectionMonths = (timestamp: number, monthOffset: number) => {
   return date.getTime();
 };
 
+const resolveTransactionDisplayTimestamp = (transaction: any, fallbackTimestamp: number) => {
+  const timestamp = Number(transaction?.timestamp || 0);
+  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : fallbackTimestamp;
+};
+
 const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload) => (
   (projection.items || []).flatMap((item) => {
     const remaining = Math.max(0, Number(item.remainingInstallments || 0));
@@ -359,6 +364,7 @@ const AdminFinance = ({
   const [draftPlanUsageLimits, setDraftPlanUsageLimits] = useState(() => normalizePlanUsageLimits(systemSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
   const [draftActiveTheme, setDraftActiveTheme] = useState(systemSettings.activeTheme || 'default');
   const [draftActivePromotion, setDraftActivePromotion] = useState(systemSettings.activePromotion || undefined);
+  const [adminFinanceNowMs, setAdminFinanceNowMs] = useState(0);
   const refundRequests = useMemo(
     () => allTransactions?.filter((t: any) => String(t.status || '') === 'refund_requested') || [],
     [allTransactions],
@@ -396,13 +402,17 @@ const AdminFinance = ({
   }), [draftActivePromotion, draftActiveTheme, draftCoupons, draftPlanDetails, draftPlanEntitlements, draftPlanUsageLimits, draftPricing, systemSettings]);
 
   useEffect(() => {
-    setDraftPricing(mergePricingWithDefaults(systemSettings.pricing));
-    setDraftPlanDetails(mergePlanDetailsWithDefaults(systemSettings.planDetails));
-    setDraftCoupons(Array.isArray(systemSettings.coupons) ? systemSettings.coupons : []);
-    setDraftPlanEntitlements(normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
-    setDraftPlanUsageLimits(normalizePlanUsageLimits(systemSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
-    setDraftActiveTheme(systemSettings.activeTheme || 'default');
-    setDraftActivePromotion(systemSettings.activePromotion || undefined);
+    const frameId = window.requestAnimationFrame(() => {
+      setDraftPricing(mergePricingWithDefaults(systemSettings.pricing));
+      setDraftPlanDetails(mergePlanDetailsWithDefaults(systemSettings.planDetails));
+      setDraftCoupons(Array.isArray(systemSettings.coupons) ? systemSettings.coupons : []);
+      setDraftPlanEntitlements(normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
+      setDraftPlanUsageLimits(normalizePlanUsageLimits(systemSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
+      setDraftActiveTheme(systemSettings.activeTheme || 'default');
+      setDraftActivePromotion(systemSettings.activePromotion || undefined);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [
     systemSettings.activePromotion,
     systemSettings.activeTheme,
@@ -414,8 +424,23 @@ const AdminFinance = ({
   ]);
 
   useEffect(() => {
-    setActiveSection(normalizeSection(initialSection));
+    const frameId = window.requestAnimationFrame(() => {
+      setActiveSection(normalizeSection(initialSection));
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [initialSection]);
+
+  useEffect(() => {
+    const updateNow = () => setAdminFinanceNowMs(Date.now());
+    const frameId = window.requestAnimationFrame(updateNow);
+    const intervalId = window.setInterval(updateNow, 60_000);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     if (activeSection !== 'transactions') {
@@ -423,28 +448,33 @@ const AdminFinance = ({
     }
 
     let cancelled = false;
-    setIsRevenueProjectionLoading(true);
+    const frameId = window.requestAnimationFrame(() => {
+      if (cancelled) return;
 
-    adminService.getFinanceAnalytics({ period: 'all' })
-      .then((payload) => {
-        if (!cancelled) {
-          setRevenueProjection(payload.revenueProjection || EMPTY_REVENUE_PROJECTION);
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to load confirmed revenue projection:', error);
-        if (!cancelled) {
-          setRevenueProjection(EMPTY_REVENUE_PROJECTION);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsRevenueProjectionLoading(false);
-        }
-      });
+      setIsRevenueProjectionLoading(true);
+
+      adminService.getFinanceAnalytics({ period: 'all' })
+        .then((payload) => {
+          if (!cancelled) {
+            setRevenueProjection(payload.revenueProjection || EMPTY_REVENUE_PROJECTION);
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to load confirmed revenue projection:', error);
+          if (!cancelled) {
+            setRevenueProjection(EMPTY_REVENUE_PROJECTION);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsRevenueProjectionLoading(false);
+          }
+        });
+    });
 
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(frameId);
     };
   }, [activeSection]);
 
@@ -545,30 +575,35 @@ const AdminFinance = ({
 
     let cancelled = false;
     stripeTestingRunsRequestRef.current = true;
-    setStripeTestingRunsRequested(true);
-    setStripeTestingRunsLoading(true);
+    const frameId = window.requestAnimationFrame(() => {
+      if (cancelled) return;
 
-    subscriptionsService.getStripeTestingRuns(80)
-      .then((payload) => {
-        if (!cancelled) {
-          setStripeTestingRuns(Array.isArray(payload?.runs) ? payload.runs : []);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          stripeTestingRunsRequestRef.current = false;
-          setStripeTestingRunsRequested(false);
-          addToast('Nao foi possivel carregar o historico de evidencias dos testes Stripe.', 'error');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setStripeTestingRunsLoading(false);
-        }
-      });
+      setStripeTestingRunsRequested(true);
+      setStripeTestingRunsLoading(true);
+
+      subscriptionsService.getStripeTestingRuns(80)
+        .then((payload) => {
+          if (!cancelled) {
+            setStripeTestingRuns(Array.isArray(payload?.runs) ? payload.runs : []);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            stripeTestingRunsRequestRef.current = false;
+            setStripeTestingRunsRequested(false);
+            addToast('Nao foi possivel carregar o historico de evidencias dos testes Stripe.', 'error');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setStripeTestingRunsLoading(false);
+          }
+        });
+    });
 
     return () => {
       cancelled = true;
+      window.cancelAnimationFrame(frameId);
       if (stripeTestingRuns.length === 0) {
         stripeTestingRunsRequestRef.current = false;
       }
@@ -785,7 +820,11 @@ const AdminFinance = ({
 
   useEffect(() => {
     if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
+      const frameId = window.requestAnimationFrame(() => {
+        setCurrentPage(totalPages);
+      });
+
+      return () => window.cancelAnimationFrame(frameId);
     }
   }, [currentPage, totalPages]);
 
@@ -1075,9 +1114,10 @@ const AdminFinance = ({
 
     try {
       const payload = await subscriptionsService.runAutomationNow();
-      const summary = payload?.summary || payload?.data?.summary || payload;
+      const nestedData = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : null;
+      const summary = payload.summary ?? nestedData?.summary ?? payload;
       setAutomationRunResult(summary);
-      addToast(payload?.message || 'Rotina de automacao executada com sucesso.', 'success');
+      addToast(typeof payload.message === 'string' ? payload.message : 'Rotina de automacao executada com sucesso.', 'success');
     } catch (error: any) {
       const message = String(
         error?.response?.data?.message
@@ -1799,6 +1839,7 @@ const AdminFinance = ({
                     const description = transaction.transactionName || transaction.materialTitle || transaction.planName || 'Plano de assinatura';
                     const statusLabel = formatTransactionStatusLabel(transaction.status || '');
                     const isRefundActionLocked = refundActionKey !== null;
+                    const displayTimestamp = resolveTransactionDisplayTimestamp(transaction, adminFinanceNowMs);
 
                     return (
                       <tr key={transaction.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors align-top">
@@ -1815,12 +1856,12 @@ const AdminFinance = ({
                         </td>
                         <td className="p-4">
                           <div className="font-bold text-slate-800 dark:text-slate-200">
-                            {transaction.dateFormatted || new Date(transaction.timestamp || Date.now()).toLocaleDateString()}
+                            {transaction.dateFormatted || (displayTimestamp ? new Date(displayTimestamp).toLocaleDateString() : '-')}
                           </div>
                           <div className="text-[10px] text-slate-400 dark:text-slate-500">
                             {transaction.dateTimeFormatted
                               ? transaction.dateTimeFormatted.split(' ').slice(1).join(' ')
-                              : new Date(transaction.timestamp || Date.now()).toLocaleTimeString()}
+                              : (displayTimestamp ? new Date(displayTimestamp).toLocaleTimeString() : '-')}
                           </div>
                           {transaction.scheduleLabel && (
                             <div className="mt-1 text-[10px] font-bold text-sky-700 dark:text-sky-300">{transaction.scheduleLabel}</div>

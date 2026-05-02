@@ -35,6 +35,20 @@ const PANEL_SECTIONS: { key: AdminPanelSectionKey; label: string }[] = [
   { key: 'billing-health', label: 'Saude do billing' },
 ];
 
+type AutomationHelperInfo = {
+  download_url?: string;
+  error?: string;
+  linux_command?: string;
+};
+
+type StatusRecord = {
+  status?: string | null;
+};
+
+type AdminSettingsWithInbox = NonNullable<AdminPanelSectionProps['systemSettings']> & {
+  adminFeedbackCount?: number | string | null;
+};
+
 /**
  * Organiza a area "Painel" em tres subareas menores.
  *
@@ -52,11 +66,15 @@ const AdminPanelSection = ({
   ...dashboardProps
 }: AdminPanelSectionProps) => {
   const [activeSection, setActiveSection] = useState<AdminPanelSectionKey>(initialSection);
-  const [automationHelper, setAutomationHelper] = useState<any | null>(null);
+  const [automationHelper, setAutomationHelper] = useState<AutomationHelperInfo | null>(null);
   const [sitemapCoveragePercent, setSitemapCoveragePercent] = useState<number | null>(null);
 
   useEffect(() => {
-    setActiveSection(initialSection);
+    const frameId = window.requestAnimationFrame(() => {
+      setActiveSection(initialSection);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [initialSection]);
 
   useEffect(() => {
@@ -94,11 +112,15 @@ const AdminPanelSection = ({
     onSectionChange?.(section);
   };
 
-  const unresolvedReports = (allReports || []).filter((report: any) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase()));
-  const refundRequests = (allTransactions || []).filter((transaction: any) => transaction.status === 'refund_requested');
-  const rejectedTransactions = (allTransactions || []).filter((transaction: any) => transaction.status === 'rejected');
-  const pendingMaterials = (allMaterials || []).filter((material: any) => String(material.status || '').toLowerCase() === 'pending');
-  const feedbackInboxCount = Number((systemSettings as any)?.adminFeedbackCount || 0);
+  const unresolvedReports = ((allReports || []) as StatusRecord[])
+    .filter((report) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase()));
+  const refundRequests = ((allTransactions || []) as StatusRecord[])
+    .filter((transaction) => transaction.status === 'refund_requested');
+  const rejectedTransactions = ((allTransactions || []) as StatusRecord[])
+    .filter((transaction) => transaction.status === 'rejected');
+  const pendingMaterials = ((allMaterials || []) as StatusRecord[])
+    .filter((material) => String(material.status || '').toLowerCase() === 'pending');
+  const feedbackInboxCount = Number((systemSettings as AdminSettingsWithInbox | undefined)?.adminFeedbackCount || 0);
   const seoScore = calculateSeoCompletenessScore(mergeSeoSettings(systemSettings?.seo));
 
   const billingHealthItems = useMemo(() => ([

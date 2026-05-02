@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta

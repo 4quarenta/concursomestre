@@ -12,17 +12,16 @@
 */
 
 import React, { useState, useMemo } from 'react';
+import Image from 'next/image';
 import ReactDOM, { createPortal } from 'react-dom';
-import { Subject, Material } from '@types';
-import { Search, Filter, BookOpen, Star, ArrowRight, Shield, CheckCircle, Lock, CreditCard, Layout, Book, FileText, ShoppingBag, X, ChevronRight, Tag, History, Clock, AlertTriangle, Package, TrendingUp, Download, RefreshCcw, ShieldCheck, Eye, MessageSquare, Send, Check, Flag, Store, List, Grid, ShieldAlert, XCircle, GraduationCap } from 'lucide-react';
-import Link from 'next/link';
+import { Subject, Material, QuestaoComentario, UserProfile } from '@types';
+import { Search, BookOpen, Star, Lock, FileText, ShoppingBag, X, Tag, History, Clock, AlertTriangle, Package, Download, RefreshCcw, Check, Store, List, Grid, ShieldAlert, XCircle } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
-import PdfViewer from '../../components/shared/overlays/PdfViewer';
 import CommentsSection from '../../components/shared/feedback/CommentsSection';
 import AdBanner from '../../components/shared/feedback/AdBanner';
 // Removed Stripe imports
@@ -35,12 +34,69 @@ import {
     buildMaterialDownloadEndpoint,
     downloadAuthenticatedFile,
 } from '@services/api';
-import { AdPlaceholder } from '../../components/shared/ui/AdPlaceholder';
+
+const MARKETPLACE_MS_PER_DAY = 1000 * 60 * 60 * 24;
+const readMarketplaceTimeMs = () => Date.now();
+
+type MarketplaceComment = QuestaoComentario;
+type MarketplaceCommentSetter = React.Dispatch<React.SetStateAction<MarketplaceComment[]>>;
+
+type MaterialRatingResponse = {
+    success?: boolean;
+    userRating?: number;
+    newRating?: number;
+    totalRatings?: number;
+    message?: string;
+};
+
+type MaterialCommentResponse = {
+    success?: boolean;
+    data?: MarketplaceComment[] | { id?: string };
+    id?: string;
+    message?: string;
+};
+
+const readApiPayload = <T,>(response: unknown): T => {
+    if (response && typeof response === 'object' && 'data' in response) {
+        const data = (response as { data?: T }).data;
+        if (data !== undefined) {
+            return data;
+        }
+    }
+
+    return response as T;
+};
+
+const getUnknownErrorMessage = (error: unknown, fallback: string) => {
+    if (error && typeof error === 'object' && 'response' in error) {
+        const response = (error as { response?: { data?: { message?: string } } }).response;
+        return response?.data?.message || fallback;
+    }
+
+    return fallback;
+};
+
+const updateCommentTree = (
+    comments: MarketplaceComment[],
+    update: (comment: MarketplaceComment) => MarketplaceComment
+): MarketplaceComment[] => comments.map((comment) => ({
+    ...update(comment),
+    replies: comment.replies ? updateCommentTree(comment.replies, update) : [],
+}));
+
+const removeCommentFromTree = (comments: MarketplaceComment[], commentId: string): MarketplaceComment[] => (
+    comments
+        .filter((comment) => comment.id !== commentId)
+        .map((comment) => ({
+            ...comment,
+            replies: comment.replies ? removeCommentFromTree(comment.replies, commentId) : [],
+        }))
+);
 
 interface MaterialDetailModalProps {
     material: Material;
     isPurchased: boolean;
-    currentUser: any;
+    currentUser: UserProfile | null;
     onClose: () => void;
     onBuy: () => void;
     onRead: () => void;
@@ -59,20 +115,17 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
     const [totalRatings, setTotalRatings] = useState(material.salesCount || 0); // Simplified for UI
 
     // Comentários States
-    const [reviews, setReviews] = useState<any[]>([]);
-    const [qaComments, setQaComments] = useState<any[]>([]);
-    const [loadingReviews, setLoadingReviews] = useState(false);
-    const [loadingQa, setLoadingQa] = useState(false);
+    const [qaComments, setQaComments] = useState<MarketplaceComment[]>([]);
 
     // Buscar rating existente do usuário
     React.useEffect(() => {
         if (!currentUser || !isPurchased) return;
         const fetchUserRating = async () => {
             try {
-                const res = await apiClient.get<any>(ENDPOINTS.materials.rate, {
+                const res = await apiClient.get<MaterialRatingResponse>(ENDPOINTS.materials.rate, {
                     params: { material_id: material.id, user_id: currentUser.id }
                 });
-                const data = (res as any).data || res;
+                const data = readApiPayload<MaterialRatingResponse>(res);
                 if (data.success && data.userRating) {
                     setUserRating(data.userRating);
                 }
@@ -87,32 +140,28 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
     React.useEffect(() => {
         if (!currentUser) return;
 
-        const fetchCommentsTarget = async (targetId: string, setter: any, loader: any) => {
-            loader(true);
+        const fetchCommentsTarget = async (targetId: string, setter: MarketplaceCommentSetter) => {
             try {
-                const res = await apiClient.get<any>(ENDPOINTS.comments.list, {
-                    params: { target_id: targetId, user_id: currentUser.id, _t: Date.now() }
+                const res = await apiClient.get<MaterialCommentResponse | MarketplaceComment[]>(ENDPOINTS.comments.list, {
+                    params: { target_id: targetId, user_id: currentUser.id, _t: readMarketplaceTimeMs() }
                 });
-                const payload = res as any;
-                if (payload && payload.success && Array.isArray(payload.data)) {
-                    setter(payload.data);
-                } else if (Array.isArray(payload)) {
+                const payload = readApiPayload<MaterialCommentResponse | MarketplaceComment[]>(res);
+                if (Array.isArray(payload)) {
                     setter(payload);
+                } else if (payload && payload.success && Array.isArray(payload.data)) {
+                    setter(payload.data);
                 } else if (payload && Array.isArray(payload.data)) {
                     setter(payload.data);
                 }
             } catch (err) {
                 console.error(`Falha ao carregar comentários ${targetId}:`, err);
-            } finally {
-                loader(false);
             }
         };
 
         if (activeTab === 'reviews') {
-            fetchCommentsTarget(`${material.id}-reviews`, setReviews, setLoadingReviews);
-            fetchCommentsTarget(`${material.id}-qa`, setQaComments, setLoadingQa);
+            fetchCommentsTarget(`${material.id}-qa`, setQaComments);
         } else if (activeTab === 'qa') {
-            fetchCommentsTarget(`${material.id}-qa`, setQaComments, setLoadingQa);
+            fetchCommentsTarget(`${material.id}-qa`, setQaComments);
         }
     }, [material.id, currentUser, activeTab]);
 
@@ -120,12 +169,12 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
         if (!isPurchased || !currentUser) return;
         setSubmittingRating(true);
         try {
-            const res = await apiClient.post<any>(ENDPOINTS.materials.rate, {
+            const res = await apiClient.post<MaterialRatingResponse>(ENDPOINTS.materials.rate, {
                 materialId: material.id,
                 userId: currentUser.id,
                 rating: stars
             });
-            const data = (res as any).data || res;
+            const data = readApiPayload<MaterialRatingResponse>(res);
             if (data.success) {
                 setUserRating(stars);
                 if (data.newRating) setCurrentAvgRating(data.newRating);
@@ -134,9 +183,9 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
             } else {
                 addToast('⚠️ ' + data.message, 'warning');
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Rating error:', error);
-            addToast('❌ Erro ao enviar avaliação: ' + (error.response?.data?.message || 'Tente novamente.'), 'error');
+            addToast('Erro ao enviar avaliacao: ' + getUnknownErrorMessage(error, 'Tente novamente.'), 'error');
         } finally {
             setSubmittingRating(false);
         }
@@ -149,12 +198,11 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
             return;
         }
 
-        const isReview = targetId.endsWith('-reviews');
-        const setter = isReview ? setReviews : setQaComments;
+        const setter = setQaComments;
 
         // Otimista
-        const tempId = `temp-${Date.now()}`;
-        const newTempComment = {
+        const tempId = `temp-${readMarketplaceTimeMs()}`;
+        const newTempComment: MarketplaceComment = {
             id: tempId,
             userId: currentUser.id,
             userName: currentUser.name,
@@ -174,7 +222,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
         });
 
         try {
-            const res = await apiClient.post<any>(ENDPOINTS.comments.add, {
+            const res = await apiClient.post<MaterialCommentResponse>(ENDPOINTS.comments.add, {
                 action: 'add',
                 targetType: 'material',
                 question_id: targetId,
@@ -183,17 +231,15 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                 parent_id: parentId || null
             });
             // res is expected to be { success: true, data: { id: ... } }
-            const payload: any = res;
+            const payload = readApiPayload<MaterialCommentResponse>(res);
             if (payload && payload.success) {
-                const realId = payload.data?.id || payload.id || tempId;
+                const payloadData = payload.data;
+                const realId = (!Array.isArray(payloadData) && payloadData?.id) || payload.id || tempId;
                 // Atualiza ID real
                 setter(prev => {
-                    const updateId = (list: any[]) => list.map(c => {
-                        if (c.id === tempId) return { ...c, id: realId };
-                        if (c.replies) return { ...c, replies: updateId(c.replies) };
-                        return c;
-                    });
-                    return updateId(prev);
+                    return updateCommentTree(prev, (comment) => (
+                        comment.id === tempId ? { ...comment, id: realId } : comment
+                    ));
                 });
                 addToast("Mensagem enviada!", "success");
             } else {
@@ -204,26 +250,24 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
             addToast("Erro ao enviar mensagem.", "error");
             // Remove temp (rollback)
             setter(prev => {
-                const removeTemp = (list: any[]) => list.filter(c => c.id !== tempId).map(c => ({ ...c, replies: c.replies ? removeTemp(c.replies) : [] }));
-                return removeTemp(prev);
+                return removeCommentFromTree(prev, tempId);
             });
         }
     };
 
     const handleLikeComment = async (targetId: string, commentId: string) => {
         if (!currentUser) return;
-        const setter = targetId.endsWith('-reviews') ? setReviews : setQaComments;
+        const setter = setQaComments;
 
         // Optimistic toggle
         setter(prev => {
-            const toggleLike = (list: any[]) => list.map(c => {
-                if (c.id === commentId) {
-                    return { ...c, isLiked: !c.isLiked, likes: c.isLiked ? c.likes - 1 : c.likes + 1 };
+            return updateCommentTree(prev, (comment) => {
+                if (comment.id === commentId) {
+                    return { ...comment, isLiked: !comment.isLiked, likes: comment.isLiked ? comment.likes - 1 : comment.likes + 1 };
                 }
-                if (c.replies) return { ...c, replies: toggleLike(c.replies) };
-                return c;
+
+                return comment;
             });
-            return toggleLike(prev);
         });
 
         try {
@@ -240,21 +284,20 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
 
     const handleDeleteComment = async (targetId: string, commentId: string) => {
         if (!currentUser) return;
-        const setter = targetId.endsWith('-reviews') ? setReviews : setQaComments;
+        const setter = setQaComments;
 
         try {
-            const res = await apiClient.delete<any>(ENDPOINTS.comments.delete, {
+            const res = await apiClient.delete<MaterialCommentResponse>(ENDPOINTS.comments.delete, {
                 data: { action: 'delete', comment_id: commentId, user_id: currentUser.id }
             });
-            const data = (res as any).data || res;
+            const data = readApiPayload<MaterialCommentResponse>(res);
             if (data && data.success) {
                 setter(prev => {
-                    const remove = (list: any[]) => list.filter(c => c.id !== commentId).map(c => ({ ...c, replies: c.replies ? remove(c.replies) : [] }));
-                    return remove(prev);
+                    return removeCommentFromTree(prev, commentId);
                 });
                 addToast("Comentário excluído", "success");
             }
-        } catch (err) {
+        } catch {
             addToast("Erro ao excluir", "error");
         }
     };
@@ -298,7 +341,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                             {/* Cover */}
                             <div className="w-40 md:w-56 shrink-0 aspect-[3/4] rounded-2xl bg-slate-100 dark:bg-slate-800 shadow-xl overflow-hidden self-center md:self-auto border border-slate-200 dark:border-slate-700">
                                 {material.coverUrl ? (
-                                    <img src={getAssetUrl(material.coverUrl)} className="w-full h-full object-cover" alt="" />
+                                    <Image src={getAssetUrl(material.coverUrl)} className="w-full h-full object-cover" alt="" width={320} height={420} unoptimized />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-600"><FileText size={64} /></div>
                                 )}
@@ -495,7 +538,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
 const Marketplace: React.FC = () => {
     const { materials, transactions, purchaseMaterial, requestRefund, fetchUserTransactions } = useMarketplace();
     const { currentUser } = useAuth();
-    const { reportError, reports, systemSettings, ensureTaxonomiesLoaded } = useData();
+    const { systemSettings, ensureTaxonomiesLoaded } = useData();
     const { addToast } = useToast();
     const router = useRouter();
     const pathname = usePathname() || '/marketplace';
@@ -513,6 +556,15 @@ const Marketplace: React.FC = () => {
     const [showAuthModal, setShowAuthModal] = useState(false);
     const [authModalConfig, setAuthModalConfig] = useState({ title: '', description: '', actionSource: 'marketplace' });
     const [initialModalTab, setInitialModalTab] = useState<'overview' | 'reviews' | 'qa'>('overview');
+    const [referenceTimeMs, setReferenceTimeMs] = useState(0);
+
+    React.useEffect(() => {
+        const frame = window.requestAnimationFrame(() => {
+            setReferenceTimeMs(readMarketplaceTimeMs());
+        });
+
+        return () => window.cancelAnimationFrame(frame);
+    }, []);
 
     // Handle deep linking from notifications
     React.useEffect(() => {
@@ -528,13 +580,17 @@ const Marketplace: React.FC = () => {
             return;
         }
 
-        if (!selectedMaterial || String(selectedMaterial.id) !== String(targetMaterial.id)) {
-            setSelectedMaterial(targetMaterial);
-        }
+        const frame = window.requestAnimationFrame(() => {
+            if (!selectedMaterial || String(selectedMaterial.id) !== String(targetMaterial.id)) {
+                setSelectedMaterial(targetMaterial);
+            }
 
-        if (hasComment) {
-            setInitialModalTab('reviews');
-        }
+            if (hasComment) {
+                setInitialModalTab('reviews');
+            }
+        });
+
+        return () => window.cancelAnimationFrame(frame);
     }, [materials, searchParams, selectedMaterial]);
 
     React.useEffect(() => {
@@ -546,9 +602,6 @@ const Marketplace: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
 
     // Refund/Report States
-    const [isReporting, setIsReporting] = useState(false);
-    const [reportDetails, setReportDetails] = useState({ reason: 'Plágio', details: '' });
-    const [reportEvidence, setReportEvidence] = useState<string | null>(null);
     const [refundReason, setRefundReason] = useState('');
     const [refundTxId, setRefundTxId] = useState<string | null>(null);
 
@@ -579,7 +632,13 @@ const Marketplace: React.FC = () => {
     }, [materials, filter]);
 
     // Handle Pagination Reset
-    React.useEffect(() => { setCurrentPage(1); }, [filter, itemsPerPage]);
+    React.useEffect(() => {
+        const frame = window.requestAnimationFrame(() => {
+            setCurrentPage(1);
+        });
+
+        return () => window.cancelAnimationFrame(frame);
+    }, [filter, itemsPerPage]);
 
     const paginatedMaterials = activeMaterials.slice(
         (currentPage - 1) * itemsPerPage,
@@ -608,7 +667,7 @@ const Marketplace: React.FC = () => {
         const transaction = transactions.find(t => String(t.materialId) === String(materialId) && String(t.buyerId) === String(currentUser?.id) && (t.status === 'completed' || t.status === 'approved'));
         if (!transaction) return { canDownload: false, daysRemaining: 7 };
 
-        const daysSincePurchase = (Date.now() - transaction.timestamp) / (1000 * 60 * 60 * 24);
+        const daysSincePurchase = (readMarketplaceTimeMs() - transaction.timestamp) / MARKETPLACE_MS_PER_DAY;
         return {
             canDownload: daysSincePurchase >= 7,
             daysRemaining: Math.ceil(7 - daysSincePurchase)
@@ -646,46 +705,6 @@ const Marketplace: React.FC = () => {
         // Open Payment Modal
         setCheckoutMaterial(material);
         setShowStripeCheckout(true);
-    };
-
-    const handleReport = () => {
-        if (!selectedMaterial) return;
-
-        if (!reportDetails.details.trim()) {
-            addToast('Por favor, descreva o problema. A justificativa é obrigatória.', 'info');
-            return;
-        }
-
-        // Check for duplicate reports
-        const alreadyReported = reports.some(r =>
-            r.targetType === 'material' &&
-            r.materialId === selectedMaterial.id &&
-            r.userName === currentUser.name &&
-            r.status === 'pending'
-        );
-
-        if (alreadyReported) {
-            addToast('Você já enviou uma denúncia para este material. Aguarde a análise da moderação.', 'info');
-            setIsReporting(false);
-            return;
-        }
-
-        reportError({
-            targetType: 'material',
-            materialId: selectedMaterial.id,
-            userName: currentUser.name,
-            userId: currentUser.id,
-            reason: reportDetails.reason,
-            details: reportDetails.details,
-            evidenceUrl: reportEvidence || undefined,
-            plan: currentUser.plan || 'Gratuito',
-            email: currentUser.email,
-            role: currentUser.role === 'user' ? 'student' : currentUser.role,
-            level: currentUser.level || 0
-        });
-        setIsReporting(false);
-        setReportEvidence(null);
-        setReportDetails({ reason: 'Plágio', details: '' });
     };
 
     const handleRefundRequest = () => {
@@ -728,14 +747,14 @@ const Marketplace: React.FC = () => {
         if (!transaction) return;
 
         const purchaseDate = new Date(transaction.timestamp);
-        const daysSincePurchase = (Date.now() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24);
+        const daysSincePurchase = (readMarketplaceTimeMs() - purchaseDate.getTime()) / MARKETPLACE_MS_PER_DAY;
         const canDownload = daysSincePurchase >= 7;
 
         if (type === 'download') {
             if (canDownload) {
                 // Abre o endpoint de download que estampa os dados do usuário no PDF
-                void downloadAuthenticatedFile(buildMaterialDownloadEndpoint(material.id)).catch((error: any) => {
-                    addToast(error?.message || 'Não foi possível baixar o material agora.', 'error');
+                void downloadAuthenticatedFile(buildMaterialDownloadEndpoint(material.id)).catch((error: unknown) => {
+                    addToast(error instanceof Error ? error.message : 'Nao foi possivel baixar o material agora.', 'error');
                 });
             } else {
                 addToast(`O download será liberado em ${Math.ceil(7 - daysSincePurchase)} dia(s) para garantir a conformidade com as políticas de reembolso.`, 'info');
@@ -913,7 +932,7 @@ const Marketplace: React.FC = () => {
                                             <div className="flex items-center gap-4 flex-1 min-w-0">
                                                 <div className="w-10 h-10 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 border border-slate-100 dark:border-slate-700 group-hover:border-indigo-200 dark:group-hover:border-indigo-600 transition-colors flex-shrink-0 overflow-hidden">
                                                     {item.coverUrl ? (
-                                                        <img src={getAssetUrl(item.coverUrl)} className="w-full h-full object-cover" alt="" />
+                                                        <Image src={getAssetUrl(item.coverUrl)} className="w-full h-full object-cover" alt="" width={80} height={80} unoptimized />
                                                     ) : (
                                                         <FileText size={18} />
                                                     )}
@@ -953,7 +972,7 @@ const Marketplace: React.FC = () => {
                                 return (
                                     <div key={item.id} className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-600 transition-all group flex flex-col h-full cursor-pointer" onClick={() => setSelectedMaterial(item)}>
                                         <div className="h-36 bg-slate-100 dark:bg-slate-800 relative overflow-hidden transition-colors">
-                                            {item.coverUrl ? <img src={getAssetUrl(item.coverUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="" /> : <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-600"><FileText size={40} /></div>}
+                                            {item.coverUrl ? <Image src={getAssetUrl(item.coverUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="" width={360} height={220} unoptimized /> : <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-600"><FileText size={40} /></div>}
                                             <div className="absolute top-3 left-3"><span className="px-2 py-0.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur text-indigo-700 dark:text-indigo-400 text-[9px] font-black uppercase tracking-widest rounded-md shadow-sm border border-slate-100 dark:border-slate-800 transition-colors">{item.type}</span></div>
                                         </div>
                                         <div className="p-5 flex-1 flex flex-col">
@@ -1040,7 +1059,7 @@ const Marketplace: React.FC = () => {
                                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                         {myOrders.map(order => {
                                             const isSuccess = order.status === 'completed' || order.status === 'approved';
-                                            const daysSince = (Date.now() - new Date(order.timestamp).getTime()) / (1000 * 60 * 60 * 24);
+                                            const daysSince = (referenceTimeMs - new Date(order.timestamp).getTime()) / MARKETPLACE_MS_PER_DAY;
                                             const canRefund = daysSince <= 7 && isSuccess;
                                             const canDownload = daysSince > 7 && isSuccess;
 
@@ -1253,13 +1272,6 @@ const Marketplace: React.FC = () => {
                             setShowStripeCheckout(false);
                             fetchUserTransactions(); // Refresh transactions
 
-                            // Optimistic update
-                            if (currentUser && checkoutMaterial) {
-                                if (!currentUser.purchasedMaterialIds) currentUser.purchasedMaterialIds = [];
-                                if (!currentUser.purchasedMaterialIds.includes(checkoutMaterial.id)) {
-                                    currentUser.purchasedMaterialIds.push(checkoutMaterial.id);
-                                }
-                            }
                             setShowSuccessModal(true);
                         }}
                     />

@@ -12,13 +12,41 @@
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 import type { Question } from '@types';
 
+type RawFilterNode = Record<string, unknown>;
+
+type RawQuestionArea = {
+  nome?: string;
+  name?: string;
+  descricao?: string;
+  ['descrição']?: string;
+};
+
+type RawQuestionExam = {
+  nome?: string;
+  name?: string;
+  orgao?: RawFilterNode;
+  banca?: RawFilterNode;
+};
+
+type QuestionWithTaxonomyExtras = Question & {
+  areas?: RawQuestionArea[];
+  provas?: RawQuestionExam[];
+};
+
+type FiltersSaveResponse = {
+  id?: number | string;
+  data?: {
+    id?: number | string;
+  };
+};
+
 export interface FiltersApiPayload {
-  bancas?: Record<string, any>[];
-  orgaos?: Record<string, any>[];
-  assuntos?: Record<string, any>[];
-  cargos?: Record<string, any>[];
+  bancas?: RawFilterNode[];
+  orgaos?: RawFilterNode[];
+  assuntos?: RawFilterNode[];
+  cargos?: RawFilterNode[];
   anos?: Array<string | number>;
-  carreiras?: Record<string, any>[];
+  carreiras?: RawFilterNode[];
 }
 
 export interface FilterSavePayload {
@@ -32,7 +60,7 @@ export interface FilterSavePayload {
   taxonomy_level?: 'materia' | 'topico' | 'assunto' | string;
   description?: string;
   website?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export const ENEM_FOCUS_NAME = 'ENEM';
@@ -121,7 +149,7 @@ const ENEM_SUBJECT_AREA_KEYWORDS: Record<(typeof ENEM_SUBJECT_AREA_OPTIONS)[numb
   ],
 };
 
-const readNamedValue = (entry: any, keys: string[]) => {
+const readNamedValue = (entry: unknown, keys: string[]) => {
   if (entry == null) {
     return '';
   }
@@ -130,8 +158,13 @@ const readNamedValue = (entry: any, keys: string[]) => {
     return String(entry);
   }
 
+  if (typeof entry !== 'object') {
+    return '';
+  }
+
+  const objectEntry = entry as Record<string, unknown>;
   for (const key of keys) {
-    const value = entry?.[key];
+    const value = objectEntry[key];
     if (typeof value === 'string' || typeof value === 'number') {
       return String(value);
     }
@@ -141,16 +174,17 @@ const readNamedValue = (entry: any, keys: string[]) => {
 };
 
 const collectQuestionTexts = (question: Question) => {
+  const extendedQuestion = question as QuestionWithTaxonomyExtras;
   const values = [
-    ...(question.carreiras || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'descricao', 'descrição'])),
-    ...(question.orgaos || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'sigla'])),
-    ...(question.bancas || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'sigla'])),
-    ...(question.assuntos || []).map((item: any) => readNamedValue(item, ['nome', 'name'])),
-    ...((question as any).areas || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'descricao', 'descrição'])),
-    ...((question as any).provas || []).flatMap((item: any) => [
+    ...(question.carreiras || []).map((item) => readNamedValue(item, ['nome', 'name', 'descricao', 'descrição'])),
+    ...(question.orgaos || []).map((item) => readNamedValue(item, ['nome', 'name', 'sigla'])),
+    ...(question.bancas || []).map((item) => readNamedValue(item, ['nome', 'name', 'sigla'])),
+    ...(question.assuntos || []).map((item) => readNamedValue(item, ['nome', 'name'])),
+    ...(extendedQuestion.areas || []).map((item) => readNamedValue(item, ['nome', 'name', 'descricao', 'descrição'])),
+    ...(extendedQuestion.provas || []).flatMap((item) => [
       readNamedValue(item, ['nome', 'name']),
-      readNamedValue(item?.orgao, ['nome', 'name', 'sigla']),
-      readNamedValue(item?.banca, ['nome', 'name', 'sigla']),
+      readNamedValue(item.orgao, ['nome', 'name', 'sigla']),
+      readNamedValue(item.banca, ['nome', 'name', 'sigla']),
     ]),
   ];
 
@@ -208,17 +242,18 @@ export const getEnemSubjectAreasForQuestion = (question: Question) => {
   return Array.from(new Set(matchedAreas));
 };
 
-const getTaxonomyParentId = (item: any) => {
-  const parentId = item?.pai ?? item?.parent_id ?? item?.parentId ?? item?.assunto_raiz ?? null;
+const getTaxonomyParentId = (item: RawFilterNode) => {
+  const parentId = item.pai ?? item.parent_id ?? item.parentId ?? item.assunto_raiz ?? null;
   return parentId === null || parentId === undefined || parentId === '' ? undefined : String(parentId);
 };
 
-const getTaxonomyLevelFromPayload = (item: any) => {
+const getTaxonomyLevelFromPayload = (item: RawFilterNode) => {
+  const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata as Record<string, unknown> : {};
   const rawLevel = String(
-    item?.taxonomy_level
-    || item?.taxonomyLevel
-    || item?.nivel_taxonomia
-    || item?.metadata?.taxonomy_level
+    item.taxonomy_level
+    || item.taxonomyLevel
+    || item.nivel_taxonomia
+    || metadata.taxonomy_level
     || '',
   ).toLowerCase();
 
@@ -235,43 +270,45 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
   const rawSubjects = data.assuntos || [];
   const subjectIds = new Set(
     rawSubjects
-      .filter((item: any) => Boolean(item.materia))
-      .map((item: any) => String(item.id)),
+      .filter((item) => Boolean(item.materia))
+      .map((item) => String(item.id)),
   );
   const nonSubjectIds = new Set(
     rawSubjects
-      .filter((item: any) => !item.materia)
-      .map((item: any) => String(item.id)),
+      .filter((item) => !item.materia)
+      .map((item) => String(item.id)),
   );
 
-  const subjects = rawSubjects.filter((a: any) => a.materia).map((a: any) => ({
-    id: String(a.id),
-    name: a.nome || a.name,
-    slug: a.slug,
-    description: a.description,
-    website: a.website,
+  const subjects = rawSubjects.filter((item) => item.materia).map((item) => ({
+    id: String(item.id),
+    name: readNamedValue(item, ['nome', 'name']),
+    slug: typeof item.slug === 'string' ? item.slug : undefined,
+    description: typeof item.description === 'string' ? item.description : undefined,
+    website: typeof item.website === 'string' ? item.website : undefined,
     materia: true,
     taxonomyLevel: 'materia',
     type: 'subject',
-  })) || [];
+  }));
 
-  const nonSubjectTaxonomies = rawSubjects.filter((a: any) => !a.materia).map((a: any) => {
-    const parentId = getTaxonomyParentId(a);
-    const explicitLevel = getTaxonomyLevelFromPayload(a);
+  const nonSubjectTaxonomies = rawSubjects.filter((item) => !item.materia).map((item) => {
+    const parentId = getTaxonomyParentId(item);
+    const explicitLevel = getTaxonomyLevelFromPayload(item);
     const taxonomyLevel = explicitLevel || (parentId && nonSubjectIds.has(parentId) ? 'assunto' : 'topico');
     const parentTopic = taxonomyLevel === 'assunto'
-      ? rawSubjects.find((item: any) => String(item.id) === parentId)
+      ? rawSubjects.find((rawItem) => String(rawItem.id) === parentId)
       : null;
     const rootSubjectId = taxonomyLevel === 'topico'
       ? parentId
-      : getTaxonomyParentId(parentTopic);
+      : parentTopic
+        ? getTaxonomyParentId(parentTopic)
+        : undefined;
 
     return {
-      id: String(a.id),
-      name: a.nome || a.name,
-      slug: a.slug,
-      description: a.description,
-      website: a.website,
+      id: String(item.id),
+      name: readNamedValue(item, ['nome', 'name']),
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      website: typeof item.website === 'string' ? item.website : undefined,
       parentId,
       rootSubjectId: rootSubjectId && subjectIds.has(String(rootSubjectId)) ? String(rootSubjectId) : undefined,
       materia: false,
@@ -281,55 +318,55 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
   });
 
   return {
-  agencies: data.bancas?.map((b: any) => ({
-    id: b.id,
-    name: b.nome || b.name,
-    sigla: b.sigla,
-    slug: b.slug,
-    description: b.description,
-    website: b.website,
-    type: 'agency',
-  })) || [],
-  organizations: data.orgaos?.map((o: any) => ({
-    id: o.id,
-    name: o.nome || o.name,
-    sigla: o.sigla,
-    slug: o.slug,
-    description: o.description,
-    website: o.website,
-    type: 'organization',
-  })) || [],
-  subjects,
-  topics: nonSubjectTaxonomies,
-  subjectTopics: nonSubjectTaxonomies.filter((item: any) => item.taxonomyLevel === 'topico'),
-  specificSubjects: nonSubjectTaxonomies.filter((item: any) => item.taxonomyLevel === 'assunto'),
-  roles: data.cargos?.map((c: any) => ({
-    id: c.id,
-    name: c['descrição'] || c.descricao || c.name,
-    slug: c.slug,
-    description: c.description,
-    website: c.website,
-    parentId: c.pai || c.parent_id,
-    type: 'role',
-  })) || [],
-  careers: data.carreiras?.map((c: any) => ({
-    id: c.id,
-    name: c.nome || c.name,
-    slug: c.slug,
-    description: c.description,
-    website: c.website,
-    parentId: c.pai || c.parent_id,
-    type: 'career',
-  })) || [],
-  years: data.anos?.map(String) || [],
-  modalities: ['Múltipla Escolha', 'Certo/Errado'],
+    agencies: (data.bancas || []).map((item) => ({
+      id: String(item.id),
+      name: readNamedValue(item, ['nome', 'name']),
+      sigla: typeof item.sigla === 'string' ? item.sigla : undefined,
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      website: typeof item.website === 'string' ? item.website : undefined,
+      type: 'agency',
+    })),
+    organizations: (data.orgaos || []).map((item) => ({
+      id: String(item.id),
+      name: readNamedValue(item, ['nome', 'name']),
+      sigla: typeof item.sigla === 'string' ? item.sigla : undefined,
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      website: typeof item.website === 'string' ? item.website : undefined,
+      type: 'organization',
+    })),
+    subjects,
+    topics: nonSubjectTaxonomies,
+    subjectTopics: nonSubjectTaxonomies.filter((item) => item.taxonomyLevel === 'topico'),
+    specificSubjects: nonSubjectTaxonomies.filter((item) => item.taxonomyLevel === 'assunto'),
+    roles: (data.cargos || []).map((item) => ({
+      id: String(item.id),
+      name: readNamedValue(item, ['descrição', 'descricao', 'name']),
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      website: typeof item.website === 'string' ? item.website : undefined,
+      parentId: item.pai || item.parent_id ? String(item.pai || item.parent_id) : undefined,
+      type: 'role',
+    })),
+    careers: (data.carreiras || []).map((item) => ({
+      id: String(item.id),
+      name: readNamedValue(item, ['nome', 'name']),
+      slug: typeof item.slug === 'string' ? item.slug : undefined,
+      description: typeof item.description === 'string' ? item.description : undefined,
+      website: typeof item.website === 'string' ? item.website : undefined,
+      parentId: item.pai || item.parent_id ? String(item.pai || item.parent_id) : undefined,
+      type: 'career',
+    })),
+    years: (data.anos || []).map(String),
+    modalities: ['Múltipla Escolha', 'Certo/Errado'],
   };
 };
 
 export const filtersService = {
   async list(): Promise<FiltersApiPayload> {
-    const response = await apiClient.get<any>(ENDPOINTS.filters.list) as any;
-    return readApiData(response, {});
+    const response = await apiClient.get<FiltersApiPayload>(ENDPOINTS.filters.list);
+    return readApiData<FiltersApiPayload>(response, {});
   },
 
   async listTaxonomies() {
@@ -338,14 +375,15 @@ export const filtersService = {
   },
 
   async save(payload: FilterSavePayload): Promise<number> {
-    const response = await apiClient.post<any>(ENDPOINTS.filters.save, payload) as any;
-    const raw = assertApiSuccess(response, 'Erro ao salvar filtro').raw;
+    const response = await apiClient.post<FiltersSaveResponse>(ENDPOINTS.filters.save, payload);
+    const envelope = assertApiSuccess(response, 'Erro ao salvar filtro');
+    const result = readApiData<FiltersSaveResponse>(response, {});
 
-    return raw?.data?.id ?? raw?.id ?? 0;
+    return Number(result.data?.id ?? result.id ?? envelope.raw.id ?? 0);
   },
 
   async remove(id: number): Promise<void> {
-    const response = await apiClient.get<any>(ENDPOINTS.filters.delete, { params: { id: id.toString() } }) as any;
+    const response = await apiClient.get(ENDPOINTS.filters.delete, { params: { id: id.toString() } });
     assertApiSuccess(response, 'Erro ao deletar filtro');
   },
 };

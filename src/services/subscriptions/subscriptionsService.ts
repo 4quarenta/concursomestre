@@ -11,44 +11,65 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 
-let automationHelperRequest: Promise<any> | null = null;
-let automationHelperCache: { payload: any; cachedAt: number } | null = null;
+type SubscriptionApiPayload = Record<string, unknown>;
+type SubscriptionApiPayloadWithUrl = SubscriptionApiPayload & {
+  url?: string | null;
+  redirect_url?: string | null;
+};
+type CouponValidationResponse = SubscriptionApiPayload & {
+  coupon?: unknown;
+};
+type CancelSubscriptionResponse = SubscriptionApiPayload & {
+  refund_processed?: boolean;
+  refund_id?: string | null;
+};
+
+let automationHelperRequest: Promise<SubscriptionApiPayload> | null = null;
+let automationHelperCache: { payload: SubscriptionApiPayload; cachedAt: number } | null = null;
 const AUTOMATION_HELPER_CACHE_TTL_MS = 60_000;
 
 /**
  * Consolida payloads do backend em um objeto unico e previsivel.
- * Essa normalizacao evita que checkout e billing precisem conhecer todos os formatos legados.
+ * Essa normalizacao evita que checkout e billing precisem conhecer formatos legados.
  * @since 1.0.0
  */
-const mergeResponsePayload = <T extends Record<string, any>>(response: any, fallback: T): T & Record<string, any> => {
+const mergeResponsePayload = <T extends Record<string, unknown>>(
+  response: unknown,
+  fallback: T,
+): T & SubscriptionApiPayload => {
   const payload = readApiData<T>(response, fallback);
   if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
     return {
-      ...response,
+      ...(response && typeof response === 'object' ? response : {}),
       ...payload,
     };
   }
 
-  return response;
+  return (response && typeof response === 'object' ? response : fallback) as T & SubscriptionApiPayload;
 };
 
 /**
- * Variante do merge que garante a exposicao de uma URL de redirecionamento.
- * Ela e usada por flows de checkout hospedado que precisam abrir uma rota externa.
+ * Garante uma URL de redirecionamento nos fluxos hospedados.
  * @since 1.0.0
  */
-const mergeResponsePayloadWithUrl = <T extends Record<string, any>>(response: any, fallback: T): T & Record<string, any> => {
+const mergeResponsePayloadWithUrl = <T extends Record<string, unknown>>(
+  response: unknown,
+  fallback: T,
+): T & SubscriptionApiPayloadWithUrl => {
   const merged = mergeResponsePayload(response, fallback);
   return {
     ...merged,
-    url: merged?.url || merged?.redirect_url || null,
+    url: typeof merged.url === 'string'
+      ? merged.url
+      : typeof merged.redirect_url === 'string'
+        ? merged.redirect_url
+        : null,
   };
 };
 
 /**
  * Fachada oficial do dominio de assinaturas.
- * Centraliza os fluxos de conta e checkout para reduzir dependencias diretas
- * dos entry points em endpoints legados.
+ * Centraliza fluxos de conta e checkout para reduzir acoplamento com endpoints legados.
  * @since 1.0.0
  */
 export const subscriptionsService = {
@@ -56,27 +77,29 @@ export const subscriptionsService = {
    * Busca os dados de automacao financeira exibidos no painel admin.
    * @since 1.0.0
    */
-  async getAutomationHelperInfo(): Promise<any> {
+  async getAutomationHelperInfo(): Promise<SubscriptionApiPayload> {
     if (automationHelperCache && (Date.now() - automationHelperCache.cachedAt) < AUTOMATION_HELPER_CACHE_TTL_MS) {
       return automationHelperCache.payload;
     }
+
     if (automationHelperRequest) {
       return automationHelperRequest;
     }
 
     automationHelperRequest = (async () => {
-    const response = await apiClient.get<any>(ENDPOINTS.subscriptions.automationHelper);
-    assertApiSuccess(
-      response,
-      'Não foi possível carregar as instruções de automação.',
-    );
+      const response = await apiClient.get<SubscriptionApiPayload>(ENDPOINTS.subscriptions.automationHelper);
+      assertApiSuccess(
+        response,
+        'Nao foi possivel carregar as instrucoes de automacao.',
+      );
 
-    const payload = mergeResponsePayload(response, {});
-    automationHelperCache = {
-      payload,
-      cachedAt: Date.now(),
-    };
-    return payload;
+      const payload = mergeResponsePayload(response, {});
+      automationHelperCache = {
+        payload,
+        cachedAt: Date.now(),
+      };
+
+      return payload;
     })().finally(() => {
       automationHelperRequest = null;
     });
@@ -88,8 +111,11 @@ export const subscriptionsService = {
    * Executa manualmente a reconciliacao Stripe pelo painel admin.
    * @since 1.0.0
    */
-  async runAutomationNow(): Promise<any> {
-    const response = await apiClient.post<any>(`${ENDPOINTS.subscriptions.automationHelper}?action=run_now`, {});
+  async runAutomationNow(): Promise<SubscriptionApiPayload> {
+    const response = await apiClient.post<SubscriptionApiPayload>(
+      `${ENDPOINTS.subscriptions.automationHelper}?action=run_now`,
+      {},
+    );
     assertApiSuccess(
       response,
       'Nao foi possivel executar a rotina de automacao.',
@@ -102,8 +128,8 @@ export const subscriptionsService = {
    * Busca a matriz oficial de cenarios de teste Stripe exibida no admin.
    * @since 1.0.0
    */
-  async getStripeTestingMatrix(): Promise<any> {
-    const response = await apiClient.get<any>(ENDPOINTS.subscriptions.stripeTestingMatrix);
+  async getStripeTestingMatrix(): Promise<SubscriptionApiPayload> {
+    const response = await apiClient.get<SubscriptionApiPayload>(ENDPOINTS.subscriptions.stripeTestingMatrix);
     assertApiSuccess(
       response,
       'Nao foi possivel carregar a matriz oficial de testes Stripe.',
@@ -116,8 +142,11 @@ export const subscriptionsService = {
    * Busca o historico de execucoes guiadas da matriz Stripe (admin).
    * @since 1.0.0
    */
-  async getStripeTestingRuns(limit = 80): Promise<any> {
-    const response = await apiClient.get<any>(`${ENDPOINTS.subscriptions.stripeTestingRuns}?limit=${Math.max(1, Math.min(300, limit))}`);
+  async getStripeTestingRuns(limit = 80): Promise<SubscriptionApiPayload> {
+    const safeLimit = Math.max(1, Math.min(300, limit));
+    const response = await apiClient.get<SubscriptionApiPayload>(
+      `${ENDPOINTS.subscriptions.stripeTestingRuns}?limit=${safeLimit}`,
+    );
     assertApiSuccess(
       response,
       'Nao foi possivel carregar o historico de execucoes da matriz Stripe.',
@@ -139,8 +168,8 @@ export const subscriptionsService = {
     evidence_url?: string;
     gateway_message?: string;
     notes?: string;
-  }): Promise<any> {
-    const response = await apiClient.post<any>(ENDPOINTS.subscriptions.stripeTestingRuns, payload);
+  }): Promise<SubscriptionApiPayload> {
+    const response = await apiClient.post<SubscriptionApiPayload>(ENDPOINTS.subscriptions.stripeTestingRuns, payload);
     assertApiSuccess(
       response,
       'Nao foi possivel registrar a execucao guiada da matriz Stripe.',
@@ -159,13 +188,17 @@ export const subscriptionsService = {
     coupon_code?: string;
     billing_mode?: 'single_installment' | 'term_recurring';
     installment_count?: number;
-  }): Promise<any> {
+  }): Promise<SubscriptionApiPayloadWithUrl> {
     try {
-      const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripeCheckout, payload);
+      const response = await apiClient.post<SubscriptionApiPayloadWithUrl>(
+        ENDPOINTS.subscriptions.createStripeCheckout,
+        payload,
+      );
       assertApiSuccess(
         response,
-        'Não foi possível iniciar o checkout Stripe.',
+        'Nao foi possivel iniciar o checkout Stripe.',
       );
+
       return mergeResponsePayloadWithUrl(response, {});
     } catch (error) {
       console.error('Error creating Stripe checkout session:', error);
@@ -174,7 +207,7 @@ export const subscriptionsService = {
   },
 
   /**
-   * Cria uma assinatura Stripe pelo fluxo inline com cartão salvo ou novo.
+   * Cria uma assinatura Stripe pelo fluxo inline com cartao salvo ou novo.
    * @since 1.0.0
    */
   async createStripeSubscription(payload: {
@@ -186,13 +219,17 @@ export const subscriptionsService = {
     save_card?: boolean;
     billing_mode?: 'single_installment' | 'term_recurring';
     installment_count?: number;
-  }): Promise<any> {
+  }): Promise<SubscriptionApiPayload> {
     try {
-      const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripeSubscription, payload);
+      const response = await apiClient.post<SubscriptionApiPayload>(
+        ENDPOINTS.subscriptions.createStripeSubscription,
+        payload,
+      );
       assertApiSuccess(
         response,
-        'Não foi possível criar a assinatura Stripe.',
+        'Nao foi possivel criar a assinatura Stripe.',
       );
+
       return mergeResponsePayload(response, {});
     } catch (error) {
       console.error('Error creating Stripe inline subscription:', error);
@@ -213,13 +250,17 @@ export const subscriptionsService = {
     saved_card_id?: string;
     save_card?: boolean;
     billing_mode?: 'single_installment' | 'term_recurring';
-  }): Promise<any> {
+  }): Promise<SubscriptionApiPayload> {
     try {
-      const response = await apiClient.post<any>(ENDPOINTS.subscriptions.finalizeStripeSubscription, payload);
+      const response = await apiClient.post<SubscriptionApiPayload>(
+        ENDPOINTS.subscriptions.finalizeStripeSubscription,
+        payload,
+      );
       assertApiSuccess(
         response,
-        'Não foi possível finalizar a assinatura Stripe.',
+        'Nao foi possivel finalizar a assinatura Stripe.',
       );
+
       return mergeResponsePayload(response, {});
     } catch (error) {
       console.error('Error finalizing Stripe subscription:', error);
@@ -228,32 +269,31 @@ export const subscriptionsService = {
   },
 
   /**
-   * Consulta a capability pix_payments da Stripe para exibição segura no checkout.
-   * A solicitação de ativação por API é um fluxo administrativo no backend.
+   * Consulta a capability pix_payments da Stripe para exibicao segura no checkout.
    * @since 1.0.0
    */
-  async getStripePixCapability(): Promise<any> {
-    const response = await apiClient.get<any>(ENDPOINTS.subscriptions.stripePixCapability);
+  async getStripePixCapability(): Promise<SubscriptionApiPayload> {
+    const response = await apiClient.get<SubscriptionApiPayload>(ENDPOINTS.subscriptions.stripePixCapability);
     assertApiSuccess(
       response,
-      'Não foi possível consultar a disponibilidade de PIX na Stripe.',
+      'Nao foi possivel consultar a disponibilidade de PIX na Stripe.',
     );
 
     return mergeResponsePayload(response, {});
   },
 
   /**
-   * Solicita a capability pix_payments via API oficial de capabilities da Stripe.
-   * Deve ser usado apenas por contexto administrativo autorizado no backend.
+   * Solicita a capability pix_payments por contexto administrativo autorizado.
    * @since 1.0.0
    */
-  async requestStripePixCapability(): Promise<any> {
-    const response = await apiClient.post<any>(ENDPOINTS.subscriptions.stripePixCapability, {
-      request: true,
-    });
+  async requestStripePixCapability(): Promise<SubscriptionApiPayload> {
+    const response = await apiClient.post<SubscriptionApiPayload>(
+      ENDPOINTS.subscriptions.stripePixCapability,
+      { request: true },
+    );
     assertApiSuccess(
       response,
-      'Não foi possível solicitar a ativação do PIX na Stripe.',
+      'Nao foi possivel solicitar a ativacao do PIX na Stripe.',
     );
 
     return mergeResponsePayload(response, {});
@@ -272,21 +312,24 @@ export const subscriptionsService = {
       targetType?: 'plan' | 'item';
       targetId?: string | number;
     } = {},
-  ): Promise<any> {
+  ): Promise<CouponValidationResponse> {
     try {
-      const response = await apiClient.post<any>(ENDPOINTS.subscriptions.validateCoupon, {
-        code,
-        amount,
-        plan_id: options.planId,
-        item_id: options.itemId,
-        target_type: options.targetType,
-        target_id: options.targetId,
-      });
-      const rawResponse = response as any;
-      const payload = readApiData<any>(rawResponse, {});
+      const response = await apiClient.post<CouponValidationResponse>(
+        ENDPOINTS.subscriptions.validateCoupon,
+        {
+          code,
+          amount,
+          plan_id: options.planId,
+          item_id: options.itemId,
+          target_type: options.targetType,
+          target_id: options.targetId,
+        },
+      );
+      const merged = mergeResponsePayload(response, {} as CouponValidationResponse);
+
       return {
-        ...assertApiSuccess(rawResponse, 'Não foi possível validar o cupom.').raw,
-        coupon: payload?.coupon || rawResponse?.coupon || null,
+        ...assertApiSuccess(response, 'Nao foi possivel validar o cupom.').raw,
+        coupon: merged.coupon ?? null,
       };
     } catch (error) {
       console.error('Error validating coupon:', error);
@@ -295,17 +338,21 @@ export const subscriptionsService = {
   },
 
   /**
-   * Abre uma sessão do portal Stripe para gestão de billing do usuário.
+   * Abre uma sessao do portal Stripe para gestao de billing do usuario.
    * @since 1.0.0
    */
-  async createStripePortalSession(): Promise<any> {
+  async createStripePortalSession(): Promise<SubscriptionApiPayloadWithUrl> {
     try {
-      const response = await apiClient.post<any>(ENDPOINTS.subscriptions.createStripePortal, {});
+      const response = await apiClient.post<SubscriptionApiPayloadWithUrl>(
+        ENDPOINTS.subscriptions.createStripePortal,
+        {},
+      );
       assertApiSuccess(
         response,
-        'Não foi possível abrir o portal Stripe.',
+        'Nao foi possivel abrir o portal Stripe.',
       );
-      return mergeResponsePayload(response, {});
+
+      return mergeResponsePayloadWithUrl(response, {});
     } catch (error) {
       console.error('Error creating Stripe portal session:', error);
       throw error;
@@ -313,17 +360,18 @@ export const subscriptionsService = {
   },
 
   /**
-   * Atualiza a preferência de renovação automática da assinatura atual.
+   * Atualiza a preferencia de renovacao automatica da assinatura atual.
    * @since 1.0.0
    */
-  async updateRenewal(autoRenew: boolean): Promise<any> {
-    const response = await apiClient.post(ENDPOINTS.subscriptions.updateRenewal, {
-      auto_renew: autoRenew,
-    });
+  async updateRenewal(autoRenew: boolean): Promise<SubscriptionApiPayload> {
+    const response = await apiClient.post<SubscriptionApiPayload>(
+      ENDPOINTS.subscriptions.updateRenewal,
+      { auto_renew: autoRenew },
+    );
 
     assertApiSuccess(
       response,
-      'Não foi possível atualizar a renovação automática.',
+      'Nao foi possivel atualizar a renovacao automatica.',
     );
 
     return mergeResponsePayload(response, {});
@@ -333,19 +381,26 @@ export const subscriptionsService = {
    * Solicita cancelamento da assinatura ativa com contexto opcional.
    * @since 1.0.0
    */
-  async cancelSubscription(reason?: string, details?: string, captchaToken?: string | null): Promise<any> {
+  async cancelSubscription(
+    reason?: string,
+    details?: string,
+    captchaToken?: string | null,
+  ): Promise<CancelSubscriptionResponse> {
     try {
-      const response = await apiClient.post<any>(ENDPOINTS.subscriptions.cancel, {
-        reason,
-        details,
-        captchaToken,
-      });
-      const rawResponse = response as any;
-      const payload = readApiData<any>(rawResponse, {});
+      const response = await apiClient.post<CancelSubscriptionResponse>(
+        ENDPOINTS.subscriptions.cancel,
+        {
+          reason,
+          details,
+          captchaToken,
+        },
+      );
+      const merged = mergeResponsePayload(response, {} as CancelSubscriptionResponse);
+
       return {
-        ...assertApiSuccess(rawResponse, 'Não foi possível cancelar a assinatura.').raw,
-        refund_processed: payload?.refund_processed ?? rawResponse?.refund_processed ?? false,
-        refund_id: payload?.refund_id ?? rawResponse?.refund_id ?? null,
+        ...assertApiSuccess(response, 'Nao foi possivel cancelar a assinatura.').raw,
+        refund_processed: typeof merged.refund_processed === 'boolean' ? merged.refund_processed : false,
+        refund_id: typeof merged.refund_id === 'string' || merged.refund_id === null ? merged.refund_id : null,
       };
     } catch (error) {
       console.error('Error canceling subscription:', error);
@@ -354,16 +409,17 @@ export const subscriptionsService = {
   },
 
   /**
-   * Cancela uma solicitação de reembolso/cancelamento ainda pendente.
+   * Cancela uma solicitacao de reembolso/cancelamento ainda pendente.
    * @since 1.0.0
    */
-  async cancelRefundRequest(): Promise<any> {
+  async cancelRefundRequest(): Promise<SubscriptionApiPayload> {
     try {
-      const response = await apiClient.post<any>(ENDPOINTS.subscriptions.cancelRefund, {});
+      const response = await apiClient.post<SubscriptionApiPayload>(ENDPOINTS.subscriptions.cancelRefund, {});
       assertApiSuccess(
         response,
-        'Não foi possível cancelar a solicitação de reembolso.',
+        'Nao foi possivel cancelar a solicitacao de reembolso.',
       );
+
       return mergeResponsePayload(response, {});
     } catch (error) {
       console.error('Error canceling refund request:', error);
@@ -372,16 +428,17 @@ export const subscriptionsService = {
   },
 
   /**
-   * Reverte uma solicitação de cancelamento antes do fechamento final.
+   * Reverte uma solicitacao de cancelamento antes do fechamento final.
    * @since 1.0.0
    */
-  async undoCancellationRequest(): Promise<any> {
+  async undoCancellationRequest(): Promise<SubscriptionApiPayload> {
     try {
-      const response = await apiClient.post<any>(ENDPOINTS.subscriptions.undoCancel, {});
+      const response = await apiClient.post<SubscriptionApiPayload>(ENDPOINTS.subscriptions.undoCancel, {});
       assertApiSuccess(
         response,
-        'Não foi possível reverter a solicitação de cancelamento.',
+        'Nao foi possivel reverter a solicitacao de cancelamento.',
       );
+
       return mergeResponsePayload(response, {});
     } catch (error) {
       console.error('Error undoing cancellation request:', error);

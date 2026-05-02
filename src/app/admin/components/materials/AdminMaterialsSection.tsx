@@ -122,8 +122,9 @@ const AdminMaterialsSection = ({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  void openAuthenticatedFile(buildMaterialAccessEndpoint(material.id)).catch((error: any) => {
-                                    addToast(error?.message || 'Nao foi possivel abrir a visualizacao do material.', 'error');
+                                  void openAuthenticatedFile(buildMaterialAccessEndpoint(material.id)).catch((error: unknown) => {
+                                    const message = error instanceof Error ? error.message : 'Nao foi possivel abrir a visualizacao do material.';
+                                    addToast(message || 'Nao foi possivel abrir a visualizacao do material.', 'error');
                                   });
                                 }}
                                 className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
@@ -154,7 +155,7 @@ const AdminMaterialsSection = ({
                     <td className="p-4 font-bold text-slate-700 dark:text-slate-300">{material.salesCount || 0}</td>
                     <td className="p-4">
                       <div className="flex flex-col gap-1">
-                        <AdminPublishStateBadge state={resolveAdminPublishState(material as Record<string, any>)} />
+                        <AdminPublishStateBadge state={resolveAdminPublishState(material as unknown as Record<string, unknown>)} />
                         <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
                           {material.status === 'approved'
                             ? 'Moderacao aprovada'

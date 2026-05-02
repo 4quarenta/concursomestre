@@ -189,13 +189,11 @@ const AdminDashboard = ({
   const [stats, setStats] = useState<AdminStatsPayload>(EMPTY_STATS);
   const [dashboardAnalytics, setDashboardAnalytics] = useState<AdminDashboardAnalyticsPayload>(EMPTY_DASHBOARD_ANALYTICS);
   const [feedbackThreads, setFeedbackThreads] = useState<AdminFeedbackThread[]>([]);
-  const [isStatsLoading, setIsStatsLoading] = useState(false);
+  const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [refreshVersion, setRefreshVersion] = useState(0);
 
   useEffect(() => {
     let isCurrent = true;
-
-    setIsStatsLoading(true);
 
     Promise.all([
       adminService.getStats({
@@ -407,7 +405,12 @@ const AdminDashboard = ({
             <button
               key={period.key}
               type="button"
-              onClick={() => setSelectedPeriod(period.key)}
+              onClick={() => {
+                if (selectedPeriod !== period.key) {
+                  setIsStatsLoading(true);
+                  setSelectedPeriod(period.key);
+                }
+              }}
               className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 selectedPeriod === period.key
                   ? ADMIN_TAB_BUTTON_ACTIVE_CLASS
@@ -425,13 +428,19 @@ const AdminDashboard = ({
               <input
                 type="date"
                 value={customStartDate}
-                onChange={(event) => setCustomStartDate(event.target.value)}
+                onChange={(event) => {
+                  setIsStatsLoading(true);
+                  setCustomStartDate(event.target.value);
+                }}
                 className={ADMIN_FIELD_CLASS}
               />
               <input
                 type="date"
                 value={customEndDate}
-                onChange={(event) => setCustomEndDate(event.target.value)}
+                onChange={(event) => {
+                  setIsStatsLoading(true);
+                  setCustomEndDate(event.target.value);
+                }}
                 className={ADMIN_FIELD_CLASS}
               />
             </div>
@@ -489,7 +498,10 @@ const AdminDashboard = ({
           action={(
             <button
               type="button"
-              onClick={() => setRefreshVersion((version) => version + 1)}
+              onClick={() => {
+                setIsStatsLoading(true);
+                setRefreshVersion((version) => version + 1);
+              }}
               className="text-sm font-semibold text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200"
             >
               Atualizar leitura

@@ -46,12 +46,12 @@ import {
   Cell,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import ReactMarkdown from 'react-markdown';
+import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import { useAuth } from '@providers/AuthProvider';
 import { useData } from '@providers/DataProvider';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
@@ -868,7 +868,7 @@ const ChartsPanel = ({
         <PieIcon size={16} className="text-slate-400" /> Distribuição por matéria
       </h2>
       <div className="h-72 min-w-0">
-        <ResponsiveContainer width="100%" height={288} minWidth={0}>
+        <StableResponsiveContainer height={288}>
           <PieChart>
             <Pie
               data={stats.subjectData}
@@ -886,7 +886,7 @@ const ChartsPanel = ({
             </Pie>
             <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', backgroundColor: 'rgba(15, 23, 42, 0.92)', color: '#fff', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.3)', fontSize: '12px' }} />
           </PieChart>
-        </ResponsiveContainer>
+        </StableResponsiveContainer>
       </div>
     </section>
 
@@ -895,7 +895,7 @@ const ChartsPanel = ({
         <BarChart3 size={16} className="text-slate-400" /> Dificuldade observada
       </h2>
       <div className="h-72 min-w-0">
-        <ResponsiveContainer width="100%" height={288} minWidth={0}>
+        <StableResponsiveContainer height={288}>
           <BarChart data={stats.difficultyData}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
             <XAxis dataKey="name" tick={{ fontSize: 11, fontWeight: 700, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
@@ -903,7 +903,7 @@ const ChartsPanel = ({
             <Tooltip cursor={{ fill: 'rgba(99,102,241,0.08)' }} contentStyle={{ borderRadius: '16px', border: 'none', backgroundColor: 'rgba(15, 23, 42, 0.92)', color: '#fff', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.3)', fontSize: '12px' }} />
             <Bar dataKey="value" fill="#6366f1" radius={[10, 10, 0, 0]} barSize={44} />
           </BarChart>
-        </ResponsiveContainer>
+        </StableResponsiveContainer>
       </div>
     </section>
   </div>

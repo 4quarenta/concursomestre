@@ -38,6 +38,17 @@ export type AdminNavigationSection = {
   label: string;
 };
 
+export type SupportPendingCounts = Partial<Record<'feedback' | 'reports' | 'comments' | 'refunds', number>>;
+
+export const resolveSupportLandingSection = (counts: SupportPendingCounts = {}): AdminSupportSection => {
+  if (Number(counts.comments || 0) > 0) return 'comments';
+  if (Number(counts.reports || 0) > 0) return 'reports';
+  if (Number(counts.feedback || 0) > 0) return 'feedback';
+  if (Number(counts.refunds || 0) > 0) return 'refunds';
+
+  return DEFAULT_SECTION_BY_TAB.support as AdminSupportSection;
+};
+
 export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
   panel: 'Visao executiva, alertas operacionais e saude do billing.',
   operation: 'Questoes, provas, importacao, taxonomias, lei comentada e usuarios.',
