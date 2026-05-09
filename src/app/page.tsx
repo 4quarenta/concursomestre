@@ -53,6 +53,9 @@ const resolveCanonicalAuthRedirect = (searchParams: HomeSearchParams): string | 
     readQueryValue(searchParams, 'passwordResetToken'),
     readQueryValue(searchParams, 'password_reset'),
     readQueryValue(searchParams, 'password_reset_token'),
+    readQueryValue(searchParams, 'resetPasswordToken'),
+    readQueryValue(searchParams, 'recover_token'),
+    readQueryValue(searchParams, 'token_reset'),
   );
 
   const verificationToken = pickFirstNonEmpty(
@@ -63,6 +66,8 @@ const resolveCanonicalAuthRedirect = (searchParams: HomeSearchParams): string | 
     readQueryValue(searchParams, 'confirmation_token'),
     readQueryValue(searchParams, 'email_verification_token'),
     readQueryValue(searchParams, 'activation_token'),
+    readQueryValue(searchParams, 'confirm_token'),
+    readQueryValue(searchParams, 'email_confirm_token'),
   );
 
   const genericToken = readQueryValue(searchParams, 'token');
@@ -82,7 +87,11 @@ const resolveCanonicalAuthRedirect = (searchParams: HomeSearchParams): string | 
     return `/reset-password?${params.toString()}`;
   }
 
-  const effectiveVerificationToken = pickFirstNonEmpty(verificationToken, isVerificationMode ? genericToken : '');
+  const effectiveVerificationToken = pickFirstNonEmpty(
+    verificationToken,
+    isVerificationMode ? genericToken : '',
+    genericToken && !effectiveResetToken ? genericToken : '',
+  );
   if (effectiveVerificationToken) {
     const params = new URLSearchParams();
     params.set('token', effectiveVerificationToken);

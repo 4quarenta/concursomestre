@@ -29,7 +29,7 @@ import {
   ADMIN_SURFACE_CLASS,
 } from '../shared/adminPanelStyles';
 
-type DetailTab = 'overview' | 'subscription' | 'transactions' | 'comments';
+type DetailTab = 'overview' | 'subscription' | 'transactions' | 'comments' | 'support';
 type ConfirmState = null | {
   action: string;
   actionKey: string;
@@ -80,6 +80,31 @@ type AdminUserCommentItem = {
   comment?: string;
 };
 
+type AdminUserFeedbackItem = {
+  id: string | number;
+  type?: string;
+  reason?: string;
+  details?: string;
+  status?: string;
+  created_at?: string | null;
+  public_rating?: number | string | null;
+  public_display_name?: string | null;
+  public_headline?: string | null;
+  home_published_at?: string | null;
+};
+
+type AdminUserReportItem = {
+  id: string | number;
+  target_type?: string;
+  target_id?: string | number;
+  reason?: string;
+  details?: string;
+  status?: string;
+  created_at?: string | null;
+  resolved_at?: string | null;
+  admin_reason?: string | null;
+};
+
 type AdminAvailablePlanItem = {
   id: string | number;
   name?: string;
@@ -94,8 +119,13 @@ type AdminUserDetailsView = {
   available_plans?: AdminAvailablePlanItem[];
   stats?: {
     comments_count?: number;
+    feedback_count?: number;
+    reports_count?: number;
+    open_reports_count?: number;
   };
   last_comments?: AdminUserCommentItem[];
+  feedback_threads?: AdminUserFeedbackItem[];
+  reports?: AdminUserReportItem[];
 };
 
 interface UserProfileAdminModalProps {
@@ -142,6 +172,36 @@ const getTransactionStatusClass = (status: string | null | undefined) => {
   }
 };
 
+const getSupportStatusClass = (status: string | null | undefined) => {
+  switch (String(status || '').toLowerCase()) {
+    case 'resolved':
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
+    case 'read':
+      return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300';
+    case 'ignored':
+      return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+    default:
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+  }
+};
+
+const getFeedbackTypeLabel = (type: string | null | undefined) => {
+  switch (String(type || '').toLowerCase()) {
+    case 'suggestion':
+      return 'Sugestao';
+    case 'report':
+      return 'Denuncia';
+    case 'bug':
+      return 'Bug';
+    case 'cancellation':
+      return 'Cancelamento';
+    case 'support':
+      return 'Suporte';
+    default:
+      return 'Outro';
+  }
+};
+
 const sectionCardClass = `${ADMIN_SURFACE_CLASS} p-5`;
 const metricCardClass = `${ADMIN_MUTED_SURFACE_CLASS} p-4`;
 
@@ -165,6 +225,8 @@ const UserProfileAdminModal = ({
   const subscriptions = normalizedDetailedUser?.subscriptions ?? [];
   const transactions = normalizedDetailedUser?.transactions ?? [];
   const comments = normalizedDetailedUser?.last_comments ?? [];
+  const feedbackThreads = normalizedDetailedUser?.feedback_threads ?? [];
+  const reports = normalizedDetailedUser?.reports ?? [];
   const availablePlans = (normalizedDetailedUser?.available_plans ?? []).filter((plan) => Number(plan?.active ?? 1) !== 0);
   const [daysToAdd, setDaysToAdd] = React.useState('30');
   const [selectedPlanIdOverride, setSelectedPlanIdOverride] = React.useState('');
@@ -406,6 +468,124 @@ const UserProfileAdminModal = ({
     </div>
   );
 
+  const renderSupport = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className={metricCardClass}>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Feedbacks</p>
+          <p className="mt-2 text-lg font-black text-slate-900 dark:text-slate-100">
+            {Number(normalizedDetailedUser?.stats?.feedback_count || 0)}
+          </p>
+        </div>
+        <div className={metricCardClass}>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Denuncias</p>
+          <p className="mt-2 text-lg font-black text-slate-900 dark:text-slate-100">
+            {Number(normalizedDetailedUser?.stats?.reports_count || 0)}
+          </p>
+        </div>
+        <div className={metricCardClass}>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Denuncias pendentes</p>
+          <p className="mt-2 text-lg font-black text-amber-700 dark:text-amber-300">
+            {Number(normalizedDetailedUser?.stats?.open_reports_count || 0)}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className={sectionCardClass}>
+          <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+            <h4 className="text-xs font-black uppercase tracking-[0.18em] text-slate-900 dark:text-slate-100">
+              Feedback / Sugestoes / Avaliacoes
+            </h4>
+            <Link
+              href="/admin/support/feedback"
+              target="_blank"
+              className={ADMIN_SECONDARY_BUTTON_CLASS}
+            >
+              Abrir fila
+            </Link>
+          </div>
+          <div className="max-h-[460px] space-y-3 overflow-y-auto pr-1">
+            {feedbackThreads.length ? feedbackThreads.map((thread) => (
+              <div key={thread.id} className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                    {getFeedbackTypeLabel(thread.type)}
+                  </span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${getSupportStatusClass(thread.status)}`}>
+                    {thread.status || 'new'}
+                  </span>
+                  {Number(thread.public_rating || 0) > 0 ? (
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                      {`Avaliacao ${Number(thread.public_rating)}/5`}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-sm font-black text-slate-900 dark:text-slate-100">
+                  {thread.reason || 'Sem assunto'}
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  {thread.details || 'Sem descricao'}
+                </p>
+                <p className="mt-2 text-[11px] font-medium text-slate-400">
+                  {formatDateTime(thread.created_at)}
+                </p>
+              </div>
+            )) : (
+              <p className="text-sm italic text-slate-400 dark:text-slate-500">Sem feedbacks registrados.</p>
+            )}
+          </div>
+        </div>
+
+        <div className={sectionCardClass}>
+          <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+            <h4 className="text-xs font-black uppercase tracking-[0.18em] text-slate-900 dark:text-slate-100">
+              Denuncias enviadas
+            </h4>
+            <Link
+              href="/admin/support/reports"
+              target="_blank"
+              className={ADMIN_SECONDARY_BUTTON_CLASS}
+            >
+              Abrir moderacao
+            </Link>
+          </div>
+          <div className="max-h-[460px] space-y-3 overflow-y-auto pr-1">
+            {reports.length ? reports.map((report) => (
+              <div key={report.id} className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    {report.target_type || 'target'}
+                    {report.target_id ? ` #${report.target_id}` : ''}
+                  </span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${getSupportStatusClass(report.status)}`}>
+                    {report.status || 'pending'}
+                  </span>
+                </div>
+                <p className="text-sm font-black text-slate-900 dark:text-slate-100">
+                  {report.reason || 'Sem motivo'}
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  {report.details || 'Sem detalhes'}
+                </p>
+                {report.admin_reason ? (
+                  <p className="mt-2 rounded-sm bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    Resolucao admin: {report.admin_reason}
+                  </p>
+                ) : null}
+                <p className="mt-2 text-[11px] font-medium text-slate-400">
+                  {formatDateTime(report.created_at)}
+                </p>
+              </div>
+            )) : (
+              <p className="text-sm italic text-slate-400 dark:text-slate-500">Sem denuncias registradas.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return createPortal(
     <>
       <div className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-slate-50 p-4 dark:bg-slate-950">
@@ -442,9 +622,17 @@ const UserProfileAdminModal = ({
           ) : (
             <div className="flex flex-1 flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
               <div className="flex gap-2 overflow-x-auto border-b border-slate-300 bg-slate-100 px-5 py-3 dark:border-slate-700 dark:bg-slate-950/50">
-                {(['overview', 'subscription', 'transactions', 'comments'] as DetailTab[]).map((tab) => (
+                {(['overview', 'subscription', 'transactions', 'comments', 'support'] as DetailTab[]).map((tab) => (
                   <button key={tab} type="button" onClick={() => onDetailTabChange(tab)} className={`rounded-sm border px-3 py-2 text-[11px] font-semibold uppercase tracking-widest ${detailTab === tab ? 'border-sky-700 bg-sky-700 text-white' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'}`}>
-                    {tab === 'overview' ? 'Visao geral' : tab === 'subscription' ? 'Assinatura e acesso' : tab === 'transactions' ? 'Financeiro' : `Comentarios (${comments.length})`}
+                    {tab === 'overview'
+                      ? 'Visao geral'
+                      : tab === 'subscription'
+                        ? 'Assinatura e acesso'
+                        : tab === 'transactions'
+                          ? 'Financeiro'
+                          : tab === 'comments'
+                            ? `Comentarios (${comments.length})`
+                            : `Relacionamento (${feedbackThreads.length + reports.length})`}
                   </button>
                 ))}
               </div>
@@ -453,6 +641,7 @@ const UserProfileAdminModal = ({
                 {detailTab === 'subscription' && renderSubscription()}
                 {detailTab === 'transactions' && renderTransactions()}
                 {detailTab === 'comments' && renderComments()}
+                {detailTab === 'support' && renderSupport()}
               </div>
             </div>
           )}

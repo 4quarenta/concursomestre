@@ -73,6 +73,31 @@ export interface AdminUserCommentRecord extends AdminLooseRecord {
   comment?: string;
 }
 
+export interface AdminUserFeedbackRecord extends AdminLooseRecord {
+  id?: string | number;
+  type?: string;
+  reason?: string;
+  details?: string;
+  status?: string;
+  created_at?: string | null;
+  public_rating?: number | string | null;
+  public_display_name?: string | null;
+  public_headline?: string | null;
+  home_published_at?: string | null;
+}
+
+export interface AdminUserReportRecord extends AdminLooseRecord {
+  id?: string | number;
+  target_type?: string;
+  target_id?: string | number;
+  reason?: string;
+  details?: string;
+  status?: string;
+  created_at?: string | null;
+  resolved_at?: string | null;
+  admin_reason?: string | null;
+}
+
 export interface AdminFeedbackThread {
   id: number;
   user_id: string;
@@ -397,8 +422,13 @@ export interface AdminUserDetailsPayload {
   materials: AdminLooseRecord[];
   stats: {
     comments_count: number;
+    feedback_count: number;
+    reports_count: number;
+    open_reports_count: number;
   };
   last_comments: AdminUserCommentRecord[];
+  feedback_threads: AdminUserFeedbackRecord[];
+  reports: AdminUserReportRecord[];
 }
 
 export interface AdminUserActionPayload {
@@ -1177,8 +1207,13 @@ export const adminService = {
       materials: [],
       stats: {
         comments_count: 0,
+        feedback_count: 0,
+        reports_count: 0,
+        open_reports_count: 0,
       },
       last_comments: [],
+      feedback_threads: [],
+      reports: [],
     });
   },
 

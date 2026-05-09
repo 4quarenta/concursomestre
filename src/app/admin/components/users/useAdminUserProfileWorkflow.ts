@@ -15,7 +15,7 @@ import { readApiErrorMessage } from '@services/api';
 import type { AdminUserActionResult, AdminUserDetailsPayload } from '@services/admin/adminService';
 
 type ToastHandler = (message: string, type?: string) => void;
-export type DetailTab = 'overview' | 'subscription' | 'transactions' | 'comments';
+export type DetailTab = 'overview' | 'subscription' | 'transactions' | 'comments' | 'support';
 
 export type EditUserForm = {
   name: string;

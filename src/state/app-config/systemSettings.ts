@@ -78,9 +78,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   },
   landingPageContent: createDefaultLandingPageContent(),
   landingPages: mergeMarketingLandingPages(undefined, 'ConcursoMestre'),
-  coupons: [
-    { code: 'BEMVINDO10', discountPercentage: 10, uses: 15, maxUses: 100, autoApply: false, targetType: 'all', targetId: null },
-  ],
+  coupons: [],
   features: {
     practiceEnabled: true,
     marketplaceEnabled: true,
