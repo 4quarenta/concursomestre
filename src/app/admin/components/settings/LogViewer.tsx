@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, Info, Loader2, RefreshCcw, Terminal, Trash2, X } from 'lucide-react';
+import { useConfirm } from '@providers/ModalProvider';
 import { useToast } from '@providers/ToastProvider';
 import { adminService, type SystemLogsPayload } from '@services/admin/adminService';
 import {
@@ -30,6 +31,7 @@ interface LogViewerProps {
 type LogSeverity = 'error' | 'warning' | 'info';
 type LogDomainCategory = 'auth' | 'database' | 'api' | 'email' | 'php' | 'other';
 type LogCategoryFilter = 'all' | 'errors' | 'warnings' | LogDomainCategory;
+type LogDisplayMode = 'all' | 'frequent';
 
 interface ParsedLogLine {
   index: number;
@@ -154,6 +156,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
  */
 export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded = false }) => {
   const { addToast } = useToast();
+  const confirm = useConfirm();
   const [logPayload, setLogPayload] = useState<SystemLogsPayload>({ lines: [] });
   const [logs, setLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -161,6 +164,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
   const [clearing, setClearing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [activeCategory, setActiveCategory] = useState<LogCategoryFilter>('all');
+  const [displayMode, setDisplayMode] = useState<LogDisplayMode>('all');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const fetchLogs = useCallback(async () => {
@@ -192,7 +196,14 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
 
   const handleClearLogs = async () => {
     if (clearing) return;
-    if (!window.confirm('Limpar o arquivo de logs do servidor?')) return;
+    const confirmed = await confirm({
+      title: 'Limpar logs do servidor',
+      description: 'Esta acao remove o historico atual do visualizador de logs. Deseja continuar?',
+      confirmText: 'Limpar logs',
+      cancelText: 'Cancelar',
+      type: 'danger',
+    });
+    if (!confirmed) return;
 
     setClearing(true);
     try {
@@ -292,8 +303,11 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
   }, [parsedLogs]);
 
   const visibleLogs = useMemo(
-    () => parsedLogs.filter((line) => matchesLogFilter(line, activeCategory)),
-    [activeCategory, parsedLogs],
+    () => parsedLogs.filter((line) => (
+      matchesLogFilter(line, activeCategory)
+      && (displayMode === 'all' || line.frequency >= 3)
+    )),
+    [activeCategory, displayMode, parsedLogs],
   );
 
   if (!isOpen) {
@@ -348,6 +362,37 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
       </div>
 
       <div className="space-y-3 border-b border-slate-300 bg-slate-100 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/50">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setDisplayMode('all')}
+              className={`inline-flex items-center gap-2 rounded-sm border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest transition-colors ${
+                displayMode === 'all'
+                  ? 'border-sky-500 bg-sky-50 text-sky-700 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-300'
+                  : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:text-slate-200'
+              }`}
+            >
+              Todas as linhas
+            </button>
+            <button
+              type="button"
+              onClick={() => setDisplayMode('frequent')}
+              className={`inline-flex items-center gap-2 rounded-sm border px-3 py-1.5 text-[10px] font-semibold uppercase tracking-widest transition-colors ${
+                displayMode === 'frequent'
+                  ? 'border-amber-500 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                  : 'border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:text-slate-200'
+              }`}
+            >
+              So repetidos
+            </button>
+          </div>
+
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+            {displayMode === 'all' ? 'Exibindo linhas completas' : 'Exibindo apenas linhas repetidas'}
+          </span>
+        </div>
+
         <div className="flex flex-wrap gap-2">
           {LOG_CATEGORY_OPTIONS.map((option) => {
             const count = categoryCounts[option.key] || 0;

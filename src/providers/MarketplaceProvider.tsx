@@ -10,14 +10,17 @@
 */
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import type { Material, Transaction } from '@types';
 import { useAuth } from './AuthProvider';
-import { useData } from './DataProvider';
 import { useToast } from './ToastProvider';
 import { readApiErrorMessage } from '@services/api';
 import { marketplaceService } from '@services/marketplace';
 import { reputationService } from '@services/auth';
 import { commentService } from '@services/comments';
+import { notificationService } from '@services/notifications';
+import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
+import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 
 interface MarketplaceContextType {
   materials: Material[];
@@ -71,6 +74,26 @@ const mapTransactionById = (
 ));
 
 const ADMIN_TRANSACTION_LIST_LIMIT = 100;
+const MATERIAL_ROUTE_PREFIXES = [
+  '/marketplace',
+  '/material',
+  '/read',
+  '/partner-dashboard',
+  '/admin/marketplace',
+  '/admin/finance',
+] as const;
+const TRANSACTION_ROUTE_PREFIXES = [
+  '/profile',
+  '/checkout',
+  '/marketplace',
+  '/partner-dashboard',
+  '/admin/finance',
+  '/admin/marketplace',
+] as const;
+
+const routeMatchesAnyPrefix = (pathname: string, prefixes: readonly string[]) => (
+  prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+);
 
 /**
  * Identifica papeis que podem auditar transacoes globais no painel.
@@ -112,14 +135,45 @@ const mergeTransactionsById = (transactionGroups: Transaction[][]): Transaction[
  * @since 1.0.0
  */
 export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const pathname = usePathname() || '/';
   const [materials, setMaterials] = useState<Material[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoadingMaterials, setIsLoadingMaterials] = useState(true);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(true);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const { currentUser, isLoading: authLoading, purchaseMaterial: authPurchase, removeMaterialAccess } = useAuth();
-  const { sendNotification, users, updateUserStatus } = useData();
+  const currentUserId = currentUser?.id ?? null;
+  const currentUserRole = currentUser?.role ?? null;
+  const currentUserIsAdmin = Boolean(currentUser?.isAdmin);
+  const canViewAllTransactions = isPrivilegedTransactionViewer({
+    role: currentUserRole ?? undefined,
+    isAdmin: currentUserIsAdmin,
+  });
   const { addToast } = useToast();
+  const users = useAdminDataStore((store) => store.users);
+  const { updateUserStatus, ensureUsersLoaded } = useAdminDataActions();
+  const shouldLoadMaterials = routeMatchesAnyPrefix(pathname, MATERIAL_ROUTE_PREFIXES);
+  const shouldLoadTransactions = routeMatchesAnyPrefix(pathname, TRANSACTION_ROUTE_PREFIXES);
+
+  const sendNotification = useCallback((
+    userId: string,
+    title: string,
+    message: string,
+    type: 'success' | 'error' | 'info' | 'warning' = 'info',
+    category: 'system' | 'social' | 'marketplace' | 'moderation' = 'system',
+    actionUrl?: string,
+    evidenceUrl?: string,
+  ) => {
+    void notificationService.sendNotification(
+      userId,
+      title,
+      message,
+      type,
+      category,
+      actionUrl,
+      evidenceUrl,
+    );
+  }, []);
 
   // Carrega os materiais uma unica vez para abastecer vitrine, dashboard do parceiro e administracao.
   const materialsInitRef = useRef(false);
@@ -128,8 +182,16 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
    * @since 1.0.0
    */
   useEffect(() => {
+    if (!shouldLoadMaterials) {
+      const frameId = window.requestAnimationFrame(() => {
+        setIsLoadingMaterials(false);
+      });
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
     if (materialsInitRef.current) return;
     materialsInitRef.current = true;
+    setIsLoadingMaterials(true);
 
     marketplaceService.listMaterials()
       .then((materialsList) => {
@@ -139,22 +201,22 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       })
       .catch((error) => console.error('Failed to load materials:', error))
       .finally(() => setIsLoadingMaterials(false));
-  }, []);
+  }, [shouldLoadMaterials]);
 
   /**
    * Recarrega as transações do usuário autenticado para biblioteca e histórico.
    * @since 1.0.0
    */
   const fetchUserTransactions = useCallback(async () => {
-    if (!currentUser) return;
+    if (!currentUserId) return;
 
     try {
-      const txs = await marketplaceService.getUserTransactions(currentUser.id);
+      const txs = await marketplaceService.getUserTransactions(currentUserId);
       setTransactions(txs);
     } catch (error) {
       console.error('Error fetching user transactions:', error);
     }
-  }, [currentUser]);
+  }, [currentUserId]);
 
   // Carrega transações do usuário atual ou todas as transações quando o admin abre o painel.
   /**
@@ -165,12 +227,19 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   useEffect(() => {
     if (authLoading) return;
 
+    if (!shouldLoadTransactions) {
+      const frameId = window.requestAnimationFrame(() => {
+        setIsLoadingTransactions(false);
+      });
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
     let isCancelled = false;
     const frameId = window.requestAnimationFrame(() => {
-      if (currentUser) {
+      if (currentUserId) {
         setIsLoadingTransactions(true);
 
-        if (isPrivilegedTransactionViewer(currentUser)) {
+        if (canViewAllTransactions) {
           Promise.all([
             marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
             marketplaceService.listTransactions({
@@ -207,7 +276,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isCancelled = true;
       window.cancelAnimationFrame(frameId);
     };
-  }, [authLoading, currentUser, fetchUserTransactions]);
+  }, [authLoading, canViewAllTransactions, currentUserId, fetchUserTransactions, shouldLoadTransactions]);
 
   /**
    * Efetiva a compra local de um material e dispara as notificações relacionadas.
@@ -363,10 +432,14 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (material) {
         const action = status === 'approved' ? 'ignored' : 'resolved';
         const impact = reputationService.calculateImpact(action, 'author');
-        const author = users.find((user) => user.id === material.authorId);
+        let author = users.find((user) => user.id === material.authorId);
+        if (!author) {
+          await ensureUsersLoaded();
+          author = useAdminDataStore.getState().users.find((user) => user.id === material.authorId);
+        }
         if (author) {
           const newRep = reputationService.updateScore(author.reputation, impact);
-          updateUserStatus(author.id, {
+          await updateUserStatus(author.id, {
             reputation: newRep,
             status: reputationService.checkAccountStatus(newRep),
           });
@@ -394,7 +467,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         removeMaterialAccess?.(transaction.materialId);
       }
 
-      if (isPrivilegedTransactionViewer(currentUser)) {
+      if (canViewAllTransactions) {
         const [latestTransactions, pendingRefundTransactions] = await Promise.all([
           marketplaceService.listTransactions({ scope: 'all', limit: ADMIN_TRANSACTION_LIST_LIMIT }),
           marketplaceService.listTransactions({
@@ -404,8 +477,8 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }),
         ]);
         setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
-      } else if (currentUser?.id) {
-        const refreshedTransactions = await marketplaceService.getUserTransactions(currentUser.id);
+      } else if (currentUserId) {
+        const refreshedTransactions = await marketplaceService.getUserTransactions(currentUserId);
         setTransactions(refreshedTransactions);
       } else {
         setTransactions((prev) => mapTransactionById(prev, transactionId, (currentTransaction) => ({

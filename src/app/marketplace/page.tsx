@@ -19,8 +19,9 @@ import { Search, BookOpen, Star, Lock, FileText, ShoppingBag, X, Tag, History, C
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import CommentsSection from '../../components/shared/feedback/CommentsSection';
 import AdBanner from '../../components/shared/feedback/AdBanner';
@@ -538,7 +539,8 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
 const Marketplace: React.FC = () => {
     const { materials, transactions, purchaseMaterial, requestRefund, fetchUserTransactions } = useMarketplace();
     const { currentUser } = useAuth();
-    const { systemSettings, ensureTaxonomiesLoaded } = useData();
+    const systemSettings = useAppConfigStore((store) => store.systemSettings);
+    const { ensureTaxonomiesLoaded } = useTaxonomyActions();
     const { addToast } = useToast();
     const router = useRouter();
     const pathname = usePathname() || '/marketplace';

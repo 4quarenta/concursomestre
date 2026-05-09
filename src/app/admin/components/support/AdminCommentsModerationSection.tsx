@@ -9,7 +9,8 @@
 *
 */
 
-import React, { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react';
 import { downloadAuthenticatedFile } from '@services/api';
 import { ENDPOINTS } from '@services/api';
@@ -54,6 +55,8 @@ const EMPTY_PAYLOAD: AdminCommentModerationListPayload = {
   pages: 1,
   counts: EMPTY_COUNTS,
 };
+
+const MODERATION_CACHE_TTL_MS = 12_000;
 
 const TABS: Array<{ key: AdminCommentModerationFilter; label: string }> = [
   { key: 'all', label: 'Todos' },
@@ -170,45 +173,62 @@ const ModerationBadge = ({ status }: { status: AdminCommentModerationStatus }) =
  */
 const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerationSectionProps) => {
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<AdminCommentModerationFilter>('pending');
   const [origin, setOrigin] = useState<ModerationOrigin>('all');
   const [searchDraft, setSearchDraft] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [payload, setPayload] = useState<AdminCommentModerationListPayload>(EMPTY_PAYLOAD);
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkAction, setBulkAction] = useState<BulkModerationAction>('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-
-  const loadComments = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const nextPayload = await adminService.getModerationComments({
-        status: activeTab,
-        origin,
-        search,
-        page,
-        perPage: 20,
-      });
-      setPayload(nextPayload);
-      onCountsChange?.(nextPayload.counts);
-      setSelectedIds((current) => current.filter((id) => nextPayload.items.some((item) => item.id === id)));
-
-      if (page > nextPayload.pages) {
-        setPage(nextPayload.pages);
-      }
-    } catch (error) {
-      console.error('Failed to load moderation comments:', error);
-      addToast('Nao foi possivel carregar a fila de comentarios.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeTab, addToast, onCountsChange, origin, page, search]);
+  const addToastRef = useRef(addToast);
+  const lastErrorKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    void loadComments();
-  }, [loadComments]);
+    addToastRef.current = addToast;
+  }, [addToast]);
+
+  const requestParams = useMemo(() => ({
+    status: activeTab,
+    origin,
+    search,
+    page,
+    perPage: 20,
+  }), [activeTab, origin, page, search]);
+
+  const moderationQuery = useQuery({
+    queryKey: ['admin', 'comments-moderation', activeTab, origin, search, page, 20],
+    queryFn: () => adminService.getModerationComments(requestParams),
+    staleTime: MODERATION_CACHE_TTL_MS,
+    placeholderData: (previousData) => previousData,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
+
+  const payload = moderationQuery.data || EMPTY_PAYLOAD;
+  const isLoading = moderationQuery.isPending || (moderationQuery.isFetching && !moderationQuery.data);
+
+  useEffect(() => {
+    if (!moderationQuery.isError) {
+      lastErrorKeyRef.current = null;
+      return;
+    }
+
+    const requestKey = JSON.stringify(requestParams);
+    if (lastErrorKeyRef.current === requestKey) {
+      return;
+    }
+
+    lastErrorKeyRef.current = requestKey;
+    console.error('Failed to load moderation comments:', moderationQuery.error);
+    addToastRef.current('Nao foi possivel carregar a fila de comentarios.', 'error');
+  }, [moderationQuery.error, moderationQuery.isError, requestParams]);
+
+  useEffect(() => {
+    onCountsChange?.(payload.counts);
+  }, [onCountsChange, payload.counts]);
 
   const allVisibleSelected = useMemo(
     () => payload.items.length > 0 && payload.items.every((item) => selectedIds.includes(item.id)),
@@ -253,7 +273,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
     try {
       await adminService.updateModerationComment(item.id, status);
       addToast('Comentario atualizado.', 'success');
-      await loadComments();
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'comments-moderation'] });
     } catch (error) {
       console.error('Failed to update moderation item:', error);
       addToast('Nao foi possivel atualizar o comentario.', 'error');
@@ -278,7 +298,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
       await adminService.bulkUpdateModerationComments(selectedIds, bulkAction);
       addToast('Comentarios atualizados em lote.', 'success');
       setSelectedIds([]);
-      await loadComments();
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'comments-moderation'] });
     } catch (error) {
       console.error('Failed to bulk update moderation items:', error);
       addToast('Nao foi possivel atualizar os comentarios selecionados.', 'error');
@@ -325,7 +345,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => void loadComments()}
+            onClick={() => void moderationQuery.refetch()}
             disabled={isLoading}
             className={ADMIN_SECONDARY_BUTTON_CLASS}
           >

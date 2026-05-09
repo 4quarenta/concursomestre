@@ -14,7 +14,7 @@ import Link from 'next/link';
 import { FileText, Link2 } from 'lucide-react';
 import type { Prova } from '@types';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
-import { ADMIN_MUTED_SURFACE_CLASS, ADMIN_PAGE_PANEL_CLASS, ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
+import { ADMIN_PAGE_PANEL_CLASS, ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 import { buildAdminExamEditPath } from '../../config/adminPageNavigationConfig';
@@ -137,7 +137,7 @@ const AdminExamBankSection = ({
                     </span>
                   </td>
                   <td className="p-4">
-                    <AdminPublishStateBadge state={resolveAdminPublishState(exam as Record<string, any>)} />
+                    <AdminPublishStateBadge state={resolveAdminPublishState(exam as unknown as Record<string, unknown>)} />
                   </td>
                 </tr>
               ))}

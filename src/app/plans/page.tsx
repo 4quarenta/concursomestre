@@ -16,7 +16,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import type { Plan } from '@types';
 import { planService } from '@services/plans';
 import { calculateSubscriptionProRatedCredit, getConfiguredPlanDisplayName, isPlanEnabledByName, resolvePlanAutoCouponsById, resolvePlanDiscountBadgesByCycle, resolvePlanOffer } from '@services/plans';
@@ -25,6 +24,7 @@ import { PlanCard } from './components/PlanCard';
 import { useToast } from '@providers/ToastProvider';
 import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { buildProfilePath } from '../profile/profileNavigation';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 const BILLING_CYCLE_OPTIONS = [
     { key: 'monthly', label: 'Mensal' },
@@ -36,7 +36,8 @@ type BillingCycle = typeof BILLING_CYCLE_OPTIONS[number]['key'];
 
 export const PlansPage: React.FC = () => {
     const { currentUser } = useAuth();
-    const { systemSettings, isSystemSettingsLoaded } = useData();
+    const systemSettings = useAppConfigStore((state) => state.systemSettings);
+    const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
     const { addToast } = useToast();
     const router = useRouter();
     const [plans, setPlans] = useState<Plan[]>([]);

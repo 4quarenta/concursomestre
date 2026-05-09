@@ -10,7 +10,8 @@
 */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bold, Italic, Underline, Type, List, RotateCcw } from 'lucide-react';
+import { Bold, Italic, Underline, Type, List, RotateCcw, type LucideIcon } from 'lucide-react';
+import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 
 interface RichTextEditorProps {
   initialValue?: string;
@@ -18,15 +19,50 @@ interface RichTextEditorProps {
   placeholder?: string;
 }
 
+type ToolbarButtonProps = {
+  icon: LucideIcon;
+  command: string;
+  value?: string;
+  active?: boolean;
+  title: string;
+  onCommand: (command: string, value?: string) => void;
+};
+
+const ToolbarButton = ({ icon: Icon, command, value, active = false, title, onCommand }: ToolbarButtonProps) => (
+  <button
+    type="button"
+    onMouseDown={(e) => {
+      e.preventDefault();
+      onCommand(command, value);
+    }}
+    title={title}
+    className={`p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors ${active ? 'bg-slate-200 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}
+  >
+    <Icon size={16} />
+  </button>
+);
+
 const RichTextEditor: React.FC<RichTextEditorProps> = ({ initialValue = '', onChange, placeholder }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const [color, setColor] = useState('#000000');
 
+  const emitSanitizedChange = React.useCallback(() => {
+    const editor = contentRef.current;
+    if (!editor) {
+      return;
+    }
+
+    const sanitizedHtml = normalizeQuestionRichHtml(editor.innerHTML);
+    if (editor.innerHTML !== sanitizedHtml) {
+      editor.innerHTML = sanitizedHtml;
+    }
+
+    onChange(sanitizedHtml);
+  }, [onChange]);
+
   const execCommand = (command: string, value: string | undefined = undefined) => {
     document.execCommand(command, false, value);
-    if (contentRef.current) {
-      onChange(contentRef.current.innerHTML);
-    }
+    emitSanitizedChange();
   };
 
   const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,42 +71,35 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ initialValue = '', onCh
   };
 
   const handleInput = () => {
-    if (contentRef.current) {
-      onChange(contentRef.current.innerHTML);
-    }
+    emitSanitizedChange();
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const plainText = event.clipboardData.getData('text/plain');
+    document.execCommand('insertText', false, plainText);
+    emitSanitizedChange();
   };
 
   useEffect(() => {
-    if (contentRef.current && initialValue === '') {
-      contentRef.current.innerHTML = '';
+    if (!contentRef.current) {
+      return;
     }
-  }, [initialValue]);
 
-  const ToolbarButton = ({ icon: Icon, command, value, active = false, title }: any) => (
-    <button
-      type="button"
-      onMouseDown={(e) => {
-        e.preventDefault();
-        execCommand(command, value);
-      }}
-      title={title}
-      className={`p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors ${active ? 'bg-slate-200 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`}
-    >
-      <Icon size={16} />
-    </button>
-  );
+    contentRef.current.innerHTML = normalizeQuestionRichHtml(initialValue);
+  }, [initialValue]);
 
   return (
     <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all transition-colors duration-300">
       {/* Toolbar */}
       <div className="flex items-center gap-1 p-2 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 flex-wrap transition-colors">
-        <ToolbarButton icon={Bold} command="bold" title="Negrito" />
-        <ToolbarButton icon={Italic} command="italic" title="Itálico" />
-        <ToolbarButton icon={Underline} command="underline" title="Sublinhado" />
+        <ToolbarButton icon={Bold} command="bold" title="Negrito" onCommand={execCommand} />
+        <ToolbarButton icon={Italic} command="italic" title="Itálico" onCommand={execCommand} />
+        <ToolbarButton icon={Underline} command="underline" title="Sublinhado" onCommand={execCommand} />
 
         <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1 transition-colors" />
 
-        <ToolbarButton icon={List} command="insertUnorderedList" title="Lista" />
+        <ToolbarButton icon={List} command="insertUnorderedList" title="Lista" onCommand={execCommand} />
 
         <div className="w-px h-4 bg-slate-300 dark:bg-slate-700 mx-1 transition-colors" />
 
@@ -107,7 +136,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ initialValue = '', onCh
       <div
         ref={contentRef}
         contentEditable
+        data-placeholder={placeholder || ''}
         onInput={handleInput}
+        onPaste={handlePaste}
         className="p-4 min-h-[100px] text-sm text-slate-700 dark:text-slate-300 outline-none max-h-64 overflow-y-auto transition-colors"
         style={{ whiteSpace: 'pre-wrap' }}
       />
@@ -115,7 +146,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ initialValue = '', onCh
       {/* Placeholder simulado via CSS se vazio */}
       <style>{`
         [contenteditable]:empty:before {
-          content: "${placeholder || ''}";
+          content: attr(data-placeholder);
           color: #94a3b8;
           opacity: 0.6;
           pointer-events: none;

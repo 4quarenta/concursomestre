@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react';
 import { adminService } from '@services/admin/adminService';
 import { readApiErrorMessage } from '@services/api';
+import type { AdminUserActionResult, AdminUserDetailsPayload } from '@services/admin/adminService';
 
 type ToastHandler = (message: string, type?: string) => void;
 export type DetailTab = 'overview' | 'subscription' | 'transactions' | 'comments';
@@ -69,7 +70,7 @@ const createEmptyEditUserForm = (): EditUserForm => ({
   reputation: '100',
 });
 
-const buildEditUserForm = (detailedUser: any): EditUserForm => ({
+const buildEditUserForm = (detailedUser: AdminUserDetailsPayload | null): EditUserForm => ({
   name: detailedUser?.profile?.name || '',
   email: detailedUser?.profile?.email || '',
   cpf: detailedUser?.profile?.cpf || '',
@@ -91,56 +92,69 @@ export const useAdminUserProfileWorkflow = ({
   reloadUsers,
 }: UseAdminUserProfileWorkflowOptions) => {
   const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
-  const [detailedUser, setDetailedUser] = useState<any>(null);
+  const [detailedUser, setDetailedUser] = useState<AdminUserDetailsPayload | null>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [isEditingUser, setIsEditingUser] = useState(false);
   const [editUserForm, setEditUserForm] = useState<EditUserForm>(createEmptyEditUserForm);
 
-  const refreshDetailedUser = async (userId: string) => {
+  const refreshDetailedUser = async (userId: string, options?: { syncState?: boolean }) => {
     const response = await adminService.getUserDetails(userId);
-    setDetailedUser(response);
+    if (options?.syncState !== false) {
+      setDetailedUser(response);
+    }
     return response;
   };
 
   useEffect(() => {
     if (!viewingProfileId) {
-      setDetailedUser(null);
-      setDetailTab('overview');
-      setIsEditingUser(false);
-      setEditUserForm(createEmptyEditUserForm());
-      setActionLoading(null);
-      return;
+      const frame = requestAnimationFrame(() => {
+        setDetailedUser(null);
+        setDetailTab('overview');
+        setIsEditingUser(false);
+        setEditUserForm(createEmptyEditUserForm());
+        setActionLoading(null);
+      });
+
+      return () => cancelAnimationFrame(frame);
     }
 
-    setIsEditingUser(false);
-    setIsLoadingDetail(true);
+    const frame = requestAnimationFrame(() => {
+      setIsEditingUser(false);
+      setIsLoadingDetail(true);
+    });
 
-    refreshDetailedUser(String(viewingProfileId))
+    let isCancelled = false;
+
+    void adminService.getUserDetails(String(viewingProfileId))
+      .then((response) => {
+        if (!isCancelled) {
+          setDetailedUser(response);
+        }
+      })
       .catch((error) => {
         console.error(error);
         addToast(readApiErrorMessage(error, 'Erro ao carregar detalhes do usuario.'), 'error');
-        setDetailedUser(null);
+        if (!isCancelled) {
+          setDetailedUser(null);
+        }
       })
-      .finally(() => setIsLoadingDetail(false));
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoadingDetail(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+      cancelAnimationFrame(frame);
+    };
   }, [viewingProfileId, addToast]);
-
-  const openUserProfile = (userId: string | number | null | undefined) => {
-    if (userId === null || userId === undefined || userId === '') {
-      return;
-    }
-
-    setViewingProfileId(String(userId));
-  };
-
-  const closeUserProfile = () => {
-    setViewingProfileId(null);
-  };
 
   const handleUserAction = async (
     action: string,
-    data: any,
+    data: Record<string, unknown>,
     options?: HandleUserActionOptions,
   ) => {
     if (!detailedUser?.profile?.id) {
@@ -158,7 +172,7 @@ export const useAdminUserProfileWorkflow = ({
     setActionLoading(actionKey);
 
     try {
-      const result = await adminService.performUserActionWithResult(payload);
+      const result: AdminUserActionResult = await adminService.performUserActionWithResult(payload);
 
       if (action === 'update_profile') {
         setIsEditingUser(false);
@@ -185,6 +199,18 @@ export const useAdminUserProfileWorkflow = ({
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const openUserProfile = (userId: string | number | null | undefined) => {
+    if (userId === null || userId === undefined || userId === '') {
+      return;
+    }
+
+    setViewingProfileId(String(userId));
+  };
+
+  const closeUserProfile = () => {
+    setViewingProfileId(null);
   };
 
   const startEditingUser = () => {

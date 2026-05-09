@@ -44,9 +44,9 @@ export interface ExamDraftState {
 interface UseAdminExamBankWorkflowOptions {
   questions: Question[];
   systemSettings: SystemSettings;
-  updateSystemSettings: (settings: SystemSettings) => Promise<any> | any;
-  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<any> | any;
-  onUpdateQuestion: (question: Question) => Promise<any> | any;
+  updateSystemSettings: (settings: SystemSettings) => Promise<unknown> | unknown;
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<unknown> | unknown;
+  onUpdateQuestion: (question: Question) => Promise<{ success?: boolean } | void | null | undefined> | { success?: boolean } | void | null | undefined;
   filter: string;
   addToast: ToastHandler;
 }
@@ -60,10 +60,10 @@ export const createDraftFromProva = (prova: Prova): ExamDraftState => ({
   publishStatus: prova.publishStatus || 'published',
   visibilityStatus: prova.visibilityStatus || 'public',
   scheduledAt: prova.scheduledAt || '',
-  bancaId: String((prova.banca as any)?.id || ''),
+  bancaId: String(prova.banca?.id || ''),
   bancaSigla: prova.banca?.sigla || '',
   bancaNome: prova.banca?.nome || prova.banca?.name || '',
-  orgaoId: String((prova.orgao as any)?.id || ''),
+  orgaoId: String(prova.orgao?.id || ''),
   orgaoSigla: prova.orgao?.sigla || '',
   orgaoNome: prova.orgao?.nome || prova.orgao?.name || '',
   cargoDescricao: prova.cargo?.descricao || prova.cargo?.['descrição'] || '',
@@ -128,10 +128,12 @@ export const useAdminExamBankWorkflow = ({
     for (const question of linkedQuestions) {
       const nextQuestion = mode === 'delete'
         ? removeProvaFromQuestion(question, previousId)
-        : applyProvaToQuestion(question, prova as Prova);
+        : prova
+          ? applyProvaToQuestion(question, prova)
+          : question;
 
       const result = await onUpdateQuestion(nextQuestion);
-      if (!result?.success) {
+      if (!(result && typeof result === 'object' && 'success' in result && result.success)) {
         failures.push(question.id || previousId);
       }
     }

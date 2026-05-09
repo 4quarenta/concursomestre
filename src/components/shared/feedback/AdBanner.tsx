@@ -10,13 +10,14 @@
 */
 
 import React, { useEffect, useRef } from 'react';
-import { useData } from '@providers/DataProvider';
 import { useAuth } from '@providers/AuthProvider';
 import { hasPlanBenefit } from '@services/plans/planAccess';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 
 declare global {
     interface Window {
-        adsbygoogle: any[];
+        adsbygoogle: unknown[];
     }
 }
 
@@ -28,7 +29,7 @@ interface AdBannerProps {
 const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
     const { currentUser } = useAuth();
     const bannerRef = useRef<HTMLDivElement>(null);
-    const { systemSettings } = useData();
+    const systemSettings = useAppConfigStore((state) => state.systemSettings);
     const hidesAds = hasPlanBenefit(currentUser, 'no_ads', systemSettings.planEntitlements);
 
     // Efeito para carregar o script global do AdSense se necessário
@@ -55,7 +56,7 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
     useEffect(() => {
         if (!systemSettings.adsEnabled || hidesAds || !bannerRef.current) return;
 
-        const contentMap: any = {
+        const contentMap: Record<AdBannerProps['type'], string | undefined> = {
             top: systemSettings.adBannerTop,
             sidebar: systemSettings.adBannerSidebar,
             bottom: systemSettings.adBannerBottom
@@ -64,18 +65,7 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
 
         // Caso 1: Conteúdo Customizado (HTML/Scripts do DB)
         if (customContent) {
-            bannerRef.current.innerHTML = customContent;
-            const scripts = bannerRef.current.getElementsByTagName('script');
-            for (let i = 0; i < scripts.length; i++) {
-                const script = document.createElement('script');
-                if (scripts[i].src) {
-                    script.src = scripts[i].src;
-                    script.async = true;
-                } else {
-                    script.textContent = scripts[i].textContent;
-                }
-                document.body.appendChild(script);
-            }
+            bannerRef.current.innerHTML = normalizeQuestionRichHtml(customContent);
             return;
         }
 
@@ -129,8 +119,8 @@ const AdBanner: React.FC<AdBannerProps> = ({ type, className = "" }) => {
 
         try {
             (window.adsbygoogle = window.adsbygoogle || []).push({});
-        } catch (e) {
-            console.debug('[AdBanner] Push attempted during render/HMR');
+        } catch {
+            // Google Ads can reject duplicate pushes during hot reload; production rendering can continue.
         }
     }, [type, systemSettings.adsEnabled, systemSettings.adsenseClientId, systemSettings.adBannerTop, systemSettings.adBannerSidebar, systemSettings.adBannerBottom, hidesAds]);
 

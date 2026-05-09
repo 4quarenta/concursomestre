@@ -9,7 +9,7 @@
 *
 */
 
-import type { Prova, Question, SystemSettings } from '@types';
+import type { Banca, Cargo, Orgao, Prova, Question, SystemSettings } from '@types';
 import { slugify } from '../database/slugify';
 
 const toText = (value: unknown) => String(value ?? '').trim();
@@ -19,58 +19,77 @@ const toNumber = (value: unknown, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const toRecord = (value: unknown): Record<string, unknown> | null => (
+  typeof value === 'object' && value !== null ? value as Record<string, unknown> : null
+);
+
 /**
  * Normaliza um registro de prova para o formato oficial usado no admin.
  *
  * @since 1.0.0
  */
-export const normalizeProvaRecord = (raw: any): Prova | null => {
-  if (!raw) {
+export const normalizeProvaRecord = (raw: unknown): Prova | null => {
+  const rawRecord = toRecord(raw);
+  if (!rawRecord) {
     return null;
   }
 
-  const id = toNumber(raw.id, 0);
-  const nome = toText(raw.nome ?? raw.name);
+  const id = toNumber(rawRecord.id, 0);
+  const nome = toText(rawRecord.nome ?? rawRecord.name);
 
   if (!id || !nome) {
     return null;
   }
 
-  const bancaNome = toText(raw.banca?.nome ?? raw.banca?.name);
-  const bancaSigla = toText(raw.banca?.sigla) || bancaNome;
-  const orgaoNome = toText(raw.orgao?.nome ?? raw.orgao?.name);
-  const orgaoSigla = toText(raw.orgao?.sigla) || orgaoNome;
-  const cargoDescricao = toText(raw.cargo?.descricao ?? raw.cargo?.['descrição'] ?? raw.cargo?.name);
+  const bancaRecord = toRecord(rawRecord.banca);
+  const orgaoRecord = toRecord(rawRecord.orgao);
+  const cargoRecord = toRecord(rawRecord.cargo);
+
+  const bancaNome = toText(bancaRecord?.nome ?? bancaRecord?.name);
+  const bancaSigla = toText(bancaRecord?.sigla) || bancaNome;
+  const orgaoNome = toText(orgaoRecord?.nome ?? orgaoRecord?.name);
+  const orgaoSigla = toText(orgaoRecord?.sigla) || orgaoNome;
+  const cargoDescricao = toText(cargoRecord?.descricao ?? cargoRecord?.['descrição'] ?? cargoRecord?.name);
+
+  const banca: Banca = {
+    id: toNumber(bancaRecord?.id, 0),
+    sigla: bancaSigla,
+    nome: bancaNome,
+    name: toText(bancaRecord?.name) || bancaNome || bancaSigla,
+    slug: toText(bancaRecord?.slug) || slugify(bancaNome || bancaSigla || `banca-${id}`),
+    descricao: toText(bancaRecord?.descricao),
+  };
+
+  const orgao: Orgao = {
+    id: toNumber(orgaoRecord?.id, 0),
+    nome: orgaoNome,
+    name: toText(orgaoRecord?.name) || orgaoNome || orgaoSigla,
+    sigla: orgaoSigla,
+    slug: toText(orgaoRecord?.slug) || slugify(orgaoNome || orgaoSigla || `orgao-${id}`),
+  };
+
+  const cargo: Cargo = {
+    id: toNumber(cargoRecord?.id, 0),
+    slug: toText(cargoRecord?.slug) || slugify(cargoDescricao || `cargo-${id}`),
+    ['descrição']: cargoDescricao,
+    descricao: cargoDescricao,
+    name: toText(cargoRecord?.name) || cargoDescricao,
+  };
 
   return {
     id,
     nome,
-    slug: toText(raw.slug) || slugify(nome || `prova-${id}`),
-    ano: toNumber(raw.ano, new Date().getFullYear()),
-    tipo: toNumber(raw.tipo, 0),
-    index: toText(raw.index),
-    nivel: toText(raw.nivel ?? raw.level),
-    publishStatus: toText(raw.publishStatus) as Prova['publishStatus'] || 'published',
-    visibilityStatus: toText(raw.visibilityStatus) as Prova['visibilityStatus'] || 'public',
-    scheduledAt: toText(raw.scheduledAt),
-    banca: {
-      ...(raw.banca || {}),
-      nome: bancaNome,
-      sigla: bancaSigla,
-      name: toText(raw.banca?.name) || bancaNome || bancaSigla,
-    } as any,
-    orgao: {
-      ...(raw.orgao || {}),
-      nome: orgaoNome,
-      sigla: orgaoSigla,
-      name: toText(raw.orgao?.name) || orgaoNome || orgaoSigla,
-    } as any,
-    cargo: {
-      ...(raw.cargo || {}),
-      descricao: cargoDescricao,
-      ['descrição']: cargoDescricao,
-      name: toText(raw.cargo?.name) || cargoDescricao,
-    } as any,
+    slug: toText(rawRecord.slug) || slugify(nome || `prova-${id}`),
+    ano: toNumber(rawRecord.ano, new Date().getFullYear()),
+    tipo: toNumber(rawRecord.tipo, 0),
+    index: toText(rawRecord.index),
+    nivel: toText(rawRecord.nivel ?? rawRecord.level),
+    publishStatus: (toText(rawRecord.publishStatus) as Prova['publishStatus']) || 'published',
+    visibilityStatus: (toText(rawRecord.visibilityStatus) as Prova['visibilityStatus']) || 'public',
+    scheduledAt: toText(rawRecord.scheduledAt),
+    banca,
+    orgao,
+    cargo,
   };
 };
 
@@ -86,7 +105,7 @@ export const mergeExamBankSources = (
 ) => {
   const examMap = new Map<string, Prova>();
 
-  const pushExam = (raw: any) => {
+  const pushExam = (raw: unknown) => {
     const normalized = normalizeProvaRecord(raw);
     if (!normalized) {
       return;
@@ -115,7 +134,7 @@ export const mergeExamBankSources = (
 /**
  * Texto curto de exibicao da prova.
  *
- * @since 1.0.0
+ * @since v1.0.0
  */
 export const formatProvaLabel = (prova: Prova) => {
   const banca = toText(prova.banca?.sigla || prova.banca?.nome);
@@ -125,7 +144,7 @@ export const formatProvaLabel = (prova: Prova) => {
 /**
  * Texto usado na busca do seletor e da lista.
  *
- * @since 1.0.0
+ * @since v1.0.0
  */
 export const buildProvaSearchText = (prova: Prova) => (
   [
@@ -148,7 +167,7 @@ export const buildProvaSearchText = (prova: Prova) => (
 /**
  * Verifica se uma questao esta vinculada a uma prova especifica.
  *
- * @since 1.0.0
+ * @since v1.0.0
  */
 export const isQuestionLinkedToProva = (question: Question, provaId: string | number) => {
   const normalizedId = String(provaId);
@@ -159,7 +178,7 @@ export const isQuestionLinkedToProva = (question: Question, provaId: string | nu
 /**
  * Atualiza a representacao local da prova dentro da questao.
  *
- * @since 1.0.0
+ * @since v1.0.0
  */
 export const applyProvaToQuestion = (question: Question, prova: Prova): Question => {
   const nextProvas = (question.provas || []).filter((item) => String(item?.id ?? '') !== String(prova.id));
@@ -175,11 +194,10 @@ export const applyProvaToQuestion = (question: Question, prova: Prova): Question
 /**
  * Remove a vinculacao da prova da questao.
  *
- * @since 1.0.0
+ * @since v1.0.0
  */
 export const removeProvaFromQuestion = (question: Question, provaId: string | number): Question => ({
   ...question,
   provaId: String(question.provaId ?? '') === String(provaId) ? undefined : question.provaId,
   provas: (question.provas || []).filter((item) => String(item?.id ?? '') !== String(provaId)),
 });
-

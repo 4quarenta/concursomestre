@@ -14,6 +14,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { AlertTriangle, BookOpen, CheckCircle2, Edit3, ExternalLink, FileText, History, Loader2, Plus, RefreshCcw, Search, Trash2, X, XCircle } from 'lucide-react';
+import { useConfirm } from '@providers/ModalProvider';
 import { useToast } from '@providers/ToastProvider';
 import { legalCommentaryApiService, type PlanaltoCatalogItem, type PlanaltoCatalogSource } from '@services/legal-commentary';
 import type { LawSummary, LawUpdate, LegalHomeSnapshot, LegalSyncLog } from '@types';
@@ -81,6 +82,7 @@ const LAW_UPDATE_CHANGE_LABEL: Record<string, string> = {
 
 const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectionProps) => {
   const { addToast } = useToast();
+  const confirm = useConfirm();
   const [query, setQuery] = React.useState(filter);
   const [laws, setLaws] = React.useState<LawSummary[]>([]);
   const [home, setHome] = React.useState<LegalHomeSnapshot>(EMPTY_HOME);
@@ -159,7 +161,13 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
   }, []);
 
   const handleDelete = async (law: LawSummary) => {
-    const confirmed = window.confirm(`Remover "${law.shortTitle}" da base da Lei Comentada?`);
+    const confirmed = await confirm({
+      title: 'Remover lei comentada',
+      description: `Remover "${law.shortTitle}" da base da Lei Comentada?`,
+      confirmText: 'Remover',
+      cancelText: 'Cancelar',
+      type: 'danger',
+    });
     if (!confirmed) return;
 
     setDeletingId(law.id);

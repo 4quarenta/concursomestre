@@ -10,8 +10,21 @@
 */
 
 import { apiClient, assertApiSuccess, readApiData, ENDPOINTS } from '@services/api';
+import type { ApiResponse } from '@services/api';
 
-type ReferralStats = Record<string, any>;
+const requestApi = <T>(request: Promise<unknown>): Promise<ApiResponse<T>> => request as Promise<ApiResponse<T>>;
+
+export type ReferralStats = Record<string, unknown>;
+
+type MessageMutationResult = {
+  message: string;
+};
+
+type FeedbackSubmitPayload = {
+  id?: number | string | null;
+  feedback_id?: number | string | null;
+  thread_id?: number | string | null;
+};
 
 export type SubmitProfileTestimonialInput = {
   rating: number;
@@ -25,28 +38,28 @@ export type SubmitProfileTestimonialInput = {
 };
 
 /**
- * Centraliza operações auxiliares do perfil que não pertencem a auth pura
+ * Centraliza operacoes auxiliares do perfil que nao pertencem a auth pura
  * nem ao dominio comercial do marketplace.
  */
 export const profileService = {
   /**
-   * Carrega o resumo de indicacoes do usuário autenticado.
+   * Carrega o resumo de indicacoes do usuario autenticado.
    */
   async getReferralStats(): Promise<ReferralStats> {
-    const response = await apiClient.get<any>(ENDPOINTS.users.referralStats) as any;
-    assertApiSuccess(response, 'Não foi possível carregar os dados de indicacao.');
+    const response = await requestApi<ReferralStats>(apiClient.get<ApiResponse<ReferralStats>>(ENDPOINTS.users.referralStats));
+    assertApiSuccess(response, 'Nao foi possivel carregar os dados de indicacao.');
     return readApiData<ReferralStats>(response, {});
   },
 
   /**
    * Atualiza a foto do perfil atual via upload autenticado.
    */
-  async uploadProfilePhoto(file: File): Promise<{ message: string }> {
+  async uploadProfilePhoto(file: File): Promise<MessageMutationResult> {
     const formData = new FormData();
     formData.append('photo', file);
 
-    const response = await apiClient.post<any>(ENDPOINTS.users.uploadPhoto, formData) as any;
-    const envelope = assertApiSuccess(response, 'Não foi possível atualizar a foto do perfil.');
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.users.uploadPhoto, formData));
+    const envelope = assertApiSuccess(response, 'Nao foi possivel atualizar a foto do perfil.');
 
     return {
       message: envelope.message || 'Foto de perfil atualizada!',
@@ -56,9 +69,9 @@ export const profileService = {
   /**
    * Remove a foto de perfil atual do usuario autenticado.
    */
-  async removeProfilePhoto(): Promise<{ message: string }> {
-    const response = await apiClient.post<any>(ENDPOINTS.users.removePhoto, {}) as any;
-    const envelope = assertApiSuccess(response, 'Não foi possível remover a foto do perfil.');
+  async removeProfilePhoto(): Promise<MessageMutationResult> {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.users.removePhoto, {}));
+    const envelope = assertApiSuccess(response, 'Nao foi possivel remover a foto do perfil.');
 
     return {
       message: envelope.message || 'Foto de perfil removida com sucesso!',
@@ -66,15 +79,18 @@ export const profileService = {
   },
 
   /**
-   * Altera a senha do usuário autenticado.
+   * Altera a senha do usuario autenticado.
    */
-  async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
-    const response = await apiClient.post<any>(ENDPOINTS.users.changePassword, {
-      current: currentPassword,
-      new: newPassword,
-    }) as any;
+  async changePassword(currentPassword: string, newPassword: string): Promise<MessageMutationResult> {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(
+      ENDPOINTS.users.changePassword,
+      {
+        current: currentPassword,
+        new: newPassword,
+      },
+    ));
 
-    const envelope = assertApiSuccess(response, 'Não foi possível alterar a senha.');
+    const envelope = assertApiSuccess(response, 'Nao foi possivel alterar a senha.');
     return {
       message: envelope.message || 'Senha alterada com sucesso!',
     };
@@ -86,25 +102,28 @@ export const profileService = {
   async submitTestimonial(input: SubmitProfileTestimonialInput): Promise<{ message: string; id?: number }> {
     const rating = Math.max(1, Math.min(5, Math.round(Number(input.rating) || 0)));
     const testimonial = String(input.testimonial || '').trim();
-    const response = await apiClient.post<any>(ENDPOINTS.feedback.create, {
-      type: 'suggestion',
-      reason: 'Avaliar plataforma',
-      details: testimonial,
-      rating,
-      public_display_name: input.publicDisplayName,
-      public_headline: input.publicHeadline,
-      public_photo_url: input.photoUrl,
-      user_name: input.userName,
-      user_email: input.userEmail,
-      plan_name: input.planName,
-    }) as any;
+    const response = await requestApi<FeedbackSubmitPayload>(apiClient.post<ApiResponse<FeedbackSubmitPayload>>(
+      ENDPOINTS.feedback.create,
+      {
+        type: 'suggestion',
+        reason: 'Avaliar plataforma',
+        details: testimonial,
+        rating,
+        public_display_name: input.publicDisplayName,
+        public_headline: input.publicHeadline,
+        public_photo_url: input.photoUrl,
+        user_name: input.userName,
+        user_email: input.userEmail,
+        plan_name: input.planName,
+      },
+    ));
 
-    const envelope = assertApiSuccess(response, 'Não foi possível enviar o depoimento.');
-    const payload = readApiData<any>(response, {});
+    const envelope = assertApiSuccess(response, 'Nao foi possivel enviar o depoimento.');
+    const payload = readApiData<FeedbackSubmitPayload>(response, {});
 
     return {
-      message: envelope.message || 'Avaliação enviada. Obrigado por compartilhar sua experiência!',
-      id: Number(payload?.id || payload?.feedback_id || payload?.thread_id || 0) || undefined,
+      message: envelope.message || 'Avaliacao enviada. Obrigado por compartilhar sua experiencia!',
+      id: Number(payload.id || payload.feedback_id || payload.thread_id || 0) || undefined,
     };
   },
 };

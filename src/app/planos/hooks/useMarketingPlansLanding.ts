@@ -12,7 +12,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { adminService } from '@services/admin/adminService';
 import { planService } from '@services/plans';
 import {
@@ -23,6 +22,7 @@ import {
 } from '@services/marketing/landingPages';
 import { websiteManifest } from '../../../config/platform';
 import type { MarketingLandingPage, Plan } from '@types';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 interface UseMarketingPlansLandingOptions {
   slug: string;
@@ -38,7 +38,8 @@ const ADMIN_PREVIEW_ROLES = new Set(['admin', 'staff']);
  */
 export const useMarketingPlansLanding = ({ slug }: UseMarketingPlansLandingOptions) => {
   const { currentUser } = useAuth();
-  const { systemSettings, isSystemSettingsLoaded } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
   const searchParams = useSearchParams();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plansLoaded, setPlansLoaded] = useState(false);

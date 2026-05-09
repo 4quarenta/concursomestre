@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -14,7 +14,17 @@ import { createPortal } from 'react-dom';
 import { AlertCircle, AlertTriangle, Check, Image as ImageIcon, Loader2, Plus, Save, Search, Sparkles, Trash2, X } from 'lucide-react';
 import type { Prova, Question } from '@types';
 import { SmartTagSelector } from '../database/SmartTagSelector';
-import { buildProvaSearchText, formatProvaLabel, normalizeProvaRecord } from '../exams/examBankUtils';
+import { buildProvaSearchText, formatProvaLabel } from '../exams/examBankUtils';
+import {
+  getQuestionOptionLabel,
+  getRoleDisplayLabel,
+  isQuestionTaxonomyRecord,
+  type ManualQuestionItem,
+  type ManualQuestionPatch,
+  type ManualQuestionSetter,
+  type ManualQuestionState,
+  mergeProvaSources,
+} from './questionEditorShared';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_MODAL_FOOTER_CLASS,
@@ -23,15 +33,12 @@ import {
   ADMIN_MUTED_SURFACE_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
-  ADMIN_SURFACE_CLASS,
-  ADMIN_SURFACE_HEADER_CLASS,
   ADMIN_TEXTAREA_CLASS,
 } from '../shared/adminPanelStyles';
-import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 
 interface ManualQuestionModalProps {
-  manualQ: any;
-  setManualQ: React.Dispatch<React.SetStateAction<any>>;
+  manualQ: ManualQuestionState;
+  setManualQ: ManualQuestionSetter;
   editingQuestion: Question | null;
   editingExtractedIndex: number | null;
   existingAgencies: string[];
@@ -50,50 +57,6 @@ interface ManualQuestionModalProps {
   presentation?: 'modal' | 'page';
   reportContext?: React.ReactNode;
 }
-
-/**
- * Normaliza o nome exibido de um cargo no modal manual.
- * Evita falhas quando a origem chega nula ou com formatos legados.
- *
- * @since 1.0.0
- */
-const getRoleDisplayLabel = (value: any) => {
-  if (typeof value === 'string' || typeof value === 'number') {
-    return String(value).trim();
-  }
-
-  if (value && typeof value === 'object') {
-    return String(
-      value.descricao
-      ?? value['descrição']
-      ?? value.name
-      ?? value.nome
-      ?? value.sigla
-      ?? '',
-    ).trim();
-  }
-
-  return '';
-};
-
-const mergeProvaSources = (primary: Prova[], fallback: any[]) => {
-  const provaMap = new Map<string, Prova>();
-
-  [...primary, ...fallback]
-    .map((item) => normalizeProvaRecord(item))
-    .filter(Boolean)
-    .forEach((item) => {
-      provaMap.set(String((item as Prova).id), item as Prova);
-    });
-
-  return Array.from(provaMap.values()).sort((left, right) => {
-    if (right.ano !== left.ano) {
-      return right.ano - left.ano;
-    }
-
-    return left.nome.localeCompare(right.nome, 'pt-BR');
-  });
-};
 
 const ManualQuestionModal = ({
   manualQ,
@@ -116,8 +79,8 @@ const ManualQuestionModal = ({
   presentation = 'modal',
   reportContext,
 }: ManualQuestionModalProps) => {
-  const updateManualQ = (patch: Record<string, unknown>) => {
-    setManualQ((prev: any) => ({ ...prev, ...patch }));
+  const updateManualQ = (patch: ManualQuestionPatch) => {
+    setManualQ((prev) => ({ ...prev, ...patch }));
   };
 
   const [provaSearch, setProvaSearch] = React.useState('');
@@ -127,7 +90,7 @@ const ManualQuestionModal = ({
   const MID_LEVEL_LABEL = 'Médio';
 
   const handleTypeChange = (newType: string) => {
-    setManualQ((prev: any) => {
+    setManualQ((prev) => {
       const currentItems = prev.itens || [];
       const newItens =
         newType === 'Certo/Errado'
@@ -160,7 +123,7 @@ const ManualQuestionModal = ({
   };
 
   const handleAddOption = () => {
-    setManualQ((prev: any) => ({
+    setManualQ((prev) => ({
       ...prev,
       itens: [
         ...(prev.itens || []),
@@ -175,7 +138,7 @@ const ManualQuestionModal = ({
   };
 
   const handleOptionChange = (index: number, value: string) => {
-    setManualQ((prev: any) => {
+    setManualQ((prev) => {
       const nextItems = [...(prev.itens || [])];
       nextItems[index] = {
         ...nextItems[index],
@@ -188,9 +151,9 @@ const ManualQuestionModal = ({
   };
 
   const handleOptionDelete = (index: number) => {
-    setManualQ((prev: any) => ({
+    setManualQ((prev) => ({
       ...prev,
-      itens: (prev.itens || []).filter((_: any, itemIndex: number) => itemIndex !== index),
+      itens: (prev.itens || []).filter((_item: ManualQuestionItem, itemIndex: number) => itemIndex !== index),
     }));
   };
 
@@ -207,7 +170,7 @@ const ManualQuestionModal = ({
     [existingProvas, manualQ.provas],
   );
   const selectedProva = manualQ.provaId
-    ? provaList.find((item: any) => String(item.id) === String(manualQ.provaId))
+    ? provaList.find((item) => String(item.id) === String(manualQ.provaId))
     : null;
   const filteredProvas = React.useMemo(() => {
     const normalizedSearch = provaSearch.trim().toLowerCase();
@@ -221,14 +184,18 @@ const ManualQuestionModal = ({
   }, [provaList, provaSearch]);
 
   React.useEffect(() => {
-    if (selectedProva) {
-      setProvaSearch(formatProvaLabel(selectedProva));
-      return;
-    }
+    const frameId = window.requestAnimationFrame(() => {
+      if (selectedProva) {
+        setProvaSearch(formatProvaLabel(selectedProva));
+        return;
+      }
 
-    if (!manualQ.provaId) {
-      setProvaSearch('');
-    }
+      if (!manualQ.provaId) {
+        setProvaSearch('');
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [manualQ.provaId, selectedProva]);
 
   const handleSelectProva = (prova: Prova) => {
@@ -329,28 +296,30 @@ const ManualQuestionModal = ({
             <SmartTagSelector
               label="Banca(s)"
               options={existingAgencies}
-              selected={(manualQ.bancas || []).map((item: any) => (typeof item === 'string' ? item : item.sigla || item.name))}
+              selected={(manualQ.bancas || [])
+                .map((item) => (isQuestionTaxonomyRecord(item) ? String(item.sigla ?? item.name ?? item.nome ?? '') : String(item ?? '').trim()))
+                .filter(Boolean)}
               onChange={(value) => updateManualQ({ bancas: value })}
               placeholder="Ex: Cebraspe, FGV..."
             />
             <SmartTagSelector
               label="Orgao(s)"
               options={existingOrgaos}
-              selected={(manualQ.orgaos || []).map((item: any) => (typeof item === 'string' ? item : item.name))}
+              selected={(manualQ.orgaos || []).map(getQuestionOptionLabel).filter(Boolean)}
               onChange={(value) => updateManualQ({ orgaos: value })}
               placeholder="Ex: TJ-SP, PF, Receita Federal..."
             />
             <SmartTagSelector
               label="Materia(s)"
               options={existingSubjects}
-              selected={(manualQ.subjects || []).map((item: any) => (typeof item === 'string' ? item : item.name))}
+              selected={(manualQ.subjects || []).map(getQuestionOptionLabel).filter(Boolean)}
               onChange={(value) => updateManualQ({ subjects: value })}
               placeholder="Ex: Direito Administrativo..."
             />
             <SmartTagSelector
               label="Assunto(s) / Topicos"
               options={existingTopics}
-              selected={(manualQ.assuntos || []).map((item: any) => (typeof item === 'string' ? item : item.name))}
+              selected={(manualQ.assuntos || []).map(getQuestionOptionLabel).filter(Boolean)}
               onChange={(value) => updateManualQ({ assuntos: value })}
               placeholder="Ex: Crase, Atos..."
             />
@@ -594,7 +563,7 @@ const ManualQuestionModal = ({
               </div>
 
               <div className="grid grid-cols-1 gap-3">
-                {manualItems.map((item: any, index: number) => (
+                {manualItems.map((item: ManualQuestionItem, index: number) => (
                   <div key={item.id} className="group flex items-start gap-3">
                     <button
                       type="button"
@@ -698,3 +667,5 @@ const ManualQuestionModal = ({
 };
 
 export default ManualQuestionModal;
+
+

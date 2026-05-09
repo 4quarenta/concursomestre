@@ -10,6 +10,7 @@
 */
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
+import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { Question, QuestionStats, UserAnswer } from 'types';
 import { isQuestionPubliclyVisible, withQuestionPublicationAliases } from './questionPublication';
 
@@ -67,35 +68,39 @@ export const questionService = {
    */
   async getQuestionPage(filters?: QuestionFilters): Promise<QuestionListResult> {
     const includeUnpublished = Boolean(filters?.includeUnpublished || filters?.includeDrafts || filters?.admin);
-    const response = await apiClient.get<QuestionPageResponse | Question[]>(
-      ENDPOINTS.questions.list,
-      {
-        params: includeUnpublished
-          ? filters
-          : {
-            ...filters,
-            publication_scope: 'public',
-            publish_status: 'published',
-          },
-      },
-    );
+    const params = includeUnpublished
+      ? filters
+      : {
+        ...filters,
+        publication_scope: 'public',
+        publish_status: 'published',
+      };
 
-    const payload = readApiData<QuestionPageResponse | Question[]>(response, {});
-    const rows = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload.rows)
-        ? payload.rows
-        : [];
-    const normalizedRows = rows.map((row) => withQuestionPublicationAliases(row));
-    const visibleRows = includeUnpublished
-      ? normalizedRows
-      : normalizedRows.filter((row) => isQuestionPubliclyVisible(row));
-    const total = Array.isArray(payload) ? visibleRows.length : Number(payload.total || visibleRows.length);
+    return withRequestCoalescing(buildRequestCacheKey('questions:list', params), async () => {
+      const response = await apiClient.get<QuestionPageResponse | Question[]>(
+        ENDPOINTS.questions.list,
+        {
+          params,
+        },
+      );
 
-    return {
-      rows: visibleRows,
-      total,
-    };
+      const payload = readApiData<QuestionPageResponse | Question[]>(response, {});
+      const rows = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload.rows)
+          ? payload.rows
+          : [];
+      const normalizedRows = rows.map((row) => withQuestionPublicationAliases(row));
+      const visibleRows = includeUnpublished
+        ? normalizedRows
+        : normalizedRows.filter((row) => isQuestionPubliclyVisible(row));
+      const total = Array.isArray(payload) ? visibleRows.length : Number(payload.total || visibleRows.length);
+
+      return {
+        rows: visibleRows,
+        total,
+      };
+    }, 2500);
   },
 
   /**

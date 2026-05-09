@@ -33,7 +33,7 @@ interface AdminConfirmDialogProps {
 
 /**
  * Modal padrao de confirmacao do admin.
- * Centraliza confirmacoes destrutivas para evitar `window.confirm`
+ * Centraliza confirmacoes destrutivas em modal oficial.
  * e manter feedback visual, loading e foco no contexto da acao.
  *
  * @since 1.0.0

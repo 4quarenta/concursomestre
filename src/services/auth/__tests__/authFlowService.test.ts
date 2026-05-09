@@ -217,11 +217,13 @@ describe('authFlowService', () => {
     const message = await authFlowService.resetPassword({
       token: 'reset-token',
       password: 'nova-senha',
+      captchaToken: 'captcha-reset',
     });
 
     expect(mockPost).toHaveBeenCalledWith('auth/reset-password.php', {
       token: 'reset-token',
       password: 'nova-senha',
+      captchaToken: 'captcha-reset',
     });
     expect(message).toBe('Senha alterada.');
   });

@@ -147,16 +147,16 @@ export const renderMathMarkdownToHtml = (content: string | null | undefined): st
 };
 
 export const MathRichText = ({ content, className = '' }: MathRichTextProps) => {
-  const html = React.useMemo(() => renderMathMarkdownToHtml(content), [content]);
+  const sanitizedHtml = React.useMemo(() => renderMathMarkdownToHtml(content), [content]);
 
-  if (!html) {
+  if (!sanitizedHtml) {
     return null;
   }
 
   return (
     <div
       className={`question-rich-html question-comment-math ${className}`}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
     />
   );
 };

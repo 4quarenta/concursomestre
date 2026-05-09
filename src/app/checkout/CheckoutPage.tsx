@@ -11,27 +11,26 @@
 *
 */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useToast } from '@providers/ToastProvider';
 import analyticsTrackingService from '@services/analytics/analyticsTrackingService';
 import { calculateSubscriptionProRatedCredit, getCanonicalPlanName, getConfiguredPlanDisplayName, planService, resolvePlanCycleKey, resolvePlanOffer } from '@services/plans';
 import { hasActivePlanAccess } from '@services/plans/planAccess';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
-import { Plan, PlanConfig, PlanFeature, PlanName } from '@types';
+import { readApiErrorMessage } from '@services/api';
+import { Address, DiscountCode, Plan, PlanConfig, PlanFeature, PlanName, UserProfile } from '@types';
 import { authFlowService } from '@services/auth';
-import { cardsService } from '@services/billing';
+import { cardsService, type SavedCard } from '@services/billing';
 import { getEnabledStripePaymentMethods } from '@services/payments/stripePaymentMethodsConfig';
+import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import LimitedOfferCountdown from '../../components/shared/marketing/LimitedOfferCountdown';
 import {
-    CheckCircle2, ShieldCheck, ArrowRight, ArrowLeft, CreditCard,
-    Lock, User, Mail, UserPlus, LogIn, ChevronRight, Calendar, ToggleRight, ToggleLeft, AlertTriangle, XCircle,
-    Award, Zap, Globe, Shield, Plus, History, Fingerprint, QrCode, FileText, RotateCcw
+    CheckCircle2, ShieldCheck, ArrowRight, ArrowLeft, Lock, User, Mail, Phone, AlertTriangle, XCircle, RotateCcw, Loader2
 } from 'lucide-react';
-import ReCAPTCHA from 'react-google-recaptcha';
 import CheckoutHeader from './components/CheckoutHeader';
 import CheckoutPaymentStage from './components/CheckoutPaymentStage';
 import CheckoutStepTracker from './components/CheckoutStepTracker';
@@ -48,6 +47,76 @@ const getPlanTierScore = (name: string) => {
 };
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type AppliedCheckoutCoupon = DiscountCode & {
+    discount_amount?: number;
+    discount_percentage?: number;
+};
+
+type StripeSavedCardPaymentArgs = {
+    stripe: {
+        confirmCardSetup: (clientSecret: string, options: { payment_method: string }) => Promise<{
+            error?: { message?: string };
+            paymentIntent?: { id?: string | null };
+        }>;
+        confirmCardPayment: (
+            clientSecret: string,
+            options: {
+                payment_method: string;
+                payment_method_options?: {
+                    card?: {
+                        cvc?: unknown;
+                    };
+                };
+            },
+        ) => Promise<{
+            error?: { message?: string };
+            paymentIntent?: { id?: string | null };
+        }>;
+    };
+    cvcElement: unknown;
+};
+
+const roundCurrency = (value: number) => Number(Number(value || 0).toFixed(2));
+
+const resolveStripeTermAmounts = (totalAmount: number, installmentCount: number) => {
+    const safeInstallmentCount = Math.max(1, installmentCount);
+    const totalCents = Math.max(0, Math.round(roundCurrency(totalAmount) * 100));
+
+    if (safeInstallmentCount <= 1) {
+        const singleAmount = roundCurrency(totalCents / 100);
+        return {
+            installments: 1,
+            first_charge_amount: singleAmount,
+            installment_amount: singleAmount,
+            total_amount: singleAmount,
+            first_charge_discount_amount: 0,
+        };
+    }
+
+    const cycleChargeCents = Math.max(1, Math.floor(totalCents / safeInstallmentCount));
+    const canonicalTermTotalCents = cycleChargeCents * safeInstallmentCount;
+
+    return {
+        installments: safeInstallmentCount,
+        first_charge_amount: roundCurrency(cycleChargeCents / 100),
+        installment_amount: roundCurrency(cycleChargeCents / 100),
+        total_amount: roundCurrency(canonicalTermTotalCents / 100),
+        first_charge_discount_amount: 0,
+    };
+};
+
+const buildCheckoutRequirementSeed = (user?: UserProfile | null) => ({
+    name: user?.name || '',
+    cpf: user?.cpf || '',
+    zipCode: user?.address?.zipCode || '',
+    street: user?.address?.street || '',
+    number: user?.address?.number || '',
+    complement: user?.address?.complement || '',
+    neighborhood: user?.address?.neighborhood || '',
+    city: user?.address?.city || '',
+    state: user?.address?.state || '',
+});
 
 const getPlanTimeScore = (currentPlan: Pick<Plan, 'interval_unit' | 'interval_count'>) => {
     if (currentPlan.interval_unit === 'year') return 12;
@@ -128,7 +197,7 @@ const CheckoutPage: React.FC = () => {
             search: search ? `?${search}` : '',
         };
     }, [pathname, routeSearchParams]);
-    const { systemSettings } = useData();
+    const systemSettings = useAppConfigStore((state) => state.systemSettings);
 
     const [plan, setPlan] = useState<Plan | null>(null);
     const [loading, setLoading] = useState(true);
@@ -148,12 +217,12 @@ const CheckoutPage: React.FC = () => {
     const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
+        phone: '',
         email: '',
         password: '',
         confirmPassword: ''
     });
 
-    const [captchaToken, setCaptchaToken] = useState<string | null>(null);
     const analyticsSessionKeyRef = useRef('');
     const checkoutAnalyticsRef = useRef({
         planViewed: false,
@@ -169,43 +238,36 @@ const CheckoutPage: React.FC = () => {
     // Coupon & Review State
     const [couponCode, setCouponCode] = useState('');
     const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
-    const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+    const [appliedCoupon, setAppliedCoupon] = useState<AppliedCheckoutCoupon | null>(null);
     const [discountAmount, setDiscountAmount] = useState(0);
     const [appliedCouponSource, setAppliedCouponSource] = useState<'auto' | 'manual' | null>(null);
-    const recaptchaRef = React.useRef<ReCAPTCHA>(null);
-    const [stripeBillingMode, setStripeBillingMode] = useState<'single_installment' | 'term_recurring'>('single_installment');
     const [showCheckoutRequirementsModal, setShowCheckoutRequirementsModal] = useState(false);
     const [isSavingCheckoutRequirements, setIsSavingCheckoutRequirements] = useState(false);
     const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
-    const [checkoutRequirementData, setCheckoutRequirementData] = useState({
-        name: '',
-        cpf: '',
-        zipCode: '',
-        street: '',
-        number: '',
-        complement: '',
-        neighborhood: '',
-        city: '',
-        state: '',
-    });
-
-    const isDevMode = systemSettings?.appMode !== 'production';
+    const [checkoutRequirementData, setCheckoutRequirementData] = useState(() => buildCheckoutRequirementSeed(currentUser));
+    const [checkoutNowMs, setCheckoutNowMs] = useState(0);
     const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
+    const {
+        executeRecaptcha,
+        isReady: isRecaptchaReady,
+        loadError: recaptchaLoadError,
+    } = useRecaptchaV3({
+        enabled: recaptchaEnabled && step === 'identification',
+        siteKey: systemSettings?.recaptchaSiteKey,
+    });
     const activePaymentProvider = 'stripe' as const;
     const isStripeProvider = activePaymentProvider === 'stripe';
     const stripeCheckoutMode = (systemSettings?.paymentCheckoutMode || 'internal') as 'internal' | 'redirect';
-    const cardVaultProvider = (systemSettings?.cardVaultProvider || 'stripe') as 'stripe';
     const isStripeInternalCheckout = stripeCheckoutMode === 'internal';
     const STRIPE_PUBLISHABLE_KEY = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
     const allowSameTierCycleChangeEnabled = resolveSystemFeatureFlag(systemSettings, 'sameTierCycleChangeEnabled', false);
+    const stripePaymentMethodsSettings = systemSettings?.stripePaymentMethods ?? null;
     const checkoutEnabledPaymentMethodIds = useMemo(
-        () => getEnabledStripePaymentMethods(systemSettings?.stripePaymentMethods)
+        () => getEnabledStripePaymentMethods(stripePaymentMethodsSettings)
             .filter((method) => method.checkoutSupported)
             .map((method) => method.id),
-        [systemSettings?.stripePaymentMethods],
+        [stripePaymentMethodsSettings],
     );
-    const selectedMethod = 'credit_card' as const;
-    const setSelectedMethod = (_value: string) => undefined;
     const [paymentData, setPaymentData] = useState({
         cardNumber: '',
         cardHolder: '',
@@ -216,67 +278,16 @@ const CheckoutPage: React.FC = () => {
         installments: '1'
     });
 
-    const isRecurring = false;
-    const setIsRecurring = (_value: boolean) => undefined;
-    const installmentOptions: any[] = [];
-    const setInstallmentOptions = (_value: any[]) => undefined;
-    const paymentMethodId = '';
-    const setPaymentMethodId = (_value: string) => undefined;
-    const issuerId: string | null = null;
-    const setIssuerId = (_value: string | null) => undefined;
-    const savedCards: any[] = [];
-    const setSavedCards = (_value: any[]) => undefined;
-    const isUsingSavedCard = false;
-    const setIsUsingSavedCard = (_value: boolean) => undefined;
-    const selectedCard: any = null;
-    const setSelectedCard = (_value: any) => undefined;
-    const savedCardSecurityReady = false;
-    const setSavedCardSecurityReady = (_value: boolean) => undefined;
-    const savedCardSecurityComplete = false;
-    const setSavedCardSecurityComplete = (_value: boolean) => undefined;
-    const savedCardSecurityError: string | null = null;
-    const setSavedCardSecurityError = (_value: string | null) => undefined;
-    const requiresSavedCard = autoRenew && !isUsingSavedCard;
-    const savedCardCheckoutSupported = false;
-    const savedCardCheckoutBlockedMessage = 'Cartoes salvos legados foram desativados neste checkout.';
-    const savedCardMpRef = { current: null as any };
-    const savedCardSecurityFieldRef = { current: null as any };
-    const savedCardSecurityTouchedRef = { current: false };
-
-    const normalizePaymentMethodId = (value?: string | null): string => {
-        if (!value) return '';
-        return value.toString().trim().toLowerCase();
-    };
-
-    const getBrandFromCardNumber = (_number: string): string | null => null;
-    const updateInstallments = async (_bin?: string, _paymentMethodId?: string) => undefined;
-    const resolvePaymentMetadata = async ({ bin }: { bin?: string; fallbackPaymentMethodId?: string | null; fallbackIssuerId?: string | number | null }) => ({
-        paymentMethodId: '',
-        issuerId: null,
-        bin: (bin || '').replace(/\D/g, '').slice(0, 8),
-    });
-
-    const maskToken = (value?: string | null): string => {
-        if (!value) return 'missing';
-        if (value.length <= 8) return value;
-        return `${value.slice(0, 4)}...${value.slice(-4)}`;
-    };
-
-    const logCheckoutDebug = (label: string, payload: Record<string, unknown>) => {
-        if (process.env.NODE_ENV !== 'development') return;
-        console.info(`[checkout-disabled-sdk] ${label}`, payload);
-    };
-
-    const [stripeCards, setStripeCards] = useState<any[]>([]);
+    const [stripeCards, setStripeCards] = useState<SavedCard[]>([]);
     const [isLoadingStripeCards, setIsLoadingStripeCards] = useState(false);
     const [selectedStripeCardId, setSelectedStripeCardId] = useState<string | null>(null);
     const [pendingStripeSubscriptionId, setPendingStripeSubscriptionId] = useState<string | null>(null);
     const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
-    const [stripePixCapability, setStripePixCapability] = useState<any>(null);
+    const [stripePixCapability, setStripePixCapability] = useState<{ status?: string; available?: boolean; message?: string } | null>(null);
 
     const numericPlanId = useMemo(() => Number(planId), [planId]);
     const selectedStripeCard = useMemo(() => {
-        return stripeCards.find((card: any) => card.id === selectedStripeCardId) || null;
+        return stripeCards.find((card) => String(card.id) === selectedStripeCardId) || null;
     }, [stripeCards, selectedStripeCardId]);
     const currentActiveSubscription = currentUser?.subscription && hasActivePlanAccess(currentUser) ? currentUser.subscription : null;
     const currentSubscriptionPlan = currentActiveSubscription?.plan || null;
@@ -314,39 +325,6 @@ const CheckoutPage: React.FC = () => {
     ), [currentComparableBillingCycle, currentComparablePlanName, hasComparablePaidPlanSnapshot, plan]);
 
     const formatCurrency = (value: number) => `R$ ${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    const roundCurrency = (value: number) => Number(Number(value || 0).toFixed(2));
-
-    /**
-     * Replica o mesmo particionamento em centavos usado no backend Stripe para termos recorrentes.
-     * Isso evita divergência entre o valor exibido no checkout e a primeira cobrança efetiva.
-     * @since v1.0.0
-     */
-    const resolveStripeTermAmounts = (totalAmount: number, installmentCount: number) => {
-        const safeInstallmentCount = Math.max(1, installmentCount);
-        const totalCents = Math.max(0, Math.round(roundCurrency(totalAmount) * 100));
-
-        if (safeInstallmentCount <= 1) {
-            const singleAmount = roundCurrency(totalCents / 100);
-            return {
-                installments: 1,
-                first_charge_amount: singleAmount,
-                installment_amount: singleAmount,
-                total_amount: singleAmount,
-                first_charge_discount_amount: 0,
-            };
-        }
-
-        const cycleChargeCents = Math.max(1, Math.floor(totalCents / safeInstallmentCount));
-        const canonicalTermTotalCents = cycleChargeCents * safeInstallmentCount;
-
-        return {
-            installments: safeInstallmentCount,
-            first_charge_amount: roundCurrency(cycleChargeCents / 100),
-            installment_amount: roundCurrency(cycleChargeCents / 100),
-            total_amount: roundCurrency(canonicalTermTotalCents / 100),
-            first_charge_discount_amount: 0,
-        };
-    };
 
     const isUsingStripeSavedCard = Boolean(selectedStripeCard);
     const stripeRequiresSavedCard = autoRenew && !isUsingStripeSavedCard;
@@ -360,6 +338,18 @@ const CheckoutPage: React.FC = () => {
 
         return analyticsSessionKeyRef.current;
     }, []);
+
+    const requestRecaptchaToken = useCallback(async (action: string) => {
+        if (!recaptchaEnabled) {
+            return null;
+        }
+
+        if (!isRecaptchaReady) {
+            throw new Error(recaptchaLoadError || 'A verificacao de seguranca ainda esta carregando.');
+        }
+
+        return executeRecaptcha(action);
+    }, [executeRecaptcha, isRecaptchaReady, recaptchaEnabled, recaptchaLoadError]);
 
     const trackCheckoutLifecycleEvent = React.useCallback((
         eventName: Parameters<typeof analyticsTrackingService.trackLifecycleEvent>[0]['eventName'],
@@ -393,17 +383,15 @@ const CheckoutPage: React.FC = () => {
     }, [trackCheckoutLifecycleEvent]);
 
     useEffect(() => {
-        if (isAuthLoading) {
-            return;
-        }
+        const updateNow = () => setCheckoutNowMs(Date.now());
+        const frameId = window.requestAnimationFrame(updateNow);
+        const intervalId = window.setInterval(updateNow, 60_000);
 
-        if (!planId) {
-            router.push('/plans');
-            return;
-        }
-
-        loadPlan();
-    }, [isAuthLoading, planId]);
+        return () => {
+            window.cancelAnimationFrame(frameId);
+            window.clearInterval(intervalId);
+        };
+    }, []);
 
     useEffect(() => {
         if (!plan) {
@@ -494,75 +482,69 @@ const CheckoutPage: React.FC = () => {
         };
     }, [authMode, step, trackCheckoutLifecycleEvent]);
 
-    useEffect(() => {
-        setSelectedStripeCardId(null);
-        setPendingStripeSubscriptionId(null);
-        setPendingStripePaymentMethodId(null);
-    }, [isStripeProvider]);
-
-    const loadPlan = async () => {
+    const loadPlan = useCallback(async () => {
         try {
             const plans = await planService.getPlans();
-            const found = plans.find(p => p.id === Number(planId));
-            if (found) {
-                setPlan(found);
+            const found = plans.find((candidatePlan) => candidatePlan.id === Number(planId));
+            if (!found) {
+                addToast('Plano não encontrado', 'error');
+                router.push('/plans');
+                return;
+            }
 
-                let defaultInstallments = '1';
-                const unit = found.interval_unit?.toLowerCase();
-                const name = found.name?.toLowerCase() || '';
+            setPlan(found);
 
-                if (unit === 'year' || name.includes('anual') || name.includes('annual')) {
-                    defaultInstallments = '12';
-                } else if ((unit === 'month' && found.interval_count === 3) || name.includes('trimestral')) {
-                    defaultInstallments = '3';
-                }
+            let defaultInstallments = '1';
+            const unit = found.interval_unit?.toLowerCase();
+            const name = found.name?.toLowerCase() || '';
 
-                setPaymentData(prev => ({ ...prev, installments: defaultInstallments }));
+            if (unit === 'year' || name.includes('anual') || name.includes('annual')) {
+                defaultInstallments = '12';
+            } else if ((unit === 'month' && found.interval_count === 3) || name.includes('trimestral')) {
+                defaultInstallments = '3';
+            }
 
-                if (currentUser) {
-                    const currentPlanInList = plans.find(p => p.id === currentUser?.subscription?.plan_id);
-                    const currentPlanTier = getPlanTierScore(currentUser.subscription?.plan?.name || '');
-                    const currentTimeScore = currentPlanInList ? getPlanTimeScore(currentPlanInList) : 1;
+            setPaymentData((currentPaymentData) => (
+                currentPaymentData.installments === defaultInstallments
+                    ? currentPaymentData
+                    : { ...currentPaymentData, installments: defaultInstallments }
+            ));
 
-                    const targetPlanTier = getPlanTierScore(found.name);
-                    const targetPlanTimeScore = getPlanTimeScore(found);
+            if (currentUser) {
+                const currentPlanInList = plans.find((candidatePlan) => candidatePlan.id === currentUser.subscription?.plan_id);
+                const currentPlanTier = getPlanTierScore(currentUser.subscription?.plan?.name || '');
+                const currentTimeScore = currentPlanInList ? getPlanTimeScore(currentPlanInList) : 1;
 
-                    if (hasActivePlanAccess(currentUser)) {
-                        if (isSameActiveSubscriptionPlan(currentUser.subscription?.plan || currentPlanInList, found, currentUser.subscription?.plan_id)) {
-                            addToast(`Voce ja possui o plano ${currentUser.subscription.plan?.name || 'Premium'} ativo.`, 'warning');
-                            router.push(buildProfilePath('billing'));
-                            return;
-                        }
+                const targetPlanTier = getPlanTierScore(found.name);
+                const targetPlanTimeScore = getPlanTimeScore(found);
 
-                        if (
-                            (targetPlanTier < currentPlanTier && targetPlanTimeScore <= currentTimeScore)
-                            || (
-                                !allowSameTierCycleChangeEnabled
-                                && targetPlanTier === currentPlanTier
-                            )
-                        ) {
-      addToast(`Você já possui o plano ${currentUser.subscription.plan?.name || 'Premium'}. Não é possível assinar um plano inferior ou igual enquanto o atual estiver ativo.`, 'warning');
-                            router.push(buildProfilePath('billing'));
-                            return;
-                        }
-
-                        if (targetPlanTier < currentPlanTier) {
-                            setShowDowngradeModal(true);
-                        }
+                if (hasActivePlanAccess(currentUser)) {
+                    if (isSameActiveSubscriptionPlan(currentUser.subscription?.plan || currentPlanInList, found, currentUser.subscription?.plan_id)) {
+                        addToast(`Voce ja possui o plano ${currentUser.subscription?.plan?.name || 'Premium'} ativo.`, 'warning');
+                        router.push(buildProfilePath('billing'));
+                        return;
                     }
 
-                    setProRatedCredit(
-                        calculateSubscriptionProRatedCredit({
-                            subscription: currentUser.subscription,
-                            plans,
-                        }),
-                    );
-                } else {
-                    setProRatedCredit(0);
+                    if (
+                        (targetPlanTier < currentPlanTier && targetPlanTimeScore <= currentTimeScore)
+                        || (!allowSameTierCycleChangeEnabled && targetPlanTier === currentPlanTier)
+                    ) {
+                        addToast(`Você já possui o plano ${currentUser.subscription?.plan?.name || 'Premium'}. Não é possível assinar um plano inferior ou igual enquanto o atual estiver ativo.`, 'warning');
+                        router.push(buildProfilePath('billing'));
+                        return;
+                    }
+
+                    if (targetPlanTier < currentPlanTier) {
+                        setShowDowngradeModal(true);
+                    }
                 }
+
+                setProRatedCredit(calculateSubscriptionProRatedCredit({
+                    subscription: currentUser.subscription,
+                    plans,
+                }));
             } else {
-      addToast('Plano não encontrado', 'error');
-                router.push('/plans');
+                setProRatedCredit(0);
             }
         } catch (error) {
             console.error('Error loading plan:', error);
@@ -571,7 +553,24 @@ const CheckoutPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [addToast, allowSameTierCycleChangeEnabled, currentUser, planId, router]);
+
+    useEffect(() => {
+        if (isAuthLoading) {
+            return;
+        }
+
+        if (!planId) {
+            router.push('/plans');
+            return;
+        }
+
+        const frameId = window.requestAnimationFrame(() => {
+            void loadPlan();
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [isAuthLoading, loadPlan, planId, router]);
 
     const hasRepeatedActivePlanPurchase = useMemo(() => (
         Boolean(
@@ -653,20 +652,24 @@ const CheckoutPage: React.FC = () => {
     const hasActiveLimitedOfferCountdown = Boolean(
         systemSettings.limitedOfferCountdown?.enabled
         && limitedOfferEndsAt
-        && new Date(limitedOfferEndsAt).getTime() > Date.now(),
+        && new Date(limitedOfferEndsAt).getTime() > checkoutNowMs,
     );
     const showCheckoutCountdown = Boolean(checkoutOffer?.hasDiscount && hasActiveLimitedOfferCountdown);
 
-    const resetAppliedCoupon = () => {
+    const resetAppliedCoupon = useCallback(() => {
         setAppliedCoupon(null);
         setDiscountAmount(0);
         setAppliedCouponSource(null);
-    };
+    }, []);
 
     useEffect(() => {
-        resetAppliedCoupon();
-        setCouponCode('');
-    }, [plan?.id]);
+        const frameId = window.requestAnimationFrame(() => {
+            resetAppliedCoupon();
+            setCouponCode('');
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [plan?.id, resetAppliedCoupon]);
 
     useEffect(() => {
         if (!plan?.id || couponValidationAmount <= 0 || appliedCouponSource === 'manual') {
@@ -695,7 +698,7 @@ const CheckoutPage: React.FC = () => {
                 }
 
                 resetAppliedCoupon();
-            } catch (error) {
+            } catch {
                 if (!active) {
                     return;
                 }
@@ -709,116 +712,58 @@ const CheckoutPage: React.FC = () => {
         return () => {
             active = false;
         };
-    }, [plan?.id, couponValidationAmount, appliedCouponSource]);
+    }, [plan?.id, couponValidationAmount, appliedCouponSource, resetAppliedCoupon]);
 
-    const handleExpiryChange = (value: string) => {
-        let clean = value.replace(/\D/g, '');
-        if (clean.length > 4) clean = clean.slice(0, 4);
-        let formatted = clean;
-        if (clean.length >= 3) {
-            formatted = `${clean.slice(0, 2)}/${clean.slice(2)}`;
+    const loadSavedCards = useCallback(async () => {
+        if (!currentUser) {
+            setStripeCards([]);
+            setSelectedStripeCardId(null);
+            return;
         }
-        setPaymentData(prev => ({ ...prev, cardExpiry: formatted }));
-    };
 
-    const getBrandIcon = (methodId: string) => {
-        const brands: Record<string, string> = {
-            'visa': 'https://logopng.com.br/logos/visa-5.svg',
-            'master': 'https://logopng.com.br/logos/mastercard-2.svg',
-            'mastercard': 'https://logopng.com.br/logos/mastercard-2.svg',
-            'elo': 'https://logopng.com.br/logos/elo-1.svg',
-            'amex': 'https://logopng.com.br/logos/american-express-1.svg',
-            'hipercard': 'https://logopng.com.br/logos/hipercard-1.svg',
-            'diners': 'https://logopng.com.br/logos/diners-club-1.svg'
-        };
-        return brands[methodId.toLowerCase()] || null;
-    };
+        setIsLoadingStripeCards(true);
+        try {
+            const response = await cardsService.listSavedCards();
+            const nextCards = response.success ? (response.cards || []) : [];
+            setStripeCards(nextCards);
 
-    const loadSavedCards = async () => {
-        if (isStripeProvider) {
-            if (!currentUser) {
-                setStripeCards([]);
+            if (nextCards.length === 0) {
                 setSelectedStripeCardId(null);
                 return;
             }
 
-            setSavedCards([]);
-            setSelectedCard(null);
-            setIsUsingSavedCard(false);
-            setIssuerId(null);
-            setIsLoadingStripeCards(true);
-            try {
-                const res = await cardsService.listSavedCards();
-                const nextCards = res.success ? (res.cards || []) : [];
-                setStripeCards(nextCards);
-
-                if (nextCards.length === 0) {
-                    setSelectedStripeCardId(null);
-                    return;
+            setSelectedStripeCardId((currentSelected) => {
+                if (currentSelected && nextCards.some((card) => String(card.id) === currentSelected)) {
+                    return currentSelected;
                 }
 
-                setSelectedStripeCardId((currentSelected) => {
-                    if (currentSelected && nextCards.some((card: any) => card.id === currentSelected)) {
-                        return currentSelected;
-                    }
-
-                    return nextCards.find((card: any) => Number(card.is_default) === 1)?.id || nextCards[0]?.id || null;
-                });
-            } catch (error) {
-                console.error('Error fetching Stripe cards:', error);
-                setStripeCards([]);
-                setSelectedStripeCardId(null);
-            } finally {
-                setIsLoadingStripeCards(false);
-            }
-            return;
+                return String(nextCards.find((card) => Number(card.is_default) === 1)?.id || nextCards[0]?.id || '');
+            });
+        } catch (error) {
+            console.error('Error fetching Stripe cards:', error);
+            setStripeCards([]);
+            setSelectedStripeCardId(null);
+        } finally {
+            setIsLoadingStripeCards(false);
         }
-
-        if (!currentUser) return;
-        try {
-            if (process.env.NODE_ENV === 'development') console.log('Fetching saved cards for user:', currentUser.id);
-            const res = await cardsService.listSavedCards();
-            
-            if (process.env.NODE_ENV === 'development') console.log('Cards API response:', res);
-
-            if (res.removed_stale_cards > 0) {
-          addToast('Removemos cartões salvos de uma integração legada. Salve novamente o cartão para reutilização.', 'warning');
-            }
-
-            if (res.success && res.cards && res.cards.length > 0) {
-                setSavedCards(res.cards);
-                const defaultCard = res.cards.find((c: any) => c.is_default == 1) || res.cards[0];
-                if (defaultCard) {
-                    setSelectedCard(defaultCard);
-                    setIsUsingSavedCard(true);
-                    setPaymentMethodId(normalizePaymentMethodId(defaultCard.payment_method_id || defaultCard.brand));
-                    setIssuerId(defaultCard.issuer_id ? String(defaultCard.issuer_id) : null);
-                    updateInstallments(
-                        defaultCard.first_six_digits || defaultCard.bin,
-                        defaultCard.payment_method_id || defaultCard.brand
-                    );
-                }
-            } else {
-                if (process.env.NODE_ENV === 'development') console.warn('No saved cards found or error in response:', res);
-                setSavedCards([]);
-                setSelectedCard(null);
-                setIsUsingSavedCard(false);
-                setIssuerId(null);
-            }
-        } catch (e) {
-            console.error('Error fetching cards:', e);
-        }
-    };
+    }, [currentUser]);
 
     useEffect(() => {
         if (currentUser) {
-            loadSavedCards();
-            return;
+            const frameId = window.requestAnimationFrame(() => {
+                void loadSavedCards();
+            });
+
+            return () => window.cancelAnimationFrame(frameId);
         }
 
-        setStripeCards([]);
-        setSelectedStripeCardId(null);
-    }, [currentUser?.id, isStripeProvider, cardVaultProvider]);
+        const frameId = window.requestAnimationFrame(() => {
+            setStripeCards([]);
+            setSelectedStripeCardId(null);
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [currentUser, loadSavedCards]);
 
     useEffect(() => {
         if (step === 'success') {
@@ -839,21 +784,31 @@ const CheckoutPage: React.FC = () => {
 
     useEffect(() => {
         if (step === 'success') return;
-        if (currentUser) {
-            setPaymentData(prev => ({ ...prev, payerName: currentUser.name, cpf: currentUser.cpf || '' }));
-            if (step === 'identification') {
-                setStep('payment');
+        const frameId = window.requestAnimationFrame(() => {
+            if (currentUser) {
+                setPaymentData((currentPaymentData) => ({
+                    ...currentPaymentData,
+                    payerName: currentUser.name,
+                    cpf: currentUser.cpf || '',
+                }));
+                if (step === 'identification') {
+                    setStep('payment');
+                }
+                return;
             }
-            return;
-        }
 
-        setStep('identification');
+            setStep('identification');
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
     }, [currentUser, step]);
 
     useEffect(() => {
         if (!currentUser) {
-            setStripePixCapability(null);
-            return;
+            const frameId = window.requestAnimationFrame(() => {
+                setStripePixCapability(null);
+            });
+            return () => window.cancelAnimationFrame(frameId);
         }
 
         let mounted = true;
@@ -874,7 +829,7 @@ const CheckoutPage: React.FC = () => {
         return () => {
             mounted = false;
         };
-    }, [currentUser?.id]);
+    }, [currentUser]);
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -894,17 +849,14 @@ const CheckoutPage: React.FC = () => {
                     return;
                 }
 
-                if (recaptchaEnabled && !captchaToken) {
-      addToast('Por favor, complete o desafio de segurança.', 'error');
-                    setAuthLoading(false);
-                    return;
-                }
+                const captchaToken = await requestRecaptchaToken('auth_register');
 
                 const searchParams = new URLSearchParams(location.search);
                 const referralCode = searchParams.get('ref') || searchParams.get('referral');
 
                 const result = await authFlowService.register({
                     name: formData.name.trim(),
+                    phone: formData.phone.trim(),
                     email: formData.email.trim(),
                     password: formData.password,
                     captchaToken,
@@ -930,16 +882,10 @@ const CheckoutPage: React.FC = () => {
                     setStep('payment');
                 } else {
                     addToast('Erro ao criar conta.', 'error');
-                    if (recaptchaRef.current) recaptchaRef.current.reset();
-                    setCaptchaToken(null);
                 }
 
             } else {
-                if (recaptchaEnabled && !captchaToken) {
-        addToast('Por favor, complete o desafio de segurança.', 'error');
-                    setAuthLoading(false);
-                    return;
-                }
+                const captchaToken = await requestRecaptchaToken('auth_login');
 
                 const result = await authFlowService.login({
                     email: formData.email,
@@ -957,16 +903,13 @@ const CheckoutPage: React.FC = () => {
                     setStep('payment');
                 } else {
                     addToast('Credenciais inválidas.', 'error');
-                    if (recaptchaRef.current) recaptchaRef.current.reset();
-                    setCaptchaToken(null);
                 }
             }
         } catch (error) {
             console.error(error);
-            trackPaymentFailure('authentication', error instanceof Error ? error.message : 'Erro ao realizar autenticação.');
-            addToast('Erro ao realizar autenticação.', 'error');
-            if (recaptchaRef.current) recaptchaRef.current.reset();
-            setCaptchaToken(null);
+            const errorMessage = error instanceof Error ? error.message : 'Erro ao realizar autenticacao.';
+            trackPaymentFailure('authentication', errorMessage);
+            addToast(errorMessage, 'error');
         } finally {
             setAuthLoading(false);
         }
@@ -991,7 +934,7 @@ const CheckoutPage: React.FC = () => {
                 addToast(response.message || 'Cupom invalido ou expirado.', 'error');
                 resetAppliedCoupon();
             }
-        } catch (err) {
+        } catch {
             addToast('Erro ao validar cupom.', 'error');
         } finally {
             setIsApplyingCoupon(false);
@@ -1091,24 +1034,27 @@ const CheckoutPage: React.FC = () => {
 
         setIsSavingCheckoutRequirements(true);
         try {
+            const normalizedAddress: Address = {
+                zipCode: checkoutRequirementData.zipCode.replace(/\D/g, ''),
+                street: checkoutRequirementData.street.trim(),
+                number: checkoutRequirementData.number.trim(),
+                complement: checkoutRequirementData.complement.trim(),
+                neighborhood: checkoutRequirementData.neighborhood.trim(),
+                city: checkoutRequirementData.city.trim(),
+                state: checkoutRequirementData.state.trim().toUpperCase(),
+            };
+
             await updateUser({
                 name: checkoutRequirementData.name.trim(),
                 cpf: checkoutRequirementData.cpf.replace(/\D/g, ''),
-                address: {
-                    zipCode: checkoutRequirementData.zipCode.replace(/\D/g, ''),
-                    street: checkoutRequirementData.street.trim(),
-                    number: checkoutRequirementData.number.trim(),
-                    complement: checkoutRequirementData.complement.trim(),
-                    neighborhood: checkoutRequirementData.neighborhood.trim(),
-                    city: checkoutRequirementData.city.trim(),
-                    state: checkoutRequirementData.state.trim().toUpperCase(),
-                },
+                address: normalizedAddress,
             });
 
             await refreshUser();
       addToast('Perfil atualizado. Agora você já pode concluir a compra.', 'success');
         } catch (error) {
             console.error('Failed to update checkout requirements', error);
+            addToast(readApiErrorMessage(error, 'Não foi possível atualizar seu perfil agora.'), 'error');
         } finally {
             setIsSavingCheckoutRequirements(false);
         }
@@ -1121,8 +1067,8 @@ const CheckoutPage: React.FC = () => {
         try {
             const message = await authFlowService.resendConfirmation(currentUser.email);
       addToast(message || 'E-mail de confirmação reenviado com sucesso.', 'success');
-        } catch (error: any) {
-      addToast(error.message || 'Erro ao reenviar o e-mail de confirmação.', 'error');
+        } catch (error) {
+      addToast(readApiErrorMessage(error, 'Erro ao reenviar o e-mail de confirmação.'), 'error');
         } finally {
             setIsResendingConfirmation(false);
         }
@@ -1153,10 +1099,10 @@ const CheckoutPage: React.FC = () => {
         throw new Error(response?.message || 'Não foi possível iniciar o checkout Stripe.');
             }
 
-            window.location.href = redirectUrl;
-        } catch (error: any) {
+            window.location.assign(redirectUrl);
+        } catch (error) {
             console.error('Stripe checkout error:', error);
-            const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao iniciar o checkout Stripe.';
+            const errorMsg = readApiErrorMessage(error, 'Erro ao iniciar o checkout Stripe.');
             trackPaymentFailure('stripe_checkout_redirect', errorMsg);
             addToast(errorMsg, 'error');
         } finally {
@@ -1198,9 +1144,9 @@ const CheckoutPage: React.FC = () => {
                 paymentIntentId: payload?.payment_intent_id || null,
                 saveCard: payload?.save_card ?? (saveCard || stripeRequiresSavedCard),
             };
-        } catch (error: any) {
+        } catch (error) {
             console.error('Stripe internal checkout error:', error);
-            const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar assinatura Stripe.';
+            const errorMsg = readApiErrorMessage(error, 'Erro ao processar assinatura Stripe.');
             trackPaymentFailure('stripe_internal', errorMsg);
             addToast(errorMsg, 'error');
             return undefined;
@@ -1277,7 +1223,7 @@ const CheckoutPage: React.FC = () => {
         setStep('success');
     };
 
-    const handleStripeSavedCardPayment = async ({ stripe, cvcElement }: { stripe: any; cvcElement: any }) => {
+    const handleStripeSavedCardPayment = async ({ stripe, cvcElement }: StripeSavedCardPaymentArgs) => {
         if (!plan || !currentUser || !selectedStripeCard) {
       throw new Error('Selecione um cartão salvo para continuar.');
         }
@@ -1294,7 +1240,7 @@ const CheckoutPage: React.FC = () => {
                 plan_id: plan.id,
                 auto_renew: autoRenew,
                 coupon_code: appliedCoupon?.code || undefined,
-                saved_card_id: selectedStripeCard.id,
+                saved_card_id: String(selectedStripeCard.id),
                 save_card: true,
                 billing_mode: stripeBillingMode,
                 installment_count: selectedStripeInstallmentCount,
@@ -1334,20 +1280,20 @@ const CheckoutPage: React.FC = () => {
                     subscriptionId: payload?.subscription_id || null,
                     paymentMethodId: savedPaymentMethodId,
                     paymentIntentId: confirmation.paymentIntent?.id || null,
-                    savedCardId: selectedStripeCard.id,
+                    savedCardId: String(selectedStripeCard.id),
                     saveCard: true,
                 });
             } else {
                 await finalizeStripeInternalCheckout({
                     subscriptionId: payload?.subscription_id || null,
                     paymentMethodId: savedPaymentMethodId,
-                    savedCardId: selectedStripeCard.id,
+                    savedCardId: String(selectedStripeCard.id),
                     saveCard: true,
                 });
             }
-        } catch (error: any) {
+        } catch (error) {
             console.error('Stripe saved card checkout error:', error);
-    const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message || 'Erro ao processar o cartão salvo.';
+    const errorMsg = readApiErrorMessage(error, 'Erro ao processar o cartão salvo.');
             trackPaymentFailure('stripe_saved_card', errorMsg);
             addToast(errorMsg, 'error');
             throw error;
@@ -1396,7 +1342,7 @@ const CheckoutPage: React.FC = () => {
     }, [plan]);
 
     const supportsStripeBillingChoices = isStripeProvider && maxInstallments > 1;
-    const selectedStripeInstallmentCount = useMemo(() => {
+    const selectedStripeInstallmentCount = (() => {
         if (!supportsStripeBillingChoices) return 1;
         const parsedInstallments = Number.parseInt(paymentData.installments, 10);
         if (!Number.isFinite(parsedInstallments) || parsedInstallments <= 1) {
@@ -1404,27 +1350,28 @@ const CheckoutPage: React.FC = () => {
         }
 
         return Math.min(maxInstallments, parsedInstallments);
-    }, [supportsStripeBillingChoices, paymentData.installments, maxInstallments]);
+    })();
+    const stripeBillingMode = selectedStripeInstallmentCount > 1 ? 'term_recurring' : 'single_installment';
 
     useEffect(() => {
-        setStripeBillingMode(selectedStripeInstallmentCount > 1 ? 'term_recurring' : 'single_installment');
-    }, [selectedStripeInstallmentCount]);
-
-    useEffect(() => {
-        if (!currentUser) return;
-
-        setCheckoutRequirementData({
-            name: currentUser.name || '',
-            cpf: currentUser.cpf || '',
-            zipCode: currentUser.address?.zipCode || '',
-            street: currentUser.address?.street || '',
-            number: currentUser.address?.number || '',
-            complement: currentUser.address?.complement || '',
-            neighborhood: currentUser.address?.neighborhood || '',
-            city: currentUser.address?.city || '',
-            state: currentUser.address?.state || '',
+        const frameId = window.requestAnimationFrame(() => {
+            setCheckoutRequirementData(buildCheckoutRequirementSeed(currentUser));
         });
-    }, [currentUser?.id, currentUser?.name, currentUser?.cpf, currentUser?.address]);
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [
+        currentUser,
+        currentUser?.id,
+        currentUser?.name,
+        currentUser?.cpf,
+        currentUser?.address?.zipCode,
+        currentUser?.address?.street,
+        currentUser?.address?.number,
+        currentUser?.address?.complement,
+        currentUser?.address?.neighborhood,
+        currentUser?.address?.city,
+        currentUser?.address?.state,
+    ]);
 
     const getMissingCheckoutRequirements = () => {
         if (!currentUser) return ['login'];
@@ -1485,64 +1432,15 @@ const CheckoutPage: React.FC = () => {
 
     const selectedInstallment = useMemo(() => {
         if (!plan) {
-            return {
-                installments: 1,
-                first_charge_amount: 0,
-                installment_amount: 0,
-                total_amount: 0,
-                first_charge_discount_amount: 0,
-            };
-        }
-        if (isStripeProvider) {
-            if (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1) {
-                return resolveStripeTermAmounts(checkoutFinalCycleAmount, selectedStripeInstallmentCount);
-            }
-
-            return resolveStripeTermAmounts(checkoutFinalCycleAmount, 1);
-        }
-        const installmentsNumber = Number(paymentData.installments) || 1;
-
-        if (isRecurring) {
-            const amount = roundCurrency(checkoutFinalCycleAmount / maxInstallments);
-            return {
-                installments: 1,
-                first_charge_amount: amount,
-                installment_amount: amount,
-                total_amount: amount,
-                first_charge_discount_amount: 0,
-            };
+            return resolveStripeTermAmounts(0, 1);
         }
 
-        const marketplaceOpt = installmentOptions.find(
-            (opt: any) => Number(opt.installments) === installmentsNumber
-        );
-
-        if (marketplaceOpt) {
-            const marketplaceTotal = marketplaceOpt.total_amount ?? (marketplaceOpt.installment_amount * marketplaceOpt.installments);
-            const ratio = Number(plan.price || 0) > 0 ? checkoutFinalCycleAmount / Number(plan.price || 0) : 0;
-            const adjustedTotal = roundCurrency(Number(marketplaceTotal || 0) * ratio);
-            return {
-                installments: marketplaceOpt.installments,
-                first_charge_amount: roundCurrency(adjustedTotal / Number(marketplaceOpt.installments || 1)),
-                installment_amount: roundCurrency(adjustedTotal / Number(marketplaceOpt.installments || 1)),
-                total_amount: adjustedTotal,
-                first_charge_discount_amount: 0,
-            };
+        if (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1) {
+            return resolveStripeTermAmounts(checkoutFinalCycleAmount, selectedStripeInstallmentCount);
         }
 
-        const rate = 0.0299; 
-        const amount = installmentsNumber === 1
-            ? checkoutFinalCycleAmount
-            : (checkoutFinalCycleAmount * rate) / (1 - Math.pow(1 + rate, -installmentsNumber));
-
-        return {
-            installments: installmentsNumber,
-            first_charge_amount: roundCurrency(amount),
-            installment_amount: roundCurrency(amount),
-            total_amount: roundCurrency(amount * installmentsNumber),
-            first_charge_discount_amount: 0,
-        };
-    }, [plan, installmentOptions, paymentData.installments, isRecurring, isStripeProvider, maxInstallments, supportsStripeBillingChoices, selectedStripeInstallmentCount, checkoutFinalCycleAmount]);
+        return resolveStripeTermAmounts(checkoutFinalCycleAmount, 1);
+    }, [plan, supportsStripeBillingChoices, selectedStripeInstallmentCount, checkoutFinalCycleAmount]);
 
     const monetaryTotals = useMemo(() => {
         if (!plan) return { firstCharge: 0, totalDue: 0, contractTotal: 0 };
@@ -1551,35 +1449,12 @@ const CheckoutPage: React.FC = () => {
         return { firstCharge: baseAmount, totalDue, contractTotal: selectedInstallment.total_amount };
     }, [plan, selectedInstallment.first_charge_amount, selectedInstallment.installment_amount, selectedInstallment.total_amount]);
 
-    const paymentProviderLabel = 'Stripe';
-  const selectedMethodLabel = 'Cartão';
-    const renewalLabel = autoRenew ? 'Automática' : 'Manual';
-    const paymentActionLabel = isStripeProvider
-      ? (isStripeInternalCheckout ? 'Concluir assinatura com segurança' : 'Continuar para pagamento')
-        : isRecurring
-            ? 'Ativar assinatura'
-            : 'Pagar agora';
-    const processingLabel = isStripeProvider
-        ? (isStripeInternalCheckout ? 'Processando assinatura Stripe...' : 'Abrindo checkout Stripe...')
-    : 'Processando segurança...';
+    const paymentActionLabel = isStripeInternalCheckout ? 'Concluir assinatura com segurança' : 'Continuar para pagamento';
+    const processingLabel = isStripeInternalCheckout ? 'Processando assinatura Stripe...' : 'Abrindo checkout Stripe...';
 
-    const checkoutBillingLabel = isStripeProvider
-        ? (supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
-            ? `${selectedInstallment.installments}x de ${formatCurrency(monetaryTotals.totalDue)}`
-            : `1x de ${formatCurrency(monetaryTotals.totalDue)}`)
-        : (!isRecurring && selectedInstallment.installments > 1
-            ? `${selectedInstallment.installments}x de R$ ${selectedInstallment.installment_amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-            : `1x de R$ ${Number(monetaryTotals.firstCharge || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
-
-    const billingCycleSuffix = billingCycle.toLowerCase().includes('mens')
-        ? '/mes'
-        : billingCycle.toLowerCase().includes('anual')
-            ? '/ano'
-            : billingCycle.toLowerCase().includes('trimes')
-                ? '/trimestre'
-                : '/ciclo';
-
-    const checkoutPlanHeroPriceLabel = `${formatCurrency(checkoutFinalCycleAmount)} ${billingCycleSuffix}`;
+    const checkoutBillingLabel = supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
+        ? `${selectedInstallment.installments}x de ${formatCurrency(monetaryTotals.totalDue)}`
+        : `1x de ${formatCurrency(monetaryTotals.totalDue)}`;
 
     const checkoutDueLabel = formatCurrency(monetaryTotals.totalDue);
     const siteName = systemSettings?.siteName || systemSettings?.appName || 'ConcursoMestre';
@@ -1716,14 +1591,15 @@ const CheckoutPage: React.FC = () => {
             setAuthMode('login');
             setFormData({
                 name: '',
+                phone: '',
                 email: '',
                 password: '',
                 confirmPassword: '',
             });
             setAcceptedCheckoutTerms(false);
             setStep('identification');
-        } catch (error: any) {
-            addToast(error?.message || 'Não foi possível trocar de conta agora.', 'error');
+        } catch (error) {
+            addToast(readApiErrorMessage(error, 'Não foi possível trocar de conta agora.'), 'error');
         } finally {
             setAuthLoading(false);
         }
@@ -1891,6 +1767,15 @@ const CheckoutPage: React.FC = () => {
                                                         </div>
                                                     </div>
                                                 )}
+                                                {authMode === 'register' && (
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Telefone</label>
+                                                        <div className="relative">
+                                                            <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                                            <input type="tel" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="(11) 99999-9999" />
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">E-mail</label>
                                                     <div className="relative">
@@ -1931,9 +1816,17 @@ const CheckoutPage: React.FC = () => {
                                                         </span>
                                                     </label>
                                                 )}
-                                                {recaptchaEnabled && <div className="flex justify-center py-2"><ReCAPTCHA ref={recaptchaRef} sitekey={systemSettings?.recaptchaSiteKey || ''} onChange={setCaptchaToken} theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'} /></div>}
                                                 <button type="submit" disabled={authLoading} className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] rounded-2xl text-white font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-70">
-                                                    {authLoading ? <span className="animate-pulse">Aguarde...</span> : <>{authMode === 'register' ? 'Criar Minha Conta' : 'Acessar Minha Conta'} <ArrowRight size={18} /></>}
+                                                    {authLoading ? (
+                                                        <>
+                                                            <Loader2 size={18} className="animate-spin" />
+                                                            Aguarde...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            {authMode === 'register' ? 'Criar Minha Conta' : 'Acessar Minha Conta'} <ArrowRight size={18} />
+                                                        </>
+                                                    )}
                                                 </button>
                                                     </form>
                                                 </>

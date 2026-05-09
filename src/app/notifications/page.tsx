@@ -31,8 +31,10 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
+import { useConfirm } from '@providers/ModalProvider';
 import type { Notification } from '@types';
+import { useNotificationsStore } from '@/state/notifications/notificationsStore';
+import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
 
 type TabType = 'all' | 'system' | 'social' | 'marketplace' | 'report' | 'trash';
 
@@ -70,16 +72,17 @@ const TabButton: React.FC<TabButtonProps> = ({ id, label, icon: Icon, activeTab,
 );
 
 const Page: React.FC = () => {
+  const notifications = useNotificationsStore((store) => store.notifications);
   const {
-    notifications,
     markNotificationAsRead,
     markAllNotificationsAsRead,
     deleteNotification,
     restoreNotification,
     permanentDeleteNotification,
     clearNotifications,
-  } = useData();
+  } = useNotificationsActions();
   const { currentUser } = useAuth();
+  const confirmDialog = useConfirm();
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabType>('all');
@@ -189,10 +192,16 @@ const Page: React.FC = () => {
           </button>
           {activeTab !== 'trash' && (
             <button
-              onClick={() => {
-                if (confirm('Tem certeza que deseja mover todas as notificações para a lixeira?')) {
-                  clearNotifications(currentUser.id);
-                }
+              onClick={async () => {
+                const confirmed = await confirmDialog({
+                  title: 'Mover notificações para a lixeira?',
+                  description: 'Todas as notificações visíveis serão movidas para a lixeira.',
+                  confirmText: 'Mover para lixeira',
+                  cancelText: 'Cancelar',
+                  type: 'warning',
+                });
+                if (!confirmed) return;
+                clearNotifications(currentUser.id);
               }}
               className="px-4 py-2 bg-white dark:bg-slate-900 text-red-500 dark:text-red-400 border border-slate-200 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 dark:hover:bg-red-900/10 hover:border-red-100 dark:hover:border-red-900/30 transition-all flex items-center gap-2 shadow-sm"
               disabled={notifications.filter((notification) => !notification.deletedAt).length === 0}
@@ -285,10 +294,16 @@ const Page: React.FC = () => {
                       <RefreshCcw size={18} />
                     </button>
                     <button
-                      onClick={() => {
-                        if (confirm('Excluir permanentemente?')) {
-                          permanentDeleteNotification(notification.id);
-                        }
+                      onClick={async () => {
+                        const confirmed = await confirmDialog({
+                          title: 'Excluir permanentemente?',
+                          description: 'Essa ação remove a notificação e não pode ser desfeita.',
+                          confirmText: 'Excluir',
+                          cancelText: 'Cancelar',
+                          type: 'danger',
+                        });
+                        if (!confirmed) return;
+                        permanentDeleteNotification(notification.id);
                       }}
                       className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                       title="Excluir permanentemente"

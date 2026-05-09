@@ -21,21 +21,17 @@ import Auth from './components/Auth';
  */
 const AuthPage: React.FC = () => {
   const router = useRouter();
-  const { currentUser, login } = useAuth();
+  const { currentUser, login, isLoading } = useAuth();
 
   React.useEffect(() => {
-    if (!currentUser) {
+    if (isLoading || !currentUser) {
       return;
     }
 
-    const redirect = window.sessionStorage.getItem('redirectAfterLogin') || '/';
+    const redirect = window.sessionStorage.getItem('redirectAfterLogin') || '/dashboard';
     window.sessionStorage.removeItem('redirectAfterLogin');
     router.replace(redirect);
-  }, [currentUser, router]);
-
-  if (currentUser) {
-    return null;
-  }
+  }, [currentUser, isLoading, router]);
 
   return <Auth onLogin={login} />;
 };

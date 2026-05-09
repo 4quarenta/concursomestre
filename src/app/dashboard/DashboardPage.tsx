@@ -29,15 +29,16 @@ import {
   Flame,
   Lightbulb,
   Lock,
-  MessageSquare,
   Target,
   TrendingUp,
   Trophy,
   Zap,
 } from 'lucide-react';
-import { useData } from '@providers/DataProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useAuth } from '@providers/AuthProvider';
 import { useStudyTracker } from '@providers/StudyTrackerProvider';
+import { commentService } from '@services/comments';
+import { userProgressService } from '@services/progress';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import {
@@ -51,7 +52,7 @@ import { AdPlaceholder } from '../../components/shared/ui/AdPlaceholder';
 import {
   buildAccuracyInsight,
   buildQuestionTimelineData,
-  buildSubjectPerformanceData,
+  buildSubjectPerformanceDataFromStatistics,
   calculateAccuracySummary,
   calculateLevelProgress,
   filterAnswersByRange,
@@ -59,14 +60,39 @@ import {
   getDailyMotivationForDate,
   type DashboardTimeRange,
 } from '@services/dashboard/dashboardInsightsService';
+import { loadDailyMotivationMarkdown } from '@services/dashboard/dailyMotivationContentService';
 import { getStudyStreakSnapshot, touchStudyStreak, type StudyStreakSnapshot } from '@services/dashboard/studyStreakService';
 import { formatStudyDuration } from '@services/statistics/studyTimeFormatting';
 import { isPlanAtLeast } from '@services/plans/planAccess';
+import type { QuestaoComentario, UserAnswer } from '@types';
 
 const EMPTY_STREAK: StudyStreakSnapshot = {
   current: 0,
   best: 0,
   lastVisitDate: '',
+};
+const DASHBOARD_ANSWERS_BOOTSTRAP_DELAY_MS = 4000;
+const MILLISECONDS_PER_DAY = 86_400_000;
+
+const scheduleLowPriorityTask = (task: () => void): (() => void) => {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+
+  if (typeof window.requestIdleCallback === 'function') {
+    const requestId = window.requestIdleCallback(() => {
+      task();
+    }, { timeout: 1500 });
+
+    return () => {
+      window.cancelIdleCallback(requestId);
+    };
+  }
+
+  const timeoutId = window.setTimeout(task, 180);
+  return () => {
+    window.clearTimeout(timeoutId);
+  };
 };
 
 /**
@@ -172,25 +198,99 @@ const CircularPerformanceRing = ({
  */
 const Dashboard: React.FC = () => {
   const { currentUser } = useAuth();
-  const { userAnswers, questions, userComments, systemSettings, ensureUserProgressLoaded } = useData();
-  const { displayTotals, isLoading: isStudyTimeLoading } = useStudyTracker();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const { displayTotals, isLoading: isStudyTimeLoading, statistics: userStatistics } = useStudyTracker();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [timeRange, setTimeRange] = useState<DashboardTimeRange>('all');
+  const [timeRange, setTimeRange] = useState<DashboardTimeRange>('today');
   const [showCorrectTimeline, setShowCorrectTimeline] = useState<boolean>(true);
-  const [dailyMotivationMarkdown, setDailyMotivationMarkdown] = useState<string>(systemSettings.dailyMotivationMarkdown || '');
+  const [fallbackDailyMotivationMarkdown, setFallbackDailyMotivationMarkdown] = useState<string>('');
+  const [dashboardAnswers, setDashboardAnswers] = useState<UserAnswer[]>([]);
+  const [dashboardAnswersOwnerId, setDashboardAnswersOwnerId] = useState<string | null>(null);
+  const [dashboardComments, setDashboardComments] = useState<QuestaoComentario[]>([]);
+  const [dashboardCommentsOwnerId, setDashboardCommentsOwnerId] = useState<string | null>(null);
   const [studyStreak, setStudyStreak] = useState<StudyStreakSnapshot>(() => (
     currentUser?.id ? getStudyStreakSnapshot(currentUser.id) : EMPTY_STREAK
   ));
+  const hasDashboardEliteAccess = isPlanAtLeast(currentUser, 'Elite');
 
   /**
-   * Garante que as respostas do usuario estejam carregadas antes dos calculos.
+   * O dashboard precisa apenas das respostas para renderizar cards e grafico.
+   * Comentarios e notas ficam fora do primeiro paint e comentarios so entram sob demanda.
    *
    * @since 1.0.0
    */
   React.useEffect(() => {
-    ensureUserProgressLoaded();
-  }, [ensureUserProgressLoaded]);
+    if (!currentUser?.id || !hasDashboardEliteAccess) {
+      return;
+    }
+
+    if (dashboardAnswersOwnerId === currentUser.id) {
+      return;
+    }
+
+    let isMounted = true;
+    let cancelScheduledFetch: (() => void) | null = null;
+    const bootstrapDelayMs = timeRange === 'all' ? DASHBOARD_ANSWERS_BOOTSTRAP_DELAY_MS : 0;
+    const timeoutId = window.setTimeout(() => {
+      cancelScheduledFetch = scheduleLowPriorityTask(() => {
+        userProgressService.getUserAnswers(currentUser.id)
+          .then((answers) => {
+            if (isMounted) {
+              setDashboardAnswers(Array.isArray(answers) ? answers : []);
+              setDashboardAnswersOwnerId(currentUser.id);
+            }
+          })
+          .catch(() => {
+            if (isMounted) {
+              setDashboardAnswers([]);
+              setDashboardAnswersOwnerId(currentUser.id);
+            }
+          });
+      });
+    }, bootstrapDelayMs);
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(timeoutId);
+      if (cancelScheduledFetch) {
+        cancelScheduledFetch();
+      }
+    };
+  }, [currentUser?.id, dashboardAnswersOwnerId, hasDashboardEliteAccess, timeRange]);
+
+  React.useEffect(() => {
+    if (
+      !currentUser?.id
+      || !hasDashboardEliteAccess
+      || timeRange === 'all'
+    ) {
+      return;
+    }
+
+    if (dashboardCommentsOwnerId === currentUser.id) {
+      return;
+    }
+
+    let isMounted = true;
+    commentService.getUserComments(currentUser.id)
+      .then((comments) => {
+        if (isMounted) {
+          setDashboardComments(Array.isArray(comments) ? comments : []);
+          setDashboardCommentsOwnerId(currentUser.id);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setDashboardComments([]);
+          setDashboardCommentsOwnerId(currentUser.id);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.id, dashboardCommentsOwnerId, hasDashboardEliteAccess, timeRange]);
 
   /**
    * Atualiza a base de motivacoes conforme o admin salva um markdown novo.
@@ -199,28 +299,29 @@ const Dashboard: React.FC = () => {
    * @since 1.0.0
    */
   React.useEffect(() => {
-    const configuredMarkdown = systemSettings.dailyMotivationMarkdown || '';
-    if (configuredMarkdown.trim() !== '') {
-      setDailyMotivationMarkdown(configuredMarkdown);
+    const configuredMarkdown = String(systemSettings.dailyMotivationMarkdown || '').trim();
+    if (configuredMarkdown !== '') {
       return;
     }
 
     let isMounted = true;
-    fetch('/content/motivacoes-diarias.md')
-      .then((response) => response.text())
-      .then((markdown) => {
-        if (isMounted) {
-          setDailyMotivationMarkdown(markdown);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setDailyMotivationMarkdown('');
-        }
-      });
+    const cancelScheduledFetch = scheduleLowPriorityTask(() => {
+      loadDailyMotivationMarkdown()
+        .then((markdown) => {
+          if (isMounted) {
+            setFallbackDailyMotivationMarkdown(markdown);
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setFallbackDailyMotivationMarkdown('');
+          }
+        });
+    });
 
     return () => {
       isMounted = false;
+      cancelScheduledFetch();
     };
   }, [systemSettings.dailyMotivationMarkdown]);
 
@@ -232,16 +333,38 @@ const Dashboard: React.FC = () => {
    */
   React.useEffect(() => {
     if (!currentUser?.id) {
-      setStudyStreak(EMPTY_STREAK);
       return;
     }
 
-    setStudyStreak(touchStudyStreak(currentUser.id));
+    const frame = window.requestAnimationFrame(() => {
+      setStudyStreak(touchStudyStreak(currentUser.id));
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [currentUser?.id]);
 
+  const effectiveDashboardAnswers = useMemo(
+    () => (dashboardAnswersOwnerId === currentUser?.id ? dashboardAnswers : []),
+    [currentUser?.id, dashboardAnswers, dashboardAnswersOwnerId],
+  );
+
+  const effectiveDashboardComments = useMemo(
+    () => (dashboardCommentsOwnerId === currentUser?.id ? dashboardComments : []),
+    [currentUser?.id, dashboardComments, dashboardCommentsOwnerId],
+  );
+
+  const dailyMotivationMarkdown = useMemo(() => {
+    const configuredMarkdown = String(systemSettings.dailyMotivationMarkdown || '').trim();
+    if (configuredMarkdown !== '') {
+      return configuredMarkdown;
+    }
+
+    return fallbackDailyMotivationMarkdown;
+  }, [fallbackDailyMotivationMarkdown, systemSettings.dailyMotivationMarkdown]);
+
   const filteredAnswers = useMemo(
-    () => filterAnswersByRange(userAnswers, timeRange),
-    [userAnswers, timeRange],
+    () => filterAnswersByRange(effectiveDashboardAnswers, timeRange),
+    [effectiveDashboardAnswers, timeRange],
   );
 
   const accuracySummary = useMemo(
@@ -250,8 +373,8 @@ const Dashboard: React.FC = () => {
   );
 
   const subjectMetrics = useMemo(
-    () => buildSubjectPerformanceData(filteredAnswers, questions),
-    [filteredAnswers, questions],
+    () => buildSubjectPerformanceDataFromStatistics(userStatistics?.subjectBreakdown),
+    [userStatistics?.subjectBreakdown],
   );
 
   const accuracyInsight = useMemo(
@@ -279,17 +402,43 @@ const Dashboard: React.FC = () => {
     }
 
     const startTimestamp = timelineData[0]?.timestamp || 0;
-    return (userComments || []).filter((comment) => new Date(comment.date).getTime() >= startTimestamp).length;
-  }, [currentUser, timeRange, timelineData, userComments]);
+    return (effectiveDashboardComments || []).filter((comment) => new Date(comment.date).getTime() >= startTimestamp).length;
+  }, [currentUser, effectiveDashboardComments, timeRange, timelineData]);
 
   const topSubjects = subjectMetrics.slice(0, 5);
+  const averageDailyStudySeconds = useMemo(() => {
+    const totalStudySeconds = Math.max(0, Number(displayTotals.totalSeconds || 0));
+    if (totalStudySeconds <= 0) {
+      return 0;
+    }
+
+    const firstAnswerTimestamp = (effectiveDashboardAnswers || [])
+      .map((answer) => Number(answer.timestamp))
+      .filter((timestamp) => Number.isFinite(timestamp) && timestamp > 0)
+      .sort((left, right) => left - right)[0];
+
+    let totalStudyDays = 1;
+    if (firstAnswerTimestamp) {
+      const firstStudyDay = new Date(firstAnswerTimestamp);
+      firstStudyDay.setHours(0, 0, 0, 0);
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const elapsedDays = Math.floor((todayStart.getTime() - firstStudyDay.getTime()) / MILLISECONDS_PER_DAY);
+      totalStudyDays = Math.max(1, elapsedDays + 1);
+    } else if (studyStreak.current > 0) {
+      totalStudyDays = studyStreak.current;
+    } else if (userStatistics?.lastActivity) {
+      totalStudyDays = 1;
+    }
+
+    return Math.max(0, Math.round(totalStudySeconds / totalStudyDays));
+  }, [displayTotals.totalSeconds, effectiveDashboardAnswers, studyStreak, userStatistics?.lastActivity]);
+
   const dailyMotivation = useMemo(
     () => getDailyMotivationForDate(dailyMotivationMarkdown, new Date()),
     [dailyMotivationMarkdown],
   );
   const formattedToday = useMemo(() => formatDashboardDate(new Date()), []);
-  const hasDashboardEliteAccess = isPlanAtLeast(currentUser, 'Elite');
-
   if (!hasDashboardEliteAccess) {
     return (
       <>
@@ -465,7 +614,7 @@ const Dashboard: React.FC = () => {
           </div>
 
           <p className="mt-5 text-center text-lg font-medium italic leading-7 text-indigo-900 dark:text-indigo-100">
-            "{dailyMotivation}"
+            &ldquo;{dailyMotivation}&rdquo;
           </p>
         </section>
 
@@ -512,7 +661,7 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-4">
             <div className="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-800/70">
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Leitura</p>
               <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.readingSeconds)}</p>
@@ -524,6 +673,12 @@ const Dashboard: React.FC = () => {
             <div className="rounded-2xl bg-indigo-50 px-3 py-3 dark:bg-indigo-500/10">
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-indigo-500 dark:text-indigo-300">Total</p>
               <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.totalSeconds)}</p>
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-800/70">
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Media/dia</p>
+              <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">
+                {averageDailyStudySeconds > 0 ? formatStudyDuration(averageDailyStudySeconds) : '--'}
+              </p>
             </div>
           </div>
         </section>

@@ -12,6 +12,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { Filter, Globe, Link as LinkIcon, Save, X } from 'lucide-react';
+import type { GlobalTaxonomies, TaxonomyItem } from '@types';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_MODAL_FOOTER_CLASS,
@@ -28,8 +29,13 @@ interface FilterTypeOption {
   hierarchical?: boolean;
 }
 
+type EditableTaxonomyItem = TaxonomyItem & {
+  parent_id?: number | string | null;
+  metadata?: Record<string, unknown>;
+};
+
 interface TaxonomyModalProps {
-  editingFilterItem: { id?: number; item: any; originalName: string; type?: string } | null;
+  editingFilterItem: { id?: number; item: EditableTaxonomyItem; originalName: string; type?: string } | null;
   activeFilterType: string;
   filterTypes: FilterTypeOption[];
   filterInput: string;
@@ -37,7 +43,7 @@ interface TaxonomyModalProps {
   filterDescription: string;
   filterWebsite: string;
   selectedParentId: number | string | null;
-  taxonomies?: any;
+  taxonomies?: GlobalTaxonomies;
   onActiveFilterTypeChange: (value: string) => void;
   onFilterInputChange: (value: string) => void;
   onFilterSlugChange: (value: string) => void;
@@ -76,8 +82,8 @@ const TaxonomyModal = ({
 
     const subjectTopicOptions = (taxonomies.subjectTopics?.length
       ? taxonomies.subjectTopics
-      : (taxonomies.topics || []).filter((item: any) => item.taxonomyLevel === 'topico'));
-    let list: any[] = [];
+      : (taxonomies.topics || []).filter((item) => item.taxonomyLevel === 'topico'));
+    let list: TaxonomyItem[] = [];
     switch (currentType) {
       case 'banca':
         list = taxonomies.agencies || [];
@@ -104,7 +110,7 @@ const TaxonomyModal = ({
         list = [];
     }
 
-    return list.filter((item: any) => String(item.id) !== String(editingFilterItem?.id || ''));
+    return list.filter((item) => String(item.id) !== String(editingFilterItem?.id || ''));
   };
 
   const getParentLabel = () => {
@@ -252,7 +258,7 @@ const TaxonomyModal = ({
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 >
                   <option value="">{requiresParent ? 'Selecione a raiz' : 'Nenhum (item raiz)'}</option>
-                  {getParentOptions().map((item: any) => (
+                  {getParentOptions().map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}
                     </option>

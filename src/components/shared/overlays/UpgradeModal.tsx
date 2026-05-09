@@ -14,10 +14,10 @@ import { createPortal } from 'react-dom';
 import { Crown, CheckCircle2, X, Sparkles, ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { CanonicalPlanName, getEffectivePlanDisplayName } from '@services/plans/planAccess';
 import { getBenefitDefinition, getEnabledBenefitKeysForPlan, getIncrementalBenefitKeysForPlan } from '@constants/subscriptions/planEntitlements';
 import { buildProfilePath } from '../../../app/profile/profileNavigation';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 interface UpgradeModalProps {
     isOpen: boolean;
@@ -34,7 +34,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 }) => {
     const router = useRouter();
     const { currentUser } = useAuth();
-    const { systemSettings } = useData();
+    const systemSettings = useAppConfigStore((state) => state.systemSettings);
 
     if (!isOpen) return null;
 

@@ -10,7 +10,20 @@
 */
 
 import { apiClient, ENDPOINTS, readApiData } from '@services/api';
+import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { UserAnswer, UserNote } from '@types';
+
+type QuestionNoteRecord = {
+  id?: number | string;
+  itemId?: number | string;
+  text?: string;
+  type?: string;
+  updatedAt?: string;
+};
+
+type QuestionNotesResponse = {
+  notes?: QuestionNoteRecord[];
+};
 
 /**
  * Reune o progresso persistido do usuário em uma fachada unica e previsivel.
@@ -21,12 +34,14 @@ export const userProgressService = {
    * padrao do `Response::success` quanto arrays crus por compatibilidade.
    */
   async getUserAnswers(userId: string): Promise<UserAnswer[]> {
-    const response = await apiClient.get<any>(ENDPOINTS.users.answers, {
-      params: { user_id: userId },
-    }) as any;
+    return withRequestCoalescing(buildRequestCacheKey('user-progress:answers', { userId }), async () => {
+      const response = await apiClient.get<unknown>(ENDPOINTS.users.answers, {
+        params: { user_id: userId },
+      });
 
-    const payload = readApiData<any>(response, []);
-    return Array.isArray(payload) ? payload : [];
+      const payload = readApiData<unknown>(response, []);
+      return Array.isArray(payload) ? payload : [];
+    }, 15000);
   },
 
   /**
@@ -34,23 +49,25 @@ export const userProgressService = {
    * Notas de outros tipos ficam fora daqui para manter o contrato do app.
    */
   async getUserQuestionNotes(userId: string): Promise<UserNote[]> {
-    const response = await apiClient.get<any>(ENDPOINTS.users.notes, {
-      params: { userId },
-    }) as any;
+    return withRequestCoalescing(buildRequestCacheKey('user-progress:question-notes', { userId }), async () => {
+      const response = await apiClient.get<unknown>(ENDPOINTS.users.notes, {
+        params: { userId },
+      });
 
-    const payload = readApiData<any>(response, {});
-    const notes = Array.isArray(payload?.notes)
-      ? payload.notes
-      : [];
+      const payload = readApiData<QuestionNotesResponse>(response, {});
+      const notes = Array.isArray(payload?.notes)
+        ? payload.notes
+        : [];
 
-    return notes
-      .filter((note: any) => note?.type === 'question')
-      .map((note: any) => ({
-        id: String(note.id),
-        questionId: Number(note.itemId),
-        text: note.text,
-        timestamp: new Date(note.updatedAt).getTime(),
-      }));
+      return notes
+        .filter((note) => note?.type === 'question')
+        .map((note) => ({
+          id: String(note.id),
+          questionId: Number(note.itemId),
+          text: typeof note.text === 'string' ? note.text : '',
+          timestamp: typeof note.updatedAt === 'string' ? new Date(note.updatedAt).getTime() : Date.now(),
+        }));
+    }, 15000);
   },
 };
 

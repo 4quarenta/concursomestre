@@ -40,8 +40,10 @@ import {
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
+import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
 import { isPlanAtLeast } from '@services/plans/planAccess';
 import { studyScheduleService } from '@services/study-schedule';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
@@ -411,7 +413,9 @@ const MetricCard = ({
 
 const CronogramaPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { questions, systemSettings, ensureTaxonomiesLoaded } = useData();
+  const systemSettings = useAppConfigStore((store) => store.systemSettings);
+  const { ensureTaxonomiesLoaded } = useTaxonomyActions();
+  const { questions, ensureQuestionsLoaded } = useQuestionBankActions();
   const { addToast } = useToast();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -429,6 +433,11 @@ const CronogramaPage: React.FC = () => {
     if (!isFeatureEnabled && !isAdminPreview) return;
     void ensureTaxonomiesLoaded();
   }, [ensureTaxonomiesLoaded, isAdminPreview, isFeatureEnabled]);
+
+  React.useEffect(() => {
+    if (!isFeatureEnabled && !isAdminPreview) return;
+    void ensureQuestionsLoaded();
+  }, [ensureQuestionsLoaded, isAdminPreview, isFeatureEnabled]);
 
   React.useEffect(() => {
     if ((!isFeatureEnabled && !isAdminPreview) || !hasEliteAccess || !currentUser?.id) return;

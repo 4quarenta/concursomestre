@@ -31,15 +31,13 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Script from 'next/script';
-import { useSearchParams } from 'next/navigation';
-import ReCAPTCHA from 'react-google-recaptcha';
 import type { UserProfile } from '@types';
-import { useData } from '@providers/DataProvider';
-import { apiClient, ENDPOINTS } from '@services/api';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { apiClient, ENDPOINTS, readApiErrorMessage } from '@services/api';
 import analyticsTrackingService from '@services/analytics/analyticsTrackingService';
-import { canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from '@services/auth';
+import { authFlowService, canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from '@services/auth';
+import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import { hasInvalidGoogleClientIdCandidate, normalizeGoogleClientId } from '@/config/googleAuth';
-import { useToast } from '@providers/ToastProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 
@@ -82,7 +80,104 @@ interface AuthProps {
   onLogin: (user: UserProfile | null, token?: string | null) => Promise<void>;
 }
 
+type AuthApiUser = Record<string, unknown> & {
+  id?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  billing?: Record<string, unknown>;
+  plan?: string;
+  billing_cycle?: string;
+  photoUrl?: string;
+  photo_url?: string;
+  status?: string;
+  emailVerified?: boolean;
+  email_verified?: boolean;
+  level?: number | string;
+  xp?: number | string;
+  commentsCount?: number | string;
+  comments_count?: number | string;
+  targetExam?: string;
+  target_exam?: string;
+  savedQuestionIds?: string[];
+  simulations?: UserProfile['simulations'];
+  purchasedMaterialIds?: string[];
+  preferences?: UserProfile['preferences'] | string;
+  reputation?: number | string;
+};
+
+type GoogleAuthResponse = {
+  success?: boolean;
+  message?: string;
+  data?: {
+    require2FA?: boolean;
+    email?: string;
+    user?: AuthApiUser;
+    token?: string | null;
+    isNewUser?: boolean;
+  };
+};
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const decodeGoogleCredentialProfile = (credential: string): { name: string; email: string } => {
+  try {
+    const payload = credential.split('.')[1] || '';
+    if (!payload) {
+      return { name: '', email: '' };
+    }
+
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = typeof window !== 'undefined'
+      ? window.atob(base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '='))
+      : '';
+    const parsed = JSON.parse(decoded || '{}') as { name?: string; email?: string };
+
+    return {
+      name: String(parsed.name || '').trim(),
+      email: String(parsed.email || '').trim(),
+    };
+  } catch {
+    return { name: '', email: '' };
+  }
+};
+
+const resolveOptionalString = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    return normalized ? normalized : undefined;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return undefined;
+};
+
+const resolveBillingPlan = (value: unknown): UserProfile['billing']['plan'] => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'elite') return 'Elite';
+  if (normalized === 'pro') return 'Pro';
+  if (normalized === 'essencial') return 'Essencial';
+  return 'Gratuito';
+};
+
+const resolveBillingCycle = (value: unknown): UserProfile['billing']['billingCycle'] => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'annual') return 'annual';
+  if (normalized === 'quarterly') return 'quarterly';
+  return 'monthly';
+};
+
+const resolveUserStatus = (value: unknown): UserProfile['status'] => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'suspended') return 'suspended';
+  if (normalized === 'banned') return 'banned';
+  if (normalized === 'pending') return 'pending';
+  return 'active';
+};
 
 const featureItems = [
   { label: 'Milhares de questões', icon: CircleHelp },
@@ -92,7 +187,8 @@ const featureItems = [
   { label: 'Conteúdo atualizado', icon: Bookmark },
 ];
 
-const buildUserProfile = (user: any): UserProfile => {
+const buildUserProfile = (rawUser: UserProfile | AuthApiUser): UserProfile => {
+  const user = rawUser as AuthApiUser;
   const resolvedBilling = user.billing && typeof user.billing === 'object' ? user.billing : {};
   const role = normalizeUserRole(user.role);
   const baseProfile = {
@@ -108,6 +204,7 @@ const buildUserProfile = (user: any): UserProfile => {
     name: user.name,
     email: user.email,
     emailVerified: Boolean(user.emailVerified ?? user.email_verified ?? false),
+    phone: resolveOptionalString(user.phone),
     level: Number(user.level || 1),
     xp: Number(user.xp || 0),
     commentsCount: Number(user.commentsCount || user.comments_count || 0),
@@ -119,24 +216,22 @@ const buildUserProfile = (user: any): UserProfile => {
       ? (typeof user.preferences === 'string' ? JSON.parse(user.preferences) : user.preferences)
       : { shareData: true, notifications: true },
     billing: {
-      plan: resolvedBilling.plan || user.plan || 'Gratuito',
-      billingCycle: resolvedBilling.billingCycle || user.billing_cycle || 'monthly',
-      nextBilling: resolvedBilling.nextBilling || undefined,
-      cardLast4: resolvedBilling.cardLast4 || undefined,
-      paymentDay: resolvedBilling.paymentDay || undefined,
+      plan: resolveBillingPlan(resolvedBilling.plan || user.plan),
+      billingCycle: resolveBillingCycle(resolvedBilling.billingCycle || user.billing_cycle),
+      nextBilling: resolveOptionalString(resolvedBilling.nextBilling),
+      cardLast4: resolveOptionalString(resolvedBilling.cardLast4),
+      paymentDay: Number(resolvedBilling.paymentDay || 0) || undefined,
     },
     photoUrl: user.photoUrl || user.photo_url || undefined,
     reputation: Number(user.reputation || 100),
-    status: user.status || 'active',
+    status: resolveUserStatus(user.status),
     isPartner: canAccessPartnerArea(baseProfile),
     canAccessAdmin: canAccessAdminPanel(baseProfile),
   };
 };
 
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
-  const searchParams = useSearchParams();
-  const { systemSettings } = useData();
-  const { addToast } = useToast();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const { theme } = useTheme();
 
   const registrationEnabled = systemSettings?.features?.registrationEnabled !== false;
@@ -145,8 +240,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const hasInvalidGoogleClientId = hasInvalidGoogleClientIdCandidate(rawGoogleClientId);
   const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
 
-  const initialMode: AuthMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login';
-  const [mode, setMode] = useState<AuthMode>(initialMode);
+  const [searchQueryString, setSearchQueryString] = useState('');
+  const searchParams = React.useMemo(
+    () => new URLSearchParams(searchQueryString),
+    [searchQueryString],
+  );
+  const [mode, setMode] = useState<AuthMode>('login');
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [googleScriptReady, setGoogleScriptReady] = useState(false);
@@ -154,11 +253,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [twoFactorEmail, setTwoFactorEmail] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [pendingGoogleCredential, setPendingGoogleCredential] = useState<string | null>(null);
+  const [googleProfileData, setGoogleProfileData] = useState({ name: '', phone: '', email: '' });
   const [formData, setFormData] = useState({
     name: '',
+    phone: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -166,7 +267,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     forgotEmail: '',
   });
 
-  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const analyticsSessionKeyRef = useRef('');
   const trackedAuthVisitRef = useRef(false);
@@ -176,6 +276,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const isSignup = mode === 'signup';
   const isForgot = mode === 'forgot';
   const isAuthForm = mode === 'login' || mode === 'signup' || mode === 'forgot';
+  const {
+    executeRecaptcha,
+    isReady: isRecaptchaReady,
+    loadError: recaptchaLoadError,
+  } = useRecaptchaV3({
+    enabled: recaptchaEnabled && isAuthForm,
+    siteKey: systemSettings?.recaptchaSiteKey,
+  });
 
   const getAnalyticsSessionKey = () => {
     if (!analyticsSessionKeyRef.current) {
@@ -185,7 +293,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     return analyticsSessionKeyRef.current;
   };
 
-  const update = (field: string, value: any) => {
+  const update = (field: string, value: unknown) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     setError('');
   };
@@ -195,18 +303,39 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setError('');
     setShowPassword(false);
     setShowConfirmPassword(false);
+    setPendingGoogleCredential(null);
+    setGoogleProfileData({ name: '', phone: '', email: '' });
   };
 
   useEffect(() => {
-    const nextMode = searchParams.get('mode');
-    if (nextMode === 'signup') setMode('signup');
-    else if (nextMode === 'login') setMode('login');
-  }, [searchParams]);
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const syncSearchQueryString = () => {
+      setSearchQueryString(window.location.search || '');
+    };
+
+    syncSearchQueryString();
+    window.addEventListener('popstate', syncSearchQueryString);
+
+    return () => {
+      window.removeEventListener('popstate', syncSearchQueryString);
+    };
+  }, []);
 
   useEffect(() => {
-    setCaptchaToken(null);
-    recaptchaRef.current?.reset();
-  }, [mode]);
+    const nextMode = searchParams.get('mode');
+    if (nextMode !== 'signup' && nextMode !== 'login') {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setMode(nextMode);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [searchParams]);
 
   useEffect(() => {
     if (trackedAuthVisitRef.current) return;
@@ -251,6 +380,18 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     });
   }, [formData.email, mode]);
 
+  const requestRecaptchaToken = React.useCallback(async (action: string) => {
+    if (!recaptchaEnabled) {
+      return null;
+    }
+
+    if (!isRecaptchaReady) {
+      throw new Error(recaptchaLoadError || 'A verificacao de seguranca ainda esta carregando.');
+    }
+
+    return executeRecaptcha(action);
+  }, [executeRecaptcha, isRecaptchaReady, recaptchaEnabled, recaptchaLoadError]);
+
   const handleLogin = async () => {
     if (!formData.email || !formData.password) {
       setError('Preencha e-mail e senha.');
@@ -259,31 +400,28 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     setIsLoading(true);
     try {
-      if (recaptchaEnabled && !captchaToken) {
-        addToast('Complete o desafio de segurança.', 'error');
-        return;
-      }
+      const captchaToken = await requestRecaptchaToken('auth_login');
 
-      const result: any = await apiClient.post(ENDPOINTS.auth.login, {
+      const result = await authFlowService.login({
         email: formData.email.trim(),
         password: formData.password,
         captchaToken,
       });
 
-      if (result.success && result.data) {
-        if (result.data.require2FA) {
-          setTwoFactorEmail(result.data.email);
-          setMode('two-factor');
-          return;
-        }
-
-        const { user, token } = result.data;
-        await onLogin(buildUserProfile(user), token);
-      } else {
-        setError('E-mail ou senha incorretos.');
+      if (result.data.require2FA) {
+        setTwoFactorEmail(result.data.email || formData.email.trim());
+        setMode('two-factor');
+        return;
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Erro de conexão com o servidor.');
+
+      const { user, token } = result.data;
+      try {
+        await onLogin(buildUserProfile(user), token);
+      } catch (sessionError) {
+        setError(readApiErrorMessage(sessionError, 'Login realizado, mas não foi possível concluir sua sessão.'));
+      }
+    } catch (err: unknown) {
+      setError(readApiErrorMessage(err, 'Não foi possível realizar o login agora.'));
     } finally {
       setIsLoading(false);
     }
@@ -291,6 +429,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   const handleRegister = async () => {
     if (!formData.name.trim()) { setError('Informe seu nome.'); return; }
+    const normalizedPhone = formData.phone.replace(/\D/g, '');
+    if (!normalizedPhone) { setError('Informe seu telefone com DDD.'); return; }
+    if (![10, 11].includes(normalizedPhone.length)) { setError('Telefone inválido. Use DDD + número com 10 ou 11 dígitos.'); return; }
     if (!formData.email.trim()) { setError('Informe seu e-mail.'); return; }
     if (formData.password.length < 6) { setError('A senha deve ter pelo menos 6 caracteres.'); return; }
     if (formData.password !== formData.confirmPassword) { setError('As senhas não coincidem.'); return; }
@@ -298,36 +439,34 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     setIsLoading(true);
     try {
-      if (recaptchaEnabled && !captchaToken) {
-        addToast('Complete o desafio de segurança.', 'error');
-        return;
-      }
+      const captchaToken = await requestRecaptchaToken('auth_register');
 
       const referralCode = searchParams.get('ref') || searchParams.get('referral');
-      const result: any = await apiClient.post(ENDPOINTS.auth.register, {
+      const result = await authFlowService.register({
         name: formData.name.trim(),
+        phone: normalizedPhone,
         email: formData.email.trim(),
         password: formData.password,
         captchaToken,
         referralCode,
       });
 
-      if (result.success && result.data) {
-        const { user, token } = result.data;
-        void analyticsTrackingService.trackLifecycleEvent({
-          eventName: 'signup_completed',
-          source: 'auth',
-          sessionKey: getAnalyticsSessionKey(),
-          userId: user?.id ? String(user.id) : null,
-          email: user?.email || formData.email.trim(),
-          metadata: { mode: 'signup' },
-        });
+      const { user, token } = result.data;
+      void analyticsTrackingService.trackLifecycleEvent({
+        eventName: 'signup_completed',
+        source: 'auth',
+        sessionKey: getAnalyticsSessionKey(),
+        userId: user?.id ? String(user.id) : null,
+        email: user?.email || formData.email.trim(),
+        metadata: { mode: 'signup' },
+      });
+      try {
         await onLogin(buildUserProfile(user), token);
-      } else {
-        setError(result.message || 'Erro ao criar conta.');
+      } catch (sessionError) {
+        setError(readApiErrorMessage(sessionError, 'Cadastro realizado, mas não foi possível concluir sua sessão.'));
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Erro de conexão com o servidor.');
+    } catch (err: unknown) {
+      setError(readApiErrorMessage(err, 'Não foi possível criar sua conta agora.'));
     } finally {
       setIsLoading(false);
     }
@@ -341,21 +480,18 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     setIsLoading(true);
     try {
-      if (recaptchaEnabled && !captchaToken) {
-        addToast('Complete o desafio de segurança.', 'error');
-        return;
-      }
+      const captchaToken = await requestRecaptchaToken('auth_forgot_password');
 
-      const result: any = await apiClient.post(ENDPOINTS.auth.forgotPassword, {
+      const message = await authFlowService.forgotPassword({
         email: formData.forgotEmail.trim(),
         captchaToken,
       });
 
-      if (result.success) {
+      if (message) {
         setMode('forgot-success');
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Erro ao processar solicitação.');
+    } catch (err: unknown) {
+      setError(readApiErrorMessage(err, 'Não foi possível processar sua solicitação.'));
     } finally {
       setIsLoading(false);
     }
@@ -369,22 +505,48 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     setIsLoading(true);
     try {
-      const result: any = await apiClient.post(ENDPOINTS.auth.verifyTwoFactor, {
+      const result = await authFlowService.verifyTwoFactor({
         email: twoFactorEmail,
         code: twoFactorCode,
       });
 
-      if (result.success && result.data) {
-        await onLogin(null, result.data.token);
-      } else {
-        setError(result.message || 'Código inválido.');
+      try {
+        await onLogin(null, result.token);
+      } catch (sessionError) {
+        setError(readApiErrorMessage(sessionError, 'Código validado, mas não foi possível concluir sua sessão.'));
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Erro na verificação do 2FA.');
+    } catch (err: unknown) {
+      setError(readApiErrorMessage(err, 'Não foi possível validar o código de segurança.'));
     } finally {
       setIsLoading(false);
     }
   };
+
+  const finalizeGoogleAuth = React.useCallback(async (result: GoogleAuthResponse, source: 'google_auth' | 'google_auth_profile') => {
+    if (!(result.success && result.data)) {
+      throw new Error(result.message || 'Nao foi possivel entrar com Google.');
+    }
+
+    if (result.data.require2FA) {
+      setTwoFactorEmail(result.data.email || '');
+      setMode('two-factor');
+      return;
+    }
+
+    const { user, token, isNewUser } = result.data;
+    if (isNewUser) {
+      void analyticsTrackingService.trackLifecycleEvent({
+        eventName: 'signup_completed',
+        source,
+        sessionKey: getAnalyticsSessionKey(),
+        userId: user?.id ? String(user.id) : null,
+        email: user?.email || null,
+        metadata: { mode: 'google' },
+      });
+    }
+
+    await onLogin(buildUserProfile(user), token);
+  }, [onLogin]);
 
   const handleGoogleCredential = React.useCallback(async (response: GoogleCredentialResponse) => {
     const credential = response.credential || '';
@@ -398,41 +560,79 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     try {
       const referralCode = searchParams.get('ref') || searchParams.get('referral');
-      const result: any = await apiClient.post(ENDPOINTS.auth.google, {
+      const loginResult: GoogleAuthResponse = await apiClient.post(ENDPOINTS.auth.google, {
         credential,
         referralCode,
-        createIfMissing: registrationEnabled || mode === 'signup',
+        createIfMissing: false,
       });
 
-      if (result.success && result.data) {
-        if (result.data.require2FA) {
-          setTwoFactorEmail(result.data.email);
-          setMode('two-factor');
-          return;
-        }
+      await finalizeGoogleAuth(loginResult, 'google_auth');
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, 'Nao foi possivel entrar com Google.');
+      const shouldCollectProfile = /conta nao encontrada|crie sua conta antes de entrar com google/i.test(message);
 
-        const { user, token, isNewUser } = result.data;
-        if (isNewUser) {
-          void analyticsTrackingService.trackLifecycleEvent({
-            eventName: 'signup_completed',
-            source: 'google_auth',
-            sessionKey: getAnalyticsSessionKey(),
-            userId: user?.id ? String(user.id) : null,
-            email: user?.email || null,
-            metadata: { mode: 'google' },
-          });
-        }
-
-        await onLogin(buildUserProfile(user), token);
-      } else {
-        setError(result.message || 'Não foi possível entrar com Google.');
+      if (shouldCollectProfile && registrationEnabled) {
+        const decodedProfile = decodeGoogleCredentialProfile(credential);
+        setPendingGoogleCredential(credential);
+        setGoogleProfileData({
+          name: decodedProfile.name || formData.name || '',
+          email: decodedProfile.email || formData.email || '',
+          phone: '',
+        });
+        setMode('signup');
+        setError('Complete nome e telefone para concluir o cadastro com Google.');
+        return;
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.message || 'Não foi possível entrar com Google.');
+
+      setError(message);
     } finally {
       setIsGoogleLoading(false);
     }
-  }, [mode, onLogin, registrationEnabled, searchParams]);
+  }, [finalizeGoogleAuth, formData.email, formData.name, registrationEnabled, searchParams]);
+
+  const handleGoogleProfileSignup = React.useCallback(async () => {
+    const credential = pendingGoogleCredential;
+    if (!credential) {
+      setError('Nao foi possivel continuar o cadastro com Google. Tente novamente.');
+      return;
+    }
+
+    const normalizedName = googleProfileData.name.trim();
+    const normalizedPhone = googleProfileData.phone.replace(/\D/g, '');
+    if (!normalizedName) {
+      setError('Informe seu nome completo para concluir o cadastro.');
+      return;
+    }
+
+    if (!normalizedPhone || ![10, 11].includes(normalizedPhone.length)) {
+      setError('Informe telefone com DDD (10 ou 11 digitos).');
+      return;
+    }
+
+    setIsGoogleLoading(true);
+    setError('');
+
+    try {
+      const referralCode = searchParams.get('ref') || searchParams.get('referral');
+      const result: GoogleAuthResponse = await apiClient.post(ENDPOINTS.auth.google, {
+        credential,
+        referralCode,
+        createIfMissing: true,
+        profile: {
+          name: normalizedName,
+          phone: normalizedPhone,
+        },
+      });
+
+      await finalizeGoogleAuth(result, 'google_auth_profile');
+      setPendingGoogleCredential(null);
+      setGoogleProfileData({ name: '', phone: '', email: '' });
+    } catch (err: unknown) {
+      setError(readApiErrorMessage(err, 'Nao foi possivel concluir o cadastro com Google.'));
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  }, [finalizeGoogleAuth, googleProfileData, pendingGoogleCredential, searchParams]);
 
   useEffect(() => {
     if (!googleClientId || !googleScriptReady || !isAuthForm || isForgot) {
@@ -484,17 +684,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       ? 'Comece gratuitamente e organize seus estudos.'
       : 'Faça login para continuar seus estudos.';
   const primaryLabel = isForgot ? 'Enviar instruções' : isSignup ? 'Criar conta grátis' : 'Entrar na plataforma';
-
-  const renderRecaptcha = () => recaptchaEnabled ? (
-    <div className="flex justify-center py-2">
-      <ReCAPTCHA
-        ref={recaptchaRef}
-        sitekey={systemSettings.recaptchaSiteKey || '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI'}
-        onChange={(token) => setCaptchaToken(token)}
-        theme={theme === 'dark' ? 'dark' : 'light'}
-      />
-    </div>
-  ) : null;
 
   const renderMessage = () => error ? (
     <div className="space-y-3">
@@ -741,6 +930,25 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               </div>
             )}
 
+            {isSignup && (
+              <div className="space-y-2">
+                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
+                <div className="relative">
+                  <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="tel"
+                    required
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={formData.phone}
+                    onChange={(event) => update('phone', event.target.value)}
+                    className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
+                    placeholder="(11) 99999-9999"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">
                 {isForgot ? 'E-mail cadastrado' : 'E-mail'}
@@ -833,7 +1041,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               </div>
             )}
 
-            {renderRecaptcha()}
             {renderMessage()}
 
             <button
@@ -850,6 +1057,59 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </button>
 
             {renderGoogleButton()}
+
+            {pendingGoogleCredential && (
+              <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                  Conta Google encontrada sem cadastro local. Complete os dados para criar a conta.
+                </p>
+                {googleProfileData.email ? (
+                  <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
+                    E-mail Google: <strong>{googleProfileData.email}</strong>
+                  </p>
+                ) : null}
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Nome completo</label>
+                  <input
+                    type="text"
+                    value={googleProfileData.name}
+                    onChange={(event) => {
+                      setGoogleProfileData((current) => ({ ...current, name: event.target.value }));
+                      setError('');
+                    }}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
+                    placeholder="Seu nome completo"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    value={googleProfileData.phone}
+                    onChange={(event) => {
+                      setGoogleProfileData((current) => ({ ...current, phone: event.target.value }));
+                      setError('');
+                    }}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
+                    placeholder="(11) 99999-9999"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void handleGoogleProfileSignup()}
+                  disabled={isGoogleLoading}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#4b28ff] text-sm font-bold text-white transition hover:bg-[#3d20d6] disabled:opacity-60"
+                >
+                  {isGoogleLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+                  Concluir cadastro com Google
+                </button>
+              </div>
+            )}
           </form>
         )}
 

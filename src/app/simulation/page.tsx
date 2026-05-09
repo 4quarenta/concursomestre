@@ -22,9 +22,12 @@ import {
 } from 'lucide-react';
 import QuestionCard from '../questions/components/QuestionCard';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
+import { useConfirm } from '@providers/ModalProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useStudyTrackerActions } from '@providers/StudyTrackerProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
+import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
@@ -333,8 +336,11 @@ const buildResultInsights = (session: SimulationSession, historicalAverage: numb
 
 const Simulation: React.FC = () => {
    const { currentUser: rawCurrentUser, addSimulation } = useAuth();
-   const { questions, systemSettings, ensureTaxonomiesLoaded } = useData();
+   const systemSettings = useAppConfigStore((store) => store.systemSettings);
+   const { ensureTaxonomiesLoaded } = useTaxonomyActions();
+   const { questions, ensureQuestionsLoaded } = useQuestionBankActions();
    const { addToast } = useToast();
+   const confirmDialog = useConfirm();
    const { registerSimulationElapsed } = useStudyTrackerActions();
    const currentUser = rawCurrentUser as SimulationCurrentUser | null;
 
@@ -362,6 +368,10 @@ const Simulation: React.FC = () => {
    const allLevels = useMemo(() => Array.from(new Set(questions.map(getQuestionLevelLabel).filter(Boolean))).sort(), [questions]);
 
    const [config, setConfig] = useState<SimulationConfig>(() => createSimulationConfig());
+
+   useEffect(() => {
+      void ensureQuestionsLoaded();
+   }, [ensureQuestionsLoaded]);
 
    const allTopics = useMemo(() => {
       const relevantQuestions = config.subjects.length > 0
@@ -767,20 +777,21 @@ const Simulation: React.FC = () => {
       updateImmersiveMode(false);
    }, [updateImmersiveMode]);
 
-   const renderExitFullscreenButton = () => {
-      if (!isImmersiveEnabled) return null;
+   const confirmFinishSimulation = React.useCallback(async () => {
+      const confirmed = await confirmDialog({
+         title: 'Finalizar simulado?',
+         description: 'Você pode revisar respostas agora e ver o resultado final.',
+         confirmText: 'Finalizar',
+         cancelText: 'Continuar',
+         type: 'warning',
+      });
 
-      return (
-         <button
-            onClick={() => updateImmersiveMode(false)}
-            className="fixed top-4 right-4 z-[70] inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 text-slate-600 dark:text-slate-300 text-[10px] font-black uppercase tracking-wider shadow-lg hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-            title="Sair da tela cheia"
-         >
-            <X size={14} />
-            Sair da tela cheia
-         </button>
-      );
-   };
+      if (!confirmed) {
+         return;
+      }
+
+      handleFinish();
+   }, [confirmDialog, handleFinish]);
 
    const renderModals = () => (
       <>
@@ -1133,7 +1144,6 @@ const Simulation: React.FC = () => {
       const q = activeSession.questions[currentIdx];
       return (
          <div className="w-full pb-36 md:pb-32 animate-fade-in">
-            {renderExitFullscreenButton()}
             <div className="sticky top-2 md:top-4 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 mb-6 md:mb-8 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center shadow-lg transition-colors">
                <div className="flex w-full sm:w-auto items-center justify-between sm:justify-start gap-3 sm:gap-4">
                   <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
@@ -1165,7 +1175,19 @@ const Simulation: React.FC = () => {
                      <Clock size={16} className={timeLeft < 300 ? 'text-red-500 dark:text-red-400' : 'text-indigo-400 dark:text-indigo-500'} />
                      {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
                   </div>
-                  <button onClick={() => { if (confirm("Deseja finalizar o simulado agora?")) handleFinish(); }} className="px-4 sm:px-5 py-2 bg-indigo-600 dark:bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-emerald-600 dark:hover:bg-emerald-500 shadow-md transition-all">Finalizar</button>
+                  <div className="flex items-center gap-2">
+                     {isImmersiveEnabled && (
+                        <button
+                           onClick={() => updateImmersiveMode(false)}
+                           className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 text-[10px] font-black uppercase tracking-widest hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                           title="Sair da tela cheia"
+                        >
+                           <X size={13} />
+                           Sair da tela cheia
+                        </button>
+                     )}
+                     <button onClick={() => void confirmFinishSimulation()} className="px-4 sm:px-5 py-2 bg-indigo-600 dark:bg-indigo-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-emerald-600 dark:hover:bg-emerald-500 shadow-md transition-all">Finalizar</button>
+                  </div>
                </div>
             </div>
 
@@ -1245,7 +1267,7 @@ const Simulation: React.FC = () => {
                         </div>
                      ))}
                      <div className="flex justify-center pt-8">
-                        <button onClick={() => { if (confirm("Deseja finalizar o simulado agora?")) handleFinish(); }} className="px-6 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all transform hover:scale-105 sm:px-12">
+                        <button onClick={() => void confirmFinishSimulation()} className="px-6 py-4 bg-indigo-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 dark:shadow-none hover:bg-indigo-700 transition-all transform hover:scale-105 sm:px-12">
                            Finalizar e Ver Resultado
                         </button>
                      </div>
@@ -1263,15 +1285,26 @@ const Simulation: React.FC = () => {
       const resultInsights = buildResultInsights(activeSession, simulationStats.averageAccuracy);
       return (
          <div className="w-full space-y-6 px-2 py-4 animate-fade-in sm:px-3 md:space-y-8 md:px-0 md:py-6">
-            {renderExitFullscreenButton()}
             <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                <div>
                   <h1 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Resultado Final</h1>
                   <p className="text-slate-400 dark:text-slate-500 text-xs font-medium transition-colors">Confira seu desempenho detalhado neste simulado.</p>
                </div>
-               <button onClick={handleBackToConfig} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all">
-                  <RotateCcw size={14} /> Novo Treino
-               </button>
+               <div className="flex items-center gap-2">
+                  {isImmersiveEnabled && (
+                     <button
+                        onClick={() => updateImmersiveMode(false)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-colors hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-indigo-400"
+                        title="Sair da tela cheia"
+                     >
+                        <X size={13} />
+                        Sair da tela cheia
+                     </button>
+                  )}
+                  <button onClick={handleBackToConfig} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all">
+                     <RotateCcw size={14} /> Novo Treino
+                  </button>
+               </div>
             </header>
 
             <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 md:p-10 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-8 md:gap-10 transition-colors">
@@ -1367,7 +1400,6 @@ const Simulation: React.FC = () => {
       const q = activeSession.questions[reviewIdx];
       return (
          <div className="w-full px-2 pb-36 animate-fade-in sm:px-3 md:px-0 md:pb-32">
-            {renderExitFullscreenButton()}
             <div className="sticky top-2 md:top-4 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 mb-6 md:mb-8 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center shadow-lg transition-colors">
                <button onClick={() => setStep('result')} className="flex items-center gap-2 px-3 sm:px-4 py-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-[10px] font-black uppercase transition-all">
                   <ArrowLeft size={16} /> Voltar ao Resumo
@@ -1377,6 +1409,16 @@ const Simulation: React.FC = () => {
                   <span className="text-xs font-bold text-slate-800 dark:text-slate-200 transition-colors">{reviewIdx + 1} / {activeSession.questions.length}</span>
                </div>
                <div className="flex gap-2 sm:justify-end">
+                  {isImmersiveEnabled && (
+                     <button
+                        onClick={() => updateImmersiveMode(false)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-600 transition-colors hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:text-indigo-400"
+                        title="Sair da tela cheia"
+                     >
+                        <X size={12} />
+                        Sair
+                     </button>
+                  )}
                   <button onClick={() => setReviewIdx(Math.max(0, reviewIdx - 1))} disabled={reviewIdx === 0} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-colors"><ChevronLeft size={18} /></button>
                   <button onClick={() => setReviewIdx(Math.min(activeSession.questions.length - 1, reviewIdx + 1))} disabled={reviewIdx === activeSession.questions.length - 1} className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-30 transition-colors"><ChevronRight size={18} /></button>
                </div>

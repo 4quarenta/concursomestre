@@ -15,7 +15,6 @@ import {
   Calendar,
   Check,
   CheckCircle2,
-  AlertCircle,
   AlertTriangle,
   ArrowRight,
   ChevronDown,
@@ -29,17 +28,14 @@ import {
   FileText,
   Globe,
   Loader2,
-  Lock,
   MessageSquare,
   Play,
   Plus,
   QrCode,
-  RefreshCcw,
   Search,
   Save,
   ShieldAlert,
   ShieldCheck,
-  ShoppingBag,
   Tag,
   Terminal,
   Trash2,
@@ -50,12 +46,25 @@ import {
   Zap,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useToast } from '@providers/ToastProvider';
-import type { Material, PlanBenefitKey, PlanName, PlanUsageLimitKey, SystemSettings, UserProfile } from '@types';
+import type {
+  DiscountCode,
+  LegalCommentaryFeatureConfigurableKey,
+  LegalCommentaryFeatureFallbackMode,
+  Material,
+  PlanBenefitKey,
+  PlanConfig,
+  PlanName,
+  PlanPricing,
+  PlanUsageLimitKey,
+  SystemSettings,
+  Transaction,
+  UserProfile,
+} from '@types';
 import { adminService, type AdminRevenueProjectionPayload } from '@services/admin/adminService';
 import { subscriptionsService } from '@services/subscriptions';
+import { readApiErrorMessage } from '@services/api';
 import { PLAN_DETAILS, PRICING } from '@constants';
 import {
   DEFAULT_PLAN_ENTITLEMENTS,
@@ -66,7 +75,14 @@ import {
   normalizePlanEntitlements,
   normalizePlanUsageLimits,
 } from '@constants/subscriptions/planEntitlements';
-import { buildAdminMarketplaceSellerMetrics } from '../shared/adminMarketplaceMetrics';
+import {
+  DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG,
+  LEGAL_COMMENTARY_CONFIGURABLE_FEATURE_KEYS,
+  LEGAL_COMMENTARY_FEATURE_DEFINITIONS,
+  LEGAL_COMMENTARY_FEATURE_MODE_OPTIONS,
+  normalizeLegalCommentaryFeatureConfig,
+} from '@constants/legal-commentary/featureAccess';
+import { buildAdminMarketplaceSellerMetrics, type AdminMarketplaceSellerMetric } from '../shared/adminMarketplaceMetrics';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 import AdminMarketing from './AdminMarketing';
 import AdminFinanceAnalyticsPanel from './AdminFinanceAnalyticsPanel';
@@ -90,7 +106,8 @@ import {
 interface AdminFinanceProps {
   systemSettings: SystemSettings;
   updateSystemSettings: (settings: SystemSettings) => void;
-  allTransactions: any[];
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SystemSettings>;
+  allTransactions: Transaction[];
   allMaterials?: Material[];
   allUsers: UserProfile[];
   initialSection?: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics' | 'balance' | 'prices' | 'marketing' | 'plans-coupons';
@@ -100,29 +117,138 @@ interface AdminFinanceProps {
 
 type FinanceSection = 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics';
 
-const clonePlanDetails = (source: any) => Object.fromEntries(
-  Object.entries(source || {}).map(([plan, config]: any) => [
+type ExtendedPlanPricing = PlanPricing & {
+  description?: string;
+};
+type PricingByPlan = Record<PlanName, ExtendedPlanPricing>;
+type PlanDetailsByPlan = Record<PlanName, PlanConfig>;
+type CouponDraft = DiscountCode;
+
+type AdminFinanceTransaction = {
+  id?: string;
+  buyerId?: string;
+  buyerName?: string;
+  materialId?: string;
+  materialTitle?: string;
+  sellerId?: string;
+  amount?: number;
+  platformFee?: number;
+  status?: string;
+  type?: string;
+  paymentProvider?: string;
+  timestamp?: number;
+  internalId?: string;
+  externalId?: string;
+  referenceId?: string;
+  providerTransactionId?: string;
+  providerInvoiceId?: string;
+  transactionName?: string;
+  planName?: string;
+  description?: string;
+  buyerEmail?: string;
+  sellerName?: string;
+  sellerEmail?: string;
+  paymentMethod?: string;
+  paymentMethodLabel?: string;
+  platform_fee?: number;
+  invoiceNumber?: string;
+  invoicePdfUrl?: string;
+  hostedInvoiceUrl?: string;
+  netAmount?: number;
+  seller_id?: string;
+  material_id?: string;
+  scheduleLabel?: string;
+  dateFormatted?: string;
+  dateTimeFormatted?: string;
+  installmentNumber?: number;
+  installmentCount?: number;
+  isRevenueProjection?: boolean;
+};
+
+type AutomationHelperData = {
+  download_url?: string;
+  cron_url?: string;
+  linux_command?: string;
+  message?: string;
+  summary?: unknown;
+  data?: {
+    summary?: unknown;
+  };
+  [key: string]: unknown;
+};
+
+type StripeTestingMatrixCase = Record<string, unknown>;
+type StripeTestingSource = {
+  url?: string;
+  title?: string;
+  label?: string;
+};
+type StripeTestingMatrixSummary = {
+  total: number;
+  supported: number;
+  partial: number;
+  not_supported: number;
+};
+type StripeTestingMatrixData = {
+  cases?: StripeTestingMatrixCase[];
+  summary?: Partial<StripeTestingMatrixSummary>;
+  source?: StripeTestingSource[];
+  [key: string]: unknown;
+};
+
+type StripeTestingRunEvidence = {
+  payment_intent_id?: string;
+  subscription_id?: string;
+  transaction_id?: string;
+  gateway_message?: string;
+  evidence_url?: string;
+};
+
+type StripeTestingRun = {
+  run_id?: string | number;
+  created_at?: string;
+  scenario_label?: string;
+  scenario_id?: string;
+  stripe_reference?: string;
+  notes?: string;
+  execution_result?: string;
+  executed_by_admin_name?: string;
+  executed_by_admin_email?: string;
+  executed_by_admin_id?: string;
+  evidence?: StripeTestingRunEvidence;
+};
+
+type ProjectionTransactionRow = AdminFinanceTransaction & {
+  id: string;
+  internalId: string;
+  amount: number;
+  platformFee: number;
+  timestamp: number;
+};
+
+const clonePlanDetails = (source?: Partial<PlanDetailsByPlan>): PlanDetailsByPlan => Object.fromEntries(
+  Object.entries(source || {}).map(([plan, config]) => [
     plan,
     {
       ...config,
       features: Array.isArray(config?.features)
-        ? config.features.map((feature: any) => ({ ...feature }))
+        ? config.features.map((feature) => ({ ...feature }))
         : [],
     },
   ]),
-);
+) as PlanDetailsByPlan;
 
-const mergePricingWithDefaults = (pricing: any) => Object.fromEntries(
-  Object.entries(PRICING).map(([plan, config]: any) => [
+const mergePricingWithDefaults = (pricing?: Partial<PricingByPlan>): PricingByPlan => Object.fromEntries(
+  Object.entries(PRICING).map(([plan, config]) => [
     plan,
     {
       ...config,
       ...(pricing?.[plan] || {}),
     },
   ]),
-);
+) as PricingByPlan;
 
-const mergePlanDetailsWithDefaults = (planDetails: any) => {
+const mergePlanDetailsWithDefaults = (planDetails?: Partial<PlanDetailsByPlan>): PlanDetailsByPlan => {
   const defaults = clonePlanDetails(PLAN_DETAILS);
   const incoming = clonePlanDetails(planDetails);
 
@@ -136,7 +262,7 @@ const mergePlanDetailsWithDefaults = (planDetails: any) => {
         : defaults[plan].displayName || plan,
       enabled: typeof current.enabled === 'boolean' ? current.enabled : defaults[plan].enabled !== false,
       features: Array.isArray(current.features) && current.features.length > 0
-        ? current.features.map((feature: any) => ({ ...feature }))
+        ? current.features.map((feature) => ({ ...feature }))
         : defaults[plan].features,
     };
   });
@@ -149,22 +275,22 @@ const PAID_TRANSACTION_STATUSES = new Set(['completed', 'approved']);
 
 const isPaidTransactionStatus = (status: unknown) => PAID_TRANSACTION_STATUSES.has(String(status || '').toLowerCase());
 
-const readTransactionAmount = (transaction: any) => Number(transaction?.amount || 0);
+const readTransactionAmount = (transaction: Partial<AdminFinanceTransaction>) => Number(transaction?.amount || 0);
 
-const readTransactionPlatformFee = (transaction: any) => {
+const readTransactionPlatformFee = (transaction: Partial<AdminFinanceTransaction>) => {
   const amount = readTransactionAmount(transaction);
   const platformFee = Number(transaction?.platformFee ?? transaction?.platform_fee);
   return Number.isFinite(platformFee) && platformFee > 0 ? platformFee : amount * 0.20;
 };
 
-const isMarketplaceTransaction = (transaction: any) => {
+const isMarketplaceTransaction = (transaction: Partial<AdminFinanceTransaction>) => {
   const type = String(transaction?.type || '').toLowerCase();
   return type !== 'plan'
     && type !== 'subscription'
     && Boolean(transaction?.sellerId || transaction?.seller_id || transaction?.materialId || transaction?.material_id);
 };
 
-const isAdminTransactionHeld = (transaction: any) => {
+const isAdminTransactionHeld = (transaction: Partial<AdminFinanceTransaction>) => {
   const timestamp = Number(transaction?.timestamp || 0);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return true;
 
@@ -199,12 +325,12 @@ const addProjectionMonths = (timestamp: number, monthOffset: number) => {
   return date.getTime();
 };
 
-const resolveTransactionDisplayTimestamp = (transaction: any, fallbackTimestamp: number) => {
+const resolveTransactionDisplayTimestamp = (transaction: Partial<AdminFinanceTransaction>, fallbackTimestamp: number) => {
   const timestamp = Number(transaction?.timestamp || 0);
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : fallbackTimestamp;
 };
 
-const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload) => (
+const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload): ProjectionTransactionRow[] => (
   (projection.items || []).flatMap((item) => {
     const remaining = Math.max(0, Number(item.remainingInstallments || 0));
     const installmentAmount = Number(item.installmentAmount || 0);
@@ -250,7 +376,7 @@ const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload
   })
 );
 
-const buildProjectionMonthBreakdownFromRows = (rows: any[]) => {
+const buildProjectionMonthBreakdownFromRows = (rows: ProjectionTransactionRow[]) => {
   const groups = new Map<string, {
     key: string;
     label: string;
@@ -301,6 +427,7 @@ const buildProjectionMonthBreakdownFromRows = (rows: any[]) => {
 
 const AdminFinance = ({
   systemSettings,
+  saveSystemSettingsNow,
   allTransactions,
   allMaterials = [],
   allUsers,
@@ -310,7 +437,6 @@ const AdminFinance = ({
 }: AdminFinanceProps) => {
   const { currentUser } = useAuth();
   const { addToast } = useToast();
-  const { saveSystemSettingsNow } = useData();
   const normalizeSection = (section: AdminFinanceProps['initialSection']) => {
     if (section === 'balance') return 'subscriptions';
     if (section === 'prices' || section === 'plans-coupons') return 'plans';
@@ -330,22 +456,20 @@ const AdminFinance = ({
     resolution: 'approved' | 'retention_offer';
   } | null>(null);
   const [isSavingPricing, setIsSavingPricing] = useState(false);
-  const [automationHelper, setAutomationHelper] = useState<any | null>(null);
+  const [automationHelper, setAutomationHelper] = useState<AutomationHelperData | null>(null);
   const [automationHelperLoading, setAutomationHelperLoading] = useState(false);
   const [automationHelperRequested, setAutomationHelperRequested] = useState(false);
   const automationHelperRequestRef = useRef(false);
   const [automationRunLoading, setAutomationRunLoading] = useState(false);
-  const [automationRunResult, setAutomationRunResult] = useState<any | null>(null);
-  const [stripeTestingMatrix, setStripeTestingMatrix] = useState<any | null>(null);
+  const [automationRunResult, setAutomationRunResult] = useState<unknown>(null);
+  const [stripeTestingMatrix, setStripeTestingMatrix] = useState<StripeTestingMatrixData | null>(null);
   const [stripeTestingMatrixLoading, setStripeTestingMatrixLoading] = useState(false);
-  const [stripeTestingMatrixRequested, setStripeTestingMatrixRequested] = useState(false);
   const stripeTestingMatrixRequestRef = useRef(false);
-  const [stripeTestingRuns, setStripeTestingRuns] = useState<any[]>([]);
+  const [stripeTestingRuns, setStripeTestingRuns] = useState<StripeTestingRun[]>([]);
   const [stripeTestingRunsLoading, setStripeTestingRunsLoading] = useState(false);
-  const [stripeTestingRunsRequested, setStripeTestingRunsRequested] = useState(false);
   const stripeTestingRunsRequestRef = useRef(false);
   const [stripeTestingRunSaving, setStripeTestingRunSaving] = useState(false);
-  const [stripeTestingRunScenario, setStripeTestingRunScenario] = useState<any | null>(null);
+  const [stripeTestingRunScenario, setStripeTestingRunScenario] = useState<StripeTestingMatrixCase | null>(null);
   const [revenueProjection, setRevenueProjection] = useState<AdminRevenueProjectionPayload>(EMPTY_REVENUE_PROJECTION);
   const [isRevenueProjectionLoading, setIsRevenueProjectionLoading] = useState(false);
   const [stripeTestingRunForm, setStripeTestingRunForm] = useState({
@@ -359,27 +483,29 @@ const AdminFinance = ({
   });
   const [draftPricing, setDraftPricing] = useState(() => mergePricingWithDefaults(systemSettings.pricing));
   const [draftPlanDetails, setDraftPlanDetails] = useState(() => mergePlanDetailsWithDefaults(systemSettings.planDetails));
-  const [draftCoupons, setDraftCoupons] = useState<any[]>(() => Array.isArray(systemSettings.coupons) ? systemSettings.coupons : []);
+  const [draftCoupons, setDraftCoupons] = useState<CouponDraft[]>(() => Array.isArray(systemSettings.coupons) ? systemSettings.coupons : []);
   const [draftPlanEntitlements, setDraftPlanEntitlements] = useState(() => normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
   const [draftPlanUsageLimits, setDraftPlanUsageLimits] = useState(() => normalizePlanUsageLimits(systemSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
+  const [draftLegalCommentaryFeatureConfig, setDraftLegalCommentaryFeatureConfig] = useState(() => (
+    normalizeLegalCommentaryFeatureConfig(systemSettings.legalCommentaryFeatureConfig || DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG)
+  ));
   const [draftActiveTheme, setDraftActiveTheme] = useState(systemSettings.activeTheme || 'default');
   const [draftActivePromotion, setDraftActivePromotion] = useState(systemSettings.activePromotion || undefined);
   const [adminFinanceNowMs, setAdminFinanceNowMs] = useState(0);
   const refundRequests = useMemo(
-    () => allTransactions?.filter((t: any) => String(t.status || '') === 'refund_requested') || [],
+    () => allTransactions?.filter((t) => String(t.status || '') === 'refund_requested') || [],
     [allTransactions],
   );
 
-  const totalInDispute = useMemo(() => refundRequests.reduce((acc: number, t: any) => acc + readTransactionAmount(t), 0), [refundRequests]);
+  const totalInDispute = useMemo(() => refundRequests.reduce((acc: number, t) => acc + readTransactionAmount(t), 0), [refundRequests]);
   const totalRefunded = useMemo(
-    () => allTransactions?.filter((t: any) => String(t.status || '') === 'refunded').reduce((acc: number, t: any) => acc + readTransactionAmount(t), 0) || 0,
+    () => allTransactions?.filter((t) => String(t.status || '') === 'refunded').reduce((acc: number, t) => acc + readTransactionAmount(t), 0) || 0,
     [allTransactions],
   );
 
   // --- NOVOS CALCULOS POR VENDEDOR ---
   const [viewingSellerDetails, setViewingSellerDetails] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'available_desc' | 'available_asc' | 'date_asc' | 'date_desc'>('available_desc');
-  const paymentProvider = 'stripe' as const;
   const automationDownloadUrl = automationHelper?.download_url || '';
   const automationCronUrl = automationHelper?.cron_url || '';
   const automationCronCommand = automationHelper?.linux_command || '';
@@ -387,19 +513,25 @@ const AdminFinance = ({
   const automationCronUrlLabel = automationCronUrl || (automationHelperUnavailable ? 'URL oficial indisponivel no momento.' : 'Carregando URL oficial...');
   const automationCronCommandLabel = automationCronCommand || (automationHelperUnavailable ? 'Comando oficial indisponivel no momento.' : 'Carregando comando oficial...');
   const stripeTestingCases = Array.isArray(stripeTestingMatrix?.cases) ? stripeTestingMatrix.cases : [];
-  const stripeTestingSummary = stripeTestingMatrix?.summary || { total: 0, supported: 0, partial: 0, not_supported: 0 };
+  const stripeTestingSummary: StripeTestingMatrixSummary = {
+    total: Number(stripeTestingMatrix?.summary?.total || 0),
+    supported: Number(stripeTestingMatrix?.summary?.supported || 0),
+    partial: Number(stripeTestingMatrix?.summary?.partial || 0),
+    not_supported: Number(stripeTestingMatrix?.summary?.not_supported || 0),
+  };
   const stripeTestingSources = Array.isArray(stripeTestingMatrix?.source) ? stripeTestingMatrix.source : [];
   const isAdminViewer = String(currentUser?.role || '').toLowerCase() === 'admin';
   const financeSettings = useMemo<SystemSettings>(() => ({
     ...systemSettings,
     pricing: draftPricing,
     planDetails: draftPlanDetails,
-    coupons: draftCoupons as any,
+    coupons: draftCoupons,
     planEntitlements: draftPlanEntitlements,
     planUsageLimits: draftPlanUsageLimits,
+    legalCommentaryFeatureConfig: draftLegalCommentaryFeatureConfig,
     activeTheme: draftActiveTheme,
     activePromotion: draftActivePromotion,
-  }), [draftActivePromotion, draftActiveTheme, draftCoupons, draftPlanDetails, draftPlanEntitlements, draftPlanUsageLimits, draftPricing, systemSettings]);
+  }), [draftActivePromotion, draftActiveTheme, draftCoupons, draftLegalCommentaryFeatureConfig, draftPlanDetails, draftPlanEntitlements, draftPlanUsageLimits, draftPricing, systemSettings]);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -408,6 +540,9 @@ const AdminFinance = ({
       setDraftCoupons(Array.isArray(systemSettings.coupons) ? systemSettings.coupons : []);
       setDraftPlanEntitlements(normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
       setDraftPlanUsageLimits(normalizePlanUsageLimits(systemSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
+      setDraftLegalCommentaryFeatureConfig(normalizeLegalCommentaryFeatureConfig(
+        systemSettings.legalCommentaryFeatureConfig || DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG,
+      ));
       setDraftActiveTheme(systemSettings.activeTheme || 'default');
       setDraftActivePromotion(systemSettings.activePromotion || undefined);
     });
@@ -417,6 +552,7 @@ const AdminFinance = ({
     systemSettings.activePromotion,
     systemSettings.activeTheme,
     systemSettings.coupons,
+    systemSettings.legalCommentaryFeatureConfig,
     systemSettings.planDetails,
     systemSettings.planEntitlements,
     systemSettings.planUsageLimits,
@@ -489,6 +625,9 @@ const AdminFinance = ({
     setDraftCoupons(Array.isArray(nextSettings.coupons) ? nextSettings.coupons : []);
     setDraftPlanEntitlements(normalizePlanEntitlements(nextSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
     setDraftPlanUsageLimits(normalizePlanUsageLimits(nextSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
+    setDraftLegalCommentaryFeatureConfig(normalizeLegalCommentaryFeatureConfig(
+      nextSettings.legalCommentaryFeatureConfig || DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG,
+    ));
     setDraftActiveTheme(nextSettings.activeTheme || 'default');
     setDraftActivePromotion(nextSettings.activePromotion || undefined);
   };
@@ -496,7 +635,7 @@ const AdminFinance = ({
   const sellersMetrics = useMemo(() => buildAdminMarketplaceSellerMetrics({
     users: allUsers || [],
     materials: allMaterials || [],
-    transactions: allTransactions || [],
+    transactions: (allTransactions || []) as unknown as Record<string, unknown>[],
   }), [allMaterials, allTransactions, allUsers]);
 
   useEffect(() => {
@@ -539,7 +678,6 @@ const AdminFinance = ({
 
     let cancelled = false;
     stripeTestingMatrixRequestRef.current = true;
-    setStripeTestingMatrixRequested(true);
     setStripeTestingMatrixLoading(true);
 
     subscriptionsService.getStripeTestingMatrix()
@@ -551,7 +689,6 @@ const AdminFinance = ({
       .catch(() => {
         if (!cancelled) {
           stripeTestingMatrixRequestRef.current = false;
-          setStripeTestingMatrixRequested(false);
           addToast('Nao foi possivel carregar a matriz oficial de testes Stripe.', 'error');
         }
       })
@@ -578,7 +715,6 @@ const AdminFinance = ({
     const frameId = window.requestAnimationFrame(() => {
       if (cancelled) return;
 
-      setStripeTestingRunsRequested(true);
       setStripeTestingRunsLoading(true);
 
       subscriptionsService.getStripeTestingRuns(80)
@@ -590,7 +726,6 @@ const AdminFinance = ({
         .catch(() => {
           if (!cancelled) {
             stripeTestingRunsRequestRef.current = false;
-            setStripeTestingRunsRequested(false);
             addToast('Nao foi possivel carregar o historico de evidencias dos testes Stripe.', 'error');
           }
         })
@@ -622,7 +757,7 @@ const AdminFinance = ({
     });
   }, [sellersMetrics, sortBy]);
 
-  const projectedTransactionRows = useMemo(
+  const projectedTransactionRows = useMemo<ProjectionTransactionRow[]>(
     () => buildProjectedTransactionRows(revenueProjection),
     [revenueProjection],
   );
@@ -647,18 +782,18 @@ const AdminFinance = ({
     [projectionMonthRows],
   );
 
-  const financeTransactionRows = useMemo(
+  const financeTransactionRows = useMemo<AdminFinanceTransaction[]>(
     () => (
       activeSection === 'transactions'
-        ? [...(allTransactions || []), ...projectedTransactionRows]
-        : (allTransactions || [])
+        ? [...((allTransactions || []) as AdminFinanceTransaction[]), ...projectedTransactionRows]
+        : ((allTransactions || []) as AdminFinanceTransaction[])
     ),
     [activeSection, allTransactions, projectedTransactionRows],
   );
 
   const statusOptions = useMemo(() => {
     const statuses = new Set<string>(['completed', 'approved', 'pending', 'pre-approved', 'refunded', 'refund_requested', 'cancelled']);
-    (financeTransactionRows || []).forEach((transaction: any) => {
+    (financeTransactionRows || []).forEach((transaction) => {
       const status = String(transaction.status || '').trim();
       if (status) statuses.add(status);
     });
@@ -691,7 +826,7 @@ const AdminFinance = ({
     if (!financeTransactionRows) return [];
 
     return financeTransactionRows
-      .filter((transaction: any) => {
+      .filter((transaction) => {
         const transactionStatus = String(transaction.status || '');
 
         if (activeSection === 'refunds' && transactionStatus !== 'refund_requested') {
@@ -760,10 +895,10 @@ const AdminFinance = ({
 
         return true;
       })
-      .sort((left: any, right: any) => Number(right.timestamp || 0) - Number(left.timestamp || 0));
+      .sort((left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0));
   }, [activeSection, financeFilters, financeTransactionRows]);
 
-  const financeStats = useMemo(() => filteredTransactions.reduce((accumulator: any, transaction: any) => {
+  const financeStats = useMemo<{ totalRevenue: number; totalFees: number; netRevenue: number }>(() => filteredTransactions.reduce((accumulator, transaction) => {
     if (isPaidTransactionStatus(transaction.status)) {
       const amount = readTransactionAmount(transaction);
       const fee = isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount;
@@ -783,12 +918,12 @@ const AdminFinance = ({
   );
   const completedVolume = useMemo(
     () => (allTransactions || [])
-      .filter((transaction: any) => ['approved', 'completed'].includes(String(transaction.status || '').toLowerCase()))
-      .reduce((acc: number, transaction: any) => acc + Number(transaction.amount || 0), 0),
+      .filter((transaction) => ['approved', 'completed'].includes(String(transaction.status || '').toLowerCase()))
+      .reduce((acc: number, transaction) => acc + Number(transaction.amount || 0), 0),
     [allTransactions],
   );
   const failedTransactionsCount = useMemo(
-    () => (allTransactions || []).filter((transaction: any) => ['rejected', 'failed'].includes(String(transaction.status || '').toLowerCase())).length,
+    () => (allTransactions || []).filter((transaction) => ['rejected', 'failed'].includes(String(transaction.status || '').toLowerCase())).length,
     [allTransactions],
   );
   const financeOverviewCards = [
@@ -829,7 +964,7 @@ const AdminFinance = ({
   }, [currentPage, totalPages]);
 
   const exportTransactionsCsv = () => {
-    const rows = filteredTransactions.map((transaction: any) => ({
+    const rows = filteredTransactions.map((transaction) => ({
       id: transaction.id,
       data: transaction.dateTimeFormatted || new Date(transaction.timestamp || Date.now()).toLocaleString(),
       tipo: transaction.type === 'plan' ? 'Assinatura' : 'Material',
@@ -851,7 +986,10 @@ const AdminFinance = ({
     });
     const csv = [
       header.join(';'),
-      ...rows.map((row) => header.map((key) => `"${String((row as any)[key] ?? '').replace(/"/g, '""')}"`).join(';')),
+      ...rows.map((row) => {
+        const record = row as Record<string, unknown>;
+        return header.map((key) => `"${String(record[key] ?? '').replace(/"/g, '""')}"`).join(';');
+      }),
     ].join('\n');
 
     const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
@@ -931,7 +1069,7 @@ const AdminFinance = ({
   const handleTogglePlanFeature = (plan: string, featureIndex: number) => {
     const updatedPlanDetails = clonePlanDetails(draftPlanDetails);
     const plans = planNames;
-    const planIndex = plans.indexOf(plan as any);
+    const planIndex = plans.indexOf(plan as PlanName);
     const newValue = !updatedPlanDetails[plan as keyof typeof updatedPlanDetails].features[featureIndex].included;
 
     plans.forEach((p, i) => {
@@ -939,7 +1077,7 @@ const AdminFinance = ({
       if (newValue && i >= planIndex) {
         updatedPlanDetails[p] = {
           ...updatedPlanDetails[p],
-          features: updatedPlanDetails[p].features.map((f: any, fi: number) =>
+          features: updatedPlanDetails[p].features.map((f, fi: number) =>
             fi === featureIndex ? { ...f, included: true } : f
           )
         };
@@ -948,7 +1086,7 @@ const AdminFinance = ({
       if (!newValue && i <= planIndex) {
         updatedPlanDetails[p] = {
           ...updatedPlanDetails[p],
-          features: updatedPlanDetails[p].features.map((f: any, fi: number) =>
+          features: updatedPlanDetails[p].features.map((f, fi: number) =>
             fi === featureIndex ? { ...f, included: false } : f
           )
         };
@@ -965,7 +1103,7 @@ const AdminFinance = ({
     plans.forEach(p => {
       updatedPlanDetails[p] = {
         ...updatedPlanDetails[p],
-        features: updatedPlanDetails[p].features.map((f: any, i: number) =>
+        features: updatedPlanDetails[p].features.map((f, i: number) =>
           i === featureIndex ? { ...f, text } : f
         )
       };
@@ -977,7 +1115,7 @@ const AdminFinance = ({
   const handleAddPlanFeature = (plan: string) => {
     const updatedPlanDetails = clonePlanDetails(draftPlanDetails);
     const plans = planNames;
-    const planIndex = plans.indexOf(plan as any);
+    const planIndex = plans.indexOf(plan as PlanName);
     const featureName = 'Novo Recurso';
 
     plans.forEach((p, i) => {
@@ -997,7 +1135,7 @@ const AdminFinance = ({
     plans.forEach(p => {
       updatedPlanDetails[p] = {
         ...updatedPlanDetails[p],
-        features: updatedPlanDetails[p].features.filter((_: any, i: number) => i !== featureIndex)
+        features: updatedPlanDetails[p].features.filter((_, i: number) => i !== featureIndex)
       };
     });
 
@@ -1025,7 +1163,7 @@ const AdminFinance = ({
       const currentPlanFeatures = updatedPlanDetails[p].features;
       const newPlanFeatures = features.map(f => {
         // Find the matching feature in the current plan to get its 'included' status
-        const originalFeature = currentPlanFeatures.find((orig: any) => orig.text === f.text);
+        const originalFeature = currentPlanFeatures.find((orig) => orig.text === f.text);
         return {
           text: f.text,
           included: originalFeature ? originalFeature.included : f.included
@@ -1085,6 +1223,16 @@ const AdminFinance = ({
     setDraftPlanUsageLimits(updatedLimits);
   };
 
+  const handleLegalCommentaryFallbackModeChange = (
+    featureKey: LegalCommentaryFeatureConfigurableKey,
+    fallbackMode: LegalCommentaryFeatureFallbackMode,
+  ) => {
+    setDraftLegalCommentaryFeatureConfig((currentConfig) => ({
+      ...currentConfig,
+      [featureKey]: { fallbackMode },
+    }));
+  };
+
   // --- REEMBOLSOS ---
   const { resolveRefund } = useMarketplace();
   const requestResolveRefund = (transactionId: string, resolution: 'approved' | 'retention_offer') => {
@@ -1118,20 +1266,15 @@ const AdminFinance = ({
       const summary = payload.summary ?? nestedData?.summary ?? payload;
       setAutomationRunResult(summary);
       addToast(typeof payload.message === 'string' ? payload.message : 'Rotina de automacao executada com sucesso.', 'success');
-    } catch (error: any) {
-      const message = String(
-        error?.response?.data?.message
-        || error?.response?.data?.details
-        || error?.message
-        || 'Nao foi possivel executar a rotina de automacao.',
-      );
+    } catch (error: unknown) {
+      const message = readApiErrorMessage(error, 'Nao foi possivel executar a rotina de automacao.');
       addToast(message, 'error');
     } finally {
       setAutomationRunLoading(false);
     }
   };
 
-  const openStripeTestingRunModal = (testCase: any) => {
+  const openStripeTestingRunModal = (testCase: StripeTestingMatrixCase) => {
     if (!isAdminViewer) return;
     if (String(testCase?.platform_status || '').toLowerCase() !== 'supported') return;
 
@@ -1172,8 +1315,8 @@ const AdminFinance = ({
       addToast('Evidencia de teste registrada com sucesso.', 'success');
       setStripeTestingRunScenario(null);
       setStripeTestingRuns((prev) => [payload, ...prev].slice(0, 120));
-    } catch (error: any) {
-      const message = String(error?.response?.data?.message || error?.message || 'Nao foi possivel registrar a evidencia do teste.');
+    } catch (error: unknown) {
+      const message = readApiErrorMessage(error, 'Nao foi possivel registrar a evidencia do teste.');
       addToast(message, 'error');
     } finally {
       setStripeTestingRunSaving(false);
@@ -1417,7 +1560,7 @@ const AdminFinance = ({
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ordenar por:</span>
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
+                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                   className={`${ADMIN_FIELD_CLASS} w-[180px] py-0 pl-3 pr-8 text-xs font-bold`}
                 >
                   <option value="available_desc">Maior Valor a Repassar</option>
@@ -1445,7 +1588,7 @@ const AdminFinance = ({
                   {sortedSellers.length === 0 ? (
                     <tr><td colSpan={8} className="p-6 text-center text-slate-400 italic sm:p-8">Nenhum usuario vendedor encontrado.</td></tr>
                   ) : (
-                    sortedSellers.map((seller: any) => (
+                    sortedSellers.map((seller: AdminMarketplaceSellerMetric) => (
                       <tr key={seller.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
                         <td className="p-4 pl-4 sm:p-6 sm:pl-8">
                           <div className="font-bold text-slate-900 dark:text-slate-100">{seller.name}</div>
@@ -1540,18 +1683,19 @@ const AdminFinance = ({
                         Nenhuma venda registrada para este vendedor ainda.
                       </td>
                     </tr>
-                  ) : selectedSeller.transactions.map((t: any) => {
-                    const isHeld = isAdminTransactionHeld(t);
-                    const amount = readTransactionAmount(t);
+                  ) : selectedSeller.transactions.map((t) => {
+                    const transaction = t as AdminFinanceTransaction;
+                    const isHeld = isAdminTransactionHeld(transaction);
+                    const amount = readTransactionAmount(transaction);
                     return (
-                      <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                        <td className="p-6">{new Date(t.timestamp).toLocaleDateString()} <span className="text-[10px] text-slate-400 block">{new Date(t.timestamp).toLocaleTimeString()}</span></td>
-                        <td className="p-6 font-mono text-[10px] text-slate-500">{t.id.substring(0, 12).toUpperCase()}...</td>
-                        <td className="p-6 font-bold text-slate-800 dark:text-slate-200">{t.materialTitle}</td>
+                      <tr key={String(transaction.id || '')} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="p-6">{new Date(Number(transaction.timestamp || 0)).toLocaleDateString()} <span className="text-[10px] text-slate-400 block">{new Date(Number(transaction.timestamp || 0)).toLocaleTimeString()}</span></td>
+                        <td className="p-6 font-mono text-[10px] text-slate-500">{String(transaction.id || '').substring(0, 12).toUpperCase()}...</td>
+                        <td className="p-6 font-bold text-slate-800 dark:text-slate-200">{String(transaction.materialTitle || '')}</td>
                         <td className="p-6 text-right">R$ {amount.toFixed(2)}</td>
-                        <td className="p-6 text-right font-bold text-slate-900 dark:text-slate-100">R$ {Math.max(0, readTransactionAmount(t) - readTransactionPlatformFee(t)).toFixed(2)}</td>
+                        <td className="p-6 text-right font-bold text-slate-900 dark:text-slate-100">R$ {Math.max(0, readTransactionAmount(transaction) - readTransactionPlatformFee(transaction)).toFixed(2)}</td>
                         <td className="p-6 text-center">
-                          {t.status === 'refunded' ? (
+                          {transaction.status === 'refunded' ? (
                             <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase border border-slate-200 dark:border-slate-700">Reembolsado</span>
                           ) : isHeld ? (
                             <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded text-[10px] font-black uppercase">Preso (7d)</span>
@@ -1606,7 +1750,7 @@ const AdminFinance = ({
                 {refundRequests.length === 0 ? (
                   <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Nenhuma solicitação de reembolso pendente.</td></tr>
                 ) : (
-                  refundRequests.map((t: any) => (
+                  refundRequests.map((t) => (
                     <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                       <td className="p-6 pl-8 font-bold">{t.buyerName}</td>
                       <td className="p-6">
@@ -1830,7 +1974,7 @@ const AdminFinance = ({
                         Nenhuma transação encontrada para os filtros atuais.
                       </td>
                     </tr>
-                  ) : currentTransactions.map((transaction: any) => {
+                  ) : currentTransactions.map((transaction) => {
                     const referenceCode = transaction.providerTransactionId || transaction.referenceId || transaction.externalId || transaction.id;
                     const invoiceUrl = transaction.invoicePdfUrl || transaction.hostedInvoiceUrl || '';
                     const amount = readTransactionAmount(transaction);
@@ -2047,7 +2191,7 @@ const AdminFinance = ({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {Object.entries(draftPricing).map(([plan, config]: any) => (
+            {(Object.entries(draftPricing) as Array<[PlanName, PlanPricing]>).map(([plan, config]) => (
               <div key={plan} className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-6 p-5`}>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
@@ -2091,7 +2235,7 @@ const AdminFinance = ({
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Descrição Comercial</label>
                     <input
                       type="text"
-                      value={config.description || ''}
+                      value={(config as ExtendedPlanPricing).description || ''}
                       onChange={e => handleDescriptionChange(plan, e.target.value)}
                       placeholder="Descrição breve do plano para atrair usuários..."
                       className={`${ADMIN_FIELD_CLASS} w-full text-xs font-bold`}
@@ -2155,7 +2299,7 @@ const AdminFinance = ({
 
                   <div className="space-y-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Recursos do Plano</p>
-                    {draftPlanDetails[plan].features.map((feature: any, idx: number) => (
+                    {draftPlanDetails[plan].features.map((feature, idx: number) => (
                       <div key={idx} className="flex items-center gap-2 group/feature">
                         <button
                           onClick={() => handleTogglePlanFeature(plan, idx)}
@@ -2361,6 +2505,78 @@ const AdminFinance = ({
                   </tbody>
                 </table>
               </div>
+
+              <div className="mt-8">
+                <div className="mb-4">
+                  <h5 className="text-sm font-black text-slate-900 dark:text-slate-100">
+                    Fallback da Lei Comentada
+                  </h5>
+                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Define o comportamento visual quando o usuario nao possui acesso ao recurso pela matriz do plano.
+                  </p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[860px] text-left">
+                    <thead className="border-b border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
+                      <tr>
+                        <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Recurso</th>
+                        <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descricao</th>
+                        <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Modo atual</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {LEGAL_COMMENTARY_CONFIGURABLE_FEATURE_KEYS.map((featureKey) => {
+                        const definition = LEGAL_COMMENTARY_FEATURE_DEFINITIONS.find((item) => item.key === featureKey);
+                        const currentMode = draftLegalCommentaryFeatureConfig[featureKey].fallbackMode;
+
+                        return (
+                          <tr key={featureKey} className="bg-white dark:bg-slate-900/40">
+                            <td className="p-4 align-top">
+                              <div className="text-sm font-black text-slate-900 dark:text-slate-100">
+                                {definition?.label || featureKey}
+                              </div>
+                              <div className="mt-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                                {featureKey}
+                              </div>
+                            </td>
+                            <td className="p-4 align-top text-xs font-medium text-slate-500 dark:text-slate-400">
+                              {definition?.description || 'Sem descricao cadastrada.'}
+                            </td>
+                            <td className="p-4 align-top">
+                              <div className="grid gap-2 sm:grid-cols-3">
+                                {LEGAL_COMMENTARY_FEATURE_MODE_OPTIONS.map((option) => {
+                                  const isActive = currentMode === option.value;
+
+                                  return (
+                                    <button
+                                      key={`${featureKey}-${option.value}`}
+                                      type="button"
+                                      onClick={() => handleLegalCommentaryFallbackModeChange(featureKey, option.value)}
+                                      className={`rounded-2xl border px-3 py-2 text-left transition-all ${
+                                        isActive
+                                          ? 'border-[#615fff]/30 bg-[#615fff]/8 text-[#615fff] dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-200'
+                                          : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+                                      }`}
+                                    >
+                                      <div className="text-[11px] font-black uppercase tracking-[0.14em]">
+                                        {option.label}
+                                      </div>
+                                      <div className="mt-1 text-[11px] font-medium leading-5">
+                                        {option.description}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -2490,7 +2706,7 @@ const AdminFinance = ({
 
                 {stripeTestingSources.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {stripeTestingSources.map((source: any, index: number) => (
+                    {stripeTestingSources.map((source, index: number) => (
                       <a
                         key={`stripe-source-${index}`}
                         href={String(source.url || '#')}
@@ -2520,7 +2736,7 @@ const AdminFinance = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {stripeTestingCases.map((testCase: any) => {
+                        {stripeTestingCases.map((testCase) => {
                           const status = String(testCase.platform_status || '').toLowerCase();
                           const statusTone =
                             status === 'supported'
@@ -2612,7 +2828,7 @@ const AdminFinance = ({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                          {stripeTestingRuns.map((run: any) => {
+                          {stripeTestingRuns.map((run) => {
                             const runResult = String(run.execution_result || '').toLowerCase();
                             const resultTone =
                               runResult === 'passed'
@@ -2620,7 +2836,7 @@ const AdminFinance = ({
                                 : runResult === 'failed'
                                   ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
                                   : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300';
-                            const evidence = run?.evidence || {};
+                            const evidence: StripeTestingRunEvidence = run.evidence || {};
 
                             return (
                               <tr key={String(run.run_id)} className="align-top">
@@ -2778,17 +2994,5 @@ const AdminFinance = ({
   );
 };
 
-
-const slugify = (text: string) => {
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .normalize('NFD') // Decompose combined characters into their base characters and diacritics
-    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
-    .replace(/\s+/g, '-') // Replace spaces with -
-    .replace(/[^\w-]+/g, '') // Remove all non-word chars
-    .replace(/--+/g, '-'); // Replace multiple - with single -
-};
 
 export default AdminFinance;

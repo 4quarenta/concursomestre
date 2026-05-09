@@ -10,6 +10,7 @@
 */
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
 import { transactionsService } from '@services/transactions';
 import type { Material, Transaction } from '@types';
 
@@ -72,12 +73,18 @@ export const marketplaceService = {
    * @since 1.0.0
    */
   async listMaterials(filters?: { subject?: string }): Promise<Material[]> {
-    const response = await apiClient.get<Material[] | MaterialsListResponse>(ENDPOINTS.materials.list, {
-      params: filters,
-    });
+    return withRequestCoalescing(
+      buildRequestCacheKey('marketplace:materials:list', filters || {}),
+      async () => {
+        const response = await apiClient.get<Material[] | MaterialsListResponse>(ENDPOINTS.materials.list, {
+          params: filters,
+        });
 
-    const payload = readApiData<Material[] | { rows?: Material[] }>(response, []);
-    return Array.isArray(payload) ? payload : payload.rows || [];
+        const payload = readApiData<Material[] | { rows?: Material[] }>(response, []);
+        return Array.isArray(payload) ? payload : payload.rows || [];
+      },
+      4000,
+    );
   },
 
   /**
@@ -165,7 +172,11 @@ export const marketplaceService = {
    * @since 1.0.0
    */
   async listTransactions(params: MarketplaceTransactionListParams = {}): Promise<Transaction[]> {
-    return transactionsService.list(params);
+    return withRequestCoalescing(
+      buildRequestCacheKey('marketplace:transactions:list', params),
+      async () => transactionsService.list(params),
+      3000,
+    );
   },
 
   /**

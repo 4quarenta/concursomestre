@@ -9,8 +9,4 @@
 *
 */
 
-import { redirect } from 'next/navigation';
-
-export default function QuestionsLegacyPage() {
-  redirect('/practice');
-}
+export { default } from '../practice/page';

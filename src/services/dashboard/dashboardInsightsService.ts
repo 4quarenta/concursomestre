@@ -10,6 +10,7 @@
 */
 
 import type { Question, UserAnswer } from '@types';
+import type { SubjectStatistics } from '@services/statistics/types';
 
 export type DashboardTimeRange = 'today' | 'week' | 'month' | 'year' | 'all';
 
@@ -171,6 +172,31 @@ export const buildSubjectPerformanceData = (
   });
 
   return Array.from(metrics.values()).sort((left, right) => right.total - left.total);
+};
+
+/**
+ * Converte o breakdown oficial de estatisticas por materia para o formato do dashboard.
+ * Isso evita baixar o banco inteiro de questoes apenas para renderizar o resumo da home logada.
+ *
+ * @since 1.0.0
+ */
+export const buildSubjectPerformanceDataFromStatistics = (
+  subjectBreakdown: SubjectStatistics[] | null | undefined,
+): DashboardSubjectMetric[] => {
+  if (!Array.isArray(subjectBreakdown)) {
+    return [];
+  }
+
+  return subjectBreakdown
+    .map((subject) => ({
+      name: String(subject.subject || 'Geral').trim() || 'Geral',
+      total: normalizeMetricCount(subject.totalQuestions),
+      correct: normalizeMetricCount(subject.correctAnswers),
+      wrong: normalizeMetricCount(subject.wrongAnswers),
+      accuracy: normalizeMetricCount(subject.accuracyRate),
+    }))
+    .filter((subject) => subject.total > 0)
+    .sort((left, right) => right.total - left.total);
 };
 
 /**

@@ -15,8 +15,8 @@ import React from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
+import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
 import { canAccessAdminPanel } from '@services/auth';
 import { adminService, type AdminUserDetailsPayload } from '@services/admin/adminService';
 import { readApiErrorMessage } from '@services/api';
@@ -44,6 +44,22 @@ const createEmptyUserForm = (): AdminUserEditorForm => ({
   reputation: '100',
 });
 
+const normalizeAdminEditorRole = (value: unknown): AdminUserEditorForm['role'] => {
+  if (value === 'staff' || value === 'partner' || value === 'admin') {
+    return value;
+  }
+
+  return 'user';
+};
+
+const normalizeAdminEditorStatus = (value: unknown): AdminUserEditorForm['status'] => {
+  if (value === 'suspended' || value === 'banned' || value === 'pending') {
+    return value;
+  }
+
+  return 'active';
+};
+
 const buildUserFormFromDetails = (details: AdminUserDetailsPayload | null): AdminUserEditorForm => {
   const profile = details?.profile || {};
 
@@ -54,8 +70,8 @@ const buildUserFormFromDetails = (details: AdminUserDetailsPayload | null): Admi
     cpf: String(profile.cpf || ''),
     phone: String(profile.phone || ''),
     targetExam: String(profile.target_exam || profile.targetExam || ''),
-    role: ['staff', 'partner', 'admin'].includes(String(profile.role || '')) ? profile.role : 'user',
-    status: ['suspended', 'banned', 'pending'].includes(String(profile.status || '')) ? profile.status : 'active',
+    role: normalizeAdminEditorRole(profile.role),
+    status: normalizeAdminEditorStatus(profile.status),
     reputation: String(Number(profile.reputation ?? 100)),
   };
 };
@@ -67,7 +83,7 @@ const AdminUserEditPage = () => {
   const isNew = userId === 'new';
 
   const { currentUser, isLoading: isAuthLoading } = useAuth();
-  const { ensureUsersLoaded } = useData();
+  const { ensureUsersLoaded } = useAdminDataActions();
   const { addToast } = useToast();
   const [details, setDetails] = React.useState<AdminUserDetailsPayload | null>(null);
   const [form, setForm] = React.useState<AdminUserEditorForm>(createEmptyUserForm);
@@ -88,15 +104,20 @@ const AdminUserEditPage = () => {
     }
 
     if (isNew) {
-      setDetails(null);
-      setLoadError('');
-      setForm(createEmptyUserForm());
-      return;
+      const frame = requestAnimationFrame(() => {
+        setDetails(null);
+        setLoadError('');
+        setForm(createEmptyUserForm());
+      });
+
+      return () => cancelAnimationFrame(frame);
     }
 
     let cancelled = false;
-    setIsLoadingDetail(true);
-    setLoadError('');
+    const loadingFrame = requestAnimationFrame(() => {
+      setIsLoadingDetail(true);
+      setLoadError('');
+    });
 
     adminService.getUserDetails(String(userId))
       .then((payload) => {
@@ -117,6 +138,7 @@ const AdminUserEditPage = () => {
 
     return () => {
       cancelled = true;
+      cancelAnimationFrame(loadingFrame);
     };
   }, [currentUser, isAuthLoading, isNew, userId]);
 
@@ -171,7 +193,7 @@ const AdminUserEditPage = () => {
 
   const runUserAction = React.useCallback(async (
     action: string,
-    data: Record<string, any>,
+    data: Record<string, unknown>,
     options?: { actionKey?: string; successMessage?: string },
   ) => {
     if (!details?.profile?.id || isNew) {
@@ -209,7 +231,7 @@ const AdminUserEditPage = () => {
     } finally {
       setActionLoading(null);
     }
-  }, [addToast, details?.profile?.id, ensureUsersLoaded, isNew]);
+  }, [addToast, details, ensureUsersLoaded, isNew]);
 
   const renderShell = (children: React.ReactNode) => (
     <AdminStandaloneShell

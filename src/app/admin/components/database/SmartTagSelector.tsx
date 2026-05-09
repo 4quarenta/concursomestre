@@ -12,10 +12,18 @@
 import React, { useRef, useState } from 'react';
 import { PlusCircle, X } from 'lucide-react';
 
+type SmartTagOptionObject = {
+  name?: string;
+  nome?: string;
+  sigla?: string;
+  descricao?: string;
+  'descrição'?: string;
+};
+
 interface SmartTagSelectorProps {
   label: string;
-  options: Array<string | number | Record<string, any> | null | undefined>;
-  selected: Array<string | number | Record<string, any> | null | undefined>;
+  options: Array<string | number | SmartTagOptionObject | null | undefined>;
+  selected: Array<string | number | SmartTagOptionObject | null | undefined>;
   onChange: (values: string[]) => void;
   placeholder?: string;
   multiple?: boolean;
@@ -167,7 +175,7 @@ export const SmartTagSelector: React.FC<SmartTagSelectorProps> = ({
                 className="w-full text-left px-4 py-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50 transition-colors flex flex-col gap-0.5"
               >
                 <div className="flex items-center gap-2">
-                  <PlusCircle size={14} /> Adicionar "{inputValue}"
+                  <PlusCircle size={14} /> Adicionar &quot;{inputValue}&quot;
                 </div>
                 <div className="text-[10px] text-slate-400 font-normal ml-6 italic">
                   Slug: {slugPreview}

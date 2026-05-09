@@ -11,20 +11,21 @@
 
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { LayoutDashboard, BookOpen, User, Menu, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import PromoBanner from '../feedback/PromoBanner';
 import GlobalPaymentIssueBanner from '../feedback/GlobalPaymentIssueBanner';
-import { Notification } from '@types';
+import { Notification, ErrorReport, SystemSettings } from '@types';
 import Footer from './Footer';
 import AdBanner from '../feedback/AdBanner';
 import { useToast } from '@providers/ToastProvider';
 import { apiClient } from '@services/api';
 import { ENDPOINTS } from '@services/api';
+import { getAssetUrl } from '@services/api';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 import { canAccessAdminPanel } from '@services/auth';
 import LogoutConfirmButton from './LogoutConfirmButton';
@@ -34,12 +35,14 @@ import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import PublicBrandLink from './PublicBrandLink';
 import {
   getEffectivePlanName,
-  getEffectivePlanDisplayName,
   getEffectivePlanTier,
-  hasActivePlanAccess,
   hasPlanBenefit,
 } from '@services/plans/planAccess';
 import { resolveUserPaymentIssue } from '@services/billing/paymentIssue';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useNotificationsStore } from '@/state/notifications/notificationsStore';
+import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
+import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -54,15 +57,123 @@ type SidebarNavItem = {
   badge?: number;
 };
 
+type ResendConfirmationResponse = {
+  success?: boolean;
+  message?: string;
+};
+
+type NotificationDropdownProps = {
+  notifications: Notification[];
+  unreadCount: number;
+  onClose: () => void;
+  onNotificationClick: (notification: Notification) => void;
+  onMarkAsRead: (notificationId: string) => void;
+  onOpenAll: () => void;
+};
+
+const NotificationDropdownPanel: React.FC<NotificationDropdownProps> = ({
+  notifications,
+  unreadCount,
+  onClose,
+  onNotificationClick,
+  onMarkAsRead,
+  onOpenAll,
+}) => {
+  const visibleNotifications = notifications.filter((notification) => !notification.deletedAt);
+
+  const getCategoryIcon = (category: string) => {
+    switch (category) {
+      case 'social': return MessageSquare;
+      case 'report': return Shield;
+      case 'marketplace': return ShoppingBag;
+      case 'system':
+      default: return Info;
+    }
+  };
+
+  return (
+    <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in">
+      <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
+        {unreadCount > 0 ? <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">{unreadCount} novas</span> : null}
+      </div>
+      <div className="max-h-80 overflow-y-auto no-scrollbar">
+        {visibleNotifications.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificação.</div>
+        ) : (
+          visibleNotifications.slice(0, 5).map((notification) => {
+            const CategoryIcon = getCategoryIcon(notification.category);
+            return (
+              <div
+                key={notification.id}
+                onClick={() => {
+                  if (!notification.link) {
+                    onMarkAsRead(notification.id);
+                  } else {
+                    onNotificationClick(notification);
+                  }
+                }}
+                className={`p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!notification.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}
+              >
+                <div className="flex gap-3">
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${notification.category === 'social' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : notification.category === 'report' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : notification.category === 'marketplace' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
+                    <CategoryIcon size={14} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start mb-1">
+                      <span className={`text-xs font-bold ${notification.type === 'error' ? 'text-red-600 dark:text-red-400' : notification.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{notification.title}</span>
+                      <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{new Date(notification.timestamp).toLocaleDateString()}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{notification.message}</p>
+                    {notification.evidenceUrl ? (
+                      <div className="mt-3">
+                        <p className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 mb-1 flex items-center gap-1"><Info size={10} /> Prova Anexada:</p>
+                        <Image
+                          src={notification.evidenceUrl}
+                          alt="Prova"
+                          width={640}
+                          height={360}
+                          unoptimized
+                          className="rounded-xl border border-slate-200 dark:border-slate-700 max-h-48 w-full object-contain bg-slate-50 dark:bg-slate-800"
+                        />
+                      </div>
+                    ) : null}
+                    {notification.link ? <p className="text-[9px] text-indigo-500 dark:text-indigo-400 font-bold uppercase mt-1 flex items-center gap-1">Ver <ArrowRight size={10} /></p> : null}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+      <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
+        <button
+          onClick={() => {
+            onClose();
+            onOpenAll();
+          }}
+          className="w-full py-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex items-center justify-center gap-1"
+        >
+          Ver Todas <ArrowRight size={12} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { currentUser: user, refreshUser } = useAuth();
-  const { notifications, markNotificationAsRead, reports, systemSettings } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const notifications = useNotificationsStore((state) => state.notifications);
+  const { markNotificationAsRead } = useNotificationsActions();
+  const reports = useAdminDataStore((state) => state.reports);
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
+  const [locationHash, setLocationHash] = useState('');
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -71,9 +182,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return {
       pathname,
       search: search ? `?${search}` : '',
-      hash: typeof window !== 'undefined' ? window.location.hash : '',
+      hash: locationHash,
     };
-  }, [pathname, searchParams]);
+  }, [locationHash, pathname, searchParams]);
   const canOpenAdminPanel = canAccessAdminPanel(user);
   const paymentIssue = React.useMemo(() => resolveUserPaymentIssue(user), [user]);
   const hasGlobalPaymentIssueBanner = Boolean(paymentIssue);
@@ -98,6 +209,23 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
 
   const [showVerificationModal, setShowVerificationModal] = useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const syncHash = () => {
+      setLocationHash(window.location.hash || '');
+    };
+
+    syncHash();
+    window.addEventListener('hashchange', syncHash);
+
+    return () => {
+      window.removeEventListener('hashchange', syncHash);
+    };
+  }, [pathname, searchParams]);
 
   React.useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -164,35 +292,40 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     try {
       // O interceptor do axios (client.ts) já retorna response.data diretamente
-      const response: any = await apiClient.post(ENDPOINTS.auth.resendConfirmation, { email: user.email });
+      const response = await apiClient.post<ResendConfirmationResponse>(ENDPOINTS.auth.resendConfirmation, { email: user.email });
+      const payload = response.data;
 
-      if (response && response.success) {
+      if (payload && payload.success) {
         setResendTimer(60);
-        addToast(response.message || 'E-mail reenviado com sucesso!', 'success');
+        addToast(payload.message || 'E-mail reenviado com sucesso!', 'success');
 
         // Se o e-mail já foi verificado (o backend retorna success com mensagem de aviso),
         // atualizamos o usuário para sumir o banner imediatamente.
-        if (response.message?.includes('já foi verificado')) {
+        if (payload.message?.includes('já foi verificado')) {
           refreshUser();
         }
       } else {
-        addToast(response?.message || 'Falha ao reenviar e-mail.', 'error');
+        addToast(payload?.message || 'Falha ao reenviar e-mail.', 'error');
       }
-    } catch (error: any) {
-      addToast(error?.message || 'Erro do servidor ao reenviar e-mail.', 'error');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error && error.message.trim()
+        ? error.message
+        : 'Erro do servidor ao reenviar e-mail.';
+      addToast(errorMessage, 'error');
     }
   };
 
   const unreadCount = notifications.filter(n => !n.isRead && !n.deletedAt).length;
-  const adminFeedbackCount = Math.max(0, Number((systemSettings as any)?.adminFeedbackCount || 0));
+  const adminSettingsSnapshot = systemSettings as SystemSettings & { adminFeedbackCount?: number | string };
+  const adminFeedbackCount = Math.max(0, Number(adminSettingsSnapshot.adminFeedbackCount || 0));
   const adminOpenReportsCount = React.useMemo(
-    () => (reports || []).filter((report: any) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase())).length,
+    () => (reports || []).filter((report: ErrorReport) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase())).length,
     [reports],
   );
   const adminMenuBadgeCount = adminFeedbackCount + adminOpenReportsCount;
 
   const navItems: SidebarNavItem[] = [
-    { label: 'Dashboard', icon: LayoutDashboard, path: '/', enabled: !!user },
+    { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', enabled: !!user },
     { label: 'Quest\u00F5es', icon: BookOpen, path: '/practice', enabled: practiceEnabled },
     { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled },
     { label: 'Flashcards', icon: Layers, path: '/flashcards', enabled: true, moduleEnabled: flashcardsEnabled },
@@ -231,8 +364,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // Only consider the plan active if there is a valid subscription status (active or trialing)
   // Otherwise, fallback to 'Gratuito'. This mirrors the logic in Profile.tsx
-  const hasActiveSub = hasActivePlanAccess(user);
-  const currentPlan = hasActiveSub ? getEffectivePlanDisplayName(user) : 'Gratuito';
   const currentCanonicalPlan = getEffectivePlanName(user);
   const currentTier = React.useMemo(() => getEffectivePlanTier(user), [user]);
   const hasXRayAccess = hasPlanBenefit(user, 'xray_banca', systemSettings.planEntitlements);
@@ -243,7 +374,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return normalized.split(/\s+/)[0] || 'Visitante';
   }, [userName]);
   const userInitials = userName.charAt(0);
+  const userPhotoUrl = React.useMemo(
+    () => getAssetUrl(user?.photoUrl || ''),
+    [user?.photoUrl],
+  );
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
+  const canRenderUserPhoto = Boolean(userPhotoUrl && failedAvatarUrl !== userPhotoUrl);
   const userLevel = user?.level || 0;
+
   const profileQuickMenuItems = React.useMemo<Array<{
     tab: ProfileTab;
     label: string;
@@ -370,79 +508,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     router.push(buildProfilePath(tab));
   };
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'social': return MessageSquare;
-      case 'report': return Shield;
-      case 'marketplace': return ShoppingBag;
-      case 'system':
-      default: return Info;
-    }
-  };
-
-  const NotificationDropdown = () => (
-    <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in">
-      <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
-        <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
-        {unreadCount > 0 && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">{unreadCount} novas</span>}
-      </div>
-      <div className="max-h-80 overflow-y-auto no-scrollbar">
-        {notifications.filter(n => !n.deletedAt).length === 0 ? (
-          <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs">Nenhuma notificação.</div>
-        ) : (
-          notifications.filter(n => !n.deletedAt).slice(0, 5).map(n => {
-            const CategoryIcon = getCategoryIcon(n.category);
-            return (
-              <div key={n.id} onClick={(e) => {
-                // Se não tem link, marcamos como lida ao clicar na notificação diretamente
-                if (!n.link) {
-                  markNotificationAsRead(n.id);
-                } else {
-                  handleNotificationClick(n);
-                }
-              }} className={`p-4 border-b border-slate-50 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer ${!n.isRead ? 'bg-indigo-50/30 dark:bg-indigo-900/10' : ''}`}>
-                <div className="flex gap-3">
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${n.category === 'social' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : n.category === 'report' ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : n.category === 'marketplace' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'}`}>
-                    <CategoryIcon size={14} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-1">
-                      <span className={`text-xs font-bold ${n.type === 'error' ? 'text-red-600 dark:text-red-400' : n.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{n.title}</span>
-                      <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{new Date(n.timestamp).toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{n.message}</p>
-                    {n.evidenceUrl && (
-                      <div className="mt-3">
-                        <p className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 mb-1 flex items-center gap-1"><Info size={10} /> Prova Anexada:</p>
-                        <img src={n.evidenceUrl} alt="Prova" className="rounded-xl border border-slate-200 dark:border-slate-700 max-h-48 object-contain bg-slate-50 dark:bg-slate-800" />
-                      </div>
-                    )}
-                    {n.link && <p className="text-[9px] text-indigo-500 dark:text-indigo-400 font-bold uppercase mt-1 flex items-center gap-1">Ver <ArrowRight size={10} /></p>}
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-      <div className="p-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
-        <button
-          onClick={() => { setIsNotifOpen(false); router.push('/notifications'); }}
-          className="w-full py-2 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors flex items-center justify-center gap-1"
-        >
-          Ver Todas <ArrowRight size={12} />
-        </button>
-      </div>
-    </div>
-  );
-
   const isDashboardPage = location.pathname.startsWith('/admin') || location.pathname === '/partner-dashboard';
   const isSimulationFullscreenPage = location.pathname.startsWith('/simulation')
     && simulationSearchParams.get('immersive') === '1';
   const hasMobileTopHeader = !isDashboardPage && !isSimulationFullscreenPage;
 
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'dark text-slate-100' : 'text-slate-900'} bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-300`}>
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
       <PromoBanner />
 
       {showVerificationModal && user && !user.emailVerified && (
@@ -502,7 +574,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 {isNotifOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
-                    <NotificationDropdown />
+                    <NotificationDropdownPanel
+                      notifications={notifications}
+                      unreadCount={unreadCount}
+                      onClose={() => setIsNotifOpen(false)}
+                      onNotificationClick={handleNotificationClick}
+                      onMarkAsRead={markNotificationAsRead}
+                      onOpenAll={() => router.push('/notifications')}
+                    />
                   </>
                 )}
               </div>
@@ -533,8 +612,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
             <div className="mb-3 mt-4 shrink-0 px-4 md:hidden">
               <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-400">
-                  {userInitials}
+                <div className="relative w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-400 overflow-hidden">
+                  {canRenderUserPhoto ? (
+                    <Image
+                      src={userPhotoUrl}
+                      alt={userName || 'Foto de perfil'}
+                      fill
+                      sizes="40px"
+                      unoptimized
+                      className="object-cover"
+                      onError={() => setFailedAvatarUrl(userPhotoUrl)}
+                    />
+                  ) : (
+                    userInitials
+                  )}
                 </div>
                 <div>
                   <p className="text-sm font-bold text-slate-800 dark:text-slate-100 line-clamp-1">{userName}</p>
@@ -574,6 +665,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <Link
                     key={item.path}
                     href={item.path}
+                    prefetch={false}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={`${styles} ${isLocked ? 'opacity-75' : ''}`}
                     title={shouldShowDevBadge ? 'Desativado no admin (visivel apenas para Admin)' : ''}
@@ -606,7 +698,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="shrink-0 space-y-3 border-t border-slate-100 p-3 dark:border-slate-800">
               {user && (
                 <div className={currentPlanTheme.box}>
-                <Link href="/plans" className="block text-inherit hover:opacity-80 transition-opacity">
+                <Link href="/plans" prefetch={false} className="block text-inherit hover:opacity-80 transition-opacity">
                     <p className="text-xs font-semibold opacity-80 uppercase tracking-wider mb-1">Status da Conta</p>
                     <p className="text-sm font-bold flex items-center gap-2">
                       <currentPlanTheme.icon size={14} className={currentTier === 4 ? 'fill-current' : ''} />
@@ -683,7 +775,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   {isNotifOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
-                      <NotificationDropdown />
+                      <NotificationDropdownPanel
+                        notifications={notifications}
+                        unreadCount={unreadCount}
+                        onClose={() => setIsNotifOpen(false)}
+                        onNotificationClick={handleNotificationClick}
+                        onMarkAsRead={markNotificationAsRead}
+                        onOpenAll={() => router.push('/notifications')}
+                      />
                     </>
                   )}
                 </div>
@@ -700,8 +799,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <p className="text-xs font-bold text-slate-900 transition-colors group-hover:text-indigo-600 dark:text-slate-100 dark:group-hover:text-indigo-300">{userFirstName}</p>
                     <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">{user ? `Nível ${userLevel}` : 'Visitante'}</p>
                   </div>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white shadow-md transition-opacity group-hover:opacity-90 dark:bg-indigo-600">
-                    {userInitials}
+                  <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white shadow-md transition-opacity group-hover:opacity-90 dark:bg-indigo-600 overflow-hidden">
+                    {canRenderUserPhoto ? (
+                      <Image
+                        src={userPhotoUrl}
+                        alt={userName || 'Foto de perfil'}
+                        fill
+                        sizes="36px"
+                        unoptimized
+                        className="object-cover"
+                        onError={() => setFailedAvatarUrl(userPhotoUrl)}
+                      />
+                    ) : (
+                      userInitials
+                    )}
                   </div>
                   <ChevronDown size={15} className={`text-slate-400 transition-transform dark:text-slate-500 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
                 </button>

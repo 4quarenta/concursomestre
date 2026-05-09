@@ -1,11 +1,11 @@
 ﻿'use client';
 
 import React from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Hammer, LogOut, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { canAccessAdminPanel } from '@services/auth';
+import { getAccessToken } from '@services/auth/session';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import Layout from '@/components/shared/layout/Layout';
 import PageTransition from '@/components/PageTransition';
@@ -17,9 +17,7 @@ import { StudyTrackerBridge } from './StudyTrackerProvider';
 import { buildProfilePath } from '../app/profile/profileNavigation';
 import { buildAdminPath, resolveAdminRoute } from '../app/admin/config/adminPageNavigationConfig';
 import { resolveUserPaymentIssue } from '@/services/billing/paymentIssue';
-
-const LAST_STABLE_ROUTE_KEY = 'lastStableRoute';
-const ROUTE_BEFORE_RELOAD_KEY = 'routeBeforeReload';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/auth',
@@ -53,7 +51,8 @@ const followsGlobalLoginRequirement = (pathname: string) => (
 );
 
 const alwaysRequiresAuthenticatedUser = (pathname: string) => (
-  pathname.startsWith('/profile')
+  pathname.startsWith('/dashboard')
+  || pathname.startsWith('/profile')
   || pathname.startsWith('/performance')
   || pathname.startsWith('/notifications')
   || pathname.startsWith('/support')
@@ -71,6 +70,7 @@ const featureGateForPath = (pathname: string): { key: Parameters<typeof resolveS
   return null;
 };
 
+// Legacy hash navigation: traduz URLs antigas com #/ para o roteamento segmentado atual sem quebrar deep link.
 const resolveLegacyHashRoute = (rawHash: string): string | null => {
   if (!rawHash.startsWith('#/')) {
     return null;
@@ -97,29 +97,24 @@ const resolveLegacyHashRoute = (rawHash: string): string | null => {
   return buildAdminPath(resolvedAdminRoute.tab, resolvedAdminRoute.section, legacyHash ? `#${legacyHash}` : '');
 };
 
-const normalizeStoredRoute = (route: string): string => {
-  if (route.startsWith('/#/')) {
-    return resolveLegacyHashRoute(route.slice(1)) || route;
-  }
-
-  return route;
-};
-
 export default function NextRouteFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || '/';
-  const searchParams = useSearchParams();
-  const search = searchParams?.toString() || '';
   const router = useRouter();
   const { currentUser, isLoading, logout } = useAuth();
-  const { systemSettings } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const hasInMemoryAccessToken = Boolean(getAccessToken());
   const restoredLegacyHashRouteRef = React.useRef(false);
-  const restoredReloadRouteRef = React.useRef(false);
   const [showLoginBypass, setShowLoginBypass] = React.useState(false);
   const canAccessAdmin = canAccessAdminPanel(currentUser);
   const isMaintenance = resolveSystemFeatureFlag(systemSettings, 'maintenanceMode', false);
   const loginRequired = resolveSystemFeatureFlag(systemSettings, 'loginRequired', false);
   const featureGate = featureGateForPath(pathname);
   const isPastDueSubscription = currentUser?.subscription?.status === 'past_due';
+  const allowAuthLoadingPassThrough = (
+    pathname.startsWith('/auth')
+    || pathname.startsWith('/reset-password')
+    || pathname.startsWith('/confirm-email')
+  );
   const paymentIssue = React.useMemo(() => resolveUserPaymentIssue(currentUser), [currentUser]);
   const hasPaymentIssue = Boolean(paymentIssue || isPastDueSubscription);
   const isBlockingPaymentIssue = Boolean(isPastDueSubscription || paymentIssue?.interactionLock);
@@ -130,7 +125,6 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     || pathname.startsWith('/support');
   const shouldRedirectToAuth = alwaysRequiresAuthenticatedUser(pathname)
     || (loginRequired && followsGlobalLoginRequirement(pathname));
-  const currentRoute = `${pathname}${search ? `?${search}` : ''}`;
   const paymentIssueFixPath = paymentIssue?.actionTarget || `${buildProfilePath('personal')}#saved-cards-personal-section`;
   const paymentIssueMessage = isPastDueSubscription
     ? 'A renovação da sua assinatura falhou. Atualize ou troque o cartão salvo para regularizar as próximas cobranças.'
@@ -152,72 +146,13 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   }, [isLoading, router]);
 
   React.useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const legacyHashRoute = resolveLegacyHashRoute(window.location.hash || '');
-    const fullCurrentRoute = legacyHashRoute || `${currentRoute}${window.location.hash || ''}`;
-    window.sessionStorage.setItem(LAST_STABLE_ROUTE_KEY, fullCurrentRoute);
-  }, [currentRoute]);
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-
-    const persistRouteBeforeReload = () => {
-      const legacyHashRoute = resolveLegacyHashRoute(window.location.hash || '');
-      const fullCurrentRoute = legacyHashRoute || `${currentRoute}${window.location.hash || ''}`;
-      window.sessionStorage.setItem(ROUTE_BEFORE_RELOAD_KEY, fullCurrentRoute);
-    };
-
-    window.addEventListener('beforeunload', persistRouteBeforeReload);
-    window.addEventListener('pagehide', persistRouteBeforeReload);
-
-    return () => {
-      window.removeEventListener('beforeunload', persistRouteBeforeReload);
-      window.removeEventListener('pagehide', persistRouteBeforeReload);
-    };
-  }, [currentRoute]);
-
-  React.useEffect(() => {
-    if (
-      isLoading
-      || restoredReloadRouteRef.current
-      || pathname !== '/'
-      || search
-      || typeof window === 'undefined'
-    ) {
-      return;
-    }
-
-    const rawHash = window.location.hash || '';
-    if (rawHash && rawHash !== '#' && rawHash !== '#/') {
-      return;
-    }
-
-    const savedRoute = window.sessionStorage.getItem(ROUTE_BEFORE_RELOAD_KEY)
-      || window.sessionStorage.getItem(LAST_STABLE_ROUTE_KEY);
-
-    const nextRoute = savedRoute ? normalizeStoredRoute(savedRoute) : null;
-
-    if (!nextRoute || nextRoute === '/' || nextRoute === '/auth') {
-      return;
-    }
-
-    restoredReloadRouteRef.current = true;
-    router.replace(nextRoute);
-  }, [isLoading, pathname, router, search]);
-
-  React.useEffect(() => {
-    if (isLoading || currentUser || !shouldRedirectToAuth) {
+    if (isLoading || currentUser || !shouldRedirectToAuth || hasInMemoryAccessToken) {
       return;
     }
 
     window.sessionStorage.setItem('redirectAfterLogin', `${pathname}${window.location.search}${window.location.hash}`);
     router.replace('/auth');
-  }, [currentUser, isLoading, pathname, router, shouldRedirectToAuth]);
+  }, [currentUser, hasInMemoryAccessToken, isLoading, pathname, router, shouldRedirectToAuth]);
 
   React.useEffect(() => {
     if (!pathname.startsWith('/admin') || isLoading || canAccessAdmin) {
@@ -225,13 +160,16 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     }
 
     if (!currentUser) {
+      if (hasInMemoryAccessToken) {
+        return;
+      }
       window.sessionStorage.setItem('redirectAfterLogin', `${pathname}${window.location.search}${window.location.hash}`);
       router.replace('/auth');
       return;
     }
 
-    router.replace('/');
-  }, [canAccessAdmin, currentUser, isLoading, pathname, router]);
+    router.replace('/dashboard');
+  }, [canAccessAdmin, currentUser, hasInMemoryAccessToken, isLoading, pathname, router]);
 
   React.useEffect(() => {
     if (pathname !== '/partner-dashboard' || isLoading || currentUser) {
@@ -241,8 +179,8 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     router.replace('/');
   }, [currentUser, isLoading, pathname, router]);
 
-  if (isLoading) {
-    return <GlobalLoader />;
+  if (isLoading && !allowAuthLoadingPassThrough) {
+    return <GlobalLoader forceVisible />;
   }
 
   if (isMaintenance && !canAccessAdmin && !showLoginBypass) {
@@ -330,8 +268,8 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     );
   }
 
-  if ((pathname.startsWith('/admin') && !canAccessAdmin) || (shouldRedirectToAuth && !currentUser)) {
-    return <GlobalLoader />;
+  if ((pathname.startsWith('/admin') && !canAccessAdmin && !hasInMemoryAccessToken) || (shouldRedirectToAuth && !currentUser && !hasInMemoryAccessToken)) {
+    return <GlobalLoader forceVisible />;
   }
 
   let framedChildren: React.ReactNode = children;

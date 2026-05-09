@@ -40,7 +40,6 @@ import {
   Zap,
 } from 'lucide-react';
 import type { Plan } from '@types';
-import { useData } from '@providers/DataProvider';
 import { getAssetUrl } from '@services/api';
 import { homeTestimonialsService, resolveHomeTestimonials, type HomeTestimonial } from '@services/marketing/homeTestimonials';
 import {
@@ -54,6 +53,7 @@ import {
 } from '@services/plans';
 import { BILLING_CYCLE_OPTIONS, PLAN_COPY_BY_TIER, type LandingBillingCycle } from '../homepageContent';
 import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 const NAV_ITEMS = [
   { label: 'Recursos', href: '#recursos' },
@@ -712,7 +712,8 @@ export const TestimonialsSection = () => {
 };
 
 export const PricingSection = () => {
-  const { systemSettings, isSystemSettingsLoaded } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
   const [billingCycle, setBillingCycle] = React.useState<LandingBillingCycle>('annual');
   const [plans, setPlans] = React.useState<Plan[]>([]);
   const [plansLoaded, setPlansLoaded] = React.useState(false);

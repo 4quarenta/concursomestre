@@ -12,7 +12,7 @@
 */
 
 import React from 'react';
-import { useData } from '@providers/DataProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { Check, ShieldCheck, Star, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { buildProfilePath } from '../profile/profileNavigation';
@@ -23,7 +23,7 @@ interface PromoLandingProps {
 }
 
 const PromoLanding: React.FC<PromoLandingProps> = ({ slug = '' }) => {
-  const { systemSettings } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const router = useRouter();
   const promo = systemSettings.activePromotion;
   const promoEnabled = systemSettings.features.landingPagePromoEnabled;

@@ -12,6 +12,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { Save, Trophy, X } from 'lucide-react';
+import type { Ranking } from '@types';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_MODAL_FOOTER_CLASS,
@@ -22,8 +23,8 @@ import {
 } from '../shared/adminPanelStyles';
 
 interface RankingEditorModalProps {
-  ranking: any;
-  setRanking: React.Dispatch<React.SetStateAction<any | null>>;
+  ranking: Ranking;
+  setRanking: React.Dispatch<React.SetStateAction<Ranking | null>>;
   onClose: () => void;
   onSave: () => void;
 }
@@ -34,8 +35,8 @@ const RankingEditorModal = ({
   onClose,
   onSave,
 }: RankingEditorModalProps) => {
-  const updateRanking = (patch: Record<string, unknown>) => {
-    setRanking((prev: any) => (prev ? { ...prev, ...patch } : prev));
+  const updateRanking = (patch: Partial<Ranking>) => {
+    setRanking((prev) => (prev ? { ...prev, ...patch } : prev));
   };
 
   return createPortal(
@@ -81,11 +82,29 @@ const RankingEditorModal = ({
               />
             </div>
             <div className="space-y-2">
-              <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Vagas imediatas</label>
+              <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Vagas AC</label>
               <input
                 type="number"
-                value={ranking.vacancies}
-                onChange={(event) => updateRanking({ vacancies: Number(event.target.value) })}
+                value={ranking.vacanciesAc}
+                onChange={(event) => updateRanking({ vacanciesAc: Number(event.target.value) })}
+                className={`${ADMIN_FIELD_CLASS} w-full font-semibold`}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Vagas Afro</label>
+              <input
+                type="number"
+                value={ranking.vacanciesAfro}
+                onChange={(event) => updateRanking({ vacanciesAfro: Number(event.target.value) })}
+                className={`${ADMIN_FIELD_CLASS} w-full font-semibold`}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Vagas PCD</label>
+              <input
+                type="number"
+                value={ranking.vacanciesPcd}
+                onChange={(event) => updateRanking({ vacanciesPcd: Number(event.target.value) })}
                 className={`${ADMIN_FIELD_CLASS} w-full font-semibold`}
               />
             </div>
@@ -111,7 +130,7 @@ const RankingEditorModal = ({
               <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Status do gabarito</label>
               <select
                 value={ranking.keyStatus}
-                onChange={(event) => updateRanking({ keyStatus: event.target.value })}
+                onChange={(event) => updateRanking({ keyStatus: event.target.value as Ranking['keyStatus'] })}
                 className={`${ADMIN_FIELD_CLASS} w-full font-semibold`}
               >
                 <option value="pending">Pendente / Preliminar</option>

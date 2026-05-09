@@ -16,10 +16,14 @@ import { AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import type { Prova, Question, SystemSettings } from '@types';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
+import { useConfirm } from '@providers/ModalProvider';
 import { useToast } from '@providers/ToastProvider';
 import { canAccessAdminPanel } from '@services/auth';
 import { filtersService } from '@services/filters';
+import { questionService } from '@services/questions';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
+import { useSystemSettingsActions } from '@/state/app-config/useSystemSettingsActions';
+import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
 import AdminExamEditorPage from '../../../../components/exams/AdminExamEditorPage';
 import AdminStandaloneShell from '../../../../components/shared/AdminStandaloneShell';
 import { createDraftFromProva, createEmptyExamDraft, type ExamDraftState } from '../../../../components/exams/useAdminExamBankWorkflow';
@@ -76,16 +80,12 @@ const AdminExamEditPage = () => {
   const isNew = String(examId) === 'new';
 
   const { currentUser, isLoading: isAuthLoading } = useAuth();
+  const confirm = useConfirm();
   const { addToast } = useToast();
-  const {
-    questions,
-    systemSettings,
-    isSystemSettingsLoaded,
-    updateSystemSettings,
-    saveSystemSettingsNow,
-    updateQuestion,
-    ensureTaxonomiesLoaded,
-  } = useData();
+  const questions = useQuestionBankStore((store) => store.questions);
+  const upsertQuestion = useQuestionBankStore((store) => store.upsertQuestion);
+  const { systemSettings, isSystemSettingsLoaded, updateSystemSettings, saveSystemSettingsNow } = useSystemSettingsActions();
+  const { ensureTaxonomiesLoaded } = useTaxonomyActions();
 
   const [draft, setDraft] = React.useState<ExamDraftState | null>(null);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -145,17 +145,19 @@ const AdminExamEditPage = () => {
         ? removeProvaFromQuestion(question, previousId)
         : applyProvaToQuestion(question, prova as Prova);
 
-      const result = await updateQuestion(nextQuestion as Question);
+      const result = await questionService.updateQuestion(String(nextQuestion.id), nextQuestion as Question);
       if (!result?.success) {
         failures.push(question.id || previousId);
+        continue;
       }
+      upsertQuestion(nextQuestion as Question);
     }
 
     return {
       linkedCount: linkedQuestions.length,
       failures,
     };
-  }, [questions, updateQuestion]);
+  }, [questions, upsertQuestion]);
 
   const ensureExamTaxonomy = React.useCallback(async (
     type: 'banca' | 'orgao',
@@ -315,7 +317,13 @@ const AdminExamEditPage = () => {
       return;
     }
 
-    const confirmed = window.confirm(`Remover "${existingExam.nome}" do banco de provas?`);
+    const confirmed = await confirm({
+      title: 'Remover prova',
+      description: `Remover "${existingExam.nome}" do banco de provas?`,
+      confirmText: 'Remover',
+      cancelText: 'Cancelar',
+      type: 'danger',
+    });
     if (!confirmed) {
       return;
     }
@@ -344,7 +352,7 @@ const AdminExamEditPage = () => {
     } finally {
       setIsDeleting(false);
     }
-  }, [addToast, examBank, existingExam, router, saveSystemSettingsNow, syncLinkedQuestions, systemSettings, updateSystemSettings]);
+  }, [addToast, confirm, examBank, existingExam, router, saveSystemSettingsNow, syncLinkedQuestions, systemSettings, updateSystemSettings]);
 
   const renderAdminShell = (children: React.ReactNode) => (
     <AdminStandaloneShell

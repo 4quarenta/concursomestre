@@ -11,11 +11,67 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, downloadAuthenticatedFile, readApiData, resolveApiResourceUrl } from '@services/api';
 import type { ApiResponse } from '@services/api';
+import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
 import { withQuestionPublicationAliases } from '@services/questions/questionPublication';
 import type { ErrorReport, Question, Ranking, SystemSettings, UserProfile } from '@types';
 
 type FeedbackStatus = 'new' | 'read' | 'resolved';
 type ReportResolution = 'resolved' | 'ignored';
+type AdminLooseRecord = Record<string, unknown>;
+
+const requestApi = <T>(request: Promise<unknown>): Promise<ApiResponse<T>> => request as Promise<ApiResponse<T>>;
+const toLooseRecord = (value: unknown): AdminLooseRecord | undefined => (
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as AdminLooseRecord
+    : undefined
+);
+
+export interface AdminUserProfileRecord extends AdminLooseRecord {
+  id?: string | number;
+  name?: string;
+  email?: string;
+  cpf?: string;
+  phone?: string;
+  target_exam?: string;
+  role?: 'user' | 'staff' | 'partner' | 'admin' | 'tester';
+  status?: 'active' | 'suspended' | 'banned' | 'pending';
+  reputation?: string | number;
+  email_verified?: boolean;
+  has_saved_card?: boolean;
+  photo_url?: string | null;
+}
+
+export interface AdminUserSubscriptionRecord extends AdminLooseRecord {
+  id?: string | number;
+  status?: string;
+  plan_id?: string | number;
+  plan_name?: string;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  auto_renew?: boolean;
+}
+
+export interface AdminUserTransactionRecord extends AdminLooseRecord {
+  id?: string | number;
+  created_at?: string | null;
+  type?: string;
+  amount?: number | string | null;
+  status?: string;
+}
+
+export interface AdminAvailablePlanRecord extends AdminLooseRecord {
+  id?: string | number;
+  name?: string;
+  price?: number | string | null;
+  active?: number | string | boolean;
+}
+
+export interface AdminUserCommentRecord extends AdminLooseRecord {
+  id?: string | number;
+  created_at?: string | null;
+  question_id?: string | number;
+  comment?: string;
+}
 
 export interface AdminFeedbackThread {
   id: number;
@@ -78,9 +134,11 @@ export interface AdminStatsPayload {
   held_balance: number;
   total_paid: number;
   feedback_count: number;
+  reports_count?: number;
   questions_count: number;
   users_count: number;
   materials_count: number;
+  pending_materials_count?: number;
   rankings_count: number;
   available_platform_revenue: number;
   laws_count?: number;
@@ -332,15 +390,15 @@ export interface AdminCommentModerationListPayload {
 }
 
 export interface AdminUserDetailsPayload {
-  profile: Record<string, any>;
-  subscriptions: Record<string, any>[];
-  transactions: Record<string, any>[];
-  available_plans: Record<string, any>[];
-  materials: Record<string, any>[];
+  profile: AdminUserProfileRecord;
+  subscriptions: AdminUserSubscriptionRecord[];
+  transactions: AdminUserTransactionRecord[];
+  available_plans: AdminAvailablePlanRecord[];
+  materials: AdminLooseRecord[];
   stats: {
     comments_count: number;
   };
-  last_comments: Record<string, any>[];
+  last_comments: AdminUserCommentRecord[];
 }
 
 export interface AdminUserActionPayload {
@@ -362,7 +420,7 @@ export interface AdminUserActionPayload {
 
 export interface AdminUserActionResult {
   message?: string;
-  data?: Record<string, any>;
+  data?: AdminLooseRecord;
 }
 
 export interface AdminDatabaseResetPayload {
@@ -378,7 +436,7 @@ export interface AdminTwoFactorSetupPayload {
 
 export interface AdminSettingsTestResult {
   message: string;
-  data?: Record<string, any>;
+  data?: AdminLooseRecord;
 }
 
 export interface AdminQuestionListPayload {
@@ -488,12 +546,10 @@ export const adminService = {
    * @since v1.0.0
    */
   async getPublicSystemSettings(): Promise<Partial<SystemSettings>> {
-    const response = await apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.get, {
-      params: {
-        _: Date.now(),
-      },
-    }) as any;
-    return readApiData(response, {});
+    return withRequestCoalescing('settings:public', async () => {
+      const response = await requestApi<Partial<SystemSettings>>(apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.get));
+      return readApiData(response, {});
+    }, 5000);
   },
 
   /**
@@ -501,12 +557,10 @@ export const adminService = {
    * @since v1.0.0
    */
   async getSystemSettings(): Promise<Partial<SystemSettings>> {
-    const response = await apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.update, {
-      params: {
-        _: Date.now(),
-      },
-    }) as any;
-    return readApiData(response, {});
+    return withRequestCoalescing('settings:admin', async () => {
+      const response = await requestApi<Partial<SystemSettings>>(apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.update));
+      return readApiData(response, {});
+    }, 5000);
   },
 
   /**
@@ -514,7 +568,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async saveSystemSettings(settings: SystemSettings): Promise<Partial<SystemSettings>> {
-    const response = await apiClient.post<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.update, settings) as any;
+    const response = await requestApi<Partial<SystemSettings>>(apiClient.post<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.update, settings));
     const envelope = assertApiSuccess<Partial<SystemSettings>>(response, 'Não foi possível salvar as configurações.');
     return readApiData<Partial<SystemSettings>>(envelope.raw, {});
   },
@@ -524,7 +578,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async getUsers(): Promise<UserProfile[]> {
-    const response = await apiClient.get<ApiResponse<UserProfile[]>>(ENDPOINTS.users.list) as any;
+    const response = await requestApi<UserProfile[]>(apiClient.get<ApiResponse<UserProfile[]>>(ENDPOINTS.users.list));
     const payload = readApiData(response, []);
     return Array.isArray(payload) ? payload : [];
   },
@@ -534,9 +588,15 @@ export const adminService = {
    * @since v1.0.0
    */
   async getReports(): Promise<ErrorReport[]> {
-    const response = await apiClient.get<ApiResponse<ErrorReport[]>>(ENDPOINTS.reports.list) as any;
-    const payload = readApiData(response, []);
-    return Array.isArray(payload) ? payload : [];
+    return withRequestCoalescing(
+      buildRequestCacheKey('admin:reports'),
+      async () => {
+        const response = await requestApi<ErrorReport[]>(apiClient.get<ApiResponse<ErrorReport[]>>(ENDPOINTS.reports.list));
+        const payload = readApiData(response, []);
+        return Array.isArray(payload) ? payload : [];
+      },
+      3_000,
+    );
   },
 
   /**
@@ -544,12 +604,12 @@ export const adminService = {
    * @since v1.0.0
    */
   async moderateReport(id: string, action: ReportResolution, adminReason: string, evidenceUrl?: string): Promise<void> {
-    const response = await apiClient.post<ApiResponse>(ENDPOINTS.admin.reportActions, {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.reportActions, {
       id,
       action,
       admin_reason: adminReason,
       evidence_url: evidenceUrl,
-    }) as any;
+    }));
 
     assertApiSuccess(response, 'Não foi possível moderar a denúncia.');
   },
@@ -559,7 +619,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async updateRanking(ranking: Ranking): Promise<void> {
-    const response = await apiClient.post<ApiResponse>(ENDPOINTS.rankings.update, ranking) as any;
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.rankings.update, ranking));
     assertApiSuccess(response, 'Não foi possível atualizar o ranking.');
   },
 
@@ -568,7 +628,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async deleteRanking(id: string): Promise<void> {
-    const response = await apiClient.post<ApiResponse>(ENDPOINTS.rankings.delete, { id }) as any;
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.rankings.delete, { id }));
     assertApiSuccess(response, 'Não foi possível excluir o ranking.');
   },
 
@@ -577,7 +637,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async getCacheStats(): Promise<CacheStatsPayload> {
-    const response = await apiClient.get<ApiResponse<CacheStatsPayload>>(`${ENDPOINTS.cache.manage}?action=stats`) as any;
+    const response = await requestApi<CacheStatsPayload>(apiClient.get<ApiResponse<CacheStatsPayload>>(`${ENDPOINTS.cache.manage}?action=stats`));
     return readApiData(response, {
       total_files: 0,
       valid_entries: 0,
@@ -597,7 +657,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async toggleCache(enabled: boolean): Promise<string> {
-    const response = await apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=settings`, { enabled }) as any;
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=settings`, { enabled }));
     return assertApiSuccess(response, 'Não foi possível atualizar o cache.').message || 'Configuração do cache atualizada.';
   },
 
@@ -606,7 +666,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async saveCacheSettings(payload: { enabled: boolean; default_ttl: number }): Promise<string> {
-    const response = await apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=settings`, payload) as any;
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=settings`, payload));
     return assertApiSuccess(response, 'Nao foi possivel salvar as configuracoes de cache.').message || 'Configuracoes do cache atualizadas.';
   },
 
@@ -615,7 +675,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async clearCache(): Promise<string> {
-    const response = await apiClient.get<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clear`) as any;
+    const response = await requestApi<unknown>(apiClient.get<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clear`));
     return assertApiSuccess(response, 'Não foi possível limpar o cache.').message || 'Cache limpo com sucesso.';
   },
 
@@ -624,7 +684,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async cleanExpiredCache(): Promise<string> {
-    const response = await apiClient.get<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clean`) as any;
+    const response = await requestApi<unknown>(apiClient.get<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clean`));
     return assertApiSuccess(response, 'Não foi possível limpar o cache expirado.').message || 'Entradas expiradas removidas.';
   },
 
@@ -633,7 +693,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async getSystemLogPayload(): Promise<SystemLogsPayload> {
-    const response = await apiClient.get<ApiResponse<SystemLogsPayload>>(ENDPOINTS.admin.logs) as any;
+    const response = await requestApi<SystemLogsPayload>(apiClient.get<ApiResponse<SystemLogsPayload>>(ENDPOINTS.admin.logs));
     return readApiData(response, {
       lines: [],
       path: '',
@@ -664,7 +724,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async clearSystemLogs(): Promise<SystemLogsPayload> {
-    const response = await apiClient.post<ApiResponse<SystemLogsPayload>>(`${ENDPOINTS.admin.logs}?action=clear`, {}) as any;
+    const response = await requestApi<SystemLogsPayload>(apiClient.post<ApiResponse<SystemLogsPayload>>(`${ENDPOINTS.admin.logs}?action=clear`, {}));
     assertApiSuccess(response, 'Nao foi possivel limpar os logs.');
     return readApiData(response, {
       lines: [],
@@ -684,49 +744,63 @@ export const adminService = {
     startDate?: string;
     endDate?: string;
   }): Promise<AdminStatsPayload> {
-    const query = new URLSearchParams({ period: params.period });
+    const normalizedParams = {
+      period: params.period,
+      ...(params.period === 'custom' && params.startDate ? { startDate: params.startDate } : {}),
+      ...(params.period === 'custom' && params.endDate ? { endDate: params.endDate } : {}),
+    };
 
-    if (params.period === 'custom' && params.startDate && params.endDate) {
-      query.set('startDate', params.startDate);
-      query.set('endDate', params.endDate);
-    }
+    return withRequestCoalescing(
+      buildRequestCacheKey('admin:stats', normalizedParams),
+      async () => {
+        const query = new URLSearchParams({ period: normalizedParams.period });
 
-    const response = await apiClient.get<ApiResponse<AdminStatsPayload>>(`${ENDPOINTS.admin.stats}?${query.toString()}`) as any;
-    return readApiData(response, {
-      total_revenue: 0,
-      available_total_revenue: 0,
-      platform_revenue: 0,
-      subscription_revenue: 0,
-      available_subscription_revenue: 0,
-      marketplace_revenue: 0,
-      active_subscriptions: 0,
-      cancelled_subscriptions: 0,
-      expired_subscriptions: 0,
-      trial_subscriptions: 0,
-      mrr: 0,
-      new_users: 0,
-      seller_payout: 0,
-      available_seller_payout: 0,
-      transactions_count: 0,
-      refund_requests_count: 0,
-      refund_requested_amount: 0,
-      total_refunded: 0,
-      held_balance: 0,
-      total_paid: 0,
-      feedback_count: 0,
-      questions_count: 0,
-      users_count: 0,
-      materials_count: 0,
-      rankings_count: 0,
-      available_platform_revenue: 0,
-      laws_count: 0,
-      comments_count: 0,
-      pending_comments_count: 0,
-      approved_comments_count: 0,
-      spam_comments_count: 0,
-      active_vendors_count: 0,
-      published_marketplace_materials_count: 0,
-    });
+        if (normalizedParams.period === 'custom' && normalizedParams.startDate && normalizedParams.endDate) {
+          query.set('startDate', normalizedParams.startDate);
+          query.set('endDate', normalizedParams.endDate);
+        }
+
+        const response = await requestApi<AdminStatsPayload>(apiClient.get<ApiResponse<AdminStatsPayload>>(`${ENDPOINTS.admin.stats}?${query.toString()}`));
+        return readApiData(response, {
+          total_revenue: 0,
+          available_total_revenue: 0,
+          platform_revenue: 0,
+          subscription_revenue: 0,
+          available_subscription_revenue: 0,
+          marketplace_revenue: 0,
+          active_subscriptions: 0,
+          cancelled_subscriptions: 0,
+          expired_subscriptions: 0,
+          trial_subscriptions: 0,
+          mrr: 0,
+          new_users: 0,
+          seller_payout: 0,
+          available_seller_payout: 0,
+          transactions_count: 0,
+          refund_requests_count: 0,
+          refund_requested_amount: 0,
+          total_refunded: 0,
+          held_balance: 0,
+          total_paid: 0,
+          feedback_count: 0,
+          reports_count: 0,
+          questions_count: 0,
+          users_count: 0,
+          materials_count: 0,
+          pending_materials_count: 0,
+          rankings_count: 0,
+          available_platform_revenue: 0,
+          laws_count: 0,
+          comments_count: 0,
+          pending_comments_count: 0,
+          approved_comments_count: 0,
+          spam_comments_count: 0,
+          active_vendors_count: 0,
+          published_marketplace_materials_count: 0,
+        });
+      },
+      30_000,
+    );
   },
 
   /**
@@ -745,7 +819,7 @@ export const adminService = {
       query.set('endDate', params.endDate);
     }
 
-    const response = await apiClient.get<ApiResponse<AdminFinanceAnalyticsPayload>>(`${ENDPOINTS.admin.analyticsFinance}?${query.toString()}`) as any;
+    const response = await requestApi<AdminFinanceAnalyticsPayload>(apiClient.get<ApiResponse<AdminFinanceAnalyticsPayload>>(`${ENDPOINTS.admin.analyticsFinance}?${query.toString()}`));
     return readApiData(response, {
       period: params.period,
       range: { startDate: null, endDate: null },
@@ -810,28 +884,40 @@ export const adminService = {
     startDate?: string;
     endDate?: string;
   }): Promise<AdminDashboardAnalyticsPayload> {
-    const query = new URLSearchParams({ period: params.period });
-
-    if (params.period === 'custom' && params.startDate && params.endDate) {
-      query.set('startDate', params.startDate);
-      query.set('endDate', params.endDate);
-    }
-
-    const response = await apiClient.get<ApiResponse<AdminDashboardAnalyticsPayload>>(`${ENDPOINTS.admin.analyticsDashboard}?${query.toString()}`) as any;
-    return readApiData(response, {
+    const normalizedParams = {
       period: params.period,
-      counts: {},
-      trends: [],
-      insights: [],
-      funnelSummary: [],
-      billingHealth: {
-        failedPayments: 0,
-        pastDueSubscribers: 0,
-        recoveredSubscribers: 0,
-        refundRequestedCount: 0,
-        refundedCount: 0,
+      ...(params.period === 'custom' && params.startDate ? { startDate: params.startDate } : {}),
+      ...(params.period === 'custom' && params.endDate ? { endDate: params.endDate } : {}),
+    };
+
+    return withRequestCoalescing(
+      buildRequestCacheKey('admin:dashboard-analytics', normalizedParams),
+      async () => {
+        const query = new URLSearchParams({ period: normalizedParams.period });
+
+        if (normalizedParams.period === 'custom' && normalizedParams.startDate && normalizedParams.endDate) {
+          query.set('startDate', normalizedParams.startDate);
+          query.set('endDate', normalizedParams.endDate);
+        }
+
+        const response = await requestApi<AdminDashboardAnalyticsPayload>(apiClient.get<ApiResponse<AdminDashboardAnalyticsPayload>>(`${ENDPOINTS.admin.analyticsDashboard}?${query.toString()}`));
+        return readApiData(response, {
+          period: params.period,
+          counts: {},
+          trends: [],
+          insights: [],
+          funnelSummary: [],
+          billingHealth: {
+            failedPayments: 0,
+            pastDueSubscribers: 0,
+            recoveredSubscribers: 0,
+            refundRequestedCount: 0,
+            refundedCount: 0,
+          },
+        });
       },
-    });
+      30_000,
+    );
   },
 
   /**
@@ -850,7 +936,7 @@ export const adminService = {
       query.set('endDate', params.endDate);
     }
 
-    const response = await apiClient.get<ApiResponse<Pick<AdminFinanceAnalyticsPayload, 'period' | 'range' | 'funnel' | 'funnelDetails' | 'conversionByCycle'>>>(`${ENDPOINTS.admin.analyticsFunnel}?${query.toString()}`) as any;
+    const response = await requestApi<Pick<AdminFinanceAnalyticsPayload, 'period' | 'range' | 'funnel' | 'funnelDetails' | 'conversionByCycle'>>(apiClient.get<ApiResponse<Pick<AdminFinanceAnalyticsPayload, 'period' | 'range' | 'funnel' | 'funnelDetails' | 'conversionByCycle'>>>(`${ENDPOINTS.admin.analyticsFunnel}?${query.toString()}`));
     return readApiData(response, {
       period: params.period,
       range: { startDate: null, endDate: null },
@@ -886,7 +972,7 @@ export const adminService = {
       query.set('endDate', params.endDate);
     }
 
-    const response = await apiClient.get<ApiResponse<{ period: string; range: AdminAnalyticsRange; segments: AdminLeadSegment[] }>>(`${ENDPOINTS.admin.analyticsSegments}?${query.toString()}`) as any;
+    const response = await requestApi<{ period: string; range: AdminAnalyticsRange; segments: AdminLeadSegment[] }>(apiClient.get<ApiResponse<{ period: string; range: AdminAnalyticsRange; segments: AdminLeadSegment[] }>>(`${ENDPOINTS.admin.analyticsSegments}?${query.toString()}`));
     return readApiData(response, {
       period: params.period,
       range: { startDate: null, endDate: null },
@@ -913,24 +999,30 @@ export const adminService = {
     page?: number;
     perPage?: number;
   }): Promise<AdminCommentModerationListPayload> {
-    const response = await apiClient.get<ApiResponse<AdminCommentModerationListPayload>>(ENDPOINTS.admin.commentsModeration, {
-      params: {
-        status: params.status || 'pending',
-        origin: params.origin || 'all',
-        search: params.search || '',
-        page: params.page || 1,
-        perPage: params.perPage || 20,
-      },
-    }) as any;
+    return withRequestCoalescing(
+      buildRequestCacheKey('admin:comments-moderation', params),
+      async () => {
+        const response = await requestApi<AdminCommentModerationListPayload>(apiClient.get<ApiResponse<AdminCommentModerationListPayload>>(ENDPOINTS.admin.commentsModeration, {
+          params: {
+            status: params.status || 'pending',
+            origin: params.origin || 'all',
+            search: params.search || '',
+            page: params.page || 1,
+            perPage: params.perPage || 20,
+          },
+        }));
 
-    return normalizeCommentModerationPayload(readApiData(response, {
-      items: [],
-      total: 0,
-      page: params.page || 1,
-      perPage: params.perPage || 20,
-      pages: 1,
-      counts: EMPTY_COMMENT_MODERATION_COUNTS,
-    }), params.page || 1, params.perPage || 20);
+        return normalizeCommentModerationPayload(readApiData(response, {
+          items: [],
+          total: 0,
+          page: params.page || 1,
+          perPage: params.perPage || 20,
+          pages: 1,
+          counts: EMPTY_COMMENT_MODERATION_COUNTS,
+        }), params.page || 1, params.perPage || 20);
+      },
+      3_000,
+    );
   },
 
   /**
@@ -938,7 +1030,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async updateModerationComment(id: string, status: AdminCommentModerationStatus): Promise<AdminCommentModerationItem> {
-    const response = await apiClient.post<ApiResponse<AdminCommentModerationItem>>(ENDPOINTS.admin.commentsModeration, { id, status }) as any;
+    const response = await requestApi<AdminCommentModerationItem>(apiClient.post<ApiResponse<AdminCommentModerationItem>>(ENDPOINTS.admin.commentsModeration, { id, status }));
     const envelope = assertApiSuccess<AdminCommentModerationItem>(response, 'Nao foi possivel atualizar o comentario.');
     return readApiData<AdminCommentModerationItem>(envelope.raw, {
       id,
@@ -960,7 +1052,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async bulkUpdateModerationComments(ids: string[], status: AdminCommentModerationStatus): Promise<{ updated: number }> {
-    const response = await apiClient.post<ApiResponse<{ updated: number }>>(ENDPOINTS.admin.commentsModerationBulk, { ids, status }) as any;
+    const response = await requestApi<{ updated: number }>(apiClient.post<ApiResponse<{ updated: number }>>(ENDPOINTS.admin.commentsModerationBulk, { ids, status }));
     return readApiData(
       assertApiSuccess(response, 'Nao foi possivel atualizar os comentarios selecionados.').raw,
       { updated: 0 },
@@ -975,12 +1067,12 @@ export const adminService = {
     page?: number;
     keyword?: string;
   }): Promise<AdminQuestionListPayload> {
-    const response = await apiClient.get<ApiResponse<AdminQuestionListPayload>>(ENDPOINTS.questions.filter, {
+    const response = await requestApi<AdminQuestionListPayload>(apiClient.get<ApiResponse<AdminQuestionListPayload>>(ENDPOINTS.questions.filter, {
       params: {
         page: String(params.page || 1),
         keyword: params.keyword || '',
       },
-    }) as any;
+    }));
 
     const payload = readApiData(response, {
       rows: [],
@@ -1004,14 +1096,14 @@ export const adminService = {
    * @since v1.0.0
    */
   async getQuestionGroups(params: { keyword?: string } = {}): Promise<AdminQuestionGroupItem[]> {
-    const response = await apiClient.get<ApiResponse<{ items?: AdminQuestionGroupItem[] } | AdminQuestionGroupItem[]>>(
+    const response = await requestApi<{ items?: AdminQuestionGroupItem[] } | AdminQuestionGroupItem[]>(apiClient.get<ApiResponse<{ items?: AdminQuestionGroupItem[] } | AdminQuestionGroupItem[]>>(
       ENDPOINTS.questions.groups,
       {
         params: {
           keyword: params.keyword || '',
         },
       },
-    ) as any;
+    ));
 
     const payload = readApiData(response, { items: [] as AdminQuestionGroupItem[] });
     const items = Array.isArray(payload) ? payload : payload.items;
@@ -1023,7 +1115,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async saveQuestionGroup(payload: AdminQuestionGroupPayload): Promise<AdminQuestionGroupItem> {
-    const response = await apiClient.post<ApiResponse<AdminQuestionGroupItem>>(ENDPOINTS.questions.groups, payload) as any;
+    const response = await requestApi<AdminQuestionGroupItem>(apiClient.post<ApiResponse<AdminQuestionGroupItem>>(ENDPOINTS.questions.groups, payload));
     const envelope = assertApiSuccess<AdminQuestionGroupItem>(response, 'Nao foi possivel salvar o contexto de questoes.');
     return readApiData<AdminQuestionGroupItem>(envelope.raw, {
       id: Number(payload.id || 0),
@@ -1044,10 +1136,10 @@ export const adminService = {
     formData.append('action', 'upload_image');
     formData.append('image', file);
 
-    const response = await apiClient.post<ApiResponse<{ url?: string; image_url?: string; imageUrl?: string }>>(
+    const response = await requestApi<{ url?: string; image_url?: string; imageUrl?: string }>(apiClient.post<ApiResponse<{ url?: string; image_url?: string; imageUrl?: string }>>(
       ENDPOINTS.questions.groups,
       formData,
-    ) as any;
+    ));
     const envelope = assertApiSuccess<{ url?: string; image_url?: string; imageUrl?: string }>(
       response,
       'Nao foi possivel enviar a imagem do contexto.',
@@ -1067,7 +1159,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async deleteQuestionGroup(id: string | number): Promise<void> {
-    const response = await apiClient.post<ApiResponse>(ENDPOINTS.questions.groups, { action: 'delete', id }) as any;
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.questions.groups, { action: 'delete', id }));
     assertApiSuccess(response, 'Nao foi possivel remover o contexto de questoes.');
   },
 
@@ -1076,7 +1168,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async getUserDetails(userId: string): Promise<AdminUserDetailsPayload> {
-    const response = await apiClient.get<ApiResponse<AdminUserDetailsPayload>>(`${ENDPOINTS.admin.userDetails}?id=${userId}`) as any;
+    const response = await requestApi<AdminUserDetailsPayload>(apiClient.get<ApiResponse<AdminUserDetailsPayload>>(`${ENDPOINTS.admin.userDetails}?id=${userId}`));
     return readApiData(response, {
       profile: {},
       subscriptions: [],
@@ -1095,11 +1187,11 @@ export const adminService = {
    * @since v1.0.0
    */
   async performUserActionWithResult(payload: AdminUserActionPayload): Promise<AdminUserActionResult> {
-    const response = await apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload) as any;
+    const response = await requestApi<AdminLooseRecord>(apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload));
     const result = assertApiSuccess(response, 'Nao foi possivel executar a acao administrativa.');
     return {
       message: result.message,
-      data: result.data,
+      data: toLooseRecord(result.data),
     };
   },
 
@@ -1108,7 +1200,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async performUserAction(payload: AdminUserActionPayload): Promise<void> {
-    const response = await apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload) as any;
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload));
     assertApiSuccess(response, 'Não foi possível executar a ação administrativa.');
   },
 
@@ -1117,7 +1209,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async listResettableTables(): Promise<string[]> {
-    const response = await apiClient.get<ApiResponse<{ tables: string[] }>>(ENDPOINTS.admin.listTables) as any;
+    const response = await requestApi<{ tables: string[] }>(apiClient.get<ApiResponse<{ tables: string[] }>>(ENDPOINTS.admin.listTables));
     return readApiData(response, { tables: [] }).tables || [];
   },
 
@@ -1126,7 +1218,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async setupTwoFactor(): Promise<AdminTwoFactorSetupPayload> {
-    const response = await apiClient.get<ApiResponse<AdminTwoFactorSetupPayload>>(ENDPOINTS.auth.setupTwoFactor) as any;
+    const response = await requestApi<AdminTwoFactorSetupPayload>(apiClient.get<ApiResponse<AdminTwoFactorSetupPayload>>(ENDPOINTS.auth.setupTwoFactor));
     return readApiData(response, {
       secret: '',
       qrCodeUrl: '',
@@ -1138,10 +1230,10 @@ export const adminService = {
    * @since v1.0.0
    */
   async enableTwoFactor(secret: string, code: string): Promise<string> {
-    const response = await apiClient.post<ApiResponse>(ENDPOINTS.auth.enableTwoFactor, {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.auth.enableTwoFactor, {
       secret,
       code,
-    }) as any;
+    }));
 
     return assertApiSuccess(response, 'Não foi possível ativar o 2FA.').message || '2FA ativado com sucesso!';
   },
@@ -1151,7 +1243,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async resetDatabase(payload: AdminDatabaseResetPayload): Promise<void> {
-    const response = await apiClient.post<ApiResponse>(ENDPOINTS.admin.resetDatabase, payload) as any;
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.resetDatabase, payload));
     assertApiSuccess(response, 'Não foi possível resetar a base de dados.');
   },
 
@@ -1159,12 +1251,12 @@ export const adminService = {
    * Dispara um teste real do SMTP com o endpoint oficial de settings.
    * @since v1.0.0
    */
-  async testSmtpSettings(payload: Record<string, any>): Promise<AdminSettingsTestResult> {
-    const response = await apiClient.post<ApiResponse>(`${ENDPOINTS.settings.update}?action=test_smtp`, payload) as any;
+  async testSmtpSettings(payload: object): Promise<AdminSettingsTestResult> {
+    const response = await requestApi<AdminLooseRecord>(apiClient.post<ApiResponse>(`${ENDPOINTS.settings.update}?action=test_smtp`, payload));
     const result = assertApiSuccess(response, 'Nao foi possivel testar o SMTP.');
     return {
       message: result.message || 'SMTP validado com sucesso.',
-      data: result.data,
+      data: toLooseRecord(result.data),
     };
   },
 
@@ -1172,12 +1264,12 @@ export const adminService = {
    * Executa uma checagem administrativa das integracoes configuradas.
    * @since v1.0.0
    */
-  async testIntegrations(payload: Record<string, any>): Promise<AdminSettingsTestResult> {
-    const response = await apiClient.post<ApiResponse>(`${ENDPOINTS.settings.update}?action=test_integrations`, payload) as any;
+  async testIntegrations(payload: object): Promise<AdminSettingsTestResult> {
+    const response = await requestApi<AdminLooseRecord>(apiClient.post<ApiResponse>(`${ENDPOINTS.settings.update}?action=test_integrations`, payload));
     const result = assertApiSuccess(response, 'Nao foi possivel validar as integracoes.');
     return {
       message: result.message || 'Integracoes verificadas com sucesso.',
-      data: result.data,
+      data: toLooseRecord(result.data),
     };
   },
 
@@ -1186,8 +1278,14 @@ export const adminService = {
    * @since v1.0.0
    */
   async getFeedbackThreads(): Promise<AdminFeedbackThread[]> {
-    const response = await apiClient.get<ApiResponse<{ items: AdminFeedbackThread[] }>>(ENDPOINTS.admin.feedback) as any;
-    return readApiData(response, { items: [] }).items || [];
+    return withRequestCoalescing(
+      buildRequestCacheKey('admin:feedback-threads'),
+      async () => {
+        const response = await requestApi<{ items: AdminFeedbackThread[] }>(apiClient.get<ApiResponse<{ items: AdminFeedbackThread[] }>>(ENDPOINTS.admin.feedback));
+        return readApiData(response, { items: [] }).items || [];
+      },
+      15_000,
+    );
   },
 
   /**
@@ -1195,7 +1293,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async updateFeedbackStatus(id: number, status: FeedbackStatus): Promise<void> {
-    const response = await apiClient.put<ApiResponse>(ENDPOINTS.admin.feedback, { id, status }) as any;
+    const response = await requestApi<unknown>(apiClient.put<ApiResponse>(ENDPOINTS.admin.feedback, { id, status }));
     assertApiSuccess(response, 'Não foi possível atualizar o feedback.');
   },
 
@@ -1204,7 +1302,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async getFeedbackReplies(parentId: number): Promise<AdminFeedbackReply[]> {
-    const response = await apiClient.get<ApiResponse<{ replies: AdminFeedbackReply[] }>>(`${ENDPOINTS.admin.feedback}?id=${parentId}`) as any;
+    const response = await requestApi<{ replies: AdminFeedbackReply[] }>(apiClient.get<ApiResponse<{ replies: AdminFeedbackReply[] }>>(`${ENDPOINTS.admin.feedback}?id=${parentId}`));
     return readApiData(response, { replies: [] }).replies || [];
   },
 
@@ -1213,10 +1311,10 @@ export const adminService = {
    * @since v1.0.0
    */
   async replyToFeedback(parentId: number, details: string): Promise<void> {
-    const response = await apiClient.post<ApiResponse>(ENDPOINTS.admin.feedback, {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.feedback, {
       parent_id: parentId,
       details,
-    }) as any;
+    }));
 
     assertApiSuccess(response, 'Não foi possível enviar a resposta.');
   },

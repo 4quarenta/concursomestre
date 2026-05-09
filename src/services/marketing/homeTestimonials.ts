@@ -1,4 +1,5 @@
 import { apiClient, readApiData, ENDPOINTS } from '@services/api';
+import { withRequestCoalescing } from '@services/api/requestCoalescer';
 
 export type HomeTestimonial = {
   id: string;
@@ -118,8 +119,10 @@ export const resolveHomeTestimonials = (approvedTestimonials: HomeTestimonial[])
 
 export const homeTestimonialsService = {
   async getApproved(): Promise<HomeTestimonial[]> {
-    const response = await apiClient.get<unknown>(ENDPOINTS.feedback.testimonials);
-    return normalizeHomeTestimonials(readApiData<unknown>(response, {}));
+    return withRequestCoalescing('marketing:home-testimonials', async () => {
+      const response = await apiClient.get<unknown>(ENDPOINTS.feedback.testimonials);
+      return normalizeHomeTestimonials(readApiData<unknown>(response, {}));
+    }, 5000);
   },
 };
 

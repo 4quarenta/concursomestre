@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { Bell, Menu, Moon, Plus, Search, Sun } from 'lucide-react';
-import { NotificationDropdown } from './NotificationDropdown';
+import { NotificationDropdown, type AdminNotificationItem } from './NotificationDropdown';
 import { buildProfilePath } from '../../../profile/profileNavigation';
 
 export interface AdminTopBarSearchTarget {
@@ -28,8 +28,8 @@ interface AdminTopBarProps {
   isNotifOpen: boolean;
   setIsNotifOpen: React.Dispatch<React.SetStateAction<boolean>>;
   onCloseNotifications: () => void;
-  notifications: any[];
-  markNotificationAsRead: (id: string | number) => Promise<any> | any;
+  notifications: AdminNotificationItem[];
+  markNotificationAsRead: (id: AdminNotificationItem['id']) => Promise<unknown> | unknown;
   unreadCount: number;
   navigate: (path: string) => void;
   currentUserName?: string;

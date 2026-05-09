@@ -192,7 +192,7 @@ describe('auth session manager', () => {
     expect(session.getAccessToken()).toBe(refreshedToken);
   });
 
-  it('faz bootstrap pela dupla refresh + auth/me quando existe cookie de sessão', async () => {
+  it('faz bootstrap só com refresh quando a API já devolve o usuário', async () => {
     cookieJar = 'cm_csrf=test-csrf';
     const futureExp = Math.floor(Date.now() / 1000) + 1800;
 
@@ -210,22 +210,14 @@ describe('auth session manager', () => {
         success: true,
         data: {
           token: refreshedToken,
-          session: {
-            id: 'session-bootstrap',
-            accessExpiresIn: 900,
-          },
-        },
-      },
-    });
-
-    mockGet.mockResolvedValue({
-      data: {
-        success: true,
-        data: {
           user: {
             id: 'user-bootstrap',
             name: 'Bootstrap',
             email: 'bootstrap@teste.com',
+          },
+          session: {
+            id: 'session-bootstrap',
+            accessExpiresIn: 900,
           },
         },
       },
@@ -236,8 +228,8 @@ describe('auth session manager', () => {
 
     expect(mockPost).toHaveBeenCalledTimes(1);
     expect(mockPost.mock.calls[0]?.[0]).toBe('auth/refresh.php');
-    expect(mockGet).toHaveBeenCalledTimes(1);
-    expect(mockGet.mock.calls[0]?.[0]).toBe('auth/me.php');
+    expect(mockPost.mock.calls[0]?.[1]).toMatchObject({ includeUser: true });
+    expect(mockGet).not.toHaveBeenCalled();
     expect(snapshot.isAuthenticated).toBe(true);
     expect(snapshot.currentUser?.id).toBe('user-bootstrap');
     expect(session.getAccessToken()).toBe(refreshedToken);

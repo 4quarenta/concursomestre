@@ -10,11 +10,11 @@
 */
 
 import { useMemo } from 'react';
-import type { ErrorReport, Material } from '@types';
+import type { ErrorReport, Material, UserProfile } from '@types';
 import { groupPendingReports } from '../reports/reportModeration';
 
 interface UseAdminDatabaseDatasetsOptions {
-  allUsers: any[];
+  allUsers: UserProfile[];
   allMaterials: Material[];
   allReports: ErrorReport[];
   filter: string;
@@ -33,7 +33,7 @@ export const useAdminDatabaseDatasets = ({
   const filteredUsers = useMemo(() => {
     if (!normalizedFilter) return allUsers;
 
-    return allUsers.filter((user: any) => {
+    return allUsers.filter((user) => {
       const name = normalizeText(user.name);
       const email = normalizeText(user.email);
       return name.includes(normalizedFilter) || email.includes(normalizedFilter);
@@ -53,7 +53,7 @@ export const useAdminDatabaseDatasets = ({
   }, [allMaterials]);
 
   const groupedReports = useMemo(() => {
-    return groupPendingReports(allReports as ErrorReport[]);
+    return groupPendingReports(allReports);
   }, [allReports]);
 
   return {

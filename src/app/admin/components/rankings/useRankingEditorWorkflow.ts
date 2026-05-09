@@ -10,22 +10,23 @@
 */
 
 import { useState } from 'react';
+import type { Ranking } from '@types';
 import { readApiErrorMessage } from '@services/api';
 
 type ToastHandler = (message: string, type?: string) => void;
 
 interface UseRankingEditorWorkflowOptions {
   addToast: ToastHandler;
-  updateRanking: (ranking: any) => Promise<void> | void;
+  updateRanking: (ranking: Ranking) => Promise<void> | void;
 }
 
 export const useRankingEditorWorkflow = ({
   addToast,
   updateRanking,
 }: UseRankingEditorWorkflowOptions) => {
-  const [editingRanking, setEditingRanking] = useState<any | null>(null);
+  const [editingRanking, setEditingRanking] = useState<Ranking | null>(null);
 
-  const openRankingEditor = (ranking: any) => {
+  const openRankingEditor = (ranking: Ranking) => {
     setEditingRanking(ranking);
   };
 

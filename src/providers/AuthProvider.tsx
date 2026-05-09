@@ -53,6 +53,7 @@ const EDITABLE_PROFILE_FIELDS: Array<keyof UserProfile> = [
   'name',
   'email',
   'cpf',
+  'phone',
   'address',
   'bankAccount',
   'targetExam',
@@ -202,6 +203,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   React.useEffect(() => {
     const unsubscribe = subscribeToAuthSession((snapshot) => {
       if (!snapshot.isBootstrapped) {
+        return;
+      }
+
+      // Durante o bootstrap pode existir token renovado antes de resolver o usuario.
+      // Nesse estado transitorio evitamos derrubar para LOGOUT e aguardamos o fetch de /auth/me.
+      if (snapshot.accessToken && !snapshot.currentUser) {
         return;
       }
 
@@ -406,6 +413,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     try {
       const user = await fetchAuthenticatedUser();
+      updateCurrentUserSnapshot(user);
       dispatch({ type: 'LOGIN', payload: user });
     } catch (err) {
       console.error('Failed to refresh user data:', err);

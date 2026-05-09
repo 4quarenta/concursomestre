@@ -10,6 +10,7 @@
 */
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
 import { reportsService } from '@services/reports';
 import type { ApiResponse } from '@services/api';
 import type { QuestaoComentario } from 'types';
@@ -43,18 +44,20 @@ export const commentService = {
    * @since 1.0.0
    */
   async getComments(targetId: string, userId?: string): Promise<QuestaoComentario[]> {
-    const response = await apiClient.get<any>(
-      ENDPOINTS.comments.list,
-      {
-        params: {
-          target_id: targetId,
-          user_id: userId || '',
+    return withRequestCoalescing(buildRequestCacheKey('comments:list', { targetId, userId: userId || '' }), async () => {
+      const response = await apiClient.get<any>(
+        ENDPOINTS.comments.list,
+        {
+          params: {
+            target_id: targetId,
+            user_id: userId || '',
+          },
         },
-      },
-    ) as any;
+      ) as any;
 
-    const comments = readApiData<QuestaoComentario[]>(response, []);
-    return Array.isArray(comments) ? comments : [];
+      const comments = readApiData<QuestaoComentario[]>(response, []);
+      return Array.isArray(comments) ? comments : [];
+    }, 2500);
   },
 
   /**
@@ -63,13 +66,15 @@ export const commentService = {
    * @since 1.0.0
    */
   async getUserComments(userId: string): Promise<QuestaoComentario[]> {
-    const response = await apiClient.get<any>(
-      ENDPOINTS.users.comments,
-      { params: { user_id: userId } },
-    ) as any;
+    return withRequestCoalescing(buildRequestCacheKey('comments:user', { userId }), async () => {
+      const response = await apiClient.get<any>(
+        ENDPOINTS.users.comments,
+        { params: { user_id: userId } },
+      ) as any;
 
-    const comments = readApiData<QuestaoComentario[]>(response, []);
-    return Array.isArray(comments) ? comments : [];
+      const comments = readApiData<QuestaoComentario[]>(response, []);
+      return Array.isArray(comments) ? comments : [];
+    }, 4000);
   },
 
   /**

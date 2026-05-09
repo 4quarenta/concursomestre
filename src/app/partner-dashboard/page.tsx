@@ -28,7 +28,6 @@ import {
 import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import { useToast } from '@providers/ToastProvider';
 import ProgressBar from '../../components/shared/ui/ProgressBar';
@@ -37,6 +36,9 @@ import { useTheme } from '@providers/ThemeProvider';
 import { DashboardSidebar } from '../../components/shared/layout/DashboardSidebar';
 import Footer from '../../components/shared/layout/Footer';
 import { getAssetUrl } from '@services/api';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useNotificationsStore } from '@/state/notifications/notificationsStore';
+import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
 
 type FinanceSubTab = 'extrato' | 'pagamentos' | 'saque';
 
@@ -139,7 +141,9 @@ const PartnerNotificationDropdown: React.FC<PartnerNotificationDropdownProps> = 
 const PartnerDashboard: React.FC = () => {
   const { materials, transactions, publishMaterial, updateMaterial, uploadFile, uploadProgress, addMaterialComment } = useMarketplace();
   const { currentUser, becomePartner, updateUser } = useAuth();
-  const { systemSettings, notifications, markNotificationAsRead } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
+  const notifications = useNotificationsStore((state) => state.notifications);
+  const { markNotificationAsRead } = useNotificationsActions();
   const { addToast } = useToast();
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();

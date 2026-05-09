@@ -10,6 +10,7 @@
 */
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { Question } from '@types';
 
 type RawFilterNode = Record<string, unknown>;
@@ -209,16 +210,16 @@ export const normalizeCareerSelectorLabel = (value: unknown) => {
 
   const trailingGroupMatch = rawValue.match(/^(.+?)\s*\(([^()]+)\)$/);
   if (!trailingGroupMatch) {
-    return rawValue;
+    const [baseLabel] = rawValue.split('/');
+    return String(baseLabel || rawValue).trim();
   }
 
   const baseLabel = trailingGroupMatch[1].trim();
-  const detailLabel = trailingGroupMatch[2].trim();
-  if (!baseLabel || !detailLabel) {
+  if (!baseLabel) {
     return rawValue;
   }
 
-  return `${baseLabel} / ${detailLabel}`;
+  return baseLabel;
 };
 
 export const isEnemQuestion = (question: Question) => {
@@ -365,8 +366,14 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
 
 export const filtersService = {
   async list(): Promise<FiltersApiPayload> {
-    const response = await apiClient.get<FiltersApiPayload>(ENDPOINTS.filters.list);
-    return readApiData<FiltersApiPayload>(response, {});
+    return withRequestCoalescing(
+      buildRequestCacheKey('filters:list'),
+      async () => {
+        const response = await apiClient.get<FiltersApiPayload>(ENDPOINTS.filters.list);
+        return readApiData<FiltersApiPayload>(response, {});
+      },
+      60_000,
+    );
   },
 
   async listTaxonomies() {

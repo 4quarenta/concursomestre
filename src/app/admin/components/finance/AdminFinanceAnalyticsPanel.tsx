@@ -259,6 +259,62 @@ const AdminFinanceAnalyticsPanel = () => {
       .slice(0, 8)
   ), [segments]);
 
+  const paymentFailedSegment = useMemo(
+    () => segments.find((segment) => segment.key === 'payment_failed'),
+    [segments],
+  );
+
+  const subscriberAtRiskSegment = useMemo(
+    () => segments.find((segment) => segment.key === 'subscriber_at_risk'),
+    [segments],
+  );
+
+  const riskSubscribers = useMemo(() => {
+    const projectionRiskRows = payload.revenueProjection.items
+      .filter((item) => String(item.status || '').toLowerCase() === 'past_due')
+      .map((item) => ({
+        source: 'Past due',
+        userName: String(item.userName || '').trim() || 'Usuario sem nome',
+        userEmail: String(item.userEmail || '').trim() || '-',
+        lastSignalAt: item.nextBillingAt || item.currentPeriodEnd || null,
+        note: `Plano ${item.planName || '-'} • ${item.remainingInstallments || 0} parcela(s) restante(s) • proxima cobranca ${formatDate(item.nextBillingAt || item.currentPeriodEnd || null)}`,
+      }));
+
+    const segmentRiskRows = (subscriberAtRiskSegment?.items || []).map((item) => ({
+      source: 'Risco de churn',
+      userName: String(item.name || '').trim() || 'Usuario sem nome',
+      userEmail: String(item.email || '').trim() || '-',
+      lastSignalAt: item.lastEventAt || null,
+      note: String(item.notes || '').trim() || 'Assinante com risco de churn.',
+    }));
+
+    const uniqueRows = new Map<string, {
+      source: string;
+      userName: string;
+      userEmail: string;
+      note: string;
+      lastSignalAt: string | null;
+    }>();
+    [...projectionRiskRows, ...segmentRiskRows].forEach((row) => {
+      const key = `${row.userEmail.toLowerCase()}|${row.userName.toLowerCase()}`;
+      if (!uniqueRows.has(key)) {
+        uniqueRows.set(key, row);
+      }
+    });
+
+    return Array.from(uniqueRows.values()).slice(0, 10);
+  }, [payload.revenueProjection.items, subscriberAtRiskSegment]);
+
+  const failedPaymentRows = useMemo(() => (
+    (paymentFailedSegment?.items || []).map((item) => ({
+      source: 'Falha de pagamento',
+      userName: String(item.name || '').trim() || 'Usuario sem nome',
+      userEmail: String(item.email || '').trim() || '-',
+      note: String(item.notes || '').trim() || 'Falha de cobranca identificada.',
+      lastSignalAt: item.lastEventAt || null,
+    }))
+  ), [paymentFailedSegment]);
+
   const copyVisibleEmails = async () => {
     if (visibleEmails.length === 0) {
       addToast('Ainda não há emails visíveis para copiar.', 'info');
@@ -625,6 +681,50 @@ const AdminFinanceAnalyticsPanel = () => {
           </div>
         </SectionCard>
       </div>
+
+      <SectionCard
+        title="Cobrança em risco (quem e por quê)"
+        description="Assinantes com falha recente, past_due e sinais de risco para acompanhamento do financeiro."
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left">
+            <thead className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+              <tr>
+                <th className="pb-3 pr-4">Usuário</th>
+                <th className="pb-3 pr-4">Email</th>
+                <th className="pb-3 pr-4">Sinal</th>
+                <th className="pb-3">Último evento</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...failedPaymentRows, ...riskSubscribers].length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="border-t border-slate-200 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    Nenhum usuário em risco no recorte atual.
+                  </td>
+                </tr>
+              ) : (
+                [...failedPaymentRows, ...riskSubscribers]
+                  .slice(0, 16)
+                  .map((row, index) => (
+                    <tr key={`${row.userEmail}-${row.userName}-${index}`} className="border-t border-slate-200 dark:border-slate-800">
+                      <td className="py-3 pr-4 text-sm font-medium text-slate-900 dark:text-slate-100">{row.userName}</td>
+                      <td className="py-3 pr-4 text-sm text-slate-600 dark:text-slate-300">{row.userEmail}</td>
+                      <td className="py-3 pr-4">
+                        <span className="inline-flex max-w-[360px] items-center gap-2 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+                          {row.source}: {row.note}
+                        </span>
+                      </td>
+                      <td className="py-3 text-sm text-slate-500 dark:text-slate-400">
+                        {formatDateTime(row.lastSignalAt)}
+                      </td>
+                    </tr>
+                  ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <SectionCard

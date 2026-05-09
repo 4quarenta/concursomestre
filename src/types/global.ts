@@ -378,6 +378,7 @@ export interface UserProfile {
   email: string;
   emailVerified: boolean;
   cpf?: string;
+  phone?: string;
   address?: Address;
   bankAccount?: BankAccount;
   targetExam: string;
@@ -708,7 +709,17 @@ export type PlanBenefitKey =
   | 'xray_banca'
   | 'mentor_chat'
   | 'priority_support'
-  | 'early_access';
+  | 'early_access'
+  | 'lei.comentario_basico'
+  | 'lei.macete'
+  | 'lei.como_cai'
+  | 'lei.jurisprudencia'
+  | 'lei.frequencia'
+  | 'lei.questoes'
+  | 'lei.flashcards'
+  | 'lei.raiox'
+  | 'lei.anotacoes'
+  | 'lei.conexoes';
 
 export interface PlanBenefitDefinition {
   key: PlanBenefitKey;
@@ -736,7 +747,46 @@ export type PlanUsageLimitKey =
   | 'simulations_per_week'
   | 'simulations_per_month'
   | 'ai_explanations_per_day'
-  | 'saved_questions_limit';
+  | 'saved_questions_limit'
+  | 'lei_related_questions_limit'
+  | 'lei_flashcards_limit'
+  | 'lei_annotations_limit';
+
+export type LegalCommentaryFeatureKey =
+  | 'lei.texto'
+  | 'lei.comentario_basico'
+  | 'lei.macete'
+  | 'lei.como_cai'
+  | 'lei.jurisprudencia'
+  | 'lei.frequencia'
+  | 'lei.questoes'
+  | 'lei.flashcards'
+  | 'lei.raiox'
+  | 'lei.anotacoes'
+  | 'lei.conexoes';
+
+export type LegalCommentaryFeatureConfigurableKey = Exclude<LegalCommentaryFeatureKey, 'lei.texto'>;
+
+export type LegalCommentaryFeatureFallbackMode = 'preview' | 'locked' | 'hidden';
+
+export interface LegalCommentaryFeatureConfigEntry {
+  fallbackMode: LegalCommentaryFeatureFallbackMode;
+}
+
+export type LegalCommentaryFeatureConfig = Record<
+  LegalCommentaryFeatureConfigurableKey,
+  LegalCommentaryFeatureConfigEntry
+>;
+
+export interface LegalCommentaryFeatureAccessState {
+  feature_key: LegalCommentaryFeatureKey;
+  requires_plan: PlanName;
+  enabled: boolean;
+  mode: 'full' | LegalCommentaryFeatureFallbackMode;
+  fallback_mode: 'full' | LegalCommentaryFeatureFallbackMode;
+  limit_key?: PlanUsageLimitKey | null;
+  limit_value?: number | null;
+}
 
 export interface PlanUsageLimitDefinition {
   key: PlanUsageLimitKey;
@@ -812,6 +862,17 @@ export interface StripePaymentMethodsSettings {
   methods: StripePaymentMethodSetting[];
 }
 
+export interface EmailTemplateModel {
+  key: string;
+  name: string;
+  description: string;
+  subject: string;
+  htmlBody: string;
+  textBody: string;
+  enabled: boolean;
+  updatedAt?: string;
+}
+
 export interface SystemSettings {
   appName?: string;
   activeTheme: AppPromotionTheme;
@@ -833,6 +894,7 @@ export interface SystemSettings {
   };
   planEntitlements?: PlanEntitlements;
   planUsageLimits?: PlanUsageLimits;
+  legalCommentaryFeatureConfig?: LegalCommentaryFeatureConfig;
   activePromotion: Promotion;
   limitedOfferCountdown: LimitedOfferCountdownSettings;
   landingPageContent?: LandingPageContent;
@@ -892,6 +954,7 @@ export interface SystemSettings {
   hasSmtpPasswordConfigured?: boolean;
   mailFromAddress?: string;
   mailFromName?: string;
+  emailTemplates?: EmailTemplateModel[];
   stripeKey?: string;
   stripePublishableKey?: string;
   stripeSecretKey?: string;

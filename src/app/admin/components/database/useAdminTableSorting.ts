@@ -18,8 +18,14 @@ interface SortConfig {
   direction: SortDirection;
 }
 
-const getNestedValue = (obj: any, path: string) => {
-  return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+const getNestedValue = (obj: unknown, path: string): unknown => {
+  return path.split('.').reduce<unknown>((accumulator, part) => {
+    if (!accumulator || typeof accumulator !== 'object') {
+      return undefined;
+    }
+
+    return (accumulator as Record<string, unknown>)[part];
+  }, obj);
 };
 
 export const useAdminTableSorting = () => {
@@ -36,7 +42,7 @@ export const useAdminTableSorting = () => {
   const sortData = <T,>(data: T[]) => {
     if (!data || !sortConfig) return data || [];
 
-    return [...data].sort((a: any, b: any) => {
+    return [...data].sort((a, b) => {
       let aVal = getNestedValue(a, sortConfig.key);
       let bVal = getNestedValue(b, sortConfig.key);
 

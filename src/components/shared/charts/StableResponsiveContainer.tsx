@@ -12,10 +12,9 @@
 */
 
 import React from 'react';
-import { ResponsiveContainer } from 'recharts';
 
 type StableResponsiveContainerProps = {
-  children: React.ReactElement;
+  children: React.ReactElement<Record<string, unknown>>;
   className?: string;
   fallback?: React.ReactNode;
   height: number;
@@ -30,7 +29,7 @@ const StableResponsiveContainer: React.FC<StableResponsiveContainerProps> = ({
   minHeight = height,
 }) => {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  const [isReady, setIsReady] = React.useState(false);
+  const [dimensions, setDimensions] = React.useState({ width: 0, height: 0 });
 
   React.useEffect(() => {
     const element = containerRef.current;
@@ -41,10 +40,15 @@ const StableResponsiveContainer: React.FC<StableResponsiveContainerProps> = ({
 
     const measure = () => {
       const rect = element.getBoundingClientRect();
-      const nextIsReady = rect.width > 0 && rect.height > 0;
+      const nextDimensions = {
+        width: Math.max(0, Math.floor(rect.width)),
+        height: Math.max(0, Math.floor(rect.height)),
+      };
 
-      setIsReady((currentIsReady) => (
-        currentIsReady === nextIsReady ? currentIsReady : nextIsReady
+      setDimensions((currentDimensions) => (
+        currentDimensions.width === nextDimensions.width && currentDimensions.height === nextDimensions.height
+          ? currentDimensions
+          : nextDimensions
       ));
     };
 
@@ -68,6 +72,8 @@ const StableResponsiveContainer: React.FC<StableResponsiveContainerProps> = ({
     };
   }, []);
 
+  const isReady = dimensions.width > 0 && dimensions.height > 0;
+
   return (
     <div
       ref={containerRef}
@@ -76,9 +82,10 @@ const StableResponsiveContainer: React.FC<StableResponsiveContainerProps> = ({
       style={{ height, minHeight }}
     >
       {isReady ? (
-        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-          {children}
-        </ResponsiveContainer>
+        React.cloneElement(children, {
+          width: dimensions.width,
+          height: dimensions.height,
+        })
       ) : fallback}
     </div>
   );

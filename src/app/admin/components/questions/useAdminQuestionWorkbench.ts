@@ -19,9 +19,9 @@ interface UseAdminQuestionWorkbenchOptions {
   questions: Question[];
   systemSettings: SystemSettings;
   addToast: ToastHandler;
-  onAddQuestion: (question: Question) => Promise<any> | any;
-  onAddQuestions: (questions: Question[]) => Promise<any> | any;
-  onUpdateQuestion: (question: Question) => Promise<any> | any;
+  onAddQuestion: (question: Question) => Promise<unknown> | unknown;
+  onAddQuestions: (questions: Question[]) => Promise<unknown> | unknown;
+  onUpdateQuestion: (question: Question) => Promise<unknown> | unknown;
   onRefreshQuestions: () => Promise<void> | void;
 }
 
@@ -35,7 +35,6 @@ export const useAdminQuestionWorkbench = ({
   onRefreshQuestions,
 }: UseAdminQuestionWorkbenchOptions) => {
   const importWorkflow = useAdminImportWorkflow({
-    systemSettings,
     addToast,
     onAddQuestions,
   });

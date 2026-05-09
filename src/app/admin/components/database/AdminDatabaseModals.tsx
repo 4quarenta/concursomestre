@@ -10,6 +10,7 @@
 */
 
 import React from 'react';
+import type { GlobalTaxonomies } from '@types';
 import TaxonomyModal from './TaxonomyModal';
 import MaterialModerationModal from '../materials/MaterialModerationModal';
 import ManualQuestionModal from '../questions/ManualQuestionModal';
@@ -17,38 +18,43 @@ import RankingEditorModal from '../rankings/RankingEditorModal';
 import UserProfileAdminModal from '../users/UserProfileAdminModal';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
+type MaterialModerationModalProps = React.ComponentProps<typeof MaterialModerationModal>;
+type UserProfileAdminModalProps = React.ComponentProps<typeof UserProfileAdminModal>;
+type RankingEditorModalProps = React.ComponentProps<typeof RankingEditorModal>;
+type TaxonomyModalEditingFilterItem = React.ComponentProps<typeof TaxonomyModal>['editingFilterItem'];
+
 interface AdminDatabaseModalsProps {
   isManualQuestionModalOpen: boolean;
-  manualQuestionModalProps: any;
-  editingMaterial: any;
-  materialModerationModalProps: any;
+  manualQuestionModalProps: Record<string, unknown>;
+  editingMaterial: unknown;
+  materialModerationModalProps: MaterialModerationModalProps;
   viewingProfileId: string | null;
-  detailedUser: any;
+  detailedUser: UserProfileAdminModalProps['detailedUser'];
   isLoadingDetail: boolean;
-  detailTab: React.ComponentProps<typeof UserProfileAdminModal>['detailTab'];
-  onDetailTabChange: React.ComponentProps<typeof UserProfileAdminModal>['onDetailTabChange'];
+  detailTab: UserProfileAdminModalProps['detailTab'];
+  onDetailTabChange: UserProfileAdminModalProps['onDetailTabChange'];
   isEditingUser: boolean;
-  editUserForm: any;
-  onEditUserFormChange: (value: any) => void;
+  editUserForm: UserProfileAdminModalProps['editUserForm'];
+  onEditUserFormChange: (value: UserProfileAdminModalProps['editUserForm']) => void;
   onStartEditingUser: () => void;
   onCancelEditingUser: () => void;
-  onUserAction: (action: string, payload?: any, options?: { actionKey?: string; successMessage?: string }) => Promise<any>;
+  onUserAction: (action: string, payload?: unknown, options?: { actionKey?: string; successMessage?: string }) => Promise<unknown>;
   actionLoading: string | null;
   onCloseUserProfile: () => void;
-  editingRanking: any;
-  onEditingRankingChange: (value: any) => void;
+  editingRanking: RankingEditorModalProps['ranking'];
+  onEditingRankingChange: (value: RankingEditorModalProps['ranking']) => void;
   onCloseRankingEditor: () => void;
-  onSaveRanking: () => Promise<any>;
+  onSaveRanking: () => Promise<unknown>;
   showTaxonomyModal: boolean;
-  editingFilterItem: any;
+  editingFilterItem: TaxonomyModalEditingFilterItem | unknown;
   activeFilterType: string;
-  filterTypes: any[];
+  filterTypes: React.ComponentProps<typeof TaxonomyModal>['filterTypes'];
   filterInput: string;
   filterSlug: string;
   filterDescription: string;
   filterWebsite: string;
   selectedParentId: number | string | null;
-  taxonomies: Record<string, any[]>;
+  taxonomies: GlobalTaxonomies;
   onActiveFilterTypeChange: (value: string) => void;
   onFilterInputChange: (value: string) => void;
   onFilterSlugChange: (value: string) => void;
@@ -56,11 +62,11 @@ interface AdminDatabaseModalsProps {
   onFilterWebsiteChange: (value: string) => void;
   onSelectedParentIdChange: (value: number | string | null) => void;
   onCloseTaxonomyModal: () => void;
-  onSaveFilter: () => Promise<any>;
+  onSaveFilter: () => Promise<unknown>;
   pendingDeleteFilter: { id: number; name: string } | null;
   isDeletingFilter: boolean;
   onCancelDeleteFilter: () => void;
-  onConfirmDeleteFilter: () => Promise<any> | any;
+  onConfirmDeleteFilter: () => Promise<unknown> | unknown;
 }
 
 const AdminDatabaseModals = ({
@@ -109,7 +115,7 @@ const AdminDatabaseModals = ({
   onConfirmDeleteFilter,
 }: AdminDatabaseModalsProps) => (
   <>
-    {isManualQuestionModalOpen && <ManualQuestionModal {...manualQuestionModalProps} />}
+    {isManualQuestionModalOpen && <ManualQuestionModal {...manualQuestionModalProps as unknown as React.ComponentProps<typeof ManualQuestionModal>} />}
 
     {editingMaterial && materialModerationModalProps && <MaterialModerationModal {...materialModerationModalProps} />}
 
@@ -142,7 +148,7 @@ const AdminDatabaseModals = ({
 
     {showTaxonomyModal && (
       <TaxonomyModal
-        editingFilterItem={editingFilterItem}
+        editingFilterItem={editingFilterItem as TaxonomyModalEditingFilterItem}
         activeFilterType={activeFilterType}
         filterTypes={filterTypes}
         filterInput={filterInput}

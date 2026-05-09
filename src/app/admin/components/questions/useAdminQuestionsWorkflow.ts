@@ -9,7 +9,7 @@
 *
 */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Question } from '@types';
 import { adminService } from '@services/admin/adminService';
 import { readApiErrorMessage } from '@services/api';
@@ -29,6 +29,36 @@ interface UseAdminQuestionsWorkflowOptions {
   addToast: ToastHandler;
 }
 
+type AdminQuestionPublicationCandidate = Question & {
+  publishState?: string;
+  publicationStatus?: string;
+  status?: string;
+  estadoEditorial?: string;
+  scheduledAt?: string;
+  scheduled_at?: string;
+  publishAt?: string;
+  publish_at?: string;
+  publicationDate?: string;
+  publication_date?: string;
+  publishedAt?: string;
+  published_at?: string;
+  published_on?: string;
+  data_publicacao?: string;
+  publicado_em?: string;
+  dataPublicacao?: string;
+  timestamp?: string | number;
+  createdAt?: string;
+  created_at?: string;
+  created?: string;
+  data_criacao?: string;
+  criado_em?: string;
+};
+
+type AdminQuestionWithPublicationMeta = Question & {
+  adminPublicationDate: string;
+  adminPublicationTimestamp: number;
+};
+
 const DEFAULT_PAGINATION: QuestionsPagination = {
   total: 0,
   perPage: 20,
@@ -36,7 +66,7 @@ const DEFAULT_PAGINATION: QuestionsPagination = {
   page: 1,
 };
 
-const resolveQuestionPublicationInput = (question: any) => {
+const resolveQuestionPublicationInput = (question: AdminQuestionPublicationCandidate | null | undefined) => {
   if (!question) return '';
 
   const editorialState = String(
@@ -90,22 +120,22 @@ const parsePublicationTimestamp = (value: unknown) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-const withAdminPublicationMetadata = (question: Question) => {
-  const publicationInput = resolveQuestionPublicationInput(question as any);
+const withAdminPublicationMetadata = (
+  question: AdminQuestionPublicationCandidate,
+): AdminQuestionWithPublicationMeta => {
+  const publicationInput = resolveQuestionPublicationInput(question);
   const publicationTimestamp = parsePublicationTimestamp(publicationInput);
 
   return {
-    ...(question as any),
+    ...question,
     adminPublicationDate: publicationInput || '',
     adminPublicationTimestamp: publicationTimestamp,
-  } as Question;
+  };
 };
 
 const sortQuestionsByPublicationDesc = (questions: Question[]) => [...questions]
-  .map(withAdminPublicationMetadata)
-  .sort((a: any, b: any) => (
-    Number(b.adminPublicationTimestamp || 0) - Number(a.adminPublicationTimestamp || 0)
-  ));
+  .map((question) => withAdminPublicationMetadata(question as AdminQuestionPublicationCandidate))
+  .sort((a, b) => Number(b.adminPublicationTimestamp || 0) - Number(a.adminPublicationTimestamp || 0));
 
 export const useAdminQuestionsWorkflow = ({
   keyword,
@@ -115,7 +145,7 @@ export const useAdminQuestionsWorkflow = ({
   const [adminQuestions, setAdminQuestions] = useState<Question[]>([]);
   const [pagination, setPagination] = useState<QuestionsPagination>(DEFAULT_PAGINATION);
 
-  const loadQuestions = async (page = 1) => {
+  const loadQuestions = useCallback(async (page = 1) => {
     try {
       const response = await adminService.getQuestions({
         page,
@@ -131,16 +161,16 @@ export const useAdminQuestionsWorkflow = ({
       });
     } catch (error) {
       console.error('Error loading questions:', error);
-      addToast(readApiErrorMessage(error, 'Erro ao carregar questões administrativas.'), 'error');
+      addToast(readApiErrorMessage(error, 'Erro ao carregar questoes administrativas.'), 'error');
     }
-  };
+  }, [addToast, keyword]);
 
   const reloadCurrentPage = async () => {
     await loadQuestions(pagination.page || 1);
   };
 
   const removeQuestionFromPage = (questionId: string | number) => {
-    setAdminQuestions((current) => current.filter((question: any) => String(question.id) !== String(questionId)));
+    setAdminQuestions((current) => current.filter((question) => String(question.id) !== String(questionId)));
     setPagination((current) => {
       const nextTotal = Math.max(0, Number(current.total || 0) - 1);
       const nextPages = Math.max(1, Math.ceil(nextTotal / Math.max(1, Number(current.perPage || 20))));
@@ -155,10 +185,16 @@ export const useAdminQuestionsWorkflow = ({
   };
 
   useEffect(() => {
-    if (activeSubTab === 'questions') {
-      void loadQuestions(1);
+    if (activeSubTab !== 'questions') {
+      return undefined;
     }
-  }, [activeSubTab, keyword]);
+
+    const frameId = window.requestAnimationFrame(() => {
+      void loadQuestions(1);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeSubTab, loadQuestions]);
 
   return {
     adminQuestions,

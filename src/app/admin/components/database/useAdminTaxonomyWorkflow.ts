@@ -10,9 +10,9 @@
 */
 
 import { useCallback, useEffect, useState } from 'react';
-import { useData } from '@providers/DataProvider';
 import { filtersService } from '@services/filters';
 import { readApiErrorMessage } from '@services/api';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import { slugify } from './slugify';
 
 type ToastHandler = (message: string, type?: string) => void;
@@ -74,7 +74,7 @@ const getChildFilterType = (type: string) => {
 export const useAdminTaxonomyWorkflow = ({
   addToast,
 }: UseAdminTaxonomyWorkflowOptions) => {
-  const { dispatch } = useData();
+  const { ensureTaxonomiesLoaded } = useTaxonomyActions();
   const [activeFilterType, setActiveFilterType] = useState<string>('all');
   const [filterInput, setFilterInput] = useState('');
   const [filterSlug, setFilterSlug] = useState('');
@@ -89,12 +89,11 @@ export const useAdminTaxonomyWorkflow = ({
 
   const fetchFilters = useCallback(async () => {
     try {
-      const taxonomies = await filtersService.listTaxonomies();
-      dispatch({ type: 'SET_TAXONOMIES', payload: taxonomies });
+      await ensureTaxonomiesLoaded(true);
     } catch (error) {
       console.error('Error fetching filters:', error);
     }
-  }, [dispatch]);
+  }, [ensureTaxonomiesLoaded]);
 
   const resetTaxonomyForm = () => {
     setFilterInput('');

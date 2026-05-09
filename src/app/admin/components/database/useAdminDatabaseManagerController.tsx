@@ -12,6 +12,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@providers/ToastProvider';
+import type { ErrorReport, Material, Question, Ranking, SystemSettings, UserProfile } from '@types';
 import AdminDatabaseNavigation from './AdminDatabaseNavigation';
 import AdminDatabaseModals from './AdminDatabaseModals';
 import AdminDatabaseSections from './AdminDatabaseSections';
@@ -31,23 +32,79 @@ import { useAdminUserProfileWorkflow } from '../users/useAdminUserProfileWorkflo
 import { buildAdminQuestionEditPath } from '../../config/adminPageNavigationConfig';
 import { adminService } from '@services/admin/adminService';
 
+type AdminDatabaseSubTab =
+  | 'questions'
+  | 'question-groups'
+  | 'exams'
+  | 'users'
+  | 'materials'
+  | 'rankings'
+  | 'import'
+  | 'reports'
+  | 'blocked'
+  | 'filters'
+  | 'lei-comentada';
+
+type MutationResult = { success?: boolean; message?: string } | null | void;
+type SettingsMutationResult = SystemSettings | MutationResult;
+type TaxonomyTriggerItem = {
+  id?: number | string;
+  type?: string;
+};
+type FilterTableItem = {
+  id?: number | string;
+  name?: string;
+  slug?: string;
+  type?: string;
+  parentId?: number | string | null;
+  parent_id?: number | string | null;
+  description?: string;
+  website?: string;
+  taxonomyLevel?: string;
+  metadata?: Record<string, unknown>;
+};
+
+const VALID_ADMIN_DATABASE_SUBTABS: AdminDatabaseSubTab[] = [
+  'questions',
+  'question-groups',
+  'exams',
+  'users',
+  'materials',
+  'rankings',
+  'import',
+  'reports',
+  'blocked',
+  'filters',
+  'lei-comentada',
+];
+
+const resolveInitialDatabaseTab = (value?: string): AdminDatabaseSubTab => (
+  value && VALID_ADMIN_DATABASE_SUBTABS.includes(value as AdminDatabaseSubTab)
+    ? value as AdminDatabaseSubTab
+    : 'questions'
+);
+
+const isMutationFailure = (result: MutationResult): result is { success?: boolean; message?: string } => (
+  typeof result === 'object' && result !== null
+);
+
 export interface AdminDatabaseManagerControllerProps {
-  questions: any[];
-  allUsers: any[];
-  allMaterials: any[];
-  allReports: any[];
-  rankings?: any[];
-  onDeleteQuestion: (questionId: any) => Promise<any> | any;
-  onAddQuestion: (question: any) => Promise<any> | any;
-  onAddQuestions: (questions: any[]) => Promise<any> | any;
-  onUpdateQuestion: (question: any) => Promise<any> | any;
-  resolveReport: (reportId: any, status: string, reason?: string) => Promise<any> | any;
-  moderateMaterial: (...args: any[]) => Promise<any> | any;
-  onDeleteMaterial: (materialId: string) => Promise<any> | any;
-  systemSettings: any;
-  updateSystemSettings: (settings: any) => Promise<any> | any;
-  saveSystemSettingsNow: (settings?: any) => Promise<any> | any;
-  updateRanking: (ranking: any) => Promise<void> | void;
+  questions: Question[];
+  allUsers: UserProfile[];
+  allMaterials: Material[];
+  allReports: ErrorReport[];
+  rankings?: Ranking[];
+  onDeleteQuestion: (questionId: string | number) => Promise<MutationResult> | MutationResult;
+  onAddQuestion: (question: Question) => Promise<MutationResult> | MutationResult;
+  onAddQuestions: (questions: Question[]) => Promise<MutationResult> | MutationResult;
+  onUpdateQuestion: (question: Question) => Promise<MutationResult> | MutationResult;
+  resolveReport: (reportId: string | number, status: string, reason?: string) => Promise<MutationResult> | MutationResult;
+  moderateMaterial: (...args: unknown[]) => Promise<unknown> | unknown;
+  onDeleteMaterial: (materialId: string) => Promise<MutationResult> | MutationResult;
+  systemSettings: SystemSettings;
+  updateSystemSettings: (settings: SystemSettings) => Promise<SettingsMutationResult> | SettingsMutationResult;
+  saveSystemSettingsNow: (settings?: SystemSettings) => Promise<SettingsMutationResult> | SettingsMutationResult;
+  updateRanking: (ranking: Ranking) => Promise<void> | void;
   ensureUsersLoaded?: (force?: boolean) => Promise<void>;
   initialTab?: string;
   standaloneSection?: boolean;
@@ -80,6 +137,7 @@ export const useAdminDatabaseManagerController = ({
 }: AdminDatabaseManagerControllerProps) => {
   const { addToast } = useToast();
   const router = useRouter();
+  const resolvedInitialTab = resolveInitialDatabaseTab(initialTab);
 
   /**
    * Controla categoria ativa, subaba e filtro textual da area de base de dados.
@@ -92,7 +150,7 @@ export const useAdminDatabaseManagerController = ({
     handleSelectCategory,
     handleSelectSubTab,
   } = useAdminDatabaseNavigationState({
-    initialTab: initialTab as any,
+    initialTab: resolvedInitialTab,
     searchTab: initialTab,
     locationHash: typeof window !== 'undefined' ? window.location.hash : '',
   });
@@ -268,7 +326,7 @@ export const useAdminDatabaseManagerController = ({
     onRefreshQuestions: reloadCurrentPage,
   });
 
-  const openQuestionEditPage = React.useCallback((question: any, report?: any) => {
+  const openQuestionEditPage = React.useCallback((question?: Partial<Question> | null, report?: Partial<ErrorReport> | null) => {
     const questionId = question?.id ?? report?.questionId;
 
     if (!questionId) {
@@ -279,11 +337,11 @@ export const useAdminDatabaseManagerController = ({
     router.push(buildAdminQuestionEditPath(questionId, report?.id));
   }, [addToast, router]);
 
-  const handleDeleteQuestion = React.useCallback(async (questionId: any) => {
+  const handleDeleteQuestion = React.useCallback(async (questionId: string | number) => {
     const result = await onDeleteQuestion(questionId);
 
-    if (result?.success === false) {
-      throw new Error(result?.message || 'Nao foi possivel remover a questao.');
+    if (isMutationFailure(result) && result.success === false) {
+      throw new Error(result.message || 'Nao foi possivel remover a questao.');
     }
 
     removeQuestionFromPage(questionId);
@@ -293,7 +351,7 @@ export const useAdminDatabaseManagerController = ({
     return result;
   }, [adminQuestions.length, loadQuestions, onDeleteQuestion, pagination.page, removeQuestionFromPage]);
 
-  const handleDeleteUser = React.useCallback(async (user: any) => {
+  const handleDeleteUser = React.useCallback(async (user: Partial<UserProfile>) => {
     const userId = String(user?.id || '');
 
     if (!userId) {
@@ -309,8 +367,9 @@ export const useAdminDatabaseManagerController = ({
       await ensureUsersLoaded(true);
       addToast(result.message || 'Usuario removido com sucesso.', 'success');
       return result;
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel remover o usuario.', 'error');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Nao foi possivel remover o usuario.';
+      addToast(message, 'error');
       throw error;
     }
   }, [addToast, ensureUsersLoaded]);
@@ -391,15 +450,32 @@ export const useAdminDatabaseManagerController = ({
     onModerateMaterial: openMaterialModerationFromList,
     onDeleteMaterial,
     onInspectReport: inspectReportTarget,
-    onResolveReport: (report: any) => Promise.resolve(resolveReportQuickly(report)),
+    onResolveReport: (report: ErrorReport) => Promise.resolve(resolveReportQuickly(report)),
     onEditRanking: openRankingEditor,
     onReanalyzeBlockedMaterial: openBlockedMaterialForReview,
     onActiveFilterTypeChange: setActiveFilterType,
     onFilterSearchChange: setFilterSearch,
     onCreateFilter: openCreateFilterModal,
-    onCreateChildFilter: (item: any) => openCreateChildFilterModal(String(item?.type || activeFilterType), Number(item?.id || item)),
-    onEditFilter: startEditingFilter,
-    onDeleteFilter: requestDeleteFilter,
+    onCreateChildFilter: (item: TaxonomyTriggerItem | number | string) => {
+      const parentId = typeof item === 'object' && item !== null ? item.id : item;
+      const parentType = typeof item === 'object' && item !== null ? item.type : undefined;
+      openCreateChildFilterModal(String(parentType || activeFilterType), Number(parentId || item));
+    },
+    onEditFilter: (item: FilterTableItem) => startEditingFilter({
+      id: typeof item.id === 'number' ? item.id : Number(item.id || 0) || undefined,
+      name: item.name,
+      slug: item.slug,
+      type: item.type,
+      parentId: item.parentId ?? item.parent_id,
+      parent_id: item.parent_id ?? item.parentId,
+      description: item.description,
+      website: item.website,
+      metadata: item.metadata,
+    }),
+    onDeleteFilter: (item: FilterTableItem) => requestDeleteFilter({
+      id: typeof item.id === 'number' ? item.id : Number(item.id || 0),
+      name: item.name,
+    }),
     onGeminiApiKeyChange: handleGeminiApiKeyChange,
     onSaveImportSettings: handleSaveImportSettings,
     isSavingImportSettings,

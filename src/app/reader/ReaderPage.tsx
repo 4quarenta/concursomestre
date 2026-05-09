@@ -43,32 +43,17 @@ const ReaderPage: React.FC = () => {
         }
 
         if (isLoadingMaterials || isLoadingTransactions) {
-            console.log('[ReaderPage] Waiting on loading flags', { isLoadingMaterials, isLoadingTransactions });
             return; // Aguarda carregamento global do marketplace
         }
 
-        console.log('[ReaderPage] Evaluating access.', {
-            id,
-            userId: currentUser.id,
-            transactionsCount: transactions.length,
-            materialsCount: materials.length
-        });
 
         // Check ownership
         const transaction = transactions.find(t => t.materialId === id && t.buyerId === currentUser.id && (t.status === 'completed' || t.status === 'approved'));
         const material = materials.find(m => m.id === id);
 
-        const hasPurchasedId = currentUser.purchasedMaterialIds?.includes(id); // For legacy tracking
         const isAuthor = material?.authorId === currentUser.id;
         const isAdmin = currentUser.role === 'admin' || currentUser.isAdmin;
 
-        console.log('[ReaderPage] Access evaluation result:', {
-            foundTransaction: !!transaction,
-            foundMaterial: !!material,
-            hasInPurchasedIds: hasPurchasedId,
-            isAuthor: isAuthor,
-            isAdmin: isAdmin
-        });
 
         if (!material) {
             console.warn('[ReaderPage] Material not found in database.');

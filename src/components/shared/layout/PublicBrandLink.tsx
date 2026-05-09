@@ -11,8 +11,9 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { useData } from '@providers/DataProvider';
+import { useAuth } from '@providers/AuthProvider';
 import BrandLogo from './BrandLogo';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 interface PublicBrandLinkProps {
   className?: string;
@@ -33,14 +34,17 @@ const PublicBrandLink: React.FC<PublicBrandLinkProps> = ({
   surface = 'theme',
   variant = 'adaptive',
 }) => {
-  const { systemSettings } = useData();
+  const { currentUser } = useAuth();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const siteName = systemSettings?.siteName || 'ConcursoMestre';
+  const targetHref = currentUser ? '/dashboard' : '/';
 
   return (
     <Link
-      href="/"
+      href={targetHref}
+      prefetch={false}
       className={className}
-      aria-label={`Ir para a home de ${siteName}`}
+      aria-label={`Ir para ${currentUser ? 'o dashboard' : 'a home'} de ${siteName}`}
     >
       <BrandLogo width={width} priority={priority} surface={surface} variant={variant} alt={siteName} />
       <span className="sr-only">{siteName}</span>

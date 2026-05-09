@@ -10,6 +10,7 @@
 */
 
 import React from 'react';
+import type { AdminNavigationTab } from '../../config/adminPageNavigationConfig';
 import AdminTopBar from './AdminTopBar';
 import AdminPageHeader from './AdminPageHeader';
 import AdminNavigationSidebar from '../navigation/AdminNavigationSidebar';
@@ -19,7 +20,7 @@ interface AdminShellLayoutProps {
   activeTab: string;
   activeSectionKey?: string;
   onNavigateAdmin: (tab: string, section?: string) => void;
-  adminTabs: { key: string; label: string; icon: any; badge?: number; group?: string; description: string }[];
+  adminTabs: AdminNavigationTab[];
   sectionBadges?: Record<string, Record<string, number>>;
   pageTitle: string;
   pageDescription?: string;

@@ -11,6 +11,7 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
+import Image from 'next/image';
 import type { ErrorReport, Material } from '@types';
 import { AlertTriangle, CheckCircle2, Eye, FileText, Image as ImageIcon, Lock, ShieldAlert, X, XCircle } from 'lucide-react';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
@@ -105,7 +106,7 @@ const MaterialModerationModal = ({
                     <AlertTriangle size={14} /> Denúncia ativa
                   </div>
                   <p className="mt-2 text-sm font-semibold text-red-700 dark:text-red-300">{selectedReport.reason}</p>
-                  <p className="mt-2 text-sm leading-relaxed text-red-600 dark:text-red-200">"{selectedReport.details}"</p>
+                  <p className="mt-2 text-sm leading-relaxed text-red-600 dark:text-red-200">&quot;{selectedReport.details}&quot;</p>
                   <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-red-500 dark:text-red-300">
                     <span>Por: {selectedReport.userName}</span>
                     <span>{new Date(selectedReport.timestamp).toLocaleDateString()}</span>
@@ -124,7 +125,14 @@ const MaterialModerationModal = ({
                       <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-widest text-red-400">
                         <ImageIcon size={12} /> Prova enviada
                       </p>
-                      <img src={selectedReport.evidenceUrl} alt="Prova do usuário" className="max-h-48 rounded-md border border-red-200 bg-white object-contain dark:border-red-900/40 dark:bg-slate-950" />
+                      <Image
+                        src={selectedReport.evidenceUrl}
+                        alt="Prova do usuario"
+                        width={640}
+                        height={360}
+                        unoptimized
+                        className="max-h-48 w-auto rounded-md border border-red-200 bg-white object-contain dark:border-red-900/40 dark:bg-slate-950"
+                      />
                     </div>
                   ) : null}
                 </div>
@@ -209,7 +217,7 @@ const MaterialModerationModal = ({
                 ) : null}
                 {selectedReport ? (
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Essa justificativa também será enviada por email ao usuário relacionado à denúncia.
+                    Essa justificativa tambem sera enviada por email ao usuario relacionado a denuncia.
                   </p>
                 ) : null}
                 <textarea
@@ -248,7 +256,7 @@ const MaterialModerationModal = ({
                   </div>
                   <div className="mt-3 space-y-2 rounded-md border border-red-100 bg-white p-4 dark:border-red-900/20 dark:bg-slate-950">
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{selectedReport.reason}</p>
-                    <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">"{selectedReport.details}"</p>
+                    <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">&quot;{selectedReport.details}&quot;</p>
                   </div>
                 </div>
               ) : null}

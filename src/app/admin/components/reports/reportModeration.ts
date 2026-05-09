@@ -25,7 +25,12 @@ export interface GroupedReport {
 }
 
 export const getReportTargetId = (report: ErrorReport): string | number | undefined => {
-  const rawReport = report as any;
+  const rawReport = report as ErrorReport & {
+    targetId?: string | number;
+    question_id?: string | number;
+    material_id?: string | number;
+    comment_id?: string | number;
+  };
 
   if (report.targetType === 'question') return report.questionId ?? rawReport.targetId ?? rawReport.question_id;
   if (report.targetType === 'material') return report.materialId ?? rawReport.targetId ?? rawReport.material_id;

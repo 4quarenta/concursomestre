@@ -11,6 +11,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import type { UserProfile } from '@types';
 import {
   getAdminUserRoleBadgeClass,
   getAdminUserRoleLabel,
@@ -32,12 +33,12 @@ const getInitials = (name: string) => (
 );
 
 interface AdminUsersSectionProps {
-  users: any[];
+  users: UserProfile[];
   filter: string;
   onFilterChange: (value: string) => void;
   renderSortableHeader: (label: string, sortKey: string) => React.ReactNode;
   onOpenProfile: (userId: string) => void;
-  onDeleteUser: (user: any) => Promise<any> | any;
+  onDeleteUser: (user: UserProfile) => Promise<unknown> | unknown;
 }
 
 /**
@@ -54,10 +55,10 @@ const AdminUsersSection = ({
   onOpenProfile,
   onDeleteUser,
 }: AdminUsersSectionProps) => {
-  const [pendingDeleteUser, setPendingDeleteUser] = React.useState<any | null>(null);
+  const [pendingDeleteUser, setPendingDeleteUser] = React.useState<UserProfile | null>(null);
   const [isDeletingUser, setIsDeletingUser] = React.useState(false);
 
-  const requestDeleteUser = (user: any) => {
+  const requestDeleteUser = (user: UserProfile) => {
     setPendingDeleteUser(user);
   };
 

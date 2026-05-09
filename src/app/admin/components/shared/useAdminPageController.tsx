@@ -9,7 +9,7 @@
 *
 */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   BookOpen,
@@ -21,12 +21,20 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
-import { adminService, type AdminFeedbackThread } from '@services/admin/adminService';
-import type { ErrorReport, Transaction } from '@types';
+import { adminService } from '@services/admin/adminService';
+import { questionService } from '@services/questions';
+import type { ErrorReport, Question, Transaction } from '@types';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
+import { useSystemSettingsActions } from '@/state/app-config/useSystemSettingsActions';
+import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
+import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
+import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
+import { useNotificationsStore } from '@/state/notifications/notificationsStore';
+import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
 import {
   ADMIN_SECTION_CONFIG,
   DEFAULT_SECTION_BY_TAB,
@@ -51,9 +59,6 @@ import {
   type AdminSettingsSection,
   type AdminSupportSection,
 } from '../../config/adminPageNavigationConfig';
-
-const countPendingFeedbackThreads = (threads: AdminFeedbackThread[]) =>
-  threads.filter((thread) => String(thread.status || '').toLowerCase() !== 'resolved').length;
 
 type AdminNotificationSummary = {
   deletedAt?: number | string | null;
@@ -83,27 +88,28 @@ export type {
  * @since 1.0.0
  */
 export const useAdminPageController = () => {
+  const questions = useQuestionBankStore((store) => store.questions);
+  const prependQuestion = useQuestionBankStore((store) => store.prependQuestion);
+  const upsertQuestion = useQuestionBankStore((store) => store.upsertQuestion);
+  const removeQuestionFromBank = useQuestionBankStore((store) => store.removeQuestion);
+  const users = useAdminDataStore((store) => store.users);
+  const reports = useAdminDataStore((store) => store.reports);
+  const rankings = useAdminDataStore((store) => store.rankings);
+  const notifications = useNotificationsStore((store) => store.notifications);
+  const systemSettings = useAppConfigStore((store) => store.systemSettings);
   const {
-    questions,
-    users,
-    systemSettings,
-    reports,
-    rankings,
-    addQuestion,
-    addQuestions,
-    updateQuestion,
-    deleteQuestion,
-    resolveReport,
     updateSystemSettings,
     saveSystemSettingsNow,
-    updateRanking,
-    notifications,
-    markNotificationAsRead,
+  } = useSystemSettingsActions();
+  const {
     ensureUsersLoaded,
     ensureReportsLoaded,
     ensureRankingsLoaded,
-    ensureTaxonomiesLoaded,
-  } = useData();
+    resolveReport,
+    updateRanking,
+  } = useAdminDataActions();
+  const { ensureTaxonomiesLoaded } = useTaxonomyActions();
+  const { markNotificationAsRead } = useNotificationsActions();
   const { materials, transactions, moderateMaterial, deleteMaterial } = useMarketplace();
   const { currentUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -122,30 +128,124 @@ export const useAdminPageController = () => {
   const params = useParams<{ tab?: string | string[]; section?: string | string[] }>();
   const routeTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
   const routeSection = Array.isArray(params.section) ? params.section.join('/') : params.section;
+  const initialResolvedRoute = useMemo(() => (
+    resolveAdminRoute(
+      routeTab || searchParams?.get('tab'),
+      routeSection || searchParams?.get('section'),
+    )
+  ), [routeSection, routeTab, searchParams]);
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [activeTab, setActiveTabState] = useState<AdminPageTab>('panel');
-  const [initialPanelSection, setInitialPanelSection] = useState<AdminPanelSection>('dashboard');
-  const [initialOperationSection, setInitialOperationSection] = useState<AdminOperationSection>('questions');
-  const [initialMarketplaceSection, setInitialMarketplaceSection] = useState<AdminMarketplaceSection>('vendors');
-  const [initialFinanceSection, setInitialFinanceSection] = useState<AdminFinanceSection>('transactions');
-  const [initialMarketingSection, setInitialMarketingSection] = useState<AdminMarketingSection>('landing-pages');
-  const [initialSupportSection, setInitialSupportSection] = useState<AdminSupportSection>('feedback');
-  const [initialSettingsSection, setInitialSettingsSection] = useState<AdminSettingsSection>('general');
+  const [activeTab, setActiveTabState] = useState<AdminPageTab>(initialResolvedRoute.tab);
+  const [initialPanelSection, setInitialPanelSection] = useState<AdminPanelSection>(() => (
+    initialResolvedRoute.tab === 'panel' && isPanelSection(initialResolvedRoute.section)
+      ? initialResolvedRoute.section
+      : 'dashboard'
+  ));
+  const [initialOperationSection, setInitialOperationSection] = useState<AdminOperationSection>(() => (
+    initialResolvedRoute.tab === 'operation' && isOperationSection(initialResolvedRoute.section)
+      ? initialResolvedRoute.section
+      : 'questions'
+  ));
+  const [initialMarketplaceSection, setInitialMarketplaceSection] = useState<AdminMarketplaceSection>(() => (
+    initialResolvedRoute.tab === 'marketplace' && isMarketplaceSection(initialResolvedRoute.section)
+      ? initialResolvedRoute.section
+      : 'vendors'
+  ));
+  const [initialFinanceSection, setInitialFinanceSection] = useState<AdminFinanceSection>(() => (
+    initialResolvedRoute.tab === 'finance' && isFinanceSection(initialResolvedRoute.section)
+      ? initialResolvedRoute.section
+      : 'transactions'
+  ));
+  const [initialMarketingSection, setInitialMarketingSection] = useState<AdminMarketingSection>(() => (
+    initialResolvedRoute.tab === 'marketing' && isMarketingSection(initialResolvedRoute.section)
+      ? initialResolvedRoute.section
+      : 'landing-pages'
+  ));
+  const [initialSupportSection, setInitialSupportSection] = useState<AdminSupportSection>(() => (
+    initialResolvedRoute.tab === 'support' && isSupportSection(initialResolvedRoute.section)
+      ? initialResolvedRoute.section
+      : 'feedback'
+  ));
+  const [initialSettingsSection, setInitialSettingsSection] = useState<AdminSettingsSection>(() => (
+    initialResolvedRoute.tab === 'settings' && isSettingsSection(initialResolvedRoute.section)
+      ? initialResolvedRoute.section
+      : 'general'
+  ));
+
+  const addQuestion = useCallback(async (payload: Question) => {
+    const response = await questionService.createQuestions([payload]);
+    if (!response.success) {
+      throw new Error('Falha ao criar a questao.');
+    }
+
+    const createdQuestion = response.created?.[0] || payload;
+    prependQuestion(createdQuestion);
+    addToast('Questao adicionada!', 'success');
+    return response;
+  }, [addToast, prependQuestion]);
+
+  const addQuestions = useCallback(async (payload: Question[]) => {
+    const response = await questionService.createQuestions(payload);
+    if (!response.success) {
+      throw new Error('Falha ao salvar questoes.');
+    }
+
+    const createdQuestions = response.created && response.created.length > 0
+      ? response.created
+      : payload;
+
+    createdQuestions.forEach((question) => {
+      upsertQuestion(question);
+    });
+    addToast(`${createdQuestions.length} questoes salvas!`, 'success');
+    return response;
+  }, [addToast, upsertQuestion]);
+
+  const updateQuestion = useCallback(async (payload: Question) => {
+    const response = await questionService.updateQuestion(String(payload.id), payload);
+    if (!response.success) {
+      throw new Error('Falha ao atualizar a questao.');
+    }
+
+    upsertQuestion(payload);
+    addToast('Questao atualizada!', 'success');
+    return response;
+  }, [addToast, upsertQuestion]);
+
+  const deleteQuestion = useCallback(async (questionId: number | string) => {
+    const response = await questionService.deleteQuestion(questionId);
+    if (!response.success) {
+      throw new Error(response.message || 'Falha ao remover a questao.');
+    }
+
+    removeQuestionFromBank(questionId);
+    addToast('Questao removida.', 'info');
+    return response;
+  }, [addToast, removeQuestionFromBank]);
 
   const unreadCount = ((notifications || []) as AdminNotificationSummary[])
     .filter((notification) => !notification.isRead && !notification.deletedAt).length;
   const userInitials = currentUser?.name?.charAt(0) || 'A';
-  const refundRequestsCount = ((transactions || []) as Transaction[])
+  const [pendingRefundRequestsCount, setPendingRefundRequestsCount] = useState(0);
+  const [pendingReportsCount, setPendingReportsCount] = useState(0);
+  const [pendingMaterialsModerationCount, setPendingMaterialsModerationCount] = useState(0);
+  const refundRequestsCountFromTransactions = ((transactions || []) as Transaction[])
     .filter((transaction) => transaction.status === 'refund_requested').length;
-  const openReportsCount = ((reports || []) as ErrorReport[])
+  const refundRequestsCount = Math.max(refundRequestsCountFromTransactions, pendingRefundRequestsCount);
+  const openReportsCountFromList = ((reports || []) as ErrorReport[])
     .filter((report) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase())).length;
+  const openReportsCount = Math.max(openReportsCountFromList, pendingReportsCount);
   const settingsFeedbackCount = Math.max(0, Number((systemSettings as AdminSettingsWithFeedbackCount | undefined)?.adminFeedbackCount || 0));
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(settingsFeedbackCount);
   const [pendingCommentsCount, setPendingCommentsCount] = useState(0);
+  const lastSupportCountersSyncRef = useRef<{ userId: string; timestamp: number } | null>(null);
   const feedbackCount = pendingFeedbackCount;
   const panelAlertsCount = openReportsCount + refundRequestsCount;
   const supportInboxCount = feedbackCount + openReportsCount + refundRequestsCount + pendingCommentsCount;
+  const pendingMaterialsCountFromList = ((materials || []) as Array<{ status?: string | null }>)
+    .filter((material) => String(material.status || '').toLowerCase() === 'pending').length;
+  const pendingMarketplaceMaterialsCount = Math.max(pendingMaterialsModerationCount, pendingMaterialsCountFromList);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -157,51 +257,56 @@ export const useAdminPageController = () => {
 
   useEffect(() => {
     if (!currentUser?.id) {
-      return;
-    }
-
-    let isCurrent = true;
-
-    const frameId = window.requestAnimationFrame(() => {
-      adminService.getFeedbackThreads()
-        .then((threads) => {
-          if (isCurrent) {
-            setPendingFeedbackCount(countPendingFeedbackThreads(threads));
-          }
-        })
-        .catch(() => {
-          if (isCurrent) {
-            setPendingFeedbackCount(settingsFeedbackCount);
-          }
-        });
-    });
-
-    return () => {
-      isCurrent = false;
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [currentUser?.id, settingsFeedbackCount]);
-
-  useEffect(() => {
-    if (!currentUser?.id) {
+      lastSupportCountersSyncRef.current = null;
       const frameId = window.requestAnimationFrame(() => {
+        setPendingFeedbackCount(settingsFeedbackCount);
         setPendingCommentsCount(0);
+        setPendingRefundRequestsCount(0);
+        setPendingReportsCount(0);
+        setPendingMaterialsModerationCount(0);
       });
 
       return () => window.cancelAnimationFrame(frameId);
     }
 
+    const shouldSyncSupportCounters = Boolean(activeTab);
+
+    if (!shouldSyncSupportCounters) {
+      return undefined;
+    }
+
+    const lastSync = lastSupportCountersSyncRef.current;
+    if (
+      lastSync
+      && lastSync.userId === currentUser.id
+      && (Date.now() - lastSync.timestamp) < 60_000
+    ) {
+      return undefined;
+    }
+
     let isCurrent = true;
     const frameId = window.requestAnimationFrame(() => {
-      adminService.getModerationComments({ status: 'pending', page: 1, perPage: 1 })
-        .then((payload) => {
+      adminService.getStats({ period: 'all' })
+        .then((stats) => {
           if (isCurrent) {
-            setPendingCommentsCount(Number(payload.counts?.pending || payload.total || 0));
+            lastSupportCountersSyncRef.current = {
+              userId: currentUser.id,
+              timestamp: Date.now(),
+            };
+            setPendingFeedbackCount(Number(stats.feedback_count || settingsFeedbackCount || 0));
+            setPendingCommentsCount(Number(stats.pending_comments_count || 0));
+            setPendingRefundRequestsCount(Number(stats.refund_requests_count || 0));
+            setPendingReportsCount(Number((stats as { reports_count?: number }).reports_count || 0));
+            setPendingMaterialsModerationCount(Number((stats as { pending_materials_count?: number }).pending_materials_count || 0));
           }
         })
         .catch(() => {
           if (isCurrent) {
+            setPendingFeedbackCount(settingsFeedbackCount);
             setPendingCommentsCount(0);
+            setPendingRefundRequestsCount(0);
+            setPendingReportsCount(0);
+            setPendingMaterialsModerationCount(0);
           }
         });
     });
@@ -210,7 +315,7 @@ export const useAdminPageController = () => {
       isCurrent = false;
       window.cancelAnimationFrame(frameId);
     };
-  }, [currentUser?.id]);
+  }, [activeTab, currentUser?.id, settingsFeedbackCount]);
   const sectionBadges = useMemo(() => ({
     support: {
       feedback: feedbackCount,
@@ -218,7 +323,10 @@ export const useAdminPageController = () => {
       comments: pendingCommentsCount,
       refunds: refundRequestsCount,
     },
-  }), [feedbackCount, openReportsCount, pendingCommentsCount, refundRequestsCount]);
+    marketplace: {
+      materials: pendingMarketplaceMaterialsCount,
+    },
+  }), [feedbackCount, openReportsCount, pendingCommentsCount, pendingMarketplaceMaterialsCount, refundRequestsCount]);
   const supportLandingSection = useMemo(() => resolveSupportLandingSection(sectionBadges.support), [sectionBadges]);
 
   const adminTabs = useMemo<AdminNavigationTab[]>(() => ([
@@ -342,6 +450,21 @@ export const useAdminPageController = () => {
       routeTab || legacySearchParams.get('tab'),
       routeSection || legacySearchParams.get('section'),
     );
+    const shouldPrefetchUsers = (
+      route.tab === 'finance'
+      || route.tab === 'marketplace'
+      || (route.tab === 'operation' && route.section === 'users')
+    );
+    const shouldPrefetchTaxonomies = (
+      route.tab === 'operation'
+      && route.section !== 'users'
+    );
+    const shouldPrefetchRankings = route.tab === 'support' && route.section === 'rankings';
+    const shouldPrefetchReports = (
+      (route.tab === 'support' && route.section === 'reports')
+      || (route.tab === 'panel' && route.section === 'alerts')
+    );
+
     const frameId = window.requestAnimationFrame(() => {
       setActiveTabState(route.tab);
       setGroupSection(route.tab, route.section);
@@ -354,10 +477,21 @@ export const useAdminPageController = () => {
         return;
       }
 
-      void ensureUsersLoaded();
-      void ensureReportsLoaded();
-      void ensureRankingsLoaded();
-      void ensureTaxonomiesLoaded();
+      if (shouldPrefetchReports) {
+        void ensureReportsLoaded();
+      }
+
+      if (shouldPrefetchUsers) {
+        void ensureUsersLoaded();
+      }
+
+      if (shouldPrefetchRankings) {
+        void ensureRankingsLoaded();
+      }
+
+      if (shouldPrefetchTaxonomies) {
+        void ensureTaxonomiesLoaded();
+      }
     });
 
     return () => window.cancelAnimationFrame(frameId);
@@ -539,6 +673,7 @@ export const useAdminPageController = () => {
       allUsers: users,
       systemSettings,
       updateSystemSettings,
+      saveSystemSettingsNow,
       initialSection: initialFinanceSection,
       onSectionChange: (section: AdminFinanceSection) => handleSectionChange('finance', section),
       standaloneSection: true,

@@ -11,11 +11,14 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
+import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowUpCircle, Clock, Crown, DollarSign, Loader2, Mail, MessageCircle, MessageSquare, PlusCircle, RefreshCcw, Shield, User, X } from 'lucide-react';
 import { getAssetUrl } from '@services/api';
+import type { AdminUserActionResult, AdminUserDetailsPayload } from '@services/admin/adminService';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 import { ADMIN_USER_ROLE_OPTIONS, ADMIN_USER_STATUS_OPTIONS, getAdminUserRoleBadgeClass, getAdminUserRoleLabel, getAdminUserStatusBadgeClass, getAdminUserStatusLabel } from './userAdminOptions';
+import type { EditUserForm } from './useAdminUserProfileWorkflow';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_MODAL_HEADER_CLASS,
@@ -34,21 +37,79 @@ type ConfirmState = null | {
   description: string;
   confirmLabel: string;
   tone: 'primary' | 'danger';
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
+};
+
+type AdminUserProfileSummary = {
+  id?: string;
+  name?: string;
+  email?: string;
+  cpf?: string;
+  phone?: string;
+  target_exam?: string;
+  role?: string;
+  status?: string;
+  reputation?: number;
+  email_verified?: boolean;
+  has_saved_card?: boolean;
+  photo_url?: string | null;
+};
+
+type AdminUserSubscriptionItem = {
+  id: string | number;
+  status?: string;
+  plan_id?: string | number;
+  plan_name?: string;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  auto_renew?: boolean;
+};
+
+type AdminUserTransactionItem = {
+  id: string | number;
+  created_at?: string | null;
+  type?: string;
+  amount?: number | string | null;
+  status?: string;
+};
+
+type AdminUserCommentItem = {
+  id: string | number;
+  created_at?: string | null;
+  question_id?: string | number;
+  comment?: string;
+};
+
+type AdminAvailablePlanItem = {
+  id: string | number;
+  name?: string;
+  price?: number | string | null;
+  active?: number | string | boolean;
+};
+
+type AdminUserDetailsView = {
+  profile?: AdminUserProfileSummary | null;
+  subscriptions?: AdminUserSubscriptionItem[];
+  transactions?: AdminUserTransactionItem[];
+  available_plans?: AdminAvailablePlanItem[];
+  stats?: {
+    comments_count?: number;
+  };
+  last_comments?: AdminUserCommentItem[];
 };
 
 interface UserProfileAdminModalProps {
   viewingProfileId: string;
-  detailedUser: any;
+  detailedUser: AdminUserDetailsPayload | null;
   isLoadingDetail: boolean;
   detailTab: DetailTab;
   onDetailTabChange: (tab: DetailTab) => void;
   isEditingUser: boolean;
-  editUserForm: any;
-  onEditUserFormChange: (next: any) => void;
+  editUserForm: EditUserForm;
+  onEditUserFormChange: (next: EditUserForm) => void;
   onStartEditingUser: () => void;
   onCancelEditingUser: () => void;
-  onUserAction: (action: string, data: any, options?: { actionKey?: string; successMessage?: string }) => Promise<any>;
+  onUserAction: (action: string, data: Record<string, unknown>, options?: { actionKey?: string; successMessage?: string }) => Promise<AdminUserActionResult | unknown>;
   actionLoading: string | null;
   onClose: () => void;
 }
@@ -99,29 +160,28 @@ const UserProfileAdminModal = ({
   actionLoading,
   onClose,
 }: UserProfileAdminModalProps) => {
-  const activeSubscription = detailedUser?.subscriptions?.find((subscription: any) => String(subscription.status || '').toLowerCase() === 'active') || null;
-  const subscriptions = detailedUser?.subscriptions ?? [];
-  const transactions = detailedUser?.transactions ?? [];
-  const comments = detailedUser?.last_comments ?? [];
-  const availablePlans = (detailedUser?.available_plans ?? []).filter((plan: any) => Number(plan?.active ?? 1) !== 0);
+  const normalizedDetailedUser = detailedUser as unknown as AdminUserDetailsView | null;
+  const activeSubscription = normalizedDetailedUser?.subscriptions?.find((subscription) => String(subscription.status || '').toLowerCase() === 'active') || null;
+  const subscriptions = normalizedDetailedUser?.subscriptions ?? [];
+  const transactions = normalizedDetailedUser?.transactions ?? [];
+  const comments = normalizedDetailedUser?.last_comments ?? [];
+  const availablePlans = (normalizedDetailedUser?.available_plans ?? []).filter((plan) => Number(plan?.active ?? 1) !== 0);
   const [daysToAdd, setDaysToAdd] = React.useState('30');
-  const [selectedPlanId, setSelectedPlanId] = React.useState('');
+  const [selectedPlanIdOverride, setSelectedPlanIdOverride] = React.useState('');
   const [confirmState, setConfirmState] = React.useState<ConfirmState>(null);
 
-  React.useEffect(() => {
+  const selectedPlanId = React.useMemo(() => {
     if (!availablePlans.length) {
-      setSelectedPlanId('');
-      return;
+      return '';
     }
 
-    setSelectedPlanId((current) => {
-      if (current && availablePlans.some((plan: any) => String(plan.id) === current)) {
-        return current;
-      }
-      const fallbackPlan = availablePlans.find((plan: any) => String(plan.id) !== String(activeSubscription?.plan_id));
-      return String((fallbackPlan || availablePlans[0]).id);
-    });
-  }, [availablePlans, activeSubscription?.plan_id]);
+    if (selectedPlanIdOverride && availablePlans.some((plan) => String(plan.id) === selectedPlanIdOverride)) {
+      return selectedPlanIdOverride;
+    }
+
+    const fallbackPlan = availablePlans.find((plan) => String(plan.id) !== String(activeSubscription?.plan_id));
+    return String((fallbackPlan || availablePlans[0]).id);
+  }, [activeSubscription?.plan_id, availablePlans, selectedPlanIdOverride]);
 
   const saveProfile = async () => {
     await onUserAction('update_profile', {
@@ -148,7 +208,7 @@ const UserProfileAdminModal = ({
 
   const openUpgradeConfirm = () => {
     if (!selectedPlanId) return;
-    const plan = availablePlans.find((item: any) => String(item.id) === selectedPlanId);
+    const plan = availablePlans.find((item) => String(item.id) === selectedPlanId);
     setConfirmState({
       action: 'upgrade_plan',
       actionKey: 'upgrade_plan',
@@ -160,7 +220,7 @@ const UserProfileAdminModal = ({
     });
   };
 
-  const openRefundConfirm = (transaction: any) => {
+  const openRefundConfirm = (transaction: AdminUserTransactionItem) => {
     setConfirmState({
       action: 'refund_transaction',
       actionKey: `refund_transaction:${transaction.id}`,
@@ -200,10 +260,10 @@ const UserProfileAdminModal = ({
             <input type="text" value={editUserForm.cpf} onChange={(event) => onEditUserFormChange({ ...editUserForm, cpf: event.target.value })} placeholder="CPF" className={ADMIN_FIELD_CLASS} />
             <input type="text" value={editUserForm.phone} onChange={(event) => onEditUserFormChange({ ...editUserForm, phone: event.target.value })} placeholder="Telefone" className={ADMIN_FIELD_CLASS} />
             <input type="text" value={editUserForm.targetExam} onChange={(event) => onEditUserFormChange({ ...editUserForm, targetExam: event.target.value })} placeholder="Concurso alvo" className={`${ADMIN_FIELD_CLASS} md:col-span-2`} />
-            <select value={editUserForm.role} onChange={(event) => onEditUserFormChange({ ...editUserForm, role: event.target.value })} className={ADMIN_FIELD_CLASS}>
+            <select value={editUserForm.role} onChange={(event) => onEditUserFormChange({ ...editUserForm, role: event.target.value as EditUserForm['role'] })} className={ADMIN_FIELD_CLASS}>
               {ADMIN_USER_ROLE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-            <select value={editUserForm.status} onChange={(event) => onEditUserFormChange({ ...editUserForm, status: event.target.value })} className={ADMIN_FIELD_CLASS}>
+            <select value={editUserForm.status} onChange={(event) => onEditUserFormChange({ ...editUserForm, status: event.target.value as EditUserForm['status'] })} className={ADMIN_FIELD_CLASS}>
               {ADMIN_USER_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
             <input type="number" min={0} max={100} value={editUserForm.reputation} onChange={(event) => onEditUserFormChange({ ...editUserForm, reputation: event.target.value })} placeholder="Reputacao" className={ADMIN_FIELD_CLASS} />
@@ -269,9 +329,9 @@ const UserProfileAdminModal = ({
           </div>
           <div className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-2 p-4`}>
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Upgrade manual</p>
-            <select value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)} className={ADMIN_FIELD_CLASS}>
+            <select value={selectedPlanId} onChange={(event) => setSelectedPlanIdOverride(event.target.value)} className={ADMIN_FIELD_CLASS}>
               <option value="">Selecione um plano</option>
-              {availablePlans.map((plan: any) => <option key={plan.id} value={plan.id}>{plan.name} - {formatCurrency(plan.price)}</option>)}
+              {availablePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} - {formatCurrency(plan.price)}</option>)}
             </select>
             <button type="button" onClick={openUpgradeConfirm} disabled={!selectedPlanId || actionLoading === 'upgrade_plan'} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"><ArrowUpCircle size={14} /> {actionLoading === 'upgrade_plan' ? 'Aplicando...' : 'Confirmar upgrade'}</button>
           </div>
@@ -281,7 +341,7 @@ const UserProfileAdminModal = ({
       <div className={sectionCardClass}>
         <div className="mb-5 flex items-center gap-2 border-b border-slate-100 pb-4 dark:border-slate-800"><Clock size={16} className="text-indigo-500" /><h4 className="text-xs font-black uppercase tracking-[0.18em] text-slate-900 dark:text-slate-100">Historico de assinaturas</h4></div>
         <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-          {subscriptions.length ? subscriptions.map((subscription: any) => (
+          {subscriptions.length ? subscriptions.map((subscription) => (
             <div key={subscription.id} className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -308,7 +368,7 @@ const UserProfileAdminModal = ({
           <table className="w-full min-w-[780px] text-left text-xs">
             <thead className="bg-slate-100 text-slate-500 dark:bg-slate-950 dark:text-slate-500"><tr><th className="p-4 text-[10px] font-black uppercase tracking-widest">Data</th><th className="p-4 text-[10px] font-black uppercase tracking-widest">Tipo</th><th className="p-4 text-[10px] font-black uppercase tracking-widest">Valor</th><th className="p-4 text-[10px] font-black uppercase tracking-widest">Status</th><th className="p-4 text-center text-[10px] font-black uppercase tracking-widest">Acoes</th></tr></thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-              {transactions.map((transaction: any) => {
+              {transactions.map((transaction) => {
                 const canRefund = ['approved', 'completed'].includes(String(transaction.status || '').toLowerCase()) && Number(transaction.amount || 0) > 0;
                 const actionKey = `refund_transaction:${transaction.id}`;
                 return (
@@ -334,13 +394,13 @@ const UserProfileAdminModal = ({
         <h4 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><MessageSquare size={18} className="text-indigo-500" /> Comentarios recentes</h4>
         <span className="rounded-sm border border-sky-200 bg-sky-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-sky-700 dark:border-sky-900/30 dark:bg-sky-900/20 dark:text-sky-300">Total: {detailedUser?.stats?.comments_count || 0}</span>
       </div>
-      {comments.length ? comments.map((comment: any) => (
+      {comments.length ? comments.map((comment) => (
         <div key={comment.id} className={`${ADMIN_SURFACE_CLASS} p-4`}>
           <div className="mb-3 flex items-start justify-between gap-4">
             <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400"><Clock size={10} /> {formatDateTime(comment.created_at)}</span>
             <Link href="/practice" target="_blank" className="rounded-sm bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-sky-50 hover:text-sky-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-sky-900/20 dark:hover:text-sky-300">Questao {comment.question_id}</Link>
           </div>
-          <p className="border-l-2 border-slate-100 pl-4 text-sm font-medium leading-relaxed text-slate-700 dark:border-slate-700 dark:text-slate-300">"{comment.comment}"</p>
+          <p className="border-l-2 border-slate-100 pl-4 text-sm font-medium leading-relaxed text-slate-700 dark:border-slate-700 dark:text-slate-300">&quot;{comment.comment}&quot;</p>
         </div>
       )) : <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 py-12 text-center dark:border-slate-700 dark:bg-slate-900"><p className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Nenhum comentario encontrado</p></div>}
     </div>
@@ -353,7 +413,16 @@ const UserProfileAdminModal = ({
           <div className={`${ADMIN_MODAL_HEADER_CLASS} z-10`}>
             <div className="flex items-center gap-6">
               <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-sm bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
-                {detailedUser?.profile?.photo_url ? <img src={getAssetUrl(detailedUser.profile.photo_url)} alt="Perfil" className="h-full w-full object-cover" /> : <User size={40} />}
+                {detailedUser?.profile?.photo_url ? (
+                  <Image
+                    src={getAssetUrl(detailedUser.profile.photo_url)}
+                    alt="Perfil"
+                    width={80}
+                    height={80}
+                    unoptimized
+                    className="h-full w-full object-cover"
+                  />
+                ) : <User size={40} />}
               </div>
               <div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">{detailedUser?.profile?.name || 'Carregando...'}</h3>

@@ -11,13 +11,47 @@
 
 import type { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { logger } from '../../utils/helpers/DebugLogger';
-import { getAccessToken, refreshAuthSession } from '@services/auth/session';
+import { getAccessToken, isAccessTokenExpired, refreshAuthSession } from '@services/auth/session';
 
 export interface AuthAwareRequestConfig extends InternalAxiosRequestConfig {
     _retry?: boolean;
     _authTokenUsed?: string | null;
     _skipRefreshHandling?: boolean;
 }
+
+type AxiosInterceptorClient = {
+    interceptors: {
+        request: {
+            use: (
+                onFulfilled: (config: InternalAxiosRequestConfig) => InternalAxiosRequestConfig | Promise<InternalAxiosRequestConfig>,
+                onRejected?: (error: AxiosError) => Promise<unknown>,
+            ) => unknown;
+        };
+        response: {
+            use: (
+                onFulfilled: (response: AxiosResponse) => unknown,
+                onRejected?: (error: AxiosError) => Promise<unknown>,
+            ) => unknown;
+        };
+    };
+    (config: AuthAwareRequestConfig): Promise<unknown>;
+};
+
+const readResponseMessage = (payload: unknown): string | undefined => {
+    if (!payload || typeof payload !== 'object') {
+        return undefined;
+    }
+
+    if ('message' in payload && typeof payload.message === 'string' && payload.message.trim()) {
+        return payload.message;
+    }
+
+    if ('error' in payload && typeof payload.error === 'string' && payload.error.trim()) {
+        return payload.error;
+    }
+
+    return undefined;
+};
 
 /**
  * Tenta converter payloads de texto que na pratica contem JSON.
@@ -63,12 +97,32 @@ const isAuthEndpoint = (url?: string | null): boolean => {
  * Eles ligam token em memoria, refresh automático e telemetria de debug da aplicação.
  * @since 1.0.0
  */
-export const registerApiInterceptors = (apiClient: any): void => {
+export const registerApiInterceptors = (apiClient: AxiosInterceptorClient): void => {
     apiClient.interceptors.request.use(
-        (config: InternalAxiosRequestConfig) => {
-            const token = getAccessToken();
+        async (config: InternalAxiosRequestConfig) => {
+            const authAwareConfig = config as AuthAwareRequestConfig;
+            let token = getAccessToken();
 
-            (config as AuthAwareRequestConfig)._authTokenUsed = token;
+            if (
+                token
+                && !authAwareConfig._skipRefreshHandling
+                && !isAuthEndpoint(config.url)
+                && isAccessTokenExpired(token, 30)
+            ) {
+                try {
+                    await refreshAuthSession({
+                        reason: 'manual',
+                        allowAnonymousFailure: true,
+                    });
+                    token = getAccessToken();
+                } catch (refreshError) {
+                    if (process.env.NODE_ENV === 'development') {
+                        logger.addLog('api-error', `Pre-request refresh failed: ${config.url}`, refreshError);
+                    }
+                }
+            }
+
+            authAwareConfig._authTokenUsed = token;
 
             if (token && config.headers) {
                 config.headers.Authorization = `Bearer ${token}`;
@@ -103,7 +157,7 @@ export const registerApiInterceptors = (apiClient: any): void => {
 
             if (error.response) {
                 const status = error.response.status;
-                const data = parseJsonLikePayload(error.response.data as any);
+                const data = parseJsonLikePayload(error.response.data as unknown);
                 error.response.data = data;
 
                 if (process.env.NODE_ENV === 'development') {
@@ -149,10 +203,10 @@ export const registerApiInterceptors = (apiClient: any): void => {
 
                 switch (status) {
                     case 401:
-                        console.error('Unauthorized request:', error.config?.url, data?.message);
+                        console.error('Unauthorized request:', error.config?.url, readResponseMessage(data));
                         break;
                     case 403:
-                        console.error('Access forbidden:', data?.message);
+                        console.error('Access forbidden:', readResponseMessage(data));
                         break;
                     case 404:
                         console.error('Resource not found:', error.config?.url);
@@ -161,10 +215,10 @@ export const registerApiInterceptors = (apiClient: any): void => {
                         console.error('Rate limit exceeded. Please try again later.');
                         break;
                     case 500:
-                        console.error('Server error:', data?.message);
+                        console.error('Server error:', readResponseMessage(data));
                         break;
                     default:
-                        console.error('API Error:', data?.message || 'Unknown error');
+                        console.error('API Error:', readResponseMessage(data) || 'Unknown error');
                 }
             } else if (error.request) {
                 console.error('Network Error: No response from server');

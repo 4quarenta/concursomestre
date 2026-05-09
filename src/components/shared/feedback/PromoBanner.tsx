@@ -11,13 +11,13 @@
 
 
 import React from 'react';
-import { useData } from '@providers/DataProvider';
 import Link from 'next/link';
 import { Timer, ArrowRight, X } from 'lucide-react';
 import { buildPromotionPath } from '@services/marketing/promotionCampaign';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 const PromoBanner: React.FC = () => {
-  const { systemSettings } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const [isVisible, setIsVisible] = React.useState(true);
   const promo = systemSettings.activePromotion;
   const promoEnabled = systemSettings.features.landingPagePromoEnabled;

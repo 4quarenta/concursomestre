@@ -95,7 +95,7 @@ const AdminLandingContentSection: React.FC<AdminLandingContentSectionProps> = ({
               Homepage
             </h3>
             <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-              Gerencie os cards da secao "O que voce encontra na plataforma" exibidos na homepage do {siteName || 'ConcursoMestre'}.
+              Gerencie os cards da secao &quot;O que voce encontra na plataforma&quot; exibidos na homepage do {siteName || 'ConcursoMestre'}.
             </p>
           </div>
           <button

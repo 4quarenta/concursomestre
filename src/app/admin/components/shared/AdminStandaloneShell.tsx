@@ -11,6 +11,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
+import type { Notification } from '@types';
 import {
   BookOpen,
   DollarSign,
@@ -21,8 +22,10 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useTheme } from '@providers/ThemeProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useNotificationsStore } from '@/state/notifications/notificationsStore';
+import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
 import {
   ADMIN_SECTION_CONFIG,
   DEFAULT_SECTION_BY_TAB,
@@ -74,11 +77,9 @@ const AdminStandaloneShell = ({
   const router = useRouter();
   const { currentUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const {
-    notifications,
-    markNotificationAsRead,
-    systemSettings,
-  } = useData();
+  const notifications = useNotificationsStore((store) => store.notifications);
+  const { markNotificationAsRead } = useNotificationsActions();
+  const systemSettings = useAppConfigStore((store) => store.systemSettings);
   const [isNotifOpen, setIsNotifOpen] = React.useState(false);
 
   const adminTabs = React.useMemo<AdminNavigationTab[]>(() => ([
@@ -92,7 +93,8 @@ const AdminStandaloneShell = ({
   ]), []);
 
   const searchTargets = React.useMemo(() => buildSearchTargets(adminTabs), [adminTabs]);
-  const unreadCount = (notifications || []).filter((notification: any) => !notification.isRead && !notification.deletedAt).length;
+  const adminNotifications = (notifications || []) as Notification[];
+  const unreadCount = adminNotifications.filter((notification) => !notification.isRead && !notification.deletedAt).length;
   const activeSectionLabel = ADMIN_SECTION_CONFIG[activeTab]?.find((section) => section.key === activeSectionKey)?.label || '';
 
   const navigateAdmin = React.useCallback((tab: string, section?: string) => {
@@ -120,7 +122,7 @@ const AdminStandaloneShell = ({
         isNotifOpen,
         setIsNotifOpen,
         onCloseNotifications: () => setIsNotifOpen(false),
-        notifications,
+        notifications: adminNotifications,
         markNotificationAsRead,
         unreadCount,
         navigate,

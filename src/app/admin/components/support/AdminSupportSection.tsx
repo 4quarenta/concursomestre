@@ -9,7 +9,8 @@
 *
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, CheckCircle2, LifeBuoy, MessageSquareText, Shield, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -50,7 +51,7 @@ interface AdminSupportSectionProps {
   pendingFeedbackCount?: number;
   onPendingFeedbackCountChange?: (count: number) => void;
   onPendingCommentsCountChange?: (count: number) => void;
-  onResolveReport?: (report: ErrorReport) => Promise<any> | any;
+  onResolveReport?: (report: ErrorReport) => Promise<unknown> | unknown;
   standaloneSection?: boolean;
 }
 
@@ -105,52 +106,64 @@ const AdminSupportSection = ({
 }: AdminSupportSectionProps) => {
   const { addToast } = useToast();
   const router = useRouter();
-  const [activeSection, setActiveSection] = useState<AdminSupportSectionKey>(initialSection);
   const [resolvingReportId, setResolvingReportId] = useState<string | number | null>(null);
   const [moderatingReport, setModeratingReport] = useState<ErrorReport | null>(null);
   const [moderationResolution, setModerationResolution] = useState('');
   const [reportSearch, setReportSearch] = useState('');
-  const [moderationCounts, setModerationCounts] = useState<AdminCommentModerationCounts>({
+  const [commentsLiveCounts, setCommentsLiveCounts] = useState<AdminCommentModerationCounts>({
     all: 0,
     pending: 0,
     approved: 0,
     spam: 0,
     trash: 0,
   });
+  const activeSection = initialSection;
+  const onPendingCommentsCountChangeRef = useRef(onPendingCommentsCountChange);
 
   useEffect(() => {
-    setActiveSection(initialSection);
-  }, [initialSection]);
-
-  useEffect(() => {
-    let isCurrent = true;
-
-    adminService.getModerationComments({ status: 'pending', page: 1, perPage: 1 })
-      .then((response) => {
-        if (isCurrent) {
-          setModerationCounts(response.counts);
-          onPendingCommentsCountChange?.(Number(response.counts?.pending || 0));
-        }
-      })
-      .catch(() => {
-        if (isCurrent) {
-          setModerationCounts({ all: 0, pending: 0, approved: 0, spam: 0, trash: 0 });
-          onPendingCommentsCountChange?.(0);
-        }
-      });
-
-    return () => {
-      isCurrent = false;
-    };
+    onPendingCommentsCountChangeRef.current = onPendingCommentsCountChange;
   }, [onPendingCommentsCountChange]);
 
-  const handleModerationCountsChange = (counts: AdminCommentModerationCounts) => {
-    setModerationCounts(counts);
-    onPendingCommentsCountChange?.(Number(counts.pending || 0));
-  };
+  const moderationCountsQuery = useQuery({
+    queryKey: ['admin', 'comments-moderation-counts'],
+    queryFn: async () => {
+      const response = await adminService.getModerationComments({
+        status: 'pending',
+        page: 1,
+        perPage: 1,
+      });
+
+      return response.counts;
+    },
+    enabled: activeSection !== 'comments',
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
+
+  const moderationCounts = useMemo<AdminCommentModerationCounts>(() => {
+    if (activeSection === 'comments') {
+      return commentsLiveCounts;
+    }
+
+    if (moderationCountsQuery.data) {
+      return moderationCountsQuery.data;
+    }
+
+    return commentsLiveCounts;
+  }, [activeSection, commentsLiveCounts, moderationCountsQuery.data]);
+
+  useEffect(() => {
+    onPendingCommentsCountChangeRef.current?.(Number(moderationCounts.pending || 0));
+  }, [moderationCounts.pending]);
+
+  const handleModerationCountsChange = useCallback((counts: AdminCommentModerationCounts) => {
+    setCommentsLiveCounts(counts);
+  }, []);
 
   const groupedReports = useMemo(
-    () => groupPendingReports(allReports as ErrorReport[]),
+    () => groupPendingReports(allReports),
     [allReports],
   );
   const filteredGroupedReports = useMemo(() => {
@@ -196,7 +209,6 @@ const AdminSupportSection = ({
   };
 
   const changeSection = (section: AdminSupportSectionKey) => {
-    setActiveSection(section);
     onSectionChange?.(section);
   };
 

@@ -19,8 +19,8 @@ interface UseAdminManualQuestionEditorOptions {
   questions: Question[];
   systemSettings: SystemSettings;
   addToast: ToastHandler;
-  onAddQuestion: (question: Question) => Promise<any> | any;
-  onUpdateQuestion: (question: Question) => Promise<any> | any;
+  onAddQuestion: (question: Question) => Promise<unknown> | unknown;
+  onUpdateQuestion: (question: Question) => Promise<unknown> | unknown;
   onRefreshQuestions: () => Promise<void> | void;
   replaceExtractedQuestion: (index: number, question: Question) => void;
 }

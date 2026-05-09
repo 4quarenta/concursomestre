@@ -33,6 +33,7 @@ import StudySessionWidget from '../components/shared/feedback/StudySessionWidget
 
 const IDLE_TIMEOUT_MS = 60_000;
 const TICK_INTERVAL_MS = 1_000;
+const PERSISTED_STATISTICS_SYNC_TTL_MS = 120_000;
 const WIDGET_STORAGE_KEY = 'cm-study-widget-expanded';
 const buildStudySessionStorageKey = (userId: string) => `cm-study-session:${userId}`;
 
@@ -65,6 +66,14 @@ const resolveTrackedStudyMode = (pathname: string): 'practice' | 'reading' | nul
   return null;
 };
 
+const shouldSyncPersistedStatistics = (pathname: string): boolean => {
+  if (pathname.startsWith('/dashboard')) {
+    return true;
+  }
+
+  return isLegalCommentaryReadingPath(pathname);
+};
+
 /**
  * Hook oficial para ler o estado atual do rastreador de estudos.
  *
@@ -89,6 +98,9 @@ export const StudyTrackerBridge: React.FC = () => {
   const tracker = useStudyTracker();
   const lastInteractionAtRef = React.useRef<number>(0);
   const lastTickAtRef = React.useRef<number>(0);
+  const lastStatisticsSyncKeyRef = React.useRef<string | null>(null);
+  const lastStatisticsSyncAtRef = React.useRef<number>(0);
+  const shouldLoadPersistedStatistics = shouldSyncPersistedStatistics(pathname);
 
   React.useEffect(() => {
     const now = Date.now();
@@ -102,6 +114,8 @@ export const StudyTrackerBridge: React.FC = () => {
   React.useEffect(() => {
     if (!currentUser?.id) {
       resetStudyTrackerState();
+      lastStatisticsSyncKeyRef.current = null;
+      lastStatisticsSyncAtRef.current = 0;
       return;
     }
 
@@ -119,6 +133,31 @@ export const StudyTrackerBridge: React.FC = () => {
     } else {
       resetStudyTrackerSession();
     }
+  }, [currentUser?.id]);
+
+  React.useEffect(() => {
+    if (!currentUser?.id) {
+      return;
+    }
+
+    if (!shouldLoadPersistedStatistics) {
+      setStudyTrackerLoading(false);
+      return;
+    }
+
+    const syncKey = currentUser.id;
+    const now = Date.now();
+    const hasRecentSync = (
+      lastStatisticsSyncKeyRef.current === syncKey
+      && (now - lastStatisticsSyncAtRef.current) < PERSISTED_STATISTICS_SYNC_TTL_MS
+    );
+
+    if (hasRecentSync) {
+      return;
+    }
+
+    lastStatisticsSyncKeyRef.current = syncKey;
+    lastStatisticsSyncAtRef.current = now;
 
     setStudyTrackerLoading(true);
     statisticsService.getUserStatistics(currentUser.id)
@@ -126,12 +165,14 @@ export const StudyTrackerBridge: React.FC = () => {
         syncPersistedStudyTotals(statistics);
       })
       .catch(() => {
+        lastStatisticsSyncKeyRef.current = null;
+        lastStatisticsSyncAtRef.current = 0;
         syncPersistedStudyTotals(null);
       })
       .finally(() => {
         setStudyTrackerLoading(false);
       });
-  }, [currentUser?.id]);
+  }, [currentUser?.id, pathname, shouldLoadPersistedStatistics]);
 
   React.useEffect(() => {
     if (!currentUser?.id) {

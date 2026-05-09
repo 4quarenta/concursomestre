@@ -10,9 +10,16 @@
 */
 
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Clock, Filter, Loader2, MessageSquare, Search, Send, User } from 'lucide-react';
+import { Filter, Loader2, MessageSquare, Search, Send } from 'lucide-react';
 import { adminService, type AdminFeedbackReply, type AdminFeedbackThread } from '@services/admin/adminService';
 import { useToast } from '@providers/ToastProvider';
+import {
+  ADMIN_FIELD_CLASS,
+  ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_SURFACE_CLASS,
+  ADMIN_SURFACE_HEADER_CLASS,
+  ADMIN_TEXTAREA_CLASS,
+} from '../shared/adminPanelStyles';
 
 const STATUS_LABELS: Record<AdminFeedbackThread['status'], string> = {
   new: 'Novo',
@@ -20,10 +27,16 @@ const STATUS_LABELS: Record<AdminFeedbackThread['status'], string> = {
   resolved: 'Resolvido',
 };
 
+const STATUS_TONE: Record<AdminFeedbackThread['status'], string> = {
+  new: 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300',
+  read: 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-900/40 dark:bg-indigo-900/20 dark:text-indigo-300',
+  resolved: 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300',
+};
+
 const TYPE_LABELS: Record<string, string> = {
   cancellation: 'Cancelamento',
   support: 'Suporte',
-  report: 'Denúncia',
+  report: 'Denuncia',
   suggestion: 'Sugestao',
   bug: 'Bug',
   other: 'Outro',
@@ -31,80 +44,32 @@ const TYPE_LABELS: Record<string, string> = {
 
 const FEEDBACK_REPLY_TEMPLATES: Record<string, Array<{ label: string; message: string }>> = {
   bug: [
-    {
-      label: 'Bug em análise',
-      message: 'Recebemos o bug reportado e ele já esta em análise pelo time técnico. Assim que tivermos um posicionamento final, enviaremos uma nova atualizacao.',
-    },
-    {
-      label: 'Correcao aplicada',
-      message: 'Concluimos a correcao do problema reportado e o ajuste já foi encaminhado para a plataforma. Se você ainda identificar o erro, responda esta conversa com o máximo de contexto possível.',
-    },
-    {
-      label: 'Precisamos de contexto',
-      message: 'Obrigado por sinalizar o problema. Para acelerar a análise, precisamos de mais contexto, como pagina, horario, navegador e passos para reproduzir o erro.',
-    },
+    { label: 'Bug em analise', message: 'Recebemos o bug e ele ja esta em analise pelo time tecnico.' },
+    { label: 'Correcao aplicada', message: 'Ajuste concluido. Se ainda houver erro, envie mais contexto por esta conversa.' },
+    { label: 'Mais contexto', message: 'Precisamos de mais contexto (pagina, horario, navegador e passos para reproduzir).' },
   ],
   suggestion: [
-    {
-      label: 'Sugestao recebida',
-      message: 'Obrigado pela sugestao. Já registramos a ideia no backlog do produto e ela entrou na nossa fila de avaliação.',
-    },
-    {
-      label: 'Sugestao aprovada',
-      message: 'Sua sugestao foi bem recebida e entrou no nosso planejamento. Quando houver previsao mais concreta, retornaremos por este mesmo canal.',
-    },
-    {
-      label: 'Sugestao em estudo',
-      message: 'Sua sugestao faz sentido para a plataforma e esta sendo avaliada junto com outras melhorias relacionadas. Assim que fecharmos o direcionamento, avisaremos aqui.',
-    },
+    { label: 'Sugestao recebida', message: 'Obrigado pela sugestao. Ela foi registrada e entrou na fila de avaliacao.' },
+    { label: 'Sugestao aprovada', message: 'Sua sugestao entrou no planejamento. Avisaremos por aqui quando houver previsao.' },
+    { label: 'Sugestao em estudo', message: 'Sua sugestao esta em estudo junto com melhorias relacionadas.' },
   ],
   cancellation: [
-    {
-      label: 'Cancelamento em análise',
-      message: 'Recebemos sua solicitacao de cancelamento e ela esta em análise. Em breve retornaremos com a confirmacao e os proximos passos.',
-    },
-    {
-      label: 'Cancelamento orientado',
-      message: 'Sua solicitação foi registrada. Se houver cobrança futura ou alguma pendência específica, nos detalhe por aqui para concluirmos a tratativa com segurança.',
-    },
-    {
-      label: 'Retencao amigavel',
-      message: 'Entendemos seu pedido e queremos ajudar da melhor forma. Se o motivo estiver ligado a cobrança, acesso ou funcionalidades, podemos analisar uma alternativa antes do encerramento final.',
-    },
+    { label: 'Cancelamento em analise', message: 'Recebemos seu pedido e ele esta em analise.' },
+    { label: 'Cancelamento orientado', message: 'Pedido registrado. Se houver pendencia de cobranca, detalhe por aqui.' },
+    { label: 'Retencao amigavel', message: 'Podemos analisar uma alternativa antes do encerramento final, se voce quiser.' },
   ],
   report: [
-    {
-      label: 'Denúncia recebida',
-      message: 'Recebemos sua denúncia e ela já foi encaminhada para moderação. Assim que a análise for concluida, você recebera uma atualizacao.',
-    },
-    {
-      label: 'Denúncia em validação',
-      message: 'Estamos validando as informações enviadas na denúncia e cruzando o contexto com os dados internos da plataforma. Retornaremos assim que a moderação finalizar.',
-    },
-    {
-      label: 'Precisamos de prova',
-      message: 'Obrigado pela denúncia. Se você tiver imagem, link ou outro contexto complementar, envie por aqui para fortalecer a análise do caso.',
-    },
+    { label: 'Denuncia recebida', message: 'Recebemos a denuncia e ela ja foi enviada para moderacao.' },
+    { label: 'Denuncia em validacao', message: 'Estamos validando as informacoes antes da decisao final.' },
+    { label: 'Solicitar prova', message: 'Se voce tiver imagem, link ou outro contexto, envie por aqui para reforcar o caso.' },
   ],
   support: [
-    {
-      label: 'Atendimento iniciado',
-      message: 'Recebemos sua mensagem e seu atendimento já foi iniciado. Em breve retornaremos com a orientacao adequada para o seu caso.',
-    },
-    {
-      label: 'Orientacao enviada',
-      message: 'Analisamos seu atendimento e deixamos acima a orientacao principal. Se precisar complementar com mais contexto, basta responder nesta mesma conversa.',
-    },
-    {
-      label: 'Aguardando retorno',
-      message: 'Precisamos de mais algumas informações para concluir seu atendimento. Assim que você responder, seguimos com a tratativa.',
-    },
+    { label: 'Atendimento iniciado', message: 'Recebemos sua mensagem e seu atendimento ja foi iniciado.' },
+    { label: 'Orientacao enviada', message: 'Deixamos acima a orientacao principal para o seu caso.' },
+    { label: 'Aguardando retorno', message: 'Precisamos de mais informacoes para concluir o atendimento.' },
   ],
   other: [
-    {
-      label: 'Atendimento iniciado',
-      message: 'Recebemos sua mensagem e seu atendimento já foi iniciado. Em breve retornaremos com a orientacao adequada para o seu caso.',
-    },
+    { label: 'Atendimento iniciado', message: 'Recebemos sua mensagem e seu atendimento ja foi iniciado.' },
   ],
 };
 
@@ -113,19 +78,21 @@ interface AdminFeedbackProps {
   onPendingCountChange?: (count: number) => void;
 }
 
-const countPendingFeedback = (items: AdminFeedbackThread[]) =>
-  items.filter((item) => item.status !== 'resolved').length;
+const countPendingFeedback = (items: AdminFeedbackThread[]) => items.filter((item) => item.status !== 'resolved').length;
+
+const compactText = (value: unknown, maxLength = 140) => {
+  const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '-';
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trim()}...`;
+};
 
 const cleanFeedbackDetails = (item: AdminFeedbackThread) => {
   const rawDetails = String(item.details || '').trim();
-  if (!rawDetails) {
-    return 'Sem detalhes fornecidos.';
-  }
+  if (!rawDetails) return 'Sem detalhes fornecidos.';
 
   const isPlatformRating = String(item.reason || '').toLowerCase().includes('avaliar plataforma');
-  if (!isPlatformRating) {
-    return rawDetails;
-  }
+  if (!isPlatformRating) return rawDetails;
 
   const cleaned = rawDetails
     .replace(/\s*Avalia\S*:\s*\d+\s*\/\s*5\b/gi, '')
@@ -165,7 +132,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       setFeedbacks(items);
     } catch (error) {
       console.error('Error fetching feedback:', error);
-      addToast('Não foi possível carregar os feedbacks.', 'error');
+      addToast('Nao foi possivel carregar os feedbacks.', 'error');
     } finally {
       setLoading(false);
     }
@@ -187,32 +154,16 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
 
       return () => window.cancelAnimationFrame(frameId);
     }
+
+    return undefined;
   }, [feedbacks, loading, onPendingCountChange]);
 
   const dataset = useMemo(() => {
     if (mode === 'threads') {
       return feedbacks.filter((item) => Number(item.reply_count || 0) > 0 || item.status !== 'new');
     }
-
     return feedbacks;
   }, [feedbacks, mode]);
-
-  const overdueCount = useMemo(
-    () => dataset.filter((item) => item.status !== 'resolved' && (supportNowMs - new Date(item.created_at).getTime()) > 48 * 60 * 60 * 1000).length,
-    [dataset, supportNowMs],
-  );
-
-  const withoutReplyCount = useMemo(
-    () => dataset.filter((item) => Number(item.reply_count || 0) === 0 && item.status !== 'resolved').length,
-    [dataset],
-  );
-
-  const feedbackStats = useMemo(() => ({
-    total: dataset.length,
-    new: dataset.filter((item) => item.status === 'new').length,
-    read: dataset.filter((item) => item.status === 'read').length,
-    resolved: dataset.filter((item) => item.status === 'resolved').length,
-  }), [dataset]);
 
   const filteredFeedbacks = useMemo(() => {
     const normalizedSearch = deferredSearch.trim().toLowerCase();
@@ -250,16 +201,24 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
     [filteredFeedbacks],
   );
 
+  const feedbackStats = useMemo(() => ({
+    total: dataset.length,
+    new: dataset.filter((item) => item.status === 'new').length,
+    read: dataset.filter((item) => item.status === 'read').length,
+    resolved: dataset.filter((item) => item.status === 'resolved').length,
+    noReply: dataset.filter((item) => Number(item.reply_count || 0) === 0 && item.status !== 'resolved').length,
+    overdue: dataset.filter((item) => item.status !== 'resolved' && (supportNowMs - new Date(item.created_at).getTime()) > 48 * 60 * 60 * 1000).length,
+  }), [dataset, supportNowMs]);
+
   const updateStatus = useCallback(async (id: number, status: AdminFeedbackThread['status']) => {
     setUpdatingStatusId(id);
-
     try {
       await adminService.updateFeedbackStatus(id, status);
       await fetchFeedback();
       addToast('Status do feedback atualizado.', 'success');
     } catch (error) {
       console.error('Error updating feedback status:', error);
-      addToast('Não foi possível atualizar o status do feedback.', 'error');
+      addToast('Nao foi possivel atualizar o status do feedback.', 'error');
     } finally {
       setUpdatingStatusId(null);
     }
@@ -272,7 +231,6 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
     }
 
     setExpandedId(id);
-
     if (replies[id]) {
       return;
     }
@@ -283,7 +241,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       setReplies((current) => ({ ...current, [id]: threadReplies }));
     } catch (error) {
       console.error('Error fetching feedback replies:', error);
-      addToast('Não foi possível carregar a conversa.', 'error');
+      addToast('Nao foi possivel carregar a conversa.', 'error');
     } finally {
       setLoadingRepliesId(null);
     }
@@ -300,15 +258,10 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       await fetchFeedback();
       setReplies((current) => ({ ...current, [parentId]: updatedReplies }));
       setReplyDrafts((current) => ({ ...current, [parentId]: '' }));
-      setFeedbacks((current) => current.map((item) => (
-        item.id === parentId
-          ? { ...item, reply_count: updatedReplies.length, status: item.status === 'new' ? 'read' : item.status }
-          : item
-      )));
       addToast('Resposta enviada com sucesso.', 'success');
     } catch (error) {
       console.error('Error sending feedback reply:', error);
-      addToast('Não foi possível enviar a resposta.', 'error');
+      addToast('Nao foi possivel enviar a resposta.', 'error');
     } finally {
       setSendingReplyId(null);
     }
@@ -320,7 +273,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
 
   if (loading) {
     return (
-      <div className="p-8 text-center text-slate-500 flex items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-500 dark:text-slate-400">
         <Loader2 className="animate-spin" size={18} />
         Carregando feedbacks...
       </div>
@@ -328,64 +281,37 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <h3 className="text-xl font-black text-slate-800 dark:text-white">{mode === 'threads' ? 'Threads Operacionais' : 'Feedback e Suporte'}</h3>
-          <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-            {mode === 'threads'
-              ? 'Fila de conversas que ja tiveram resposta, retorno ou precisam de acompanhamento.'
-              : 'Central de triagem de mensagens, cancelamentos, bugs e solicitações do usuário.'}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Total</p>
-            <p className="mt-2 text-xl font-black text-slate-900 dark:text-slate-100">{feedbackStats.total}</p>
-          </div>
-          <div className="rounded-2xl border border-amber-200 dark:border-amber-900/30 bg-amber-50/70 dark:bg-amber-900/10 px-4 py-3 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">Novos</p>
-            <p className="mt-2 text-xl font-black text-amber-700 dark:text-amber-300">{feedbackStats.new}</p>
-          </div>
-          <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/30 bg-indigo-50/70 dark:bg-indigo-900/10 px-4 py-3 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Lidos</p>
-            <p className="mt-2 text-xl font-black text-indigo-700 dark:text-indigo-300">{feedbackStats.read}</p>
-          </div>
-          <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900/30 bg-emerald-50/70 dark:bg-emerald-900/10 px-4 py-3 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Resolvidos</p>
-            <p className="mt-2 text-xl font-black text-emerald-700 dark:text-emerald-300">{feedbackStats.resolved}</p>
-          </div>
-          <div className="rounded-2xl border border-amber-200 dark:border-amber-900/30 bg-amber-50/70 dark:bg-amber-900/10 px-4 py-3 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">Sem retorno</p>
-            <p className="mt-2 text-xl font-black text-amber-700 dark:text-amber-300">{withoutReplyCount}</p>
-          </div>
-          <div className="rounded-2xl border border-rose-200 dark:border-rose-900/30 bg-rose-50/70 dark:bg-rose-900/10 px-4 py-3 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400">SLA estourado</p>
-            <p className="mt-2 text-xl font-black text-rose-700 dark:text-rose-300">{overdueCount}</p>
-          </div>
-        </div>
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+          {mode === 'threads' ? 'Threads operacionais' : 'Feedback e suporte'}
+        </h3>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          {mode === 'threads'
+            ? 'Fila com conversas ja iniciadas para acompanhamento.'
+            : 'Central de mensagens, bugs, sugestoes e cancelamentos.'}
+        </p>
       </div>
 
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-        <div className="flex flex-col gap-3 lg:flex-row">
-          <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <div className={`${ADMIN_SURFACE_CLASS} p-3`}>
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="relative w-full xl:max-w-[560px]">
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por usuário, e-mail, motivo ou conteúdo"
-              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium text-slate-700 outline-none transition-all focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              placeholder="Buscar por usuario, e-mail, motivo ou conteudo"
+              className={`${ADMIN_FIELD_CLASS} w-full pl-9`}
             />
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2">
               <Filter size={14} className="text-slate-400" />
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value as 'all' | AdminFeedbackThread['status'])}
-                className="bg-transparent text-xs font-black uppercase tracking-widest text-slate-600 outline-none dark:text-slate-300"
+                className={`${ADMIN_FIELD_CLASS} min-w-[150px]`}
               >
                 <option value="all">Todos os status</option>
                 <option value="new">Novo</option>
@@ -394,185 +320,208 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
               </select>
             </div>
 
-            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
-              <MessageSquare size={14} className="text-slate-400" />
-              <select
-                value={typeFilter}
-                onChange={(event) => setTypeFilter(event.target.value)}
-                className="bg-transparent text-xs font-black uppercase tracking-widest text-slate-600 outline-none dark:text-slate-300"
-              >
-                <option value="all">{mode === 'threads' ? 'Todos os contextos' : 'Todos os tipos'}</option>
-                {Object.entries(TYPE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value)}
+              className={`${ADMIN_FIELD_CLASS} min-w-[180px]`}
+            >
+              <option value="all">{mode === 'threads' ? 'Todos os contextos' : 'Todos os tipos'}</option>
+              {Object.entries(TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-4">
-        {sortedFeedbacks.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-10 text-center text-slate-400">
-            {mode === 'threads' ? 'Nenhuma thread encontrada para os filtros atuais.' : 'Nenhum feedback encontrado para os filtros atuais.'}
-          </div>
-        ) : (
-          sortedFeedbacks.map((item) => {
-            const isExpanded = expandedId === item.id;
-            const itemReplies = replies[item.id] || [];
-            const isSendingReply = sendingReplyId === item.id;
-            const isUpdatingStatus = updatingStatusId === item.id;
-            const draft = replyDrafts[item.id] || '';
+      <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+        <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-wrap gap-2`}>
+          <span className="rounded-sm border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+            Total {feedbackStats.total}
+          </span>
+          <span className="rounded-sm border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
+            Novos {feedbackStats.new}
+          </span>
+          <span className="rounded-sm border border-indigo-300 bg-indigo-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-indigo-700 dark:border-indigo-900/40 dark:bg-indigo-900/20 dark:text-indigo-300">
+            Lidos {feedbackStats.read}
+          </span>
+          <span className="rounded-sm border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300">
+            Resolvidos {feedbackStats.resolved}
+          </span>
+          <span className="rounded-sm border border-rose-300 bg-rose-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-rose-700 dark:border-rose-900/40 dark:bg-rose-900/20 dark:text-rose-300">
+            Sem resposta {feedbackStats.noReply}
+          </span>
+          <span className="rounded-sm border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+            SLA estourado {feedbackStats.overdue}
+          </span>
+        </div>
 
-            return (
-              <div key={item.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                <div className="p-6 flex flex-col md:flex-row gap-6">
-                  <div className="flex-shrink-0">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${item.type === 'cancellation' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                      {item.type === 'cancellation' ? <AlertTriangle size={24} /> : <MessageSquare size={24} />}
-                    </div>
-                  </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full table-fixed divide-y divide-slate-200 text-sm dark:divide-slate-800">
+            <thead className="bg-slate-50 dark:bg-slate-950/40">
+              <tr className="text-left text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                <th className="px-3 py-2">Tipo</th>
+                <th className="px-3 py-2">Assunto</th>
+                <th className="px-3 py-2">Usuario</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2 text-center">Respostas</th>
+                <th className="px-3 py-2">Data</th>
+                <th className="px-3 py-2 text-right">Acoes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
+              {sortedFeedbacks.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+                    {mode === 'threads'
+                      ? 'Nenhuma thread encontrada para os filtros atuais.'
+                      : 'Nenhum feedback encontrado para os filtros atuais.'}
+                  </td>
+                </tr>
+              ) : sortedFeedbacks.map((item) => {
+                const isExpanded = expandedId === item.id;
+                const itemReplies = replies[item.id] || [];
+                const isSendingReply = sendingReplyId === item.id;
+                const isUpdatingStatus = updatingStatusId === item.id;
+                const draft = replyDrafts[item.id] || '';
 
-                  <div className="flex-1 space-y-3">
-                    <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="font-bold text-slate-900 dark:text-white text-lg">{item.reason || TYPE_LABELS[item.type] || 'Feedback'}</h4>
-                          <span className="px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                            {TYPE_LABELS[item.type] || item.type}
-                          </span>
-                          <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            item.status === 'resolved'
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                              : item.status === 'read'
-                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400'
-                                : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                          }`}>
+                return (
+                  <React.Fragment key={item.id}>
+                    <tr className="align-top hover:bg-slate-50/80 dark:hover:bg-slate-800/30">
+                      <td className="px-3 py-3">
+                        <span className="inline-flex rounded-sm border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                          {TYPE_LABELS[item.type] || item.type}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">
+                          {compactText(item.reason || TYPE_LABELS[item.type] || 'Feedback', 78)}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          {compactText(cleanFeedbackDetails(item), 140)}
+                        </p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">{item.user_name || '-'}</p>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{item.user_email || '-'}</p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-col gap-2">
+                          <span className={`inline-flex w-fit rounded-sm border px-2 py-1 text-[10px] font-semibold uppercase tracking-widest ${STATUS_TONE[item.status]}`}>
                             {STATUS_LABELS[item.status]}
                           </span>
+                          <select
+                            value={item.status}
+                            disabled={isUpdatingStatus}
+                            onChange={(event) => void updateStatus(item.id, event.target.value as AdminFeedbackThread['status'])}
+                            className={`${ADMIN_FIELD_CLASS} h-8 min-w-[128px] text-xs`}
+                          >
+                            <option value="new">Novo</option>
+                            <option value="read">Lido</option>
+                            <option value="resolved">Resolvido</option>
+                          </select>
                         </div>
-
-                        <p className="text-xs text-slate-500 flex flex-wrap items-center gap-2">
-                          <span className="inline-flex items-center gap-1">
-                            <User size={12} /> {item.user_name} ({item.user_email})
-                          </span>
-                          <span className="w-1 h-1 rounded-full bg-slate-300" />
-                          <span className="inline-flex items-center gap-1">
-                            <Clock size={12} /> {new Date(item.created_at).toLocaleString()}
-                          </span>
-                        </p>
-                      </div>
-
-                      <select
-                        value={item.status}
-                        disabled={isUpdatingStatus}
-                        onChange={(e) => void updateStatus(item.id, e.target.value as AdminFeedbackThread['status'])}
-                        className="bg-slate-100 dark:bg-slate-800 border-none rounded-lg text-xs font-bold uppercase p-2 min-w-[120px] disabled:opacity-60"
-                      >
-                        <option value="new">Novo</option>
-                        <option value="read">Lido</option>
-                        <option value="resolved">Resolvido</option>
-                      </select>
-                    </div>
-
-                    <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg text-sm text-slate-700 dark:text-slate-300 leading-relaxed border border-slate-100 dark:border-slate-800">
-                      {cleanFeedbackDetails(item)}
-                    </div>
-
-                    <div className="pt-2 flex items-center justify-between">
-                      <button
-                        onClick={() => void toggleExpand(item.id)}
-                        className="text-sm font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-2"
-                      >
-                        <MessageSquare size={16} />
-                        {isExpanded ? 'Ocultar conversa' : `Ver conversa (${item.reply_count || 0})`}
-                      </button>
-                      {Number(item.reply_count || 0) === 0 && item.status !== 'resolved' ? (
-                        <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-rose-600 dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300">
-                          Sem resposta
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                          {Number(item.reply_count || 0)}
                         </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {new Date(item.created_at).toLocaleString('pt-BR')}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => void toggleExpand(item.id)}
+                          className={ADMIN_SECONDARY_BUTTON_CLASS}
+                        >
+                          <MessageSquare size={14} />
+                          {isExpanded ? 'Fechar' : 'Ver conversa'}
+                        </button>
+                      </td>
+                    </tr>
 
-                {isExpanded && (
-                  <div className="bg-slate-50 dark:bg-slate-950/30 border-t border-slate-100 dark:border-slate-800 p-6 space-y-4">
-                    {loadingRepliesId === item.id ? (
-                      <div className="text-center text-slate-400 py-4 flex items-center justify-center gap-2">
-                        <Loader2 className="animate-spin" size={18} />
-                        Carregando...
-                      </div>
-                    ) : (
-                      <>
-                        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                          {itemReplies.length > 0 ? itemReplies.map((reply) => {
-                            const isUserReply = reply.user_id === item.user_id;
+                    {isExpanded ? (
+                      <tr className="bg-slate-50 dark:bg-slate-950/30">
+                        <td colSpan={7} className="px-3 py-4">
+                          {loadingRepliesId === item.id ? (
+                            <div className="flex items-center justify-center gap-2 py-4 text-sm text-slate-500 dark:text-slate-400">
+                              <Loader2 size={16} className="animate-spin" />
+                              Carregando conversa...
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                                {itemReplies.length > 0 ? itemReplies.map((reply) => {
+                                  const isUserReply = reply.user_id === item.user_id;
+                                  return (
+                                    <div
+                                      key={reply.id}
+                                      className={`max-w-[88%] rounded-sm border px-3 py-2 ${
+                                        isUserReply
+                                          ? 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'
+                                          : 'ml-auto border-sky-200 bg-sky-50 dark:border-sky-900/40 dark:bg-sky-950/30'
+                                      }`}
+                                    >
+                                      <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                                        <span className="font-semibold text-slate-700 dark:text-slate-200">{reply.user_name}</span>
+                                        <span>{new Date(reply.created_at).toLocaleString('pt-BR')}</span>
+                                      </div>
+                                      <p className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-200">{reply.details}</p>
+                                    </div>
+                                  );
+                                }) : (
+                                  <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma resposta ainda.</p>
+                                )}
+                              </div>
 
-                            return (
-                              <div key={reply.id} className={`flex gap-4 ${isUserReply ? 'flex-row' : 'flex-row-reverse'}`}>
-                                <div className={`p-4 rounded-xl max-w-[80%] ${
-                                  isUserReply
-                                    ? 'bg-white border border-slate-200 dark:bg-slate-900 dark:border-slate-800'
-                                    : 'bg-indigo-100 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-100 ml-auto'
-                                }`}>
-                                  <div className="flex justify-between items-center mb-1 gap-4">
-                                    <span className="font-bold text-xs">{reply.user_name}</span>
-                                    <span className="text-[10px] opacity-70">{new Date(reply.created_at).toLocaleString()}</span>
-                                  </div>
-                                  <p className="text-sm whitespace-pre-wrap">{reply.details}</p>
+                              <div className="space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
+                                <div className="flex flex-wrap gap-2">
+                                  {(FEEDBACK_REPLY_TEMPLATES[item.type] || FEEDBACK_REPLY_TEMPLATES.support).map((template) => (
+                                    <button
+                                      key={`${item.id}-${template.label}`}
+                                      type="button"
+                                      onClick={() => applyReplyTemplate(item.id, template.message)}
+                                      className={ADMIN_SECONDARY_BUTTON_CLASS}
+                                    >
+                                      {template.label}
+                                    </button>
+                                  ))}
+                                </div>
+                                <textarea
+                                  value={draft}
+                                  onChange={(event) => setReplyDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
+                                  placeholder="Escreva uma resposta..."
+                                  className={`${ADMIN_TEXTAREA_CLASS} min-h-[92px]`}
+                                />
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => void sendReply(item.id)}
+                                    disabled={isSendingReply || !draft.trim()}
+                                    className={ADMIN_SECONDARY_BUTTON_CLASS}
+                                  >
+                                    {isSendingReply ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                    Enviar resposta
+                                  </button>
                                 </div>
                               </div>
-                            );
-                          }) : (
-                            <p className="text-center text-slate-400 italic text-sm">Nenhuma resposta ainda.</p>
+                            </div>
                           )}
-                        </div>
-
-                        <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-                          <div className="flex flex-wrap gap-2">
-                            {(FEEDBACK_REPLY_TEMPLATES[item.type] || FEEDBACK_REPLY_TEMPLATES.support).map((template) => (
-                              <button
-                                key={`${item.id}-${template.label}`}
-                                onClick={() => applyReplyTemplate(item.id, template.message)}
-                                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-500 transition-all hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
-                                type="button"
-                              >
-                                {template.label}
-                              </button>
-                            ))}
-                          </div>
-                          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                            Ao enviar a resposta pelo painel, o usuário recebe automaticamente um e-mail com o contexto deste atendimento.
-                          </p>
-                          <div className="flex gap-2 items-start">
-                            <textarea
-                              value={draft}
-                              onChange={(e) => setReplyDrafts((current) => ({ ...current, [item.id]: e.target.value }))}
-                              placeholder="Escreva uma resposta..."
-                              className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 min-h-[80px]"
-                            />
-                          </div>
-                          <button
-                            onClick={() => void sendReply(item.id)}
-                            disabled={isSendingReply || !draft.trim()}
-                            className="inline-flex items-center gap-2 self-end bg-indigo-600 text-white px-4 py-3 rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            title="Enviar resposta"
-                            type="button"
-                          >
-                            {isSendingReply ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
-                            Enviar resposta
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 };
+

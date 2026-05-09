@@ -14,6 +14,7 @@ import { AlertTriangle, RefreshCcw, ShieldCheck, Terminal } from 'lucide-react';
 import AdminDashboard from '../dashboard/AdminDashboard';
 import { subscriptionsService } from '@services/subscriptions';
 import { seoService } from '@services/seo';
+import type { ErrorReport } from '@types';
 import type { AdminPanelSection as AdminPanelSectionKey } from '../shared/useAdminPageController';
 import {
   ADMIN_PAGE_PANEL_CLASS,
@@ -24,6 +25,7 @@ import {
 import { calculateSeoCompletenessScore, mergeSeoSettings } from '../settings/seoSettings';
 
 interface AdminPanelSectionProps extends React.ComponentProps<typeof AdminDashboard> {
+  allReports: ErrorReport[];
   initialSection?: AdminPanelSectionKey;
   onSectionChange?: (section: AdminPanelSectionKey) => void;
   standaloneSection?: boolean;
@@ -200,7 +202,6 @@ const AdminPanelSection = ({
         <AdminDashboard
           {...dashboardProps}
           allTransactions={allTransactions}
-          allReports={allReports}
           allMaterials={allMaterials}
           systemSettings={systemSettings}
           onNavigate={onNavigate}

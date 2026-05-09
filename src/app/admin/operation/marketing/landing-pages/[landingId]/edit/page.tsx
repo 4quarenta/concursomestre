@@ -16,8 +16,8 @@ import { Loader2 } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import type { MarketingLandingPage } from '@types';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { canAccessAdminPanel } from '@services/auth';
+import { useSystemSettingsActions } from '@/state/app-config/useSystemSettingsActions';
 import AdminLandingPagesManager from '../../../../../components/marketing/AdminLandingPagesManager';
 import AdminStandaloneShell from '../../../../../components/shared/AdminStandaloneShell';
 import { buildAdminLandingPageEditPath, buildAdminPath } from '../../../../../config/adminPageNavigationConfig';
@@ -33,12 +33,7 @@ const AdminLandingPageEditRoute = () => {
   const isNew = landingId === 'new';
 
   const { currentUser, isLoading: isAuthLoading } = useAuth();
-  const {
-    systemSettings,
-    isSystemSettingsLoaded,
-    updateSystemSettings,
-    saveSystemSettingsNow,
-  } = useData();
+  const { systemSettings, isSystemSettingsLoaded, updateSystemSettings, saveSystemSettingsNow } = useSystemSettingsActions();
 
   React.useEffect(() => {
     if (!isAuthLoading && !canAccessAdminPanel(currentUser)) {

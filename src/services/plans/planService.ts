@@ -10,6 +10,7 @@
 */
 
 import { apiClient, ENDPOINTS, readApiData } from '@services/api';
+import { withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { Plan } from '@types';
 import { cardsService } from '@services/billing';
 import { subscriptionsService } from '@services/subscriptions';
@@ -28,18 +29,16 @@ export const planService = {
    * @since 1.0.0
    */
   async getPlans(): Promise<Plan[]> {
-    try {
-      const response = await apiClient.get<any>(ENDPOINTS.plans.list, {
-        params: {
-          _: Date.now(),
-        },
-      });
-      const plans = readApiData<Plan[]>(response, []);
-      return Array.isArray(plans) ? plans : [];
-    } catch (error) {
-      console.error('Error fetching plans:', error);
-      return [];
-    }
+    return withRequestCoalescing('plans:list', async () => {
+      try {
+        const response = await apiClient.get<any>(ENDPOINTS.plans.list);
+        const plans = readApiData<Plan[]>(response, []);
+        return Array.isArray(plans) ? plans : [];
+      } catch (error) {
+        console.error('Error fetching plans:', error);
+        return [];
+      }
+    }, 5000);
   },
 
   /**

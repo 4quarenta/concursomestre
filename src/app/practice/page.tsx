@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -19,10 +19,14 @@ import type { UserAnswer } from '../../types';
 import { ChevronRight, ChevronLeft, ChevronDown, Search, RotateCcw, Loader2, X, BookmarkCheck, Check, CheckCircle, GraduationCap, Sparkles, AlertTriangle, ArrowLeft, ArrowUp } from 'lucide-react';
 import QuestionCard from '../questions/components/QuestionCard';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
+import { useToast } from '@providers/ToastProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import AdBanner from '../../components/shared/feedback/AdBanner';
 import { getEffectivePlanName } from '@services/plans/planAccess';
+import { questionService } from '@services/questions';
+import { reportsService } from '@services/reports';
+import { commentService } from '@services/comments';
+import { notificationService } from '@services/notifications';
 import {
   ENEM_FOCUS_NAME,
   ENEM_SUBJECT_AREA_DESCRIPTIONS,
@@ -32,8 +36,17 @@ import {
   isEnemQuestion,
   normalizeCareerSelectorLabel,
 } from '@services/filters';
+import type { Assunto, Banca, Cargo, ErrorReport, Orgao, QuestaoComentario, Question } from '@types';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
+import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
+import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
+import { useUserProgressActions } from '@/state/user-progress/useUserProgressActions';
+import { useUserProgressStore } from '@/state/user-progress/userProgressStore';
+import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 
 const PAGE_SIZE = 10;
+const PRACTICE_PROGRESS_BOOTSTRAP_DELAY_MS = 3200;
 
 const DEFAULT_FILTERS = {
   keyword: '',
@@ -55,6 +68,52 @@ const DEFAULT_FILTERS = {
   excludeAnswered: false,
 };
 
+type PracticeFilters = typeof DEFAULT_FILTERS;
+type PracticeFilterKey = keyof PracticeFilters;
+type PracticeFilterValue = PracticeFilters[PracticeFilterKey];
+type PracticeTaxonomyLevel = 'topico' | 'assunto';
+
+type PracticeCareerItem = {
+  id?: number | string;
+  nome?: string;
+  name?: string;
+};
+
+type PracticeTaxonomyItem = Partial<Assunto & Banca & Cargo & Orgao> & {
+  parentId?: number | string | null;
+  parent_id?: number | string | null;
+  rootSubjectId?: number | string | null;
+  root_subject_id?: number | string | null;
+  subjectId?: number | string | null;
+  subject_id?: number | string | null;
+  rootSubjectName?: string;
+  root_subject_name?: string;
+  subjectName?: string;
+  subject_name?: string;
+  materiaNome?: string;
+  materia_nome?: string;
+  taxonomyLevel?: string;
+  taxonomy_level?: string;
+  descrição?: string;
+};
+
+type PracticeTaxonomies = {
+  agencies?: PracticeTaxonomyItem[];
+  organizations?: PracticeTaxonomyItem[];
+  subjects?: PracticeTaxonomyItem[];
+  subjectTopics?: PracticeTaxonomyItem[];
+  specificSubjects?: PracticeTaxonomyItem[];
+  topics?: PracticeTaxonomyItem[];
+  roles?: PracticeTaxonomyItem[];
+  careers?: PracticeCareerItem[];
+  modalities?: string[];
+  years?: Array<string | number>;
+};
+
+type PracticeQuestion = Question & {
+  carreiras?: PracticeCareerItem[];
+};
+
 type SearchableFilterValue = string | string[];
 
 type SearchableFilterOption = {
@@ -70,9 +129,14 @@ type SearchableFilterGroup = {
 };
 
 const MULTI_FILTER_KEYS = ['subject', 'difficulty', 'agency', 'organization', 'year', 'level', 'topic', 'role', 'career', 'modality'] as const;
+const BOOLEAN_FILTER_KEYS = ['onlySaved', 'hasTeacherComment', 'hasDetailedComment', 'excludeCanceled', 'excludeOutdated', 'excludeAnswered'] as const;
 
 const isMultiFilterKey = (key: string): key is typeof MULTI_FILTER_KEYS[number] => (
   (MULTI_FILTER_KEYS as readonly string[]).includes(key)
+);
+
+const isBooleanFilterKey = (key: string): key is typeof BOOLEAN_FILTER_KEYS[number] => (
+  (BOOLEAN_FILTER_KEYS as readonly string[]).includes(key)
 );
 
 const toFilterValues = (value: unknown) => {
@@ -109,6 +173,8 @@ const isVisibleFilterValue = (value: unknown) => {
   return value !== 'All' && value !== '' && value !== false;
 };
 
+const hasVisiblePracticeFilters = (filters: PracticeFilters) => Object.values(filters).some((value) => isVisibleFilterValue(value));
+
 const formatQuestionCount = (count: number) => `${count} ${count === 1 ? 'Questão' : 'Questões'}`;
 
 const normalizePracticeText = (value: unknown) => String(value || '')
@@ -117,11 +183,13 @@ const normalizePracticeText = (value: unknown) => String(value || '')
   .toLowerCase()
   .trim();
 
-const getPracticeTaxonomyName = (item: any) => String(item?.name || item?.nome || item?.descricao || item?.['descrição'] || '').trim();
+const getPracticeTaxonomyName = (item: PracticeTaxonomyItem | null | undefined) => String(
+  item?.name || item?.nome || item?.descricao || item?.descrição || item?.['descrição'] || '',
+).trim();
 
-const getPracticeTaxonomyId = (item: any) => String(item?.id ?? '').trim();
+const getPracticeTaxonomyId = (item: PracticeTaxonomyItem | null | undefined) => String(item?.id ?? '').trim();
 
-const getPracticeParentId = (item: any) => String(
+const getPracticeParentId = (item: PracticeTaxonomyItem | null | undefined) => String(
   item?.parentId
     ?? item?.parent_id
     ?? item?.assunto_raiz
@@ -129,7 +197,7 @@ const getPracticeParentId = (item: any) => String(
     ?? '',
 ).trim();
 
-const getPracticeRootSubjectId = (item: any) => String(
+const getPracticeRootSubjectId = (item: PracticeTaxonomyItem | null | undefined) => String(
   item?.rootSubjectId
     ?? item?.root_subject_id
     ?? item?.subjectId
@@ -137,7 +205,7 @@ const getPracticeRootSubjectId = (item: any) => String(
     ?? '',
 ).trim();
 
-const getPracticeRootSubjectName = (item: any) => String(
+const getPracticeRootSubjectName = (item: PracticeTaxonomyItem | null | undefined) => String(
   item?.rootSubjectName
     ?? item?.root_subject_name
     ?? item?.subjectName
@@ -147,7 +215,7 @@ const getPracticeRootSubjectName = (item: any) => String(
     ?? '',
 ).trim();
 
-const getPracticeTaxonomyLevel = (item: any, taxonomies?: any) => {
+const getPracticeTaxonomyLevel = (item: PracticeTaxonomyItem | null | undefined, taxonomies?: PracticeTaxonomies): PracticeTaxonomyLevel => {
   const rawLevel = normalizePracticeText(item?.taxonomyLevel || item?.taxonomy_level);
   if (rawLevel === 'topico' || rawLevel === 'assunto') {
     return rawLevel;
@@ -159,7 +227,7 @@ const getPracticeTaxonomyLevel = (item: any, taxonomies?: any) => {
     ...(taxonomies?.subjectTopics || []),
     ...(taxonomies?.specificSubjects || []),
     ...(taxonomies?.topics || []),
-  ].find((taxonomy: any) => (
+  ].find((taxonomy) => (
     (itemId && String(taxonomy?.id) === itemId)
     || (itemName && getPracticeTaxonomyName(taxonomy) === itemName)
   ));
@@ -172,12 +240,12 @@ const getPracticeTaxonomyLevel = (item: any, taxonomies?: any) => {
   return found && getPracticeParentId(found) ? 'assunto' : 'topico';
 };
 
-const questionHasSubject = (question: any, subjectName: string) => {
+const questionHasSubject = (question: Question, subjectName: string) => {
   if (subjectName === 'All') return true;
-  return (question?.assuntos || []).some((item: any) => Boolean(item?.materia) && getPracticeTaxonomyName(item) === subjectName);
+  return (question?.assuntos || []).some((item) => Boolean(item?.materia) && getPracticeTaxonomyName(item) === subjectName);
 };
 
-const questionMatchesSubjects = (question: any, subjects: unknown) => (
+const questionMatchesSubjects = (question: Question, subjects: unknown) => (
   filterMatchesAny(subjects, (subjectName) => questionHasSubject(question, subjectName))
 );
 
@@ -491,7 +559,7 @@ const CheckboxFilter = ({
   );
 };
 
-const sanitizePracticeFiltersForFocus = (nextFilters: typeof DEFAULT_FILTERS) => {
+const sanitizePracticeFiltersForFocus = (nextFilters: PracticeFilters): PracticeFilters => {
   if (!hasAnyFilterValue(nextFilters.subject) && hasAnyFilterValue(nextFilters.topic)) {
     nextFilters = {
       ...nextFilters,
@@ -514,12 +582,176 @@ const sanitizePracticeFiltersForFocus = (nextFilters: typeof DEFAULT_FILTERS) =>
 };
 
 const Practice: React.FC = () => {
-  const { currentUser, toggleSavedQuestion } = useAuth();
+  const { currentUser, toggleSavedQuestion, updateUser } = useAuth();
+  const { addToast } = useToast();
+  const systemSettings = useAppConfigStore((store) => store.systemSettings);
+  const reports = useAdminDataStore((store) => store.reports);
+  const addLocalReport = useAdminDataStore((store) => store.addReport);
+  const { ensureTaxonomiesLoaded } = useTaxonomyActions();
   const {
-    questions, userAnswers, userNotes, reports, systemSettings,
-    submitAnswer: dispatchAnswer, reportError, addComment, likeComment, saveNote,
-    ensureTaxonomiesLoaded
-  } = useData();
+    questions,
+    totalQuestions,
+    isQuestionsLoaded,
+    ensureQuestionsLoaded,
+    fetchMoreQuestions,
+  } = useQuestionBankActions();
+  const applyQuestionAnswer = useQuestionBankStore((store) => store.applyAnswer);
+  const addQuestionComment = useQuestionBankStore((store) => store.addQuestionComment);
+  const likeQuestionComment = useQuestionBankStore((store) => store.likeQuestionComment);
+  const {
+    userAnswers,
+    userNotes,
+    saveNote,
+    ensureUserProgressLoaded,
+  } = useUserProgressActions();
+  const upsertUserAnswer = useUserProgressStore((store) => store.upsertUserAnswer);
+  const lastCommentTimeRef = useRef<number>(0);
+  const currentUserId = currentUser?.id ?? null;
+  const currentUserName = currentUser?.name ?? '';
+
+  const dispatchAnswer = useCallback((answer: UserAnswer) => {
+    applyQuestionAnswer(answer.questionId, answer.isCorrect);
+    upsertUserAnswer(answer);
+
+    if (!currentUserId) {
+      return;
+    }
+
+    questionService.submitUserAnswer(currentUserId, answer)
+      .then((result) => {
+        const progressPatch = {
+          ...(result.newXp !== undefined ? { xp: result.newXp } : {}),
+          ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
+        };
+
+        if (result.success && Object.keys(progressPatch).length > 0) {
+          void updateUser(progressPatch);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to save answer:', error);
+        addToast('Erro ao salvar resposta.', 'error');
+      });
+  }, [addToast, applyQuestionAnswer, currentUserId, updateUser, upsertUserAnswer]);
+
+  const reportError = useCallback((report: Omit<ErrorReport, 'id' | 'status' | 'timestamp'>) => {
+    const duplicate = reports.find((currentReport) => (
+      currentReport.userName === report.userName
+      && currentReport.status === 'pending'
+      && (
+        (currentReport.targetType === 'question' && report.targetType === 'question' && currentReport.questionId === report.questionId)
+        || (currentReport.targetType === 'material' && report.targetType === 'material' && currentReport.materialId === report.materialId)
+        || (currentReport.targetType === 'comment' && report.targetType === 'comment' && currentReport.commentId === report.commentId)
+      )
+    ));
+
+    if (duplicate) {
+      addToast('Ja existe uma denuncia pendente para este item.', 'warning');
+      return;
+    }
+
+    if (!currentUserId) {
+      addToast('Faca login para enviar uma denuncia.', 'warning');
+      return;
+    }
+
+    const targetId = report.targetType === 'question'
+      ? report.questionId
+      : report.targetType === 'material'
+        ? report.materialId
+        : report.commentId;
+
+    if (!targetId) {
+      addToast('Alvo da denuncia invalido.', 'error');
+      return;
+    }
+
+    void reportsService.createReport({
+      reporterId: currentUserId,
+      targetType: report.targetType,
+      targetId,
+      reason: report.reason,
+      details: report.details,
+      evidenceUrl: report.evidenceUrl,
+    }).then((result) => {
+      if (result.duplicate) {
+        addToast(result.message || 'Ja existe uma denuncia pendente para este item.', 'warning');
+        return;
+      }
+
+      const reportId = result.id || `rep-${Date.now()}`;
+      addLocalReport({
+        ...report,
+        userId: currentUserId,
+        id: reportId,
+        status: 'pending',
+        timestamp: Date.now(),
+      });
+
+      void notificationService.sendNotification(
+        'admin',
+        'Nova Denuncia',
+        `O usuario ${report.userName} reportou um problema.`,
+        'warning',
+        'moderation',
+      );
+
+      addToast(result.message || 'Denuncia enviada com sucesso!', 'success');
+    }).catch((error) => {
+      console.error('Failed to create report:', error);
+      addToast((error as Error).message || 'Erro ao enviar denuncia.', 'error');
+    });
+  }, [addLocalReport, addToast, currentUserId, reports]);
+
+  const addComment = useCallback((questionId: number, comment: QuestaoComentario, parentId?: string) => {
+    const now = Date.now();
+    if (now - lastCommentTimeRef.current < 5000) {
+      addToast('Aguarde alguns segundos antes de comentar novamente.', 'warning');
+      return;
+    }
+    lastCommentTimeRef.current = now;
+
+    commentService.addComment({
+      questionId: String(questionId),
+      content: comment.text,
+      userId: currentUserId || comment.userId,
+      userName: currentUserName || comment.userName,
+      parentId,
+      targetType: 'question',
+    }).then((result) => {
+      if (result.comment) {
+        addQuestionComment(questionId, result.comment, parentId);
+      }
+
+      if (result.requiresModeration) {
+        void notificationService.sendNotification(
+          'admin',
+          'Comentario aguardando moderacao',
+          `${currentUserName || comment.userName || 'Usuario'} enviou comentario na questao #${questionId}.`,
+          'warning',
+          'moderation',
+        );
+      }
+    }).catch((error) => {
+      console.error('Failed to save comment:', error);
+      addToast((error as Error).message || 'Erro de conexao ao salvar comentario.', 'error');
+    });
+  }, [addQuestionComment, addToast, currentUserId, currentUserName]);
+
+  const likeComment = useCallback((questionId: number, commentId: string) => {
+    likeQuestionComment(questionId, commentId);
+
+    if (!currentUserId) {
+      addToast('Faca login para curtir.', 'warning');
+      return;
+    }
+
+    commentService.likeComment(commentId, currentUserId).catch((error) => {
+      console.error('Failed to save like:', error);
+      addToast((error as Error).message || 'Erro de conexao ao curtir comentario.', 'error');
+    });
+  }, [addToast, currentUserId, likeQuestionComment]);
+
   // URL query parameter for highlighting specific question or setting filters
   const searchParams = useSearchParams();
   const pathname = usePathname() || '/practice';
@@ -570,8 +802,8 @@ const Practice: React.FC = () => {
     };
   }, [searchParams]);
 
-  const [filters, setFilters] = useState<any>(() => sanitizePracticeFiltersForFocus(initialFilters));
-  const [pendingFilters, setPendingFilters] = useState<any>(() => sanitizePracticeFiltersForFocus(initialFilters)); // State for UI selection before submit
+  const [filters, setFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters));
+  const [pendingFilters, setPendingFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters)); // State for UI selection before submit
   const [isFiltering, setIsFiltering] = useState(false);
   const [filterTimestamp, setFilterTimestamp] = useState(0); // Force reset on filter
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
@@ -581,15 +813,45 @@ const Practice: React.FC = () => {
   const [authModalConfig, setAuthModalConfig] = useState({ title: '', description: '' });
   const [lastFetchedPage, setLastFetchedPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const hasBootstrappedQuestionsRef = useRef(false);
   const loaderRef = useRef<HTMLDivElement>(null);
   const pageRootRef = useRef<HTMLDivElement>(null);
   const focusQuestionRef = useRef<HTMLDivElement>(null);
   const scrollTargetRef = useRef<HTMLElement | Window | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
 
+  const handleOpenQuestionNote = useCallback(async (questionId: string) => {
+    if (!currentUser?.id) {
+      setAuthModalConfig({
+        title: "Faça Anotações",
+        description: "Organize seus estudos com anotações pessoais em cada questão.",
+      });
+      setShowAuthModal(true);
+      return;
+    }
+
+    if (!questionId) {
+      return;
+    }
+
+    await ensureUserProgressLoaded(false, {
+      includeAnswers: false,
+      includeNotes: true,
+      includeComments: false,
+    });
+  }, [currentUser?.id, ensureUserProgressLoaded]);
+
+  useEffect(() => {
+    hasBootstrappedQuestionsRef.current = false;
+  }, [currentUser?.id]);
+
   const sanitizeFiltersForFocus = sanitizePracticeFiltersForFocus;
 
   const isEnemPendingFocus = filterHasValue(pendingFilters.career, ENEM_FOCUS_NAME);
+  const practiceTaxonomies = useMemo<PracticeTaxonomies>(
+    () => (systemSettings.taxonomies as unknown as PracticeTaxonomies | undefined) || {},
+    [systemSettings.taxonomies],
+  );
 
   // Removido declarção duplicada do searchParams
   const filteredQuestions = useMemo(() => {
@@ -643,30 +905,46 @@ const Practice: React.FC = () => {
       filtered = filtered.filter(q => String(q.id) === highlightedQuestionId);
     }
 
+    if (!highlightedQuestionId && filtered.length === 0 && questions.length > 0 && !hasVisiblePracticeFilters(filters)) {
+      return questions;
+    }
+
     return filtered;
   }, [filters, questions, currentUser?.savedQuestionIds, userAnswers, highlightedQuestionId]);
 
-  const { totalQuestions, fetchMoreQuestions } = useData();
+  const hasActiveFilters = useMemo(() => hasVisiblePracticeFilters(filters), [filters]);
+
+  const resolvedQuestions = useMemo(() => {
+    if (highlightedQuestionId) {
+      return filteredQuestions;
+    }
+
+    if (!hasActiveFilters && filteredQuestions.length === 0 && questions.length > 0) {
+      return questions;
+    }
+
+    return filteredQuestions;
+  }, [filteredQuestions, hasActiveFilters, highlightedQuestionId, questions]);
 
   const loadNextPage = useCallback(async () => {
-    if (isLoadingMore || filteredQuestions.length >= totalQuestions) return;
+    if (isLoadingMore || questions.length >= totalQuestions) return;
     
     setIsLoadingMore(true);
     const nextPage = lastFetchedPage + 1;
     await fetchMoreQuestions(nextPage);
     setLastFetchedPage(nextPage);
     setIsLoadingMore(false);
-  }, [isLoadingMore, lastFetchedPage, filteredQuestions.length, totalQuestions, fetchMoreQuestions]);
+  }, [fetchMoreQuestions, isLoadingMore, lastFetchedPage, questions.length, totalQuestions]);
 
-  const paginatedList = useMemo(() => filteredQuestions.slice(0, visibleCount), [filteredQuestions, visibleCount]);
+  const paginatedList = useMemo(() => resolvedQuestions.slice(0, visibleCount), [resolvedQuestions, visibleCount]);
 
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) {
         if (viewMode === 'list') {
-            if (visibleCount < filteredQuestions.length) {
+            if (visibleCount < resolvedQuestions.length) {
               setVisibleCount(prev => prev + PAGE_SIZE);
-            } else if (filteredQuestions.length < totalQuestions) {
+            } else if (questions.length < totalQuestions) {
               // Trigger backend fetch for more
               loadNextPage();
             }
@@ -675,11 +953,11 @@ const Practice: React.FC = () => {
     }, { threshold: 0.1 });
     if (loaderRef.current) observer.observe(loaderRef.current);
     return () => observer.disconnect();
-  }, [visibleCount, filteredQuestions.length, totalQuestions, viewMode, loadNextPage]);
+  }, [loadNextPage, questions.length, resolvedQuestions.length, totalQuestions, viewMode, visibleCount]);
 
   // Load more when reaching end of cards in focus mode
   useEffect(() => {
-    if (viewMode !== 'card' || currentQuestionIndex < filteredQuestions.length - 1 || filteredQuestions.length >= totalQuestions) {
+    if (viewMode !== 'card' || currentQuestionIndex < resolvedQuestions.length - 1 || questions.length >= totalQuestions) {
       return;
     }
 
@@ -688,11 +966,81 @@ const Practice: React.FC = () => {
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [currentQuestionIndex, filteredQuestions.length, totalQuestions, viewMode, loadNextPage]);
+  }, [currentQuestionIndex, loadNextPage, questions.length, resolvedQuestions.length, totalQuestions, viewMode]);
+
+  useEffect(() => {
+    if (currentQuestionIndex < resolvedQuestions.length) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      setCurrentQuestionIndex(resolvedQuestions.length > 0 ? Math.max(0, resolvedQuestions.length - 1) : 0);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentQuestionIndex, resolvedQuestions.length]);
 
   useEffect(() => {
     ensureTaxonomiesLoaded();
   }, [ensureTaxonomiesLoaded]);
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      return;
+    }
+
+    const shouldLoadAnswersImmediately = filters.excludeAnswered;
+    if (shouldLoadAnswersImmediately) {
+      void ensureUserProgressLoaded(false, {
+        includeAnswers: true,
+        includeNotes: false,
+        includeComments: false,
+      });
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void ensureUserProgressLoaded(false, {
+        includeAnswers: true,
+        includeNotes: false,
+        includeComments: false,
+      });
+    }, PRACTICE_PROGRESS_BOOTSTRAP_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [currentUser?.id, ensureUserProgressLoaded, filters.excludeAnswered]);
+
+  useEffect(() => {
+    if (isQuestionsLoaded || isLoadingMore || hasBootstrappedQuestionsRef.current) {
+      return;
+    }
+
+    hasBootstrappedQuestionsRef.current = true;
+    let active = true;
+
+    const bootstrapQuestions = async () => {
+      setIsLoadingMore(true);
+
+      try {
+        await ensureQuestionsLoaded();
+        if (active) {
+          setLastFetchedPage(1);
+        }
+      } finally {
+        if (active) {
+          setIsLoadingMore(false);
+        }
+      }
+    };
+
+    void bootstrapQuestions();
+
+    return () => {
+      active = false;
+    };
+  }, [ensureQuestionsLoaded, isLoadingMore, isQuestionsLoaded]);
 
   useEffect(() => {
     const resolveScrollableParent = (element: HTMLElement | null): HTMLElement | Window => {
@@ -772,9 +1120,9 @@ const Practice: React.FC = () => {
     dispatchAnswer(ans);
   }, [currentUser, dispatchAnswer]);
 
-  const handleFilterChange = useCallback((key: string, value: any) => {
+  const handleFilterChange = useCallback((key: PracticeFilterKey, value: PracticeFilterValue) => {
     setPendingFilters(prev => {
-      let nextFilters = { ...prev, [key]: value };
+      let nextFilters = { ...prev, [key]: value } as PracticeFilters;
 
       if (key === 'career') {
         const nextCareerValues = toFilterValues(value);
@@ -818,9 +1166,9 @@ const Practice: React.FC = () => {
     }, 500);
   }, [pendingFilters, sanitizeFiltersForFocus]);
 
-  const clearFilter = useCallback((key: string) => {
-    let defaultValue: any = isMultiFilterKey(key) ? [] : 'All';
-    if (['onlySaved', 'hasTeacherComment', 'hasDetailedComment', 'excludeCanceled', 'excludeOutdated', 'excludeAnswered'].includes(key)) defaultValue = false;
+  const clearFilter = useCallback((key: PracticeFilterKey) => {
+    let defaultValue: PracticeFilterValue = isMultiFilterKey(key) ? [] : key === 'keyword' ? '' : 'All';
+    if (isBooleanFilterKey(key)) defaultValue = false;
 
     // Update both pending and active to clear immediately/consistently or just pending?
     // User expects "RotateCcw" to clear all. Single clear currently acts on 'filters' in original code.
@@ -867,23 +1215,26 @@ const Practice: React.FC = () => {
   const enemQuestions = useMemo(() => questions.filter(isEnemQuestion), [questions]);
 
   const uniqueAgencies = useMemo(() => {
-    if (systemSettings.taxonomies?.agencies?.length) return systemSettings.taxonomies.agencies.map((t: any) => t.sigla || t.name);
+    const agencies = practiceTaxonomies.agencies || [];
+    if (agencies.length) return agencies.map((t) => t.sigla || t.name).filter(Boolean) as string[];
     return Array.from(new Set(questions.flatMap(q => q.bancas?.map(b => b.sigla) || []).filter(Boolean))) as string[];
-  }, [questions, systemSettings.taxonomies?.agencies]);
+  }, [practiceTaxonomies, questions]);
 
   const uniqueOrganizations = useMemo(() => {
-    if (systemSettings.taxonomies?.organizations?.length) return systemSettings.taxonomies.organizations.map((t: any) => t.sigla || t.name);
+    const organizations = practiceTaxonomies.organizations || [];
+    if (organizations.length) return organizations.map((t) => t.sigla || t.name).filter(Boolean) as string[];
     return Array.from(new Set(questions.flatMap(q => q.orgaos?.map(o => o.sigla || o.nome) || []).filter(Boolean))) as string[];
-  }, [questions, systemSettings.taxonomies?.organizations]);
+  }, [practiceTaxonomies, questions]);
 
   const uniqueSubjects = useMemo(() => {
     if (isEnemPendingFocus) {
       return [...ENEM_SUBJECT_AREA_OPTIONS];
     }
 
-    if (systemSettings.taxonomies?.subjects?.length) return systemSettings.taxonomies.subjects.map((t: any) => t.name);
+    const subjects = practiceTaxonomies.subjects || [];
+    if (subjects.length) return subjects.map((t) => t.name).filter(Boolean) as string[];
     return Array.from(new Set(questions.flatMap(q => q.assuntos?.filter(a => a.materia).map(a => a.nome) || []).filter(Boolean))) as string[];
-  }, [isEnemPendingFocus, questions, systemSettings.taxonomies?.subjects]);
+  }, [isEnemPendingFocus, practiceTaxonomies, questions]);
 
   const subjectOptionGroups = useMemo<SearchableFilterGroup[]>(() => [{
     label: isEnemPendingFocus ? 'Areas de conhecimento' : 'Materias',
@@ -911,23 +1262,23 @@ const Practice: React.FC = () => {
       return options.length ? [{ label: 'Assuntos ENEM', options }] : [];
     }
 
-    const taxonomies: any = systemSettings.taxonomies || {};
+    const taxonomies = practiceTaxonomies;
     const subjects = taxonomies.subjects || [];
     const selectedSubjectIds = new Set(
       subjects
-        .filter((subject: any) => selectedSubjectValues.includes(getPracticeTaxonomyName(subject)))
-        .map((subject: any) => getPracticeTaxonomyId(subject))
+        .filter((subject) => selectedSubjectValues.includes(getPracticeTaxonomyName(subject)))
+        .map((subject) => getPracticeTaxonomyId(subject))
         .filter(Boolean),
     );
     const subjectTopics = (taxonomies.subjectTopics?.length
       ? taxonomies.subjectTopics
-      : (taxonomies.topics || []).filter((item: any) => getPracticeTaxonomyLevel(item, taxonomies) === 'topico')) || [];
+      : (taxonomies.topics || []).filter((item) => getPracticeTaxonomyLevel(item, taxonomies) === 'topico')) || [];
     const specificSubjects = (taxonomies.specificSubjects?.length
       ? taxonomies.specificSubjects
-      : (taxonomies.topics || []).filter((item: any) => getPracticeTaxonomyLevel(item, taxonomies) === 'assunto')) || [];
+      : (taxonomies.topics || []).filter((item) => getPracticeTaxonomyLevel(item, taxonomies) === 'assunto')) || [];
     const hasStructuredKnowledgeTaxonomies = subjectTopics.length > 0 || specificSubjects.length > 0;
-    const topicById = new Map<string, any>();
-    subjectTopics.forEach((topic: any) => {
+    const topicById = new Map<string, PracticeTaxonomyItem>();
+    subjectTopics.forEach((topic) => {
       const topicId = getPracticeTaxonomyId(topic);
       if (topicId) topicById.set(topicId, topic);
     });
@@ -966,7 +1317,7 @@ const Practice: React.FC = () => {
       && selectedSubjectValues.some((selectedSubject) => normalizePracticeText(selectedSubject) === normalizePracticeText(name))
     );
 
-    const topicBelongsToSelectedSubject = (topic: any) => {
+    const topicBelongsToSelectedSubject = (topic: PracticeTaxonomyItem) => {
       const parentId = String(getPracticeParentId(topic));
       const rootSubjectId = String(getPracticeRootSubjectId(topic));
 
@@ -977,7 +1328,7 @@ const Practice: React.FC = () => {
       return selectedSubjectNameMatches(getPracticeRootSubjectName(topic));
     };
 
-    const specificSubjectBelongsToSelectedSubject = (subject: any) => {
+    const specificSubjectBelongsToSelectedSubject = (subject: PracticeTaxonomyItem) => {
       const parentId = String(getPracticeParentId(subject));
       const rootSubjectId = String(getPracticeRootSubjectId(subject));
 
@@ -999,15 +1350,15 @@ const Practice: React.FC = () => {
 
     subjectTopics
       .filter(topicBelongsToSelectedSubject)
-      .forEach((topic: any) => {
+      .forEach((topic) => {
         const topicName = getPracticeTaxonomyName(topic);
         const topicId = getPracticeTaxonomyId(topic);
         const childSubjects = specificSubjects
-          .filter((subject: any) => String(getPracticeParentId(subject)) === topicId)
+          .filter((subject) => String(getPracticeParentId(subject)) === topicId)
           .filter(specificSubjectBelongsToSelectedSubject);
 
         childSubjects
-          .forEach((subject: any) => addOption(topicName, getPracticeTaxonomyName(subject)));
+          .forEach((subject) => addOption(topicName, getPracticeTaxonomyName(subject)));
 
         if (childSubjects.length > 0) {
           selectableGroups.add(topicName);
@@ -1024,18 +1375,18 @@ const Practice: React.FC = () => {
 
     questions
       .filter((question) => questionMatchesSubjects(question, selectedSubjectValues))
-      .flatMap((question) => question.assuntos?.filter((item: any) => !item?.materia) || [])
-      .forEach((item: any) => {
+      .flatMap((question) => question.assuntos?.filter((item) => !item?.materia) || [])
+      .forEach((item) => {
         const itemName = getPracticeTaxonomyName(item);
         const itemId = getPracticeTaxonomyId(item);
-        const matchedSpecificSubject = specificSubjects.find((subject: any) => (
+        const matchedSpecificSubject = specificSubjects.find((subject) => (
           (
             (itemId && getPracticeTaxonomyId(subject) === itemId)
             || getPracticeTaxonomyName(subject) === itemName
           )
           && specificSubjectBelongsToSelectedSubject(subject)
         ));
-        const matchedTopic = subjectTopics.find((topic: any) => (
+        const matchedTopic = subjectTopics.find((topic) => (
           (
             (itemId && getPracticeTaxonomyId(topic) === itemId)
             || getPracticeTaxonomyName(topic) === itemName
@@ -1075,32 +1426,33 @@ const Practice: React.FC = () => {
     isEnemPendingFocus,
     pendingFilters.subject,
     questions,
-    systemSettings.taxonomies,
+    practiceTaxonomies,
   ]);
 
   const uniqueYears = useMemo(() => {
     const yearSource = isEnemPendingFocus ? enemQuestions : questions;
-    if (!isEnemPendingFocus && systemSettings.taxonomies?.years?.length) return systemSettings.taxonomies.years.map(String);
+    if (!isEnemPendingFocus && practiceTaxonomies.years?.length) return practiceTaxonomies.years.map(String);
     return Array.from(new Set(yearSource.flatMap(q => q.anos || []).map(String).filter(Boolean))) as string[];
-  }, [enemQuestions, isEnemPendingFocus, questions, systemSettings.taxonomies?.years]);
+  }, [enemQuestions, isEnemPendingFocus, practiceTaxonomies, questions]);
 
   const uniqueRoles = useMemo(() => {
-    if (systemSettings.taxonomies?.roles?.length) return systemSettings.taxonomies.roles.map((t: any) => t.descricao || t['descrição'] || t.name);
-    return Array.from(new Set(questions.flatMap(q => q.cargos?.map(c => (c as any).descricao || (c as any)['descrição'] || (c as any).name) || []).filter(Boolean))) as string[];
-  }, [questions, systemSettings.taxonomies?.roles]);
+    const roles = practiceTaxonomies.roles || [];
+    if (roles.length) return roles.map((t) => t.descricao || t['descrição'] || t.name).filter(Boolean) as string[];
+    return Array.from(new Set(questions.flatMap(q => q.cargos?.map(c => c.descricao || c['descrição'] || c.name) || []).filter(Boolean))) as string[];
+  }, [practiceTaxonomies, questions]);
 
   const uniqueModalities = useMemo(() => {
-    if (systemSettings.taxonomies?.modalities?.length) return systemSettings.taxonomies.modalities;
+    if (practiceTaxonomies.modalities?.length) return practiceTaxonomies.modalities;
     return ['Múltipla Escolha', 'Certo/Errado'];
-  }, [systemSettings.taxonomies?.modalities]);
+  }, [practiceTaxonomies]);
 
   const uniqueCareers = useMemo(() => {
-    const baseCareers = systemSettings.taxonomies?.careers?.length
-      ? systemSettings.taxonomies.careers.map((t: any) => normalizeCareerSelectorLabel(t.name))
-      : Array.from(new Set(questions.flatMap(q => q.carreiras?.map(c => normalizeCareerSelectorLabel(c.nome)) || []).filter(Boolean))) as string[];
+    const baseCareers = practiceTaxonomies.careers?.length
+      ? practiceTaxonomies.careers.map((t) => normalizeCareerSelectorLabel(t.name || t.nome || '')).filter(Boolean)
+      : Array.from(new Set(questions.flatMap(q => ((q as PracticeQuestion).carreiras || []).map(c => normalizeCareerSelectorLabel(c.nome || c.name || ''))).filter(Boolean))) as string[];
 
     return injectEnemFocusOption(baseCareers);
-  }, [questions, systemSettings.taxonomies?.careers]);
+  }, [practiceTaxonomies, questions]);
 
   const careerOptionGroups = useMemo(() => buildSearchableOptionGroup('Focos', uniqueCareers), [uniqueCareers]);
   const agencyOptionGroups = useMemo(() => buildSearchableOptionGroup('Bancas', uniqueAgencies), [uniqueAgencies]);
@@ -1181,49 +1533,49 @@ const Practice: React.FC = () => {
             <SearchableFilterSelect
               label="Foco"
               value={pendingFilters.career}
-              onChange={(v: any) => handleFilterChange('career', v)}
+              onChange={(v) => handleFilterChange('career', v)}
               groups={careerOptionGroups}
             />
             <SearchableFilterSelect
               label="Materia"
               value={pendingFilters.subject}
-              onChange={(v: any) => handleFilterChange('subject', v)}
+              onChange={(v) => handleFilterChange('subject', v)}
               groups={subjectOptionGroups}
               helperText={isEnemPendingFocus ? 'No foco ENEM, a materia usa as areas oficiais de conhecimento.' : undefined}
             />
-            <FilterSelect label="Dificuldade" value={pendingFilters.difficulty} onChange={(v: any) => handleFilterChange('difficulty', v)} options={Object.values(Difficulty)} />
+            <FilterSelect label="Dificuldade" value={pendingFilters.difficulty} onChange={(v) => handleFilterChange('difficulty', v)} options={Object.values(Difficulty)} />
             <SearchableFilterSelect
               label="Banca"
               value={pendingFilters.agency}
-              onChange={(v: any) => handleFilterChange('agency', v)}
+              onChange={(v) => handleFilterChange('agency', v)}
               groups={agencyOptionGroups}
               disabled={isEnemPendingFocus}
               helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined}
             />
-            <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v: any) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
+            <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
             <SearchableFilterSelect
               label="Ano"
               value={pendingFilters.year}
-              onChange={(v: any) => handleFilterChange('year', v)}
+              onChange={(v) => handleFilterChange('year', v)}
               groups={yearOptionGroups}
             />
-            <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v: any) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
+            <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
             <SearchableFilterSelect
               label="Assunto"
               value={pendingFilters.topic}
-              onChange={(v: any) => handleFilterChange('topic', v)}
+              onChange={(v) => handleFilterChange('topic', v)}
               groups={topicOptionGroups}
               disabled={!hasAnyFilterValue(pendingFilters.subject)}
             />
             <SearchableFilterSelect
               label="Cargo"
               value={pendingFilters.role}
-              onChange={(v: any) => handleFilterChange('role', v)}
+              onChange={(v) => handleFilterChange('role', v)}
               groups={roleOptionGroups}
               disabled={isEnemPendingFocus}
               helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined}
             />
-            <FilterSelect label="Modalidade" value={pendingFilters.modality} onChange={(v: any) => handleFilterChange('modality', v)} options={uniqueModalities} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
+            <FilterSelect label="Modalidade" value={pendingFilters.modality} onChange={(v) => handleFilterChange('modality', v)} options={uniqueModalities} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
           </div>
 
           {isEnemPendingFocus ? (
@@ -1312,7 +1664,7 @@ const Practice: React.FC = () => {
                     <div key={key} className={`px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-2 animate-scale-in border ${key === 'hasTeacherComment' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' : key === 'hasDetailedComment' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}>
                       <span className="opacity-60">{filterLabels[key] || key}:</span>
                       <span>{value === true ? 'Sim' : serializeFilterValue(value)}</span>
-                      <button onClick={() => clearFilter(key)} className="hover:opacity-70 rounded-full p-0.5 transition-colors">
+                      <button onClick={() => clearFilter(key as PracticeFilterKey)} className="hover:opacity-70 rounded-full p-0.5 transition-colors">
                         <X size={10} />
                       </button>
                     </div>
@@ -1326,7 +1678,7 @@ const Practice: React.FC = () => {
             <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-black text-[10px] uppercase tracking-wider">
                 <CheckCircle size={14} />
-                {formatQuestionCount(filteredQuestions.length)}
+                {formatQuestionCount(resolvedQuestions.length)}
               </div>
               <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors">
                 <button
@@ -1347,7 +1699,7 @@ const Practice: React.FC = () => {
 
       <div className="w-full space-y-6">
         {viewMode === 'card' ? (
-          filteredQuestions.length > 0 ? (
+          resolvedQuestions.length > 0 ? (
             <div className="relative min-h-[400px]">
               {isFiltering && (
                 <div className="absolute inset-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center rounded-3xl transition-all animate-fade-in">
@@ -1357,10 +1709,10 @@ const Practice: React.FC = () => {
                   </div>
                 </div>
               )}
-              <div ref={focusQuestionRef} className="scroll-mt-4 md:scroll-mt-6">
-                <QuestionCard
-                  key={`${filteredQuestions[currentQuestionIndex].id}-${filterTimestamp}`}
-                  question={filteredQuestions[currentQuestionIndex]}
+                <div ref={focusQuestionRef} className="scroll-mt-4 md:scroll-mt-6">
+                  <QuestionCard
+                  key={`${resolvedQuestions[currentQuestionIndex].id}-${filterTimestamp}`}
+                  question={resolvedQuestions[currentQuestionIndex]}
                   isHighlighted={!!highlightedQuestionId}
                   onAnswerSubmit={handleAnswer}
                   onReportError={reportError}
@@ -1406,11 +1758,12 @@ const Practice: React.FC = () => {
                   }}
                   onLikeComment={(qId, cId) => likeComment(Number(qId), cId)}
                   indexDisplay={currentQuestionIndex + 1}
-                  existingAnswer={userAnswers.find(a => a.questionId === filteredQuestions[currentQuestionIndex].id)}
-                  isAlreadyReported={reports.some(r => r.questionId === filteredQuestions[currentQuestionIndex].id && r.status === 'pending')}
+                  existingAnswer={userAnswers.find(a => a.questionId === resolvedQuestions[currentQuestionIndex].id)}
+                  isAlreadyReported={reports.some(r => r.questionId === resolvedQuestions[currentQuestionIndex].id && r.status === 'pending')}
                     userPlan={getEffectivePlanName(currentUser)}
-                  existingNote={userNotes.find(n => String(n.questionId) === String(filteredQuestions[currentQuestionIndex].id))}
+                  existingNote={userNotes.find(n => String(n.questionId) === String(resolvedQuestions[currentQuestionIndex].id))}
                   onSaveNote={(qId, text) => saveNote(Number(qId), text)}
+                  onOpenNote={handleOpenQuestionNote}
                   onToggleSave={(id) => {
                     if (!currentUser) {
                       setAuthModalConfig({
@@ -1422,7 +1775,7 @@ const Practice: React.FC = () => {
                     }
                     toggleSavedQuestion(id);
                   }}
-                  isSaved={currentUser?.savedQuestionIds?.includes(String(filteredQuestions[currentQuestionIndex].id)) || false}
+                  isSaved={currentUser?.savedQuestionIds?.includes(String(resolvedQuestions[currentQuestionIndex].id)) || false}
                   currentUserId={currentUser?.id || ''}
                   currentUserName={currentUser?.name || 'Visitante'}
                 />
@@ -1440,10 +1793,10 @@ const Practice: React.FC = () => {
                   <span className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em]">Questão {currentQuestionIndex + 1} / {filteredQuestions.length}</span>
                   <button
                     onClick={() => {
-                      setCurrentQuestionIndex(Math.min(filteredQuestions.length - 1, currentQuestionIndex + 1));
+                      setCurrentQuestionIndex(Math.min(resolvedQuestions.length - 1, currentQuestionIndex + 1));
                       scrollToFocusQuestion();
                     }}
-                    disabled={currentQuestionIndex === filteredQuestions.length - 1}
+                    disabled={currentQuestionIndex === resolvedQuestions.length - 1}
                     className="flex items-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-slate-900 dark:bg-indigo-600 text-white rounded-2xl font-bold text-[10px] sm:text-xs uppercase tracking-widest hover:bg-indigo-600 dark:hover:bg-indigo-700 disabled:opacity-30 transition-all shadow-lg shadow-slate-200 dark:shadow-none"
                   >
                     Próxima <ChevronRight size={16} />
@@ -1513,6 +1866,7 @@ const Practice: React.FC = () => {
                 }}
                 onLikeComment={(qId, cId) => likeComment(Number(qId), cId)}
                 onSaveNote={(qId, text) => saveNote(Number(qId), text)}
+                onOpenNote={handleOpenQuestionNote}
                 onToggleSave={(id) => {
                   if (!currentUser) {
                     setAuthModalConfig({
@@ -1534,7 +1888,7 @@ const Practice: React.FC = () => {
               />
             ))}
             <div ref={loaderRef} className="h-10 flex items-center justify-center">
-              {(visibleCount < filteredQuestions.length || filteredQuestions.length < totalQuestions) && <Loader2 className="animate-spin text-indigo-400" size={24} />}
+              {(visibleCount < resolvedQuestions.length || questions.length < totalQuestions) && <Loader2 className="animate-spin text-indigo-400" size={24} />}
             </div>
           </div>
         )}
@@ -1562,6 +1916,7 @@ const Practice: React.FC = () => {
 };
 
 export default Practice;
+
 
 
 

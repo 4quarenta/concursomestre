@@ -61,6 +61,24 @@ export const PLAN_USAGE_LIMIT_DEFINITIONS: PlanUsageLimitDefinition[] = [
     description: 'Define a capacidade maxima de questoes favoritas ou salvas no perfil.',
     inputLabel: 'itens',
   },
+  {
+    key: 'lei_related_questions_limit',
+    label: 'Questoes da lei',
+    description: 'Controla quantas questoes relacionadas podem ser abertas a partir da Lei Comentada.',
+    inputLabel: 'questoes',
+  },
+  {
+    key: 'lei_flashcards_limit',
+    label: 'Flashcards da lei',
+    description: 'Define quantos flashcards do modulo Lei Comentada o plano pode gerar ou abrir.',
+    inputLabel: 'flashcards',
+  },
+  {
+    key: 'lei_annotations_limit',
+    label: 'Anotacoes na lei',
+    description: 'Limita a quantidade de anotacoes salvas dentro da leitura da Lei Comentada.',
+    inputLabel: 'anotacoes',
+  },
 ];
 
 export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
@@ -133,6 +151,59 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
     label: 'Acesso antecipado',
     description: 'Libera novidades antes do restante da base.',
   },
+  {
+    key: 'lei.comentario_basico',
+    label: 'Lei comentada: comentario basico',
+    description: 'Libera o bloco de leitura guiada basica da Lei Comentada.',
+  },
+  {
+    key: 'lei.macete',
+    label: 'Lei comentada: macete',
+    description: 'Libera o card premium de memorizacao e macete rapido.',
+  },
+  {
+    key: 'lei.como_cai',
+    label: 'Lei comentada: como cai em prova',
+    description: 'Libera o bloco com estrategia e padrao de cobranca.',
+  },
+  {
+    key: 'lei.jurisprudencia',
+    label: 'Lei comentada: jurisprudencia',
+    description: 'Libera o resumo jurisprudencial relevante do artigo.',
+  },
+  {
+    key: 'lei.frequencia',
+    label: 'Lei comentada: frequencia de cobranca',
+    description: 'Libera a barra de incidencia e intensidade de cobranca do artigo.',
+  },
+  {
+    key: 'lei.questoes',
+    label: 'Lei comentada: questoes relacionadas',
+    description: 'Libera o bloco de pratica conectado ao artigo.',
+    limitKey: 'lei_related_questions_limit',
+  },
+  {
+    key: 'lei.flashcards',
+    label: 'Lei comentada: flashcards',
+    description: 'Libera o bloco de flashcards automaticos do artigo.',
+    limitKey: 'lei_flashcards_limit',
+  },
+  {
+    key: 'lei.raiox',
+    label: 'Lei comentada: raio-X do artigo',
+    description: 'Libera o mapa estrategico de importancia, tema e conexoes do artigo.',
+  },
+  {
+    key: 'lei.anotacoes',
+    label: 'Lei comentada: anotacoes',
+    description: 'Libera o card de anotacoes pessoais dentro do artigo.',
+    limitKey: 'lei_annotations_limit',
+  },
+  {
+    key: 'lei.conexoes',
+    label: 'Lei comentada: conexoes',
+    description: 'Libera o bloco lateral de conexoes e leis relacionadas.',
+  },
 ];
 
 const createBenefitMatrix = (enabledKeys: PlanBenefitKey[]): PlanBenefitMatrix => {
@@ -176,12 +247,14 @@ export const DEFAULT_PLAN_ENTITLEMENTS: PlanEntitlements = {
     'unlimited_questions',
     'basic_statistics',
     'community_comments',
+    'lei.comentario_basico',
   ]),
   Essencial: createBenefitMatrix([
     'unlimited_questions',
     'basic_statistics',
     'community_comments',
     'no_ads',
+    'lei.comentario_basico',
   ]),
   Pro: createBenefitMatrix([
     'unlimited_questions',
@@ -192,6 +265,7 @@ export const DEFAULT_PLAN_ENTITLEMENTS: PlanEntitlements = {
     'ai_explanations',
     'error_notebook',
     'exclusive_simulations',
+    'lei.comentario_basico',
   ]),
   Elite: createBenefitMatrix([
     'unlimited_questions',
@@ -207,6 +281,16 @@ export const DEFAULT_PLAN_ENTITLEMENTS: PlanEntitlements = {
     'mentor_chat',
     'priority_support',
     'early_access',
+    'lei.comentario_basico',
+    'lei.macete',
+    'lei.como_cai',
+    'lei.jurisprudencia',
+    'lei.frequencia',
+    'lei.questoes',
+    'lei.flashcards',
+    'lei.raiox',
+    'lei.anotacoes',
+    'lei.conexoes',
   ]),
 };
 
@@ -218,6 +302,9 @@ export const DEFAULT_PLAN_USAGE_LIMITS: PlanUsageLimits = {
     simulations_per_month: limited(0),
     ai_explanations_per_day: limited(0),
     saved_questions_limit: limited(50),
+    lei_related_questions_limit: limited(0),
+    lei_flashcards_limit: limited(0),
+    lei_annotations_limit: limited(0),
   }),
   Essencial: createUsageLimitMatrix({
     questions_per_day: unlimited(),
@@ -226,6 +313,9 @@ export const DEFAULT_PLAN_USAGE_LIMITS: PlanUsageLimits = {
     simulations_per_month: limited(0),
     ai_explanations_per_day: limited(0),
     saved_questions_limit: limited(200),
+    lei_related_questions_limit: limited(0),
+    lei_flashcards_limit: limited(0),
+    lei_annotations_limit: limited(0),
   }),
   Pro: createUsageLimitMatrix({
     questions_per_day: unlimited(),
@@ -234,6 +324,9 @@ export const DEFAULT_PLAN_USAGE_LIMITS: PlanUsageLimits = {
     simulations_per_month: limited(20),
     ai_explanations_per_day: limited(25),
     saved_questions_limit: limited(1000),
+    lei_related_questions_limit: limited(0),
+    lei_flashcards_limit: limited(0),
+    lei_annotations_limit: limited(0),
   }),
   Elite: createUsageLimitMatrix({
     questions_per_day: unlimited(),
@@ -242,6 +335,9 @@ export const DEFAULT_PLAN_USAGE_LIMITS: PlanUsageLimits = {
     simulations_per_month: unlimited(),
     ai_explanations_per_day: unlimited(),
     saved_questions_limit: unlimited(),
+    lei_related_questions_limit: unlimited(),
+    lei_flashcards_limit: unlimited(),
+    lei_annotations_limit: unlimited(),
   }),
 };
 

@@ -23,7 +23,14 @@ import {
   ShieldAlert,
   Users,
 } from 'lucide-react';
-import type { SystemSettings } from '@types';
+import type {
+  Material,
+  Question,
+  Ranking,
+  SystemSettings,
+  Transaction,
+  UserProfile,
+} from '@types';
 import {
   adminService,
   type AdminDashboardAnalyticsPayload,
@@ -44,13 +51,12 @@ import {
 } from '../shared/adminMarketplaceMetrics';
 
 interface AdminDashboardProps {
-  questions: any[];
-  allMaterials: any[];
-  allTransactions: any[];
-  allUsers: any[];
+  questions: Question[];
+  allMaterials: Material[];
+  allTransactions: Transaction[];
+  allUsers: UserProfile[];
   systemSettings: SystemSettings;
-  allReports: any[];
-  allRankings: any[];
+  allRankings: Ranking[];
   onNavigate?: (tab: string, subTab?: string) => void;
 }
 
@@ -95,7 +101,7 @@ const EMPTY_STATS: AdminStatsPayload = {
 };
 
 const EMPTY_DASHBOARD_ANALYTICS: AdminDashboardAnalyticsPayload = {
-  period: 'all',
+  period: 'today',
   counts: {},
   trends: [],
   insights: [],
@@ -107,6 +113,40 @@ const EMPTY_DASHBOARD_ANALYTICS: AdminDashboardAnalyticsPayload = {
     refundRequestedCount: 0,
     refundedCount: 0,
   },
+};
+
+const ADMIN_DASHBOARD_SNAPSHOT_TTL_MS = 20_000;
+const ADMIN_DASHBOARD_FEEDBACK_DELAY_MS = 2800;
+
+type AdminDashboardSnapshot = {
+  stats: AdminStatsPayload;
+  analytics: AdminDashboardAnalyticsPayload;
+  expiresAt: number;
+};
+
+type AdminDashboardInFlightSnapshot = {
+  stats: AdminStatsPayload;
+  analytics: AdminDashboardAnalyticsPayload;
+};
+
+const adminDashboardSnapshotCache = new Map<string, AdminDashboardSnapshot>();
+const adminDashboardSnapshotInFlight = new Map<string, Promise<AdminDashboardInFlightSnapshot>>();
+
+const buildAdminDashboardSnapshotKey = (
+  period: DashboardPeriod,
+  startDate: string,
+  endDate: string,
+) => `${period}|${startDate || '-'}|${endDate || '-'}`;
+
+const scheduleAdminLowPriorityTask = (task: () => void): (() => void) => {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+
+  const timeoutId = window.setTimeout(task, ADMIN_DASHBOARD_FEEDBACK_DELAY_MS);
+  return () => {
+    window.clearTimeout(timeoutId);
+  };
 };
 
 const formatNumber = (value: number) => value.toLocaleString('pt-BR');
@@ -179,35 +219,82 @@ const AdminDashboard = ({
   allTransactions,
   allUsers,
   systemSettings,
-  allReports,
   allRankings,
   onNavigate,
 }: AdminDashboardProps) => {
-  const [selectedPeriod, setSelectedPeriod] = useState<DashboardPeriod>('all');
+  const [selectedPeriod, setSelectedPeriod] = useState<DashboardPeriod>('today');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [stats, setStats] = useState<AdminStatsPayload>(EMPTY_STATS);
   const [dashboardAnalytics, setDashboardAnalytics] = useState<AdminDashboardAnalyticsPayload>(EMPTY_DASHBOARD_ANALYTICS);
   const [feedbackThreads, setFeedbackThreads] = useState<AdminFeedbackThread[]>([]);
+  const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
   const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [refreshVersion, setRefreshVersion] = useState(0);
 
   useEffect(() => {
     let isCurrent = true;
+    let loadingFrameId: number | null = null;
+    const requestKey = buildAdminDashboardSnapshotKey(selectedPeriod, customStartDate, customEndDate);
+    const cachedSnapshot = adminDashboardSnapshotCache.get(requestKey);
 
-    Promise.all([
-      adminService.getStats({
-        period: selectedPeriod,
-        startDate: customStartDate || undefined,
-        endDate: customEndDate || undefined,
-      }),
-      adminService.getDashboardAnalytics({
-        period: selectedPeriod,
-        startDate: customStartDate || undefined,
-        endDate: customEndDate || undefined,
-      }),
-    ])
-      .then(([statsPayload, dashboardPayload]) => {
+    if (cachedSnapshot && cachedSnapshot.expiresAt > Date.now()) {
+      const frameId = window.requestAnimationFrame(() => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setStats(cachedSnapshot.stats);
+        setDashboardAnalytics(cachedSnapshot.analytics);
+        setIsStatsLoading(false);
+      });
+
+      return () => {
+        isCurrent = false;
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+
+    loadingFrameId = window.requestAnimationFrame(() => {
+      if (isCurrent) {
+        setIsStatsLoading(true);
+      }
+    });
+
+    const loadSnapshot = adminDashboardSnapshotInFlight.get(requestKey)
+      ?? Promise.all([
+        adminService.getStats({
+          period: selectedPeriod,
+          startDate: customStartDate || undefined,
+          endDate: customEndDate || undefined,
+        }),
+        adminService.getDashboardAnalytics({
+          period: selectedPeriod,
+          startDate: customStartDate || undefined,
+          endDate: customEndDate || undefined,
+        }),
+      ])
+        .then(([statsPayload, dashboardPayload]) => {
+          const snapshot = {
+            stats: statsPayload,
+            analytics: dashboardPayload,
+          };
+
+          adminDashboardSnapshotCache.set(requestKey, {
+            ...snapshot,
+            expiresAt: Date.now() + ADMIN_DASHBOARD_SNAPSHOT_TTL_MS,
+          });
+
+          return snapshot;
+        })
+        .finally(() => {
+          adminDashboardSnapshotInFlight.delete(requestKey);
+        });
+
+    adminDashboardSnapshotInFlight.set(requestKey, loadSnapshot);
+
+    loadSnapshot
+      .then(({ stats: statsPayload, analytics: dashboardPayload }) => {
         if (!isCurrent) return;
         setStats(statsPayload);
         setDashboardAnalytics(dashboardPayload);
@@ -225,40 +312,53 @@ const AdminDashboard = ({
 
     return () => {
       isCurrent = false;
+      if (loadingFrameId !== null) {
+        window.cancelAnimationFrame(loadingFrameId);
+      }
     };
   }, [customEndDate, customStartDate, refreshVersion, selectedPeriod]);
 
   useEffect(() => {
     let isCurrent = true;
+    const cancelScheduledFetch = scheduleAdminLowPriorityTask(() => {
+      if (!isCurrent) {
+        return;
+      }
 
-    adminService.getFeedbackThreads()
-      .then((threads) => {
-        if (isCurrent) {
-          setFeedbackThreads(Array.isArray(threads) ? threads : []);
-        }
-      })
-      .catch(() => {
-        if (isCurrent) {
-          setFeedbackThreads([]);
-        }
-      });
+      setIsFeedbackLoading(true);
+      adminService.getFeedbackThreads()
+        .then((threads) => {
+          if (isCurrent) {
+            setFeedbackThreads(Array.isArray(threads) ? threads : []);
+          }
+        })
+        .catch(() => {
+          if (isCurrent) {
+            setFeedbackThreads([]);
+          }
+        })
+        .finally(() => {
+          if (isCurrent) {
+            setIsFeedbackLoading(false);
+          }
+        });
+    });
 
     return () => {
       isCurrent = false;
+      cancelScheduledFetch();
     };
   }, []);
 
-  const unresolvedReportsCount = useMemo(() => (
-    (allReports || []).filter((report: any) => !['resolved', 'ignored'].includes(String(report?.status || '').toLowerCase())).length
-  ), [allReports]);
+  const unresolvedReportsCount = Number(dashboardAnalytics.counts.reports_count || 0);
   const activeCouponsCount = Number(systemSettings?.coupons?.length || 0);
 
   const refundRequestsCount = useMemo(() => (
-    (allTransactions || []).filter((transaction: any) => String(transaction?.status || '').toLowerCase() === 'refund_requested').length
+    (allTransactions || []).filter((transaction) => String(transaction?.status || '').toLowerCase() === 'refund_requested').length
   ), [allTransactions]);
 
   const pendingMaterialsCount = useMemo(() => (
-    (allMaterials || []).filter((material: any) => String(material?.status || '').toLowerCase() === 'pending').length
+    (allMaterials || []).filter((material) => String(material?.status || '').toLowerCase() === 'pending').length
   ), [allMaterials]);
 
   const recentFeedback = useMemo(() => (
@@ -270,7 +370,7 @@ const AdminDashboard = ({
   const examsCount = useMemo(() => {
     const registry = new Set<string>();
 
-    (systemSettings.examBank || []).forEach((rawProva: any) => {
+    (systemSettings.examBank || []).forEach((rawProva) => {
       const prova = normalizeProvaRecord(rawProva);
       if (prova) {
         registry.add(String(prova.id));
@@ -283,7 +383,7 @@ const AdminDashboard = ({
   const marketplaceSellerMetrics = useMemo(() => buildAdminMarketplaceSellerMetrics({
     users: allUsers || [],
     materials: allMaterials || [],
-    transactions: allTransactions || [],
+    transactions: allTransactions as unknown as Array<Record<string, unknown>>,
   }), [allMaterials, allTransactions, allUsers]);
 
   const publishedMarketplaceMaterialsCount = useMemo(() => (
@@ -544,14 +644,16 @@ const AdminDashboard = ({
           title="Feedback recente"
           action={(
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-              {recentFeedback.length} item(ns)
+              {isFeedbackLoading ? 'Carregando...' : `${recentFeedback.length} item(ns)`}
             </span>
           )}
         >
           <div className="space-y-4">
             {recentFeedback.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Ainda nao houve conversas recentes para exibir aqui.
+                {isFeedbackLoading
+                  ? 'Carregando conversas recentes do suporte...'
+                  : 'Ainda nao houve conversas recentes para exibir aqui.'}
               </p>
             ) : recentFeedback.map((thread) => {
               const status = getThreadStatusMeta(thread.status);

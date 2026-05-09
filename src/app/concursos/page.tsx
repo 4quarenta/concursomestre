@@ -23,7 +23,7 @@ import {
   ShieldCheck,
   Target,
 } from 'lucide-react';
-import { useData } from '@providers/DataProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import {
   PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -75,7 +75,7 @@ const buildFallbackCards = (
  * @since 1.0.0
  */
 const ConcursosPage: React.FC = () => {
-  const { systemSettings } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedYear, setSelectedYear] = useState('Todos');
 

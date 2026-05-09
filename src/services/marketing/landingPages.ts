@@ -17,6 +17,10 @@ import type {
   PlanName,
 } from '@types';
 
+const UNSAFE_URL_PROTOCOL_PATTERN = /^(?:javascript|data|vbscript|file|blob):/i;
+const LOOPBACK_HTTP_URL_PATTERN = /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/|$)/i;
+const PUBLIC_INTERNAL_PATH_PATTERN = /^\/(?!\/)(?!admin(?:\/|$))(?!api(?:\/|$))(?!_next(?:\/|$))(?!uploads(?:\/|$))(?!storage(?:\/|$))[a-z0-9/?#._~!$&'()*+,;=:@%-]*$/i;
+
 const buildLandingId = (prefix: string) => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `${prefix}-${crypto.randomUUID()}`;
@@ -43,7 +47,15 @@ const sanitizeMarketingUrl = (value: unknown, fallback = '') => {
     return fallback;
   }
 
-  if (/^(https?:\/\/|\/)/i.test(normalized)) {
+  if (UNSAFE_URL_PROTOCOL_PATTERN.test(normalized) || normalized.startsWith('//')) {
+    return fallback;
+  }
+
+  if (/^https:\/\//i.test(normalized) || LOOPBACK_HTTP_URL_PATTERN.test(normalized)) {
+    return normalized;
+  }
+
+  if (PUBLIC_INTERNAL_PATH_PATTERN.test(normalized)) {
     return normalized;
   }
 

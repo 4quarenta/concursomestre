@@ -89,11 +89,29 @@ export const SEO_ROBOT_DISALLOW_PATHS = [
 const stripHtml = (value: unknown) => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
 const normalizePublicationToken = (value: unknown) => String(value || '').trim().toLowerCase();
+const RESERVED_MARKETING_LANDING_SLUGS = new Set([
+  'admin',
+  'api',
+  'auth',
+  'dashboard',
+  'practice',
+  'profile',
+  'read',
+  'reset-password',
+  'subscription',
+  'support',
+  'uploads',
+  'storage',
+]);
+const isReservedMarketingLandingSlug = (slug: string) => (
+  RESERVED_MARKETING_LANDING_SLUGS.has(slug)
+  || Array.from(RESERVED_MARKETING_LANDING_SLUGS).some((reservedSlug) => slug.startsWith(`${reservedSlug}-`))
+);
 
 export const isQuestionEligibleForPublicSitemap = (question: Question) => isQuestionPubliclyVisible(question);
 
 export const isMaterialEligibleForPublicSitemap = (material: Material) => {
-  const status = normalizePublicationToken((material as any).status);
+  const status = normalizePublicationToken((material as { status?: unknown }).status);
 
   if (!status) {
     return true;
@@ -103,7 +121,7 @@ export const isMaterialEligibleForPublicSitemap = (material: Material) => {
 };
 
 export const isRankingEligibleForPublicSitemap = (ranking: Ranking) => {
-  const status = normalizePublicationToken((ranking as any).status);
+  const status = normalizePublicationToken((ranking as { status?: unknown }).status);
 
   if (!status) {
     return true;
@@ -118,7 +136,7 @@ export const isMarketingLandingEligibleForPublicSitemap = (landing: MarketingLan
   }
 
   const slug = normalizeLandingSlug(landing.slug);
-  if (!slug || ['planos', 'elite'].includes(slug)) {
+  if (!slug || ['planos', 'elite'].includes(slug) || isReservedMarketingLandingSlug(slug)) {
     return false;
   }
 
@@ -183,9 +201,10 @@ const fetchList = async <TItem,>(endpoint: string): Promise<TItem[]> => {
 
 const fetchMarketingLandingPages = async (): Promise<MarketingLandingPage[]> => {
   try {
-    const payload = readEnvelopeData<Record<string, any>>(await fetchJson('settings.php'), {});
+    const payload = readEnvelopeData<Record<string, unknown>>(await fetchJson('settings.php'), {});
     const siteName = String(payload.siteName || 'ConcursoMestre').trim();
-    return mergeMarketingLandingPages(payload.landingPages, siteName);
+    const landingPages = Array.isArray(payload.landingPages) ? payload.landingPages : undefined;
+    return mergeMarketingLandingPages(landingPages, siteName);
   } catch {
     return [];
   }

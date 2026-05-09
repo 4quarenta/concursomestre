@@ -20,6 +20,14 @@ import { useConfirm } from '@providers/ModalProvider';
 import { getAssetUrl } from '@services/api';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 
+const COMMENT_REPORT_REASON_OPTIONS = [
+    'Spam ou publicidade',
+    'Conteúdo ofensivo',
+    'Informação enganosa',
+    'Fora do tema',
+    'Outro',
+] as const;
+
 interface CommentItemProps {
     comment: Comment;
     onReply: (id: string, name: string) => void;
@@ -147,7 +155,7 @@ interface CommentsSectionProps {
     comments: Comment[];
     onAddComment: (text: string, parentId?: string) => void;
     onLikeComment: (commentId: string) => void;
-    onReportComment: (commentId: string) => void;
+    onReportComment: (commentId: string, reason: string, details: string) => void;
     onDeleteComment?: (commentId: string) => void;
     title?: string;
     isExpanded?: boolean;
@@ -173,6 +181,35 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
     const commentEditorRef = useRef<HTMLDivElement>(null);
     const { currentUser } = useAuth();
     const confirm = useConfirm();
+    const [reportingCommentId, setReportingCommentId] = useState<string | null>(null);
+    const [reportReason, setReportReason] = useState<(typeof COMMENT_REPORT_REASON_OPTIONS)[number]>(COMMENT_REPORT_REASON_OPTIONS[0]);
+    const [reportDetails, setReportDetails] = useState('');
+
+    const openReportModal = (commentId: string) => {
+        setReportingCommentId(commentId);
+        setReportReason(COMMENT_REPORT_REASON_OPTIONS[0]);
+        setReportDetails('');
+    };
+
+    const closeReportModal = () => {
+        setReportingCommentId(null);
+        setReportReason(COMMENT_REPORT_REASON_OPTIONS[0]);
+        setReportDetails('');
+    };
+
+    const submitCommentReport = () => {
+        if (!reportingCommentId) {
+            return;
+        }
+
+        const normalizedDetails = reportDetails.trim();
+        const detailsPayload = normalizedDetails.length > 0
+            ? normalizedDetails
+            : `Reportado como: ${reportReason}.`;
+
+        onReportComment(reportingCommentId, reportReason, detailsPayload);
+        closeReportModal();
+    };
 
     // Check for URL hash parameter to highlight external deep link
     useEffect(() => {
@@ -295,7 +332,7 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                 ) : (
                     <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-3">
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Você precisa estar logado para participar da discussão.</p>
-                        <a href="#/auth" className="inline-block px-6 py-2 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all">
+                        <a href="/auth" className="inline-block px-6 py-2 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all">
                             Fazer Login
                         </a>
                     </div>
@@ -309,18 +346,7 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                         comment={comment}
                         onReply={(id, name) => setReplyTo({ id, name })}
                         onLike={(id) => onLikeComment(id)}
-                        onReport={async (id) => {
-                            const confirmed = await confirm({
-                                title: "Reportar Comentário",
-                                description: "Você deseja denunciar este comentário por conter conteúdo inapropriado ou abusivo?",
-                                confirmText: "Reportar",
-                                cancelText: "Voltar",
-                                type: 'warning'
-                            });
-                            if (confirmed) {
-                                onReportComment(id);
-                            }
-                        }}
+                        onReport={(id) => openReportModal(id)}
                         onDelete={async (id) => {
                             if (comment.userId === currentUser?.id) {
                                 const confirmed = await confirm({
@@ -345,6 +371,65 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                     </p>
                 )}
             </div>
+
+            {reportingCommentId && (
+                <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+                        <div className="mb-4">
+                            <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Reportar comentário</h4>
+                            <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                                Informe o motivo da denúncia para ajudar a moderação.
+                            </p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <label className="block space-y-1">
+                                <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Motivo</span>
+                                <select
+                                    value={reportReason}
+                                    onChange={(event) => setReportReason(event.target.value as (typeof COMMENT_REPORT_REASON_OPTIONS)[number])}
+                                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition-all focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                                >
+                                    {COMMENT_REPORT_REASON_OPTIONS.map((option) => (
+                                        <option key={option} value={option}>
+                                            {option}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+
+                            <label className="block space-y-1">
+                                <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Detalhes (opcional)</span>
+                                <textarea
+                                    value={reportDetails}
+                                    onChange={(event) => setReportDetails(event.target.value)}
+                                    rows={4}
+                                    maxLength={600}
+                                    placeholder="Descreva rapidamente o problema encontrado."
+                                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                                />
+                            </label>
+                        </div>
+
+                        <div className="mt-5 flex items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={closeReportModal}
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={submitCommentReport}
+                                className="rounded-xl bg-red-600 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-red-700"
+                            >
+                                Enviar denúncia
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

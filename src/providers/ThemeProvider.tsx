@@ -9,7 +9,7 @@
 *
 */
 
-import React, { createContext, useCallback, useContext, useLayoutEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react';
 
 type Theme = 'light' | 'dark';
 
@@ -26,6 +26,8 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
  * @since 1.0.0
  */
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isHydrated, setIsHydrated] = useState(false);
+
   const applyThemeToDocument = useCallback((nextTheme: Theme) => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
@@ -39,25 +41,42 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
    * @since 1.0.0
    */
   const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === 'undefined') {
-      return 'light';
-    }
-
-    const saved = localStorage.getItem('theme');
-    if (saved === 'light' || saved === 'dark') {
-      return saved;
-    }
-
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    return 'light';
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'light' || saved === 'dark') {
+        setTheme(saved);
+        setIsHydrated(true);
+        return;
+      }
+
+      setTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      setIsHydrated(true);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, []);
 
   /**
    * Mantem DOM e localStorage sincronizados sempre que o tema mudar.
    * @since 1.0.0
    */
   useLayoutEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
     applyThemeToDocument(theme);
-  }, [applyThemeToDocument, theme]);
+  }, [applyThemeToDocument, isHydrated, theme]);
 
   /**
    * Alterna entre os dois modos suportados pela plataforma.

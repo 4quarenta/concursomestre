@@ -14,27 +14,33 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import ReCAPTCHA from 'react-google-recaptcha';
 import {
-   User, Mail, Star, Book, Settings, Shield,
+   User, Star, Book, Shield,
    CreditCard, StickyNote, Zap, TrendingUp,
-   ChevronRight, X, BarChart3, Target, Layout, 
+   ChevronRight, X, BarChart3, Target,
    ShieldCheck, Bell, Info, Users, LogOut, Crown,
    Package, ExternalLink, BookOpen, Download, Trash2,
    AlertTriangle, XCircle, ArrowRight, CheckCircle2, Gift,
-   Share2, Copy, Camera, Upload, AlertCircle, RotateCcw,
+   Share2, Copy, Camera, AlertCircle, RotateCcw,
    Loader2, ShieldAlert, MousePointer2, Wallet, MessageSquare,
-   BookmarkCheck
+   BookmarkCheck,
+   type LucideIcon,
 } from 'lucide-react';
 import {
-   AreaChart, Area, XAxis, YAxis, Tooltip
+   AreaChart, Area, XAxis, YAxis,
 } from 'recharts';
 import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
-import { Subject, type LawSummary, type Question } from '../../types';
+import { useConfirm } from '@providers/ModalProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
+import { useUserProgressActions } from '@/state/user-progress/useUserProgressActions';
+import { type LawSummary, type Material, type Question, type Transaction, type UserProfile } from '../../types';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import {
     readApiErrorMessage,
@@ -48,9 +54,9 @@ import {
     type LegalCommentaryStoredNote,
 } from '@services/legal-commentary/legalCommentaryNotes';
 import { readerService } from '@services/materials';
-import { cardsService, formatMaskedCardLabelAscii } from '@services/billing';
+import { cardsService, formatMaskedCardLabelAscii, type SavedCard } from '@services/billing';
 import { marketplaceService } from '@services/marketplace';
-import { profileService } from '@services/profile';
+import { profileService, type ReferralStats } from '@services/profile';
 import { questionService } from '@services/questions';
 import { transactionsService } from '@services/transactions';
 import { planService } from '@services/plans';
@@ -59,10 +65,8 @@ import { legalCommentaryApiService } from '@services/legal-commentary';
 import {
     PLATFORM_PAGE_DESCRIPTION_CLASS,
     PLATFORM_PAGE_TITLE_CLASS,
-    PLATFORM_SECTION_TITLE_CLASS,
     PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
-import StripeSetupCardForm from './components/StripeSetupCardForm';
 import {
     formatDateInSaoPaulo,
     formatDateTimeInSaoPaulo,
@@ -71,7 +75,15 @@ import {
 import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from '@services/plans/planAccess';
 import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileNavigation';
 
-type BillingCycle = 'monthly' | 'quarterly' | 'annual';
+const StripeSetupCardForm = dynamic(() => import('./components/StripeSetupCardForm'), {
+    ssr: false,
+    loading: () => (
+        <div className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:bg-slate-800/30 dark:text-slate-300">
+            <Loader2 size={14} className="animate-spin" />
+            Carregando Stripe...
+        </div>
+    ),
+});
 
 const parseFeatureFlag = (value: unknown): boolean => {
     if (typeof value === 'boolean') return value;
@@ -88,6 +100,14 @@ const stripHtml = (value: string) => value.replace(/<[^>]+>/g, ' ').replace(/\s+
 
 const truncateText = (value: string, maxLength: number) => (
     value.length > maxLength ? `${value.slice(0, maxLength).trimEnd()}...` : value
+);
+
+const resolveProfileMaterialPurchasedAt = (material: ProfileMaterial): string => (
+    material.purchasedAt
+    || material.purchased_at
+    || material.updatedAt
+    || material.updated_at
+    || ''
 );
 
 const getQuestionTitle = (question: Question | null, fallbackId: string) => (
@@ -154,10 +174,80 @@ type MaterialNotebookNote = {
     timestamp: number;
 };
 
+type ProfileReferralStats = ReferralStats & {
+    clicks?: number;
+    conversions?: number;
+    balance?: number;
+};
+
+type ProfileMaterial = Material & {
+    purchasedAt?: string;
+    purchased_at?: string;
+    updatedAt?: string;
+    updated_at?: string;
+    author_name?: string;
+};
+
+type ProfileTransaction = Omit<Transaction, 'status' | 'amount'> & {
+    status?: string;
+    amount?: string | number;
+    created_at?: string | null;
+    createdAt?: string | null;
+    dueDate?: string | null;
+    dateFormatted?: string;
+    dateTimeFormatted?: string;
+    cycleLabel?: string;
+    planCycleLabel?: string;
+    billingCycleLabel?: string;
+    billingCycle?: string;
+    intervalLabel?: string;
+    intervalUnit?: string;
+    interval_unit?: string;
+    intervalCount?: number | string;
+    interval_count?: number | string;
+    planName?: string;
+    transactionName?: string;
+    description?: string;
+    referenceId?: string | number;
+    providerTransactionId?: string | number;
+    providerTransactionLabel?: string;
+    invoicePdfUrl?: string | null;
+    hostedInvoiceUrl?: string | null;
+    installmentCount?: number | string;
+    installmentNumber?: number | string;
+    scheduleLabel?: string;
+    providerRefundId?: string | null;
+    payment_provider?: string;
+    provider?: string;
+    gateway?: string;
+    paymentMethodLabel?: string;
+    paymentMethod?: string;
+    payment_method?: string;
+    paymentMethodType?: string;
+    method?: string;
+};
+
+type ProfileServiceActionResponse<TData extends Record<string, unknown> = Record<string, unknown>> = {
+    success?: boolean;
+    message?: string;
+    data?: TData;
+    url?: string | null;
+};
+
+type ProfileSidebarItem = {
+    id: ProfileTab;
+    label: string;
+    icon: LucideIcon;
+    onSelect?: () => void;
+};
+
 const Profile: React.FC = () => {
     const { currentUser, logout, refreshUser, updateUser, toggleSavedQuestion } = useAuth();
-    const { questions, userNotes, userAnswers, systemSettings, saveNote, ensureUserProgressLoaded } = useData();
-    const { addToast } = useToast();
+    const systemSettings = useAppConfigStore((store) => store.systemSettings);
+    const { questions, ensureQuestionsLoaded } = useQuestionBankActions();
+    const { userNotes, userAnswers, saveNote, ensureUserProgressLoaded } = useUserProgressActions();
+   const { addToast } = useToast();
+   const confirm = useConfirm();
     const pathname = usePathname() || '/profile';
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -172,8 +262,6 @@ const Profile: React.FC = () => {
     const activeBillingProvider = (currentUser?.subscription?.payment_provider || systemSettings?.paymentProvider || 'stripe') as 'stripe';
     const isStripeBilling = activeBillingProvider === 'stripe';
     const billingProviderLabel = 'Stripe';
-    const paymentCheckoutMode = (systemSettings?.paymentCheckoutMode || 'internal') as 'internal' | 'redirect';
-    const cardVaultProvider = (systemSettings?.cardVaultProvider || 'stripe') as 'stripe';
     const usesInternalStripeVault = isStripeBilling;
     const stripePublishableKey = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
     const hasActiveSubscription = hasActivePlanAccess(currentUser);
@@ -186,20 +274,19 @@ const Profile: React.FC = () => {
         : parseFeatureFlag(systemSettings.features.marketplaceEnabled);
 
     const [activeTab, setActiveTab] = useState<ProfileTab>('personal');
-    const [selectedCycle, setSelectedCycle] = useState<BillingCycle>('monthly');
     const [evolutionRange, setEvolutionRange] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month');
     const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
     const [showGoalModal, setShowGoalModal] = useState(false);
     const [showAuthModal, setShowAuthModal] = useState(false);
 
     // Novos Estados para Funcionalidades Modernas
-    const [userMaterials, setUserMaterials] = useState<any[]>([]);
-    const [userCards, setUserCards] = useState<any[]>([]);
+    const [userMaterials, setUserMaterials] = useState<ProfileMaterial[]>([]);
+    const [userCards, setUserCards] = useState<SavedCard[]>([]);
     const [isLoadingCards, setIsLoadingCards] = useState(false);
     const [cardsLoadError, setCardsLoadError] = useState<string | null>(null);
-    const [userTransactions, setUserTransactions] = useState<any[]>([]);
+    const [userTransactions, setUserTransactions] = useState<ProfileTransaction[]>([]);
     const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
-    const [referralStats, setReferralStats] = useState<any>(null);
+    const [referralStats, setReferralStats] = useState<ProfileReferralStats | null>(null);
     const [isCopying, setIsCopying] = useState(false);
     const [isAddingCard, setIsAddingCard] = useState(false);
     const [isSavingCard, setIsSavingCard] = useState(false);
@@ -230,9 +317,10 @@ const Profile: React.FC = () => {
     const [savedQuestionDetails, setSavedQuestionDetails] = useState<Question[]>([]);
     const [isLoadingSavedQuestions, setIsLoadingSavedQuestions] = useState(false);
     const [profileNowMs, setProfileNowMs] = useState(0);
+    const shouldLoadQuestionBankForProfile = activeTab === 'notebook' || activeTab === 'saved-questions';
 
     const currentUserKey = React.useMemo(() => {
-        const legacyUserId = (currentUser as any)?.userId;
+        const legacyUserId = (currentUser as (UserProfile & { userId?: string }) | null)?.userId;
         return String(currentUser?.id || legacyUserId || currentUser?.email || '');
     }, [currentUser]);
 
@@ -248,7 +336,7 @@ const Profile: React.FC = () => {
     }, []);
 
     const primarySavedCard = useMemo(() => {
-        return userCards.find((card: any) => Number(card.is_default) === 1) || userCards[0] || null;
+        return userCards.find((card) => Number(card.is_default) === 1) || userCards[0] || null;
     }, [userCards]);
 
     const profilePhotoUrl = useMemo(() => getAssetUrl(currentUser?.photoUrl || ''), [currentUser?.photoUrl]);
@@ -302,6 +390,14 @@ const Profile: React.FC = () => {
         if (!currentUser?.id) return;
         void ensureUserProgressLoaded();
     }, [currentUser?.id, ensureUserProgressLoaded]);
+
+    React.useEffect(() => {
+        if (!shouldLoadQuestionBankForProfile) {
+            return;
+        }
+
+        void ensureQuestionsLoaded();
+    }, [ensureQuestionsLoaded, shouldLoadQuestionBankForProfile]);
 
     React.useEffect(() => {
         if (activeTab !== 'saved-questions' || missingSavedQuestionIds.length === 0) {
@@ -482,12 +578,12 @@ const Profile: React.FC = () => {
         addToast('Questão removida dos salvos.', 'success');
     }, [addToast, toggleSavedQuestion]);
 
-    const formatSavedCardLabel = React.useCallback((card: any) => {
+    const formatSavedCardLabel = React.useCallback((card: SavedCard | null | undefined) => {
         if (!card) return '';
         return formatMaskedCardLabelAscii(card);
     }, []);
 
-    const getCardExpiryState = React.useCallback((card: any) => {
+    const getCardExpiryState = React.useCallback((card: SavedCard | null | undefined) => {
         if (!card?.exp_month || !card?.exp_year) {
             return { isExpired: false, isExpiringSoon: false };
         }
@@ -553,7 +649,7 @@ const Profile: React.FC = () => {
         setIsLoadingCards(true);
         setCardsLoadError(null);
         try {
-            const res: any = await cardsService.listSavedCards();
+            const res = await cardsService.listSavedCards();
             if (res.success) setUserCards(res.cards || []);
         } catch (err) {
             console.error('Failed to fetch cards', err);
@@ -564,22 +660,30 @@ const Profile: React.FC = () => {
     }, [currentUser?.id]);
 
     const handleRemoveCard = async (cardId: string) => {
-        if (!window.confirm('Tem certeza que deseja remover este cartão?')) return;
+        const confirmed = await confirm({
+            title: 'Remover cartão',
+            description: 'Tem certeza que deseja remover este cartão salvo?',
+            confirmText: 'Remover',
+            cancelText: 'Cancelar',
+            type: 'danger',
+        });
+        if (!confirmed) return;
+
         try {
-            const res: any = await cardsService.removeSavedCard(cardId);
+            const res = await cardsService.removeSavedCard(cardId);
             addToast(res.message || 'Cartão removido com sucesso!', 'success');
             fetchUserCards();
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao remover cartão.'), 'error');
         }
     };
 
     const handleSetDefaultCard = async (cardId: string) => {
         try {
-            const res: any = await cardsService.setDefaultSavedCard(cardId);
+            const res = await cardsService.setDefaultSavedCard(cardId);
             addToast(res.message || 'Cartão padrão atualizado!', 'success');
             fetchUserCards();
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao definir cartão padrão.'), 'error');
         }
     };
@@ -603,11 +707,11 @@ const Profile: React.FC = () => {
         };
 
         try {
-            const res: any = await cardsService.saveLegacyCard(data);
+            const res = await cardsService.saveLegacyCard(data);
             addToast(res.message || 'Cartão salvo com sucesso!', 'success');
             setIsAddingCard(false);
             fetchUserCards();
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro de rede ao salvar cartão.'), 'error');
         } finally {
             setIsSavingCard(false);
@@ -619,7 +723,7 @@ const Profile: React.FC = () => {
         try {
             const res = await cardsService.createStripeSetupIntent();
             setStripeSetupClientSecret(res.client_secret);
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao preparar o formulário Stripe.'), 'error');
         } finally {
             setIsSavingCard(false);
@@ -628,12 +732,12 @@ const Profile: React.FC = () => {
 
     const handleStripeCardSaved = async (paymentMethodId: string) => {
         try {
-            const res: any = await cardsService.syncStripeCard(paymentMethodId);
+            const res = await cardsService.syncStripeCard(paymentMethodId);
             addToast(res.message || 'Cartão salvo com sucesso na Stripe!', 'success');
             setStripeSetupClientSecret(null);
             setIsAddingCard(false);
             await fetchUserCards();
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao salvar o cartão Stripe.'), 'error');
         }
     };
@@ -652,13 +756,19 @@ const Profile: React.FC = () => {
 
     const openTestimonialModal = React.useCallback(() => {
         prepareTestimonialModal();
-        changeActiveTab('testimonial', { replace: true });
         setShowTestimonialModal(true);
-    }, [changeActiveTab, prepareTestimonialModal]);
+    }, [prepareTestimonialModal]);
 
     const handleRemoveProfilePhoto = async () => {
         if (isRemovingProfilePhoto) return;
-        if (!window.confirm('Tem certeza que deseja remover sua foto de perfil?')) return;
+        const confirmed = await confirm({
+            title: 'Remover foto',
+            description: 'Tem certeza que deseja remover sua foto de perfil?',
+            confirmText: 'Remover foto',
+            cancelText: 'Cancelar',
+            type: 'danger',
+        });
+        if (!confirmed) return;
 
         setIsRemovingProfilePhoto(true);
         try {
@@ -666,7 +776,7 @@ const Profile: React.FC = () => {
             addToast(res.message || 'Foto de perfil removida!', 'success');
             await refreshUser();
             setFailedProfilePhotoUrl(null);
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao remover foto.'), 'error');
         } finally {
             setIsRemovingProfilePhoto(false);
@@ -713,7 +823,7 @@ const Profile: React.FC = () => {
             setTestimonialDisplayName(defaultTestimonialDisplayName);
             setTestimonialHeadline(defaultTestimonialHeadline);
             setShowTestimonialModal(false);
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Não foi possível enviar seu depoimento agora.'), 'error');
         } finally {
             setIsSubmittingTestimonial(false);
@@ -725,15 +835,15 @@ const Profile: React.FC = () => {
 
         setIsOpeningBillingPortal(true);
         try {
-            const res: any = await planService.createStripePortalSession();
-            const redirectUrl = res?.url;
+            const res: ProfileServiceActionResponse = await planService.createStripePortalSession();
+            const redirectUrl = typeof res.url === 'string' ? res.url : null;
 
             if (!redirectUrl) {
-                throw new Error(res?.message || 'Não foi possível abrir o portal da Stripe.');
+                throw new Error(res.message || 'Não foi possível abrir o portal da Stripe.');
             }
 
             window.location.href = redirectUrl;
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao abrir o portal da Stripe.'), 'error');
         } finally {
             setIsOpeningBillingPortal(false);
@@ -775,7 +885,7 @@ const Profile: React.FC = () => {
             } else {
                 addToast(res.message || 'Erro ao cancelar assinatura.', 'error');
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao processar cancelamento.'), 'error');
         } finally {
             cancelRequestInFlightRef.current = false;
@@ -809,7 +919,7 @@ const Profile: React.FC = () => {
         setIsUpdatingRenewal(true);
 
         try {
-            const res: any = await planService.updateRenewal(nextValue);
+            const res: ProfileServiceActionResponse<{ auto_renew?: boolean }> = await planService.updateRenewal(nextValue);
             if (res.success) {
                 const confirmedAutoRenew = typeof res.data?.auto_renew === 'boolean'
                     ? res.data.auto_renew
@@ -829,7 +939,7 @@ const Profile: React.FC = () => {
                 addToast(res.message || 'Erro ao atualizar renovação.', 'error');
                 setOptimisticAutoRenew(null);
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao processar solicitacao.'), 'error');
             setOptimisticAutoRenew(null);
         } finally {
@@ -853,7 +963,7 @@ const Profile: React.FC = () => {
         } finally {
             setIsLoadingTransactions(false);
         }
-    }, [addToast, currentUser?.id]);
+    }, [addToast, currentUser]);
 
     const formatTransactionAmount = (amount: number | string) => {
         const numericAmount = typeof amount === 'number' ? amount : Number(amount || 0);
@@ -909,16 +1019,9 @@ const Profile: React.FC = () => {
 
     const formatDateBR = (value?: string | number | Date | null) => formatDateInSaoPaulo(value);
 
-    const legacyFormatDateTimeBR = (value?: string | number | Date | null) => {
-        if (!value) return 'Data não informada';
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return 'Data não informada';
-        return date.toLocaleString('pt-BR');
-    };
-
     const formatDateTimeBR = (value?: string | number | Date | null) => formatDateTimeInSaoPaulo(value);
 
-    const resolveTransactionCycleLabel = (tx: any) => {
+    const resolveTransactionCycleLabel = (tx: ProfileTransaction) => {
         const explicitCycle = String(
             tx.cycleLabel
             || tx.planCycleLabel
@@ -958,7 +1061,7 @@ const Profile: React.FC = () => {
         return 'Não informado';
     };
 
-    const resolveTransactionGatewayLabel = (tx: any) => {
+    const resolveTransactionGatewayLabel = (tx: ProfileTransaction) => {
         const provider = String(
             tx.paymentProvider
             || tx.payment_provider
@@ -972,7 +1075,7 @@ const Profile: React.FC = () => {
         return provider;
     };
 
-    const resolveTransactionMethodLabel = (tx: any) => {
+    const resolveTransactionMethodLabel = (tx: ProfileTransaction) => {
         const explicitMethod = String(tx.paymentMethodLabel || tx.paymentMethod || tx.payment_method || '').trim();
         if (explicitMethod) return explicitMethod;
 
@@ -1019,7 +1122,7 @@ const Profile: React.FC = () => {
         nextChargeAt: subscriptionNextChargeAt,
         daysSinceStart: subscriptionDaysSinceStart,
     } = subscriptionTimeline;
-    const hasPendingRefundRequest = userTransactions.some((transaction: any) => String(transaction.status || '').toLowerCase() === 'refund_requested');
+    const hasPendingRefundRequest = userTransactions.some((transaction) => String(transaction.status || '').toLowerCase() === 'refund_requested');
     const isWithinRefundWindow = subscriptionDaysSinceStart !== null
         ? subscriptionDaysSinceStart < 7
         : false;
@@ -1050,18 +1153,6 @@ const Profile: React.FC = () => {
                 ? 'A renovação automática está desligada. O termo atual seguirá até a última parcela contratada e depois será encerrado.'
                 : `A renovação automática está desligada. Seu acesso fica ativo até ${formatDateBR(subscriptionEndDate)}.`))
         : 'Sua assinatura não está ativa no momento.';
-    const legacySubscriptionValueDescription = showFreeInactiveSubscriptionState
-        ? 'Plano gratuito ativo.'
-        : installmentCount > 1
-            ? `Cobrança ${paidInstallments > 0 ? `da parcela ${Math.min(paidInstallments, installmentCount)} de ${installmentCount}` : 'mensal do termo contratado'}.`
-            : `Cobrança ${subscriptionCycleLabel.toLowerCase()}.`;
-    const legacySubscriptionHeadline = hasActiveSubscription
-        ? (resolvedAutoRenew
-            ? `A renovação automática esta ligada e a proxima cobrança esta prevista para ${formatDateBR(activeSubscription?.current_period_end)}.`
-            : (termCommitmentRemaining
-                ? 'A renovação automática esta desligada. O termo atual seguira ate a ultima parcela contratada e depois sera encerrado.'
-                : `A renovação automática esta desligada. Seu acesso fica ativo ate ${formatDateBR(activeSubscription?.current_period_end)}.`))
-        : 'Sua assinatura não esta ativa no momento.';
     const renewalCardDescription = hasActiveSubscription
         ? (resolvedAutoRenew
             ? `Ao manter a renovação ativa, a próxima cobrança seguirá o ${nextRenewalPriceSourceLabel}.`
@@ -1123,16 +1214,16 @@ const Profile: React.FC = () => {
         } catch (err) {
             console.error('Error fetching materials:', err);
         }
-    }, [currentUser?.id, marketplaceEnabled]);
+    }, [currentUser, marketplaceEnabled]);
 
-    const fetchMaterialNotesForMaterials = React.useCallback(async (materials: any[]) => {
+    const fetchMaterialNotesForMaterials = React.useCallback(async (materials: ProfileMaterial[]) => {
         if (!marketplaceEnabled || !currentUser?.id || materials.length === 0) {
             setMaterialNotes([]);
             return;
         }
 
         const settledNotes = await Promise.allSettled(
-            materials.map(async (material: any) => {
+            materials.map(async (material) => {
                 const materialId = String(material?.id || '').trim();
                 if (!materialId) return null;
 
@@ -1167,7 +1258,7 @@ const Profile: React.FC = () => {
             .filter(Boolean) as MaterialNotebookNote[];
 
         setMaterialNotes(nextMaterialNotes);
-    }, [currentUser?.id, marketplaceEnabled]);
+    }, [currentUser, marketplaceEnabled]);
 
     const handleRemoveMaterialNote = React.useCallback(async (materialId: string) => {
         if (!currentUser?.id) return;
@@ -1176,10 +1267,10 @@ const Profile: React.FC = () => {
             await readerService.saveNote(materialId, '', currentUser.id);
             setMaterialNotes((currentNotes) => currentNotes.filter((note) => note.materialId !== materialId));
             addToast('Anotação removida.', 'success');
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao remover anotação do material.'), 'error');
         }
-    }, [addToast, currentUser?.id]);
+    }, [addToast, currentUser]);
 
     const fetchReferralStats = React.useCallback(async () => {
         try {
@@ -1192,14 +1283,21 @@ const Profile: React.FC = () => {
 
     const handleCancelRefundRequest = async () => {
         if (!currentUser?.id) return;
-        if (!window.confirm('Deseja realmente cancelar sua solicitacao de reembolso?')) return;
+        const confirmed = await confirm({
+            title: 'Cancelar reembolso',
+            description: 'Deseja realmente cancelar sua solicitação de reembolso?',
+            confirmText: 'Cancelar solicitação',
+            cancelText: 'Voltar',
+            type: 'warning',
+        });
+        if (!confirmed) return;
 
         try {
-            const res: any = await planService.cancelRefundRequest();
+            const res: ProfileServiceActionResponse = await planService.cancelRefundRequest();
             addToast(res.message || 'Solicitacao cancelada com sucesso.', 'success');
             await refreshUser();
             await fetchUserTransactions();
-        } catch (err: any) {
+        } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao cancelar solicitacao.'), 'error');
         }
     };
@@ -1645,12 +1743,13 @@ const Profile: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                {userTransactions.map((tx: any) => {
+                                {userTransactions.map((tx) => {
                                     const statusMeta = getTransactionStatusMeta(tx.status);
                                     const referenceId = tx.providerTransactionId || tx.referenceId || tx.id;
                                     const referenceLabel = tx.providerTransactionLabel || 'ID Stripe';
                                     const invoiceUrl = tx.invoicePdfUrl || tx.hostedInvoiceUrl || null;
-                                    const installmentLabel = tx.installmentCount > 1 ? `Parcela ${tx.installmentNumber || 1}/${tx.installmentCount}` : null;
+                                    const installmentCount = Number(tx.installmentCount || 0);
+                                    const installmentLabel = installmentCount > 1 ? `Parcela ${tx.installmentNumber || 1}/${tx.installmentCount}` : null;
                                     const cycleLabel = resolveTransactionCycleLabel(tx);
                                     const gatewayLabel = resolveTransactionGatewayLabel(tx);
                                     const methodLabel = resolveTransactionMethodLabel(tx);
@@ -2116,10 +2215,11 @@ const Profile: React.FC = () => {
         const frameId = window.requestAnimationFrame(() => {
             prepareTestimonialModal();
             setShowTestimonialModal(true);
+            changeActiveTab('personal', { replace: true });
         });
 
         return () => window.cancelAnimationFrame(frameId);
-    }, [activeTab, prepareTestimonialModal]);
+    }, [activeTab, changeActiveTab, prepareTestimonialModal]);
 
     React.useEffect(() => {
         if (activeTab !== 'notebook') return;
@@ -2257,7 +2357,7 @@ const Profile: React.FC = () => {
       );
    }
 
-    const renderSidebarItem = ({ id, label, icon: Icon, onSelect }: any) => (
+    const renderSidebarItem = ({ id, label, icon: Icon, onSelect }: ProfileSidebarItem) => (
         <button
             onClick={() => {
                 if (onSelect) {
@@ -2311,15 +2411,18 @@ const Profile: React.FC = () => {
                                 const input = document.createElement('input');
                                 input.type = 'file';
                                 input.accept = 'image/*';
-                                input.onchange = async (e: any) => {
-                                    const file = e.target.files[0];
+                                input.onchange = async (event) => {
+                                    const target = event.target;
+                                    if (!(target instanceof HTMLInputElement)) return;
+
+                                    const file = target.files?.[0];
                                     if (file) {
                                         try {
                                             const res = await profileService.uploadProfilePhoto(file);
                                             addToast(res.message || 'Foto de perfil atualizada!', 'success');
                                             await refreshUser();
                                             setFailedProfilePhotoUrl(null);
-                                        } catch (err: any) {
+                                        } catch (err: unknown) {
                                             addToast(readApiErrorMessage(err, 'Erro ao enviar foto.'), 'error');
                                         }
                                     }
@@ -2329,10 +2432,13 @@ const Profile: React.FC = () => {
                         >
                             <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 transition-colors overflow-hidden relative">
                                 {currentUser.photoUrl && !photoLoadFailed ? (
-                                    <img
+                                    <Image
                                         src={profilePhotoUrl}
-                                        alt={currentUser.name}
-                                        className="w-full h-full object-cover"
+                                        alt={currentUser.name || 'Foto de perfil'}
+                                        fill
+                                        sizes="80px"
+                                        unoptimized
+                                        className="object-cover"
                                         onError={() => setFailedProfilePhotoUrl(profilePhotoUrl)}
                                     />
                                 ) : (
@@ -2918,8 +3024,9 @@ const Profile: React.FC = () => {
                                        </tr>
                                    </thead>
                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                       {userMaterials.map((material: any) => {
-                                           const purchasedAtTimestamp = new Date(material.purchasedAt).getTime();
+                                       {userMaterials.map((material) => {
+                                           const purchasedAtValue = resolveProfileMaterialPurchasedAt(material);
+                                           const purchasedAtTimestamp = new Date(purchasedAtValue).getTime();
                                            const daysSince = profileNowMs > 0 && Number.isFinite(purchasedAtTimestamp)
                                                ? (profileNowMs - purchasedAtTimestamp) / (1000 * 60 * 60 * 24)
                                                : 0;
@@ -2930,16 +3037,25 @@ const Profile: React.FC = () => {
                                                    <td className="p-4">
                                                        <div className="flex items-center gap-4">
                                                            <div className="w-12 h-12 rounded-lg bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center text-indigo-600 dark:text-indigo-400 overflow-hidden shrink-0">
-                                                               {material.coverUrl ? <img src={material.coverUrl} alt="" className="w-full h-full object-cover" /> : <Package size={20} />}
+                                                               {material.coverUrl ? (
+                                                                   <Image
+                                                                       src={getAssetUrl(material.coverUrl)}
+                                                                       alt={`Capa de ${material.title}`}
+                                                                       width={48}
+                                                                       height={48}
+                                                                       unoptimized
+                                                                       className="h-full w-full object-cover"
+                                                                   />
+                                                               ) : <Package size={20} />}
                                                            </div>
                                                            <div>
                                                                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 line-clamp-1">{material.title}</h3>
-                                                               <p className="text-[10px] font-black uppercase text-indigo-500 mt-0.5 tracking-tight">{material.type === 'pdf' ? 'PDF Interativo' : 'Curso Completo'}</p>
+                                                               <p className="text-[10px] font-black uppercase text-indigo-500 mt-0.5 tracking-tight">{String(material.type || '').toLowerCase() === 'pdf' ? 'PDF Interativo' : 'Curso Completo'}</p>
                                                            </div>
                                                        </div>
                                                    </td>
                                                    <td className="p-4 hidden md:table-cell">
-                                                       <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{new Date(material.purchasedAt).toLocaleDateString()}</span>
+                                                       <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{purchasedAtValue ? new Date(purchasedAtValue).toLocaleDateString() : '-'}</span>
                                                    </td>
                                                    <td className="p-4 text-right">
                                                        <div className="flex items-center justify-end gap-2">
@@ -2953,8 +3069,8 @@ const Profile: React.FC = () => {
                                                             {canDownload ? (
                                                                 <button 
                                                                     onClick={() => {
-                                                                        void downloadAuthenticatedFile(buildMaterialDownloadEndpoint(material.id)).catch((error: any) => {
-                                                                            addToast(error?.message || 'Não foi possível baixar o material agora.', 'error');
+                                                                        void downloadAuthenticatedFile(buildMaterialDownloadEndpoint(material.id)).catch((error: unknown) => {
+                                                                            addToast(readApiErrorMessage(error, 'Não foi possível baixar o material agora.'), 'error');
                                                                         });
                                                                     }}
                                                                     className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-colors shadow-sm shadow-emerald-200 dark:shadow-none"
@@ -3005,6 +3121,7 @@ const Profile: React.FC = () => {
                            const updates = {
                                name: getValue('name'),
                                cpf: getValue('cpf').replace(/\D/g, ''),
+                               phone: getValue('phone').replace(/\D/g, ''),
                                targetExam: getValue('targetExam'),
                                address: {
                                   zipCode: getValue('zipCode').replace(/\D/g, ''),
@@ -3036,6 +3153,8 @@ const Profile: React.FC = () => {
                            if (!updates.name) { addToast('Nome é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!updates.cpf) { addToast('CPF é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!isValidCpf(updates.cpf)) { addToast('CPF inválido. Verifique e tente novamente.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (!updates.phone) { addToast('Telefone é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
+                           if (![10, 11].includes(updates.phone.length)) { addToast('Telefone inválido. Informe DDD + número com 10 ou 11 dígitos.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!updates.address.zipCode) { addToast('CEP é obrigatório.', 'error'); setIsUpdatingProfile(false); return; }
                            if (updates.address.zipCode.length !== 8) { addToast('CEP inválido. Informe um CEP com 8 dígitos.', 'error'); setIsUpdatingProfile(false); return; }
                            if (!updates.address.street) { addToast('Rua é obrigatória.', 'error'); setIsUpdatingProfile(false); return; }
@@ -3052,7 +3171,7 @@ const Profile: React.FC = () => {
                            try {
                                await updateUser(updates);
                                // Notification is handled by AuthContext
-                           } catch (err: any) {
+                           } catch (err: unknown) {
                                console.error('Profile update error:', err);
                                const msg = readApiErrorMessage(err, 'Erro ao sincronizar. Verifique sua conexão.');
                                addToast(msg, 'error');
@@ -3071,20 +3190,32 @@ const Profile: React.FC = () => {
                             <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">E-mail de Acesso</label>
                             <input name="email" type="email" defaultValue={currentUser.email} readOnly className="w-full h-11 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-500 dark:text-slate-400 outline-none cursor-not-allowed transition-all font-sans" title="Não é possível alterar o email" />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                            <div className="space-y-1.5">
                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">CPF <span className="text-rose-500">*</span></label>
                                <input name="cpf" type="text" defaultValue={currentUser.cpf || ''} placeholder="000.000.000-00" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans" />
                            </div>
                            <div className="space-y-1.5">
-                               <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Foco de Estudo</label>
-                               <div className="relative group/exam">
-                                    <input name="targetExam" type="text" readOnly onClick={() => setShowGoalModal(true)} value={currentUser.targetExam || ''} placeholder="Selecione seu foco" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-900 transition-colors font-sans" />
-                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 group-hover/exam:text-indigo-500 transition-colors">
-                                        <ChevronRight size={16} />
-                                    </div>
-                               </div>
+                               <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Telefone / WhatsApp <span className="text-rose-500">*</span></label>
+                               <input
+                                   name="phone"
+                                   type="tel"
+                                   inputMode="tel"
+                                   autoComplete="tel"
+                                   defaultValue={currentUser.phone || ''}
+                                   placeholder="(11) 99999-9999"
+                                   className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-colors font-sans"
+                               />
                            </div>
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">Foco de Estudo</label>
+                            <div className="relative group/exam">
+                                 <input name="targetExam" type="text" readOnly onClick={() => setShowGoalModal(true)} value={currentUser.targetExam || ''} placeholder="Selecione seu foco" className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-900 transition-colors font-sans" />
+                                 <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 group-hover/exam:text-indigo-500 transition-colors">
+                                     <ChevronRight size={16} />
+                                 </div>
+                            </div>
                         </div>
 
                          <div className="space-y-4 pt-2">
@@ -3216,7 +3347,7 @@ const Profile: React.FC = () => {
                                         </div>
                                     ) : userCards.length > 0 ? (
                                         <div className="space-y-3">
-                                            {userCards.map((card: any) => (
+                                            {userCards.map((card) => (
                                                 <div key={card.id} className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition-all dark:border-slate-800 dark:bg-slate-800/20 md:flex-row md:items-center md:justify-between">
                                                     <div className="flex items-center gap-4">
                                                         <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${Number(card.is_default) === 1 ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}`}>
@@ -3247,7 +3378,7 @@ const Profile: React.FC = () => {
                                                         {Number(card.is_default) !== 1 && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleSetDefaultCard(card.id)}
+                                                                onClick={() => handleSetDefaultCard(String(card.id))}
                                                                 className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700 transition-all hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                                                             >
                                                                 Definir padrão
@@ -3256,7 +3387,7 @@ const Profile: React.FC = () => {
                                                         {Number(card.locked_by_recurring) !== 1 && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleRemoveCard(card.id)}
+                                                                onClick={() => handleRemoveCard(String(card.id))}
                                                                 className="rounded-xl bg-rose-50 p-2 text-rose-500 transition-all hover:bg-rose-100 dark:bg-rose-900/20 dark:hover:bg-rose-900/30"
                                                             >
                                                                 <Trash2 size={16} />
@@ -3314,7 +3445,7 @@ const Profile: React.FC = () => {
                                         </div>
                                     ) : userCards.length > 0 ? (
                                         <div className="space-y-3">
-                                            {userCards.map((card: any) => (
+                                            {userCards.map((card) => (
                                                 <div key={card.id} className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition-all dark:border-slate-800 dark:bg-slate-800/20 md:flex-row md:items-center md:justify-between">
                                                     <div className="flex items-center gap-4">
                                                         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300">
@@ -3332,12 +3463,12 @@ const Profile: React.FC = () => {
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         {Number(card.is_default) !== 1 && (
-                                                            <button type="button" onClick={() => handleSetDefaultCard(card.id)} className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700 transition-all hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+                                                            <button type="button" onClick={() => handleSetDefaultCard(String(card.id))} className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-700 transition-all hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
                                                                 Definir padrão
                                                             </button>
                                                         )}
                                                         {Number(card.locked_by_recurring) !== 1 && (
-                                                            <button type="button" onClick={() => handleRemoveCard(card.id)} className="rounded-xl bg-rose-50 p-2 text-rose-500 transition-all hover:bg-rose-100 dark:bg-rose-900/20 dark:hover:bg-rose-900/30">
+                                                            <button type="button" onClick={() => handleRemoveCard(String(card.id))} className="rounded-xl bg-rose-50 p-2 text-rose-500 transition-all hover:bg-rose-100 dark:bg-rose-900/20 dark:hover:bg-rose-900/30">
                                                                 <Trash2 size={16} />
                                                             </button>
                                                         )}
@@ -3354,33 +3485,6 @@ const Profile: React.FC = () => {
                                 </>
                             )}
                         </div>
-                     </div>
-                  </div>
-               )}
-
-               {activeTab === 'testimonial' && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900">
-                     <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-                        <div className="max-w-2xl space-y-2">
-                           <span className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
-                              <MessageSquare size={12} />
-                              Avaliar plataforma
-                           </span>
-                           <h2 className="text-lg font-black text-slate-900 dark:text-slate-100">
-                              Avaliar plataforma
-                           </h2>
-                           <p className="text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
-                              Avalie a plataforma e envie seu depoimento para moderação. O formulário abre em uma janela dedicada para manter essa aba limpa.
-                           </p>
-                        </div>
-                        <button
-                           type="button"
-                           onClick={openTestimonialModal}
-                           className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-indigo-500/10 transition-all hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
-                        >
-                           <Star size={14} />
-                           Avaliar agora
-                        </button>
                      </div>
                   </div>
                )}
@@ -3451,24 +3555,11 @@ const Profile: React.FC = () => {
                                     
                                     {hasActiveSubscription && (
                                         <div className="flex flex-col items-end gap-2 mt-2">
-                                            {userTransactions.some((t:any) => t.status === 'refund_requested') ? (
+                                            {hasPendingRefundRequest ? (
                                                 <div className="flex flex-col items-end gap-1">
                                                     <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded border border-amber-200/50">Reembolso em Análise</span>
                                                     <button 
-                                                        onClick={async () => {
-                                                            if (window.confirm('Deseja realmente cancelar sua solicitação de reembolso? Sua assinatura permanecerá ativa.')) {
-                                                                try {
-                                                                    const res: any = await planService.cancelRefundRequest();
-                                                                    if (res.success) {
-                                                                        addToast(res.message, 'success');
-                                                                        refreshUser();
-                                                                        fetchUserTransactions();
-                                                                    }
-                                                                } catch {
-                                                                    addToast('Erro ao cancelar solicitação.', 'error');
-                                                                }
-                                                            }
-                                                        }}
+                                                        onClick={handleCancelRefundRequest}
                                                         className="text-[9px] font-black text-slate-400 hover:text-indigo-600 uppercase tracking-widest underline underline-offset-2 transition-colors"
                                                     >
                                                         Cancelar Solicitação
@@ -3676,7 +3767,7 @@ const Profile: React.FC = () => {
                                         <div className="text-sm text-slate-500">Carregando cartões...</div>
                                     ) : userCards.length > 0 ? (
                                         <div className="space-y-3">
-                                            {userCards.map((card: any) => (
+                                            {userCards.map((card) => (
                                                 <div key={card.id} className="group flex flex-col md:flex-row items-start md:items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-700 transition-all bg-slate-50 dark:bg-slate-800/20">
                                                     <div className="flex items-center gap-4">
                                                         <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${card.is_default == 1 ? 'bg-emerald-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}>
@@ -3692,11 +3783,11 @@ const Profile: React.FC = () => {
                                                     </div>
                                                     <div className="flex items-center gap-2 mt-4 md:mt-0">
                                                         {card.is_default != 1 && (
-                                                            <button onClick={() => handleSetDefaultCard(card.id)} className="px-3 py-2 bg-slate-100 dark:bg-slate-800 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all">
+                                                            <button onClick={() => handleSetDefaultCard(String(card.id))} className="px-3 py-2 bg-slate-100 dark:bg-slate-800 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all">
                                                                 Definir padrão
                                                             </button>
                                                         )}
-                                                        <button onClick={() => handleRemoveCard(card.id)} className="p-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-all">
+                                                        <button onClick={() => handleRemoveCard(String(card.id))} className="p-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-all">
                                                             <Trash2 size={16} />
                                                         </button>
                                                     </div>
@@ -3771,13 +3862,15 @@ const Profile: React.FC = () => {
                             {isLoadingCards ? (
                                 <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-500" /></div>
                             ) : userCards.length > 0 ? (
-                                userCards.map((card: any) => (
+                                userCards.map((card) => (
                                     <div key={card.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800/50 hover:border-indigo-200 dark:hover:border-indigo-900/40 transition-all group">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-8 bg-white dark:bg-slate-900 rounded-md border border-slate-200 dark:border-slate-800 flex items-center justify-center p-1 shadow-sm">
-                                                <img src={`https://img.icons8.com/color/48/000000/${card.brand?.toLowerCase() || 'credit-card'}.png`} alt={card.brand} className="h-full object-contain" onError={(e:any) => e.target.src = 'https://img.icons8.com/color/48/000000/credit-card.png'} />
-                                            </div>
-                                            <div>
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-8 bg-white dark:bg-slate-900 rounded-md border border-slate-200 dark:border-slate-800 flex items-center justify-center p-1 shadow-sm">
+                                                    <span className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                                                        {String(card.brand || 'card').replace(/[_-]+/g, ' ').trim() || 'Card'}
+                                                    </span>
+                                                </div>
+                                                <div>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-widest">
                                                         {formatMaskedCardLabelAscii(card, { includeBrand: false })}
@@ -3795,7 +3888,9 @@ const Profile: React.FC = () => {
                                                     )}
                                                     {(() => {
                                                         const now = new Date();
-                                                        const isExpired = card.exp_year < now.getFullYear() || (card.exp_year === now.getFullYear() && card.exp_month < (now.getMonth() + 1));
+                                                        const cardExpiryYear = Number(card.exp_year || 0);
+                                                        const cardExpiryMonth = Number(card.exp_month || 0);
+                                                        const isExpired = cardExpiryYear < now.getFullYear() || (cardExpiryYear === now.getFullYear() && cardExpiryMonth < (now.getMonth() + 1));
                                                         if (isExpired) {
                                                             return (
                                                                 <span className="text-[8px] font-black uppercase bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 px-1.5 py-0.5 rounded border border-rose-200/50 flex items-center gap-1 animate-pulse">
@@ -3812,12 +3907,12 @@ const Profile: React.FC = () => {
                                         
                                         <div className="flex items-center gap-2">
                                             {card.is_default !== 1 && (
-                                                <button onClick={() => handleSetDefaultCard(card.id)} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 px-3 py-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
+                                                <button onClick={() => handleSetDefaultCard(String(card.id))} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 px-3 py-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100">
                                                     Definir Padrão
                                                 </button>
                                             )}
                                             {card.locked_by_recurring !== 1 && (
-                                                <button onClick={() => handleRemoveCard(card.id)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all">
+                                                <button onClick={() => handleRemoveCard(String(card.id))} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all">
                                                     <Trash2 size={16} />
                                                 </button>
                                             )}
@@ -3869,9 +3964,11 @@ const Profile: React.FC = () => {
                                       </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                      {userTransactions.map((tx: any) => (
+                                      {userTransactions.map((tx) => {
+                                          const transactionStatus = String(tx.status || '').toLowerCase();
+                                          return (
                                           <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                                              <td className="p-4"><span className="text-xs font-bold text-slate-500 dark:text-slate-400">{tx.dateFormatted}</span></td>
+                                              <td className="p-4"><span className="text-xs font-bold text-slate-500 dark:text-slate-400">{tx.dateFormatted || formatDateBR(tx.createdAt || tx.created_at || tx.dueDate || tx.timestamp)}</span></td>
                                               <td className="p-4">
                                                   <div className="flex items-center gap-3">
                                                       <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400"><Package size={14} /></div>
@@ -3880,17 +3977,18 @@ const Profile: React.FC = () => {
                                               </td>
                                               <td className="p-4 text-center">
                                                   <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-full ${
-                                                      tx.status === 'approved' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400' :
-                                                      tx.status === 'pending' ? 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400' :
-                                                      tx.status === 'refunded' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400' :
+                                                      (transactionStatus === 'approved' || transactionStatus === 'completed') ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400' :
+                                                      (transactionStatus === 'pending' || transactionStatus === 'pre-approved') ? 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400' :
+                                                      transactionStatus === 'refunded' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400' :
                                                       'bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400'
                                                   }`}>
-                                                      {tx.status === 'approved' ? 'Aprovado' : tx.status === 'pending' ? 'Pendente' : tx.status === 'refunded' ? 'Estornado' : 'Cancelado'}
+                                                      {(transactionStatus === 'approved' || transactionStatus === 'completed') ? 'Aprovado' : (transactionStatus === 'pending' || transactionStatus === 'pre-approved') ? 'Pendente' : transactionStatus === 'refunded' ? 'Estornado' : 'Cancelado'}
                                                   </span>
                                               </td>
-                                              <td className="p-4 text-right"><span className="text-xs font-black text-slate-900 dark:text-slate-100">R$ {parseFloat(tx.amount).toFixed(2)}</span></td>
+                                              <td className="p-4 text-right"><span className="text-xs font-black text-slate-900 dark:text-slate-100">R$ {Number(tx.amount || 0).toFixed(2)}</span></td>
                                           </tr>
-                                      ))}
+                                      );
+                                      })}
                                   </tbody>
                               </table>
                           </div>
@@ -4004,7 +4102,7 @@ const Profile: React.FC = () => {
                                       const res = await profileService.changePassword(current, newPass);
                                       addToast(res.message || 'Senha alterada com sucesso!', 'success');
                                       (e.target as HTMLFormElement).reset();
-                                  } catch (err: any) {
+                                  } catch (err: unknown) {
                                       addToast(readApiErrorMessage(err, 'Falha na comunicação com o servidor.'), 'error');
                                   }
                               }}

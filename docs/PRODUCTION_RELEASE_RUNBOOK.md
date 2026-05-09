@@ -80,7 +80,21 @@ Backend:
    - Executar `C:/xampp/htdocs/questao-pro-backend/scripts/migrations/migrate_marketplace_schema_compatibility.php` apos o deploy do backend para normalizar `transactions`, `material_ratings`, IDs textuais do marketplace e tabelas de gamificacao (`user_badges`, `user_gamification_events`).
 3. Conferir `.env` backend com valores de producao.
 4. Instalar dependencias frontend com `npm ci`.
-5. Rodar `npm run typecheck`, `npm run lint`, `npm run check:text-encoding` e `npm run build`.
+5. Rodar o preflight frontend consolidado:
+
+```bash
+npm run check:production-local -- --with-build
+npm run lint
+```
+
+O preflight consolidado executa encoding, typecheck, orcamento de hard refresh, suites criticas de arquitetura/SEO/XSS/charts e build quando `--with-build` for informado.
+Se as credenciais de admin mudarem no ambiente local, exporte antes:
+
+```bash
+set CM_LOGIN_EMAIL=admin@seu-dominio.com
+set CM_LOGIN_PASSWORD=SuaSenhaAtual
+set CM_LOGIN_PASSWORD_CANDIDATES=SuaSenhaAtual,OutraSenhaFallback
+```
 6. Subir frontend com PM2/systemd.
 7. Configurar reverse proxy HTTPS.
 8. Configurar CORS somente para dominios finais HTTPS, sem localhost, sem HTTP e sem wildcard.
@@ -122,10 +136,12 @@ Remover/desativar:
 Regras:
 
 - O backend ja usa lock exclusivo por job em `config/cron_lock.php`; ainda assim, mantenha apenas um agendamento por job na VPS.
+- A execucao manual admin da reconciliacao Stripe (`automation_helper.php?action=run_now`) usa o mesmo lock `subscriptions_stripe_reconciliation`; se retornar conflito, aguarde o cron atual finalizar em vez de reexecutar.
 - `CRON_LOCK_DIR` precisa existir e ser gravavel pelo usuario do PHP/cron.
 - Nunca expor `CRON_SECRET` em painel publico.
 - Logar status e duracao da execucao.
 - Campanhas automaticas usam `marketing_automation_events` para impedir duplicidade por campanha/regra/usuario. Sempre rode dry-run antes de ativar nova campanha em massa.
+- CTAs de campanhas automaticas devem ser caminhos internos (`/promo/...`, `/planos`) ou URLs absolutas HTTPS; `http://`, `/admin` e `/api` devem cair para o fallback seguro.
 
 ## Webhooks
 
@@ -288,10 +304,8 @@ Rollback:
 
 ## Checklist final
 
-- `npm run typecheck`: OK.
+- `npm run check:production-local -- --with-build`: OK.
 - `npm run lint`: OK.
-- `npm run check:text-encoding`: OK.
-- `npm run build`: OK.
 - Suite PHP local critica: OK.
 - `production_preflight.php`: OK.
 - `production_smoke.php`: OK.

@@ -33,6 +33,11 @@ import AdminOriginalQuestionGenerationModal, {
   type AdminOriginalQuestionGenerationResult,
 } from './AdminOriginalQuestionGenerationModal';
 import { slugify } from '../database/slugify';
+import {
+  getQuestionOptionLabel,
+  isQuestionTaxonomyRecord,
+  type QuestionTaxonomyOption,
+} from './questionEditorShared';
 
 interface QuestionsPagination {
   total: number;
@@ -41,24 +46,37 @@ interface QuestionsPagination {
   page: number;
 }
 
-const getEntityLabel = (value: any) => {
-  if (typeof value === 'string' || typeof value === 'number') {
-    return String(value).trim();
-  }
-
-  if (value && typeof value === 'object') {
-    return String(
-      value.sigla
-      ?? value.name
-      ?? value.nome
-      ?? value.descricao
-      ?? value['descri\u00e7\u00e3o']
-      ?? '',
-    ).trim();
-  }
-
-  return '';
+type AdminQuestionRecord = Question & Record<string, unknown> & {
+  id?: number | string;
+  text?: string;
+  published_at?: string;
+  teacher_comment?: string;
+  detailed_comment?: string;
+  has_teacher_comment?: boolean | number;
+  has_detailed_comment?: boolean | number;
+  prova_id?: number | string | null;
+  adminPublicationDate?: string;
+  adminPublicationTimestamp?: number;
+  publicationStatus?: string;
+  editorialStatus?: string;
+  reviewStatus?: string;
+  comentarios?: Record<string, unknown>;
+  ['comentários']?: Record<string, unknown>;
 };
+
+interface ActionResult {
+  success?: boolean;
+  message?: string;
+}
+
+const isActionFailure = (value: unknown): value is ActionResult =>
+  Boolean(value) && typeof value === 'object' && 'success' in (value as Record<string, unknown>) && (value as ActionResult).success === false;
+
+const toQuestionRecord = (question: Question | null | undefined): AdminQuestionRecord =>
+  ((question && typeof question === 'object' ? question : {}) as AdminQuestionRecord);
+
+const getEntityLabel = (value: QuestionTaxonomyOption) => getQuestionOptionLabel(value);
+const getTaxonomyRecord = (value: QuestionTaxonomyOption) => (isQuestionTaxonomyRecord(value) ? value : null);
 
 const normalizeTextToken = (value: unknown) => String(value || '')
   .trim()
@@ -72,27 +90,38 @@ const normalizeEditorialText = (value: unknown) => String(value || '')
   .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
   .trim();
 
-const findTaxonomyByLabel = (items: any[] = [], label: string) => {
+const findTaxonomyByLabel = (items: QuestionTaxonomyOption[] = [], label: string) => {
   const normalizedLabel = normalizeTextToken(label);
   return items.find((item) => {
+    const record = getTaxonomyRecord(item);
     const candidates = [
-      item?.sigla,
-      item?.name,
-      item?.nome,
-      item?.descricao,
-      item?.['descri\u00e7\u00e3o'],
+      getEntityLabel(item),
+      record?.sigla,
+      record?.name,
+      record?.nome,
+      record?.descricao,
+      record?.['descri\u00e7\u00e3o'],
     ];
     return candidates.some((candidate) => normalizeTextToken(candidate) === normalizedLabel);
-  });
+  }) || null;
 };
 
-const findTaxonomyById = (items: any[] = [], id: unknown) => {
+const findTaxonomyById = (items: QuestionTaxonomyOption[] = [], id: unknown) => {
   const normalizedId = String(id ?? '').trim();
   if (!normalizedId) {
     return null;
   }
 
-  return items.find((item) => String(item?.id ?? '').trim() === normalizedId) || null;
+  return items.find((item) => {
+    const record = getTaxonomyRecord(item);
+    if (record) {
+      return String(record.id ?? '').trim() === normalizedId;
+    }
+
+    return typeof item === 'string' || typeof item === 'number'
+      ? String(item).trim() === normalizedId
+      : false;
+  }) || null;
 };
 
 const isGenericFocusLabel = (value: unknown) => {
@@ -100,7 +129,7 @@ const isGenericFocusLabel = (value: unknown) => {
   return ['outra', 'outras', 'outro', 'outros', 'geral', 'diversos', 'diversas'].includes(normalized);
 };
 
-const inferCareerFromRoleLabel = (roleLabel: string, careers: any[] = []) => {
+const inferCareerFromRoleLabel = (roleLabel: string, careers: QuestionTaxonomyOption[] = []) => {
   const normalizedRole = normalizeTextToken(roleLabel);
   const rules = [
     {
@@ -163,25 +192,28 @@ const createTaxonomyItem = ({
   rootSubject,
 }: {
   label: string;
-  found?: any;
+  found?: QuestionTaxonomyOption | null;
   materia: boolean;
   fallbackLevel?: string;
-  parent?: any;
-  rootSubject?: any;
+  parent?: QuestionTaxonomyOption | null;
+  rootSubject?: QuestionTaxonomyOption | null;
 }) => {
+  const foundRecord = isQuestionTaxonomyRecord(found) ? found : null;
+  const parentRecord = isQuestionTaxonomyRecord(parent) ? parent : null;
+  const rootSubjectRecord = isQuestionTaxonomyRecord(rootSubject) ? rootSubject : null;
   const name = getEntityLabel(found) || label;
-  const parentId = found?.parent_id ?? found?.parentId ?? parent?.id ?? null;
-  const parentName = found?.parent_name ?? found?.parentName ?? getEntityLabel(parent);
-  const taxonomyLevel = fallbackLevel ?? found?.taxonomy_level ?? found?.taxonomyLevel;
-  const rootSubjectId = found?.root_subject_id ?? found?.rootSubjectId ?? rootSubject?.id ?? null;
-  const rootSubjectName = found?.root_subject_name ?? found?.rootSubjectName ?? getEntityLabel(rootSubject);
+  const parentId = foundRecord?.parent_id ?? foundRecord?.parentId ?? parentRecord?.id ?? null;
+  const parentName = foundRecord?.parent_name ?? foundRecord?.parentName ?? getEntityLabel(parent);
+  const taxonomyLevel = fallbackLevel ?? foundRecord?.taxonomy_level ?? foundRecord?.taxonomyLevel;
+  const rootSubjectId = foundRecord?.root_subject_id ?? foundRecord?.rootSubjectId ?? rootSubjectRecord?.id ?? null;
+  const rootSubjectName = foundRecord?.root_subject_name ?? foundRecord?.rootSubjectName ?? getEntityLabel(rootSubject);
 
   return {
-    ...(found || {}),
-    id: found?.id ?? null,
+    ...(foundRecord || {}),
+    id: foundRecord?.id ?? null,
     name,
-    nome: found?.nome || found?.name || name,
-    slug: found?.slug || slugify(name),
+    nome: foundRecord?.nome || foundRecord?.name || name,
+    slug: foundRecord?.slug || slugify(name),
     materia,
     ...(parentId ? { parentId, parent_id: parentId } : {}),
     ...(parentName ? { parentName, parent_name: parentName } : {}),
@@ -191,24 +223,29 @@ const createTaxonomyItem = ({
   };
 };
 
-const createSimpleTaxonomyItem = (label: string, found?: any, extra: Record<string, unknown> = {}) => {
+const createSimpleTaxonomyItem = (
+  label: string,
+  found?: QuestionTaxonomyOption | null,
+  extra: Record<string, unknown> = {},
+) => {
+  const foundRecord = isQuestionTaxonomyRecord(found) ? found : null;
   const name = getEntityLabel(found) || label;
   if (!name) {
     return null;
   }
 
-  const parentId = found?.parent_id ?? found?.parentId ?? null;
-  const parentName = found?.parent_name ?? found?.parentName ?? '';
+  const parentId = foundRecord?.parent_id ?? foundRecord?.parentId ?? null;
+  const parentName = foundRecord?.parent_name ?? foundRecord?.parentName ?? '';
 
   return {
-    ...(found || {}),
-    id: found?.id ?? null,
+    ...(foundRecord || {}),
+    id: foundRecord?.id ?? null,
     name,
-    nome: found?.nome || found?.name || name,
-    sigla: found?.sigla || name,
-    descricao: found?.descricao || found?.['descri\u00e7\u00e3o'] || name,
-    ['descri\u00e7\u00e3o']: found?.['descri\u00e7\u00e3o'] || found?.descricao || name,
-    slug: found?.slug || slugify(name),
+    nome: foundRecord?.nome || foundRecord?.name || name,
+    sigla: foundRecord?.sigla || name,
+    descricao: foundRecord?.descricao || foundRecord?.['descri\u00e7\u00e3o'] || name,
+    ['descri\u00e7\u00e3o']: foundRecord?.['descri\u00e7\u00e3o'] || foundRecord?.descricao || name,
+    slug: foundRecord?.slug || slugify(name),
     ...(parentId ? { parentId, parent_id: parentId } : {}),
     ...(parentName ? { parentName, parent_name: parentName } : {}),
     ...extra,
@@ -224,7 +261,7 @@ const resolveGeneratedYear = (value: unknown) => {
 };
 
 const pickFirstTaxonomyLabel = (
-  items: any[] = [],
+  items: QuestionTaxonomyOption[] = [],
   options: { avoidGeneric?: boolean } = {},
 ) => (
   items
@@ -233,13 +270,15 @@ const pickFirstTaxonomyLabel = (
   || ''
 );
 
-const findRoleForCareer = (roles: any[] = [], career?: any, careerLabel = '') => {
-  const careerId = String(career?.id ?? '').trim();
+const findRoleForCareer = (roles: QuestionTaxonomyOption[] = [], career?: QuestionTaxonomyOption, careerLabel = '') => {
+  const careerRecord = isQuestionTaxonomyRecord(career) ? career : null;
+  const careerId = String(careerRecord?.id ?? '').trim();
   const normalizedCareerLabel = normalizeTextToken(getEntityLabel(career) || careerLabel);
 
   return roles.find((role) => {
-    const parentId = String(role?.parentId ?? role?.parent_id ?? '').trim();
-    const parentName = normalizeTextToken(role?.parentName ?? role?.parent_name ?? '');
+    const roleRecord = isQuestionTaxonomyRecord(role) ? role : null;
+    const parentId = String(roleRecord?.parentId ?? roleRecord?.parent_id ?? '').trim();
+    const parentName = normalizeTextToken(roleRecord?.parentName ?? roleRecord?.parent_name ?? '');
 
     return (careerId && parentId === careerId)
       || (normalizedCareerLabel && parentName === normalizedCareerLabel);
@@ -254,7 +293,9 @@ const hasEntityValue = (values: unknown) => {
   return Boolean(getEntityLabel(values));
 };
 
-const getGeneratedTaxonomyLevel = (item: any) => String(item?.taxonomyLevel || item?.taxonomy_level || '')
+const getGeneratedTaxonomyLevel = (item: QuestionTaxonomyOption) => String(
+  isQuestionTaxonomyRecord(item) ? item.taxonomyLevel || item.taxonomy_level || '' : '',
+)
   .trim()
   .toLowerCase();
 
@@ -284,8 +325,9 @@ const applyOriginalQuestionPublicationDecision = (
   question: Question,
   decision: 'draft' | 'published',
 ): Question => {
+  const questionRecord = toQuestionRecord(question);
   const publishedAt = decision === 'published'
-    ? ((question as any).publishedAt || (question as any).published_at || new Date().toISOString())
+    ? (questionRecord.publishedAt || questionRecord.published_at || new Date().toISOString())
     : '';
 
   return withQuestionPublicationAliases({
@@ -357,6 +399,7 @@ const buildGeneratedQuestionPayload = ({
 }): Question => {
   const now = new Date().toISOString();
   const agency = findTaxonomyByLabel(systemSettings?.taxonomies?.agencies || [], agencyLabel);
+  const agencyRecord = getTaxonomyRecord(agency);
   const agencyName = getEntityLabel(agency) || agencyLabel;
   const rawOptions = (generatedQuestion.options || [])
     .map((option) => String(option || '').trim())
@@ -400,10 +443,11 @@ const buildGeneratedQuestionPayload = ({
   const areaLabel = String(generatedQuestion.area || pickFirstTaxonomyLabel(areas) || 'Geral').trim();
   const foundOrganization = organizationLabel ? findTaxonomyByLabel(organizations, organizationLabel) : null;
   let foundRole = roleLabel ? findTaxonomyByLabel(roles, roleLabel) : null;
+  let foundRoleRecord = getTaxonomyRecord(foundRole);
   const foundCareer = careerLabel && !isGenericFocusLabel(careerLabel) ? findTaxonomyByLabel(careers, careerLabel) : null;
   const foundArea = areaLabel ? findTaxonomyByLabel(areas, areaLabel) : null;
-  let roleRawParentId = foundRole?.parentId ?? foundRole?.parent_id ?? null;
-  let roleRawParentName = String(foundRole?.parentName ?? foundRole?.parent_name ?? '').trim();
+  let roleRawParentId = foundRoleRecord?.parentId ?? foundRoleRecord?.parent_id ?? null;
+  let roleRawParentName = String(foundRoleRecord?.parentName ?? foundRoleRecord?.parent_name ?? '').trim();
   let parentCareerById = findTaxonomyById(careers, roleRawParentId);
   let parentCareerByName = roleRawParentName ? findTaxonomyByLabel(careers, roleRawParentName) : null;
   const inferredCareer = roleLabel ? inferCareerFromRoleLabel(roleLabel, careers) : null;
@@ -420,18 +464,20 @@ const buildGeneratedQuestionPayload = ({
       || null;
     roleLabel = getEntityLabel(fallbackRole) || 'Cargo Geral';
     foundRole = fallbackRole || findTaxonomyByLabel(roles, roleLabel);
-    roleRawParentId = foundRole?.parentId ?? foundRole?.parent_id ?? null;
-    roleRawParentName = String(foundRole?.parentName ?? foundRole?.parent_name ?? '').trim();
+    foundRoleRecord = getTaxonomyRecord(foundRole);
+    roleRawParentId = foundRoleRecord?.parentId ?? foundRoleRecord?.parent_id ?? null;
+    roleRawParentName = String(foundRoleRecord?.parentName ?? foundRoleRecord?.parent_name ?? '').trim();
     parentCareerById = findTaxonomyById(careers, roleRawParentId);
     parentCareerByName = roleRawParentName ? findTaxonomyByLabel(careers, roleRawParentName) : null;
     resolvedCareer = parentCareerById || parentCareerByName || resolvedCareer;
   }
 
+  const resolvedCareerRecord = getTaxonomyRecord(resolvedCareer);
   const resolvedCareerLabel = getEntityLabel(resolvedCareer)
     || (!isGenericFocusLabel(careerLabel) ? careerLabel : '')
     || roleRawParentName
     || 'Administrativa';
-  const roleParentId = roleRawParentId ?? resolvedCareer?.id ?? null;
+  const roleParentId = roleRawParentId ?? resolvedCareerRecord?.id ?? null;
   const roleParentName = roleRawParentName
     || getEntityLabel(resolvedCareer)
     || resolvedCareerLabel
@@ -478,12 +524,12 @@ const buildGeneratedQuestionPayload = ({
     introText: generatedQuestion.introText || '',
     imageUrl: '',
     bancas: [{
-      ...(agency || {}),
-      id: agency?.id ?? null,
-      sigla: agency?.sigla || agencyName,
-      name: agency?.name || agency?.nome || agencyName,
-      nome: agency?.nome || agency?.name || agencyName,
-      slug: agency?.slug || slugify(agencyName),
+      ...(agencyRecord ?? {}),
+      id: agencyRecord?.id ?? null,
+      sigla: agencyRecord?.sigla || agencyName,
+      name: agencyRecord?.name || agencyRecord?.nome || agencyName,
+      nome: agencyRecord?.nome || agencyRecord?.name || agencyName,
+      slug: agencyRecord?.slug || slugify(agencyName),
     }],
     orgaos: organizationLabel
       ? [createSimpleTaxonomyItem(organizationLabel, foundOrganization)].filter(Boolean)
@@ -553,9 +599,9 @@ interface AdminQuestionsSectionProps {
   renderSortableHeader: (label: string, sortKey: string) => React.ReactNode;
   onCreate: () => void;
   onEdit: (question: Question) => void;
-  onAddQuestions: (questions: Question[]) => Promise<any> | any;
-  onUpdate: (question: Question) => Promise<any> | any;
-  onDelete: (questionId: string | number) => Promise<any> | any;
+  onAddQuestions: (questions: Question[]) => Promise<ActionResult | void | null | undefined> | ActionResult | void | null | undefined;
+  onUpdate: (question: Question) => Promise<ActionResult | void | null | undefined> | ActionResult | void | null | undefined;
+  onDelete: (questionId: string | number) => Promise<ActionResult | void | null | undefined> | ActionResult | void | null | undefined;
   onPageChange: (page: number) => void;
   onRefresh?: () => Promise<void> | void;
   systemSettings?: SystemSettings;
@@ -634,10 +680,16 @@ const AdminQuestionsSection = ({
   const roleFocusHints = React.useMemo(() => {
     const careers = systemSettings?.taxonomies?.careers || [];
     return Array.from(new Set((systemSettings?.taxonomies?.roles || [])
-      .map((role: any) => {
+      .map((role) => {
+        const roleRecord = role as {
+          parentId?: string | number | null;
+          parent_id?: string | number | null;
+          parentName?: string;
+          parent_name?: string;
+        };
         const roleLabel = getEntityLabel(role);
-        const parentId = role?.parentId ?? role?.parent_id ?? null;
-        const parentName = String(role?.parentName ?? role?.parent_name ?? '').trim();
+        const parentId = roleRecord?.parentId ?? roleRecord?.parent_id ?? null;
+        const parentName = String(roleRecord?.parentName ?? roleRecord?.parent_name ?? '').trim();
         const parentCareer = findTaxonomyById(careers, parentId)
           || (parentName ? findTaxonomyByLabel(careers, parentName) : null);
         const focusLabel = getEntityLabel(parentCareer) || parentName;
@@ -650,12 +702,13 @@ const AdminQuestionsSection = ({
     Array.from(new Set((systemSettings?.taxonomies?.areas || []).map(getEntityLabel).filter(Boolean)))
   ), [systemSettings?.taxonomies?.areas]);
 
-  const getQuestionId = (question: Question) => String((question as any).id ?? '');
+  const getQuestionId = (question: Question) => String(toQuestionRecord(question).id ?? '');
 
   const getQuestionLabel = (question: Question) => {
-    const rawTitle = String((question as any).enunciado_clean || (question as any).text || (question as any).enunciado || '').trim();
+    const questionRecord = toQuestionRecord(question);
+    const rawTitle = String(questionRecord.enunciado_clean || questionRecord.text || questionRecord.enunciado || '').trim();
     const title = rawTitle ? rawTitle.replace(/\s+/g, ' ').slice(0, 90) : 'Questao sem enunciado';
-    return `#${(question as any).id ?? '-'} - ${title}${rawTitle.length > 90 ? '...' : ''}`;
+    return `#${questionRecord.id ?? '-'} - ${title}${rawTitle.length > 90 ? '...' : ''}`;
   };
 
   const hasGeneratedContent = (value: unknown) => {
@@ -663,18 +716,19 @@ const AdminQuestionsSection = ({
     return Boolean(value);
   };
 
-  const resolveQuestionAiState = (question: any, generatedContent: Partial<Question>, questionId: string) => {
-    const commentsMeta = question?.comentarios || question?.comentários || {};
+  const resolveQuestionAiState = (question: Question, generatedContent: Partial<Question>, questionId: string) => {
+    const questionRecord = toQuestionRecord(question);
+    const commentsMeta = questionRecord.comentarios || questionRecord['comentários'] || {};
     const teacherComment = String(
-      (generatedContent as any).teacherComment
-        || question?.teacherComment
-        || question?.teacher_comment
+      generatedContent.teacherComment
+        || questionRecord.teacherComment
+        || questionRecord.teacher_comment
         || '',
     ).trim();
     const detailedComment = String(
-      (generatedContent as any).detailedComment
-        || question?.detailedComment
-        || question?.detailed_comment
+      generatedContent.detailedComment
+        || questionRecord.detailedComment
+        || questionRecord.detailed_comment
         || '',
     ).trim();
     const savedFlags = savedGenerationById[questionId] || {};
@@ -684,16 +738,16 @@ const AdminQuestionsSection = ({
       detailedComment,
       hasComment: Boolean(
         savedFlags.teacher
-          || question?.hasTeacherComment
-          || question?.has_teacher_comment
-          || commentsMeta?.professor
+          || questionRecord.hasTeacherComment
+          || questionRecord.has_teacher_comment
+          || commentsMeta.professor
           || hasGeneratedContent(teacherComment),
       ),
       hasDetailedAnalysis: Boolean(
         savedFlags.detailed
-          || question?.hasDetailedComment
-          || question?.has_detailed_comment
-          || commentsMeta?.ia
+          || questionRecord.hasDetailedComment
+          || questionRecord.has_detailed_comment
+          || commentsMeta.ia
           || hasGeneratedContent(detailedComment),
       ),
     };
@@ -814,17 +868,17 @@ const AdminQuestionsSection = ({
       ));
 
       setOriginalGenerationPayloads(payloads);
-      setOriginalGenerationResults(payloads.map((question: any, index) => ({
+      setOriginalGenerationResults(payloads.map((question, index) => ({
         id: `review-${index}`,
         label: `Questao ${index + 1}`,
         status: 'review',
         publicationDecision: 'draft',
         filterIssues: getGeneratedQuestionMissingFilters(question),
-        subject: question.assuntos?.find((item: any) => item?.materia)?.name || '',
+        subject: (question.assuntos || []).find((item) => Boolean((item as { materia?: unknown })?.materia))?.name || '',
         preview: question.enunciado_clean || question.enunciado || '',
         question,
       })));
-    } catch (error: any) {
+    } catch (error) {
       const message = readApiErrorMessage(error, 'Nao foi possivel gerar as questoes ineditas.');
       setOriginalGenerationError(message);
       setOriginalGenerationProgress(100);
@@ -892,8 +946,8 @@ const AdminQuestionsSection = ({
     try {
       const response = await onAddQuestions(originalGenerationPayloads);
 
-      if (response?.success === false) {
-        throw new Error(response?.message || 'Nao foi possivel criar as questoes geradas.');
+      if (isActionFailure(response)) {
+        throw new Error(response.message || 'Nao foi possivel criar as questoes geradas.');
       }
 
       setOriginalGenerationResults((current) => current.map((item) => (
@@ -904,7 +958,7 @@ const AdminQuestionsSection = ({
       setOriginalGenerationCurrentLabel(`${originalGenerationPayloads.length} questao(oes) criada(s) pela revisao.`);
       setOriginalGenerationPayloads([]);
       await onRefresh?.();
-    } catch (error: any) {
+    } catch (error) {
       const message = readApiErrorMessage(error, 'Nao foi possivel salvar as questoes geradas.');
       setOriginalGenerationError(message);
       setOriginalGenerationCurrentLabel('Falha ao salvar as questoes.');
@@ -920,8 +974,10 @@ const AdminQuestionsSection = ({
     const id = getQuestionId(question);
     const label = getQuestionLabel(question);
     const cached = generatedContentById[id] || {};
+    const cachedRecord = cached as Partial<AdminQuestionRecord>;
+    const questionRecord = toQuestionRecord(question);
     const field = kind === 'teacher' ? 'teacherComment' : 'detailedComment';
-    const directResult = String((cached as any)[field] || (question as any)[field] || '').trim();
+    const directResult = String(cachedRecord[field] || questionRecord[field] || '').trim();
 
     generationSavePayloadsRef.current = {};
     setGenerationKind(kind);
@@ -942,7 +998,7 @@ const AdminQuestionsSection = ({
 
     try {
       const fullQuestion = await questionService.getQuestionForAdminEdit(id);
-      const result = String((fullQuestion as any)[field] || '').trim();
+      const result = String(toQuestionRecord(fullQuestion)[field] || '').trim();
       updateGenerationItem(id, result
         ? { status: 'success', result, isSaved: true }
         : { status: 'error', error: 'Nenhum conteudo salvo foi encontrado para esta questao.' });
@@ -954,8 +1010,8 @@ const AdminQuestionsSection = ({
           [id]: { ...(current[id] || {}), [field]: result },
         }));
       }
-    } catch (error: any) {
-      updateGenerationItem(id, { status: 'error', error: error?.message || 'Nao foi possivel carregar o resultado.' });
+    } catch (error) {
+      updateGenerationItem(id, { status: 'error', error: readApiErrorMessage(error, 'Nao foi possivel carregar o resultado.') });
       setGenerationProgress(100);
       setGenerationCurrentLabel('Falha ao carregar resultado.');
     }
@@ -1003,10 +1059,10 @@ const AdminQuestionsSection = ({
 
           generationSavePayloadsRef.current[id] = { ...generationBase, ...fieldPatch } as Question;
           updateGenerationItem(id, { status: 'success', result, isSaved: false, error: undefined });
-        } catch (error: any) {
+        } catch (error) {
           updateGenerationItem(id, {
             status: 'error',
-            error: error?.message || 'Nao foi possivel gerar este conteudo.',
+            error: readApiErrorMessage(error, 'Nao foi possivel gerar este conteudo.'),
           });
         } finally {
           setGenerationProgress(Math.round(((index + 1) / normalizedTargets.length) * 100));
@@ -1049,8 +1105,8 @@ const AdminQuestionsSection = ({
 
           const updateResult = await onUpdate(payload);
 
-          if (updateResult?.success === false) {
-            throw new Error(updateResult?.message || 'Nao foi possivel salvar o conteudo gerado.');
+          if (isActionFailure(updateResult)) {
+            throw new Error(updateResult.message || 'Nao foi possivel salvar o conteudo gerado.');
           }
 
           const fieldPatch = generationKind === 'teacher'
@@ -1071,11 +1127,11 @@ const AdminQuestionsSection = ({
           updateGenerationItem(item.id, { isSaved: true, isSaving: false, error: undefined });
           delete generationSavePayloadsRef.current[item.id];
           savedCount += 1;
-        } catch (error: any) {
+        } catch (error) {
           updateGenerationItem(item.id, {
             isSaved: false,
             isSaving: false,
-            error: error?.message || 'Nao foi possivel salvar este resultado.',
+            error: readApiErrorMessage(error, 'Nao foi possivel salvar este resultado.'),
           });
         }
       }
@@ -1131,7 +1187,7 @@ const AdminQuestionsSection = ({
 
     setIsDeletingQuestion(true);
     try {
-      await onDelete((pendingDeleteQuestion as any).id);
+      await onDelete(getQuestionId(pendingDeleteQuestion));
       setPendingDeleteQuestion(null);
     } catch {
       // O fluxo superior ja exibe o erro; manter o modal aberto permite tentar novamente.
@@ -1140,22 +1196,23 @@ const AdminQuestionsSection = ({
     }
   };
 
+  const pendingQuestionRecord = toQuestionRecord(pendingDeleteQuestion);
   const pendingQuestionTitle = String(
-    (pendingDeleteQuestion as any)?.enunciado_clean
-      || (pendingDeleteQuestion as any)?.text
-      || `#${(pendingDeleteQuestion as any)?.id || ''}`,
+    pendingQuestionRecord.enunciado_clean
+      || pendingQuestionRecord.text
+      || `#${pendingQuestionRecord.id || ''}`,
   ).trim();
 
   return (
     <div className="space-y-4">
       <AdminCollectionToolbar
-        title="Questoes"
-        description="Cadastro, revisao editorial e manutencao do banco principal."
+        title="Questões"
+        description="Cadastro, revisão editorial e manutenção do banco principal."
         itemCount={pagination.total}
-        itemCountLabel="questoes"
+        itemCountLabel="questões"
         searchValue={filter}
         onSearchChange={onFilterChange}
-        searchPlaceholder="Buscar questoes..."
+        searchPlaceholder="Buscar questões..."
         primaryActionLabel="Adicionar nova"
         onPrimaryAction={onCreate}
         actions={(
@@ -1166,7 +1223,7 @@ const AdminQuestionsSection = ({
             className="inline-flex items-center gap-2 rounded-sm border border-sky-700 bg-sky-700 px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-sky-800 hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Sparkles size={14} />
-            Gerar ineditas
+            Gerar inéditas
           </button>
         )}
       />
@@ -1174,7 +1231,7 @@ const AdminQuestionsSection = ({
       <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-col gap-3 transition-colors duration-300 lg:flex-row lg:items-center lg:justify-between`}>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-            Acoes em massa
+            Ações em massa
           </span>
           <button
             type="button"
@@ -1183,7 +1240,7 @@ const AdminQuestionsSection = ({
             className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-blue-300 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:text-blue-300"
           >
             <MessageSquare size={14} />
-            Gerar comentario
+            Gerar comentário
           </button>
           <button
             type="button"
@@ -1192,17 +1249,17 @@ const AdminQuestionsSection = ({
             className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-blue-300 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:text-blue-300"
           >
             <FileText size={14} />
-            Gerar analise
+            Gerar análise
           </button>
         </div>
         <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
-          {selectedQuestions.length > 0 ? `${selectedQuestions.length} questao(oes) selecionada(s)` : 'Selecione uma ou mais questoes para aplicar a acao.'}
+          {selectedQuestions.length > 0 ? `${selectedQuestions.length} questão(ões) selecionada(s)` : 'Selecione uma ou mais questões para aplicar a ação.'}
         </span>
       </div>
 
       <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden transition-colors duration-300`}>
         <div className={ADMIN_SURFACE_HEADER_CLASS}>
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Banco principal de questoes</p>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Banco principal de questões</p>
         </div>
         <div className="overflow-x-auto">
         <table className="w-full min-w-[1180px] text-left text-xs">
@@ -1213,62 +1270,64 @@ const AdminQuestionsSection = ({
                   type="checkbox"
                   checked={allVisibleSelected}
                   onChange={toggleSelectAllVisible}
-                  aria-label="Selecionar questoes visiveis"
+                  aria-label="Selecionar questões visíveis"
                   className="h-4 w-4 rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900"
                 />
               </th>
-              {renderSortableHeader('Questao', 'enunciado_clean')}
+              {renderSortableHeader('Questão', 'enunciado_clean')}
               <th className="p-4">ID</th>
-              <th className="p-4">Comentario</th>
-              <th className="p-4">Analise detalhada</th>
+              <th className="p-4">Comentário</th>
+              <th className="p-4">Análise detalhada</th>
               <th className="p-4">Prova vinculada</th>
               <th className="p-4">Ano</th>
               <th className="p-4">Status</th>
-              {renderSortableHeader('Publicacao', 'adminPublicationTimestamp')}
+              {renderSortableHeader('Publicação', 'adminPublicationTimestamp')}
               {renderSortableHeader('Banca/Materia', 'banca')}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-            {questions.map((question: any) => {
+            {questions.map((question) => {
+              const questionRecord = toQuestionRecord(question);
               const questionId = getQuestionId(question);
               const generatedContent = generatedContentById[questionId] || {};
+              const numericQuestionId = Number(questionRecord.id ?? NaN);
               const {
                 hasComment,
                 hasDetailedAnalysis,
               } = resolveQuestionAiState(question, generatedContent, questionId);
-              const questionViewPath = questionId
+              const questionViewPath = Number.isFinite(numericQuestionId)
                 ? buildQuestionPath({
                   ...question,
-                  id: question.id ?? questionId,
-                  enunciado: question.enunciado ?? question.text,
-                  enunciado_clean: question.enunciado_clean ?? question.text,
+                  id: numericQuestionId,
+                  enunciado: question.enunciado ?? questionRecord.text,
+                  enunciado_clean: question.enunciado_clean ?? questionRecord.text,
                 })
                 : null;
 
-              const linkedExam = Array.isArray(question?.provas) && question.provas.length > 0
+              const linkedExam = Array.isArray(questionRecord.provas) && questionRecord.provas.length > 0
                 ? question.provas[0]
                 : null;
 
               const linkedExamName = linkedExam?.nome || '-';
               const linkedYear = linkedExam?.ano
-                ?? (Array.isArray(question?.anos) && question.anos.length > 0
-                  ? Math.max(...question.anos.map((year: any) => Number(year) || 0))
+                ?? (Array.isArray(questionRecord.anos) && questionRecord.anos.length > 0
+                  ? Math.max(...questionRecord.anos.map((year) => Number(year) || 0))
                   : null);
 
               return (
-                <tr key={question.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                <tr key={questionId || `question-${questionRecord.id ?? 'sem-id'}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="p-4">
                     <input
                       type="checkbox"
                       checked={selectedQuestionIds.has(questionId)}
                       onChange={() => toggleQuestionSelection(question)}
-                      aria-label={`Selecionar questao ${question.id ?? ''}`}
+                      aria-label={`Selecionar questão ${question.id ?? ''}`}
                       className="h-4 w-4 rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900"
                     />
                   </td>
                   <td className="max-w-[260px] p-4 sm:max-w-md">
                     <p className="truncate font-medium text-slate-900 dark:text-slate-100">
-                      {question.enunciado_clean || question.text}
+                      {question.enunciado_clean || questionRecord.text}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                       {questionViewPath && (
@@ -1303,7 +1362,7 @@ const AdminQuestionsSection = ({
                   </td>
 
                   <td className="p-4 text-slate-700 dark:text-slate-300 font-semibold">
-                    #{question.id ?? '-'}
+                    #{questionRecord.id ?? '-'}
                   </td>
 
                   <td className="p-4">
@@ -1318,7 +1377,7 @@ const AdminQuestionsSection = ({
                           ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60'
                           : 'bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50'
                       }`}
-                      title={hasComment ? 'Ver comentario' : 'Gerar comentario'}
+                      title={hasComment ? 'Ver comentário' : 'Gerar comentário'}
                     >
                       {hasComment ? <MessageSquare size={12} /> : <Sparkles size={12} />}
                       {hasComment ? 'Ver' : 'Gerar'}
@@ -1337,7 +1396,7 @@ const AdminQuestionsSection = ({
                           ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60'
                           : 'bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50'
                       }`}
-                      title={hasDetailedAnalysis ? 'Ver analise detalhada' : 'Gerar analise detalhada'}
+                      title={hasDetailedAnalysis ? 'Ver análise detalhada' : 'Gerar análise detalhada'}
                     >
                       {hasDetailedAnalysis ? <FileText size={12} /> : <Sparkles size={12} />}
                       {hasDetailedAnalysis ? 'Ver' : 'Gerar'}
@@ -1354,7 +1413,7 @@ const AdminQuestionsSection = ({
 
                   <td className="p-4">
                     <div className="flex flex-wrap gap-1">
-                      <AdminPublishStateBadge state={resolveAdminPublishState(question as Record<string, any>)} />
+                      <AdminPublishStateBadge state={resolveAdminPublishState(questionRecord)} />
                       {Number(question.anulada) === 1 && (
                         <span className="rounded-sm border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
                           Anulada
@@ -1369,19 +1428,19 @@ const AdminQuestionsSection = ({
                   </td>
 
                   <td className="whitespace-nowrap p-4 text-slate-700 dark:text-slate-300">
-                    <span className="font-semibold">{formatPublicationDate(question.adminPublicationDate)}</span>
+                    <span className="font-semibold">{formatPublicationDate(questionRecord.adminPublicationDate)}</span>
                   </td>
 
                   <td className="p-4">
                     <div className="flex flex-col gap-1">
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                        {question.bancas?.map((banca: any) => banca.sigla).join(' / ') || 'Banca'}
+                        {question.bancas?.map((banca) => getEntityLabel(banca)).filter(Boolean).join(' / ') || 'Banca'}
                       </span>
                       <span className="w-fit rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                         {question.assuntos
-                          ?.map((subject: any) => (subject.materia ? subject.nome : ''))
+                          ?.map((subject) => ((subject as { materia?: unknown; nome?: string; name?: string })?.materia ? getEntityLabel(subject) : ''))
                           .filter(Boolean)
-                          .join(', ') || 'Materia'}
+                          .join(', ') || 'Matéria'}
                       </span>
                     </div>
                   </td>
@@ -1395,7 +1454,7 @@ const AdminQuestionsSection = ({
       </div>
 
       <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`}>
-        <span className="text-sm text-slate-500 dark:text-slate-400">Mostrando {questions.length} de {pagination.total} questoes</span>
+        <span className="text-sm text-slate-500 dark:text-slate-400">Mostrando {questions.length} de {pagination.total} questões</span>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -1406,7 +1465,7 @@ const AdminQuestionsSection = ({
             Anterior
           </button>
           <span className="flex items-center px-4 text-sm font-semibold text-blue-600 dark:text-blue-300">
-            Pagina {pagination.page} de {pagination.pages}
+            Página {pagination.page} de {pagination.pages}
           </span>
           <button
             type="button"
@@ -1414,15 +1473,15 @@ const AdminQuestionsSection = ({
             onClick={() => onPageChange(pagination.page + 1)}
             className="rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-30 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
-            Proxima
+            Próxima
           </button>
         </div>
       </div>
 
       <AdminConfirmDialog
         isOpen={Boolean(pendingDeleteQuestion)}
-        title="Excluir questao"
-        description={`A questao ${pendingDeleteQuestion ? `#${(pendingDeleteQuestion as any).id}` : ''} sera removida permanentemente. ${pendingQuestionTitle ? `Trecho: "${pendingQuestionTitle.slice(0, 140)}${pendingQuestionTitle.length > 140 ? '...' : ''}"` : ''}`}
+        title="Excluir questão"
+        description={`A questão ${pendingDeleteQuestion ? `#${pendingQuestionRecord.id ?? ''}` : ''} será removida permanentemente. ${pendingQuestionTitle ? `Trecho: "${pendingQuestionTitle.slice(0, 140)}${pendingQuestionTitle.length > 140 ? '...' : ''}"` : ''}`}
         confirmLabel="Excluir permanentemente"
         cancelLabel="Cancelar"
         tone="danger"

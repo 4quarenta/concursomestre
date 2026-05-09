@@ -26,8 +26,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
-import { useData } from '@providers/DataProvider';
 import { useSearchParams } from 'next/navigation';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import {
   PLATFORM_MAIN_CONTENT_WIDTH_CLASS,
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -138,7 +138,7 @@ const Support: React.FC = () => {
   const { currentUser, isLoading } = useAuth();
   const { addToast } = useToast();
   const searchParams = useSearchParams();
-  const { systemSettings } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const pixKey = systemSettings?.pixKey || 'pix@concursomestre.com.br';
   const [activeTab, setActiveTab] = useState<SupportTab>('bug');
   const [composeStep, setComposeStep] = useState<1 | 2>(1);

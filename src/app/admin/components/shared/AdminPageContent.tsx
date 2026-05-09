@@ -89,7 +89,7 @@ const AdminPageContent = (props: AdminPageContentProps) => {
           />
         );
       }
-      return <AdminSupportSection key={props.supportSectionKey} {...props.supportSectionProps} />;
+      return <AdminSupportSection {...props.supportSectionProps} />;
     case 'settings':
       return <AdminSettingsSection key={props.settingsSectionKey} {...props.settingsSectionProps} />;
     default:

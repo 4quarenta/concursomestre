@@ -25,7 +25,6 @@ import {
   ADMIN_FIELD_CLASS,
   ADMIN_MUTED_SURFACE_CLASS,
   ADMIN_PAGE_PANEL_CLASS,
-  ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
   ADMIN_SEGMENTED_TABS_CLASS,
   ADMIN_TAB_BUTTON_ACTIVE_CLASS,
@@ -80,7 +79,13 @@ const AdminSeoSettingsSection = ({
   }, []);
 
   useEffect(() => {
-    void loadSitemapStatus();
+    const frameId = window.requestAnimationFrame(() => {
+      void loadSitemapStatus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
   }, [loadSitemapStatus]);
 
   const updateGlobalField = (field: keyof SeoSettings['global'], value: string | boolean) => {

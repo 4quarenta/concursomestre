@@ -18,8 +18,10 @@ import {
    Info, Calendar, Save, X, ArrowRight, Settings, LayoutGrid, List, Search, Clock, AlertCircle, Edit3, Trash2, CheckCircle, ShieldCheck, Hash, Layers, UserCheck, FileText, Check, PlusCircle, UploadCloud, Loader2, AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
+import { useConfirm } from '@providers/ModalProvider';
+import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
+import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 
 /**
@@ -30,7 +32,16 @@ import AuthModal from '../../components/shared/overlays/AuthModal';
 const RankingPage: React.FC = () => {
    const { currentUser } = useAuth();
    const { addToast } = useToast();
-   const { rankings, addRanking, updateRanking, deleteRanking, submitRankingEntry, moderateRanking, ensureRankingsLoaded } = useData();
+   const confirmDialog = useConfirm();
+   const rankings = useAdminDataStore((store) => store.rankings);
+   const {
+      addRanking,
+      updateRanking,
+      deleteRanking,
+      submitRankingEntry,
+      moderateRanking,
+      ensureRankingsLoaded,
+   } = useAdminDataActions();
    const [selectedRanking, setSelectedRanking] = useState<Ranking | null>(null);
    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
    const [searchTerm, setSearchTerm] = useState('');
@@ -447,7 +458,24 @@ const RankingPage: React.FC = () => {
                               });
                               setIsEditing(true);
                            }} className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all" title="Editar Ranking"><Edit3 size={16} /></button>
-                           <button onClick={() => { if (confirm("Deseja excluir este ranking?")) { deleteRanking(selectedRanking.id); setSelectedRanking(null); } }} className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all" title="Excluir Ranking"><Trash2 size={16} /></button>
+                           <button
+                              onClick={async () => {
+                                 const confirmed = await confirmDialog({
+                                    title: 'Excluir ranking?',
+                                    description: 'Essa ação remove o ranking e não pode ser desfeita.',
+                                    confirmText: 'Excluir',
+                                    cancelText: 'Cancelar',
+                                    type: 'danger',
+                                 });
+                                 if (!confirmed) return;
+                                 deleteRanking(selectedRanking.id);
+                                 setSelectedRanking(null);
+                              }}
+                              className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all"
+                              title="Excluir Ranking"
+                           >
+                              <Trash2 size={16} />
+                           </button>
                            {selectedRanking.status === 'pending' && (
                               <>
                                  <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-2 self-center rounded-full"></div>

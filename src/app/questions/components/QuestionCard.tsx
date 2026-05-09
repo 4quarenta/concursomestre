@@ -21,6 +21,7 @@ import { legalCommentaryApiService } from '@services/legal-commentary';
 import { isPlatformOriginalQuestion, isQuestionCanceled, questionService } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import MathRichText from '@/components/shared/math/MathRichText';
+import { commentService } from '@services/comments';
 
 const fixHtmlImages = (html: string) => {
   const normalizedHtml = normalizeQuestionRichHtml(html);
@@ -47,6 +48,44 @@ const getAssuntoTopico = (assunto: Assunto & { topico?: string }) => (
   typeof assunto.topico === 'string' ? assunto.topico : ''
 ).trim().toLowerCase();
 
+const normalizeAnnotatedLawScopeText = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toLowerCase();
+
+const readAssuntoMateria = (assunto: Assunto): string => {
+  const looseAssunto = assunto as unknown as { materia?: unknown; subject?: unknown };
+  return typeof looseAssunto.materia === 'string'
+    ? looseAssunto.materia
+    : typeof looseAssunto.subject === 'string'
+      ? looseAssunto.subject
+      : '';
+};
+
+const extractQuestionSubjectNames = (question: Question): string[] => Array.from(new Set(
+  (question.assuntos || [])
+    .flatMap((assunto) => {
+      const assuntoNome = typeof assunto.nome === 'string'
+        ? assunto.nome
+        : typeof assunto.name === 'string'
+          ? assunto.name
+          : '';
+
+      return [readAssuntoMateria(assunto), assuntoNome];
+    })
+    .map((item) => normalizeAnnotatedLawScopeText(String(item || '')))
+    .filter(Boolean),
+));
+
+const isQuestionEligibleForAnnotatedLaws = (question: Question): boolean => (
+  extractQuestionSubjectNames(question).some((item) => item.includes('direito'))
+);
+
+const buildQuestionAnnotatedLawScopeKey = (question: Question): string => (
+  `${String(question.id)}:${extractQuestionSubjectNames(question).join('|')}`
+);
+
 const getMaterialSubjectText = (material: Pick<Material, 'subject' | 'subjectText'>): string => {
   const { subject } = material;
 
@@ -64,7 +103,7 @@ const getMaterialSubjectText = (material: Pick<Material, 'subject' | 'subjectTex
 
 const getQuestionSourceMetadata = (question: Question): QuestionSourceMetadata => question as QuestionSourceMetadata;
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
+import { useToast } from '@providers/ToastProvider';
 import CommentsSection from '../../../components/shared/feedback/CommentsSection';
 import { createPortal } from 'react-dom';
 import { useMarketplace } from '@providers/MarketplaceProvider';
@@ -73,6 +112,8 @@ import { useRouter } from 'next/navigation';
 import AdBanner from '../../../components/shared/feedback/AdBanner';
 import { getBenefitPlanLabel, getBenefitRequiredPlan, hasPlanBenefit } from '@services/plans/planAccess';
 import { buildQuestionPath } from '@services/seo';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
 
 interface QuestionCardProps {
   question: Question;
@@ -86,6 +127,7 @@ interface QuestionCardProps {
   userPlan?: 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
   existingNote?: UserNote;
   onSaveNote?: (qId: string, text: string) => void;
+  onOpenNote?: (qId: string) => Promise<void> | void;
   onToggleSave?: (qId: string) => void;
   isSaved?: boolean;
   mode?: 'practice' | 'simulation';
@@ -129,12 +171,16 @@ const isCorrectQuestionOption = (question: Question, index: number) => (
 
 const QuestionCard: React.FC<QuestionCardProps> = ({
   question, existingAnswer, onAnswerSubmit, onReportError, onAddComment, onLikeComment, indexDisplay,
-  isAlreadyReported = false, existingNote, onSaveNote, onToggleSave, isSaved = false,
+  isAlreadyReported = false, existingNote, onSaveNote, onOpenNote, onToggleSave, isSaved = false,
   mode = 'practice', hideFeedback = false, currentUserId, currentUserName, onGuestAction, isHighlighted = false
 }) => {
   const router = useRouter();
   const { currentUser } = useAuth();
-  const { systemSettings, fetchComments, reportComment, deleteComment } = useData();
+  const { addToast } = useToast();
+  const authenticatedUserId = currentUser?.id;
+  const systemSettings = useAppConfigStore((store) => store.systemSettings);
+  const setQuestionComments = useQuestionBankStore((store) => store.setQuestionComments);
+  const deleteQuestionComment = useQuestionBankStore((store) => store.deleteQuestionComment);
   const [selectedOptionId, setSelectedOptionId] = useState<number | string | null>(null);
   const [eliminatedOptionIds, setEliminatedOptionIds] = useState<(number | string)[]>([]);
   const [showComments, setShowComments] = useState(false);
@@ -174,8 +220,17 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     });
   }, [materials, question.assuntos, systemSettings.features.marketplaceEnabled]);
 
+  const canQuestionUseAnnotatedLaws = isQuestionEligibleForAnnotatedLaws(question);
+  const annotatedLawScopeKey = buildQuestionAnnotatedLawScopeKey(question);
+  const annotatedLawLookupQuestion = React.useMemo(() => (
+    {
+      id: question.id,
+      assuntos: question.assuntos,
+    } as Question
+  ), [question.id, question.assuntos]);
+
   useEffect(() => {
-    if (!systemSettings.features.annotatedLawsEnabled) {
+    if (!systemSettings.features.annotatedLawsEnabled || !canQuestionUseAnnotatedLaws) {
       const frame = window.requestAnimationFrame(() => {
         setRelatedAnnotatedLaws([]);
         setShowAnnotatedLaws(false);
@@ -192,7 +247,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       }
     });
 
-    legalCommentaryApiService.getRelatedLawsForQuestion(question)
+    legalCommentaryApiService.getRelatedLawsForQuestion(annotatedLawLookupQuestion)
       .then((payload) => {
         if (!isMounted) {
           return;
@@ -223,16 +278,17 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       isMounted = false;
       window.cancelAnimationFrame(loadingFrame);
     };
-  }, [question, systemSettings.features.annotatedLawsEnabled]);
+  }, [annotatedLawLookupQuestion, annotatedLawScopeKey, canQuestionUseAnnotatedLaws, systemSettings.features.annotatedLawsEnabled]);
 
   const hasRelatedAnnotatedLaws = relatedAnnotatedLaws.length > 0;
-  const hasQuestionTaxonomy = Array.isArray(question.assuntos) && question.assuntos.length > 0;
+  const hasQuestionTaxonomy = canQuestionUseAnnotatedLaws && Array.isArray(question.assuntos) && question.assuntos.length > 0;
   const isCanceledQuestion = isQuestionCanceled(question);
   const isOriginalQuestion = isPlatformOriginalQuestion(question);
   const cardBorderClass = isCanceledQuestion
     ? 'border-red-400 ring-2 ring-red-100 dark:border-red-700 dark:ring-red-900/30'
     : 'border-slate-200 dark:border-slate-800';
   const canShowAnnotatedLawsButton = systemSettings.features.annotatedLawsEnabled
+    && canQuestionUseAnnotatedLaws
     && (
       hasRelatedAnnotatedLaws
       || (isLoadingAnnotatedLaws && hasQuestionTaxonomy)
@@ -243,6 +299,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const [showDetailedComment, setShowDetailedComment] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [isPreparingNoteModal, setIsPreparingNoteModal] = useState(false);
   // Modal de upgrade de plano
   const [planUpgradeModal, setPlanUpgradeModal] = useState<{ featureName: string; requiredPlan: string; planLabel: string } | null>(null);
 
@@ -278,6 +335,47 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const [isReporting, setIsReporting] = useState(false);
   const [reportDetails, setReportDetails] = useState({ reason: 'Gabarito Errado', details: '' });
+
+  const fetchComments = React.useCallback(async (questionId: number) => {
+    try {
+      const comments = await commentService.getComments(String(questionId), authenticatedUserId || undefined);
+      setQuestionComments(questionId, comments);
+    } catch (error) {
+      console.error(`[QuestionCard] Failed to fetch comments for ${questionId}`, error);
+      addToast('Erro ao carregar comentarios.', 'error');
+    }
+  }, [addToast, authenticatedUserId, setQuestionComments]);
+
+  const reportComment = React.useCallback(async (commentId: string, reason: string, details: string) => {
+    if (!authenticatedUserId) {
+      addToast('Voce precisa estar logado para reportar.', 'warning');
+      return false;
+    }
+
+    try {
+      await commentService.reportComment(commentId, reason, details, authenticatedUserId);
+      addToast('Denuncia enviada com sucesso.', 'success');
+      return true;
+    } catch (error) {
+      console.error('[QuestionCard] Failed to report comment:', error);
+      addToast('Erro de conexao ao enviar denuncia.', 'error');
+      return false;
+    }
+  }, [addToast, authenticatedUserId]);
+
+  const deleteComment = React.useCallback(async (questionId: number, commentId: string) => {
+    if (!authenticatedUserId) return;
+
+    deleteQuestionComment(questionId, commentId);
+    try {
+      await commentService.deleteComment(commentId, authenticatedUserId);
+      addToast('Comentario excluido com sucesso.', 'success');
+    } catch (error) {
+      console.error('[QuestionCard] Failed to delete comment:', error);
+      addToast('Erro ao excluir comentario.', 'error');
+      await fetchComments(questionId);
+    }
+  }, [addToast, authenticatedUserId, deleteQuestionComment, fetchComments]);
 
   const startTime = useRef<number>(0);
 
@@ -354,13 +452,20 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       setShowStats(false);
       setShowMaterials(false);
       setShowAnnotatedLaws(false);
-      setLocalStats(question.stats || null);
       setIsContextExpanded(false); // Reset context expansion when question changes
     });
 
     // In simulation mode, we might want to pre-load the answer if it exists.
     // However, for Practice, we want a clean slate.
     // We do NOT want to reset if existingAnswer changes (which happens when we just answered).
+    return () => window.cancelAnimationFrame(frame);
+  }, [question.id]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setLocalStats(question.stats || null);
+    });
+
     return () => window.cancelAnimationFrame(frame);
   }, [question.id, question.stats]);
 
@@ -515,7 +620,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       return;
     }
     if (!reportDetails.details.trim()) {
-      alert("Por favor, detalhe o problema encontrado. A justificativa é obrigatória.");
+      addToast('Por favor, detalhe o problema encontrado. A justificativa é obrigatória.', 'warning');
       return;
     }
     if (onReportError) {
@@ -536,7 +641,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     const baseUrl = window.location.origin + window.location.pathname;
     const questionUrl = `${baseUrl}?questionId=${question.id}`;
 
-    const textToShare = `Confira esta questão no ConcursoMestre! 📚\n\n${question.enunciado_clean ? question.enunciado_clean.substring(0, 150) + '...' : ''}\n\nAcesse o link abaixo para testar seus conhecimentos e ver o gabarito.`;
+    const textToShare = `Confira esta questão no ConcursoMestre!\n\n${question.enunciado_clean ? question.enunciado_clean.substring(0, 150) + '...' : ''}\n\nAcesse o link abaixo para testar seus conhecimentos e ver o gabarito.`;
 
     if (navigator.share) {
       navigator.share({
@@ -546,7 +651,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       }).catch(console.error);
     } else {
       navigator.clipboard.writeText(`${textToShare}\n\nLink: ${questionUrl}`);
-      alert("Link e texto copiados para a área de transferência!");
+      addToast('Link e texto copiados para a área de transferência.', 'success');
     }
   };
 
@@ -561,12 +666,35 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     }
   };
 
+  const handleOpenNoteModal = () => {
+    if (!onOpenNote) {
+      setIsNoteModalOpen(true);
+      return;
+    }
+
+    const maybePromise = onOpenNote(String(question.id));
+    if (!maybePromise || typeof (maybePromise as Promise<void>).then !== 'function') {
+      setIsNoteModalOpen(true);
+      return;
+    }
+
+    setIsPreparingNoteModal(true);
+    Promise.resolve(maybePromise)
+      .catch((error) => {
+        console.error('Failed to preload question notes:', error);
+      })
+      .finally(() => {
+        setIsPreparingNoteModal(false);
+        setIsNoteModalOpen(true);
+      });
+  };
+
   const isImageOption = (text: string) => {
     return text.startsWith('blob:') || text.startsWith('http') && (text.match(/\.(jpeg|jpg|gif|png)$/) != null || text.includes('images'));
   };
 
   const cardContent = (
-    <div id={String(question.id)} className={`bg-white dark:bg-slate-900 rounded-3xl border shadow-sm w-full overflow-hidden flex flex-col transition-all relative ${cardBorderClass}`}>
+    <div id={String(question.id)} className={`bg-white dark:bg-slate-900 rounded-2xl border shadow-sm w-full overflow-hidden flex flex-col transition-all relative ${cardBorderClass}`}>
 
       {/* Header Compacto */}
       <div className="bg-slate-50/70 dark:bg-slate-800/50 p-4 border-b border-slate-100 dark:border-slate-800">
@@ -575,17 +703,18 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             <span className="text-xs font-bold text-slate-400 dark:text-slate-500">#{indexDisplay}</span>
             <Link
               href={buildQuestionPath(question)}
+              prefetch={false}
               className="text-[10px] font-bold text-slate-300 transition-colors hover:text-indigo-500 hover:underline dark:text-slate-600 dark:hover:text-indigo-400"
               title={`Abrir pagina da questao ${question.id}`}
             >
               Q{question.id}
             </Link>
             <div className="flex gap-1.5">
-              <span className="inline-flex items-center justify-center px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 text-[8px] font-bold rounded uppercase tracking-wide">{(question.assuntos && question.assuntos.length > 0) ? question.assuntos[0].nome : 'Geral'}</span>
+              <span className="inline-flex items-center justify-center px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 text-[8px] font-bold rounded-md uppercase tracking-wide">{(question.assuntos && question.assuntos.length > 0) ? question.assuntos[0].nome : 'Geral'}</span>
               <span className="inline-flex items-center justify-center px-2 py-0.5 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-[8px] font-bold rounded border border-slate-200 dark:border-slate-600 uppercase">{['', 'Muito Fácil', 'Fácil', 'Médio', 'Difícil', 'Muito Difícil'][Number(question.dificuldade)] || 'Dificuldade ' + question.dificuldade}</span>
-              {isOriginalQuestion && <span className="bg-violet-600 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Inedita</span>}
-              {isCanceledQuestion && <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Anulada</span>}
-              {(question.desatualizada || question.isOutdated) && <span className="bg-amber-500 text-white px-2 py-0.5 rounded text-[8px] font-black uppercase">Desatualizada</span>}
+              {isOriginalQuestion && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-violet-600 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Inedita</span>}
+              {isCanceledQuestion && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-red-500 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Anulada</span>}
+              {(question.desatualizada || question.isOutdated) && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-amber-500 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Desatualizada</span>}
               {(existingAnswer || sessionAnswer) && !(mode === 'simulation' && hideFeedback) && (
                 (sessionAnswer || existingAnswer)!.isCorrect
                   ? <span className="border border-emerald-500 text-emerald-600 bg-white dark:bg-emerald-900/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase flex items-center gap-1.5"><CheckCircle2 size={12} /> Resolvida (Certa)</span>
@@ -938,9 +1067,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             )}
 
 
-            <button onClick={() => setIsNoteModalOpen(true)} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${noteText ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-900/50' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/10'}`}>
-              <StickyNote size={14} /> {noteText ? 'Anotação ✅' : 'Anotar'}
-            </button>
+                  <button
+                    onClick={handleOpenNoteModal}
+                    disabled={isPreparingNoteModal}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all disabled:opacity-70 disabled:cursor-not-allowed ${noteText ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-900/50' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/10'}`}
+                  >
+                    {isPreparingNoteModal ? <Loader2 size={14} className="animate-spin" /> : <StickyNote size={14} />} {noteText ? 'Anotação ✅' : 'Anotar'}
+                  </button>
 
             {isSubmitted && (
               <button onClick={() => setIsHistoryModalOpen(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 transition-all">
@@ -1091,13 +1224,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 comments={question.comments || []}
                 onAddComment={(text, parentId) => onAddComment?.(String(question.id), text, parentId)}
                 onLikeComment={(commentId) => onLikeComment?.(String(question.id), commentId)}
-                onReportComment={(commentId) => reportComment(commentId, 'Abuso', 'Reportado via interface de comentários')}
+                onReportComment={(commentId, reason, details) => reportComment(commentId, reason, details)}
                 onDeleteComment={(commentId) => deleteComment(Number(question.id), commentId)}
               />
             )}
 
             {showMaterials && <RelatedMaterialsSection question={question} currentUser={currentUser} />}
-            {showAnnotatedLaws && <RelatedAnnotatedLawsSection question={question} onClose={() => setShowAnnotatedLaws(false)} initialMatches={relatedAnnotatedLaws} />}
+            {showAnnotatedLaws && <RelatedAnnotatedLawsSection question={annotatedLawLookupQuestion} onClose={() => setShowAnnotatedLaws(false)} initialMatches={relatedAnnotatedLaws} />}
             <div className="px-6 py-4">
               <AdBanner type="bottom" />
             </div>
@@ -1425,13 +1558,11 @@ const RelatedMaterialsSection = ({ question, currentUser }: RelatedMaterialsSect
   const relatedMaterials = React.useMemo(() => {
     if (!materials || materials.length === 0) return [];
 
-    console.log('[QuestionCard] Filtering related materials. Total available:', materials.length);
 
     // Ajuste: materiais podem vir do painel de compras e não ter o status 'approved', 
     // então removemos a trava de status caso o material pertença ao sistema ou ao usuário.
     const availableMaterials = materials;
 
-    console.log('[QuestionCard] Available materials for match:', availableMaterials.length);
 
     // Critérios de combinação - Removemos itens vazios para evitar matches coringa (includes(""))
     const questionSubjects = question.assuntos?.map(getAssuntoNome).filter(Boolean) || [];

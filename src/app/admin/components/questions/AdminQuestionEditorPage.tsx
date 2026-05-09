@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -10,15 +10,26 @@
 */
 
 import React from 'react';
+import Image from 'next/image';
 import { flushSync } from 'react-dom';
 import { AlertCircle, AlertTriangle, Check, Image as ImageIcon, Loader2, Plus, Save, Search, Sparkles, Trash2 } from 'lucide-react';
-import type { Prova, Question } from '@types';
+import type { GrupoQuestao, Prova, Question } from '@types';
 import { resolveApiResourceUrl } from '@services/api';
 import { adminService, type AdminQuestionGroupItem } from '@services/admin/adminService';
 import MathRichText from '@/components/shared/math/MathRichText';
 import { SmartTagSelector } from '../database/SmartTagSelector';
 import { slugify } from '../database/slugify';
-import { buildProvaSearchText, formatProvaLabel, normalizeProvaRecord } from '../exams/examBankUtils';
+import { buildProvaSearchText, formatProvaLabel } from '../exams/examBankUtils';
+import {
+  getRoleDisplayLabel,
+  isQuestionTaxonomyRecord,
+  type ManualQuestionItem,
+  type ManualQuestionPatch,
+  type ManualQuestionSetter,
+  type ManualQuestionState,
+  type QuestionTaxonomyOption,
+  mergeProvaSources,
+} from './questionEditorShared';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
@@ -30,8 +41,8 @@ import {
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
 
 interface AdminQuestionEditorPageProps {
-  manualQ: any;
-  setManualQ: React.Dispatch<React.SetStateAction<any>>;
+  manualQ: ManualQuestionState;
+  setManualQ: ManualQuestionSetter;
   editingQuestion: Question | null;
   editingExtractedIndex: number | null;
   existingAgencies: string[];
@@ -53,27 +64,8 @@ interface AdminQuestionEditorPageProps {
   reportContext?: React.ReactNode;
 }
 
-type QuestionTaxonomyOption = string | number | Record<string, any> | null | undefined;
 type KnowledgeTaxonomyLevel = 'materia' | 'topico' | 'assunto';
-
-const getRoleDisplayLabel = (value: any) => {
-  if (typeof value === 'string' || typeof value === 'number') {
-    return String(value).trim();
-  }
-
-  if (value && typeof value === 'object') {
-    return String(
-      value.descricao
-      ?? value['descrição']
-      ?? value.name
-      ?? value.nome
-      ?? value.sigla
-      ?? '',
-    ).trim();
-  }
-
-  return '';
-};
+type QuestionGroupSelection = Partial<AdminQuestionGroupItem> & Partial<GrupoQuestao> & { id: number | string };
 
 const normalizeTaxonomyKey = (value: unknown) =>
   String(value ?? '')
@@ -92,7 +84,7 @@ const getTaxonomyLabel = (value: QuestionTaxonomyOption) => {
       value.name
       ?? value.nome
       ?? value.descricao
-      ?? value['descrição']
+      ?? value['descri\u00e7\u00e3o']
       ?? value.sigla
       ?? value.label
       ?? '',
@@ -238,25 +230,6 @@ const buildQuestionTaxonomySelection = (
   };
 };
 
-const mergeProvaSources = (primary: Prova[], fallback: any[]) => {
-  const provaMap = new Map<string, Prova>();
-
-  [...primary, ...fallback]
-    .map((item) => normalizeProvaRecord(item))
-    .filter(Boolean)
-    .forEach((item) => {
-      provaMap.set(String((item as Prova).id), item as Prova);
-    });
-
-  return Array.from(provaMap.values()).sort((left, right) => {
-    if (right.ano !== left.ano) {
-      return right.ano - left.ano;
-    }
-
-    return left.nome.localeCompare(right.nome, 'pt-BR');
-  });
-};
-
 const normalizeDateTimeLocalValue = (value: unknown) => {
   if (value === null || value === undefined || value === '') return '';
 
@@ -315,6 +288,17 @@ const getQuestionGroupTitle = (group: Partial<AdminQuestionGroupItem> | null | u
   return raw || (getQuestionGroupId(group) ? `Contexto #${getQuestionGroupId(group)}` : '');
 };
 
+const normalizeQuestionGroupSelection = (
+  group: Partial<AdminQuestionGroupItem> | Partial<GrupoQuestao> | null | undefined,
+): QuestionGroupSelection | null => {
+  const id = group?.id;
+  if (id === null || id === undefined || String(id).trim() === '') {
+    return null;
+  }
+
+  return { ...group, id };
+};
+
 const buildRoleSelection = (
   label: string,
   options: QuestionTaxonomyOption[],
@@ -333,7 +317,7 @@ const buildRoleSelection = (
     name: label,
     nome: label,
     descricao: label,
-    ['descrição']: label,
+    ['descri\u00e7\u00e3o']: label,
     slug: slugify(label),
     parentId: focusId || null,
     parent_id: focusId || null,
@@ -379,8 +363,8 @@ const AdminQuestionEditorPage = ({
   onSave,
   reportContext,
 }: AdminQuestionEditorPageProps) => {
-  const updateManualQ = (patch: Record<string, unknown>) => {
-    setManualQ((prev: any) => ({ ...prev, ...patch }));
+  const updateManualQ = (patch: ManualQuestionPatch) => {
+    setManualQ((prev) => ({ ...prev, ...patch }));
   };
 
   const [provaSearch, setProvaSearch] = React.useState('');
@@ -391,7 +375,7 @@ const AdminQuestionEditorPage = ({
   const [isLoadingGroups, setIsLoadingGroups] = React.useState(false);
   const MULTIPLE_CHOICE_LABEL = 'Múltipla Escolha';
   const MID_LEVEL_LABEL = 'Médio';
-  const publishState = resolveAdminPublishState(manualQ as Record<string, any>);
+  const publishState = resolveAdminPublishState(manualQ as Record<string, unknown>);
   const visibilityValue = String(manualQ.visibilityStatus || 'public');
   const questionOrigin = normalizeQuestionOrigin(
     manualQ.questionOrigin || manualQ.question_origin || manualQ.sourceType || manualQ.source_type,
@@ -486,7 +470,7 @@ const AdminQuestionEditorPage = ({
   );
 
   const selectedProva = manualQ.provaId
-    ? provaList.find((item: any) => String(item.id) === String(manualQ.provaId))
+    ? provaList.find((item) => String(item.id) === String(manualQ.provaId))
     : null;
 
   const filteredProvas = React.useMemo(() => {
@@ -502,7 +486,8 @@ const AdminQuestionEditorPage = ({
 
   const filteredQuestionGroups = React.useMemo(() => {
     const normalizedSearch = groupSearch.trim().toLowerCase();
-    const source = questionGroups.length > 0 ? questionGroups : (manualQ.grupoQuestao ? [manualQ.grupoQuestao] : []);
+    const fallbackGroup = normalizeQuestionGroupSelection(manualQ.grupoQuestao);
+    const source = questionGroups.length > 0 ? questionGroups : (fallbackGroup ? [fallbackGroup] : []);
     if (!normalizedSearch) {
       return source.slice(0, 12);
     }
@@ -577,7 +562,7 @@ const AdminQuestionEditorPage = ({
   }, [selectedGroupId, selectedQuestionGroup]);
 
   const handleTypeChange = (newType: string) => {
-    setManualQ((prev: any) => {
+    setManualQ((prev) => {
       const currentItems = prev.itens || [];
       const newItens =
         newType === 'Certo/Errado'
@@ -610,7 +595,7 @@ const AdminQuestionEditorPage = ({
   };
 
   const handleAddOption = () => {
-    setManualQ((prev: any) => ({
+    setManualQ((prev) => ({
       ...prev,
       itens: [
         ...(prev.itens || []),
@@ -625,7 +610,7 @@ const AdminQuestionEditorPage = ({
   };
 
   const handleOptionChange = (index: number, value: string) => {
-    setManualQ((prev: any) => {
+    setManualQ((prev) => {
       const nextItems = [...(prev.itens || [])];
       nextItems[index] = {
         ...nextItems[index],
@@ -638,9 +623,9 @@ const AdminQuestionEditorPage = ({
   };
 
   const handleOptionDelete = (index: number) => {
-    setManualQ((prev: any) => ({
+    setManualQ((prev) => ({
       ...prev,
-      itens: (prev.itens || []).filter((_: any, itemIndex: number) => itemIndex !== index),
+      itens: (prev.itens || []).filter((_item: ManualQuestionItem, itemIndex: number) => itemIndex !== index),
     }));
   };
 
@@ -680,7 +665,7 @@ const AdminQuestionEditorPage = ({
         });
   };
 
-  const handleSelectQuestionGroup = (group: AdminQuestionGroupItem) => {
+  const handleSelectQuestionGroup = (group: QuestionGroupSelection) => {
     updateManualQ({
       grupoQuestao: group,
       grupoQuestaoId: group.id,
@@ -751,7 +736,7 @@ const AdminQuestionEditorPage = ({
 
   const handlePersistWithPatch = (patch: Record<string, unknown>) => {
     flushSync(() => {
-      setManualQ((prev: any) => ({ ...prev, ...patch }));
+      setManualQ((prev) => ({ ...prev, ...patch }));
     });
     onSave();
   };
@@ -811,14 +796,16 @@ const AdminQuestionEditorPage = ({
               <SmartTagSelector
                 label="Banca(s)"
                 options={existingAgencies}
-                selected={(manualQ.bancas || []).map((item: any) => (typeof item === 'string' ? item : item.sigla || item.name))}
+                selected={(manualQ.bancas || [])
+                  .map((item) => (isQuestionTaxonomyRecord(item) ? String(item.sigla ?? item.name ?? item.nome ?? '') : String(item ?? '').trim()))
+                  .filter(Boolean)}
                 onChange={(value) => updateManualQ({ bancas: value })}
                 placeholder="Ex: Cebraspe, FGV..."
               />
               <SmartTagSelector
                 label="Órgão(s)"
                 options={existingOrgaos}
-                selected={(manualQ.orgaos || []).map((item: any) => (typeof item === 'string' ? item : item.name))}
+                selected={(manualQ.orgaos || []).map(getTaxonomyLabel).filter(Boolean)}
                 onChange={(value) => updateManualQ({ orgaos: value })}
                 placeholder="Ex: TJ-SP, PF..."
               />
@@ -947,9 +934,12 @@ const AdminQuestionEditorPage = ({
                   <div className="rounded-sm border border-slate-300 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/40">
                     <div className="flex flex-col gap-3 sm:flex-row">
                       {String(selectedQuestionGroup.image_url || selectedQuestionGroup.imageUrl || '').trim() ? (
-                        <img
+                        <Image
                           src={resolveApiResourceUrl(String(selectedQuestionGroup.image_url || selectedQuestionGroup.imageUrl))}
-                          alt=""
+                          alt="Imagem do contexto da questao"
+                          width={112}
+                          height={80}
+                          unoptimized
                           className="h-20 w-28 rounded-sm border border-slate-300 object-cover dark:border-slate-700"
                         />
                       ) : null}
@@ -1015,7 +1005,7 @@ const AdminQuestionEditorPage = ({
                 </div>
 
                 <div className="grid gap-3">
-                  {manualItems.map((item: any, index: number) => (
+                  {manualItems.map((item: ManualQuestionItem, index: number) => (
                     <div key={item.id} className="flex items-start gap-3">
                       <button
                         type="button"
@@ -1365,3 +1355,5 @@ const AdminQuestionEditorPage = ({
 };
 
 export default AdminQuestionEditorPage;
+
+

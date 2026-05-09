@@ -311,12 +311,12 @@ const AdminExamEditorPage = ({
     publishStatus: draft.publishStatus,
     visibilityStatus: draft.visibilityStatus,
     scheduledAt: draft.scheduledAt,
-    banca: { id: Number(draft.bancaId || 0), nome: draft.bancaNome, name: draft.bancaNome, sigla: draft.bancaSigla } as any,
-    orgao: { id: Number(draft.orgaoId || 0), nome: draft.orgaoNome, name: draft.orgaoNome, sigla: draft.orgaoSigla } as any,
-    cargo: { id: 0, descricao: draft.cargoDescricao, name: draft.cargoDescricao, ['descrição']: draft.cargoDescricao } as any,
-  } as Prova);
+    banca: { id: Number(draft.bancaId || 0), nome: draft.bancaNome, name: draft.bancaNome, sigla: draft.bancaSigla },
+    orgao: { id: Number(draft.orgaoId || 0), nome: draft.orgaoNome, name: draft.orgaoNome, sigla: draft.orgaoSigla },
+    cargo: { id: 0, descricao: draft.cargoDescricao, name: draft.cargoDescricao },
+  } as unknown as Prova);
 
-  const publishState = resolveAdminPublishState(publishPreview as Record<string, any>);
+  const publishState = resolveAdminPublishState(publishPreview as unknown as Record<string, unknown>);
   const publishActionLabel = publishState === 'scheduled'
     ? 'Programar prova'
     : isNew

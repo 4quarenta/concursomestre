@@ -489,17 +489,14 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
         setLoading(true);
         setError(null);
         try {
-            console.log('[PdfViewer] loadPdf start. url:', url, '| password:', password);
             const pdfjs = await loadPdfJsModule();
             setPdfjsModule(pdfjs);
             const getDocParams: { password?: string; url: string } = { url };
             if (password) {
                 getDocParams.password = password;
             }
-            console.log('[PdfViewer] Passing to getDocument:', getDocParams);
             const loadingTask = pdfjs.getDocument(getDocParams);
             const doc = await loadingTask.promise;
-            console.log('[PdfViewer] Document loaded successfully.');
             setPdfDoc(doc);
             setLoading(false);
         } catch (err) {

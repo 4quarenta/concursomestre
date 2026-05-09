@@ -22,7 +22,7 @@ export type AdminMarketplaceSection = 'vendors' | 'materials' | 'blocked';
 export type AdminFinanceSection = 'transactions' | 'plans' | 'coupons' | 'automation' | 'analytics';
 export type AdminMarketingSection = 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links';
 export type AdminSupportSection = 'feedback' | 'threads' | 'reports' | 'rankings' | 'refunds' | 'comments';
-export type AdminSettingsSection = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'ads' | 'seo' | 'performance' | 'logs';
+export type AdminSettingsSection = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
 
 export type AdminNavigationTab = {
   key: AdminPageTab;
@@ -65,7 +65,7 @@ export const MARKETPLACE_SECTION_KEYS = ['vendors', 'materials', 'blocked'] as c
 export const FINANCE_SECTION_KEYS = ['transactions', 'plans', 'coupons', 'automation', 'analytics'] as const;
 export const MARKETING_SECTION_KEYS = ['landing-pages', 'campaigns', 'visual-themes', 'social-links'] as const;
 export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports', 'rankings', 'refunds', 'comments'] as const;
-export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'security', 'integrations', 'email', 'ads', 'seo', 'performance', 'logs'] as const;
+export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'security', 'integrations', 'email', 'email-templates', 'ads', 'seo', 'performance', 'logs'] as const;
 
 /**
  * Valida a secao do grupo Painel.
@@ -186,6 +186,7 @@ export const LEGACY_TAB_MAP: Record<string, { tab: AdminPageTab; section?: strin
   security: { tab: 'settings', section: 'security' },
   integrations: { tab: 'settings', section: 'integrations' },
   email: { tab: 'settings', section: 'email' },
+  'email-templates': { tab: 'settings', section: 'email-templates' },
   ads: { tab: 'settings', section: 'ads' },
   seo: { tab: 'settings', section: 'seo' },
   performance: { tab: 'settings', section: 'performance' },
@@ -244,6 +245,7 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'security', label: 'Seguranca' },
     { key: 'integrations', label: 'Integracoes' },
     { key: 'email', label: 'Email' },
+    { key: 'email-templates', label: 'Modelos de Email' },
     { key: 'ads', label: 'Ads' },
     { key: 'seo', label: 'SEO' },
     { key: 'performance', label: 'Performance' },

@@ -33,16 +33,19 @@ import {
   PLATFORM_SECTION_TITLE_CLASS,
 } from '@constants/layout';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
+import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
+import { useUserProgressActions } from '@/state/user-progress/useUserProgressActions';
 import {
   buildSubjectPeerComparisonData,
   buildSubjectPerformanceData,
+  buildSubjectPerformanceDataFromStatistics,
   buildSubjectPerformanceInsight,
   calculateAccuracySummary,
   type DashboardPerformanceInsight,
   type DashboardSubjectPeerMetric,
 } from '@services/dashboard/dashboardInsightsService';
 import { isPlanAtLeast } from '@services/plans/planAccess';
+import { useStudyTracker } from '@providers/StudyTrackerProvider';
 
 interface SubjectInsightRow {
   name: string;
@@ -166,23 +169,65 @@ const AccuracyBar = ({
  */
 const PerformanceSubjectsPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const { userAnswers, questions, ensureUserProgressLoaded } = useData();
+  const { statistics: userStatistics } = useStudyTracker();
+  const { userAnswers, ensureUserProgressLoaded } = useUserProgressActions();
+  const { questions, ensureQuestionsLoaded } = useQuestionBankActions();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   React.useEffect(() => {
-    ensureUserProgressLoaded();
+    ensureUserProgressLoaded(false, {
+      includeAnswers: true,
+      includeComments: false,
+      includeNotes: false,
+    });
   }, [ensureUserProgressLoaded]);
 
-  const subjectMetrics = useMemo(
+  React.useEffect(() => {
+    void ensureQuestionsLoaded();
+  }, [ensureQuestionsLoaded]);
+
+  const subjectMetricsFromAnswers = useMemo(
     () => buildSubjectPerformanceData(userAnswers, questions),
     [questions, userAnswers],
   );
 
-  const summary = useMemo(
+  const subjectMetricsFromStatistics = useMemo(
+    () => buildSubjectPerformanceDataFromStatistics(userStatistics?.subjectBreakdown),
+    [userStatistics?.subjectBreakdown],
+  );
+
+  const subjectMetrics = useMemo(
+    () => (subjectMetricsFromAnswers.length > 0 ? subjectMetricsFromAnswers : subjectMetricsFromStatistics),
+    [subjectMetricsFromAnswers, subjectMetricsFromStatistics],
+  );
+
+  const summaryFromAnswers = useMemo(
     () => calculateAccuracySummary(userAnswers),
     [userAnswers],
   );
+
+  const summary = useMemo(() => {
+    if (summaryFromAnswers.totalQuestions > 0) {
+      return summaryFromAnswers;
+    }
+
+    if (subjectMetrics.length <= 0) {
+      return summaryFromAnswers;
+    }
+
+    const totalQuestions = subjectMetrics.reduce((total, subject) => total + subject.total, 0);
+    const correctAnswers = subjectMetrics.reduce((total, subject) => total + subject.correct, 0);
+    const wrongAnswers = subjectMetrics.reduce((total, subject) => total + subject.wrong, 0);
+    const accuracyRate = totalQuestions > 0 ? Math.round((correctAnswers / totalQuestions) * 100) : 0;
+
+    return {
+      totalQuestions,
+      correctAnswers,
+      wrongAnswers,
+      accuracyRate,
+    };
+  }, [subjectMetrics, summaryFromAnswers]);
 
   const peerMetricsBySubject = useMemo(
     () => buildSubjectPeerComparisonData(questions, subjectMetrics),

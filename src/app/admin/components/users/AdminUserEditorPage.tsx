@@ -9,10 +9,12 @@
 *
 */
 
+import Image from 'next/image';
 import React from 'react';
 import { ArrowLeft, ArrowUpCircle, Clock, Crown, DollarSign, Mail, MessageCircle, MessageSquare, PlusCircle, RefreshCcw, Save, Shield, ShoppingBag, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { getAssetUrl } from '@services/api';
+import type { AdminUserDetailsPayload } from '@services/admin/adminService';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 import {
   ADMIN_FIELD_CLASS,
@@ -44,6 +46,64 @@ export type AdminUserEditorForm = {
 };
 
 type DetailTab = 'overview' | 'subscription' | 'transactions' | 'comments' | 'materials';
+type AdminUserProfileSummary = {
+  id?: string | number;
+  name?: string;
+  email?: string;
+  cpf?: string;
+  phone?: string;
+  target_exam?: string;
+  targetExam?: string;
+  role?: string;
+  status?: string;
+  reputation?: number | string | null;
+  email_verified?: boolean;
+  has_saved_card?: boolean;
+  photo_url?: string | null;
+  plan?: string;
+  created_at?: string | null;
+  createdAt?: string | null;
+};
+
+type AdminUserSubscriptionItem = {
+  id: string | number;
+  status?: string;
+  plan_id?: string | number;
+  plan_name?: string;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  auto_renew?: boolean;
+};
+
+type AdminUserTransactionItem = {
+  id: string | number;
+  created_at?: string | null;
+  type?: string;
+  amount?: number | string | null;
+  status?: string;
+};
+
+type AdminUserCommentItem = {
+  id: string | number;
+  created_at?: string | null;
+  question_id?: string | number;
+  comment?: string;
+};
+
+type AdminUserMaterialItem = {
+  id: string | number;
+  title?: string;
+  name?: string;
+  status?: string;
+  price?: number | string | null;
+};
+
+type AdminAvailablePlanItem = {
+  id: string | number;
+  name?: string;
+  price?: number | string | null;
+  active?: number | string | boolean;
+};
 
 type ConfirmState = null | {
   action: string;
@@ -52,18 +112,18 @@ type ConfirmState = null | {
   description: string;
   confirmLabel: string;
   tone: 'primary' | 'danger';
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
 };
 
 interface AdminUserEditorPageProps {
   form: AdminUserEditorForm;
   onFormChange: (form: AdminUserEditorForm) => void;
-  detailedUser?: any;
+  detailedUser?: AdminUserDetailsPayload;
   isNew: boolean;
   isSaving: boolean;
   actionLoading?: string | null;
   onSave: () => void;
-  onUserAction?: (action: string, data: Record<string, any>, options?: { actionKey?: string; successMessage?: string }) => Promise<any>;
+  onUserAction?: (action: string, data: Record<string, unknown>, options?: { actionKey?: string; successMessage?: string }) => Promise<unknown>;
   onClose: () => void;
 }
 
@@ -123,37 +183,34 @@ const AdminUserEditorPage = ({
   onClose,
 }: AdminUserEditorPageProps) => {
   const updateForm = (patch: Partial<AdminUserEditorForm>) => onFormChange({ ...form, ...patch });
-  const profile = detailedUser?.profile || {};
-  const activeSubscription = detailedUser?.subscriptions?.find((subscription: any) => String(subscription.status || '').toLowerCase() === 'active') || null;
-  const subscriptions = detailedUser?.subscriptions ?? [];
-  const transactions = detailedUser?.transactions ?? [];
-  const comments = detailedUser?.last_comments ?? [];
-  const materials = detailedUser?.materials ?? [];
+  const profile = (detailedUser?.profile || {}) as AdminUserProfileSummary;
+  const subscriptions = (detailedUser?.subscriptions ?? []) as AdminUserSubscriptionItem[];
+  const transactions = (detailedUser?.transactions ?? []) as AdminUserTransactionItem[];
+  const comments = (detailedUser?.last_comments ?? []) as AdminUserCommentItem[];
+  const materials = (detailedUser?.materials ?? []) as AdminUserMaterialItem[];
+  const activeSubscription = subscriptions.find((subscription) => String(subscription.status || '').toLowerCase() === 'active') || null;
   const availablePlans = React.useMemo(
-    () => (detailedUser?.available_plans ?? []).filter((plan: any) => Number(plan?.active ?? 1) !== 0),
+    () => ((detailedUser?.available_plans ?? []) as AdminAvailablePlanItem[]).filter((plan) => Number(plan.active ?? 1) !== 0),
     [detailedUser?.available_plans],
   );
   const [detailTab, setDetailTab] = React.useState<DetailTab>('overview');
   const [daysToAdd, setDaysToAdd] = React.useState('30');
-  const [selectedPlanId, setSelectedPlanId] = React.useState('');
+  const [selectedPlanIdOverride, setSelectedPlanIdOverride] = React.useState('');
   const [confirmState, setConfirmState] = React.useState<ConfirmState>(null);
   const title = isNew ? 'Adicionar novo usuario' : profile.name || form.name || 'Editar usuario';
 
-  React.useEffect(() => {
+  const selectedPlanId = React.useMemo(() => {
     if (!availablePlans.length) {
-      setSelectedPlanId('');
-      return;
+      return '';
     }
 
-    setSelectedPlanId((current) => {
-      if (current && availablePlans.some((plan: any) => String(plan.id) === current)) {
-        return current;
-      }
+    if (selectedPlanIdOverride && availablePlans.some((plan) => String(plan.id) === selectedPlanIdOverride)) {
+      return selectedPlanIdOverride;
+    }
 
-      const fallbackPlan = availablePlans.find((plan: any) => String(plan.id) !== String(activeSubscription?.plan_id));
-      return String((fallbackPlan || availablePlans[0]).id);
-    });
-  }, [activeSubscription?.plan_id, availablePlans]);
+    const fallbackPlan = availablePlans.find((plan) => String(plan.id) !== String(activeSubscription?.plan_id));
+    return String((fallbackPlan || availablePlans[0]).id);
+  }, [activeSubscription?.plan_id, availablePlans, selectedPlanIdOverride]);
 
   const openAddDaysConfirm = () => {
     const days = Number(daysToAdd || 0);
@@ -172,7 +229,7 @@ const AdminUserEditorPage = ({
 
   const openUpgradeConfirm = () => {
     if (!selectedPlanId) return;
-    const plan = availablePlans.find((item: any) => String(item.id) === selectedPlanId);
+    const plan = availablePlans.find((item) => String(item.id) === selectedPlanId);
 
     setConfirmState({
       action: 'upgrade_plan',
@@ -185,7 +242,7 @@ const AdminUserEditorPage = ({
     });
   };
 
-  const openRefundConfirm = (transaction: any) => {
+  const openRefundConfirm = (transaction: AdminUserTransactionItem) => {
     setConfirmState({
       action: 'refund_transaction',
       actionKey: `refund_transaction:${transaction.id}`,
@@ -219,7 +276,7 @@ const AdminUserEditorPage = ({
             {!isNew ? (
               <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
                 {profile.photo_url ? (
-                  <img src={getAssetUrl(profile.photo_url)} alt="Perfil" className="h-full w-full object-cover" />
+                  <Image src={getAssetUrl(profile.photo_url)} alt="Perfil" width={48} height={48} unoptimized className="h-full w-full object-cover" />
                 ) : (
                   <UserRound size={24} />
                 )}
@@ -555,9 +612,9 @@ const AdminUserEditorPage = ({
                     </div>
                     <div className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-2 p-4`}>
                       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Upgrade manual</p>
-                      <select value={selectedPlanId} onChange={(event) => setSelectedPlanId(event.target.value)} className={`${ADMIN_FIELD_CLASS} w-full`}>
+                      <select value={selectedPlanId} onChange={(event) => setSelectedPlanIdOverride(event.target.value)} className={`${ADMIN_FIELD_CLASS} w-full`}>
                         <option value="">Selecione um plano</option>
-                        {availablePlans.map((plan: any) => <option key={plan.id} value={plan.id}>{plan.name} - {formatCurrency(plan.price)}</option>)}
+                        {availablePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} - {formatCurrency(plan.price)}</option>)}
                       </select>
                       <button type="button" onClick={openUpgradeConfirm} disabled={!selectedPlanId || actionLoading === 'upgrade_plan' || !onUserAction} className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
                         <ArrowUpCircle size={14} /> {actionLoading === 'upgrade_plan' ? 'Aplicando...' : 'Confirmar upgrade'}
@@ -572,7 +629,7 @@ const AdminUserEditorPage = ({
                     <h4 className="text-xs font-black uppercase tracking-[0.18em] text-slate-900 dark:text-slate-100">Historico de assinaturas</h4>
                   </div>
                   <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-                    {subscriptions.length ? subscriptions.map((subscription: any) => (
+                    {subscriptions.length ? subscriptions.map((subscription) => (
                       <div key={subscription.id} className="rounded-sm border border-slate-300 p-4 dark:border-slate-700">
                         <div className="flex items-start justify-between gap-4">
                           <div>
@@ -610,7 +667,7 @@ const AdminUserEditorPage = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {transactions.map((transaction: any) => {
+                        {transactions.map((transaction) => {
                           const canRefund = ['approved', 'completed', 'paid'].includes(String(transaction.status || '').toLowerCase()) && Number(transaction.amount || 0) > 0;
                           const actionKey = `refund_transaction:${transaction.id}`;
 
@@ -645,13 +702,13 @@ const AdminUserEditorPage = ({
                   <h4 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><MessageSquare size={18} className="text-sky-700 dark:text-sky-300" /> Comentarios recentes</h4>
                   <span className="rounded-sm border border-sky-200 bg-sky-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-sky-700 dark:border-sky-900/30 dark:bg-sky-900/20 dark:text-sky-300">Total: {detailedUser?.stats?.comments_count || 0}</span>
                 </div>
-                {comments.length ? comments.map((comment: any) => (
+                {comments.length ? comments.map((comment) => (
                   <div key={comment.id} className={`${ADMIN_SURFACE_CLASS} p-4`}>
                     <div className="mb-3 flex items-start justify-between gap-4">
                       <span className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400"><Clock size={10} /> {formatDateTime(comment.created_at)}</span>
                       <Link href="/practice" target="_blank" className="rounded-sm bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-sky-50 hover:text-sky-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-sky-900/20 dark:hover:text-sky-300">Questao {comment.question_id}</Link>
                     </div>
-                    <p className="border-l-2 border-slate-200 pl-4 text-sm font-medium leading-relaxed text-slate-700 dark:border-slate-700 dark:text-slate-300">"{comment.comment}"</p>
+                    <p className="border-l-2 border-slate-200 pl-4 text-sm font-medium leading-relaxed text-slate-700 dark:border-slate-700 dark:text-slate-300">&quot;{comment.comment}&quot;</p>
                   </div>
                 )) : <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 py-12 text-center dark:border-slate-700 dark:bg-slate-900"><p className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Nenhum comentario encontrado</p></div>}
               </div>
@@ -668,7 +725,7 @@ const AdminUserEditorPage = ({
                 </div>
                 {materials.length ? (
                   <div className="grid gap-3 md:grid-cols-2">
-                    {materials.map((material: any) => (
+                    {materials.map((material) => (
                       <div key={material.id} className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
                         <p className="text-sm font-black text-slate-900 dark:text-slate-100">{material.title || material.name || `Material ${material.id}`}</p>
                         <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{material.status || 'Sem status'} - {formatCurrency(material.price)}</p>

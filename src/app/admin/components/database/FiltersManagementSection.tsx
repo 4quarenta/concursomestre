@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { ChevronDown, Edit3, Plus, PlusCircle, Search, Trash2 } from 'lucide-react';
-import type { SystemSettings } from '@types';
+import type { GlobalTaxonomies, SystemSettings, TaxonomyItem } from '@types';
 import { ADMIN_FIELD_CLASS, ADMIN_PAGE_PANEL_CLASS, ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
 
 interface FilterTypeOption {
@@ -29,39 +29,53 @@ interface FiltersManagementSectionProps {
   onFilterSearchChange: (value: string) => void;
   onCreate: () => void;
   onAddChild: (type: string, parentId: number | string) => void;
-  onEdit: (item: any) => void;
-  onDelete: (item: any) => void;
+  onEdit: (item: FilterListItem) => void;
+  onDelete: (item: FilterListItem) => void;
 }
 
-const getUnifiedTaxonomyList = (systemSettings: SystemSettings, activeFilterType: string) => {
+type FilterListItem = TaxonomyItem & {
+  id: string | number;
+  type: string;
+  parent_id?: string | number | null;
+  taxonomyLevel?: string;
+};
+
+const withType = (items: TaxonomyItem[] | undefined, type: string): FilterListItem[] => (
+  (items || []).map((item) => ({
+    ...item,
+    id: item.id,
+    type,
+  }))
+);
+
+const getUnifiedTaxonomyList = (systemSettings: SystemSettings, activeFilterType: string): FilterListItem[] => {
   if (!systemSettings.taxonomies) {
     return [];
   }
 
-  const taxonomies = systemSettings.taxonomies;
-  const safeMap = (items: any[] | undefined, type: string) => (items || []).map((item: any) => ({ ...item, type }));
+  const taxonomies: GlobalTaxonomies = systemSettings.taxonomies;
   const subjectTopics = taxonomies.subjectTopics?.length
     ? taxonomies.subjectTopics
-    : (taxonomies.topics || []).filter((item: any) => item.taxonomyLevel === 'topico');
+    : (taxonomies.topics || []).filter((item) => item.taxonomyLevel === 'topico');
   const specificSubjects = taxonomies.specificSubjects?.length
     ? taxonomies.specificSubjects
-    : (taxonomies.topics || []).filter((item: any) => item.taxonomyLevel === 'assunto');
+    : (taxonomies.topics || []).filter((item) => item.taxonomyLevel === 'assunto');
 
   const allItems = [
-    ...safeMap(taxonomies.agencies, 'banca'),
-    ...safeMap(taxonomies.organizations, 'orgao'),
-    ...safeMap(taxonomies.roles, 'cargo'),
-    ...safeMap(taxonomies.subjects, 'materia'),
-    ...safeMap(subjectTopics, 'topico'),
-    ...safeMap(specificSubjects, 'assunto'),
-    ...safeMap(taxonomies.careers, 'carreira'),
-    ...safeMap(taxonomies.areas, 'area'),
-    ...(taxonomies.years || []).map((year: any) => ({
+    ...withType(taxonomies.agencies, 'banca'),
+    ...withType(taxonomies.organizations, 'orgao'),
+    ...withType(taxonomies.roles, 'cargo'),
+    ...withType(taxonomies.subjects, 'materia'),
+    ...withType(subjectTopics, 'topico'),
+    ...withType(specificSubjects, 'assunto'),
+    ...withType(taxonomies.careers, 'carreira'),
+    ...withType(taxonomies.areas, 'area'),
+    ...(taxonomies.years || []).map((year) => ({
       id: year,
       name: String(year),
       slug: String(year),
       type: 'ano',
-    })),
+    } satisfies FilterListItem)),
   ];
 
   if (activeFilterType === 'all') {
@@ -71,7 +85,7 @@ const getUnifiedTaxonomyList = (systemSettings: SystemSettings, activeFilterType
   return allItems.filter((item) => item.type === activeFilterType);
 };
 
-const getParentName = (systemSettings: SystemSettings, parentId: number | null | undefined) => {
+const getParentName = (systemSettings: SystemSettings, parentId: string | number | null | undefined) => {
   if (!parentId || !systemSettings.taxonomies) {
     return 'Item Raiz';
   }
@@ -89,7 +103,7 @@ const getParentName = (systemSettings: SystemSettings, parentId: number | null |
     ...(taxonomies.areas || []),
   ];
 
-  const parent = allLists.find((item: any) => String(item.id) === String(parentId));
+  const parent = allLists.find((item) => String(item.id) === String(parentId));
   return parent ? parent.name : 'Item Raiz';
 };
 
@@ -105,7 +119,7 @@ const FiltersManagementSection = ({
   onEdit,
   onDelete,
 }: FiltersManagementSectionProps) => {
-  const visibleItems = getUnifiedTaxonomyList(systemSettings, activeFilterType).filter((item: any) => (
+  const visibleItems = getUnifiedTaxonomyList(systemSettings, activeFilterType).filter((item) => (
     (item.name || '').toLowerCase().includes(filterSearch.toLowerCase())
     || (item.slug || '').toLowerCase().includes(filterSearch.toLowerCase())
   ));
@@ -171,7 +185,7 @@ const FiltersManagementSection = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-              {visibleItems.map((item: any) => (
+              {visibleItems.map((item) => (
                 <tr key={`${item.type}-${item.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
                   <td className="p-4">
                     <div className="font-bold text-slate-900 dark:text-slate-100">{item.name}</div>

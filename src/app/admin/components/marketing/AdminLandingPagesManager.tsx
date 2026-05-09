@@ -29,9 +29,7 @@ import {
 import { useToast } from '@providers/ToastProvider';
 import type {
   MarketingLandingComparisonRow,
-  MarketingLandingContentBlockItem,
   MarketingLandingFaqItem,
-  MarketingLandingObjectionItem,
   MarketingLandingPage,
   MarketingLandingPlanCard,
   Plan,
@@ -125,20 +123,10 @@ const createEmptyPlanCard = (): MarketingLandingPlanCard => ({
   summaryBenefits: ['Beneficio principal 1', 'Beneficio principal 2'],
 });
 
-const createEmptyAuthorityItem = (): MarketingLandingContentBlockItem => ({
-  title: 'Novo bloco de autoridade',
-  description: 'Explique o valor prático deste bloco.',
-});
-
 const createEmptyComparisonRow = (): MarketingLandingComparisonRow => ({
   id: `comparison-row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
   label: 'Novo diferencial',
   values: { Essencial: '', Pro: '', Elite: '' },
-});
-
-const createEmptyObjection = (): MarketingLandingObjectionItem => ({
-  title: 'Nova objecao',
-  description: 'Responda a inseguranca do usuario.',
 });
 
 const createEmptyFaq = (): MarketingLandingFaqItem => ({

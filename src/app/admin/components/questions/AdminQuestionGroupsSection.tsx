@@ -10,6 +10,7 @@
 */
 
 import React from 'react';
+import Image from 'next/image';
 import { createPortal } from 'react-dom';
 import { Image as ImageIcon, Link2, Loader2, Pencil, Save, Trash2, Upload, X } from 'lucide-react';
 import { readApiErrorMessage, resolveApiResourceUrl } from '@services/api';
@@ -386,9 +387,12 @@ const AdminQuestionGroupsSection = () => {
 
                 {draft.image_url ? (
                   <div className="mt-3 space-y-3">
-                    <img
+                    <Image
                       src={resolveApiResourceUrl(draft.image_url)}
                       alt=""
+                      width={960}
+                      height={288}
+                      unoptimized
                       className="h-36 w-full rounded-sm border border-slate-300 object-cover dark:border-slate-700"
                     />
                     <div className="flex items-center gap-2">
@@ -599,7 +603,14 @@ const AdminQuestionGroupsSection = () => {
                   <td className="border-b border-slate-200 px-4 py-3 align-top dark:border-slate-800">
                     {imageUrl ? (
                       <div className="flex min-w-0 items-center gap-3">
-                        <img src={resolveApiResourceUrl(imageUrl)} alt="" className="h-14 w-20 shrink-0 rounded-sm border border-slate-300 object-cover dark:border-slate-700" />
+                        <Image
+                          src={resolveApiResourceUrl(imageUrl)}
+                          alt=""
+                          width={80}
+                          height={56}
+                          unoptimized
+                          className="h-14 w-20 shrink-0 rounded-sm border border-slate-300 object-cover dark:border-slate-700"
+                        />
                         <span className="block min-w-0 truncate text-xs text-slate-500 dark:text-slate-400">{imageUrl}</span>
                       </div>
                     ) : (

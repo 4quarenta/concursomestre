@@ -53,7 +53,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
@@ -944,7 +944,7 @@ const RecommendationPanel = ({
 
 const BankAnalysis: React.FC = () => {
   const { currentUser } = useAuth();
-  const { systemSettings } = useData();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const [selectedAgency, setSelectedAgency] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedYear, setSelectedYear] = useState('All');

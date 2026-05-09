@@ -143,6 +143,24 @@ describe('private SEO surfaces', () => {
     expect(publicPaths).not.toContain('/cronograma');
     expect(publicPaths).not.toContain('/dashboard');
     expect(publicPaths).not.toContain('/profile');
+    expect(publicPaths).not.toContain('/auth');
+    expect(publicPaths).not.toContain('/admin');
+    expect(publicPaths).not.toContain('/practice');
+    expect(publicPaths).not.toContain('/plans');
+    expect(publicPaths).not.toContain('/questions');
+    expect(publicPaths).not.toContain('/read');
+    expect(publicPaths).not.toContain('/subscription');
+    expect(publicPaths).not.toContain('/support');
+  });
+
+  it('keeps robots disallow list aligned with private sitemap exclusions', () => {
+    const publicPaths = new Set(SEO_PUBLIC_ROUTES.map((route) => route.path));
+
+    SEO_ROBOT_DISALLOW_PATHS.forEach((path) => {
+      const exactPath = path.endsWith('/') ? path.slice(0, -1) : path;
+      expect(publicPaths.has(path)).toBe(false);
+      expect(publicPaths.has(exactPath)).toBe(false);
+    });
   });
 
   it('marks the Elite study schedule page as noindex', () => {
@@ -177,5 +195,7 @@ describe('private SEO surfaces', () => {
     expect(isMarketingLandingEligibleForPublicSitemap(makeLanding({ slug: 'planos', status: 'published' }))).toBe(false);
     expect(isMarketingLandingEligibleForPublicSitemap(makeLanding({ slug: 'elite', status: 'published' }))).toBe(false);
     expect(isMarketingLandingEligibleForPublicSitemap(makeLanding({ slug: '', status: 'published' }))).toBe(false);
+    expect(isMarketingLandingEligibleForPublicSitemap(makeLanding({ slug: '../admin', status: 'published' }))).toBe(false);
+    expect(isMarketingLandingEligibleForPublicSitemap(makeLanding({ slug: '/api/settings.php', status: 'published' }))).toBe(false);
   });
 });

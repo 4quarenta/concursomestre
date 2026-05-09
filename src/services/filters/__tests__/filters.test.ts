@@ -89,11 +89,11 @@ describe('filtersService', () => {
     ]);
   });
 
-  it('normalizes focus labels to a single slash-based pattern', () => {
+  it('normalizes focus labels to parent focus names', () => {
     expect(normalizeCareerSelectorLabel('Educação (Professores, Especialistas e outros)')).toBe(
-      'Educação / Professores, Especialistas e outros',
+      'Educação',
     );
-    expect(normalizeCareerSelectorLabel('Educação / Professor')).toBe('Educação / Professor');
+    expect(normalizeCareerSelectorLabel('Educação / Professor')).toBe('Educação');
   });
 
   it('detects ENEM questions and maps subject areas', () => {

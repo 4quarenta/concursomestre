@@ -16,13 +16,16 @@
     "mobile:typecheck": "npm --prefix mobile run typecheck",
     "test:headers": "powershell -ExecutionPolicy Bypass -File scripts/checks/verify-standard-file-header.ps1",
     "check:text-encoding": "node scripts/checks/check-mojibake.mjs",
-    "fix:text-encoding": "node scripts/checks/fix-mojibake.mjs"
+    "fix:text-encoding": "node scripts/checks/fix-mojibake.mjs",
+    "check:hard-refresh-budget": "node scripts/checks/hard-refresh-budget.mjs",
+    "check:production-local": "node scripts/checks/production-readiness-local.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
     "@stripe/react-stripe-js": "^6.0.0",
     "@stripe/stripe-js": "^9.0.0",
-    "axios": "^1.13.4",
+    "@tanstack/react-query": "^5.100.9",
+    "axios": "^1.15.2",
     "canvas-confetti": "^1.9.4",
     "framer-motion": "^12.34.2",
     "katex": "^0.16.45",
@@ -35,9 +38,11 @@
     "react-is": "^19.2.4",
     "react-markdown": "^10.1.0",
     "recharts": "^3.7.0",
-    "styled-components": "^6.3.8"
+    "styled-components": "^6.3.8",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20",

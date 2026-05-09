@@ -16,10 +16,14 @@ import { AlertTriangle, ArrowLeft, ExternalLink, Loader2, ShieldCheck } from 'lu
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { ErrorReport, Question } from '@types';
 import { useAuth } from '@providers/AuthProvider';
-import { useData } from '@providers/DataProvider';
 import { useToast } from '@providers/ToastProvider';
 import { canAccessAdminPanel } from '@services/auth';
 import { questionService } from '@services/questions';
+import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
+import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
+import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
 import AdminQuestionEditorPage from '../../../../components/questions/AdminQuestionEditorPage';
 import AdminStandaloneShell from '../../../../components/shared/AdminStandaloneShell';
 import { useAdminManualQuestionEditor } from '../../../../components/questions/useAdminManualQuestionEditor';
@@ -53,17 +57,14 @@ const AdminQuestionEditPage = () => {
 
   const { currentUser, isLoading: isAuthLoading } = useAuth();
   const { addToast } = useToast();
-  const {
-    questions,
-    reports,
-    systemSettings,
-    addQuestion,
-    updateQuestion,
-    resolveReport,
-    ensureReportsLoaded,
-    ensureTaxonomiesLoaded,
-    isReportsLoaded,
-  } = useData();
+  const questions = useQuestionBankStore((store) => store.questions);
+  const prependQuestion = useQuestionBankStore((store) => store.prependQuestion);
+  const upsertQuestion = useQuestionBankStore((store) => store.upsertQuestion);
+  const reports = useAdminDataStore((store) => store.reports);
+  const isReportsLoaded = useAdminDataStore((store) => store.isReportsLoaded);
+  const systemSettings = useAppConfigStore((store) => store.systemSettings);
+  const { ensureReportsLoaded, resolveReport } = useAdminDataActions();
+  const { ensureTaxonomiesLoaded } = useTaxonomyActions();
 
   const [question, setQuestion] = React.useState<Question | null>(null);
   const [isQuestionLoading, setIsQuestionLoading] = React.useState(true);
@@ -161,8 +162,13 @@ const AdminQuestionEditPage = () => {
     systemSettings,
     addToast,
     onAddQuestion: async (payload: Question) => {
-      const response = await addQuestion(payload);
-      const createdQuestion = response?.created?.[0];
+      const response = await questionService.createQuestions([payload]);
+      if (!response.success) {
+        throw new Error('Falha ao criar a questao.');
+      }
+
+      const createdQuestion = response?.created?.[0] || payload;
+      prependQuestion(createdQuestion);
 
       if (createdQuestion?.id) {
         router.replace(buildAdminQuestionEditPath(createdQuestion.id));
@@ -173,7 +179,11 @@ const AdminQuestionEditPage = () => {
       return response;
     },
     onUpdateQuestion: async (payload: Question) => {
-      const response = await updateQuestion(payload);
+      const response = await questionService.updateQuestion(String(payload.id), payload);
+      if (!response.success) {
+        throw new Error('Falha ao atualizar a questao.');
+      }
+      upsertQuestion(payload);
 
       if (linkedReport && linkedReport.status === 'pending') {
         await resolveReport(

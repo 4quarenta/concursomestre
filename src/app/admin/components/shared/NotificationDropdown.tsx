@@ -12,14 +12,14 @@
 import React from 'react';
 import { ArrowRight } from 'lucide-react';
 
-interface AdminNotificationItem {
+export interface AdminNotificationItem {
   id: string | number;
   title: string;
   message: string;
   timestamp: string | number;
-  type?: 'error' | 'success' | 'info' | string;
+  type?: 'error' | 'success' | 'info' | 'warning' | string;
   isRead?: boolean;
-  deletedAt?: string | null;
+  deletedAt?: string | number | null;
   link?: string;
 }
 

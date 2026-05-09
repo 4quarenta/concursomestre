@@ -9,7 +9,8 @@
 *
 */
 
-import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Bell, BookOpen, CalendarDays, Clock, Cpu, Database, FileText, Flag, Globe, LayoutDashboard, Loader2,
@@ -17,15 +18,18 @@ import {
   ShoppingBag, ShoppingCart, Sparkles, Terminal, Trash2, Trophy, Upload, Users, XCircle, Zap,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
+import type { AdminSettingsTestResult } from '@services/admin/adminService';
 import type { SeoSettings, SystemSettings } from '@types';
 import apiClient from '@services/api/client';
 import { adminService } from '@services/admin/adminService';
 import { parseDailyMotivationMarkdown } from '@services/dashboard/dashboardInsightsService';
+import { normalizeEmailTemplates } from '@constants/email/defaultEmailTemplates';
 import AdminSettingsTabsBar from './AdminSettingsTabsBar';
 import { LogViewer } from './LogViewer';
 import AdminCacheManagement from './AdminCacheManagement';
 import AdminSeoSettingsSection from './AdminSeoSettingsSection';
 import AdminLandingContentSection from './AdminLandingContentSection';
+import AdminEmailTemplatesSection from './AdminEmailTemplatesSection';
 import StripePaymentMethodsSettings from './StripePaymentMethodsSettings';
 import { mergeSeoSettings } from './seoSettings';
 import {
@@ -40,7 +44,22 @@ import {
 } from '../shared/adminPanelStyles';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
-type AdminSettingsTab = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'ads' | 'seo' | 'performance' | 'logs';
+type AdminSettingsTab = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
+type AdminSettingsTabs = React.ComponentProps<typeof AdminSettingsTabsBar>['tabs'];
+
+interface AdminIntegrationCheck {
+  label: string;
+  status: string;
+  detail: string;
+}
+
+interface AdminIntegrationChecksPayload {
+  checks?: Record<string, AdminIntegrationCheck>;
+}
+
+type AdminIntegrationsTestResult = Omit<AdminSettingsTestResult, 'data'> & {
+  data?: AdminIntegrationChecksPayload;
+};
 
 interface AdminSettingsProps {
   systemSettings: SystemSettings;
@@ -57,29 +76,6 @@ const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] 
 const RESET_TABLE_EXCLUSIONS = new Set(['settings', 'system_settings']);
 const DEFAULT_LIMITED_OFFER_EXTENSION_MS = 7 * 24 * 60 * 60 * 1000;
 
-const toDateTimeLocalValue = (value?: string | null) => {
-  if (!value) {
-    return '';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-
-  const timezoneOffset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
-};
-
-const toIsoDateTimeValue = (value: string) => {
-  if (!value) {
-    return '';
-  }
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
-};
-
 const resolveFutureLimitedOfferEndsAt = (value?: string | null) => {
   const timestamp = new Date(value || '').getTime();
   if (!value || Number.isNaN(timestamp) || timestamp <= Date.now()) {
@@ -87,6 +83,24 @@ const resolveFutureLimitedOfferEndsAt = (value?: string | null) => {
   }
 
   return value;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    error.message.trim()
+  ) {
+    return error.message;
+  }
+
+  return fallback;
 };
 
 const featureItems = [
@@ -157,15 +171,23 @@ const AdminSettings = ({
   const [isTestingSmtp, setIsTestingSmtp] = useState(false);
   const [smtpTestResult, setSmtpTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isTestingIntegrations, setIsTestingIntegrations] = useState(false);
-  const [integrationsTestResult, setIntegrationsTestResult] = useState<any | null>(null);
+  const [integrationsTestResult, setIntegrationsTestResult] = useState<AdminIntegrationsTestResult | null>(null);
 
   useEffect(() => {
-    setLocalSettings(systemSettings);
-    setLocalSeoSettings(mergeSeoSettings(systemSettings.seo));
+    const frame = requestAnimationFrame(() => {
+      setLocalSettings(systemSettings);
+      setLocalSeoSettings(mergeSeoSettings(systemSettings.seo));
+    });
+
+    return () => cancelAnimationFrame(frame);
   }, [systemSettings]);
 
   useEffect(() => {
-    setActiveTab(initialSection);
+    const frame = requestAnimationFrame(() => {
+      setActiveTab(initialSection);
+    });
+
+    return () => cancelAnimationFrame(frame);
   }, [initialSection]);
 
   useEffect(() => {
@@ -305,8 +327,8 @@ const AdminSettings = ({
       await adminService.resetDatabase({ password: resetPassword, twoFactorCode: reset2FACode, tables: Array.from(selectedTables) });
       addToast('Sistema resetado com sucesso. Redirecionando...', 'success');
       setTimeout(() => { window.location.href = '/auth'; }, 1500);
-    } catch (error: any) {
-      setResetError(error?.message || 'Falha ao resetar o sistema.');
+    } catch (error: unknown) {
+      setResetError(getErrorMessage(error, 'Falha ao resetar o sistema.'));
     } finally {
       setIsResetting(false);
     }
@@ -320,8 +342,8 @@ const AdminSettings = ({
       const result = await adminService.testSmtpSettings({ ...buildSettingsPayload(), targetEmail: localSettings.mailFromAddress || localSettings.smtpUser });
       setSmtpTestResult({ ok: true, message: result.message });
       addToast(result.message, 'success');
-    } catch (error: any) {
-      const message = error?.message || 'Nao foi possivel testar o SMTP.';
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, 'Nao foi possivel testar o SMTP.');
       setSmtpTestResult({ ok: false, message });
       addToast(message, 'error');
     } finally {
@@ -335,10 +357,10 @@ const AdminSettings = ({
     setIntegrationsTestResult(null);
     try {
       const result = await adminService.testIntegrations(buildSettingsPayload());
-      setIntegrationsTestResult(result);
+      setIntegrationsTestResult(result as AdminIntegrationsTestResult);
       addToast(result.message, 'success');
-    } catch (error: any) {
-      const message = error?.message || 'Nao foi possivel validar as integracoes.';
+    } catch (error: unknown) {
+      const message = getErrorMessage(error, 'Nao foi possivel validar as integracoes.');
       setIntegrationsTestResult({ message, data: null });
       addToast(message, 'error');
     } finally {
@@ -352,18 +374,23 @@ const AdminSettings = ({
   const isGeminiConfigured = !!(localSettings.hasGeminiApiKeyConfigured || localSettings.geminiApiKey);
   const isRecaptchaSecretConfigured = !!(localSettings.hasRecaptchaSecretConfigured || localSettings.recaptchaSecretKey);
   const isSmtpPasswordConfigured = !!(localSettings.hasSmtpPasswordConfigured || localSettings.smtpPass);
-  const settingsTabs = [
+  const settingsTabs: AdminSettingsTabs = [
     { id: 'general', label: 'Geral', icon: Settings },
     { id: 'modules', label: 'Modulos', icon: LayoutDashboard },
     { id: 'security', label: 'Seguranca', icon: ShieldAlert },
     { id: 'integrations', label: 'Integracoes', icon: Cpu },
     { id: 'email', label: 'E-mail', icon: Mail },
+    { id: 'email-templates', label: 'Modelos de e-mail', icon: MessageSquare },
     { id: 'ads', label: 'Anuncios', icon: Megaphone },
     { id: 'seo', label: 'SEO', icon: Globe },
     { id: 'performance', label: 'Performance', icon: Database },
     { id: 'logs', label: 'Logs', icon: FileText },
-  ] as const;
-  const activeTabMeta = settingsTabs.find((tab) => tab.id === activeTab);
+  ];
+  const integrationChecks = useMemo(
+    () => Object.entries(integrationsTestResult?.data?.checks || {}),
+    [integrationsTestResult],
+  );
+
   return (
     <div className="space-y-5 md:space-y-6">
       <LogViewer isOpen={isLogViewerOpen} onClose={() => setIsLogViewerOpen(false)} />
@@ -380,7 +407,7 @@ const AdminSettings = ({
         </div>
       ) : (
         <AdminSettingsTabsBar
-          tabs={settingsTabs as any}
+          tabs={settingsTabs}
           activeTab={activeTab}
           isSaving={isSavingSettings}
           onChange={(section) => changeSection(section as AdminSettingsTab)}
@@ -477,7 +504,7 @@ const AdminSettings = ({
             <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><ShieldCheck size={20} className="text-sky-700 dark:text-sky-300" /> 2FA</h3>
             <p className="mb-4 text-xs font-medium text-slate-500 dark:text-slate-400">Status atual: {currentUser?.twoFactorEnabled ? 'ativo' : 'inativo'}.</p>
             {twoFactorStep === 'status' && !currentUser?.twoFactorEnabled && <button type="button" onClick={initiate2FASetup} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-6 py-2 text-[10px] uppercase tracking-[0.18em]`}>Configurar 2FA</button>}
-            {twoFactorStep === 'setup' && twoFactorData && <div className="space-y-4"><img src={twoFactorData.qrCodeUrl} alt="QR 2FA" className="h-40 w-40 rounded-sm border border-slate-300 bg-white p-3" /><code className="block rounded-sm bg-slate-100 px-4 py-3 text-sm font-black dark:bg-slate-950 dark:text-slate-100">{twoFactorData.secret}</code><button type="button" onClick={() => setTwoFactorStep('verify')} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-6 py-2 text-[10px] uppercase tracking-[0.18em] dark:bg-sky-700 dark:text-white dark:hover:bg-sky-800`}>Ja escaneei</button></div>}
+            {twoFactorStep === 'setup' && twoFactorData && <div className="space-y-4"><Image src={twoFactorData.qrCodeUrl} alt="QR 2FA" width={160} height={160} unoptimized className="h-40 w-40 rounded-sm border border-slate-300 bg-white p-3" /><code className="block rounded-sm bg-slate-100 px-4 py-3 text-sm font-black dark:bg-slate-950 dark:text-slate-100">{twoFactorData.secret}</code><button type="button" onClick={() => setTwoFactorStep('verify')} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-6 py-2 text-[10px] uppercase tracking-[0.18em] dark:bg-sky-700 dark:text-white dark:hover:bg-sky-800`}>Ja escaneei</button></div>}
             {twoFactorStep === 'verify' && <div className="space-y-4"><input type="text" maxLength={6} value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value)} placeholder="000000" className={`${inputClassName} text-center text-2xl font-black tracking-widest`} /><button type="button" onClick={verifyAndEnable2FA} className="rounded-sm border border-emerald-700 bg-emerald-700 px-6 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">Ativar 2FA</button></div>}
           </div>
           <div className="rounded-sm border border-rose-200 bg-rose-50 p-4 sm:p-5 md:p-6 dark:border-rose-900/30 dark:bg-rose-900/10">
@@ -485,7 +512,7 @@ const AdminSettings = ({
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Apaga conteudo operacional com autenticacao forte.</p>
             <button type="button" onClick={() => setIsResetModalOpen(true)} className="mt-5 rounded-sm border border-rose-700 bg-rose-700 px-6 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">Resetar conteudo</button>
           </div>
-          {isResetModalOpen && createPortal(<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md"><div className="w-full max-w-2xl rounded-[2.5rem] border border-rose-100 bg-white p-8 shadow-2xl dark:border-rose-900/30 dark:bg-slate-900"><h3 className="text-xl font-black text-slate-900 dark:text-slate-100">Confirmacao de reset</h3>{resetError && <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4 dark:border-rose-900/30 dark:bg-rose-900/20"><XCircle size={18} className="mt-0.5 text-rose-600" /><p className="text-xs font-bold text-rose-800 dark:text-rose-300">{resetError}</p></div>}<div className="mt-6 space-y-4"><div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">{dbTables.map((table) => <label key={table} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300"><input type="checkbox" checked={selectedTables.has(table)} onChange={() => setSelectedTables((current) => { const next = new Set(current); next.has(table) ? next.delete(table) : next.add(table); return next; })} /><span className="font-mono">{table}</span></label>)}</div><div className="grid gap-4 md:grid-cols-2"><input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Senha do admin" className={inputClassName} /><input type="text" value={reset2FACode} onChange={(e) => setReset2FACode(e.target.value)} placeholder="Codigo 2FA" className={inputClassName} /></div><input type="text" value={resetConfirmText} onChange={(e) => setResetConfirmText(e.target.value)} placeholder="Digite RESETAR" className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-600 outline-none dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300" /></div><div className="mt-8 flex gap-3"><button type="button" onClick={() => { setIsResetModalOpen(false); setResetError(null); }} className="flex-1 py-4 text-[10px] font-black uppercase text-slate-400">Cancelar</button><button type="button" onClick={handleSystemReset} disabled={isResetting || resetConfirmText !== 'RESETAR'} className={`flex-[2] rounded-2xl py-4 text-[10px] font-black uppercase tracking-[0.18em] text-white ${resetConfirmText === 'RESETAR' ? 'bg-rose-600' : 'bg-slate-300'}`}>{isResetting ? <Loader2 size={14} className="mx-auto animate-spin" /> : 'Executar reset'}</button></div></div></div>, document.body)}
+          {isResetModalOpen && createPortal(<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md"><div className="w-full max-w-2xl rounded-[2.5rem] border border-rose-100 bg-white p-8 shadow-2xl dark:border-rose-900/30 dark:bg-slate-900"><h3 className="text-xl font-black text-slate-900 dark:text-slate-100">Confirmacao de reset</h3>{resetError && <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4 dark:border-rose-900/30 dark:bg-rose-900/20"><XCircle size={18} className="mt-0.5 text-rose-600" /><p className="text-xs font-bold text-rose-800 dark:text-rose-300">{resetError}</p></div>}<div className="mt-6 space-y-4"><div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">{dbTables.map((table) => <label key={table} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300"><input type="checkbox" checked={selectedTables.has(table)} onChange={() => setSelectedTables((current) => { const next = new Set(current); if (next.has(table)) { next.delete(table); } else { next.add(table); } return next; })} /><span className="font-mono">{table}</span></label>)}</div><div className="grid gap-4 md:grid-cols-2"><input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Senha do admin" className={inputClassName} /><input type="text" value={reset2FACode} onChange={(e) => setReset2FACode(e.target.value)} placeholder="Codigo 2FA" className={inputClassName} /></div><input type="text" value={resetConfirmText} onChange={(e) => setResetConfirmText(e.target.value)} placeholder="Digite RESETAR" className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-600 outline-none dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300" /></div><div className="mt-8 flex gap-3"><button type="button" onClick={() => { setIsResetModalOpen(false); setResetError(null); }} className="flex-1 py-4 text-[10px] font-black uppercase text-slate-400">Cancelar</button><button type="button" onClick={handleSystemReset} disabled={isResetting || resetConfirmText !== 'RESETAR'} className={`flex-[2] rounded-2xl py-4 text-[10px] font-black uppercase tracking-[0.18em] text-white ${resetConfirmText === 'RESETAR' ? 'bg-rose-600' : 'bg-slate-300'}`}>{isResetting ? <Loader2 size={14} className="mx-auto animate-spin" /> : 'Executar reset'}</button></div></div></div>, document.body)}
         </div>
       )}
 
@@ -500,7 +527,7 @@ const AdminSettings = ({
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <select value={localSettings.paymentCheckoutMode || 'internal'} onChange={(e) => setField('paymentCheckoutMode', e.target.value as 'internal' | 'redirect')} className={inputClassName}><option value="internal">Checkout interno</option><option value="redirect">Checkout externo</option></select>
-            <label className={`flex items-center justify-between px-4 py-3 ${ADMIN_MUTED_SURFACE_CLASS}`}><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">reCAPTCHA ativo</span><input type="checkbox" checked={!!localSettings.recaptchaEnabled} onChange={(e) => setField('recaptchaEnabled', e.target.checked)} className="h-4 w-4 rounded-sm border-slate-300 text-sky-700" /></label>
+            <label className={`flex items-center justify-between px-4 py-3 ${ADMIN_MUTED_SURFACE_CLASS}`}><span className="text-sm font-semibold text-slate-900 dark:text-slate-100">reCAPTCHA v3 ativo</span><input type="checkbox" checked={!!localSettings.recaptchaEnabled} onChange={(e) => setField('recaptchaEnabled', e.target.checked)} className="h-4 w-4 rounded-sm border-slate-300 text-sky-700" /></label>
             <input value={localSettings.stripePublishableKey || localSettings.stripeKey || ''} onChange={(e) => setField('stripePublishableKey', e.target.value)} className={inputClassName} placeholder="Stripe publishable key" />
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeSecretKey || ''} onChange={(e) => setField('stripeSecretKey', e.target.value)} className={inputClassName} placeholder={isStripeSecretConfigured ? 'Digite uma nova chave para substituir a atual' : 'Stripe secret key'} /></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe webhook secret</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeWebhookConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeWebhookConfigured ? 'Configurado' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeWebhookSecret || ''} onChange={(e) => setField('stripeWebhookSecret', e.target.value)} className={inputClassName} placeholder={isStripeWebhookConfigured ? 'Digite um novo segredo para substituir o atual' : 'Stripe webhook secret'} /></div>
@@ -508,11 +535,11 @@ const AdminSettings = ({
             <input value={localSettings.googleAnalyticsId || ''} onChange={(e) => setField('googleAnalyticsId', e.target.value)} className={inputClassName} placeholder="Google Analytics ID" />
             <input value={localSettings.metaPixelId || ''} onChange={(e) => setField('metaPixelId', e.target.value)} className={inputClassName} placeholder="Meta Pixel ID" />
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Gemini API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isGeminiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isGeminiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.geminiApiKey || ''} onChange={(e) => setField('geminiApiKey', e.target.value)} className={inputClassName} placeholder={isGeminiConfigured ? 'Digite uma nova chave para substituir a atual' : 'Gemini API key'} />{localSettings.hasGeminiApiKeyConfigured && !localSettings.geminiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend e as chamadas de IA agora passam pelo backend.</p>}</div>
-            <input value={localSettings.recaptchaSiteKey || ''} onChange={(e) => setField('recaptchaSiteKey', e.target.value)} className={inputClassName} placeholder="reCAPTCHA site key" />
-            <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>reCAPTCHA secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isRecaptchaSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isRecaptchaSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.recaptchaSecretKey || ''} onChange={(e) => setField('recaptchaSecretKey', e.target.value)} className={inputClassName} placeholder={isRecaptchaSecretConfigured ? 'Digite um novo segredo para substituir o atual' : 'reCAPTCHA secret key'} /></div>
+            <div className="space-y-2"><input value={localSettings.recaptchaSiteKey || ''} onChange={(e) => setField('recaptchaSiteKey', e.target.value)} className={inputClassName} placeholder="reCAPTCHA v3 site key" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use chaves do reCAPTCHA v3. O token agora e gerado automaticamente no envio de login, cadastro e reset.</p></div>
+            <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>reCAPTCHA v3 secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isRecaptchaSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isRecaptchaSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.recaptchaSecretKey || ''} onChange={(e) => setField('recaptchaSecretKey', e.target.value)} className={inputClassName} placeholder={isRecaptchaSecretConfigured ? 'Digite um novo segredo para substituir o atual' : 'reCAPTCHA v3 secret key'} /></div>
           </div>
           <div className="rounded-sm border border-sky-300 bg-sky-50 p-4 dark:border-sky-900/30 dark:bg-sky-900/10"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Webhook oficial</p><p className="mt-2 break-all text-xs font-mono text-sky-700 dark:text-sky-300">{stripeWebhookUrl}</p></div>
-          {integrationsTestResult && <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{Object.entries(integrationsTestResult.data?.checks || {}).map(([key, check]: any) => <div key={key} className={`rounded-sm border p-4 ${check.status === 'ok' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : check.status === 'critical' ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10' : 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10'}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{check.label}</p><p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{check.status}</p><p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{check.detail}</p></div>)}</div>}
+          {integrationsTestResult && <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{integrationChecks.map(([key, check]) => <div key={key} className={`rounded-sm border p-4 ${check.status === 'ok' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : check.status === 'critical' ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10' : 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10'}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{check.label}</p><p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{check.status}</p><p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{check.detail}</p></div>)}</div>}
         </div>
       )}
 
@@ -542,6 +569,13 @@ const AdminSettings = ({
           </div>
           {smtpTestResult && <div className={`rounded-sm border p-4 ${smtpTestResult.ok ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10'}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Resultado do teste</p><p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{smtpTestResult.ok ? 'OK' : 'Falhou'}</p><p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{smtpTestResult.message}</p></div>}
         </div>
+      )}
+
+      {activeTab === 'email-templates' && (
+        <AdminEmailTemplatesSection
+          templates={normalizeEmailTemplates(localSettings.emailTemplates)}
+          onChange={(emailTemplates) => setField('emailTemplates', emailTemplates)}
+        />
       )}
 
       {activeTab === 'ads' && <div className={`grid gap-4 ${ADMIN_PAGE_PANEL_CLASS} md:grid-cols-2`}><input value={localSettings.adsenseClientId || ''} onChange={(e) => setField('adsenseClientId', e.target.value)} className={inputClassName} placeholder="AdSense Client ID" /><input value={localSettings.facebookAdsId || ''} onChange={(e) => setField('facebookAdsId', e.target.value)} className={inputClassName} placeholder="Facebook Ads ID" /><textarea value={localSettings.adBannerTop || ''} onChange={(e) => setField('adBannerTop', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] resize-none font-mono text-xs md:col-span-2`} placeholder="Banner topo (HTML)" /><textarea value={localSettings.adBannerSidebar || ''} onChange={(e) => setField('adBannerSidebar', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] resize-none font-mono text-xs`} placeholder="Banner lateral" /><textarea value={localSettings.adBannerBottom || ''} onChange={(e) => setField('adBannerBottom', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] resize-none font-mono text-xs`} placeholder="Banner rodape" /></div>}

@@ -39,6 +39,24 @@ import {
 
 const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
 
+const serializeJsonLd = (payload: unknown) => (
+  JSON.stringify(payload)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+);
+
+const getQuestionRoleLabel = (item: unknown) => {
+  if (!item || typeof item !== 'object') {
+    return '';
+  }
+
+  const record = item as Record<string, unknown>;
+  return String(record.descricao || record['descrição'] || record.name || '').trim();
+};
+
 type QuestionPublicPageProps = {
   initialQuestion?: Question | null;
 };
@@ -137,7 +155,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
   const metadataItems = [
     { label: 'Banca', value: question?.bancas?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
     { label: 'Orgao', value: question?.orgaos?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
-    { label: 'Cargo', value: question?.cargos?.map((item: any) => item.descricao || item['descrição'] || item.name).filter(Boolean).join(', ') },
+    { label: 'Cargo', value: question?.cargos?.map(getQuestionRoleLabel).filter(Boolean).join(', ') },
     { label: 'Ano', value: question?.anos?.join(', ') },
     { label: 'Assuntos', value: question?.assuntos?.map((item) => item.nome).filter(Boolean).join(', ') },
     { label: 'Modalidade', value: question?.tipo === 'certo ou errado' ? 'Certo ou errado' : 'Multipla escolha' },
@@ -165,9 +183,10 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
   const showFreeAccountCta = !isAuthLoading && !currentUser;
   const isCanceledQuestion = question ? isQuestionCanceled(question) : false;
   const isOriginalQuestion = question ? isPlatformOriginalQuestion(question) : false;
+  const questionId = question?.id ? String(question.id) : '';
 
   const handleOpenPractice = React.useCallback(() => {
-    if (!question?.id || isAuthLoading) {
+    if (!questionId || isAuthLoading) {
       return;
     }
 
@@ -180,8 +199,8 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
       return;
     }
 
-    router.push(`/practice?questionId=${encodeURIComponent(String(question.id))}`);
-  }, [currentUser, isAuthLoading, isCanceledQuestion, question?.id, router]);
+    router.push(`/practice?questionId=${encodeURIComponent(questionId)}`);
+  }, [currentUser, isAuthLoading, isCanceledQuestion, questionId, router]);
 
   if (isLoading) {
     return (
@@ -219,7 +238,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
     {structuredData && (
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
       />
     )}
     <section className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-6 px-4 py-8 sm:px-6 lg:px-8`}>
@@ -235,12 +254,12 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
               {(keywordPills.length > 0 || isOriginalQuestion || isCanceledQuestion) && (
                 <div className="flex flex-wrap gap-2">
                   {isOriginalQuestion && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-violet-600 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white shadow-sm dark:border-violet-500/20">
+                    <span className="inline-flex min-h-6 items-center justify-center rounded-md border border-violet-100 bg-violet-600 px-3 py-1 text-[10px] font-black uppercase leading-none tracking-widest text-white shadow-sm dark:border-violet-500/20">
                       Inedita
                     </span>
                   )}
                   {isCanceledQuestion && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-600 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-white shadow-sm dark:border-red-500/30">
+                    <span className="inline-flex min-h-6 items-center justify-center rounded-md border border-red-200 bg-red-600 px-3 py-1 text-[10px] font-black uppercase leading-none tracking-widest text-white shadow-sm dark:border-red-500/30">
                       Anulada
                     </span>
                   )}

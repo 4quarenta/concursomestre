@@ -46,6 +46,11 @@ interface RefreshOptions {
     force?: boolean;
 }
 
+interface RefreshSessionResponsePayload {
+    token?: string | null;
+    user?: UserProfile | null;
+}
+
 type SessionListener = (snapshot: AuthSessionSnapshot) => void;
 
 const authHttp = axios.create({
@@ -651,22 +656,29 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
         }
 
         try {
-            const response = await authHttp.post('auth/refresh.php', {}, {
+            const includeUser = options.reason === 'bootstrap' && !currentUser;
+            const response = await authHttp.post('auth/refresh.php', {
+                includeUser,
+            }, {
                 headers: {
                     'X-CSRF-Token': csrfToken,
                 },
                 withCredentials: true,
             });
 
-            const payload = parseSuccessPayload<{ token: string }>(response.data);
+            const payload = parseSuccessPayload<RefreshSessionResponsePayload>(response.data);
             const nextToken = payload?.token ?? null;
             if (!nextToken) {
                 throw new Error('Resposta de refresh sem access token.');
             }
 
-            updateSessionState(nextToken, currentUser, {
-                isBootstrapped: true,
-                broadcast: true,
+            const nextUser = payload?.user ?? currentUser;
+            const hasResolvedUser = Boolean(nextUser);
+            const shouldPublishReadySession = options.reason !== 'bootstrap' || hasResolvedUser;
+
+            updateSessionState(nextToken, nextUser, {
+                isBootstrapped: shouldPublishReadySession,
+                broadcast: shouldPublishReadySession,
                 eventType: 'refresh-success',
             });
 
@@ -713,7 +725,7 @@ export const bootstrapAuthSession = async (): Promise<AuthSessionSnapshot> => {
             force: true,
         });
 
-        if (refreshed?.accessToken) {
+        if (refreshed?.accessToken && !refreshed.currentUser) {
             await fetchAuthenticatedUser();
         }
     } catch (error) {
