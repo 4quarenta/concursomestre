@@ -41,6 +41,17 @@ const FALSE_FLAG_VALUES = new Set([
   'undefined',
 ]);
 
+type QuestionFlagAliases = Question & {
+  is_cancelled?: unknown;
+  isCanceledQuestion?: unknown;
+  sourceType?: unknown;
+  source_type?: unknown;
+  origin?: unknown;
+  origem?: unknown;
+  isOriginal?: unknown;
+  inedita?: unknown;
+};
+
 export const readQuestionBooleanFlag = (value: unknown) => {
   if (typeof value === 'boolean') {
     return value;
@@ -63,24 +74,28 @@ export const readQuestionBooleanFlag = (value: unknown) => {
   return Boolean(value);
 };
 
-export const isQuestionCanceled = (question: Question) => (
-  readQuestionBooleanFlag(question.anulada)
-  || readQuestionBooleanFlag(question.isCanceled)
-  || readQuestionBooleanFlag((question as any).is_cancelled)
-  || readQuestionBooleanFlag((question as any).isCanceledQuestion)
-);
+export const isQuestionCanceled = (question: Question) => {
+  const aliases = question as QuestionFlagAliases;
+  return (
+    readQuestionBooleanFlag(question.anulada)
+    || readQuestionBooleanFlag(question.isCanceled)
+    || readQuestionBooleanFlag(aliases.is_cancelled)
+    || readQuestionBooleanFlag(aliases.isCanceledQuestion)
+  );
+};
 
 export const isPlatformOriginalQuestion = (question: Question) => {
+  const aliases = question as QuestionFlagAliases;
   const source = normalizeQuestionFlag([
     question.questionOrigin,
     question.question_origin,
-    (question as any).sourceType,
-    (question as any).source_type,
-    (question as any).origin,
-    (question as any).origem,
+    aliases.sourceType,
+    aliases.source_type,
+    aliases.origin,
+    aliases.origem,
   ].find((value) => String(value ?? '').trim()));
 
   return ['platform', 'inedita', 'original', 'generated', 'gerada'].includes(source)
-    || readQuestionBooleanFlag((question as any).isOriginal)
-    || readQuestionBooleanFlag((question as any).inedita);
+    || readQuestionBooleanFlag(aliases.isOriginal)
+    || readQuestionBooleanFlag(aliases.inedita);
 };

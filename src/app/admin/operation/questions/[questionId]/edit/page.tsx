@@ -18,6 +18,7 @@ import type { ErrorReport, Question } from '@types';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { canAccessAdminPanel } from '@services/auth';
+import { clientLog } from '@services/monitoring/clientLog';
 import { questionService } from '@services/questions';
 import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
@@ -69,7 +70,10 @@ const AdminQuestionEditPage = () => {
   const [question, setQuestion] = React.useState<Question | null>(null);
   const [isQuestionLoading, setIsQuestionLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState('');
+  const [isResolvingReportInline, setIsResolvingReportInline] = React.useState(false);
   const openedQuestionIdRef = React.useRef<string | null>(null);
+  const questionLoadKeyRef = React.useRef('');
+  const questionLoadPromiseRef = React.useRef<Promise<void> | null>(null);
 
   const linkedReport = React.useMemo(
     () => reports.find((report: ErrorReport) => String(report.id) === String(reportId || '')) || null,
@@ -83,42 +87,101 @@ const AdminQuestionEditPage = () => {
   }, [currentUser, isAuthLoading, router]);
 
   React.useEffect(() => {
+    if (isAuthLoading) {
+      return;
+    }
+
+    if (!canAccessAdminPanel(currentUser)) {
+      return;
+    }
+
     void ensureTaxonomiesLoaded();
 
     if (reportId) {
       void ensureReportsLoaded();
     }
-  }, [ensureReportsLoaded, ensureTaxonomiesLoaded, reportId]);
+  }, [currentUser, ensureReportsLoaded, ensureTaxonomiesLoaded, isAuthLoading, reportId]);
 
   React.useEffect(() => {
-    if (!questionId) {
-      setLoadError('ID da questao nao informado.');
-      setIsQuestionLoading(false);
+    if (isAuthLoading) {
       return;
     }
 
+    if (!canAccessAdminPanel(currentUser)) {
+      return;
+    }
+
+    if (!questionId) {
+      questionLoadKeyRef.current = '';
+      questionLoadPromiseRef.current = null;
+      const frameId = window.requestAnimationFrame(() => {
+        setLoadError('ID da questao nao informado.');
+        setIsQuestionLoading(false);
+      });
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+
     if (isNewQuestion) {
-      setQuestion(null);
-      setLoadError('');
-      setIsQuestionLoading(false);
+      questionLoadKeyRef.current = 'new';
+      questionLoadPromiseRef.current = null;
+      const frameId = window.requestAnimationFrame(() => {
+        setQuestion(null);
+        setLoadError('');
+        setIsQuestionLoading(false);
+      });
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+
+    const normalizedQuestionId = String(questionId || '').trim();
+    if (!normalizedQuestionId) {
+      return;
+    }
+
+    if (
+      questionLoadPromiseRef.current
+      && questionLoadKeyRef.current === normalizedQuestionId
+    ) {
+      return;
+    }
+
+    if (
+      questionLoadKeyRef.current === normalizedQuestionId
+      && question
+      && String(question.id || '') === normalizedQuestionId
+      && !loadError
+    ) {
       return;
     }
 
     let isCurrent = true;
-    setIsQuestionLoading(true);
-    setLoadError('');
+    const frameId = window.requestAnimationFrame(() => {
+      if (!isCurrent) return;
+      setIsQuestionLoading(true);
+      setLoadError('');
+    });
 
-    const localQuestion = questions.find((item: Question) => String(item.id) === String(questionId));
+    const localQuestion = questions.find((item: Question) => String(item.id) === normalizedQuestionId);
 
     if (localQuestion) {
-      setQuestion(localQuestion);
-      setIsQuestionLoading(false);
+      questionLoadKeyRef.current = normalizedQuestionId;
+      questionLoadPromiseRef.current = null;
+      const localFrameId = window.requestAnimationFrame(() => {
+        if (!isCurrent) return;
+        setQuestion(localQuestion);
+        setIsQuestionLoading(false);
+      });
       return () => {
         isCurrent = false;
+        window.cancelAnimationFrame(frameId);
+        window.cancelAnimationFrame(localFrameId);
       };
     }
 
-    questionService.getQuestionForAdminEdit(questionId)
+    const request = questionService.getQuestionForAdminEdit(normalizedQuestionId)
       .then((payload) => {
         if (!isCurrent) return;
 
@@ -132,33 +195,28 @@ const AdminQuestionEditPage = () => {
       })
       .catch((error) => {
         if (!isCurrent) return;
-        console.error('Error loading question for admin edit:', error);
+        clientLog.warn('Error loading question for admin edit:', error);
         setLoadError('Nao foi possivel carregar esta questao.');
       })
       .finally(() => {
         if (isCurrent) {
           setIsQuestionLoading(false);
         }
+        if (questionLoadKeyRef.current === normalizedQuestionId) {
+          questionLoadPromiseRef.current = null;
+        }
       });
+    questionLoadKeyRef.current = normalizedQuestionId;
+    questionLoadPromiseRef.current = request.then(() => undefined);
 
     return () => {
       isCurrent = false;
+      window.cancelAnimationFrame(frameId);
     };
-  }, [isNewQuestion, questionId, questions]);
-
-  const referenceQuestions = React.useMemo(() => {
-    if (!question) {
-      return questions;
-    }
-
-    return [
-      question,
-      ...questions.filter((item: Question) => String(item.id) !== String(question.id)),
-    ];
-  }, [question, questions]);
+  }, [currentUser, isAuthLoading, isNewQuestion, loadError, question, questionId, questions]);
 
   const editor = useAdminManualQuestionEditor({
-    questions: referenceQuestions,
+    questions: question ? [question] : [],
     systemSettings,
     addToast,
     onAddQuestion: async (payload: Question) => {
@@ -224,6 +282,30 @@ const AdminQuestionEditPage = () => {
     router.push(returnPath);
   };
 
+  const handleResolveLinkedReportInline = React.useCallback(async (
+    status: 'resolved' | 'ignored',
+  ) => {
+    if (!linkedReport || linkedReport.status !== 'pending') {
+      return;
+    }
+
+    setIsResolvingReportInline(true);
+    try {
+      await resolveReport(
+        linkedReport.id,
+        status,
+        status === 'resolved'
+          ? getReportResolutionText(linkedReport)
+          : 'Denuncia analisada e ignorada pela moderacao administrativa.',
+        linkedReport.evidenceUrl,
+      );
+    } catch (error) {
+      clientLog.warn('Error resolving linked report inline:', error);
+    } finally {
+      setIsResolvingReportInline(false);
+    }
+  }, [linkedReport, resolveReport]);
+
   const renderAdminShell = (children: React.ReactNode) => (
     <AdminStandaloneShell
       activeTab="operation"
@@ -277,6 +359,28 @@ const AdminQuestionEditPage = () => {
         >
           <ArrowLeft size={13} /> Voltar
         </button>
+        {linkedReport?.status === 'pending' ? (
+          <>
+            <button
+              type="button"
+              onClick={() => void handleResolveLinkedReportInline('ignored')}
+              disabled={isResolvingReportInline}
+              className="inline-flex items-center gap-2 rounded-sm border border-rose-300 bg-rose-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-300"
+            >
+              {isResolvingReportInline ? <Loader2 size={13} className="animate-spin" /> : null}
+              Ignorar denuncia
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleResolveLinkedReportInline('resolved')}
+              disabled={isResolvingReportInline}
+              className={ADMIN_PRIMARY_BUTTON_CLASS}
+            >
+              {isResolvingReportInline ? <Loader2 size={13} className="animate-spin" /> : null}
+              Resolver denuncia
+            </button>
+          </>
+        ) : null}
       </div>
     </div>
   );

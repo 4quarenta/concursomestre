@@ -64,15 +64,20 @@ const Page: React.FC = () => {
         return;
       }
 
+      let frameId = 0;
       if (currentUser && !currentUser.emailVerified) {
-        setStatus('loading');
-        setMessage(pageCopy.pendingConfirmation);
-        return;
+        frameId = window.requestAnimationFrame(() => {
+          setStatus('loading');
+          setMessage(pageCopy.pendingConfirmation);
+        });
+        return () => window.cancelAnimationFrame(frameId);
       }
 
-      setStatus('error');
-      setMessage(pageCopy.missingToken);
-      return;
+      frameId = window.requestAnimationFrame(() => {
+        setStatus('error');
+        setMessage(pageCopy.missingToken);
+      });
+      return () => window.cancelAnimationFrame(frameId);
     }
 
     if (hasFetched.current) {

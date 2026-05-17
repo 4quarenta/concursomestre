@@ -14,6 +14,7 @@ import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, Layout, List, S
 // import 'pdfjs-dist/web/pdf_viewer.css'; // Removed to prevent conflict
 import { apiClient, ENDPOINTS } from '@services/api'; // Ensure this path is correct based on project structure
 import { readerService } from '@services/materials';
+import { clientLog } from '@services/monitoring/clientLog';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useMarketplace } from '@providers/MarketplaceProvider';
@@ -335,13 +336,13 @@ const PdfPage: React.FC<PdfPageProps> = ({ pdfDoc, pdfjsModule, pageNum, scale }
                             });
                         }
                     } catch (e) {
-                        console.warn("TextLayer render failed", e);
+                        clientLog.warn("TextLayer render failed", e);
                     }
                 }
             } catch (err: unknown) {
                 const errorName = err instanceof Error ? err.name : '';
                 if (errorName !== 'RenderingCancelledException') {
-                    console.error(`Page ${pageNum} render error:`, err);
+                    clientLog.warn(`Page ${pageNum} render error:`, err);
                 }
             }
         };
@@ -442,7 +443,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                 }
             })
             .catch((err) => {
-                console.error('Failed to initialize PDF.js:', err);
+                clientLog.warn('Failed to initialize PDF.js:', err);
                 if (isMounted) {
                     setError('Nao foi possivel inicializar o leitor PDF.');
                     setLoading(false);
@@ -467,7 +468,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
                 setLocalComments(res.data);
             }
         } catch (err) {
-            console.error('Falha ao carregar comentários:', err);
+            clientLog.warn('Falha ao carregar comentários:', err);
         }
     }
 
@@ -500,7 +501,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
             setPdfDoc(doc);
             setLoading(false);
         } catch (err) {
-            console.error("Error loading PDF:", err);
+            clientLog.warn("Error loading PDF:", err);
             setError("Não foi possível carregar o documento PDF.");
             setLoading(false);
         }
@@ -514,7 +515,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
             setNoteText(nextNoteText);
             setOriginalNoteText(nextNoteText);
         } catch (err) {
-            console.error("Failed to fetch note:", err);
+            clientLog.warn("Failed to fetch note:", err);
         }
     }
 
@@ -547,7 +548,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
             const nextBookmarks = await readerService.getBookmarks(materialId, currentUser.id);
             setBookmarks(nextBookmarks);
         } catch (err) {
-            console.error("Failed to fetch bookmarks:", err);
+            clientLog.warn("Failed to fetch bookmarks:", err);
         }
     }
 
@@ -560,7 +561,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
             addToast("Marcador salvo!", "success");
             setNewBookmarkLabel('');
         } catch (err) {
-            console.error("Failed to save bookmark:", err);
+            clientLog.warn("Failed to save bookmark:", err);
             addToast("Erro ao salvar marcador.", "error");
         }
     };
@@ -571,7 +572,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
             setBookmarks(prev => prev.filter(b => b.id !== id));
             addToast("Marcador removido.", "info");
         } catch (err) {
-            console.error("Failed to delete bookmark:", err);
+            clientLog.warn("Failed to delete bookmark:", err);
         }
     };
 
@@ -584,7 +585,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({ url, isOpen, onClose, title, mode
             addToast("Anotação salva com sucesso!", "success");
             setIsNoteModalOpen(false);
         } catch (err) {
-            console.error("Failed to save note:", err);
+            clientLog.warn("Failed to save note:", err);
             addToast("Erro ao salvar anotação.", "error");
         } finally {
             setSavingNote(false);

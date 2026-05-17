@@ -30,6 +30,7 @@ import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
+import { clientLog } from '@services/monitoring/clientLog';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import { simulationsService, type StoredSimulationSession } from '@services/simulations';
 import {
@@ -167,6 +168,14 @@ const getQuestionLevelLabel = (question: Question) => {
 const getTaxonomyNames = (items: TaxonomyItem[] | undefined, resolver: (item: TaxonomyItem) => string | undefined) => (
    (items || []).map(resolver).filter((value): value is string => Boolean(value)).sort()
 );
+
+const getTaxonomyRoleLabel = (role: TaxonomyItem) => {
+   const roleRecord = role as unknown as Record<string, unknown>;
+   const legacyDescription = roleRecord.descricao || roleRecord['descri\u00e7\u00e3o'];
+   return typeof legacyDescription === 'string'
+      ? legacyDescription
+      : role.description || role.name;
+};
 
 const isEnemSubjectArea = (value: string) => (
    ENEM_SUBJECT_AREA_OPTIONS.includes(value as (typeof ENEM_SUBJECT_AREA_OPTIONS)[number])
@@ -423,8 +432,7 @@ const Simulation: React.FC = () => {
 
    const simulationRoles = (() => {
       if (systemSettings.taxonomies?.roles?.length) {
-         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-         return systemSettings.taxonomies.roles.map((role: any) => role.descricao || role['descrição'] || role.name).filter(Boolean).sort();
+         return getTaxonomyNames(systemSettings.taxonomies.roles, getTaxonomyRoleLabel);
       }
       return allRoles;
    })();
@@ -486,7 +494,7 @@ const Simulation: React.FC = () => {
             if (isMounted) setStoredSimulations(sessions);
          })
          .catch((error) => {
-            console.warn('Nao foi possivel carregar historico de simulados:', error);
+            clientLog.warn('Nao foi possivel carregar historico de simulados:', error);
             if (isMounted) setStoredSimulations([]);
          });
 

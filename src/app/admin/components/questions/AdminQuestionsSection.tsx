@@ -707,7 +707,7 @@ const AdminQuestionsSection = ({
   const getQuestionLabel = (question: Question) => {
     const questionRecord = toQuestionRecord(question);
     const rawTitle = String(questionRecord.enunciado_clean || questionRecord.text || questionRecord.enunciado || '').trim();
-    const title = rawTitle ? rawTitle.replace(/\s+/g, ' ').slice(0, 90) : 'Questao sem enunciado';
+    const title = rawTitle ? rawTitle.replace(/\s+/g, ' ').slice(0, 90) : 'Quest\u00e3o sem enunciado';
     return `#${questionRecord.id ?? '-'} - ${title}${rawTitle.length > 90 ? '...' : ''}`;
   };
 
@@ -799,7 +799,7 @@ const AdminQuestionsSection = ({
   const openOriginalGenerationModal = () => {
     setOriginalGenerationError('');
     setOriginalGenerationProgress(0);
-    setOriginalGenerationCurrentLabel('Selecione uma banca para gerar questoes ineditas.');
+    setOriginalGenerationCurrentLabel('Selecione uma banca para gerar questões inéditas.');
     setOriginalGenerationResults([]);
     setOriginalGenerationPayloads([]);
     setIsSavingOriginalQuestionDrafts(false);
@@ -815,7 +815,7 @@ const AdminQuestionsSection = ({
     const quantity = Math.max(1, Math.min(20, Math.round(Number(originalGenerationQuantity) || 1)));
 
     if (!agency || isGeneratingOriginalQuestions) {
-      setOriginalGenerationError('Selecione uma banca antes de gerar as questoes.');
+      setOriginalGenerationError('Selecione uma banca antes de gerar as questões.');
       return;
     }
 
@@ -824,10 +824,10 @@ const AdminQuestionsSection = ({
     setOriginalGenerationPayloads([]);
     setIsSavingOriginalQuestionDrafts(false);
     setOriginalGenerationProgress(5);
-    setOriginalGenerationCurrentLabel(`Preparando ${quantity} questao(oes) no estilo ${agency}.`);
+    setOriginalGenerationCurrentLabel(`Preparando ${quantity} questão(ões) no estilo ${agency}.`);
     setOriginalGenerationResults(Array.from({ length: quantity }, (_, index) => ({
       id: `pending-${index}`,
-      label: `Questao ${index + 1}`,
+      label: `Questão ${index + 1}`,
       status: index === 0 ? 'running' : 'pending',
       preview: 'Aguardando retorno da IA.',
     })));
@@ -848,11 +848,11 @@ const AdminQuestionsSection = ({
       });
 
       if (generatedQuestions.length === 0) {
-        throw new Error('A IA nao retornou questoes validas para salvar.');
+        throw new Error('A IA não retornou questões válidas para salvar.');
       }
 
       setOriginalGenerationProgress(100);
-      setOriginalGenerationCurrentLabel('Geracao concluida. Revise o conteudo e escolha o que publicar.');
+      setOriginalGenerationCurrentLabel('Geração concluída. Revise o conteúdo e escolha o que publicar.');
 
       const payloads = generatedQuestions.map((generatedQuestion) => (
         applyOriginalQuestionPublicationDecision(
@@ -870,7 +870,7 @@ const AdminQuestionsSection = ({
       setOriginalGenerationPayloads(payloads);
       setOriginalGenerationResults(payloads.map((question, index) => ({
         id: `review-${index}`,
-        label: `Questao ${index + 1}`,
+        label: `Questão ${index + 1}`,
         status: 'review',
         publicationDecision: 'draft',
         filterIssues: getGeneratedQuestionMissingFilters(question),
@@ -879,10 +879,10 @@ const AdminQuestionsSection = ({
         question,
       })));
     } catch (error) {
-      const message = readApiErrorMessage(error, 'Nao foi possivel gerar as questoes ineditas.');
+      const message = readApiErrorMessage(error, 'Não foi possível gerar as questões inéditas.');
       setOriginalGenerationError(message);
       setOriginalGenerationProgress(100);
-      setOriginalGenerationCurrentLabel('Falha na geracao de questoes ineditas.');
+      setOriginalGenerationCurrentLabel('Falha na geração de questões inéditas.');
       setOriginalGenerationResults((current) => current.map((item) => (
         item.status === 'success' ? item : { ...item, status: 'error', error: message }
       )));
@@ -931,14 +931,14 @@ const AdminQuestionsSection = ({
     if (invalidQuestions.length > 0) {
       const firstInvalid = invalidQuestions[0];
       setOriginalGenerationError(
-        `A questao ${firstInvalid.index + 1} ainda esta sem: ${firstInvalid.missing.join(', ')}.`,
+        `A questão ${firstInvalid.index + 1} ainda está sem: ${firstInvalid.missing.join(', ')}.`,
       );
       return;
     }
 
     setIsSavingOriginalQuestionDrafts(true);
     setOriginalGenerationError('');
-    setOriginalGenerationCurrentLabel('Salvando questao(oes) revisada(s)...');
+    setOriginalGenerationCurrentLabel('Salvando questão(ões) revisada(s)...');
     setOriginalGenerationResults((current) => current.map((item) => (
       item.status === 'review' ? { ...item, status: 'saving' } : item
     )));
@@ -947,7 +947,7 @@ const AdminQuestionsSection = ({
       const response = await onAddQuestions(originalGenerationPayloads);
 
       if (isActionFailure(response)) {
-        throw new Error(response.message || 'Nao foi possivel criar as questoes geradas.');
+        throw new Error(response.message || 'Não foi possível criar as questões geradas.');
       }
 
       setOriginalGenerationResults((current) => current.map((item) => (
@@ -955,13 +955,13 @@ const AdminQuestionsSection = ({
           ? { ...item, status: 'success' }
           : item
       )));
-      setOriginalGenerationCurrentLabel(`${originalGenerationPayloads.length} questao(oes) criada(s) pela revisao.`);
+      setOriginalGenerationCurrentLabel(`${originalGenerationPayloads.length} questão(ões) criada(s) pela revisão.`);
       setOriginalGenerationPayloads([]);
       await onRefresh?.();
     } catch (error) {
-      const message = readApiErrorMessage(error, 'Nao foi possivel salvar as questoes geradas.');
+      const message = readApiErrorMessage(error, 'Não foi possível salvar as questões geradas.');
       setOriginalGenerationError(message);
-      setOriginalGenerationCurrentLabel('Falha ao salvar as questoes.');
+      setOriginalGenerationCurrentLabel('Falha ao salvar as questões.');
       setOriginalGenerationResults((current) => current.map((item) => (
         item.status === 'saving' ? { ...item, status: 'review', error: message } : item
       )));
@@ -1001,7 +1001,7 @@ const AdminQuestionsSection = ({
       const result = String(toQuestionRecord(fullQuestion)[field] || '').trim();
       updateGenerationItem(id, result
         ? { status: 'success', result, isSaved: true }
-        : { status: 'error', error: 'Nenhum conteudo salvo foi encontrado para esta questao.' });
+        : { status: 'error', error: 'Nenhum conte\u00fado salvo foi encontrado para esta quest\u00e3o.' });
       setGenerationProgress(100);
       setGenerationCurrentLabel(result ? 'Resultado carregado.' : 'Conteudo nao encontrado.');
       if (result) {
@@ -1100,7 +1100,7 @@ const AdminQuestionsSection = ({
 
         try {
           if (!payload) {
-            throw new Error('Nao foi possivel localizar os dados desta questao para salvar.');
+            throw new Error('N\u00e3o foi poss\u00edvel localizar os dados desta quest\u00e3o para salvar.');
           }
 
           const updateResult = await onUpdate(payload);

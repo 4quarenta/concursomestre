@@ -11,6 +11,8 @@
 
 import axios from 'axios';
 import type { UserProfile } from '@types';
+import { clientLog } from '@services/monitoring/clientLog';
+import { canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from './userAccess';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost/questao-pro-backend/api/';
 const AUTH_CHANNEL_NAME = 'cm-auth-session';
@@ -53,6 +55,17 @@ interface RefreshSessionResponsePayload {
 
 type SessionListener = (snapshot: AuthSessionSnapshot) => void;
 
+type AuthRawUserProfile = Partial<UserProfile> & {
+    photo_url?: string | null;
+    email_verified?: boolean | number | string;
+    comments_count?: number | string;
+    target_exam?: string;
+    is_admin?: boolean | number | string;
+    is_staff?: boolean | number | string;
+    is_partner?: boolean | number | string;
+    can_access_admin?: boolean | number | string;
+};
+
 const authHttp = axios.create({
     baseURL: API_BASE_URL,
     timeout: 30000,
@@ -61,6 +74,65 @@ const authHttp = axios.create({
         'Content-Type': 'application/json',
     },
 });
+
+const parseBooleanLike = (value: unknown, fallback = false): boolean => {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (typeof value === 'number') {
+        return value !== 0;
+    }
+
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+        if (['0', 'false', 'no', 'off', ''].includes(normalized)) return false;
+    }
+
+    return fallback;
+};
+
+const normalizeAuthUserProfile = (rawUser: UserProfile | null | undefined): UserProfile | null => {
+    if (!rawUser) {
+        return null;
+    }
+
+    const user = rawUser as AuthRawUserProfile;
+    const role = normalizeUserRole(user.role);
+    const photoUrl = String(user.photoUrl || user.photo_url || '').trim() || undefined;
+
+    const normalizedProfile = {
+        ...user,
+        role,
+        photoUrl,
+        emailVerified: parseBooleanLike(user.emailVerified ?? user.email_verified, false),
+        commentsCount: Number(user.commentsCount ?? user.comments_count ?? 0),
+        targetExam: String(user.targetExam ?? user.target_exam ?? ''),
+        savedQuestionIds: Array.isArray(user.savedQuestionIds) ? user.savedQuestionIds : [],
+        simulations: Array.isArray(user.simulations) ? user.simulations : [],
+        purchasedMaterialIds: Array.isArray(user.purchasedMaterialIds) ? user.purchasedMaterialIds : [],
+    } as UserProfile;
+
+    normalizedProfile.isAdmin = parseBooleanLike(
+        user.isAdmin ?? user.is_admin,
+        role === 'admin',
+    );
+    normalizedProfile.isStaff = parseBooleanLike(
+        user.isStaff ?? user.is_staff,
+        role === 'staff',
+    );
+    normalizedProfile.isPartner = parseBooleanLike(
+        user.isPartner ?? user.is_partner,
+        role === 'partner',
+    ) || canAccessPartnerArea(normalizedProfile);
+    normalizedProfile.canAccessAdmin = parseBooleanLike(
+        user.canAccessAdmin ?? user.can_access_admin,
+        canAccessAdminPanel(normalizedProfile),
+    );
+
+    return normalizedProfile;
+};
 
 let accessToken: string | null = null;
 let accessTokenExpMs: number | null = null;
@@ -303,7 +375,7 @@ const updateSessionState = (
     applyAccessToken(nextToken);
 
     if (nextUser !== undefined) {
-        currentUser = nextUser ?? null;
+        currentUser = normalizeAuthUserProfile(nextUser);
     }
 
     if (options?.isBootstrapped !== undefined) {
@@ -535,10 +607,13 @@ const finalizeExternalAuthEvent = (event: AuthBroadcastEvent): AuthSessionSnapsh
  * Isso simplifica os endpoints de auth enquanto o backend mantem compatibilidade legada.
  * @since 1.0.0
  */
-const parseSuccessPayload = <T>(payload: any): T | null => {
+const parseSuccessPayload = <T>(payload: unknown): T | null => {
     if (!payload) return null;
-    if (payload.success && payload.data) {
-        return payload.data as T;
+    if (typeof payload === 'object' && payload !== null) {
+        const responsePayload = payload as { success?: unknown; data?: unknown };
+        if (responsePayload.success && responsePayload.data) {
+            return responsePayload.data as T;
+        }
     }
     return payload as T;
 };
@@ -683,8 +758,8 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
             });
 
             return getSnapshot();
-        } catch (error: any) {
-            const status = error?.response?.status;
+        } catch (error: unknown) {
+            const status = axios.isAxiosError(error) ? error.response?.status : undefined;
             if (status === 401 || status === 403) {
                 clearAuthenticatedSession('refresh_failed', true);
                 if (options.allowAnonymousFailure) {
@@ -729,7 +804,7 @@ export const bootstrapAuthSession = async (): Promise<AuthSessionSnapshot> => {
             await fetchAuthenticatedUser();
         }
     } catch (error) {
-        console.error('Auth bootstrap failed:', error);
+        clientLog.warn('Auth bootstrap failed:', error);
         clearAuthenticatedSession('bootstrap_failed', false);
     } finally {
         isBootstrapped = true;
@@ -762,7 +837,7 @@ export const logoutAuthSession = async (): Promise<void> => {
             withCredentials: true,
         });
     } catch (error) {
-        console.error('Logout request failed:', error);
+        clientLog.warn('Logout request failed:', error);
     } finally {
         clearAuthenticatedSession('logout', true);
     }

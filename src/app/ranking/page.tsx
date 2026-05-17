@@ -12,10 +12,11 @@
 */
 
 import React, { useState, useMemo } from 'react';
+import Image from 'next/image';
 import { Ranking, RankingEntry } from '../../types';
 import {
-   Trophy, Plus, Users, BarChart3, ChevronRight,
-   Info, Calendar, Save, X, ArrowRight, Settings, LayoutGrid, List, Search, Clock, AlertCircle, Edit3, Trash2, CheckCircle, ShieldCheck, Hash, Layers, UserCheck, FileText, Check, PlusCircle, UploadCloud, Loader2, AlertTriangle
+   Trophy, Plus, Users, ChevronRight,
+   Info, X, ArrowRight, LayoutGrid, List, Search, Clock, AlertCircle, Edit3, Trash2, CheckCircle, ShieldCheck, Hash, Layers, UserCheck, FileText, Check
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -23,6 +24,9 @@ import { useConfirm } from '@providers/ModalProvider';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
 import AuthModal from '../../components/shared/overlays/AuthModal';
+
+type RankingKeyStatus = Ranking['keyStatus'];
+type RankingEntryCategory = RankingEntry['category'];
 
 /**
  * Tela pública de rankings pos-prova.
@@ -147,20 +151,6 @@ const RankingPage: React.FC = () => {
     */
    const handleCreateOrUpdate = (e: React.FormEvent) => {
       e.preventDefault();
-
-      const payload: Partial<Ranking> = {
-         name: rankingForm.name,
-         institution: rankingForm.institution,
-         totalQuestions: rankingForm.totalQuestions,
-         vacanciesAc: rankingForm.vacanciesAc,
-         vacanciesAfro: rankingForm.vacanciesAfro,
-         vacanciesPcd: rankingForm.vacanciesPcd,
-         officialKeyReleaseDate: rankingForm.officialKeyReleaseDate,
-         keyStatus: rankingForm.keyStatus,
-         hasDiscursive: rankingForm.hasDiscursive,
-         examTypes: rankingForm.examTypes,
-         correctKey: rankingForm.correctKey
-      };
 
       // Handle file upload if keyStatus === 'official' and officialKeyPdfFile exists
       // Fake handling for preview
@@ -389,7 +379,16 @@ const RankingPage: React.FC = () => {
                         <div key={r.id} onClick={() => setSelectedRanking(r)} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full">
                            <div className="flex items-start justify-between mb-4">
                               <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-100 dark:border-slate-700 transition-colors">
-                                 {r.imageUrl ? <img src={r.imageUrl} className="w-full h-full object-contain p-1.5" /> : <Trophy size={20} className="text-slate-300 dark:text-slate-600" />}
+                                 {r.imageUrl ? (
+                                    <Image
+                                       src={r.imageUrl}
+                                       alt={`Logo de ${r.name}`}
+                                       width={40}
+                                       height={40}
+                                       unoptimized
+                                       className="h-full w-full object-contain p-1.5"
+                                    />
+                                 ) : <Trophy size={20} className="text-slate-300 dark:text-slate-600" />}
                               </div>
                               <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wide transition-colors ${r.keyStatus === 'official' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30'}`}>
                                  {r.keyStatus === 'official' ? <CheckCircle size={10} /> : <AlertCircle size={10} />}
@@ -640,7 +639,7 @@ const RankingPage: React.FC = () => {
                                     {type} <X size={10} className="cursor-pointer" onClick={() => setRankingForm({ ...rankingForm, examTypes: rankingForm.examTypes.filter((_, i) => i !== idx) })} />
                                  </span>
                               ))}
-                              {rankingForm.examTypes.length === 0 && <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic transition-colors">Padrão: "Geral"</p>}
+                              {rankingForm.examTypes.length === 0 && <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic transition-colors">Padrão: &quot;Geral&quot;</p>}
                            </div>
                         </div>
 
@@ -655,7 +654,7 @@ const RankingPage: React.FC = () => {
 
                      <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase ml-1 transition-colors">Gabarito</label>
-                           <select value={rankingForm.keyStatus} onChange={e => setRankingForm({ ...rankingForm, keyStatus: e.target.value as any })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/10">
+                           <select value={rankingForm.keyStatus} onChange={e => setRankingForm({ ...rankingForm, keyStatus: e.target.value as RankingKeyStatus })} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-slate-900 dark:text-slate-100 text-xs transition-colors cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/10">
                               <option value="pending">Presumido (Preliminar)</option>
                               <option value="official">Oficial Definitivo</option>
                            </select>
@@ -694,7 +693,7 @@ const RankingPage: React.FC = () => {
                                              onChange={e => {
                                                 const v = e.target.value.toUpperCase();
                                                 if (['A', 'B', 'C', 'D', 'E', 'X', '*', ''].includes(v)) {
-                                                   let newKeyArr = rankingForm.correctKey.padEnd(rankingForm.totalQuestions, ' ').split('');
+                                                   const newKeyArr = rankingForm.correctKey.padEnd(rankingForm.totalQuestions, ' ').split('');
                                                    newKeyArr[i] = v || ' ';
                                                    setRankingForm({ ...rankingForm, correctKey: newKeyArr.join('') });
                                                    if (v && i < rankingForm.totalQuestions - 1) {
@@ -764,8 +763,8 @@ const RankingPage: React.FC = () => {
                            <div className="space-y-3">
                               <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-1.5 transition-colors"><UserCheck size={12} className="text-indigo-500 dark:text-indigo-400" /> Categoria</label>
                               <div className="grid grid-cols-3 gap-2">
-                                 {['AC', 'Afro', 'PCD'].map(cat => (
-                                    <button key={cat} type="button" onClick={() => setPartForm({ ...partForm, category: cat as any })} className={`py-2.5 rounded-xl border text-[10px] font-black uppercase transition-all ${partForm.category === cat ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:border-indigo-200'}`}>{cat}</button>
+                                 {(['AC', 'Afro', 'PCD'] as RankingEntryCategory[]).map(cat => (
+                                    <button key={cat} type="button" onClick={() => setPartForm({ ...partForm, category: cat })} className={`py-2.5 rounded-xl border text-[10px] font-black uppercase transition-all ${partForm.category === cat ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:border-indigo-200'}`}>{cat}</button>
                                  ))}
                               </div>
                            </div>

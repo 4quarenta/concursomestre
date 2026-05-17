@@ -45,6 +45,24 @@ const renderLatex = (source: string, displayMode: boolean) => {
   }
 };
 
+const normalizeLegacyHtmlToMarkdown = (value: string) => value
+  .replace(/<br\s*\/?>/gi, '\n')
+  .replace(/<\/p>/gi, '\n\n')
+  .replace(/<p[^>]*>/gi, '')
+  .replace(/<\/?(?:ul|ol)[^>]*>/gi, '\n')
+  .replace(/<li[^>]*>/gi, '- ')
+  .replace(/<\/li>/gi, '\n')
+  .replace(/<strong[^>]*>|<b[^>]*>/gi, '**')
+  .replace(/<\/strong>|<\/b>/gi, '**')
+  .replace(/<em[^>]*>|<i[^>]*>/gi, '*')
+  .replace(/<\/em>|<\/i>/gi, '*')
+  .replace(/<u[^>]*>/gi, '__')
+  .replace(/<\/u>/gi, '__')
+  .replace(/<mark[^>]*>/gi, '**')
+  .replace(/<\/mark>/gi, '**')
+  .replace(/<\/?(?:div|section|article|header|footer)[^>]*>/gi, '\n')
+  .replace(/&nbsp;/gi, ' ');
+
 const protectMath = (value: string) => {
   const tokens: string[] = [];
   const html: string[] = [];
@@ -66,6 +84,7 @@ const protectMath = (value: string) => {
 };
 
 const renderInlineMarkdown = (value: string) => value
+  .replace(/__([^_]+?)__/g, '<u>$1</u>')
   .replace(/`([^`]+?)`/g, '<code>$1</code>')
   .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')
   .replace(/\*([^*]+?)\*/g, '<em>$1</em>');
@@ -112,7 +131,8 @@ export const renderMathMarkdownToHtml = (content: string | null | undefined): st
     .replace(/^```(?:markdown|md)?\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
-  const { output, tokens, html } = protectMath(withoutFence);
+  const normalizedLegacyHtml = normalizeLegacyHtmlToMarkdown(withoutFence);
+  const { output, tokens, html } = protectMath(normalizedLegacyHtml);
   const safeHtml = protectSafeInlineHtml(output);
   const escaped = escapeHtml(safeHtml.output);
   const blocks = escaped.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);

@@ -42,10 +42,30 @@ import { useTheme } from '@providers/ThemeProvider';
 import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 
 type AuthMode = 'login' | 'signup' | 'forgot' | 'forgot-success' | 'two-factor';
+type SocialProvider = 'google' | 'facebook' | 'apple';
 
 type GoogleCredentialResponse = {
   credential?: string;
   select_by?: string;
+};
+
+type FacebookLoginResponse = {
+  authResponse?: {
+    accessToken?: string;
+  };
+};
+
+type AppleSignInResponse = {
+  authorization?: {
+    id_token?: string;
+  };
+  user?: {
+    email?: string;
+    name?: {
+      firstName?: string;
+      lastName?: string;
+    };
+  };
 };
 
 declare global {
@@ -71,6 +91,34 @@ declare global {
           }) => void;
           cancel?: () => void;
         };
+      };
+    };
+    FB?: {
+      init: (params: {
+        appId: string;
+        cookie?: boolean;
+        xfbml?: boolean;
+        version?: string;
+      }) => void;
+      login: (
+        callback: (response: FacebookLoginResponse) => void,
+        options?: {
+          scope?: string;
+          return_scopes?: boolean;
+        }
+      ) => void;
+    };
+    AppleID?: {
+      auth: {
+        init: (params: {
+          clientId: string;
+          scope?: string;
+          redirectURI: string;
+          state?: string;
+          nonce?: string;
+          usePopup?: boolean;
+        }) => void;
+        signIn: () => Promise<AppleSignInResponse>;
       };
     };
   }
@@ -107,7 +155,7 @@ type AuthApiUser = Record<string, unknown> & {
   reputation?: number | string;
 };
 
-type GoogleAuthResponse = {
+type SocialAuthResponse = {
   success?: boolean;
   message?: string;
   data?: {
@@ -119,9 +167,23 @@ type GoogleAuthResponse = {
   };
 };
 
+type PendingSocialSignup = {
+  provider: SocialProvider;
+  token: string;
+  email: string;
+  name: string;
+  phone: string;
+};
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const decodeGoogleCredentialProfile = (credential: string): { name: string; email: string } => {
+const getSocialProviderLabel = (provider: SocialProvider): string => {
+  if (provider === 'facebook') return 'Facebook';
+  if (provider === 'apple') return 'Apple';
+  return 'Google';
+};
+
+const decodeJwtProfile = (credential: string): { name: string; email: string } => {
   try {
     const payload = credential.split('.')[1] || '';
     if (!payload) {
@@ -238,6 +300,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const rawGoogleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || systemSettings?.googleAuthClientId || '';
   const googleClientId = normalizeGoogleClientId(rawGoogleClientId);
   const hasInvalidGoogleClientId = hasInvalidGoogleClientIdCandidate(rawGoogleClientId);
+  const facebookAppId = String(process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || systemSettings?.facebookAuthAppId || '').trim();
+  const appleClientId = String(process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || systemSettings?.appleAuthClientId || '').trim();
+  const appleRedirectUriFromSettings = String(process.env.NEXT_PUBLIC_APPLE_REDIRECT_URI || systemSettings?.appleAuthRedirectUri || '').trim();
   const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
 
   const [searchQueryString, setSearchQueryString] = useState('');
@@ -248,15 +313,20 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [mode, setMode] = useState<AuthMode>('login');
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isFacebookLoading, setIsFacebookLoading] = useState(false);
+  const [isAppleLoading, setIsAppleLoading] = useState(false);
   const [googleScriptReady, setGoogleScriptReady] = useState(false);
   const [googleScriptFailed, setGoogleScriptFailed] = useState(false);
+  const [facebookScriptReady, setFacebookScriptReady] = useState(false);
+  const [facebookScriptFailed, setFacebookScriptFailed] = useState(false);
+  const [appleScriptReady, setAppleScriptReady] = useState(false);
+  const [appleScriptFailed, setAppleScriptFailed] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [twoFactorEmail, setTwoFactorEmail] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
-  const [pendingGoogleCredential, setPendingGoogleCredential] = useState<string | null>(null);
-  const [googleProfileData, setGoogleProfileData] = useState({ name: '', phone: '', email: '' });
+  const [pendingSocialSignup, setPendingSocialSignup] = useState<PendingSocialSignup | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -303,8 +373,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setError('');
     setShowPassword(false);
     setShowConfirmPassword(false);
-    setPendingGoogleCredential(null);
-    setGoogleProfileData({ name: '', phone: '', email: '' });
+    setPendingSocialSignup(null);
   };
 
   useEffect(() => {
@@ -522,9 +591,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     }
   };
 
-  const finalizeGoogleAuth = React.useCallback(async (result: GoogleAuthResponse, source: 'google_auth' | 'google_auth_profile') => {
+  const finalizeSocialAuth = React.useCallback(async (
+    result: SocialAuthResponse,
+    source: 'google_auth' | 'google_auth_profile' | 'facebook_auth' | 'facebook_auth_profile' | 'apple_auth' | 'apple_auth_profile',
+    provider: SocialProvider,
+  ) => {
     if (!(result.success && result.data)) {
-      throw new Error(result.message || 'Nao foi possivel entrar com Google.');
+      throw new Error(result.message || `Nao foi possivel entrar com ${provider}.`);
     }
 
     if (result.data.require2FA) {
@@ -541,12 +614,42 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         sessionKey: getAnalyticsSessionKey(),
         userId: user?.id ? String(user.id) : null,
         email: user?.email || null,
-        metadata: { mode: 'google' },
+        metadata: { mode: provider },
       });
     }
 
     await onLogin(buildUserProfile(user), token);
   }, [onLogin]);
+
+  const setSocialLoading = React.useCallback((provider: SocialProvider, loading: boolean) => {
+    if (provider === 'google') {
+      setIsGoogleLoading(loading);
+      return;
+    }
+
+    if (provider === 'facebook') {
+      setIsFacebookLoading(loading);
+      return;
+    }
+
+    setIsAppleLoading(loading);
+  }, []);
+
+  const startPendingSocialSignup = React.useCallback((
+    provider: SocialProvider,
+    token: string,
+    defaults?: { name?: string; email?: string },
+  ) => {
+    setPendingSocialSignup({
+      provider,
+      token,
+      name: defaults?.name?.trim() || formData.name || '',
+      email: defaults?.email?.trim() || formData.email || '',
+      phone: '',
+    });
+    setMode('signup');
+    setError(`Complete nome e telefone para concluir o cadastro com ${provider === 'apple' ? 'Apple' : provider === 'facebook' ? 'Facebook' : 'Google'}.`);
+  }, [formData.email, formData.name]);
 
   const handleGoogleCredential = React.useCallback(async (response: GoogleCredentialResponse) => {
     const credential = response.credential || '';
@@ -560,27 +663,20 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     try {
       const referralCode = searchParams.get('ref') || searchParams.get('referral');
-      const loginResult: GoogleAuthResponse = await apiClient.post(ENDPOINTS.auth.google, {
+      const loginResult: SocialAuthResponse = await apiClient.post(ENDPOINTS.auth.google, {
         credential,
         referralCode,
         createIfMissing: false,
       });
 
-      await finalizeGoogleAuth(loginResult, 'google_auth');
+      await finalizeSocialAuth(loginResult, 'google_auth', 'google');
     } catch (err: unknown) {
       const message = readApiErrorMessage(err, 'Nao foi possivel entrar com Google.');
       const shouldCollectProfile = /conta nao encontrada|crie sua conta antes de entrar com google/i.test(message);
 
       if (shouldCollectProfile && registrationEnabled) {
-        const decodedProfile = decodeGoogleCredentialProfile(credential);
-        setPendingGoogleCredential(credential);
-        setGoogleProfileData({
-          name: decodedProfile.name || formData.name || '',
-          email: decodedProfile.email || formData.email || '',
-          phone: '',
-        });
-        setMode('signup');
-        setError('Complete nome e telefone para concluir o cadastro com Google.');
+        const decodedProfile = decodeJwtProfile(credential);
+        startPendingSocialSignup('google', credential, decodedProfile);
         return;
       }
 
@@ -588,17 +684,17 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     } finally {
       setIsGoogleLoading(false);
     }
-  }, [finalizeGoogleAuth, formData.email, formData.name, registrationEnabled, searchParams]);
+  }, [finalizeSocialAuth, registrationEnabled, searchParams, startPendingSocialSignup]);
 
-  const handleGoogleProfileSignup = React.useCallback(async () => {
-    const credential = pendingGoogleCredential;
-    if (!credential) {
-      setError('Nao foi possivel continuar o cadastro com Google. Tente novamente.');
+  const handleSocialProfileSignup = React.useCallback(async () => {
+    const pending = pendingSocialSignup;
+    if (!pending) {
+      setError('Nao foi possivel continuar o cadastro social. Tente novamente.');
       return;
     }
 
-    const normalizedName = googleProfileData.name.trim();
-    const normalizedPhone = googleProfileData.phone.replace(/\D/g, '');
+    const normalizedName = pending.name.trim();
+    const normalizedPhone = pending.phone.replace(/\D/g, '');
     if (!normalizedName) {
       setError('Informe seu nome completo para concluir o cadastro.');
       return;
@@ -609,30 +705,45 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       return;
     }
 
-    setIsGoogleLoading(true);
+    setSocialLoading(pending.provider, true);
     setError('');
 
     try {
       const referralCode = searchParams.get('ref') || searchParams.get('referral');
-      const result: GoogleAuthResponse = await apiClient.post(ENDPOINTS.auth.google, {
-        credential,
+      const providerEndpoint = pending.provider === 'google'
+        ? ENDPOINTS.auth.google
+        : pending.provider === 'facebook'
+          ? ENDPOINTS.auth.facebook
+          : ENDPOINTS.auth.apple;
+      const providerTokenPayload = pending.provider === 'google'
+        ? { credential: pending.token }
+        : pending.provider === 'facebook'
+          ? { accessToken: pending.token }
+          : { idToken: pending.token };
+      const result: SocialAuthResponse = await apiClient.post(providerEndpoint, {
+        ...providerTokenPayload,
         referralCode,
         createIfMissing: true,
         profile: {
           name: normalizedName,
           phone: normalizedPhone,
+          email: pending.email,
         },
       });
 
-      await finalizeGoogleAuth(result, 'google_auth_profile');
-      setPendingGoogleCredential(null);
-      setGoogleProfileData({ name: '', phone: '', email: '' });
+      const source = pending.provider === 'google'
+        ? 'google_auth_profile'
+        : pending.provider === 'facebook'
+          ? 'facebook_auth_profile'
+          : 'apple_auth_profile';
+      await finalizeSocialAuth(result, source, pending.provider);
+      setPendingSocialSignup(null);
     } catch (err: unknown) {
-      setError(readApiErrorMessage(err, 'Nao foi possivel concluir o cadastro com Google.'));
+      setError(readApiErrorMessage(err, 'Nao foi possivel concluir o cadastro social.'));
     } finally {
-      setIsGoogleLoading(false);
+      setSocialLoading(pending.provider, false);
     }
-  }, [finalizeGoogleAuth, googleProfileData, pendingGoogleCredential, searchParams]);
+  }, [finalizeSocialAuth, pendingSocialSignup, searchParams, setSocialLoading]);
 
   useEffect(() => {
     if (!googleClientId || !googleScriptReady || !isAuthForm || isForgot) {
@@ -668,6 +779,152 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       googleIdentity.cancel?.();
     };
   }, [googleClientId, googleScriptReady, handleGoogleCredential, isAuthForm, isForgot, isSignup, theme]);
+
+  useEffect(() => {
+    if (!facebookAppId || !facebookScriptReady || !isAuthForm || isForgot) {
+      return;
+    }
+
+    if (!window.FB) {
+      return;
+    }
+
+    window.FB.init({
+      appId: facebookAppId,
+      cookie: true,
+      xfbml: false,
+      version: 'v19.0',
+    });
+  }, [facebookAppId, facebookScriptReady, isAuthForm, isForgot]);
+
+  const loadFacebookProfileFromToken = React.useCallback(async (accessToken: string) => {
+    try {
+      const response = await fetch(`https://graph.facebook.com/me?fields=name,email&access_token=${encodeURIComponent(accessToken)}`);
+      const payload = await response.json() as { name?: string; email?: string };
+      return {
+        name: String(payload.name || '').trim(),
+        email: String(payload.email || '').trim(),
+      };
+    } catch {
+      return { name: '', email: '' };
+    }
+  }, []);
+
+  const handleFacebookLogin = React.useCallback(async () => {
+    if (!facebookAppId || !facebookScriptReady || !window.FB) {
+      setError('Facebook OAuth ainda nao configurado.');
+      return;
+    }
+
+    setIsFacebookLoading(true);
+    setError('');
+
+    let accessToken = '';
+    try {
+      const loginResponse = await new Promise<FacebookLoginResponse>((resolve) => {
+        window.FB?.login(resolve, {
+          scope: 'public_profile,email',
+          return_scopes: true,
+        });
+      });
+
+      accessToken = String(loginResponse.authResponse?.accessToken || '').trim();
+      if (!accessToken) {
+        throw new Error('Nao foi possivel validar o login com Facebook.');
+      }
+
+      const referralCode = searchParams.get('ref') || searchParams.get('referral');
+      const result: SocialAuthResponse = await apiClient.post(ENDPOINTS.auth.facebook, {
+        accessToken,
+        referralCode,
+        createIfMissing: false,
+      });
+
+      await finalizeSocialAuth(result, 'facebook_auth', 'facebook');
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, 'Nao foi possivel entrar com Facebook.');
+      const shouldCollectProfile = /conta nao encontrada|crie sua conta antes de entrar com facebook/i.test(message);
+
+      if (accessToken && shouldCollectProfile && registrationEnabled) {
+        const socialProfile = await loadFacebookProfileFromToken(accessToken);
+        startPendingSocialSignup('facebook', accessToken, socialProfile);
+        return;
+      }
+
+      setError(message);
+    } finally {
+      setIsFacebookLoading(false);
+    }
+  }, [facebookAppId, facebookScriptReady, finalizeSocialAuth, loadFacebookProfileFromToken, registrationEnabled, searchParams, startPendingSocialSignup]);
+
+  const handleAppleLogin = React.useCallback(async () => {
+    if (!appleClientId || !appleScriptReady || !window.AppleID?.auth) {
+      setError('Apple OAuth ainda nao configurado.');
+      return;
+    }
+
+    const redirectUri = appleRedirectUriFromSettings || `${window.location.origin}/auth`;
+    const nonce = typeof window !== 'undefined' && window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const state = `cm_${Date.now()}`;
+
+    setIsAppleLoading(true);
+    setError('');
+
+    let idToken = '';
+    let seedName = '';
+    let seedEmail = '';
+
+    try {
+      window.AppleID.auth.init({
+        clientId: appleClientId,
+        scope: 'name email',
+        redirectURI: redirectUri,
+        state,
+        nonce,
+        usePopup: true,
+      });
+
+      const appleResponse = await window.AppleID.auth.signIn();
+      idToken = String(appleResponse.authorization?.id_token || '').trim();
+      if (!idToken) {
+        throw new Error('Nao foi possivel validar o login com Apple.');
+      }
+
+      const decodedProfile = decodeJwtProfile(idToken);
+      const fullName = [
+        appleResponse.user?.name?.firstName || '',
+        appleResponse.user?.name?.lastName || '',
+      ].join(' ').trim();
+      const emailFromResponse = String(appleResponse.user?.email || '').trim();
+      seedName = fullName || decodedProfile.name;
+      seedEmail = emailFromResponse || decodedProfile.email;
+
+      const referralCode = searchParams.get('ref') || searchParams.get('referral');
+      const result: SocialAuthResponse = await apiClient.post(ENDPOINTS.auth.apple, {
+        idToken,
+        referralCode,
+        createIfMissing: false,
+      });
+
+      await finalizeSocialAuth(result, 'apple_auth', 'apple');
+    } catch (err: unknown) {
+      const message = readApiErrorMessage(err, 'Nao foi possivel entrar com Apple.');
+      const shouldCollectProfile = /conta nao encontrada|crie sua conta antes de entrar com apple/i.test(message);
+      if (idToken && shouldCollectProfile && registrationEnabled) {
+        startPendingSocialSignup('apple', idToken, {
+          name: seedName,
+          email: seedEmail,
+        });
+        return;
+      }
+
+      setError(message);
+    } finally {
+      setIsAppleLoading(false);
+    }
+  }, [appleClientId, appleRedirectUriFromSettings, appleScriptReady, finalizeSocialAuth, registrationEnabled, searchParams, startPendingSocialSignup]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -709,6 +966,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const renderGoogleButton = () => {
     if (isForgot) return null;
 
+    const socialBusy = isGoogleLoading || isFacebookLoading || isAppleLoading;
+    const isFacebookAvailable = !!facebookAppId && facebookScriptReady && !facebookScriptFailed;
+    const isAppleAvailable = !!appleClientId && appleScriptReady && !appleScriptFailed;
+
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs font-semibold text-slate-500">
@@ -737,6 +998,28 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </button>
           )}
         </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => void handleFacebookLogin()}
+            disabled={!isFacebookAvailable || socialBusy}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            title={!facebookAppId ? 'Facebook OAuth ainda nao configurado.' : facebookScriptFailed ? 'Nao foi possivel carregar o script do Facebook.' : undefined}
+          >
+            {isFacebookLoading ? <Loader2 size={16} className="animate-spin" /> : <span className="text-base leading-none">f</span>}
+            Entrar com Facebook
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleAppleLogin()}
+            disabled={!isAppleAvailable || socialBusy}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            title={!appleClientId ? 'Apple OAuth ainda nao configurado.' : appleScriptFailed ? 'Nao foi possivel carregar o script da Apple.' : undefined}
+          >
+            {isAppleLoading ? <Loader2 size={16} className="animate-spin" /> : <span className="text-base leading-none">A</span>}
+            Entrar com Apple
+          </button>
+        </div>
       </div>
     );
   };
@@ -754,6 +1037,34 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           onError={() => {
             setGoogleScriptReady(false);
             setGoogleScriptFailed(true);
+          }}
+        />
+      )}
+      {facebookAppId && (
+        <Script
+          src="https://connect.facebook.net/pt_BR/sdk.js"
+          strategy="afterInteractive"
+          onLoad={() => {
+            setFacebookScriptFailed(false);
+            setFacebookScriptReady(true);
+          }}
+          onError={() => {
+            setFacebookScriptReady(false);
+            setFacebookScriptFailed(true);
+          }}
+        />
+      )}
+      {appleClientId && (
+        <Script
+          src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js"
+          strategy="afterInteractive"
+          onLoad={() => {
+            setAppleScriptFailed(false);
+            setAppleScriptReady(true);
+          }}
+          onError={() => {
+            setAppleScriptReady(false);
+            setAppleScriptFailed(true);
           }}
         />
       )}
@@ -1058,14 +1369,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             {renderGoogleButton()}
 
-            {pendingGoogleCredential && (
+            {pendingSocialSignup && (
               <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/20">
                 <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
-                  Conta Google encontrada sem cadastro local. Complete os dados para criar a conta.
+                  Conta {getSocialProviderLabel(pendingSocialSignup.provider)} encontrada sem cadastro local. Complete os dados para criar a conta.
                 </p>
-                {googleProfileData.email ? (
+                {pendingSocialSignup.email ? (
                   <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
-                    E-mail Google: <strong>{googleProfileData.email}</strong>
+                    E-mail: <strong>{pendingSocialSignup.email}</strong>
                   </p>
                 ) : null}
 
@@ -1073,9 +1384,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Nome completo</label>
                   <input
                     type="text"
-                    value={googleProfileData.name}
+                    value={pendingSocialSignup.name}
                     onChange={(event) => {
-                      setGoogleProfileData((current) => ({ ...current, name: event.target.value }));
+                      setPendingSocialSignup((current) => current ? { ...current, name: event.target.value } : current);
                       setError('');
                     }}
                     className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
@@ -1089,9 +1400,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     type="tel"
                     inputMode="tel"
                     autoComplete="tel"
-                    value={googleProfileData.phone}
+                    value={pendingSocialSignup.phone}
                     onChange={(event) => {
-                      setGoogleProfileData((current) => ({ ...current, phone: event.target.value }));
+                      setPendingSocialSignup((current) => current ? { ...current, phone: event.target.value } : current);
                       setError('');
                     }}
                     className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
@@ -1099,15 +1410,24 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => void handleGoogleProfileSignup()}
-                  disabled={isGoogleLoading}
-                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#4b28ff] text-sm font-bold text-white transition hover:bg-[#3d20d6] disabled:opacity-60"
-                >
-                  {isGoogleLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
-                  Concluir cadastro com Google
-                </button>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleSocialProfileSignup()}
+                    disabled={isGoogleLoading || isFacebookLoading || isAppleLoading}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#4b28ff] text-sm font-bold text-white transition hover:bg-[#3d20d6] disabled:opacity-60"
+                  >
+                    {isGoogleLoading || isFacebookLoading || isAppleLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+                    Concluir cadastro
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingSocialSignup(null)}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </div>
             )}
           </form>

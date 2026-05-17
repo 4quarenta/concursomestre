@@ -37,13 +37,19 @@ const RankingDetailPage: React.FC = () => {
 
   React.useEffect(() => {
     if (!id) {
-      setError('Ranking nao encontrado.');
-      setIsLoading(false);
-      return;
+      const frameId = window.requestAnimationFrame(() => {
+        setError('Ranking nao encontrado.');
+        setIsLoading(false);
+      });
+      return () => window.cancelAnimationFrame(frameId);
     }
 
     let isMounted = true;
-    setIsLoading(true);
+    const loadingFrameId = window.requestAnimationFrame(() => {
+      if (isMounted) {
+        setIsLoading(true);
+      }
+    });
 
     rankingsService.getById(id)
       .then((payload) => {
@@ -74,6 +80,7 @@ const RankingDetailPage: React.FC = () => {
 
     return () => {
       isMounted = false;
+      window.cancelAnimationFrame(loadingFrameId);
     };
   }, [id]);
 

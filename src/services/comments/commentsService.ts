@@ -24,6 +24,13 @@ type AddCommentInput = {
   targetType?: 'question' | 'material';
 };
 
+type CommentCreationPayload = {
+  id?: string | number;
+  moderationStatus?: 'pending' | 'approved' | 'spam' | string;
+  requiresModeration?: boolean;
+  message?: string;
+};
+
 export interface CommentSubmissionResult {
   id: string;
   moderationStatus: 'pending' | 'approved' | 'spam';
@@ -45,7 +52,7 @@ export const commentService = {
    */
   async getComments(targetId: string, userId?: string): Promise<QuestaoComentario[]> {
     return withRequestCoalescing(buildRequestCacheKey('comments:list', { targetId, userId: userId || '' }), async () => {
-      const response = await apiClient.get<any>(
+      const response = await apiClient.get(
         ENDPOINTS.comments.list,
         {
           params: {
@@ -53,7 +60,7 @@ export const commentService = {
             user_id: userId || '',
           },
         },
-      ) as any;
+      ) as unknown;
 
       const comments = readApiData<QuestaoComentario[]>(response, []);
       return Array.isArray(comments) ? comments : [];
@@ -67,10 +74,10 @@ export const commentService = {
    */
   async getUserComments(userId: string): Promise<QuestaoComentario[]> {
     return withRequestCoalescing(buildRequestCacheKey('comments:user', { userId }), async () => {
-      const response = await apiClient.get<any>(
+      const response = await apiClient.get(
         ENDPOINTS.users.comments,
         { params: { user_id: userId } },
-      ) as any;
+      ) as unknown;
 
       const comments = readApiData<QuestaoComentario[]>(response, []);
       return Array.isArray(comments) ? comments : [];
@@ -82,7 +89,7 @@ export const commentService = {
    * @since 1.0.0
    */
   async addComment(commentData: AddCommentInput): Promise<CommentSubmissionResult> {
-    const response = await apiClient.post<any>(
+    const response = await apiClient.post(
       ENDPOINTS.comments.create,
       {
         action: 'add',
@@ -93,10 +100,10 @@ export const commentService = {
         parent_id: commentData.parentId,
         targetType: commentData.targetType || 'question',
       },
-    ) as any;
+    ) as unknown;
 
-    const envelope = assertApiSuccess<Record<string, any>>(response, 'Falha ao criar comentario.');
-    const payload = readApiData<Record<string, any>>(response, {});
+    const envelope = assertApiSuccess<CommentCreationPayload>(response, 'Falha ao criar comentario.');
+    const payload = readApiData<CommentCreationPayload>(response, {});
     const commentId = String(payload?.id ?? envelope.raw?.id ?? '');
     const moderationStatus = String(payload?.moderationStatus || envelope.raw?.moderationStatus || 'approved') as 'pending' | 'approved' | 'spam';
     const requiresModeration = Boolean(payload?.requiresModeration ?? envelope.raw?.requiresModeration ?? moderationStatus === 'pending');

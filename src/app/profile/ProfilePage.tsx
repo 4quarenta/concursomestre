@@ -40,6 +40,7 @@ import { useConfirm } from '@providers/ModalProvider';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
 import { useUserProgressActions } from '@/state/user-progress/useUserProgressActions';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import { type LawSummary, type Material, type Question, type Transaction, type UserProfile } from '../../types';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import {
@@ -60,8 +61,11 @@ import { profileService, type ReferralStats } from '@services/profile';
 import { questionService } from '@services/questions';
 import { transactionsService } from '@services/transactions';
 import { planService } from '@services/plans';
+import { subscriptionsService } from '@services/subscriptions';
+import { clientLog } from '@services/monitoring/clientLog';
 import { buildQuestionPath } from '@services/seo';
 import { legalCommentaryApiService } from '@services/legal-commentary';
+import { normalizeCareerSelectorLabel } from '@services/filters';
 import {
     PLATFORM_PAGE_DESCRIPTION_CLASS,
     PLATFORM_PAGE_TITLE_CLASS,
@@ -241,11 +245,30 @@ type ProfileSidebarItem = {
     onSelect?: () => void;
 };
 
+const PROFILE_FALLBACK_FOCUS_AREAS = [
+    'Policial',
+    'Fiscal',
+    'Tribunais',
+    'Jurídico',
+    'Educação',
+    'Militar',
+    'Saúde',
+    'TI',
+    'Diplomata',
+];
+
+const PROFILE_EXAM_AREAS = [
+    'Residência em Saúde',
+    'CFC - Exame de Suficiência',
+    'OAB - Exame de Ordem',
+];
+
 const Profile: React.FC = () => {
     const { currentUser, logout, refreshUser, updateUser, toggleSavedQuestion } = useAuth();
     const systemSettings = useAppConfigStore((store) => store.systemSettings);
     const { questions, ensureQuestionsLoaded } = useQuestionBankActions();
     const { userNotes, userAnswers, saveNote, ensureUserProgressLoaded } = useUserProgressActions();
+    const { ensureTaxonomiesLoaded } = useTaxonomyActions();
    const { addToast } = useToast();
    const confirm = useConfirm();
     const pathname = usePathname() || '/profile';
@@ -259,9 +282,9 @@ const Profile: React.FC = () => {
         };
     }, [pathname, searchParams]);
     const params = useParams<{ tab?: string }>();
-    const activeBillingProvider = (currentUser?.subscription?.payment_provider || systemSettings?.paymentProvider || 'stripe') as 'stripe';
+    const activeBillingProvider = (currentUser?.subscription?.payment_provider || systemSettings?.paymentProvider || 'stripe') as 'stripe' | 'manual_admin';
     const isStripeBilling = activeBillingProvider === 'stripe';
-    const billingProviderLabel = 'Stripe';
+    const billingProviderLabel = activeBillingProvider === 'manual_admin' ? 'Concessao manual' : 'Stripe';
     const usesInternalStripeVault = isStripeBilling;
     const stripePublishableKey = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
     const hasActiveSubscription = hasActivePlanAccess(currentUser);
@@ -310,6 +333,7 @@ const Profile: React.FC = () => {
     const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
     const cancelRequestInFlightRef = React.useRef(false);
     const renewalRequestInFlightRef = React.useRef(false);
+    const lastBillingSyncAtRef = React.useRef(0);
     const [lawNotes, setLawNotes] = useState<LegalCommentaryStoredNote[]>([]);
     const [materialNotes, setMaterialNotes] = useState<MaterialNotebookNote[]>([]);
     const [favoriteLaws, setFavoriteLaws] = useState<LawSummary[]>([]);
@@ -334,6 +358,10 @@ const Profile: React.FC = () => {
             window.clearInterval(intervalId);
         };
     }, []);
+
+    React.useEffect(() => {
+        void ensureTaxonomiesLoaded();
+    }, [ensureTaxonomiesLoaded]);
 
     const primarySavedCard = useMemo(() => {
         return userCards.find((card) => Number(card.is_default) === 1) || userCards[0] || null;
@@ -417,7 +445,7 @@ const Profile: React.FC = () => {
                 try {
                     return await questionService.getQuestionById(questionId);
                 } catch (error) {
-                    console.warn(`Failed to load saved question ${questionId}`, error);
+                    clientLog.warn(`Failed to load saved question ${questionId}`, error);
                     return null;
                 }
             }),
@@ -652,7 +680,7 @@ const Profile: React.FC = () => {
             const res = await cardsService.listSavedCards();
             if (res.success) setUserCards(res.cards || []);
         } catch (err) {
-            console.error('Failed to fetch cards', err);
+            clientLog.warn('Failed to fetch cards', err);
             setCardsLoadError('Nao foi possivel sincronizar seus cartoes salvos na Stripe agora.');
         } finally {
             setIsLoadingCards(false);
@@ -863,9 +891,7 @@ const Profile: React.FC = () => {
             return;
         }
         
-        const start = new Date(currentUser.subscription.current_period_start).getTime();
-        const now = new Date().getTime();
-        const isRefundable = (now - start) < (7 * 24 * 60 * 60 * 1000);
+        const isRefundable = isWithinRefundWindow;
 
         try {
             const res = await planService.cancelSubscription(
@@ -875,7 +901,7 @@ const Profile: React.FC = () => {
                 cancelCaptchaToken
             );
             if (res.success) {
-                addToast(res.message || (isRefundable ? 'Solicitacao de cancelamento registrada.' : 'Renovacao automatica atualizada.'), 'success');
+                addToast(res.message || (isRefundable ? 'Solicitacao de cancelamento com reembolso registrada.' : 'Renovacao automatica atualizada.'), 'success');
                 setShowCancelModal(false);
                 setCancelReason('');
                 setCancelDetails('');
@@ -958,12 +984,35 @@ const Profile: React.FC = () => {
             });
             setUserTransactions(transactions);
         } catch (err) {
-            console.error('Failed to fetch transactions', err);
+            clientLog.warn('Failed to fetch transactions', err);
             addToast('Erro ao carregar histórico de pagamentos.', 'error');
         } finally {
             setIsLoadingTransactions(false);
         }
     }, [addToast, currentUser]);
+
+    const syncStripeSubscriptionState = React.useCallback(async () => {
+        if (!currentUser?.id || !isStripeBilling || !hasActiveSubscription) {
+            return;
+        }
+
+        const now = Date.now();
+        if (now - lastBillingSyncAtRef.current < 90_000) {
+            return;
+        }
+        lastBillingSyncAtRef.current = now;
+
+        try {
+            const response = await subscriptionsService.syncCurrentStripeState();
+            if (response?.materialized_invoice) {
+                addToast('Renovação sincronizada com sucesso.', 'success');
+                void fetchUserTransactions();
+            }
+            await refreshUser();
+        } catch (syncError) {
+            clientLog.warn('Failed to sync Stripe subscription state', syncError);
+        }
+    }, [addToast, currentUser?.id, fetchUserTransactions, hasActiveSubscription, isStripeBilling, refreshUser]);
 
     const formatTransactionAmount = (amount: number | string) => {
         const numericAmount = typeof amount === 'number' ? amount : Number(amount || 0);
@@ -1106,11 +1155,33 @@ const Profile: React.FC = () => {
         billing: currentUser?.billing || null,
         subscription: activeSubscription || null,
     });
-    const subscriptionCycleLabel = activeSubscription?.plan?.interval_unit === 'year'
-        ? 'Anual'
-        : activeSubscription?.plan?.interval_count === 3
-            ? 'Trimestral'
-            : 'Mensal';
+    const subscriptionCycleLabel = (() => {
+        const intervalUnit = String(activeSubscription?.plan?.interval_unit || '').toLowerCase();
+        const intervalCount = Math.max(1, Number(activeSubscription?.plan?.interval_count || 1));
+
+        if (intervalUnit === 'year') {
+            return intervalCount > 1 ? `A cada ${intervalCount} anos` : 'Anual';
+        }
+
+        if (intervalUnit === 'month') {
+            if (intervalCount >= 12) return 'Anual';
+            if (intervalCount === 3) return 'Trimestral';
+            return intervalCount > 1 ? `A cada ${intervalCount} meses` : 'Mensal';
+        }
+
+        if (intervalUnit === 'week') {
+            return intervalCount > 1 ? `A cada ${intervalCount} semanas` : 'Semanal';
+        }
+
+        if (intervalUnit === 'day') {
+            return intervalCount > 1 ? `${intervalCount} dias` : 'Diário';
+        }
+
+        const billingCycle = String(currentUser?.billing?.billingCycle || '').toLowerCase();
+        if (billingCycle === 'annual') return 'Anual';
+        if (billingCycle === 'quarterly') return 'Trimestral';
+        return 'Mensal';
+    })();
     const showFreeInactiveSubscriptionState = !hasActiveSubscription && subscriptionPlanName.toLowerCase().includes('gratuito');
     const {
         termStartAt: subscriptionStartDate,
@@ -1123,11 +1194,12 @@ const Profile: React.FC = () => {
         daysSinceStart: subscriptionDaysSinceStart,
     } = subscriptionTimeline;
     const hasPendingRefundRequest = userTransactions.some((transaction) => String(transaction.status || '').toLowerCase() === 'refund_requested');
-    const isWithinRefundWindow = subscriptionDaysSinceStart !== null
-        ? subscriptionDaysSinceStart < 7
-        : false;
     const installmentCount = Math.max(1, Number(activeSubscription?.total_installments || 1));
     const paidInstallments = Math.max(0, Number(activeSubscription?.paid_installments || 0));
+    const isFirstSubscriptionCharge = paidInstallments <= 1;
+    const isWithinRefundWindow = isFirstSubscriptionCharge && subscriptionDaysSinceStart !== null
+        ? subscriptionDaysSinceStart < 7
+        : false;
     const currentInstallment = installmentCount > 1
         ? Math.min(Math.max(paidInstallments, 1), installmentCount)
         : 1;
@@ -1148,10 +1220,10 @@ const Profile: React.FC = () => {
             : `Cobrança ${subscriptionCycleLabel.toLowerCase()}.`;
     const subscriptionHeadline = hasActiveSubscription
         ? (resolvedAutoRenew
-            ? `A próxima renovação está prevista para ${formatDateBR(nextRenewalDate)} por ${formatTransactionAmount(nextRenewalAmount)} no plano ${nextRenewalCycleLabel.toLowerCase()}.`
+            ? `A próxima renovação está prevista para ${formatDateTimeBR(nextRenewalDate)} por ${formatTransactionAmount(nextRenewalAmount)} no plano ${nextRenewalCycleLabel.toLowerCase()}.`
             : (termCommitmentRemaining
                 ? 'A renovação automática está desligada. O termo atual seguirá até a última parcela contratada e depois será encerrado.'
-                : `A renovação automática está desligada. Seu acesso fica ativo até ${formatDateBR(subscriptionEndDate)}.`))
+                : `A renovação automática está desligada. Seu acesso fica ativo até ${formatDateTimeBR(subscriptionEndDate)}.`))
         : 'Sua assinatura não está ativa no momento.';
     const renewalCardDescription = hasActiveSubscription
         ? (resolvedAutoRenew
@@ -1179,11 +1251,11 @@ const Profile: React.FC = () => {
     const cancellationImpactMessage = hasScheduledEnding
         ? (termCommitmentRemaining
             ? 'A renovação foi desligada. O termo atual segue até a última parcela já contratada.'
-            : `A renovação foi desligada. O acesso permanece normal até ${formatDateBR(subscriptionEndDate)}.`)
+            : `A renovação foi desligada. O acesso permanece normal até ${formatDateTimeBR(subscriptionEndDate)}.`)
         : hasActiveSubscription
             ? (termCommitmentRemaining
                 ? 'Se você cancelar agora, o acesso continua até o fim do termo contratado.'
-                : `Se você cancelar agora, o acesso continua até ${formatDateBR(subscriptionEndDate)}.`)
+                : `Se você cancelar agora, o acesso continua até ${formatDateTimeBR(subscriptionEndDate)}.`)
             : (isCanceledStatus
                 ? 'Assinatura encerrada. Para voltar, ative um novo plano.'
                 : 'Sem assinatura ativa para cancelamento.');
@@ -1212,7 +1284,7 @@ const Profile: React.FC = () => {
             const materials = await marketplaceService.listUserMaterials(currentUser.id);
             setUserMaterials(materials);
         } catch (err) {
-            console.error('Error fetching materials:', err);
+            clientLog.warn('Error fetching materials:', err);
         }
     }, [currentUser, marketplaceEnabled]);
 
@@ -1277,7 +1349,7 @@ const Profile: React.FC = () => {
             const stats = await profileService.getReferralStats();
             setReferralStats(stats);
         } catch (err) {
-            console.error('Failed to fetch referral stats', err);
+            clientLog.warn('Failed to fetch referral stats', err);
         }
     }, []);
 
@@ -1386,7 +1458,7 @@ const Profile: React.FC = () => {
                         <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Ciclo / vigencia</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
-                                {hasActiveSubscription ? formatDateBR(subscriptionEndDate) : 'Indeterminado'}
+                                {hasActiveSubscription ? formatDateTimeBR(subscriptionEndDate) : 'Indeterminado'}
                             </p>
                             <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                 {hasActiveSubscription ? `${subscriptionRemainingDays} dias restantes no ciclo atual.` : 'Sem ciclo de cobranca em andamento.'}
@@ -1434,8 +1506,8 @@ const Profile: React.FC = () => {
                                     />
                                 </div>
                                 <div className="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
-                                    <span>Início: {formatDateBR(subscriptionStartDate)}</span>
-                                    <span>Fim: {formatDateBR(subscriptionEndDate)}</span>
+                                    <span>Início: {formatDateTimeBR(subscriptionStartDate)}</span>
+                                    <span>Fim: {formatDateTimeBR(subscriptionEndDate)}</span>
                                 </div>
                             </div>
                         </div>
@@ -1456,7 +1528,7 @@ const Profile: React.FC = () => {
                                     {resolvedAutoRenew && hasActiveSubscription && (
                                         <div className="space-y-1">
                                             <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                                                Próxima renovação: {formatDateBR(nextRenewalDate)} por {formatTransactionAmount(nextRenewalAmount)} no plano {nextRenewalCycleLabel.toLowerCase()}.
+                                                Próxima renovação: {formatDateTimeBR(nextRenewalDate)} por {formatTransactionAmount(nextRenewalAmount)} no plano {nextRenewalCycleLabel.toLowerCase()}.
                                             </p>
                                             <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                                                 Origem do valor: {nextRenewalPriceSourceLabel}.
@@ -1465,7 +1537,7 @@ const Profile: React.FC = () => {
                                     )}
                                     {hasActiveSubscription && !resolvedAutoRenew && (
                                         <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                                            Acesso até: {formatDateBR(subscriptionEndDate)}
+                                            Acesso até: {formatDateTimeBR(subscriptionEndDate)}
                                         </p>
                                     )}
                                 </div>
@@ -1508,7 +1580,7 @@ const Profile: React.FC = () => {
                                     </h3>
                                     <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                         {isWithinRefundWindow
-                                            ? 'Voce ainda esta dentro dos 7 dias para cancelar com reembolso.'
+                                            ? 'Voce ainda esta dentro dos 7 dias da primeira assinatura para cancelar com reembolso.'
                                             : cancellationImpactMessage}
                                     </p>
                                 </div>
@@ -1991,7 +2063,7 @@ const Profile: React.FC = () => {
                             </div>
 
                             <p className="mt-4 text-[9px] font-black uppercase tracking-tight text-slate-400">
-                                Você mantera seu acesso ate o dia {formatDateBR(currentUser?.subscription?.current_period_end)}
+                                Você manterá seu acesso até {formatDateTimeBR(currentUser?.subscription?.current_period_end)}
                             </p>
                         </div>
                     </motion.div>
@@ -2177,6 +2249,7 @@ const Profile: React.FC = () => {
                 void fetchUserCards();
             }
             if (activeTab === 'billing' || activeTab === 'billing-history') {
+                void syncStripeSubscriptionState();
                 void fetchUserTransactions();
             }
             if (activeTab === 'materials' && marketplaceEnabled) {
@@ -2203,6 +2276,7 @@ const Profile: React.FC = () => {
         fetchUserCards,
         fetchUserMaterials,
         fetchUserTransactions,
+        syncStripeSubscriptionState,
         isStripeBilling,
         marketplaceEnabled,
     ]);
@@ -2245,10 +2319,26 @@ const Profile: React.FC = () => {
         userMaterials,
     ]);
 
-   const EXAM_AREAS = [
-      { group: 'Carreiras', areas: ['Policial', 'Fiscal', 'Tribunais', 'Jurídico', 'Educação', 'Militar', 'Saúde', 'TI', 'Diplomata'] },
-      { group: 'Exames', areas: ['Residência em Saúde', 'CFC - Exame de Suficiência', 'OAB - Exame de Ordem'] }
-   ];
+   const EXAM_AREAS = useMemo(() => {
+      const taxonomyCareers = Array.isArray(systemSettings?.taxonomies?.careers)
+         ? systemSettings.taxonomies.careers
+         : [];
+
+      const normalizedCareers = Array.from(new Set(
+         taxonomyCareers
+            .map((item) => normalizeCareerSelectorLabel(item?.name || ''))
+            .filter(Boolean),
+      ));
+
+      const careerAreas = normalizedCareers.length > 0
+         ? normalizedCareers
+         : PROFILE_FALLBACK_FOCUS_AREAS;
+
+      return [
+         { group: 'Carreiras', areas: careerAreas },
+         { group: 'Exames', areas: PROFILE_EXAM_AREAS },
+      ];
+   }, [systemSettings]);
 
    const timelineData = useMemo(() => {
       const data: Record<string, { date: string, taxa: number, total: number }> = {};
@@ -3172,7 +3262,7 @@ const Profile: React.FC = () => {
                                await updateUser(updates);
                                // Notification is handled by AuthContext
                            } catch (err: unknown) {
-                               console.error('Profile update error:', err);
+                               clientLog.warn('Profile update error:', err);
                                const msg = readApiErrorMessage(err, 'Erro ao sincronizar. Verifique sua conexão.');
                                addToast(msg, 'error');
                            } finally {
@@ -3567,30 +3657,19 @@ const Profile: React.FC = () => {
                                                 </div>
                                             ) : (
                                                 <div className="flex flex-col items-end gap-1">
-                                                    {(() => {
-                                                        if (!currentUser.subscription?.current_period_start) return null;
-                                                        const start = new Date(currentUser.subscription.current_period_start).getTime();
-                                                        const now = new Date().getTime();
-                                                        const isWithinSevenDays = (now - start) < (7 * 24 * 60 * 60 * 1000);
-                                                        
-                                                        if (isWithinSevenDays) {
-                                                            return (
-                                                                <button 
-                                                                    onClick={() => setShowCancelModal(true)}
-                                                                    className="text-[10px] font-black text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 uppercase tracking-widest transition-colors"
-                                                                >
-                                                                    Cancelar e Solicitar Reembolso
-                                                                </button>
-                                                            );
-                                                        } else {
-                                                            return (
-                                                                <div className="flex items-center gap-1.5 opacity-60">
-                                                                    <ShieldCheck size={12} className="text-emerald-500" />
-                                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Compromisso Ativo</span>
-                                                                </div>
-                                                            );
-                                                        }
-                                                    })()}
+                                                    {isWithinRefundWindow ? (
+                                                        <button
+                                                            onClick={() => setShowCancelModal(true)}
+                                                            className="text-[10px] font-black text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 uppercase tracking-widest transition-colors"
+                                                        >
+                                                            Cancelar e Solicitar Reembolso
+                                                        </button>
+                                                    ) : (
+                                                        <div className="flex items-center gap-1.5 opacity-60">
+                                                            <ShieldCheck size={12} className="text-emerald-500" />
+                                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Compromisso Ativo</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -4251,43 +4330,27 @@ const Profile: React.FC = () => {
                                      <h3 className="text-2xl font-black text-slate-900 dark:text-slate-100 italic">
                                          Já vai nos deixar, {currentUser.name?.split(' ')[0]}?
                                      </h3>
-                                     <p className="text-sm font-medium text-slate-500 dark:text-slate-400 leading-relaxed px-4">
-                                         {(() => {
-                                             const start = new Date(currentUser.subscription.current_period_start).getTime();
-                                             const now = new Date().getTime();
-                                             const isRefundable = (now - start) < (7 * 24 * 60 * 60 * 1000);
-                                             
-                                             if (isRefundable) {
-                                                 return "Você ainda está no período de garantia. Se cancelar agora, faremos seu reembolso total, mas sua jornada rumo à aprovação perderá o fôlego da nossa IA.";
-                                             }
-                                             return "Sua aprovação está cada dia mais próxima! Cancelando agora, você perderá acesso ao Banco de Questões mais completo do mercado ao fim do ciclo atual.";
-                                         })()}
-                                     </p>
+                                      <p className="text-sm font-medium text-slate-500 dark:text-slate-400 leading-relaxed px-4">
+                                          {isWithinRefundWindow
+                                              ? 'Você ainda está no período de garantia da primeira assinatura. Se cancelar agora, pode solicitar reembolso integral.'
+                                              : 'Sua aprovação está cada dia mais próxima. Cancelando agora, a renovação automática é desligada e o acesso segue até o fim do ciclo atual.'}
+                                      </p>
                                  </div>
 
                                  {/* Banner de Garantia Movido para cá */}
-                                 {(() => {
-                                    const start = new Date(currentUser.subscription.current_period_start).getTime();
-                                    const now = new Date().getTime();
-                                    const isWithinSevenDays = (now - start) < (7 * 24 * 60 * 60 * 1000);
-                                    
-                                    if (isWithinSevenDays) {
-                                       return (
-                                          <div className="bg-indigo-50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/10 p-4 rounded-2xl flex items-center gap-4 text-left">
-                                             <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20 font-sans">
-                                                <ShieldCheck size={20} className="text-white" />
-                                             </div>
-                                             <div className="flex-1">
-                                                <h4 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Garantia Legal de 7 Dias</h4>
-                                                <p className="text-[11px] font-medium text-indigo-900/60 dark:text-indigo-300/60 leading-tight">
-                                                   Sua satisfação é nossa prioridade. Cancele e receba 100% do valor de volta em até 7 dias após a contratação.
-                                                </p>
-                                             </div>
-                                          </div>
-                                       );
-                                    }
-                                    return null;
-                                 })()}
+                                  {isWithinRefundWindow ? (
+                                     <div className="bg-indigo-50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/10 p-4 rounded-2xl flex items-center gap-4 text-left">
+                                        <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20 font-sans">
+                                           <ShieldCheck size={20} className="text-white" />
+                                        </div>
+                                        <div className="flex-1">
+                                           <h4 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Garantia Legal de 7 Dias</h4>
+                                           <p className="text-[11px] font-medium text-indigo-900/60 dark:text-indigo-300/60 leading-tight">
+                                              Essa janela vale apenas para os 7 primeiros dias da primeira assinatura.
+                                           </p>
+                                        </div>
+                                     </div>
+                                  ) : null}
                              </div>
 
                              <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl space-y-4 text-left border border-slate-100 dark:border-slate-800">

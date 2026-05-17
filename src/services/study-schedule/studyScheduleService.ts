@@ -32,7 +32,7 @@ type StudyScheduleResponse<TForm, TPlan> = {
 
 export const studyScheduleService = {
   async get<TForm = unknown, TPlan = unknown>(): Promise<StudyScheduleSnapshot<TForm, TPlan> | null> {
-    const response = await apiClient.get<any>(ENDPOINTS.studySchedule.get) as any;
+    const response = await apiClient.get(ENDPOINTS.studySchedule.get) as unknown;
     assertApiSuccess(response, 'Nao foi possivel carregar o cronograma.');
     const payload = readApiData<StudyScheduleResponse<TForm, TPlan>>(response, {});
     return payload.schedule || null;
@@ -42,13 +42,13 @@ export const studyScheduleService = {
     form: TForm,
     generatedPlan: TPlan | null
   ): Promise<StudyScheduleSnapshot<TForm, TPlan> | null> {
-    const response = await apiClient.post<any>(ENDPOINTS.studySchedule.save, {
+    const response = await apiClient.post(ENDPOINTS.studySchedule.save, {
       form,
       generatedPlan,
       generatedAt: generatedPlan && typeof generatedPlan === 'object'
         ? (generatedPlan as Record<string, unknown>).generatedAt
         : null,
-    }) as any;
+    }) as unknown;
 
     const envelope = assertApiSuccess(response, 'Nao foi possivel salvar o cronograma.');
     const payload = readApiData<StudyScheduleResponse<TForm, TPlan>>(response, {});
@@ -61,7 +61,7 @@ export const studyScheduleService = {
   },
 
   async remove(): Promise<void> {
-    const response = await apiClient.post<any>(ENDPOINTS.studySchedule.delete, {}) as any;
+    const response = await apiClient.post(ENDPOINTS.studySchedule.delete, {}) as unknown;
     assertApiSuccess(response, 'Nao foi possivel remover o cronograma.');
   },
 };

@@ -9,7 +9,7 @@
 *
 */
 
-import { LucideIcon, BrainCircuit } from 'lucide-react';
+import { LucideIcon } from 'lucide-react';
 
 export interface ThemeConfig {
     heroBadge: string;

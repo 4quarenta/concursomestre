@@ -65,6 +65,11 @@ export const useManualQuestionReferenceData = (systemSettings: SystemSettings, q
   }, [taxonomies]);
 
   const existingProvas = useMemo(() => {
+    const hasPersistedExamBank = Array.isArray(systemSettings.examBank) && systemSettings.examBank.length > 0;
+    if (hasPersistedExamBank || questions.length === 0) {
+      return mergeExamBankSources(systemSettings, []);
+    }
+
     return mergeExamBankSources(systemSettings, questions);
   }, [questions, systemSettings]);
 

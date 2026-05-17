@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Question } from 'types';
 import { isPlatformOriginalQuestion, isQuestionCanceled, readQuestionBooleanFlag } from '../questionFlags';
 
-const makeQuestion = (patch: Partial<Question> & Record<string, unknown> = {}) => ({
+const makeQuestion = (patch: Record<string, unknown> = {}) => ({
   enunciado: 'Enunciado',
   bancas: [],
   orgaos: [],
@@ -14,17 +14,17 @@ const makeQuestion = (patch: Partial<Question> & Record<string, unknown> = {}) =
   itens: [],
   resposta: 1,
   ...patch,
-} as Question);
+} as unknown as Question);
 
 describe('question flags', () => {
   it('does not treat backend string false values as canceled questions', () => {
-    expect(isQuestionCanceled(makeQuestion({ anulada: '0' as any }))).toBe(false);
-    expect(isQuestionCanceled(makeQuestion({ isCanceled: 'false' as any }))).toBe(false);
+    expect(isQuestionCanceled(makeQuestion({ anulada: '0' }))).toBe(false);
+    expect(isQuestionCanceled(makeQuestion({ isCanceled: 'false' }))).toBe(false);
   });
 
   it('recognizes common true values for canceled questions', () => {
-    expect(isQuestionCanceled(makeQuestion({ anulada: 1 as any }))).toBe(true);
-    expect(isQuestionCanceled(makeQuestion({ isCanceled: 'true' as any }))).toBe(true);
+    expect(isQuestionCanceled(makeQuestion({ anulada: 1 }))).toBe(true);
+    expect(isQuestionCanceled(makeQuestion({ isCanceled: 'true' }))).toBe(true);
   });
 
   it('recognizes platform original questions without false positives from string zero', () => {

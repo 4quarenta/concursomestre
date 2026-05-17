@@ -15,6 +15,7 @@ import { Download, Info, Loader2, RefreshCcw, Terminal, Trash2, X } from 'lucide
 import { useConfirm } from '@providers/ModalProvider';
 import { useToast } from '@providers/ToastProvider';
 import { adminService, type SystemLogsPayload } from '@services/admin/adminService';
+import { clientLog } from '@services/monitoring/clientLog';
 import {
   ADMIN_MODAL_PANEL_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
@@ -174,7 +175,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
       setLogPayload(nextPayload);
       setLogs(Array.isArray(nextPayload.lines) ? nextPayload.lines : []);
     } catch (error: unknown) {
-      console.error('Erro ao buscar logs:', error);
+      clientLog.warn('Erro ao buscar logs:', error);
       addToast(getErrorMessage(error, 'Nao foi possivel carregar os logs.'), 'error');
     } finally {
       setLoading(false);

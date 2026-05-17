@@ -10,10 +10,11 @@ import {
   type QuestionBankPageParams,
 } from './questionBankQuery';
 import { useQuestionBankStore } from './questionBankStore';
+import { clientLog } from '@services/monitoring/clientLog';
 
 /**
  * Question-bank actions backed by Zustand + TanStack Query.
- * Replaces DataProvider coupling for pages that only need question loading.
+ * Centraliza carga e cache do banco de questoes para paginas que precisam desse dominio.
  *
  * @since 1.0.0
  */
@@ -81,7 +82,7 @@ export const useQuestionBankActions = () => {
         totalQuestions: result.total || sanitized.length,
       });
     } catch (error) {
-      console.error('Failed to load initial questions:', error);
+      clientLog.warn('Failed to load initial questions:', error);
     }
   }, [
     authIsLoading,
@@ -122,7 +123,7 @@ export const useQuestionBankActions = () => {
       const sanitized = questionRows.map((question) => ({ ...question, comments: null as Question['comments'] }));
       appendQuestions(currentDataOwnerKey, sanitized, result.total || 0);
     } catch (error) {
-      console.error('Failed to fetch more questions:', error);
+      clientLog.warn('Failed to fetch more questions:', error);
     }
   }, [appendQuestions, authIsLoading, currentAccountId, currentDataOwnerKey, currentUserId, queryClient]);
 

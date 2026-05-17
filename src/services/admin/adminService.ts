@@ -66,6 +66,25 @@ export interface AdminAvailablePlanRecord extends AdminLooseRecord {
   active?: number | string | boolean;
 }
 
+export interface AdminPlanCatalogItem extends AdminLooseRecord {
+  id: number;
+  name: string;
+  description?: string;
+  price: number;
+  interval_count: number;
+  interval_unit: 'day' | 'week' | 'month' | 'year';
+  tier?: number | null;
+  active: boolean;
+  external_plan_id?: string | null;
+  stripe_product_id?: string | null;
+  stripe_price_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  is_test_plan?: boolean;
+  can_edit_interval?: boolean;
+  can_toggle_active?: boolean;
+}
+
 export interface AdminUserCommentRecord extends AdminLooseRecord {
   id?: string | number;
   created_at?: string | null;
@@ -135,6 +154,48 @@ export interface SystemLogsPayload {
   size_bytes?: number;
   updated_at?: string | null;
   cleared?: boolean;
+}
+
+export interface AdminSecurityIpSignal {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface AdminSecuritySuspiciousIp {
+  ipAddress: string;
+  score: number;
+  signals: AdminSecurityIpSignal[];
+  sessionsCount: number;
+  refreshCount: number;
+  usersCount: number;
+  firstSeenAt?: string | null;
+  lastSeenAt?: string | null;
+  isBanned: boolean;
+  banReason?: string | null;
+  bannedAt?: string | null;
+  blockedHits?: number;
+}
+
+export interface AdminSecurityBannedIp {
+  ipAddress: string;
+  reason: string;
+  blockedHits: number;
+  lastBlockedAt?: string | null;
+  bannedUntil?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface AdminSecurityIpsPayload {
+  suspicious: AdminSecuritySuspiciousIp[];
+  banned: AdminSecurityBannedIp[];
+  stats: {
+    suspiciousCount: number;
+    bannedCount: number;
+  };
 }
 
 export interface AdminStatsPayload {
@@ -607,6 +668,92 @@ export const adminService = {
    * Lista os usuários para gestão e moderação no admin.
    * @since v1.0.0
    */
+  /**
+   * Lista o catalogo completo de planos para gestao financeira no admin.
+   * Inclui planos de ciclo curto (ex.: 2 dias) e planos desativados.
+   * @since v1.0.0
+   */
+  async getPlanCatalog(search = ''): Promise<AdminPlanCatalogItem[]> {
+    const response = await requestApi<{ items?: AdminPlanCatalogItem[] } | AdminPlanCatalogItem[]>(apiClient.get<ApiResponse<{ items?: AdminPlanCatalogItem[] } | AdminPlanCatalogItem[]>>(
+      ENDPOINTS.admin.plansCatalog,
+      {
+        params: {
+          search: search.trim(),
+        },
+      },
+    ));
+    const payload = readApiData(response, { items: [] as AdminPlanCatalogItem[] });
+    const items = Array.isArray(payload) ? payload : (Array.isArray(payload.items) ? payload.items : []);
+
+    return items.map((item) => ({
+      id: Number(item.id || 0),
+      name: String(item.name || ''),
+      description: typeof item.description === 'string' ? item.description : '',
+      price: Number(item.price || 0),
+      interval_count: Math.max(1, Number(item.interval_count || 1)),
+      interval_unit: (['day', 'week', 'month', 'year'].includes(String(item.interval_unit || 'month'))
+        ? String(item.interval_unit)
+        : 'month') as 'day' | 'week' | 'month' | 'year',
+      tier: item.tier == null ? null : Number(item.tier),
+      active: item.active !== false,
+      external_plan_id: item.external_plan_id ?? null,
+      stripe_product_id: item.stripe_product_id ?? null,
+      stripe_price_id: item.stripe_price_id ?? null,
+      created_at: item.created_at ?? null,
+      updated_at: item.updated_at ?? null,
+      is_test_plan: item.is_test_plan === true,
+      can_edit_interval: item.can_edit_interval === true,
+      can_toggle_active: item.can_toggle_active === true,
+    })).filter((item) => item.id > 0 && item.name !== '');
+  },
+
+  /**
+   * Atualiza valor, ciclo e status de um plano do catalogo.
+   * @since v1.0.0
+   */
+  async updatePlanCatalog(payload: {
+    plan_id: number;
+    price?: number;
+    interval_count?: number;
+    interval_unit?: 'day' | 'week' | 'month' | 'year';
+    active?: boolean;
+  }): Promise<AdminPlanCatalogItem> {
+    const response = await requestApi<AdminPlanCatalogItem>(apiClient.post<ApiResponse<AdminPlanCatalogItem>>(
+      ENDPOINTS.admin.plansCatalog,
+      payload,
+    ));
+    const envelope = assertApiSuccess(response, 'Nao foi possivel atualizar o plano.');
+    const item = readApiData<AdminPlanCatalogItem>(envelope.raw, {
+      id: payload.plan_id,
+      name: '',
+      price: Number(payload.price || 0),
+      interval_count: Math.max(1, Number(payload.interval_count || 1)),
+      interval_unit: payload.interval_unit || 'month',
+      active: payload.active !== false,
+    });
+
+    return {
+      id: Number(item.id || payload.plan_id),
+      name: String(item.name || ''),
+      description: typeof item.description === 'string' ? item.description : '',
+      price: Number(item.price || 0),
+      interval_count: Math.max(1, Number(item.interval_count || 1)),
+      interval_unit: (['day', 'week', 'month', 'year'].includes(String(item.interval_unit || 'month'))
+        ? String(item.interval_unit)
+        : 'month') as 'day' | 'week' | 'month' | 'year',
+      tier: item.tier == null ? null : Number(item.tier),
+      active: item.active !== false,
+      external_plan_id: item.external_plan_id ?? null,
+      stripe_product_id: item.stripe_product_id ?? null,
+      stripe_price_id: item.stripe_price_id ?? null,
+      created_at: item.created_at ?? null,
+      updated_at: item.updated_at ?? null,
+      is_test_plan: item.is_test_plan === true,
+      can_edit_interval: item.can_edit_interval === true,
+      can_toggle_active: item.can_toggle_active === true,
+    };
+  },
+
   async getUsers(): Promise<UserProfile[]> {
     const response = await requestApi<UserProfile[]>(apiClient.get<ApiResponse<UserProfile[]>>(ENDPOINTS.users.list));
     const payload = readApiData(response, []);
@@ -763,6 +910,53 @@ export const adminService = {
       updated_at: null,
       cleared: true,
     });
+  },
+
+  /**
+   * Snapshot administrativo de IPs suspeitos/bloqueados.
+   * @since v1.0.0
+   */
+  async getSecurityIps(search = '', limit = 50): Promise<AdminSecurityIpsPayload> {
+    const response = await requestApi<AdminSecurityIpsPayload>(apiClient.get<ApiResponse<AdminSecurityIpsPayload>>(ENDPOINTS.admin.securityIps, {
+      params: {
+        search,
+        limit,
+      },
+    }));
+
+    return readApiData(response, {
+      suspicious: [],
+      banned: [],
+      stats: {
+        suspiciousCount: 0,
+        bannedCount: 0,
+      },
+    });
+  },
+
+  /**
+   * Bloqueia manualmente um IP suspeito.
+   * @since v1.0.0
+   */
+  async banSecurityIp(ipAddress: string, reason: string): Promise<void> {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.securityIps, {
+      action: 'ban',
+      ipAddress,
+      reason,
+    }));
+    assertApiSuccess(response, 'Nao foi possivel bloquear o IP.');
+  },
+
+  /**
+   * Remove o bloqueio manual de um IP.
+   * @since v1.0.0
+   */
+  async unbanSecurityIp(ipAddress: string): Promise<void> {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.securityIps, {
+      action: 'unban',
+      ipAddress,
+    }));
+    assertApiSuccess(response, 'Nao foi possivel desbloquear o IP.');
   },
 
   /**
@@ -1126,18 +1320,25 @@ export const adminService = {
    * @since v1.0.0
    */
   async getQuestionGroups(params: { keyword?: string } = {}): Promise<AdminQuestionGroupItem[]> {
-    const response = await requestApi<{ items?: AdminQuestionGroupItem[] } | AdminQuestionGroupItem[]>(apiClient.get<ApiResponse<{ items?: AdminQuestionGroupItem[] } | AdminQuestionGroupItem[]>>(
-      ENDPOINTS.questions.groups,
-      {
-        params: {
-          keyword: params.keyword || '',
-        },
-      },
-    ));
+    const keyword = String(params.keyword || '').trim();
+    return withRequestCoalescing(
+      buildRequestCacheKey('admin:question-groups', { keyword }),
+      async () => {
+        const response = await requestApi<{ items?: AdminQuestionGroupItem[] } | AdminQuestionGroupItem[]>(apiClient.get<ApiResponse<{ items?: AdminQuestionGroupItem[] } | AdminQuestionGroupItem[]>>(
+          ENDPOINTS.questions.groups,
+          {
+            params: {
+              keyword,
+            },
+          },
+        ));
 
-    const payload = readApiData(response, { items: [] as AdminQuestionGroupItem[] });
-    const items = Array.isArray(payload) ? payload : payload.items;
-    return Array.isArray(items) ? items : [];
+        const payload = readApiData(response, { items: [] as AdminQuestionGroupItem[] });
+        const items = Array.isArray(payload) ? payload : payload.items;
+        return Array.isArray(items) ? items : [];
+      },
+      10_000,
+    );
   },
 
   /**
@@ -1198,23 +1399,30 @@ export const adminService = {
    * @since v1.0.0
    */
   async getUserDetails(userId: string): Promise<AdminUserDetailsPayload> {
-    const response = await requestApi<AdminUserDetailsPayload>(apiClient.get<ApiResponse<AdminUserDetailsPayload>>(`${ENDPOINTS.admin.userDetails}?id=${userId}`));
-    return readApiData(response, {
-      profile: {},
-      subscriptions: [],
-      transactions: [],
-      available_plans: [],
-      materials: [],
-      stats: {
-        comments_count: 0,
-        feedback_count: 0,
-        reports_count: 0,
-        open_reports_count: 0,
+    const normalizedUserId = String(userId || '').trim();
+    return withRequestCoalescing(
+      buildRequestCacheKey('admin:user-details', { userId: normalizedUserId }),
+      async () => {
+        const response = await requestApi<AdminUserDetailsPayload>(apiClient.get<ApiResponse<AdminUserDetailsPayload>>(`${ENDPOINTS.admin.userDetails}?id=${normalizedUserId}`));
+        return readApiData(response, {
+          profile: {},
+          subscriptions: [],
+          transactions: [],
+          available_plans: [],
+          materials: [],
+          stats: {
+            comments_count: 0,
+            feedback_count: 0,
+            reports_count: 0,
+            open_reports_count: 0,
+          },
+          last_comments: [],
+          feedback_threads: [],
+          reports: [],
+        });
       },
-      last_comments: [],
-      feedback_threads: [],
-      reports: [],
-    });
+      15_000,
+    );
   },
 
   /**

@@ -26,25 +26,26 @@ const getApiBaseUrl = () => normalizeSiteUrl(
   'http://localhost/questao-pro-backend/api/',
 );
 
-const readEnvelopeData = (payload: any) => {
+const readEnvelopeData = (payload: unknown): unknown => {
   if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'data')) {
-    return payload.data;
+    return (payload as { data?: unknown }).data;
   }
 
   return payload;
 };
 
-const readQuestionPayload = (payload: any): Question | null => {
+const readQuestionPayload = (payload: unknown): Question | null => {
   const data = readEnvelopeData(payload);
+  const dataRecord = data && typeof data === 'object' ? data as Record<string, unknown> : {};
   const question = Array.isArray(data)
     ? data[0]
-    : data?.question || data?.row || data?.item || data;
+    : dataRecord.question || dataRecord.row || dataRecord.item || data;
 
   if (!question || typeof question !== 'object') {
     return null;
   }
 
-  return withQuestionPublicationAliases(question) as Question;
+  return withQuestionPublicationAliases(question);
 };
 
 const fetchQuestionForPage = async (id?: string): Promise<Question | null> => {

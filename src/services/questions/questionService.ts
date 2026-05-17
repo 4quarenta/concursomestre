@@ -134,16 +134,23 @@ export const questionService = {
    * @since v1.0.0
    */
   async getQuestionForAdminEdit(questionId: string | number): Promise<Question> {
-    const response = await apiClient.get<Question>(
-      ENDPOINTS.questions.edit,
-      {
-        params: {
-          id: String(questionId),
-        },
-      },
-    );
+    const normalizedQuestionId = String(questionId);
+    return withRequestCoalescing(
+      buildRequestCacheKey('questions:admin-edit', { id: normalizedQuestionId }),
+      async () => {
+        const response = await apiClient.get<Question>(
+          ENDPOINTS.questions.edit,
+          {
+            params: {
+              id: normalizedQuestionId,
+            },
+          },
+        );
 
-    return withQuestionPublicationAliases(readApiData<Question>(response, {} as Question));
+        return withQuestionPublicationAliases(readApiData<Question>(response, {} as Question));
+      },
+      15_000,
+    );
   },
 
   /**

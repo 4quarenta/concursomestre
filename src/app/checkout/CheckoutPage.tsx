@@ -20,6 +20,7 @@ import { useToast } from '@providers/ToastProvider';
 import analyticsTrackingService from '@services/analytics/analyticsTrackingService';
 import { calculateSubscriptionProRatedCredit, getCanonicalPlanName, getConfiguredPlanDisplayName, planService, resolvePlanCycleKey, resolvePlanOffer } from '@services/plans';
 import { hasActivePlanAccess } from '@services/plans/planAccess';
+import { clientLog } from '@services/monitoring/clientLog';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { readApiErrorMessage } from '@services/api';
 import { Address, DiscountCode, Plan, PlanConfig, PlanFeature, PlanName, UserProfile } from '@types';
@@ -27,6 +28,7 @@ import { authFlowService } from '@services/auth';
 import { cardsService, type SavedCard } from '@services/billing';
 import { getEnabledStripePaymentMethods } from '@services/payments/stripePaymentMethodsConfig';
 import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
+import type { Stripe, StripeCardCvcElement } from '@stripe/stripe-js';
 import LimitedOfferCountdown from '../../components/shared/marketing/LimitedOfferCountdown';
 import {
     CheckCircle2, ShieldCheck, ArrowRight, ArrowLeft, Lock, User, Mail, Phone, AlertTriangle, XCircle, RotateCcw, Loader2
@@ -54,27 +56,8 @@ type AppliedCheckoutCoupon = DiscountCode & {
 };
 
 type StripeSavedCardPaymentArgs = {
-    stripe: {
-        confirmCardSetup: (clientSecret: string, options: { payment_method: string }) => Promise<{
-            error?: { message?: string };
-            paymentIntent?: { id?: string | null };
-        }>;
-        confirmCardPayment: (
-            clientSecret: string,
-            options: {
-                payment_method: string;
-                payment_method_options?: {
-                    card?: {
-                        cvc?: unknown;
-                    };
-                };
-            },
-        ) => Promise<{
-            error?: { message?: string };
-            paymentIntent?: { id?: string | null };
-        }>;
-    };
-    cvcElement: unknown;
+    stripe: Stripe;
+    cvcElement: StripeCardCvcElement;
 };
 
 const roundCurrency = (value: number) => Number(Number(value || 0).toFixed(2));
@@ -262,11 +245,14 @@ const CheckoutPage: React.FC = () => {
     const STRIPE_PUBLISHABLE_KEY = systemSettings?.stripePublishableKey || systemSettings?.stripeKey || '';
     const allowSameTierCycleChangeEnabled = resolveSystemFeatureFlag(systemSettings, 'sameTierCycleChangeEnabled', false);
     const stripePaymentMethodsSettings = systemSettings?.stripePaymentMethods ?? null;
-    const checkoutEnabledPaymentMethodIds = useMemo(
+    const checkoutEnabledPaymentMethods = useMemo(
         () => getEnabledStripePaymentMethods(stripePaymentMethodsSettings)
-            .filter((method) => method.checkoutSupported)
-            .map((method) => method.id),
+            .filter((method) => method.checkoutSupported),
         [stripePaymentMethodsSettings],
+    );
+    const checkoutEnabledPaymentMethodIds = useMemo(
+        () => checkoutEnabledPaymentMethods.map((method) => method.id),
+        [checkoutEnabledPaymentMethods],
     );
     const [paymentData, setPaymentData] = useState({
         cardNumber: '',
@@ -281,11 +267,21 @@ const CheckoutPage: React.FC = () => {
     const [stripeCards, setStripeCards] = useState<SavedCard[]>([]);
     const [isLoadingStripeCards, setIsLoadingStripeCards] = useState(false);
     const [selectedStripeCardId, setSelectedStripeCardId] = useState<string | null>(null);
+    const [selectedCheckoutPaymentMethodId, setSelectedCheckoutPaymentMethodId] = useState<string>('card');
     const [pendingStripeSubscriptionId, setPendingStripeSubscriptionId] = useState<string | null>(null);
     const [pendingStripePaymentMethodId, setPendingStripePaymentMethodId] = useState<string | null>(null);
     const [stripePixCapability, setStripePixCapability] = useState<{ status?: string; available?: boolean; message?: string } | null>(null);
 
     const numericPlanId = useMemo(() => Number(planId), [planId]);
+    const selectedCheckoutPaymentMethod = useMemo(
+        () => checkoutEnabledPaymentMethods.find((method) => method.id === selectedCheckoutPaymentMethodId)
+            || checkoutEnabledPaymentMethods[0]
+            || null,
+        [checkoutEnabledPaymentMethods, selectedCheckoutPaymentMethodId],
+    );
+    const isStripeInternalCheckoutActive = isStripeInternalCheckout
+        && (selectedCheckoutPaymentMethod?.id || 'card') === 'card';
+    const selectedCheckoutMethodSupportsRecurring = selectedCheckoutPaymentMethod?.recurringSupported !== false;
     const selectedStripeCard = useMemo(() => {
         return stripeCards.find((card) => String(card.id) === selectedStripeCardId) || null;
     }, [stripeCards, selectedStripeCardId]);
@@ -327,7 +323,7 @@ const CheckoutPage: React.FC = () => {
     const formatCurrency = (value: number) => `R$ ${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const isUsingStripeSavedCard = Boolean(selectedStripeCard);
-    const stripeRequiresSavedCard = autoRenew && !isUsingStripeSavedCard;
+    const stripeRequiresSavedCard = isStripeInternalCheckoutActive && autoRenew && !isUsingStripeSavedCard;
     const analyticsEmail = (currentUser?.email || formData.email || '').trim() || null;
     const analyticsCycleLabel = useMemo(() => (plan ? resolvePlanCycleKey(plan) : null), [plan]);
 
@@ -547,7 +543,7 @@ const CheckoutPage: React.FC = () => {
                 setProRatedCredit(0);
             }
         } catch (error) {
-            console.error('Error loading plan:', error);
+            clientLog.warn('Error loading plan:', error);
             addToast('Erro ao carregar detalhes do plano', 'error');
             router.push('/plans');
         } finally {
@@ -740,7 +736,7 @@ const CheckoutPage: React.FC = () => {
                 return String(nextCards.find((card) => Number(card.is_default) === 1)?.id || nextCards[0]?.id || '');
             });
         } catch (error) {
-            console.error('Error fetching Stripe cards:', error);
+            clientLog.warn('Error fetching Stripe cards:', error);
             setStripeCards([]);
             setSelectedStripeCardId(null);
         } finally {
@@ -906,7 +902,7 @@ const CheckoutPage: React.FC = () => {
                 }
             }
         } catch (error) {
-            console.error(error);
+            clientLog.warn('Checkout authentication error:', error);
             const errorMessage = error instanceof Error ? error.message : 'Erro ao realizar autenticacao.';
             trackPaymentFailure('authentication', errorMessage);
             addToast(errorMessage, 'error');
@@ -1053,7 +1049,7 @@ const CheckoutPage: React.FC = () => {
             await refreshUser();
       addToast('Perfil atualizado. Agora você já pode concluir a compra.', 'success');
         } catch (error) {
-            console.error('Failed to update checkout requirements', error);
+            clientLog.warn('Failed to update checkout requirements', error);
             addToast(readApiErrorMessage(error, 'Não foi possível atualizar seu perfil agora.'), 'error');
         } finally {
             setIsSavingCheckoutRequirements(false);
@@ -1078,9 +1074,17 @@ const CheckoutPage: React.FC = () => {
         if (!plan || !currentUser) return;
         if (!ensurePlanPurchaseAllowed()) return;
         if (!ensureCheckoutRequirements()) return;
+        if (!selectedCheckoutPaymentMethod) {
+            addToast('Nenhum método de pagamento válido está disponível no momento.', 'error');
+            return;
+        }
+        if (autoRenew && !selectedCheckoutMethodSupportsRecurring) {
+            addToast('Esse método não suporta renovação automática. Selecione cartão ou desative a recorrência.', 'warning');
+            return;
+        }
 
-        if (isStripeInternalCheckout) {
-      addToast('Use o formulário Stripe abaixo para concluir a assinatura.', 'info');
+        if (isStripeInternalCheckoutActive) {
+            addToast('Use o formulário Stripe abaixo para concluir a assinatura.', 'info');
             return;
         }
 
@@ -1090,6 +1094,7 @@ const CheckoutPage: React.FC = () => {
                 plan_id: plan.id,
                 auto_renew: autoRenew,
                 coupon_code: appliedCoupon?.code || undefined,
+                payment_method_id: selectedCheckoutPaymentMethod?.id || undefined,
                 billing_mode: stripeBillingMode,
                 installment_count: selectedStripeInstallmentCount,
             });
@@ -1101,7 +1106,7 @@ const CheckoutPage: React.FC = () => {
 
             window.location.assign(redirectUrl);
         } catch (error) {
-            console.error('Stripe checkout error:', error);
+            clientLog.error('Stripe checkout error:', error);
             const errorMsg = readApiErrorMessage(error, 'Erro ao iniciar o checkout Stripe.');
             trackPaymentFailure('stripe_checkout_redirect', errorMsg);
             addToast(errorMsg, 'error');
@@ -1145,7 +1150,7 @@ const CheckoutPage: React.FC = () => {
                 saveCard: payload?.save_card ?? (saveCard || stripeRequiresSavedCard),
             };
         } catch (error) {
-            console.error('Stripe internal checkout error:', error);
+            clientLog.error('Stripe internal checkout error:', error);
             const errorMsg = readApiErrorMessage(error, 'Erro ao processar assinatura Stripe.');
             trackPaymentFailure('stripe_internal', errorMsg);
             addToast(errorMsg, 'error');
@@ -1279,7 +1284,7 @@ const CheckoutPage: React.FC = () => {
                 await finalizeStripeInternalCheckout({
                     subscriptionId: payload?.subscription_id || null,
                     paymentMethodId: savedPaymentMethodId,
-                    paymentIntentId: confirmation.paymentIntent?.id || null,
+                    paymentIntentId: 'paymentIntent' in confirmation ? confirmation.paymentIntent?.id || null : null,
                     savedCardId: String(selectedStripeCard.id),
                     saveCard: true,
                 });
@@ -1292,7 +1297,7 @@ const CheckoutPage: React.FC = () => {
                 });
             }
         } catch (error) {
-            console.error('Stripe saved card checkout error:', error);
+            clientLog.error('Stripe saved card checkout error:', error);
     const errorMsg = readApiErrorMessage(error, 'Erro ao processar o cartão salvo.');
             trackPaymentFailure('stripe_saved_card', errorMsg);
             addToast(errorMsg, 'error');
@@ -1318,6 +1323,8 @@ const CheckoutPage: React.FC = () => {
         if (!plan) return '';
         if (plan.interval_unit === 'year') return 'Anual';
         if (plan.interval_unit === 'month' && plan.interval_count === 3) return 'Trimestral';
+        if (plan.interval_unit === 'day') return Number(plan.interval_count || 1) > 1 ? `${plan.interval_count} dias` : 'Diário';
+        if (plan.interval_unit === 'week') return Number(plan.interval_count || 1) > 1 ? `${plan.interval_count} semanas` : 'Semanal';
         return 'Mensal';
     }, [plan]);
 
@@ -1328,6 +1335,10 @@ const CheckoutPage: React.FC = () => {
             date.setFullYear(date.getFullYear() + 1);
         } else if (plan.interval_unit === 'month') {
             date.setMonth(date.getMonth() + (plan.interval_count || 1));
+        } else if (plan.interval_unit === 'week') {
+            date.setDate(date.getDate() + ((plan.interval_count || 1) * 7));
+        } else if (plan.interval_unit === 'day') {
+            date.setDate(date.getDate() + (plan.interval_count || 1));
         }
         return date.toLocaleDateString('pt-BR');
     }, [plan]);
@@ -1341,7 +1352,9 @@ const CheckoutPage: React.FC = () => {
         return 1;
     }, [plan]);
 
-    const supportsStripeBillingChoices = isStripeProvider && maxInstallments > 1;
+    const supportsStripeBillingChoices = isStripeProvider
+        && maxInstallments > 1
+        && (selectedCheckoutPaymentMethod?.id || 'card') === 'card';
     const selectedStripeInstallmentCount = (() => {
         if (!supportsStripeBillingChoices) return 1;
         const parsedInstallments = Number.parseInt(paymentData.installments, 10);
@@ -1412,6 +1425,17 @@ const CheckoutPage: React.FC = () => {
         return false;
     };
 
+    const handleCheckoutPaymentMethodChange = useCallback((methodId: string) => {
+        const normalizedMethodId = String(methodId || '').trim();
+        setSelectedCheckoutPaymentMethodId(normalizedMethodId);
+
+        const nextMethod = checkoutEnabledPaymentMethods.find((method) => method.id === normalizedMethodId);
+        if (autoRenew && nextMethod?.recurringSupported === false) {
+            setAutoRenew(false);
+            addToast('Este método de pagamento não suporta renovação automática. Ajustamos para cobrança manual.', 'info');
+        }
+    }, [addToast, autoRenew, checkoutEnabledPaymentMethods]);
+
     const checkoutSubtotal = Number(checkoutBaseOffer?.originalCycleAmount || plan?.price || 0);
     const checkoutDiscountAmount = appliedCoupon ? Math.max(0, Number(discountAmount || 0)) : 0;
     const checkoutCouponSavingsAmount = Math.max(
@@ -1449,8 +1473,8 @@ const CheckoutPage: React.FC = () => {
         return { firstCharge: baseAmount, totalDue, contractTotal: selectedInstallment.total_amount };
     }, [plan, selectedInstallment.first_charge_amount, selectedInstallment.installment_amount, selectedInstallment.total_amount]);
 
-    const paymentActionLabel = isStripeInternalCheckout ? 'Concluir assinatura com segurança' : 'Continuar para pagamento';
-    const processingLabel = isStripeInternalCheckout ? 'Processando assinatura Stripe...' : 'Abrindo checkout Stripe...';
+    const paymentActionLabel = isStripeInternalCheckoutActive ? 'Concluir assinatura com segurança' : 'Continuar para pagamento';
+    const processingLabel = isStripeInternalCheckoutActive ? 'Processando assinatura Stripe...' : 'Abrindo checkout Stripe...';
 
     const checkoutBillingLabel = supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
         ? `${selectedInstallment.installments}x de ${formatCurrency(monetaryTotals.totalDue)}`
@@ -1458,9 +1482,6 @@ const CheckoutPage: React.FC = () => {
 
     const checkoutDueLabel = formatCurrency(monetaryTotals.totalDue);
     const siteName = systemSettings?.siteName || systemSettings?.appName || 'ConcursoMestre';
-    const checkoutPaymentBreakdownLabel = selectedInstallment.installments > 1
-        ? `${selectedInstallment.installments}x de ${formatCurrency(monetaryTotals.totalDue)}. TOTAL: ${formatCurrency(monetaryTotals.contractTotal)}.`
-        : `COBRANÇA ÚNICA. TOTAL: ${formatCurrency(monetaryTotals.contractTotal || monetaryTotals.totalDue)}.`;
     const checkoutPaymentProtectionLabel = 'Pagamento protegido e acesso liberado assim que aprovado.';
 
     const checkoutInstallmentOptions = useMemo(() => {
@@ -1552,7 +1573,7 @@ const CheckoutPage: React.FC = () => {
     );
 
     const { handleSummaryPaymentAction, summaryConfirmLabel } = useCheckoutSummaryAction({
-        isStripeInternalCheckout,
+        isStripeInternalCheckout: isStripeInternalCheckoutActive,
         isUsingStripeSavedCard,
         paymentActionLabel,
         handlePayment,
@@ -1886,7 +1907,7 @@ const CheckoutPage: React.FC = () => {
                                         autoRenew={autoRenew}
                                         saveCard={saveCard}
                                         stripeRequiresSavedCard={stripeRequiresSavedCard}
-                                        isStripeInternalCheckout={isStripeInternalCheckout}
+                                        isStripeInternalCheckout={isStripeInternalCheckoutActive}
                                         isLoadingStripeCards={isLoadingStripeCards}
                                         stripeCards={stripeCards}
                                         selectedStripeCardId={selectedStripeCardId}
@@ -1899,7 +1920,6 @@ const CheckoutPage: React.FC = () => {
                                         emailVerified={currentUser?.emailVerified}
                                         hasMissingRequirements={currentUser ? getMissingCheckoutRequirements().length > 0 : true}
                                         nextRenewalLabel={nextRenewalSummaryLabel}
-                                        paymentBreakdownLabel={checkoutPaymentBreakdownLabel}
                                         paymentProtectionLabel={checkoutPaymentProtectionLabel}
                                         installmentOptions={checkoutInstallmentOptions}
                                         selectedInstallmentValue={paymentData.installments}
@@ -1907,16 +1927,23 @@ const CheckoutPage: React.FC = () => {
                                         legalNotice={checkoutLegalNotice}
                                         pixCapabilityStatus={stripePixCapability?.status}
                                         pixCapabilityMessage={stripePixCapability?.message}
+                                        enabledPaymentMethods={checkoutEnabledPaymentMethods}
                                         enabledPaymentMethodIds={checkoutEnabledPaymentMethodIds}
+                                        selectedPaymentMethodId={selectedCheckoutPaymentMethod?.id || ''}
                                         onCouponCodeChange={setCouponCode}
                                         onApplyCoupon={handleApplyCoupon}
                                         onRemoveCoupon={resetAppliedCoupon}
                                         onAutoRenewChange={(enabled) => {
+                                            if (enabled && !selectedCheckoutMethodSupportsRecurring) {
+                                                addToast('Esse método não suporta renovação automática. Selecione cartão para ativar recorrência.', 'warning');
+                                                return;
+                                            }
                                             setAutoRenew(enabled);
-                                            if (enabled && !isUsingStripeSavedCard) {
+                                            if (enabled && isStripeInternalCheckoutActive && !isUsingStripeSavedCard) {
                                                 setSaveCard(true);
                                             }
                                         }}
+                                        onPaymentMethodChange={handleCheckoutPaymentMethodChange}
                                         onSaveCardChange={setSaveCard}
                                         onSelectSavedCard={(cardId) => {
                                             setSelectedStripeCardId(cardId);

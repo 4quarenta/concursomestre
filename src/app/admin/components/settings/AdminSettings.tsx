@@ -18,7 +18,7 @@ import {
   ShoppingBag, ShoppingCart, Sparkles, Terminal, Trash2, Trophy, Upload, Users, XCircle, Zap,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
-import type { AdminSettingsTestResult } from '@services/admin/adminService';
+import type { AdminSecurityIpsPayload, AdminSettingsTestResult } from '@services/admin/adminService';
 import type { SeoSettings, SystemSettings } from '@types';
 import apiClient from '@services/api/client';
 import { adminService } from '@services/admin/adminService';
@@ -28,7 +28,6 @@ import AdminSettingsTabsBar from './AdminSettingsTabsBar';
 import { LogViewer } from './LogViewer';
 import AdminCacheManagement from './AdminCacheManagement';
 import AdminSeoSettingsSection from './AdminSeoSettingsSection';
-import AdminLandingContentSection from './AdminLandingContentSection';
 import AdminEmailTemplatesSection from './AdminEmailTemplatesSection';
 import StripePaymentMethodsSettings from './StripePaymentMethodsSettings';
 import { mergeSeoSettings } from './seoSettings';
@@ -172,6 +171,19 @@ const AdminSettings = ({
   const [smtpTestResult, setSmtpTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [isTestingIntegrations, setIsTestingIntegrations] = useState(false);
   const [integrationsTestResult, setIntegrationsTestResult] = useState<AdminIntegrationsTestResult | null>(null);
+  const [securityIpsLoading, setSecurityIpsLoading] = useState(false);
+  const [securityIpsPayload, setSecurityIpsPayload] = useState<AdminSecurityIpsPayload>({
+    suspicious: [],
+    banned: [],
+    stats: {
+      suspiciousCount: 0,
+      bannedCount: 0,
+    },
+  });
+  const [securityIpsSearch, setSecurityIpsSearch] = useState('');
+  const [securityIpActionLoading, setSecurityIpActionLoading] = useState<string | null>(null);
+  const [manualBanIp, setManualBanIp] = useState('');
+  const [manualBanReason, setManualBanReason] = useState('');
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -368,11 +380,66 @@ const AdminSettings = ({
     }
   };
 
+  const fetchSecurityIps = React.useCallback(async (searchValue = securityIpsSearch) => {
+    setSecurityIpsLoading(true);
+    try {
+      const payload = await adminService.getSecurityIps(searchValue, 80);
+      setSecurityIpsPayload(payload);
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel carregar os IPs suspeitos.'), 'error');
+    } finally {
+      setSecurityIpsLoading(false);
+    }
+  }, [addToast, securityIpsSearch]);
+
+  useEffect(() => {
+    if (activeTab !== 'security') return;
+    const timeout = window.setTimeout(() => {
+      void fetchSecurityIps();
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [activeTab, fetchSecurityIps]);
+
+  const handleBanIp = async (ipAddress: string, reason: string) => {
+    if (securityIpActionLoading) return;
+    setSecurityIpActionLoading(`ban:${ipAddress}`);
+    try {
+      await adminService.banSecurityIp(ipAddress, reason);
+      addToast('IP bloqueado com sucesso.', 'success');
+      if (manualBanIp === ipAddress) {
+        setManualBanIp('');
+        setManualBanReason('');
+      }
+      await fetchSecurityIps();
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel bloquear o IP.'), 'error');
+    } finally {
+      setSecurityIpActionLoading(null);
+    }
+  };
+
+  const handleUnbanIp = async (ipAddress: string) => {
+    if (securityIpActionLoading) return;
+    setSecurityIpActionLoading(`unban:${ipAddress}`);
+    try {
+      await adminService.unbanSecurityIp(ipAddress);
+      addToast('IP desbloqueado com sucesso.', 'success');
+      await fetchSecurityIps();
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel desbloquear o IP.'), 'error');
+    } finally {
+      setSecurityIpActionLoading(null);
+    }
+  };
+
   const stripeWebhookUrl = `${String(apiClient.defaults.baseURL || '').replace(/\/+$/, '')}/subscriptions/stripe_webhook.php`;
   const isStripeSecretConfigured = !!(localSettings.hasStripeSecretConfigured || localSettings.stripeSecretKey);
   const isStripeWebhookConfigured = !!(localSettings.hasStripeWebhookConfigured || localSettings.stripeWebhookSecret);
   const isGeminiConfigured = !!(localSettings.hasGeminiApiKeyConfigured || localSettings.geminiApiKey);
   const isRecaptchaSecretConfigured = !!(localSettings.hasRecaptchaSecretConfigured || localSettings.recaptchaSecretKey);
+  const isFacebookAuthConfigured = !!(localSettings.hasFacebookAuthConfigured || (localSettings.facebookAuthAppId && localSettings.facebookAuthAppSecret));
+  const isAppleAuthConfigured = !!(localSettings.hasAppleAuthConfigured || localSettings.appleAuthClientId);
   const isSmtpPasswordConfigured = !!(localSettings.hasSmtpPasswordConfigured || localSettings.smtpPass);
   const settingsTabs: AdminSettingsTabs = [
     { id: 'general', label: 'Geral', icon: Settings },
@@ -488,11 +555,6 @@ const AdminSettings = ({
             </div>
           </div>
 
-          <AdminLandingContentSection
-            siteName={localSettings.siteName || 'ConcursoMestre'}
-            content={localSettings.landingPageContent}
-            onChange={(content) => setField('landingPageContent', content)}
-          />
         </div>
       )}
 
@@ -511,6 +573,188 @@ const AdminSettings = ({
             <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-rose-700 dark:text-rose-300"><Trash2 size={20} /> Reset geral</h3>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Apaga conteudo operacional com autenticacao forte.</p>
             <button type="button" onClick={() => setIsResetModalOpen(true)} className="mt-5 rounded-sm border border-rose-700 bg-rose-700 px-6 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">Resetar conteudo</button>
+          </div>
+          <div className={`${ADMIN_PAGE_PANEL_CLASS} lg:col-span-2`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-slate-100">IPs suspeitos e bloqueados</h3>
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Suspeitos: {securityIpsPayload.stats.suspiciousCount} | Bloqueados: {securityIpsPayload.stats.bannedCount}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void fetchSecurityIps()}
+                disabled={securityIpsLoading}
+                className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}
+              >
+                {securityIpsLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+                Atualizar
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                <label className={labelClassName}>Buscar IP</label>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    value={securityIpsSearch}
+                    onChange={(event) => setSecurityIpsSearch(event.target.value)}
+                    className={inputClassName}
+                    placeholder="Ex: 177.12.0.1"
+                  />
+                  <button
+                    type="button"
+                    className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                    onClick={() => void fetchSecurityIps(securityIpsSearch)}
+                  >
+                    Filtrar
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                <label className={labelClassName}>Bloqueio manual</label>
+                <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto]">
+                  <input
+                    value={manualBanIp}
+                    onChange={(event) => setManualBanIp(event.target.value)}
+                    className={inputClassName}
+                    placeholder="IP"
+                  />
+                  <input
+                    value={manualBanReason}
+                    onChange={(event) => setManualBanReason(event.target.value)}
+                    className={inputClassName}
+                    placeholder="Motivo do bloqueio"
+                  />
+                  <button
+                    type="button"
+                    disabled={!manualBanIp.trim() || !manualBanReason.trim() || !!securityIpActionLoading}
+                    onClick={() => void handleBanIp(manualBanIp.trim(), manualBanReason.trim())}
+                    className="rounded-sm border border-rose-600 bg-rose-600 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Bloquear
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-sm border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                <div className="border-b border-slate-200 px-3 py-2 dark:border-slate-800">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Lista suspeita</p>
+                </div>
+                <div className="max-h-80 overflow-auto">
+                  {securityIpsPayload.suspicious.length === 0 ? (
+                    <p className="px-3 py-4 text-xs font-medium text-slate-500 dark:text-slate-400">Nenhum IP suspeito no recorte atual.</p>
+                  ) : (
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
+                        <tr>
+                          <th className="px-3 py-2 font-black uppercase tracking-[0.16em] text-slate-500">IP</th>
+                          <th className="px-3 py-2 font-black uppercase tracking-[0.16em] text-slate-500">Score</th>
+                          <th className="px-3 py-2 font-black uppercase tracking-[0.16em] text-slate-500">Sinais</th>
+                          <th className="px-3 py-2 text-right font-black uppercase tracking-[0.16em] text-slate-500">Acao</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {securityIpsPayload.suspicious.map((item) => (
+                          <tr key={`suspicious-${item.ipAddress}`} className="border-t border-slate-100 dark:border-slate-800">
+                            <td className="px-3 py-2 align-top">
+                              <p className="font-black text-slate-900 dark:text-slate-100">{item.ipAddress}</p>
+                              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                                Sessões: {item.sessionsCount} | Usuários: {item.usersCount}
+                              </p>
+                            </td>
+                            <td className="px-3 py-2 align-top">
+                              <span className={`inline-flex rounded-sm px-2 py-1 text-[10px] font-black ${item.score >= 40 ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' : item.score >= 20 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'}`}>
+                                {item.score}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 align-top">
+                              <div className="flex flex-wrap gap-1">
+                                {(item.signals || []).slice(0, 3).map((signal) => (
+                                  <span key={`${item.ipAddress}-${signal.key}`} className="rounded-sm border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                                    {signal.label} ({signal.count})
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 align-top text-right">
+                              {item.isBanned ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleUnbanIp(item.ipAddress)}
+                                  disabled={securityIpActionLoading === `unban:${item.ipAddress}`}
+                                  className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                                >
+                                  {securityIpActionLoading === `unban:${item.ipAddress}` ? <Loader2 size={12} className="animate-spin" /> : null}
+                                  Desbloquear
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleBanIp(item.ipAddress, `Bloqueio manual pelo admin apos alerta de seguranca (score ${item.score}).`)}
+                                  disabled={securityIpActionLoading === `ban:${item.ipAddress}`}
+                                  className="rounded-sm border border-rose-600 bg-rose-600 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {securityIpActionLoading === `ban:${item.ipAddress}` ? <Loader2 size={12} className="animate-spin" /> : null}
+                                  Bloquear
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-sm border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                <div className="border-b border-slate-200 px-3 py-2 dark:border-slate-800">
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">IPs bloqueados</p>
+                </div>
+                <div className="max-h-80 overflow-auto">
+                  {securityIpsPayload.banned.length === 0 ? (
+                    <p className="px-3 py-4 text-xs font-medium text-slate-500 dark:text-slate-400">Nenhum IP bloqueado no momento.</p>
+                  ) : (
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950">
+                        <tr>
+                          <th className="px-3 py-2 font-black uppercase tracking-[0.16em] text-slate-500">IP</th>
+                          <th className="px-3 py-2 font-black uppercase tracking-[0.16em] text-slate-500">Motivo</th>
+                          <th className="px-3 py-2 text-right font-black uppercase tracking-[0.16em] text-slate-500">Acao</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {securityIpsPayload.banned.map((item) => (
+                          <tr key={`banned-${item.ipAddress}`} className="border-t border-slate-100 dark:border-slate-800">
+                            <td className="px-3 py-2 align-top">
+                              <p className="font-black text-slate-900 dark:text-slate-100">{item.ipAddress}</p>
+                              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Bloqueios: {item.blockedHits}</p>
+                            </td>
+                            <td className="px-3 py-2 align-top text-slate-600 dark:text-slate-300">{item.reason || '-'}</td>
+                            <td className="px-3 py-2 align-top text-right">
+                              <button
+                                type="button"
+                                onClick={() => void handleUnbanIp(item.ipAddress)}
+                                disabled={securityIpActionLoading === `unban:${item.ipAddress}`}
+                                className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-3 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                              >
+                                {securityIpActionLoading === `unban:${item.ipAddress}` ? <Loader2 size={12} className="animate-spin" /> : null}
+                                Desbloquear
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
           {isResetModalOpen && createPortal(<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md"><div className="w-full max-w-2xl rounded-[2.5rem] border border-rose-100 bg-white p-8 shadow-2xl dark:border-rose-900/30 dark:bg-slate-900"><h3 className="text-xl font-black text-slate-900 dark:text-slate-100">Confirmacao de reset</h3>{resetError && <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4 dark:border-rose-900/30 dark:bg-rose-900/20"><XCircle size={18} className="mt-0.5 text-rose-600" /><p className="text-xs font-bold text-rose-800 dark:text-rose-300">{resetError}</p></div>}<div className="mt-6 space-y-4"><div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">{dbTables.map((table) => <label key={table} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300"><input type="checkbox" checked={selectedTables.has(table)} onChange={() => setSelectedTables((current) => { const next = new Set(current); if (next.has(table)) { next.delete(table); } else { next.add(table); } return next; })} /><span className="font-mono">{table}</span></label>)}</div><div className="grid gap-4 md:grid-cols-2"><input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Senha do admin" className={inputClassName} /><input type="text" value={reset2FACode} onChange={(e) => setReset2FACode(e.target.value)} placeholder="Codigo 2FA" className={inputClassName} /></div><input type="text" value={resetConfirmText} onChange={(e) => setResetConfirmText(e.target.value)} placeholder="Digite RESETAR" className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-600 outline-none dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300" /></div><div className="mt-8 flex gap-3"><button type="button" onClick={() => { setIsResetModalOpen(false); setResetError(null); }} className="flex-1 py-4 text-[10px] font-black uppercase text-slate-400">Cancelar</button><button type="button" onClick={handleSystemReset} disabled={isResetting || resetConfirmText !== 'RESETAR'} className={`flex-[2] rounded-2xl py-4 text-[10px] font-black uppercase tracking-[0.18em] text-white ${resetConfirmText === 'RESETAR' ? 'bg-rose-600' : 'bg-slate-300'}`}>{isResetting ? <Loader2 size={14} className="mx-auto animate-spin" /> : 'Executar reset'}</button></div></div></div>, document.body)}
         </div>
@@ -532,6 +776,10 @@ const AdminSettings = ({
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeSecretKey || ''} onChange={(e) => setField('stripeSecretKey', e.target.value)} className={inputClassName} placeholder={isStripeSecretConfigured ? 'Digite uma nova chave para substituir a atual' : 'Stripe secret key'} /></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Stripe webhook secret</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isStripeWebhookConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isStripeWebhookConfigured ? 'Configurado' : 'Ausente'}</span></div><input type="password" value={localSettings.stripeWebhookSecret || ''} onChange={(e) => setField('stripeWebhookSecret', e.target.value)} className={inputClassName} placeholder={isStripeWebhookConfigured ? 'Digite um novo segredo para substituir o atual' : 'Stripe webhook secret'} /></div>
             <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>Google OAuth Client ID</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${localSettings.hasGoogleAuthClientConfigured || localSettings.googleAuthClientId ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{localSettings.hasGoogleAuthClientConfigured || localSettings.googleAuthClientId ? 'Configurado' : 'Ausente'}</span></div><input value={localSettings.googleAuthClientId || ''} onChange={(e) => setField('googleAuthClientId', e.target.value)} className={inputClassName} placeholder="000000000000-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use o Client ID do aplicativo Web do Google Cloud. Origens autorizadas: http://localhost:3000 e o domínio de produção.</p></div>
+            <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Facebook App ID</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isFacebookAuthConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isFacebookAuthConfigured ? 'Configurado' : 'Ausente'}</span></div><input value={localSettings.facebookAuthAppId || ''} onChange={(e) => setField('facebookAuthAppId', e.target.value)} className={inputClassName} placeholder="Facebook App ID" /></div>
+            <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Facebook App Secret</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isFacebookAuthConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isFacebookAuthConfigured ? 'Configurado' : 'Ausente'}</span></div><input type="password" value={localSettings.facebookAuthAppSecret || ''} onChange={(e) => setField('facebookAuthAppSecret', e.target.value)} className={inputClassName} placeholder={isFacebookAuthConfigured ? 'Digite um novo segredo para substituir o atual' : 'Facebook App Secret'} /></div>
+            <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Apple Client ID</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isAppleAuthConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isAppleAuthConfigured ? 'Configurado' : 'Ausente'}</span></div><input value={localSettings.appleAuthClientId || ''} onChange={(e) => setField('appleAuthClientId', e.target.value)} className={inputClassName} placeholder="com.concursomestre.web" /></div>
+            <div className="space-y-2"><input value={localSettings.appleAuthRedirectUri || ''} onChange={(e) => setField('appleAuthRedirectUri', e.target.value)} className={inputClassName} placeholder="Apple Redirect URI (opcional)" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Se vazio, o login usa automaticamente a origem atual + /auth.</p></div>
             <input value={localSettings.googleAnalyticsId || ''} onChange={(e) => setField('googleAnalyticsId', e.target.value)} className={inputClassName} placeholder="Google Analytics ID" />
             <input value={localSettings.metaPixelId || ''} onChange={(e) => setField('metaPixelId', e.target.value)} className={inputClassName} placeholder="Meta Pixel ID" />
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Gemini API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isGeminiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isGeminiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.geminiApiKey || ''} onChange={(e) => setField('geminiApiKey', e.target.value)} className={inputClassName} placeholder={isGeminiConfigured ? 'Digite uma nova chave para substituir a atual' : 'Gemini API key'} />{localSettings.hasGeminiApiKeyConfigured && !localSettings.geminiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend e as chamadas de IA agora passam pelo backend.</p>}</div>

@@ -11,6 +11,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+  error?: string;
+} | null | undefined;
+
 const { mockGet, mockPost } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
@@ -21,7 +28,7 @@ vi.mock('@services/api', () => ({
     get: mockGet,
     post: mockPost,
   },
-  assertApiSuccess: (response: any) => {
+  assertApiSuccess: (response: MockApiResponse) => {
     if (response?.success === false) {
       throw new Error(response?.message || 'erro');
     }
@@ -33,14 +40,14 @@ vi.mock('@services/api', () => ({
       raw: response,
     };
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) {
       return response.data;
     }
 
     return response ?? fallback;
   },
-  readApiErrorMessage: (response: any, fallback = '') => {
+  readApiErrorMessage: (response: MockApiResponse, fallback = '') => {
     if (typeof response?.error === 'string') {
       return response.error;
     }
@@ -68,6 +75,8 @@ vi.mock('@services/api', () => ({
 }));
 
 import { questionService } from '../index';
+
+type QuestionUpdatePayload = Parameters<typeof questionService.updateQuestion>[1];
 
 describe('questionService', () => {
   beforeEach(() => {
@@ -183,7 +192,7 @@ describe('questionService', () => {
       data: { id: 33 },
     });
 
-    const payload = { id: 33, enunciado: 'Questão atualizada' } as any;
+    const payload = { id: 33, enunciado: 'Questão atualizada' } as QuestionUpdatePayload;
     const result = await questionService.updateQuestion('33', payload);
 
     expect(mockPost).toHaveBeenCalledWith(

@@ -45,6 +45,7 @@ import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
 import { isPlanAtLeast } from '@services/plans/planAccess';
+import { clientLog } from '@services/monitoring/clientLog';
 import { studyScheduleService } from '@services/study-schedule';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import BetaFeaturePage from '../../components/shared/feedback/BetaFeaturePage';
@@ -279,7 +280,7 @@ const readLocalSchedule = (userId?: string | null): { form: StudyPlanForm; gener
       generatedPlan: normalizeGeneratedPlan(parsed.generatedPlan),
     };
   } catch (error) {
-    console.error('Failed to load local study schedule:', error);
+    clientLog.warn('Failed to load local study schedule:', error);
     return null;
   }
 };
@@ -474,10 +475,10 @@ const CronogramaPage: React.FC = () => {
             setSaveSource('backend');
           }
         } catch (migrationError) {
-          console.error('Failed to migrate local study schedule:', migrationError);
+          clientLog.warn('Failed to migrate local study schedule:', migrationError);
         }
       } catch (error) {
-        console.error('Failed to load study schedule:', error);
+        clientLog.warn('Failed to load study schedule:', error);
         if (cancelled) return;
 
         const localSchedule = readLocalSchedule(currentUser.id);
@@ -595,7 +596,7 @@ const CronogramaPage: React.FC = () => {
       setSaveSource('backend');
       return 'backend';
     } catch (error) {
-      console.error('Failed to persist study schedule:', error);
+      clientLog.warn('Failed to persist study schedule:', error);
       setSaveSource('local');
       return 'local';
     } finally {
@@ -659,7 +660,7 @@ const CronogramaPage: React.FC = () => {
         setIsSavingSchedule(true);
         await studyScheduleService.remove();
       } catch (error) {
-        console.error('Failed to remove study schedule:', error);
+        clientLog.warn('Failed to remove study schedule:', error);
         persistLocalPlan(nextForm, null);
         setSaveSource('local');
         addToast('Cronograma limpo neste dispositivo. Tente salvar novamente para sincronizar.', 'warning');

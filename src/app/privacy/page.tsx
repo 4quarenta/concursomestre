@@ -134,7 +134,7 @@ const PrivacyPolicy: React.FC = () => {
                       </div>
                       <div className="relative z-10 flex-1">
                         <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 mb-2 tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Dados Cadastrais Relacionais</h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">Coletamos nome completo, e-mail e avatar para identificação e comunicação transacional mínima. Senhas são "hashed" unidirecionalmente com os protocolos mais fortes da indústria.</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">Coletamos nome completo, e-mail e avatar para identificação e comunicação transacional mínima. Senhas são &quot;hashed&quot; unidirecionalmente com os protocolos mais fortes da indústria.</p>
                       </div>
                     </div>
 
@@ -145,7 +145,7 @@ const PrivacyPolicy: React.FC = () => {
                       </div>
                       <div className="relative z-10 flex-1">
                         <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 mb-2 tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Dados Fiscais Sensíveis</h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">CPF e Endereço são requeridos apenas no ato da conversão para plano pago (Pagar.me/Stripe) ou para credenciamento obrigatório "Know Your Customer". <strong className="text-slate-700 dark:text-slate-200">Nós NUNCA guardamos números integrais de seu cartão.</strong></p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">CPF e Endereço são requeridos apenas no ato da conversão para plano pago (Pagar.me/Stripe) ou para credenciamento obrigatório &quot;Know Your Customer&quot;. <strong className="text-slate-700 dark:text-slate-200">Nós NUNCA guardamos números integrais de seu cartão.</strong></p>
                       </div>
                     </div>
 
@@ -226,7 +226,7 @@ const PrivacyPolicy: React.FC = () => {
 
                   <p>O compartilhamento se reduz aos vetores necessários para funcionamento do escopo legal:</p>
                   <ul className="list-disc pl-5 mt-4 space-y-3">
-                    <li>Processadores de pagamento operando como "Data Processor".</li>
+                    <li>Processadores de pagamento operando como &quot;Data Processor&quot;.</li>
                     <li>Integração das requisições junto aos provedores de Large Language Models (LLMs como Google Gemini / OpenAI), de forma que os provedores <strong>não possam</strong> treinar modelos nos prompts que não forem devidamente isolados ou se opuserem por API Opt-out.</li>
                     <li>Atividades estatais e Ordens Judiciais transitadas e julgadas.</li>
                   </ul>

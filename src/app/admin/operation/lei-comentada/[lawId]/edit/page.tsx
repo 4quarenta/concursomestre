@@ -15,6 +15,8 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import {
   AlertCircle,
   ArrowLeft,
@@ -37,12 +39,15 @@ import { useToast } from '@providers/ToastProvider';
 import { canAccessAdminPanel } from '@services/auth';
 import { filtersService } from '@services/filters';
 import { legalCommentaryApiService } from '@services/legal-commentary';
+import { buildLawSections, formatSectionRange, type LawSectionSummary } from '@services/legal-commentary/lawOutline';
 import type {
   ArticleExamTip,
   ArticleJurisprudence,
   LawArticle,
   LawDetail,
+  LawSectionEditorial,
   LawUpdate,
+  LegalArticleBlock,
   LegalArticleEditorialSnapshot,
   LegalArea,
   LegalEditorialBatchRun,
@@ -67,6 +72,7 @@ import { buildAdminLawEditPath } from '../../../../config/adminPageNavigationCon
 
 type AdminLawDraft = Partial<LawDetail> & {
   areaId?: string;
+  legalAreaId?: string;
   sumulas?: Array<{
     id?: string;
     articleId?: string;
@@ -87,8 +93,21 @@ interface TaxonomyOption {
   taxonomyLevel?: string;
 }
 
+type RawTaxonomyOption = Record<string, unknown>;
+type LawDetailAdminAliases = Partial<LawDetail> & {
+  legalAreaId?: unknown;
+  preamble?: unknown;
+  area?: (Partial<LegalArea> & { legalAreaId?: unknown }) | null;
+};
+type EditableCollectionKey = 'teacherComments' | 'examTips' | 'jurisprudence' | 'sumulas';
+type EditableCollectionItem =
+  | TeacherComment
+  | ArticleExamTip
+  | ArticleJurisprudence
+  | NonNullable<AdminLawDraft['sumulas']>[number];
+
 type LegalAiGenerationKind = 'teacher-comment' | 'exam-tip' | 'jurisprudence' | 'sumula' | 'doctrine' | 'bundle';
-type LegalEditorialSection = 'teacher' | 'tips' | 'jurisprudence' | 'sumulas' | 'doctrine' | 'ai';
+type LegalEditorialSection = 'teacher' | 'tips' | 'jurisprudence' | 'sumulas' | 'doctrine' | 'section-analysis' | 'ai';
 
 const LEGAL_EDITORIAL_SECTIONS: Array<{
   key: LegalEditorialSection;
@@ -100,12 +119,44 @@ const LEGAL_EDITORIAL_SECTIONS: Array<{
   { key: 'jurisprudence', label: 'Jurisprudencia', description: 'Somente decisoes ligadas ao artigo.' },
   { key: 'sumulas', label: 'Sumulas', description: 'Enunciados relevantes para o dispositivo.' },
   { key: 'doctrine', label: 'Doutrina', description: 'Apoio teorico curto e revisavel.' },
+  { key: 'section-analysis', label: 'Capitulos', description: 'Analise aprofundada por capitulo.' },
   { key: 'ai', label: 'IA e lote', description: 'Geracao assistida e acompanhamento por artigo.' },
+];
+
+const LEGAL_BLOCK_KINDS: Array<{ value: LegalArticleBlock['kind']; label: string }> = [
+  { value: 'caput', label: 'Caput' },
+  { value: 'paragraph', label: 'Paragrafo' },
+  { value: 'inciso', label: 'Inciso' },
+  { value: 'alinea', label: 'Alinea' },
+  { value: 'item', label: 'Item' },
+  { value: 'note', label: 'Nota oficial' },
 ];
 
 const createTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const normalizeParam = (value?: string | string[]) => Array.isArray(value) ? value[0] : value;
+
+const getErrorMessage = (error: unknown, fallback: string) => (
+  error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message
+    : fallback
+);
+
+const getLegalAreaId = (area: unknown): string => {
+  if (!area || typeof area !== 'object' || !('legalAreaId' in area)) {
+    return '';
+  }
+
+  const { legalAreaId } = area as { legalAreaId?: unknown };
+  return String(legalAreaId || '');
+};
+
+const normalizeLawStatus = (value: string): NonNullable<LawDetail['status']> => {
+  const allowedStatuses: NonNullable<LawDetail['status']>[] = ['active', 'revoked', 'partially_revoked', 'monitoring'];
+  return allowedStatuses.includes(value as NonNullable<LawDetail['status']>)
+    ? value as NonNullable<LawDetail['status']>
+    : 'active';
+};
 
 const normalizeTaxonomyText = (value: unknown) => String(value || '')
   .normalize('NFD')
@@ -116,6 +167,203 @@ const normalizeTaxonomyText = (value: unknown) => String(value || '')
 const slugifyTaxonomy = (value: string) => normalizeTaxonomyText(value)
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '');
+
+const sanitizeLegacyTaxonomyLabel = (value: string) => value
+  .replace(/\((?:area|área)\s+antiga\)/ig, '')
+  .replace(/\s{2,}/g, ' ')
+  .trim();
+
+const isNumericOnlyLabel = (value: string) => /^\d+$/.test(String(value || '').trim());
+
+const buildDefaultBlockLabel = (kind: LegalArticleBlock['kind'], articleNumber: string, sequence: number) => {
+  if (kind === 'caput') {
+    return articleNumber ? `Art. ${articleNumber}` : 'Art.';
+  }
+  if (kind === 'paragraph') {
+    return `§ ${sequence}o`;
+  }
+  if (kind === 'inciso') {
+    return `${sequence}`;
+  }
+  if (kind === 'alinea') {
+    return `${String.fromCharCode(96 + Math.min(sequence, 26))})`;
+  }
+  if (kind === 'item') {
+    return `${sequence}`;
+  }
+  return 'Nota';
+};
+
+const buildArticleTextFromBlocks = (blocks: LegalArticleBlock[]) => blocks
+  .map((block) => {
+    const label = String(block.label || '').trim();
+    const text = String(block.text || '').trim();
+    if (!label && !text) return '';
+    return [label, text].filter(Boolean).join(' ').trim();
+  })
+  .filter(Boolean)
+  .join('\n');
+
+const normalizeArticleBlocks = (article: LawArticle): LegalArticleBlock[] => {
+  const seedBlocks = Array.isArray(article.blocks) ? article.blocks : [];
+  const filtered = seedBlocks
+    .map((block, index) => {
+      const kind = (block.kind || 'caput') as LegalArticleBlock['kind'];
+      return {
+        id: block.id || `${article.id}-block-${index + 1}`,
+        kind,
+        label: String(block.label || '').trim(),
+        text: String(block.text || '').trim(),
+      } as LegalArticleBlock;
+    })
+    .filter((block) => block.label || block.text);
+
+  const baseBlocks = filtered.length > 0 ? filtered : [{
+    id: `${article.id}-caput`,
+    kind: 'caput' as const,
+    label: article.number ? `Art. ${article.number}` : 'Art.',
+    text: String(article.text || '').trim(),
+  }];
+
+  const caputIndex = baseBlocks.findIndex((block) => block.kind === 'caput');
+  const withCaput = caputIndex >= 0
+    ? [
+      baseBlocks[caputIndex],
+      ...baseBlocks.filter((_, index) => index !== caputIndex),
+    ]
+    : [{
+      id: `${article.id}-caput`,
+      kind: 'caput' as const,
+      label: article.number ? `Art. ${article.number}` : 'Art.',
+      text: String(article.text || '').trim(),
+    }, ...baseBlocks];
+
+  const next: LegalArticleBlock[] = [];
+  let paragraphCounter = 0;
+  let incisoCounter = 0;
+  let alineaCounter = 0;
+  let itemCounter = 0;
+  let currentParagraphId: string | null = null;
+  let currentIncisoId: string | null = null;
+  let currentAlineaId: string | null = null;
+  let lastLegalId: string | null = null;
+  const caputId = `${article.id}-caput`;
+
+  withCaput.forEach((block, index) => {
+    const id = block.kind === 'caput' ? caputId : (block.id || `${article.id}-${block.kind}-${index + 1}`);
+    const text = String(block.text || '').trim();
+    if (!text) {
+      return;
+    }
+
+    if (block.kind === 'paragraph') {
+      paragraphCounter += 1;
+      incisoCounter = 0;
+      alineaCounter = 0;
+      itemCounter = 0;
+      currentParagraphId = id;
+      currentIncisoId = null;
+      currentAlineaId = null;
+      lastLegalId = id;
+    } else if (block.kind === 'inciso') {
+      incisoCounter += 1;
+      alineaCounter = 0;
+      itemCounter = 0;
+      currentIncisoId = id;
+      currentAlineaId = null;
+      lastLegalId = id;
+    } else if (block.kind === 'alinea') {
+      alineaCounter += 1;
+      itemCounter = 0;
+      currentAlineaId = id;
+      lastLegalId = id;
+    } else if (block.kind === 'item') {
+      itemCounter += 1;
+      lastLegalId = id;
+    } else if (block.kind === 'caput') {
+      paragraphCounter = 0;
+      incisoCounter = 0;
+      alineaCounter = 0;
+      itemCounter = 0;
+      currentParagraphId = null;
+      currentIncisoId = null;
+      currentAlineaId = null;
+      lastLegalId = id;
+    }
+
+    const sequence = block.kind === 'paragraph'
+      ? paragraphCounter
+      : block.kind === 'inciso'
+        ? incisoCounter
+        : block.kind === 'alinea'
+          ? alineaCounter
+          : block.kind === 'item'
+            ? itemCounter
+            : 1;
+
+    const label = String(block.label || '').trim() || buildDefaultBlockLabel(block.kind, String(article.number || '').trim(), Math.max(sequence, 1));
+    const parentBlockId = block.kind === 'paragraph'
+      ? caputId
+      : block.kind === 'inciso'
+        ? (currentParagraphId || caputId)
+        : block.kind === 'alinea'
+          ? (currentIncisoId || currentParagraphId || caputId)
+          : block.kind === 'item'
+            ? (currentAlineaId || currentIncisoId || currentParagraphId || caputId)
+            : block.kind === 'note'
+              ? (lastLegalId || caputId)
+              : undefined;
+
+    next.push({
+      id,
+      kind: block.kind,
+      label,
+      text,
+      ...(parentBlockId ? { parentBlockId } : {}),
+    });
+  });
+
+  return next.length > 0 ? next : [{
+    id: caputId,
+    kind: 'caput',
+    label: article.number ? `Art. ${article.number}` : 'Art.',
+    text: String(article.text || '').trim(),
+  }];
+};
+
+const normalizeArticleForSave = (article: LawArticle): LawArticle => {
+  const blocks = normalizeArticleBlocks(article);
+  const text = buildArticleTextFromBlocks(blocks);
+  const paragraphs = blocks
+    .filter((block) => block.kind === 'paragraph')
+    .map((block) => ({
+      number: String(block.label || '').trim(),
+      text: String(block.text || '').trim(),
+    }))
+    .filter((item) => item.text !== '');
+
+  return {
+    ...article,
+    text,
+    paragraphs,
+    blocks,
+    hierarchy: {
+      ...(article.hierarchy || {}),
+      title: String(
+        (article.hierarchy as Record<string, unknown>)?.resolvedSubtopic
+        || article.hierarchy?.title
+        || (article.hierarchy as Record<string, unknown>)?.titleLabel
+        || '',
+      ).trim(),
+      chapter: String(
+        (article.hierarchy as Record<string, unknown>)?.resolvedAssunto
+        || article.hierarchy?.chapter
+        || (article.hierarchy as Record<string, unknown>)?.chapterLabel
+        || '',
+      ).trim(),
+    },
+  };
+};
 
 const isLikelyEditoriallyIrrelevantArticle = (article: Partial<LawArticle>) => {
   const rawText = String(article.text || article.blocks?.map((block) => block.text).join(' ') || '');
@@ -168,15 +416,102 @@ const hasMeaningfulJurisprudenceContent = (item: Partial<ArticleJurisprudence>) 
   return Boolean(sourceUrl || summary || examImpact || (title && title !== 'Jurisprudencia relevante') || (precedentType && precedentType !== 'Entendimento'));
 };
 
-const splitKnowledgeTaxonomies = (taxonomies: any) => ({
-  subjects: (taxonomies.subjects || []) as TaxonomyOption[],
-  topics: ((taxonomies.subjectTopics?.length
-    ? taxonomies.subjectTopics
-    : (taxonomies.topics || []).filter((item: any) => item.taxonomyLevel === 'topico')) || []) as TaxonomyOption[],
-  specificSubjects: ((taxonomies.specificSubjects?.length
-    ? taxonomies.specificSubjects
-    : (taxonomies.topics || []).filter((item: any) => item.taxonomyLevel === 'assunto')) || []) as TaxonomyOption[],
-});
+const readRawTaxonomyString = (raw: RawTaxonomyOption, keys: string[]) => {
+  for (const key of keys) {
+    const value = raw[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return '';
+};
+
+const normalizeTaxonomyOption = (rawOption: unknown, fallbackLevel?: string): TaxonomyOption | null => {
+  if (!rawOption || typeof rawOption !== 'object') return null;
+  const raw = rawOption as RawTaxonomyOption;
+  const idValue = raw.id ?? raw.value ?? raw.slug ?? null;
+  if (idValue === null || idValue === undefined || String(idValue).trim() === '') {
+    return null;
+  }
+
+  const name = sanitizeLegacyTaxonomyLabel(readRawTaxonomyString(raw, ['name', 'nome', 'title', 'titulo', 'label', 'descricao', 'description']))
+    || String(idValue).trim();
+
+  const parentValue = raw.parentId ?? raw.parent_id ?? raw.pai ?? raw.assunto_raiz ?? null;
+  const rootValue = raw.rootSubjectId ?? raw.root_subject_id ?? raw.materia_id ?? null;
+  const taxonomyLevel = readRawTaxonomyString(raw, ['taxonomyLevel', 'taxonomy_level', 'nivel_taxonomia']) || fallbackLevel || undefined;
+
+  return {
+    id: String(idValue),
+    name,
+    slug: typeof raw.slug === 'string' ? raw.slug : undefined,
+    parentId: parentValue === null || parentValue === undefined || parentValue === '' ? null : String(parentValue),
+    rootSubjectId: rootValue === null || rootValue === undefined || rootValue === '' ? null : String(rootValue),
+    taxonomyLevel,
+  };
+};
+
+const normalizeTaxonomyCollection = (collection: unknown, fallbackLevel?: string): TaxonomyOption[] => {
+  if (!Array.isArray(collection)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const options: TaxonomyOption[] = [];
+  collection.forEach((entry) => {
+    const normalized = normalizeTaxonomyOption(entry, fallbackLevel);
+    if (!normalized) return;
+    const key = String(normalized.id);
+    if (seen.has(key)) return;
+    seen.add(key);
+    options.push(normalized);
+  });
+  return options;
+};
+
+const splitKnowledgeTaxonomies = (taxonomies: unknown) => {
+  const record = taxonomies && typeof taxonomies === 'object'
+    ? taxonomies as Record<string, unknown>
+    : {};
+  const subjectTopicsSource = Array.isArray(record.subjectTopics) && record.subjectTopics.length > 0
+    ? record.subjectTopics
+    : null;
+  const specificSubjectsSource = Array.isArray(record.specificSubjects) && record.specificSubjects.length > 0
+    ? record.specificSubjects
+    : null;
+  const subjects = normalizeTaxonomyCollection(record.subjects, 'materia');
+  const allTopics = normalizeTaxonomyCollection(record.topics);
+  const subjectTopics = normalizeTaxonomyCollection(
+    subjectTopicsSource
+      ? subjectTopicsSource
+      : allTopics.filter((item) => (
+        item.taxonomyLevel === 'topico'
+        || item.taxonomyLevel === 'subtopico'
+      )),
+    'topico',
+  );
+  const specificSubjects = normalizeTaxonomyCollection(
+    specificSubjectsSource
+      ? specificSubjectsSource
+      : allTopics.filter((item) => item.taxonomyLevel === 'assunto'),
+    'assunto',
+  );
+
+  return {
+    subjects,
+    topics: subjectTopics,
+    specificSubjects,
+  };
+};
+
+const hasTaxonomyPayload = (taxonomies: unknown): boolean => {
+  if (!taxonomies || typeof taxonomies !== 'object') {
+    return false;
+  }
+
+  const record = taxonomies as Record<string, unknown>;
+  return Object.values(record).some((value) => Array.isArray(value) && value.length > 0);
+};
 
 const buildLegalAreaFromTaxonomy = (subject?: TaxonomyOption, fallback?: Partial<LegalArea> | null): LegalArea | undefined => {
   if (!subject && !fallback) return undefined;
@@ -222,14 +557,12 @@ const buildEmptyArticle = (lawId = 'new'): LawArticle => {
   };
 };
 
-const buildEmptyLaw = (areas: LegalArea[], subjects: TaxonomyOption[] = []): AdminLawDraft => {
-  const defaultSubject = subjects[0];
-  const defaultArea = buildLegalAreaFromTaxonomy(defaultSubject, areas[0]) || areas[0];
-
+const buildEmptyLaw = (): AdminLawDraft => {
   return {
   id: '',
   slug: '',
-  areaId: defaultSubject ? String(defaultSubject.id) : areas[0]?.id || '',
+  areaId: '',
+  lawTopicFilterId: null,
   title: '',
   shortTitle: '',
   number: '',
@@ -238,6 +571,7 @@ const buildEmptyLaw = (areas: LegalArea[], subjects: TaxonomyOption[] = []): Adm
   aliases: [],
   description: '',
   summary: '',
+  preamble: '',
   ementa: '',
   status: 'active',
   officialUrl: '',
@@ -249,7 +583,7 @@ const buildEmptyLaw = (areas: LegalArea[], subjects: TaxonomyOption[] = []): Adm
   commentedArticleCount: 0,
   jurisprudenceCount: 0,
   examTipCount: 0,
-  area: defaultArea,
+  area: undefined,
   articles: [buildEmptyArticle()],
   teacherComments: [],
   jurisprudence: [],
@@ -260,17 +594,49 @@ const buildEmptyLaw = (areas: LegalArea[], subjects: TaxonomyOption[] = []): Adm
   };
 };
 
-const resolveLawMateria = (law: Partial<LawDetail>, areas: LegalArea[], subjects: TaxonomyOption[]) => {
-  const rawAreaId = String(law.areaId || law.area?.id || areas[0]?.id || '');
+const buildAreasFromSubjects = (subjects: TaxonomyOption[]): LegalArea[] => (
+  subjects.map((subject, index) => ({
+    id: String(subject.id),
+    slug: String(subject.slug || slugifyTaxonomy(subject.name) || `materia-${index + 1}`) as LegalArea['slug'],
+    name: subject.name,
+    description: '',
+    order: index,
+    iconTone: 'sky',
+  }))
+);
+
+const resolveLawMateria = (
+  law: Partial<LawDetail>,
+  areas: LegalArea[],
+  subjects: TaxonomyOption[],
+  topics: TaxonomyOption[] = [],
+) => {
+  const rawAreaId = String(law.areaId || law.area?.id || '');
   const directSubject = subjects.find((subject) => String(subject.id) === rawAreaId);
   if (directSubject) {
     return {
       areaId: String(directSubject.id),
-      area: buildLegalAreaFromTaxonomy(directSubject, law.area || areas[0]),
+      area: buildLegalAreaFromTaxonomy(directSubject, law.area),
     };
   }
 
-  const lawAreaName = normalizeTaxonomyText(law.area?.name || '');
+  const lawTopicId = String(law.lawTopicFilterId || '');
+  const lawTopic = lawTopicId
+    ? topics.find((topic) => String(topic.id) === lawTopicId)
+    : null;
+  const topicSubjectId = String(lawTopic?.parentId || lawTopic?.rootSubjectId || '');
+  const subjectFromTopic = topicSubjectId
+    ? subjects.find((subject) => String(subject.id) === topicSubjectId)
+    : null;
+
+  if (subjectFromTopic) {
+    return {
+      areaId: String(subjectFromTopic.id),
+      area: buildLegalAreaFromTaxonomy(subjectFromTopic, law.area),
+    };
+  }
+
+  const lawAreaName = normalizeTaxonomyText(sanitizeLegacyTaxonomyLabel(String(law.area?.name || '')));
   const matchedByName = lawAreaName
     ? subjects.find((subject) => {
       const subjectName = normalizeTaxonomyText(subject.name);
@@ -281,30 +647,61 @@ const resolveLawMateria = (law: Partial<LawDetail>, areas: LegalArea[], subjects
   if (matchedByName) {
     return {
       areaId: String(matchedByName.id),
-      area: buildLegalAreaFromTaxonomy(matchedByName, law.area || areas[0]),
+      area: buildLegalAreaFromTaxonomy(matchedByName, law.area),
     };
   }
 
   return {
     areaId: rawAreaId,
-    area: areas.find((area) => String(area.id) === rawAreaId) || law.area || areas[0],
+    area: rawAreaId
+      ? areas.find((area) => String(area.id) === rawAreaId) || law.area
+      : law.area,
   };
 };
 
-const hydrateDraftFromLaw = (law: Partial<LawDetail>, areas: LegalArea[], subjects: TaxonomyOption[] = []): AdminLawDraft => {
+const hydrateDraftFromLaw = (
+  law: Partial<LawDetail>,
+  areas: LegalArea[],
+  subjects: TaxonomyOption[] = [],
+  topics: TaxonomyOption[] = [],
+): AdminLawDraft => {
+  const lawAliases = law as LawDetailAdminAliases;
   const articleIdMap = new Map<string, string>();
   const articles = (law.articles || []).map((article, index) => {
     const nextId = String(article.id || createTempId(`article-${index + 1}`));
     const originalId = String(article.id || '');
+    const hierarchy = (article.hierarchy || {}) as Record<string, unknown>;
+    const articleInternalTitle = String(article.title || '').trim();
+    const resolvedSubtopic = String(
+      hierarchy.resolvedSubtopic
+      || hierarchy.title
+      || hierarchy.titleLabel
+      || hierarchy.book
+      || hierarchy.bookLabel
+      || hierarchy.part
+      || hierarchy.partLabel
+      || '',
+    ).trim();
+    const resolvedChapter = String(
+      hierarchy.resolvedAssunto
+      || hierarchy.chapter
+      || hierarchy.chapterLabel
+      || hierarchy.section
+      || hierarchy.sectionLabel
+      || hierarchy.subsection
+      || hierarchy.subsectionLabel
+      || '',
+    ).trim();
     if (originalId) {
       articleIdMap.set(originalId, nextId);
     }
 
-    return {
+    const hydratedArticle: LawArticle = {
       ...article,
       id: nextId,
       lawId: String(article.lawId || law.id || 'new'),
       slug: article.slug || `art-${index + 1}`,
+      title: articleInternalTitle,
       blocks: (article.blocks || []).map((block, blockIndex) => ({
         ...block,
         id: block.id || `${nextId}-block-${blockIndex + 1}`,
@@ -313,10 +710,21 @@ const hydrateDraftFromLaw = (law: Partial<LawDetail>, areas: LegalArea[], subjec
       jurisprudenceNotes: article.jurisprudenceNotes || [],
       syllabi: article.syllabi || [],
       doctrine: article.doctrine || [],
-      hierarchy: article.hierarchy || {},
+      hierarchy: {
+        ...hierarchy,
+        title: resolvedSubtopic || String(hierarchy.title || ''),
+        chapter: resolvedChapter || String(hierarchy.chapter || ''),
+        ...(resolvedSubtopic ? { resolvedSubtopic } : {}),
+        ...(resolvedChapter ? { resolvedAssunto: resolvedChapter } : {}),
+      },
       relatedQuestionCount: article.relatedQuestionCount || 0,
       subjectFilterId: article.subjectFilterId ?? null,
       topicFilterId: article.topicFilterId ?? null,
+    };
+
+    return {
+      ...hydratedArticle,
+      blocks: normalizeArticleBlocks(hydratedArticle),
     };
   });
 
@@ -325,12 +733,14 @@ const hydrateDraftFromLaw = (law: Partial<LawDetail>, areas: LegalArea[], subjec
     return articleIdMap.get(String(articleId)) || String(articleId);
   };
 
-  const resolvedMateria = resolveLawMateria(law, areas, subjects);
+  const resolvedMateria = resolveLawMateria(law, areas, subjects, topics);
 
   return {
     ...law,
     id: String(law.id || ''),
     areaId: resolvedMateria.areaId,
+    legalAreaId: String(lawAliases.legalAreaId || getLegalAreaId(law.area) || law.areaId || ''),
+    lawTopicFilterId: law.lawTopicFilterId ? String(law.lawTopicFilterId) : null,
     area: resolvedMateria.area,
     aliases: law.aliases || [],
     title: law.title || '',
@@ -341,6 +751,7 @@ const hydrateDraftFromLaw = (law: Partial<LawDetail>, areas: LegalArea[], subjec
     slug: law.slug || '',
     description: law.description || '',
     summary: law.summary || '',
+    preamble: String(lawAliases.preamble || ''),
     ementa: law.ementa || '',
     status: law.status || 'active',
     officialUrl: law.officialUrl || '',
@@ -365,6 +776,25 @@ const hydrateDraftFromLaw = (law: Partial<LawDetail>, areas: LegalArea[], subjec
       ...item,
       articleId: resolveArticleId(item.articleId),
     })),
+    sectionEditorials: (law.sectionEditorials || []).map((item) => ({
+      ...item,
+      sectionKey: String(item.sectionKey || ''),
+      sectionTitle: String(item.sectionTitle || ''),
+      rangeLabel: String(item.rangeLabel || ''),
+      articleCount: Number(item.articleCount || 0),
+      summary: String(item.summary || ''),
+      examFocus: Array.isArray(item.examFocus) ? item.examFocus : [],
+      macetes: Array.isArray(item.macetes) ? item.macetes : [],
+      doctrine: Array.isArray(item.doctrine) ? item.doctrine : [],
+      jurisprudence: Array.isArray(item.jurisprudence) ? item.jurisprudence : [],
+      sumulas: Array.isArray(item.sumulas) ? item.sumulas : [],
+      highlights: Array.isArray(item.highlights)
+        ? item.highlights.map((highlight) => ({
+          ...highlight,
+          articleId: resolveArticleId(highlight.articleId),
+        }))
+        : [],
+    })),
     userComments: law.userComments || [],
     updates: law.updates || [],
     sumulas: articles.flatMap((article) => (
@@ -382,6 +812,42 @@ const hydrateDraftFromLaw = (law: Partial<LawDetail>, areas: LegalArea[], subjec
 
 const getArticleLabel = (article: LawArticle) =>
   article.number ? `Art. ${article.number}` : 'Artigo sem numero';
+
+const getHierarchyDisplayText = (
+  keys: string[],
+  article?: Partial<LawArticle> | null,
+): string => {
+  const hierarchy = (article?.hierarchy || {}) as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = String(hierarchy[key] || '').trim();
+    if (value !== '') {
+      return value;
+    }
+  }
+
+  return '';
+};
+
+const getArticleSubtopicDisplayText = (article?: Partial<LawArticle> | null): string => getHierarchyDisplayText([
+  'resolvedSubtopic',
+  'title',
+  'titleLabel',
+  'book',
+  'bookLabel',
+  'part',
+  'partLabel',
+], article);
+
+const getArticleAssuntoDisplayText = (article?: Partial<LawArticle> | null): string => getHierarchyDisplayText([
+  'resolvedAssunto',
+  'chapter',
+  'chapterLabel',
+  'section',
+  'sectionLabel',
+  'subsection',
+  'subsectionLabel',
+], article);
 
 const FieldLabel = ({ children }: { children: React.ReactNode }) => (
   <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{children}</label>
@@ -412,6 +878,7 @@ interface CreatableTaxonomySelectProps {
   label: string;
   options: TaxonomyOption[];
   value?: string | number | null;
+  selectedLabelOverride?: string;
   placeholder: string;
   createLabel: string;
   disabled?: boolean;
@@ -425,6 +892,7 @@ const CreatableTaxonomySelect = ({
   label,
   options,
   value,
+  selectedLabelOverride,
   placeholder,
   createLabel,
   disabled = false,
@@ -476,7 +944,7 @@ const CreatableTaxonomySelect = ({
           <div className="flex flex-wrap items-center gap-2">
             {selectedValue ? (
               <span className="flex items-center gap-1 rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-900/30 dark:text-indigo-300">
-                {selectedOption?.name || selectedValue}
+                {selectedOption?.name || selectedLabelOverride || selectedValue}
                 <button
                   type="button"
                   onClick={() => onChange('', undefined)}
@@ -537,7 +1005,7 @@ const CreatableTaxonomySelect = ({
               >
                 <span className="flex items-center gap-2">
                   {loading ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
-                  {createLabel} "{inputValue.trim()}"
+                  {createLabel} &quot;{inputValue.trim()}&quot;
                 </span>
                 <span className="ml-6 text-[10px] font-normal italic text-slate-400">Slug: {slugifyTaxonomy(inputValue)}</span>
               </button>
@@ -595,52 +1063,6 @@ const AI_KIND_LABEL: Record<LegalAiGenerationKind, string> = {
   bundle: 'Pacote IA',
 };
 
-const sanitizeInlineText = (value: string) => String(value || '')
-  .replace(/\s+/g, ' ')
-  .replace(/\s+([,.;:!?])/g, '$1')
-  .trim();
-
-const stripAiLead = (value: string) => {
-  let nextValue = sanitizeInlineText(value);
-  const patterns = [
-    /^prezad[oa]s?\s+alun[oa]s?[,:!.\-\s]*/i,
-    /^car[oa]s?\s+alun[oa]s?[,:!.\-\s]*/i,
-    /^ol[aá][,:!.\-\s]*/i,
-    /^vamos\s+(analisar|ao\s+que\s+importa|direto\s+ao\s+ponto)[,:!.\-\s]*/i,
-    /^aten[cç][aã]o[,:!.\-\s]*/i,
-  ];
-
-  patterns.forEach((pattern) => {
-    nextValue = nextValue.replace(pattern, '');
-  });
-
-  return nextValue.trim();
-};
-
-const splitSentences = (value: string) => sanitizeInlineText(value)
-  .split(/(?<=[.!?])\s+/)
-  .map((item) => item.trim())
-  .filter(Boolean);
-
-const limitSentences = (value: string, maxSentences: number) => {
-  const sentences = splitSentences(stripAiLead(value));
-  return sanitizeInlineText(sentences.slice(0, maxSentences).join(' '));
-};
-
-const normalizeShortText = (value: string, maxLength: number) => {
-  const cleanValue = stripAiLead(value);
-  if (cleanValue.length <= maxLength) {
-    return cleanValue;
-  }
-
-  return `${cleanValue.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
-};
-
-const normalizeStringList = (values?: string[], limit = 3) => (Array.isArray(values) ? values : [])
-  .map((item) => normalizeShortText(item, 120))
-  .filter(Boolean)
-  .slice(0, limit);
-
 const formatBatchStatusLabel = (status?: string) => {
   switch (status) {
     case 'success':
@@ -681,43 +1103,40 @@ const getBatchStatusClasses = (status?: string) => {
   }
 };
 
-const formatDoctrineEntry = (entry: { author?: string; work?: string; text?: string }) => {
-  const text = normalizeShortText(entry.text || '', 220);
-  if (!text) return '';
-
-  const author = sanitizeInlineText(entry.author || '');
-  const work = sanitizeInlineText(entry.work || '');
-  const prefix = author ? `${author}: ` : '';
-  const suffix = work ? ` (${work})` : '';
-
-  return `${prefix}${text}${suffix}`.trim();
-};
-
 const AdminLegalCommentaryEditPage = () => {
   const params = useParams<{ lawId?: string | string[] }>();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { currentUser, isLoading: isAuthLoading } = useAuth();
   const { addToast } = useToast();
-  const lawId = normalizeParam(params.lawId) || 'new';
-  const isNew = lawId === 'new';
+  const { ensureTaxonomiesLoaded } = useTaxonomyActions();
+  const canAccessAdmin = canAccessAdminPanel(currentUser);
+  const rawLawId = String(normalizeParam(params.lawId) || 'new').trim();
+  const isNew = ['new', 'novo', 'add'].includes(normalizeTaxonomyText(rawLawId));
+  const lawId = isNew ? 'new' : rawLawId;
   const shouldOpenUpdatesFromQuery = searchParams.get('updates') === '1';
   const [areas, setAreas] = React.useState<LegalArea[]>([]);
   const [subjects, setSubjects] = React.useState<TaxonomyOption[]>([]);
   const [topics, setTopics] = React.useState<TaxonomyOption[]>([]);
   const [specificSubjects, setSpecificSubjects] = React.useState<TaxonomyOption[]>([]);
   const [draft, setDraft] = React.useState<AdminLawDraft | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [editorReloadVersion, setEditorReloadVersion] = React.useState(0);
   const draftRef = React.useRef<AdminLawDraft | null>(null);
+  const addToastRef = React.useRef(addToast);
   const [activeArticleId, setActiveArticleId] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [isImportingFromPlanalto, setIsImportingFromPlanalto] = React.useState(false);
   const [isSyncingFromOfficial, setIsSyncingFromOfficial] = React.useState(false);
   const [isCreatingMateria, setIsCreatingMateria] = React.useState(false);
-  const [isCreatingTopic, setIsCreatingTopic] = React.useState(false);
+  const [isCreatingLawTopic, setIsCreatingLawTopic] = React.useState(false);
+  const [isCreatingSubtopic, setIsCreatingSubtopic] = React.useState(false);
   const [isCreatingAssunto, setIsCreatingAssunto] = React.useState(false);
   const [aiLoading, setAiLoading] = React.useState<string | null>(null);
   const [aiProgress, setAiProgress] = React.useState<{ kind: string; label: string; percent: number } | null>(null);
+  const [sectionAnalysisLoadingKey, setSectionAnalysisLoadingKey] = React.useState<string | null>(null);
+  const [isGeneratingAllSectionAnalyses, setIsGeneratingAllSectionAnalyses] = React.useState(false);
   const [activeEditorialSection, setActiveEditorialSection] = React.useState<LegalEditorialSection>('teacher');
   const [isUpdatesModalOpen, setIsUpdatesModalOpen] = React.useState(false);
   const [isUpdatesModalLoading, setIsUpdatesModalLoading] = React.useState(false);
@@ -731,6 +1150,7 @@ const AdminLegalCommentaryEditPage = () => {
   const [batchOnlyMissingComments, setBatchOnlyMissingComments] = React.useState(true);
   const batchPauseRef = React.useRef(false);
   const batchStopRef = React.useRef(false);
+  const batchStatusLoadedForLawRef = React.useRef('');
 
   const renderAdminShell = (children: React.ReactNode) => (
     <AdminStandaloneShell
@@ -743,32 +1163,61 @@ const AdminLegalCommentaryEditPage = () => {
     </AdminStandaloneShell>
   );
 
+  const resolveKnowledgeTaxonomies = React.useCallback(async (force = false) => {
+    await ensureTaxonomiesLoaded(force);
+    const cachedTaxonomies = useAppConfigStore.getState().systemSettings.taxonomies;
+    if (hasTaxonomyPayload(cachedTaxonomies)) {
+      return splitKnowledgeTaxonomies(cachedTaxonomies);
+    }
+
+    const fallbackTaxonomies = await filtersService.listTaxonomies();
+    return splitKnowledgeTaxonomies(fallbackTaxonomies);
+  }, [ensureTaxonomiesLoaded]);
+
   React.useEffect(() => {
-    if (!isAuthLoading && !canAccessAdminPanel(currentUser)) {
+    if (!isAuthLoading && !canAccessAdmin) {
       router.replace('/');
     }
-  }, [currentUser, isAuthLoading, router]);
+  }, [canAccessAdmin, isAuthLoading, router]);
 
   React.useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
 
   React.useEffect(() => {
-    let isCurrent = true;
-    setIsLoading(true);
+    addToastRef.current = addToast;
+  }, [addToast]);
 
-    Promise.all([
-      legalCommentaryApiService.getAdminDetail(lawId),
-      filtersService.listTaxonomies(),
-    ])
-      .then(([payload, taxonomies]) => {
+  React.useEffect(() => {
+    if (isAuthLoading) {
+      return;
+    }
+
+    if (!canAccessAdmin) {
+      return;
+    }
+
+    let isCurrent = true;
+    const loadingFrameId = window.requestAnimationFrame(() => {
+      if (!isCurrent) return;
+      setIsLoading(true);
+      setLoadError(null);
+    });
+
+    (async () => {
+      try {
+        const knowledgeTaxonomies = await resolveKnowledgeTaxonomies();
+        const payload = isNew
+          ? { law: null, areas: [] as LegalArea[] }
+          : await legalCommentaryApiService.getAdminDetail(lawId);
+
         if (!isCurrent) return;
 
-        const nextAreas = payload.areas || [];
-        const knowledgeTaxonomies = splitKnowledgeTaxonomies(taxonomies);
+        const fallbackAreas = buildAreasFromSubjects(knowledgeTaxonomies.subjects);
+        const nextAreas = (payload.areas || []).length > 0 ? (payload.areas || []) : fallbackAreas;
         const nextLaw = payload.law
-          ? hydrateDraftFromLaw(payload.law, nextAreas, knowledgeTaxonomies.subjects)
-          : buildEmptyLaw(nextAreas, knowledgeTaxonomies.subjects);
+          ? hydrateDraftFromLaw(payload.law, nextAreas, knowledgeTaxonomies.subjects, knowledgeTaxonomies.topics)
+          : buildEmptyLaw();
 
         setAreas(nextAreas);
         setSubjects(knowledgeTaxonomies.subjects);
@@ -776,37 +1225,57 @@ const AdminLegalCommentaryEditPage = () => {
         setSpecificSubjects(knowledgeTaxonomies.specificSubjects);
         setDraft(nextLaw);
         setActiveArticleId(nextLaw.articles?.[0]?.id || '');
-      })
-      .catch(() => {
-        if (isCurrent) addToast('Nao foi possivel carregar o editor da lei.', 'error');
-      })
-      .finally(() => {
-        if (isCurrent) setIsLoading(false);
-      });
+      } catch {
+        if (isCurrent) {
+          setLoadError('Nao foi possivel carregar o editor da lei.');
+          addToastRef.current('Nao foi possivel carregar o editor da lei.', 'error');
+          setDraft(null);
+        }
+      } finally {
+        if (isCurrent) {
+          setIsLoading(false);
+        }
+      }
+    })();
 
     return () => {
       isCurrent = false;
+      window.cancelAnimationFrame(loadingFrameId);
     };
-  }, [addToast, lawId]);
+  }, [canAccessAdmin, editorReloadVersion, isAuthLoading, isNew, lawId, resolveKnowledgeTaxonomies]);
 
   React.useEffect(() => {
     if (!draft?.id || isNew) {
-      setBatchRun(null);
+      batchStatusLoadedForLawRef.current = '';
+      const resetFrameId = window.requestAnimationFrame(() => setBatchRun(null));
+      return () => window.cancelAnimationFrame(resetFrameId);
+    }
+
+    if (activeEditorialSection !== 'ai') {
+      return;
+    }
+
+    const currentLawId = String(draft.id);
+    if (batchStatusLoadedForLawRef.current === currentLawId) {
       return;
     }
 
     let active = true;
-    setIsBatchRefreshing(true);
+    const refreshingFrameId = window.requestAnimationFrame(() => {
+      if (active) setIsBatchRefreshing(true);
+    });
 
-    legalCommentaryApiService.getAdminEditorialBatchStatus({ lawId: String(draft.id) })
+    legalCommentaryApiService.getAdminEditorialBatchStatus({ lawId: currentLawId })
       .then((run) => {
         if (active) {
           setBatchRun(run);
+          batchStatusLoadedForLawRef.current = currentLawId;
         }
       })
       .catch(() => {
         if (active) {
           setBatchRun(null);
+          batchStatusLoadedForLawRef.current = currentLawId;
         }
       })
       .finally(() => {
@@ -817,60 +1286,266 @@ const AdminLegalCommentaryEditPage = () => {
 
     return () => {
       active = false;
+      window.cancelAnimationFrame(refreshingFrameId);
     };
-  }, [draft?.id, isNew]);
+  }, [activeEditorialSection, draft?.id, isNew]);
 
   const activeArticle = React.useMemo(
     () => draft?.articles?.find((article) => article.id === activeArticleId) || draft?.articles?.[0] || null,
     [activeArticleId, draft?.articles],
   );
 
+  const lawSections = React.useMemo(
+    () => buildLawSections(
+      draft?.articles || [],
+      [draft?.id, draft?.slug, draft?.shortTitle, draft?.number].filter(Boolean),
+    ),
+    [draft?.articles, draft?.id, draft?.number, draft?.shortTitle, draft?.slug],
+  );
+
+  React.useEffect(() => {
+    if (!draft || draft.lawTopicFilterId) {
+      return;
+    }
+
+    const materiaId = String(draft.areaId || '');
+    if (!materiaId) {
+      return;
+    }
+
+    const topicById = new Map(topics.map((item) => [String(item.id), item]));
+    const assuntoById = new Map(specificSubjects.map((item) => [String(item.id), item]));
+
+    const resolveLawTopicFromArticle = (article: LawArticle): string => {
+      const subtopicId = String(article.subjectFilterId || '');
+      if (subtopicId) {
+        const subtopic = topicById.get(subtopicId);
+        if (subtopic) {
+          const directParent = String(subtopic.parentId || '');
+          const root = String(subtopic.rootSubjectId || '');
+          if (directParent === materiaId || root === materiaId) {
+            return subtopicId;
+          }
+
+          const parentTopic = topicById.get(directParent);
+          if (parentTopic) {
+            const parentRoot = String(parentTopic.rootSubjectId || '');
+            const parentParent = String(parentTopic.parentId || '');
+            if (parentParent === materiaId || parentRoot === materiaId) {
+              return String(parentTopic.id);
+            }
+          }
+        }
+      }
+
+      const assuntoId = String(article.topicFilterId || '');
+      if (assuntoId) {
+        const assunto = assuntoById.get(assuntoId);
+        const parentId = String(assunto?.parentId || '');
+        if (!parentId) return '';
+
+        const parentTopic = topicById.get(parentId);
+        if (parentTopic) {
+          const parentParent = String(parentTopic.parentId || '');
+          const parentRoot = String(parentTopic.rootSubjectId || '');
+          if (parentParent === materiaId || parentRoot === materiaId) {
+            return String(parentTopic.id);
+          }
+
+          const grandParentTopic = topicById.get(parentParent);
+          if (grandParentTopic) {
+            const grandParentParent = String(grandParentTopic.parentId || '');
+            const grandParentRoot = String(grandParentTopic.rootSubjectId || '');
+            if (grandParentParent === materiaId || grandParentRoot === materiaId) {
+              return String(grandParentTopic.id);
+            }
+          }
+        }
+      }
+
+      return '';
+    };
+
+    const inferredLawTopicId = (draft.articles || [])
+      .map(resolveLawTopicFromArticle)
+      .find((value) => value !== '');
+
+    if (!inferredLawTopicId) {
+      return;
+    }
+
+    const inferTopicFrameId = window.requestAnimationFrame(() => {
+      setDraft((current) => {
+        if (!current || current.lawTopicFilterId) return current;
+        return {
+          ...current,
+          lawTopicFilterId: inferredLawTopicId,
+        };
+      });
+    });
+
+    return () => window.cancelAnimationFrame(inferTopicFrameId);
+  }, [draft, specificSubjects, topics]);
+
   const lawMateriaOptions = React.useMemo(() => {
     const options = [...subjects];
     const currentMateriaId = String(draft?.areaId || '');
     const hasCurrentMateria = currentMateriaId && options.some((subject) => String(subject.id) === currentMateriaId);
+    const fallbackName = sanitizeLegacyTaxonomyLabel(String(draft?.area?.name || '')).trim();
 
-    if (currentMateriaId && !hasCurrentMateria) {
+    if (currentMateriaId && !hasCurrentMateria && fallbackName) {
       options.unshift({
         id: currentMateriaId,
-        name: draft?.area?.name ? `${draft.area.name} (area antiga)` : 'Materia atual sem taxonomia',
+        name: fallbackName,
       });
     }
 
     return options;
   }, [draft?.area?.name, draft?.areaId, subjects]);
 
-  const articleTopicOptions = React.useMemo(() => {
-    const materiaId = String(draft?.areaId || '');
-    if (!materiaId) return topics;
+  const selectedLawTopicFallbackOption = React.useMemo<TaxonomyOption | null>(() => {
+    const selectedLawTopicId = String(draft?.lawTopicFilterId || '');
+    if (!selectedLawTopicId) return null;
+    const existing = topics.find((topic) => String(topic.id) === selectedLawTopicId);
+    if (existing && !isNumericOnlyLabel(existing.name)) return existing;
+    const fallbackName = String(draft?.title || draft?.shortTitle || '').trim();
+    if (!fallbackName) return null;
+    return {
+      id: selectedLawTopicId,
+      name: fallbackName,
+      parentId: draft?.areaId || null,
+      rootSubjectId: draft?.areaId || null,
+    };
+  }, [draft?.areaId, draft?.lawTopicFilterId, draft?.shortTitle, draft?.title, topics]);
 
-    return topics.filter((topic) => (
-      !topic.parentId
-      || String(topic.parentId) === materiaId
-      || String(topic.rootSubjectId || '') === materiaId
-    ));
-  }, [draft?.areaId, topics]);
+  const lawTopicoOptions = React.useMemo(() => {
+    const materiaId = String(draft?.areaId || '');
+    const selectedLawTopicId = String(draft?.lawTopicFilterId || '');
+    const selectedLawTopicCandidate = topics.find((topic) => String(topic.id) === selectedLawTopicId);
+    const selectedLawTopic = (selectedLawTopicCandidate && !isNumericOnlyLabel(selectedLawTopicCandidate.name))
+      ? selectedLawTopicCandidate
+      : selectedLawTopicFallbackOption;
+
+    const filtered = materiaId
+      ? topics.filter((topic) => (
+        String(topic.parentId || '') === materiaId
+        || String(topic.rootSubjectId || '') === materiaId
+      ))
+      : [...topics];
+
+    if (selectedLawTopic && !filtered.some((topic) => String(topic.id) === String(selectedLawTopic.id))) {
+      filtered.unshift(selectedLawTopic);
+    }
+
+    return filtered;
+  }, [draft?.areaId, draft?.lawTopicFilterId, selectedLawTopicFallbackOption, topics]);
+
+  const selectedSubtopicFallbackOption = React.useMemo<TaxonomyOption | null>(() => {
+    const selectedSubtopicId = String(activeArticle?.subjectFilterId || '');
+    if (!selectedSubtopicId) return null;
+    const existing = topics.find((topic) => String(topic.id) === selectedSubtopicId);
+    if (existing && !isNumericOnlyLabel(existing.name)) return existing;
+    const titleName = String(getArticleSubtopicDisplayText(activeArticle) || '').trim();
+    if (!titleName) return null;
+    return {
+      id: selectedSubtopicId,
+      name: titleName,
+      parentId: draft?.lawTopicFilterId || null,
+    };
+  }, [activeArticle, draft?.lawTopicFilterId, topics]);
+
+  const articleSubtopicOptions = React.useMemo(() => {
+    const lawTopicId = String(draft?.lawTopicFilterId || '');
+    const selectedSubtopicId = String(activeArticle?.subjectFilterId || '');
+    const selectedSubtopicCandidate = topics.find((topic) => String(topic.id) === selectedSubtopicId);
+    const selectedSubtopic = (selectedSubtopicCandidate && !isNumericOnlyLabel(selectedSubtopicCandidate.name))
+      ? selectedSubtopicCandidate
+      : selectedSubtopicFallbackOption;
+
+    const filtered = lawTopicId
+      ? topics.filter((topic) => (
+        String(topic.parentId || '') === lawTopicId
+        || String(topic.rootSubjectId || '') === lawTopicId
+      ))
+      : [];
+
+    if (selectedSubtopic && !filtered.some((topic) => String(topic.id) === String(selectedSubtopic.id))) {
+      filtered.unshift(selectedSubtopic);
+    }
+
+    return filtered;
+  }, [activeArticle?.subjectFilterId, draft?.lawTopicFilterId, selectedSubtopicFallbackOption, topics]);
+
+  const selectedAssuntoFallbackOption = React.useMemo<TaxonomyOption | null>(() => {
+    const selectedAssuntoId = String(activeArticle?.topicFilterId || '');
+    if (!selectedAssuntoId) return null;
+    const existing = specificSubjects.find((subject) => String(subject.id) === selectedAssuntoId);
+    if (existing && !isNumericOnlyLabel(existing.name)) return existing;
+    const chapterName = String(getArticleAssuntoDisplayText(activeArticle)).trim();
+    if (!chapterName) return null;
+    return {
+      id: selectedAssuntoId,
+      name: chapterName,
+      parentId: activeArticle?.subjectFilterId || draft?.lawTopicFilterId || null,
+    };
+  }, [activeArticle, draft?.lawTopicFilterId, specificSubjects]);
 
   const articleAssuntoOptions = React.useMemo(() => {
-    if (!activeArticle?.subjectFilterId) return [];
+    const selectedSubtopicId = String(activeArticle?.subjectFilterId || '');
+    const selectedAssuntoId = String(activeArticle?.topicFilterId || '');
+    const lawTopicId = String(draft?.lawTopicFilterId || '');
+    const assuntoParentId = selectedSubtopicId || lawTopicId;
+    const selectedAssuntoCandidate = specificSubjects.find((subject) => String(subject.id) === selectedAssuntoId);
+    const selectedAssunto = (selectedAssuntoCandidate && !isNumericOnlyLabel(selectedAssuntoCandidate.name))
+      ? selectedAssuntoCandidate
+      : selectedAssuntoFallbackOption;
 
-    return specificSubjects.filter((subject) => String(subject.parentId || '') === String(activeArticle.subjectFilterId));
-  }, [activeArticle?.subjectFilterId, specificSubjects]);
+    const filtered = assuntoParentId
+      ? specificSubjects.filter((subject) => String(subject.parentId || '') === assuntoParentId)
+      : [];
+
+    if (selectedAssunto && !filtered.some((subject) => String(subject.id) === String(selectedAssunto.id))) {
+      filtered.unshift(selectedAssunto);
+    }
+
+    return filtered;
+  }, [activeArticle?.subjectFilterId, activeArticle?.topicFilterId, draft?.lawTopicFilterId, selectedAssuntoFallbackOption, specificSubjects]);
 
   const reloadKnowledgeTaxonomies = React.useCallback(async () => {
-    const taxonomies = await filtersService.listTaxonomies();
-    const knowledgeTaxonomies = splitKnowledgeTaxonomies(taxonomies);
+    const knowledgeTaxonomies = await resolveKnowledgeTaxonomies(true);
     setSubjects(knowledgeTaxonomies.subjects);
     setTopics(knowledgeTaxonomies.topics);
     setSpecificSubjects(knowledgeTaxonomies.specificSubjects);
     return knowledgeTaxonomies;
-  }, []);
+  }, [resolveKnowledgeTaxonomies]);
 
-  const updateActiveArticleTaxonomy = React.useCallback((patch: { subjectFilterId?: string | null; topicFilterId?: string | null }) => {
+  const updateActiveArticleTaxonomy = React.useCallback((
+    patch: {
+      subjectFilterId?: string | null;
+      topicFilterId?: string | null;
+      title?: string;
+      chapter?: string;
+      resetTitleLabel?: boolean;
+      resetChapterLabel?: boolean;
+    },
+  ) => {
     setDraft((current) => {
       if (!current) return current;
       const nextArticles = (current.articles || []).map((article) => (
-        article.id === activeArticleId ? { ...article, ...patch } : article
+        article.id === activeArticleId
+          ? {
+            ...article,
+            subjectFilterId: patch.subjectFilterId !== undefined ? patch.subjectFilterId : article.subjectFilterId,
+            topicFilterId: patch.topicFilterId !== undefined ? patch.topicFilterId : article.topicFilterId,
+            hierarchy: {
+              ...(article.hierarchy || {}),
+              ...(patch.title !== undefined ? { title: patch.title, resolvedSubtopic: patch.title } : {}),
+              ...(patch.chapter !== undefined ? { chapter: patch.chapter, resolvedAssunto: patch.chapter } : {}),
+              ...(patch.resetTitleLabel ? { titleLabel: '' } : {}),
+              ...(patch.resetChapterLabel ? { chapterLabel: '' } : {}),
+            },
+          }
+          : article
       ));
       return { ...current, articles: nextArticles };
     });
@@ -881,10 +1556,18 @@ const AdminLegalCommentaryEditPage = () => {
       setDraft((current) => current ? {
         ...current,
         areaId: '',
+        lawTopicFilterId: null,
         articles: (current.articles || []).map((article) => ({
           ...article,
           subjectFilterId: null,
           topicFilterId: null,
+          hierarchy: {
+            ...(article.hierarchy || {}),
+            title: '',
+            chapter: '',
+            titleLabel: '',
+            chapterLabel: '',
+          },
         })),
       } : current);
       return;
@@ -897,18 +1580,81 @@ const AdminLegalCommentaryEditPage = () => {
       return {
         ...current,
         areaId: subjectId,
+        lawTopicFilterId: null,
         area: buildLegalAreaFromTaxonomy(subject, current.area) || current.area,
-        articles: (current.articles || []).map((article) => {
-          const selectedTopic = topics.find((topic) => String(topic.id) === String(article.subjectFilterId || ''));
-          const topicBelongsToMateria = !selectedTopic
-            || String(selectedTopic.parentId || selectedTopic.rootSubjectId || '') === String(subjectId);
+        articles: (current.articles || []).map((article) => ({
+          ...article,
+          subjectFilterId: null,
+          topicFilterId: null,
+          hierarchy: {
+            ...(article.hierarchy || {}),
+            title: '',
+            chapter: '',
+            titleLabel: '',
+            chapterLabel: '',
+          },
+        })),
+      };
+    });
+  };
 
-          return topicBelongsToMateria
-            ? article
-            : { ...article, subjectFilterId: null, topicFilterId: null };
+  const updateLawTopico = (lawTopicId: string) => {
+    if (!lawTopicId) {
+      setDraft((current) => current ? {
+        ...current,
+        lawTopicFilterId: null,
+        articles: (current.articles || []).map((article) => ({
+          ...article,
+          subjectFilterId: null,
+          topicFilterId: null,
+          hierarchy: {
+            ...(article.hierarchy || {}),
+            title: '',
+            chapter: '',
+            titleLabel: '',
+            chapterLabel: '',
+          },
+        })),
+      } : current);
+      return;
+    }
+
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        lawTopicFilterId: String(lawTopicId),
+        articles: (current.articles || []).map((article) => {
+          const currentSubtopic = topics.find((topic) => String(topic.id) === String(article.subjectFilterId || ''));
+          const subtopicBelongsToLawTopic = !currentSubtopic
+            || String(currentSubtopic.parentId || '') === String(lawTopicId)
+            || String(currentSubtopic.rootSubjectId || '') === String(lawTopicId);
+
+          if (subtopicBelongsToLawTopic) {
+            const currentAssunto = specificSubjects.find((subject) => String(subject.id) === String(article.topicFilterId || ''));
+            const assuntoParentId = String(currentAssunto?.parentId || '');
+            const allowedAssuntoParentId = String(article.subjectFilterId || lawTopicId);
+            if (!currentAssunto || assuntoParentId === allowedAssuntoParentId) {
+              return article;
+            }
+          }
+
+          return {
+            ...article,
+            subjectFilterId: null,
+            topicFilterId: null,
+            hierarchy: {
+              ...(article.hierarchy || {}),
+              title: '',
+              chapter: '',
+              titleLabel: '',
+              chapterLabel: '',
+            },
+          };
         }),
       };
     });
+
   };
 
   const createMateria = async (rawName: string) => {
@@ -942,22 +1688,22 @@ const AdminLegalCommentaryEditPage = () => {
         || { id: createdId || name, name };
       updateLawMateria(String(created.id), created);
       addToast('Materia criada e vinculada a lei.', 'success');
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel criar a materia.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel criar a materia.'), 'error');
     } finally {
       setIsCreatingMateria(false);
     }
   };
 
-  const createArticleTopic = async (rawName: string) => {
+  const createLawTopico = async (rawName: string) => {
     const name = rawName.trim();
     const materiaId = String(draft?.areaId || '');
     if (!name) {
-      addToast('Informe o nome do topico.', 'info');
+      addToast('Informe o nome do topico da lei.', 'info');
       return;
     }
     if (!materiaId) {
-      addToast('Selecione a materia da lei antes de criar um topico.', 'error');
+      addToast('Selecione a materia da lei antes de criar o topico.', 'error');
       return;
     }
 
@@ -970,7 +1716,7 @@ const AdminLegalCommentaryEditPage = () => {
     ));
 
     if (existing) {
-      updateActiveArticleTaxonomy({ subjectFilterId: String(existing.id), topicFilterId: null });
+      updateLawTopico(String(existing.id));
       addToast('Topico existente selecionado.', 'info');
       return;
     }
@@ -981,7 +1727,7 @@ const AdminLegalCommentaryEditPage = () => {
       return;
     }
 
-    setIsCreatingTopic(true);
+    setIsCreatingLawTopic(true);
     try {
       const createdId = await filtersService.save({
         type: 'assunto',
@@ -1002,41 +1748,118 @@ const AdminLegalCommentaryEditPage = () => {
           )
         ))
         || { id: createdId || name, name, parentId: materiaId, rootSubjectId: materiaId };
-      updateActiveArticleTaxonomy({ subjectFilterId: String(created.id), topicFilterId: null });
-      addToast('Topico criado e vinculado ao artigo.', 'success');
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel criar o topico.', 'error');
+      updateLawTopico(String(created.id));
+      addToast('Topico criado e vinculado a lei.', 'success');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel criar o topico.'), 'error');
     } finally {
-      setIsCreatingTopic(false);
+      setIsCreatingLawTopic(false);
+    }
+  };
+
+  const createArticleSubtopic = async (rawName: string) => {
+    const name = rawName.trim();
+    const lawTopicId = String(draft?.lawTopicFilterId || '');
+    if (!name) {
+      addToast('Informe o nome do subtopico.', 'info');
+      return;
+    }
+    if (!lawTopicId) {
+      addToast('Selecione o topico da lei antes de criar um subtopico.', 'error');
+      return;
+    }
+
+    const existing = topics.find((topic) => (
+      normalizeTaxonomyText(topic.name) === normalizeTaxonomyText(name)
+      && (
+        String(topic.parentId || '') === lawTopicId
+        || String(topic.rootSubjectId || '') === lawTopicId
+      )
+    ));
+
+    if (existing) {
+      updateActiveArticleTaxonomy({
+        subjectFilterId: String(existing.id),
+        topicFilterId: null,
+        title: existing.name,
+        chapter: '',
+        resetChapterLabel: true,
+      });
+      addToast('Subtopico existente selecionado.', 'info');
+      return;
+    }
+
+    const parentId = Number(lawTopicId);
+    if (!Number.isFinite(parentId)) {
+      addToast('O topico selecionado precisa estar cadastrado nas taxonomias.', 'error');
+      return;
+    }
+
+    setIsCreatingSubtopic(true);
+    try {
+      const createdId = await filtersService.save({
+        type: 'assunto',
+        name,
+        slug: slugifyTaxonomy(name),
+        materia: false,
+        taxonomy_level: 'subtopico',
+        parent_id: parentId,
+        metadata: { taxonomy_level: 'subtopico' },
+      });
+      const knowledgeTaxonomies = await reloadKnowledgeTaxonomies();
+      const created = knowledgeTaxonomies.topics.find((topic) => String(topic.id) === String(createdId))
+        || knowledgeTaxonomies.topics.find((topic) => (
+          normalizeTaxonomyText(topic.name) === normalizeTaxonomyText(name)
+          && (
+            String(topic.parentId || '') === lawTopicId
+            || String(topic.rootSubjectId || '') === lawTopicId
+          )
+        ))
+        || { id: createdId || name, name, parentId: lawTopicId, rootSubjectId: lawTopicId };
+      updateActiveArticleTaxonomy({
+        subjectFilterId: String(created.id),
+        topicFilterId: null,
+        title: created.name,
+        chapter: '',
+        resetChapterLabel: true,
+      });
+      addToast('Subtopico criado e vinculado ao artigo.', 'success');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel criar o subtopico.'), 'error');
+    } finally {
+      setIsCreatingSubtopic(false);
     }
   };
 
   const createArticleAssunto = async (rawName: string) => {
     const name = rawName.trim();
-    const topicId = String(activeArticle?.subjectFilterId || '');
+    const parentTaxonomyId = String(activeArticle?.subjectFilterId || draft?.lawTopicFilterId || '');
     if (!name) {
-      addToast('Informe o nome do assunto.', 'info');
+      addToast('Informe o nome do capitulo.', 'info');
       return;
     }
-    if (!topicId) {
-      addToast('Selecione um topico antes de criar o assunto.', 'error');
+    if (!parentTaxonomyId) {
+      addToast('Selecione o topico da lei ou um subtopico antes de criar o assunto.', 'error');
       return;
     }
 
     const existing = specificSubjects.find((subject) => (
       normalizeTaxonomyText(subject.name) === normalizeTaxonomyText(name)
-      && String(subject.parentId || '') === topicId
+      && String(subject.parentId || '') === parentTaxonomyId
     ));
 
     if (existing) {
-      updateActiveArticleTaxonomy({ topicFilterId: String(existing.id) });
-      addToast('Assunto existente selecionado.', 'info');
+      updateActiveArticleTaxonomy({
+        topicFilterId: String(existing.id),
+        chapter: existing.name,
+      });
+      addToast('Capitulo existente selecionado.', 'info');
       return;
     }
 
-    const parentId = Number(topicId);
+    const parentId = Number(parentTaxonomyId);
     if (!Number.isFinite(parentId)) {
-      addToast('O topico selecionado precisa estar cadastrado nas taxonomias.', 'error');
+      addToast('O item selecionado precisa estar cadastrado nas taxonomias.', 'error');
       return;
     }
 
@@ -1055,23 +1878,37 @@ const AdminLegalCommentaryEditPage = () => {
       const created = knowledgeTaxonomies.specificSubjects.find((subject) => String(subject.id) === String(createdId))
         || knowledgeTaxonomies.specificSubjects.find((subject) => (
           normalizeTaxonomyText(subject.name) === normalizeTaxonomyText(name)
-          && String(subject.parentId || '') === topicId
+          && String(subject.parentId || '') === parentTaxonomyId
         ))
-        || { id: createdId || name, name, parentId: topicId };
-      updateActiveArticleTaxonomy({ topicFilterId: String(created.id) });
-      addToast('Assunto criado e vinculado ao artigo.', 'success');
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel criar o assunto.', 'error');
+        || { id: createdId || name, name, parentId: parentTaxonomyId };
+      updateActiveArticleTaxonomy({
+        topicFilterId: String(created.id),
+        chapter: created.name,
+      });
+      addToast('Capitulo criado e vinculado ao artigo.', 'success');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel criar o capitulo.'), 'error');
     } finally {
       setIsCreatingAssunto(false);
     }
   };
 
-  const updateLawField = (field: keyof AdminLawDraft, value: any) => {
+  const updateLawField = <K extends keyof AdminLawDraft>(field: K, value: AdminLawDraft[K]) => {
     setDraft((current) => current ? { ...current, [field]: value } : current);
   };
 
-  const updateArticleField = (field: keyof LawArticle | 'subjectFilterId' | 'topicFilterId', value: any) => {
+  const updateLawTitle = (value: string) => {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        title: value,
+        shortTitle: value,
+      };
+    });
+  };
+
+  const updateArticleField = (field: keyof LawArticle | 'subjectFilterId' | 'topicFilterId', value: unknown) => {
     if (!activeArticle) return;
 
     setDraft((current) => {
@@ -1080,35 +1917,154 @@ const AdminLegalCommentaryEditPage = () => {
         if (article.id !== activeArticle.id) return article;
 
         if (field === 'text') {
+          const nextCaputText = String(value || '').trim();
           return {
             ...article,
-            text: value,
-            blocks: [
-              {
-                id: article.blocks?.[0]?.id || `${article.id}-caput`,
-                kind: 'caput' as const,
-                label: article.number ? `Art. ${article.number}` : 'Art.',
-                text: value,
-              },
-            ],
+            text: nextCaputText,
+            blocks: normalizeArticleBlocks({
+              ...article,
+              text: nextCaputText,
+              blocks: [
+                {
+                  id: article.blocks?.find((block) => block.kind === 'caput')?.id || `${article.id}-caput`,
+                  kind: 'caput',
+                  label: article.number ? `Art. ${article.number}` : 'Art.',
+                  text: nextCaputText,
+                },
+                ...(article.blocks || []).filter((block) => block.kind !== 'caput'),
+              ],
+            }),
           };
         }
 
         if (field === 'number') {
+          const nextNumber = String(value || '').trim();
           return {
             ...article,
-            number: value,
-            blocks: (article.blocks || []).map((block, index) => index === 0 ? {
-              ...block,
-              label: value ? `Art. ${value}` : 'Art.',
-            } : block),
+            number: nextNumber,
+            blocks: normalizeArticleBlocks({
+              ...article,
+              number: nextNumber,
+              blocks: (article.blocks || []).map((block) => (
+                block.kind === 'caput'
+                  ? {
+                    ...block,
+                    label: nextNumber ? `Art. ${nextNumber}` : 'Art.',
+                  }
+                  : block
+              )),
+            }),
           };
         }
 
-        return { ...article, [field]: value };
+        return { ...article, [field]: value as LawArticle[keyof LawArticle] };
       });
 
       return { ...current, articles: nextArticles };
+    });
+  };
+
+  const addArticleBlock = (kind: LegalArticleBlock['kind']) => {
+    if (!activeArticle) return;
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        articles: (current.articles || []).map((article) => {
+          if (article.id !== activeArticle.id) return article;
+          const currentBlocks = normalizeArticleBlocks(article);
+          const kindCount = currentBlocks.filter((block) => block.kind === kind).length;
+          const nextBlock: LegalArticleBlock = {
+            id: `${article.id}-${kind}-${Date.now()}`,
+            kind,
+            label: buildDefaultBlockLabel(kind, String(article.number || '').trim(), kindCount + 1),
+            text: '',
+          };
+          return {
+            ...article,
+            blocks: normalizeArticleBlocks({
+              ...article,
+              blocks: [...currentBlocks, nextBlock],
+            }),
+          };
+        }),
+      };
+    });
+  };
+
+  const updateArticleBlock = (blockId: string, patch: Partial<LegalArticleBlock>) => {
+    if (!activeArticle) return;
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        articles: (current.articles || []).map((article) => {
+          if (article.id !== activeArticle.id) return article;
+          const nextBlocks = (article.blocks || []).map((block) => (
+            block.id === blockId
+              ? {
+                ...block,
+                ...patch,
+              }
+              : block
+          ));
+          return {
+            ...article,
+            blocks: normalizeArticleBlocks({
+              ...article,
+              blocks: nextBlocks,
+            }),
+          };
+        }),
+      };
+    });
+  };
+
+  const moveArticleBlock = (blockId: string, direction: 'up' | 'down') => {
+    if (!activeArticle) return;
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        articles: (current.articles || []).map((article) => {
+          if (article.id !== activeArticle.id) return article;
+          const blocks = [...(article.blocks || [])];
+          const index = blocks.findIndex((block) => block.id === blockId);
+          if (index < 0) return article;
+          const nextIndex = direction === 'up' ? index - 1 : index + 1;
+          if (nextIndex < 0 || nextIndex >= blocks.length) return article;
+          const [block] = blocks.splice(index, 1);
+          blocks.splice(nextIndex, 0, block);
+          return {
+            ...article,
+            blocks: normalizeArticleBlocks({
+              ...article,
+              blocks,
+            }),
+          };
+        }),
+      };
+    });
+  };
+
+  const removeArticleBlock = (blockId: string) => {
+    if (!activeArticle) return;
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        articles: (current.articles || []).map((article) => {
+          if (article.id !== activeArticle.id) return article;
+          const remaining = (article.blocks || []).filter((block) => block.id !== blockId);
+          return {
+            ...article,
+            blocks: normalizeArticleBlocks({
+              ...article,
+              blocks: remaining,
+            }),
+          };
+        }),
+      };
     });
   };
 
@@ -1249,20 +2205,29 @@ const AdminLegalCommentaryEditPage = () => {
     setDraft((current) => current ? { ...current, sumulas: [...(current.sumulas || []), nextItem] } : current);
   };
 
-  const updateNestedItem = (collection: 'teacherComments' | 'examTips' | 'jurisprudence' | 'sumulas', id: string, field: string, value: any) => {
+  const getEditableCollection = (current: AdminLawDraft, collection: EditableCollectionKey): EditableCollectionItem[] => {
+    const items = current[collection];
+    return Array.isArray(items) ? items as EditableCollectionItem[] : [];
+  };
+
+  const getEditableCollectionItemId = (item: EditableCollectionItem) => String('id' in item ? item.id || '' : '');
+
+  const updateNestedItem = (collection: EditableCollectionKey, id: string, field: string, value: unknown) => {
     setDraft((current) => {
       if (!current) return current;
       return {
         ...current,
-        [collection]: ((current as any)[collection] || []).map((item: any) => item.id === id ? { ...item, [field]: value } : item),
+        [collection]: getEditableCollection(current, collection).map((item) => (
+          getEditableCollectionItemId(item) === id ? { ...item, [field]: value } : item
+        )),
       };
     });
   };
 
-  const removeNestedItem = (collection: 'teacherComments' | 'examTips' | 'jurisprudence' | 'sumulas', id: string) => {
+  const removeNestedItem = (collection: EditableCollectionKey, id: string) => {
     setDraft((current) => current ? {
       ...current,
-      [collection]: ((current as any)[collection] || []).filter((item: any) => item.id !== id),
+      [collection]: getEditableCollection(current, collection).filter((item) => getEditableCollectionItemId(item) !== id),
     } : current);
   };
 
@@ -1332,7 +2297,7 @@ const AdminLegalCommentaryEditPage = () => {
   }, [buildArticleEditorialSnapshot]);
 
   const editorialCoverage = React.useMemo(() => {
-    if (!draft || activeEditorialSection === 'ai') {
+    if (!draft || activeEditorialSection === 'ai' || activeEditorialSection === 'section-analysis') {
       return null;
     }
 
@@ -1590,6 +2555,114 @@ const AdminLegalCommentaryEditPage = () => {
     return result;
   }, [applyEditorialResultToDraft, buildArticleEditorialSnapshot]);
 
+  const applySectionEditorialToDraft = React.useCallback((sectionEditorial?: LawSectionEditorial) => {
+    if (!sectionEditorial?.sectionKey) {
+      return;
+    }
+
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const existing = current.sectionEditorials || [];
+      const nextSectionEditorials = [
+        ...existing.filter((item) => item.sectionKey !== sectionEditorial.sectionKey),
+        sectionEditorial,
+      ];
+
+      return {
+        ...current,
+        sectionEditorials: nextSectionEditorials,
+      };
+    });
+  }, []);
+
+  const generateSectionAnalysis = React.useCallback(async (section: LawSectionSummary, options?: { silent?: boolean }) => {
+    const currentDraft = draftRef.current;
+    if (!currentDraft?.id || !/^\d+$/.test(String(currentDraft.id))) {
+      addToastRef.current('Salve a lei antes de gerar a analise dos capitulos.', 'info');
+      return null;
+    }
+
+    const sectionKey = section.sectionKey || section.id;
+    setSectionAnalysisLoadingKey(sectionKey);
+
+    try {
+      const result = await legalCommentaryApiService.generateAdminEditorial({
+        scope: 'section-analysis',
+        lawId: String(currentDraft.id),
+        law: currentDraft,
+        section: {
+          id: section.id,
+          sectionKey,
+          sectionTitle: section.title,
+          title: section.title,
+          rangeLabel: formatSectionRange(section),
+          fromArticle: section.fromArticle,
+          toArticle: section.toArticle,
+          articleIds: section.articleIds,
+        },
+        previewOnly: false,
+      });
+
+      applySectionEditorialToDraft(result.sectionEditorial);
+      if (!options?.silent) {
+        addToastRef.current(`Analise do capitulo "${section.title}" gerada.`, 'success');
+      }
+      return result.sectionEditorial || null;
+    } catch (error: unknown) {
+      if (!options?.silent) {
+        addToastRef.current(getErrorMessage(error, 'Nao foi possivel gerar a analise do capitulo.'), 'error');
+      }
+      return null;
+    } finally {
+      setSectionAnalysisLoadingKey(null);
+    }
+  }, [applySectionEditorialToDraft]);
+
+  const generateMissingSectionAnalyses = React.useCallback(async () => {
+    const currentDraft = draftRef.current;
+    if (!currentDraft?.id || !/^\d+$/.test(String(currentDraft.id))) {
+      addToastRef.current('Salve a lei antes de gerar as analises dos capitulos.', 'info');
+      return;
+    }
+
+    const existingKeys = new Set((currentDraft.sectionEditorials || []).map((item) => item.sectionKey));
+    const pendingSections = lawSections.filter((section) => !existingKeys.has(section.sectionKey || section.id));
+    const sectionsToGenerate = pendingSections.length > 0 ? pendingSections : lawSections;
+
+    if (sectionsToGenerate.length === 0) {
+      addToastRef.current('Nao ha capitulos detectados para esta lei.', 'info');
+      return;
+    }
+
+    setIsGeneratingAllSectionAnalyses(true);
+    let successCount = 0;
+    let failedCount = 0;
+    try {
+      for (const section of sectionsToGenerate) {
+        const saved = await generateSectionAnalysis(section, { silent: true });
+        if (saved) {
+          successCount += 1;
+        } else {
+          failedCount += 1;
+        }
+      }
+
+      if (failedCount > 0) {
+        addToastRef.current(
+          `Geracao dos capitulos concluida com pendencias: ${successCount} sucesso(s), ${failedCount} falha(s).`,
+          'info',
+        );
+      } else {
+        addToastRef.current(`Analises dos capitulos concluidas: ${successCount} capitulo(s) atualizado(s).`, 'success');
+      }
+    } finally {
+      setIsGeneratingAllSectionAnalyses(false);
+    }
+  }, [generateSectionAnalysis, lawSections]);
+
   const generateWithAi = async (kind: Exclude<LegalAiGenerationKind, 'bundle'>) => {
     if (!draft || !activeArticle) {
       addToast('Nenhum artigo ativo para gerar conteudo.', 'info');
@@ -1614,8 +2687,8 @@ const AdminLegalCommentaryEditPage = () => {
       } else {
         addToast(warnings[0] || `Nada seguro para adicionar em ${AI_KIND_LABEL[kind].toLowerCase()}.`, 'info');
       }
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel gerar com IA agora.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel gerar com IA agora.'), 'error');
     } finally {
       finishAiProgress(kind);
       setAiLoading(null);
@@ -1649,8 +2722,8 @@ const AdminLegalCommentaryEditPage = () => {
       } else {
         addToast(warnings[0] || 'A IA nao encontrou conteudo editorial seguro para este artigo.', 'info');
       }
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel gerar o pacote com IA agora.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel gerar o pacote com IA agora.'), 'error');
     } finally {
       finishAiProgress('bundle');
       setAiLoading(null);
@@ -1754,8 +2827,8 @@ const AdminLegalCommentaryEditPage = () => {
       );
       setBatchRun(run);
       await executeBatchRun(run);
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel iniciar o lote editorial.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel iniciar o lote editorial.'), 'error');
     }
   };
 
@@ -1769,8 +2842,8 @@ const AdminLegalCommentaryEditPage = () => {
       const run = await legalCommentaryApiService.retryAdminEditorialBatch(batchRun.id);
       setBatchRun(run);
       await executeBatchRun(run);
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel reprocessar os artigos falhados.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel reprocessar os artigos falhados.'), 'error');
     }
   };
 
@@ -1797,17 +2870,16 @@ const AdminLegalCommentaryEditPage = () => {
 
     try {
       const result = await legalCommentaryApiService.importLawFromPlanalto(officialUrl, false);
-      const taxonomies = await filtersService.listTaxonomies();
-      const knowledgeTaxonomies = splitKnowledgeTaxonomies(taxonomies);
-      const nextDraft = hydrateDraftFromLaw(result.law, areas, knowledgeTaxonomies.subjects);
+      const knowledgeTaxonomies = await resolveKnowledgeTaxonomies(true);
+      const nextDraft = hydrateDraftFromLaw(result.law, areas, knowledgeTaxonomies.subjects, knowledgeTaxonomies.topics);
       setSubjects(knowledgeTaxonomies.subjects);
       setTopics(knowledgeTaxonomies.topics);
       setSpecificSubjects(knowledgeTaxonomies.specificSubjects);
       setDraft(nextDraft);
       setActiveArticleId(nextDraft.articles?.[0]?.id || '');
       addToast('Lei importada do Planalto para revisao no editor.', 'success');
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel importar a lei do Planalto.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel importar a lei do Planalto.'), 'error');
     } finally {
       setIsImportingFromPlanalto(false);
     }
@@ -1823,9 +2895,14 @@ const AdminLegalCommentaryEditPage = () => {
 
     try {
       const result = await legalCommentaryApiService.syncAdminLaw(String(draft.id));
+      const knowledgeTaxonomies = await resolveKnowledgeTaxonomies(true);
       const sync = result.sync || { insertedArticles: 0, changedArticles: 0, revokedArticles: 0 };
       const hasChanges = sync.insertedArticles > 0 || sync.changedArticles > 0 || sync.revokedArticles > 0;
-      const nextDraft = hydrateDraftFromLaw(result.law, areas, subjects);
+      const nextDraft = hydrateDraftFromLaw(result.law, areas, knowledgeTaxonomies.subjects, knowledgeTaxonomies.topics);
+
+      setSubjects(knowledgeTaxonomies.subjects);
+      setTopics(knowledgeTaxonomies.topics);
+      setSpecificSubjects(knowledgeTaxonomies.specificSubjects);
 
       setDraft(nextDraft);
       setActiveArticleId((current) => current && nextDraft.articles.some((article) => article.id === current)
@@ -1838,14 +2915,14 @@ const AdminLegalCommentaryEditPage = () => {
           : 'Sincronizacao concluida sem mudancas no texto oficial.',
         hasChanges ? 'success' : 'info',
       );
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel sincronizar esta lei.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel sincronizar esta lei.'), 'error');
     } finally {
       setIsSyncingFromOfficial(false);
     }
   };
 
-  const openUpdatesModal = async () => {
+  const openUpdatesModal = React.useCallback(async () => {
     if (!draft?.id || isNew) {
       return;
     }
@@ -1859,18 +2936,18 @@ const AdminLegalCommentaryEditPage = () => {
       setUpdatesModalLogs(payload.syncLogs || []);
 
       if (payload.law) {
-        const nextDraft = hydrateDraftFromLaw(payload.law, areas, subjects);
+        const nextDraft = hydrateDraftFromLaw(payload.law, areas, subjects, topics);
         setDraft(nextDraft);
         setActiveArticleId((current) => current && nextDraft.articles.some((article) => article.id === current)
           ? current
           : nextDraft.articles?.[0]?.id || '');
       }
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel carregar o historico de atualizacoes.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel carregar o historico de atualizacoes.'), 'error');
     } finally {
       setIsUpdatesModalLoading(false);
     }
-  };
+  }, [addToast, areas, draft?.id, isNew, subjects, topics]);
 
   const closeUpdatesModal = () => {
     if (isUpdatesModalLoading) return;
@@ -1891,43 +2968,88 @@ const AdminLegalCommentaryEditPage = () => {
     hasOpenedUpdatesFromQueryRef.current = true;
     void openUpdatesModal();
     router.replace(buildAdminLawEditPath(draft.id), { scroll: false });
-  }, [draft?.id, isLoading, isNew, router, shouldOpenUpdatesFromQuery]);
+  }, [draft?.id, isLoading, isNew, openUpdatesModal, router, shouldOpenUpdatesFromQuery]);
 
   const saveLaw = async () => {
     if (!draft) return;
+    const normalizedAreaId = String(draft.areaId || draft.area?.id || '').trim();
+    if (!normalizedAreaId) {
+      addToast('Selecione a materia da lei antes de salvar.', 'info');
+      return;
+    }
+
     setIsSaving(true);
 
     try {
+      const cleanedPreamble = String(draft.preamble || '').trim();
+      const cleanedEmenta = String(draft.ementa || '').trim();
+      const cleanedDescription = cleanedPreamble || cleanedEmenta || String(draft.description || '').trim();
+      const normalizedLawName = String(draft.title || draft.shortTitle || '').trim();
+      const normalizedArticles = (draft.articles || []).map((article) => normalizeArticleForSave(article));
       const saved = await legalCommentaryApiService.saveAdminLaw({
         ...draft,
-        areaId: String(draft.areaId || draft.area?.id || subjects[0]?.id || areas[0]?.id || ''),
-        articles: draft.articles || [],
+        title: normalizedLawName,
+        shortTitle: normalizedLawName,
+        preamble: cleanedPreamble,
+        description: cleanedDescription,
+        summary: '',
+        ementa: cleanedEmenta,
+        areaId: normalizedAreaId,
+        legalAreaId: String(draft.legalAreaId || getLegalAreaId(draft.area) || ''),
+        lawTopicFilterId: draft.lawTopicFilterId ? String(draft.lawTopicFilterId) : null,
+        articles: normalizedArticles,
         teacherComments: draft.teacherComments || [],
         jurisprudence: draft.jurisprudence || [],
         examTips: draft.examTips || [],
         sumulas: draft.sumulas || [],
+        sectionEditorials: draft.sectionEditorials || [],
       });
       addToast('Lei salva com sucesso.', 'success');
       if (isNew && saved.id) {
         router.replace(buildAdminLawEditPath(saved.id));
       } else {
-        const nextDraft = hydrateDraftFromLaw(saved, areas, subjects);
+        const nextDraft = hydrateDraftFromLaw(saved, areas, subjects, topics);
         setDraft(nextDraft);
         setActiveArticleId((current) => current && nextDraft.articles.some((article) => article.id === current)
           ? current
           : nextDraft.articles?.[0]?.id || '');
       }
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel salvar a lei.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel salvar a lei.'), 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isAuthLoading || isLoading || !draft) {
+  if (isAuthLoading || isLoading) {
     return renderAdminShell(
-      <div className={`${ADMIN_SURFACE_CLASS} flex min-h-[360px] items-center justify-center p-12 text-slate-500 dark:text-slate-400`}>
-          <Loader2 className="mr-3 animate-spin" size={18} /> Carregando editor da Lei Comentada...
+      <div className={`${ADMIN_SURFACE_CLASS} p-8`}>
+        <div className="space-y-4">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={`editor-loading-${index}`} className="h-12 animate-pulse rounded-sm bg-slate-100 dark:bg-slate-800" />
+          ))}
+        </div>
+      </div>,
+    );
+  }
+
+  if (!draft) {
+    return renderAdminShell(
+      <div className={`${ADMIN_SURFACE_CLASS} flex min-h-[280px] flex-col items-center justify-center gap-3 p-8 text-center`}>
+        <p className="text-sm font-semibold text-red-600 dark:text-red-300">
+          {loadError || 'Nao foi possivel montar o editor da Lei Comentada.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoadError(null);
+            setDraft(null);
+            setEditorReloadVersion((current) => current + 1);
+          }}
+          className={ADMIN_PRIMARY_BUTTON_CLASS}
+        >
+          Tentar novamente
+        </button>
       </div>,
     );
   }
@@ -1936,14 +3058,17 @@ const AdminLegalCommentaryEditPage = () => {
   const articleTips = (draft.examTips || []).filter((item) => item.articleId === activeArticle?.id);
   const articleJurisprudence = (draft.jurisprudence || []).filter((item) => item.articleId === activeArticle?.id);
   const articleSumulas = (draft.sumulas || []).filter((item) => item.articleId === activeArticle?.id);
+  const sectionEditorialsByKey = new Map((draft.sectionEditorials || []).map((item) => [item.sectionKey, item]));
   const recentLawUpdates = (draft.updates || []).slice(0, 3);
   const activeSectionMeta = LEGAL_EDITORIAL_SECTIONS.find((section) => section.key === activeEditorialSection);
+  const sectionAnalysesCount = lawSections.filter((section) => sectionEditorialsByKey.has(section.sectionKey || section.id)).length;
   const editorialSectionCounts: Record<LegalEditorialSection, number> = {
     teacher: articleComments.length,
     tips: articleTips.length,
     jurisprudence: articleJurisprudence.length + (activeArticle?.jurisprudenceNotes || []).length,
     sumulas: articleSumulas.length,
     doctrine: activeArticle?.doctrine?.length || 0,
+    'section-analysis': sectionAnalysesCount,
     ai: batchRun ? Math.max(batchRun.processedArticles, batchRun.totalArticles) : batchEligibleArticlesCount,
   };
   const batchProgressPercent = batchRun?.totalArticles
@@ -2072,12 +3197,27 @@ const AdminLegalCommentaryEditPage = () => {
                   />
                 </div>
                 <div>
-                  <FieldLabel>Nome curto</FieldLabel>
-                  <TextInput value={draft.shortTitle || ''} onChange={(event) => updateLawField('shortTitle', event.target.value)} placeholder="Codigo Penal" />
+                  <CreatableTaxonomySelect
+                    label="Topico (nome da lei)"
+                    options={lawTopicoOptions}
+                    value={draft.lawTopicFilterId || ''}
+                    selectedLabelOverride={String(draft.title || draft.shortTitle || '').trim() || undefined}
+                    placeholder={draft.areaId ? 'Selecionar ou criar topico da lei' : 'Selecione a materia primeiro'}
+                    createLabel="Criar topico"
+                    disabled={!draft.areaId}
+                    loading={isCreatingLawTopic}
+                    helper="Hierarquia oficial: materia -> topico -> subtopico -> assunto."
+                    onChange={(value) => updateLawTopico(value)}
+                    onCreate={createLawTopico}
+                  />
                 </div>
                 <div>
-                  <FieldLabel>Nome completo</FieldLabel>
-                  <TextInput value={draft.title || ''} onChange={(event) => updateLawField('title', event.target.value)} placeholder="Decreto-Lei..." />
+                  <FieldLabel>Nome da lei</FieldLabel>
+                  <TextInput
+                    value={draft.title || draft.shortTitle || ''}
+                    onChange={(event) => updateLawTitle(event.target.value)}
+                    placeholder="Lei Maria da Penha"
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -2118,8 +3258,12 @@ const AdminLegalCommentaryEditPage = () => {
                   </div>
                 </div>
                 <div>
-                  <FieldLabel>Resumo</FieldLabel>
-                  <TextArea value={draft.description || ''} onChange={(event) => updateLawField('description', event.target.value)} />
+                  <FieldLabel>Preambulo (quando houver)</FieldLabel>
+                  <TextArea
+                    value={String(draft.preamble || '')}
+                    onChange={(event) => updateLawField('preamble', event.target.value)}
+                    placeholder="Ex.: Nos termos do art. 84, inciso IV, da Constituicao Federal..."
+                  />
                 </div>
                 <div>
                   <FieldLabel>Ementa</FieldLabel>
@@ -2150,58 +3294,154 @@ const AdminLegalCommentaryEditPage = () => {
                       <TextInput value={activeArticle.number || ''} onChange={(event) => updateArticleField('number', event.target.value)} placeholder="1o, 121, 5o" />
                     </div>
                     <div className="lg:col-span-2">
-                      <FieldLabel>Titulo interno</FieldLabel>
-                      <TextInput value={activeArticle.title || ''} onChange={(event) => updateArticleField('title', event.target.value)} placeholder="Anterioridade da lei" />
+                      <FieldLabel>Titulo interno do artigo (opcional)</FieldLabel>
+                      <TextInput
+                        value={String(activeArticle.title || '')}
+                        onChange={(event) => updateArticleField('title', event.target.value)}
+                        placeholder="Ex.: Anterioridade da lei / Lei penal no tempo"
+                      />
                     </div>
                     <div className="lg:col-span-3">
                       <div className="rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
                         <div className="flex flex-col gap-1">
                           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Vinculo com questoes</p>
                           <p className="text-sm text-slate-500 dark:text-slate-400">
-                            A materia vem da lei. No artigo, escolha o topico e o assunto especifico para relacionar com as questoes.
+                            Neste artigo, selecione subtopico e assunto. Quando nao houver subtopico, vincule o assunto direto ao topico da lei.
                           </p>
                         </div>
                         <div className="mt-4 grid gap-4 lg:grid-cols-2">
                           <div>
                             <CreatableTaxonomySelect
-                              label="Topico"
-                              options={articleTopicOptions}
+                              label="Subtopico (titulo)"
+                              options={articleSubtopicOptions}
                               value={activeArticle.subjectFilterId || ''}
-                              placeholder={draft.areaId ? 'Selecionar ou criar topico' : 'Selecione a materia da lei primeiro'}
-                              createLabel="Criar topico"
-                              disabled={!draft.areaId}
-                              loading={isCreatingTopic}
-                              onChange={(value) => {
+                              selectedLabelOverride={String(getArticleSubtopicDisplayText(activeArticle) || '').trim() || undefined}
+                              placeholder={draft.lawTopicFilterId ? 'Selecionar ou criar subtopico' : 'Selecione o topico da lei primeiro'}
+                              createLabel="Criar subtopico"
+                              disabled={!draft.lawTopicFilterId}
+                              loading={isCreatingSubtopic}
+                              onChange={(value, option) => {
                                 updateActiveArticleTaxonomy({
                                   subjectFilterId: value || null,
                                   topicFilterId: null,
+                                title: value ? String(option?.name || getArticleSubtopicDisplayText(activeArticle) || '') : '',
+                                  chapter: '',
+                                  resetChapterLabel: true,
                                 });
                               }}
-                              onCreate={createArticleTopic}
+                              onCreate={createArticleSubtopic}
                             />
                           </div>
                           <div>
                             <CreatableTaxonomySelect
-                              label="Assunto"
+                              label="Assunto (capitulo)"
                               options={articleAssuntoOptions}
                               value={activeArticle.topicFilterId || ''}
-                              placeholder={activeArticle.subjectFilterId ? 'Selecionar ou criar assunto' : 'Selecione um topico primeiro'}
+                              selectedLabelOverride={String(getArticleAssuntoDisplayText(activeArticle) || '').trim() || undefined}
+                              placeholder={draft.lawTopicFilterId ? 'Selecionar ou criar assunto' : 'Selecione o topico da lei primeiro'}
                               createLabel="Criar assunto"
-                              disabled={!activeArticle.subjectFilterId}
+                              disabled={!draft.lawTopicFilterId}
                               loading={isCreatingAssunto}
-                              onChange={(value) => updateActiveArticleTaxonomy({ topicFilterId: value || null })}
+                              onChange={(value, option) => updateActiveArticleTaxonomy({
+                                topicFilterId: value || null,
+                                chapter: value ? String(option?.name || getArticleAssuntoDisplayText(activeArticle) || '') : '',
+                              })}
                               onCreate={createArticleAssunto}
                             />
                           </div>
                         </div>
-                        <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
-                          A quantidade de questoes relacionadas sera calculada automaticamente pelo vinculo de materia, topico e assunto.
-                        </p>
                       </div>
                     </div>
                     <div className="lg:col-span-3">
-                      <FieldLabel>Texto oficial do artigo</FieldLabel>
-                      <TextArea className="min-h-[220px]" value={activeArticle.text || ''} onChange={(event) => updateArticleField('text', event.target.value)} />
+                      <div className="rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/50">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Estrutura legal</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                              Caput, paragrafos, incisos, alineas e notas oficiais
+                            </p>
+                            <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                              Organize o artigo por blocos. O texto final e montado automaticamente na ordem juridica.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {LEGAL_BLOCK_KINDS.map((kind) => (
+                              <button
+                                key={kind.value}
+                                type="button"
+                                onClick={() => addArticleBlock(kind.value)}
+                                className="inline-flex h-8 items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                              >
+                                <Plus size={12} /> {kind.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          {(normalizeArticleBlocks(activeArticle) || []).map((block, index, list) => (
+                            <div key={block.id} className="rounded-sm border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/70">
+                              <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)_auto]">
+                                <SelectInput
+                                  value={block.kind}
+                                  onChange={(event) => updateArticleBlock(block.id, { kind: event.target.value as LegalArticleBlock['kind'] })}
+                                >
+                                  {LEGAL_BLOCK_KINDS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </SelectInput>
+                                <TextInput
+                                  value={block.label || ''}
+                                  onChange={(event) => updateArticleBlock(block.id, { label: event.target.value })}
+                                  placeholder="Rotulo (ex.: Art. 5o, § 1o, I, a)"
+                                />
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => moveArticleBlock(block.id, 'up')}
+                                    disabled={index === 0}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-300 bg-white text-xs font-black text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                                    aria-label="Mover bloco para cima"
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveArticleBlock(block.id, 'down')}
+                                    disabled={index >= list.length - 1}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-300 bg-white text-xs font-black text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                                    aria-label="Mover bloco para baixo"
+                                  >
+                                    ↓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeArticleBlock(block.id)}
+                                    disabled={list.length <= 1}
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20"
+                                    aria-label="Remover bloco"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                              <TextArea
+                                className="mt-3 min-h-[110px]"
+                                value={block.text || ''}
+                                onChange={(event) => updateArticleBlock(block.id, { text: event.target.value })}
+                                placeholder="Texto do bloco legal..."
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-4 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Texto oficial consolidado (preview)</p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
+                            {buildArticleTextFromBlocks(normalizeArticleBlocks(activeArticle)) || 'Sem conteudo preenchido.'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </EditorPanel>
@@ -2391,6 +3631,94 @@ const AdminLegalCommentaryEditPage = () => {
                           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
                             +{editorialCoverage.missingArticles.length - 18} pendente(s)
                           </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {activeEditorialSection === 'section-analysis' ? (
+                    <div className="mt-5 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Analise por capitulo</p>
+                          <h3 className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
+                            {sectionAnalysesCount}/{lawSections.length} capitulo(s) com analise
+                          </h3>
+                          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Gere a analise aprofundada por capitulo com base no intervalo de artigos e no conteudo editorial ja salvo.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void generateMissingSectionAnalyses()}
+                            disabled={isGeneratingAllSectionAnalyses || lawSections.length === 0}
+                            className="inline-flex h-9 items-center gap-2 rounded-sm border border-indigo-200 bg-indigo-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-50 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300"
+                          >
+                            {isGeneratingAllSectionAnalyses ? <Loader2 className="animate-spin" size={13} /> : <Sparkles size={13} />}
+                            Gerar faltantes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void generateMissingSectionAnalyses()}
+                            disabled={isGeneratingAllSectionAnalyses || lawSections.length === 0}
+                            className="inline-flex h-9 items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
+                          >
+                            {isGeneratingAllSectionAnalyses ? <Loader2 className="animate-spin" size={13} /> : <RefreshCcw size={13} />}
+                            Regerar lista
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-2">
+                        {lawSections.map((section, index) => {
+                          const sectionKey = section.sectionKey || section.id;
+                          const savedEditorial = sectionEditorialsByKey.get(sectionKey);
+                          const loading = sectionAnalysisLoadingKey === sectionKey;
+                          const statusLabel = savedEditorial ? 'Pronto' : 'Pendente';
+                          return (
+                            <div key={section.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#615fff]">
+                                    Capitulo {String(index + 1).padStart(2, '0')}
+                                  </p>
+                                  <h4 className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
+                                    {section.title}
+                                  </h4>
+                                  <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                    {formatSectionRange(section)} • {section.articles} artigo(s)
+                                  </p>
+                                  <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                                    {savedEditorial?.summary || 'Sem analise aprofundada salva ainda para este capitulo.'}
+                                  </p>
+                                </div>
+                                <div className="flex flex-col items-start gap-2 lg:items-end">
+                                  <span className={`inline-flex h-7 items-center rounded-full px-3 text-[10px] font-black uppercase tracking-[0.14em] ${
+                                    savedEditorial
+                                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                      : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
+                                  }`}>
+                                    {statusLabel}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void generateSectionAnalysis(section)}
+                                    disabled={loading || isGeneratingAllSectionAnalyses}
+                                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#615fff]/20 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-[#615fff] transition-colors hover:bg-[#615fff]/5 disabled:opacity-50 dark:border-[#615fff]/30 dark:bg-slate-900 dark:hover:bg-[#615fff]/10"
+                                  >
+                                    {loading ? <Loader2 className="animate-spin" size={13} /> : <Sparkles size={13} />}
+                                    {savedEditorial ? 'Regerar' : 'Gerar'}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {lawSections.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
+                            Nenhum capitulo detectado para esta lei.
+                          </div>
                         ) : null}
                       </div>
                     </div>
@@ -2686,7 +4014,7 @@ const AdminLegalCommentaryEditPage = () => {
               <div className="space-y-4">
                 <div>
                   <FieldLabel>Status da lei</FieldLabel>
-                  <SelectInput value={lawStatusValue} onChange={(event) => updateLawField('status', event.target.value)}>
+                  <SelectInput value={lawStatusValue} onChange={(event) => updateLawField('status', normalizeLawStatus(event.target.value))}>
                     <option value="active">Ativa</option>
                     <option value="monitoring">Em monitoramento</option>
                     <option value="partially_revoked">Parcialmente revogada</option>

@@ -12,6 +12,12 @@
 import { describe, expect, it } from 'vitest';
 import { canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from '../userAccess';
 
+type AdminAccessUser = Parameters<typeof canAccessAdminPanel>[0];
+type PartnerAccessUser = Parameters<typeof canAccessPartnerArea>[0];
+
+const asAdminAccessUser = (user: Record<string, unknown>) => user as AdminAccessUser;
+const asPartnerAccessUser = (user: Record<string, unknown>) => user as PartnerAccessUser;
+
 describe('userAccess helpers', () => {
   it('normalizes only supported roles', () => {
     expect(normalizeUserRole('staff')).toBe('staff');
@@ -21,15 +27,15 @@ describe('userAccess helpers', () => {
   });
 
   it('allows staff or admin to access the admin panel', () => {
-    expect(canAccessAdminPanel({ role: 'staff' } as any)).toBe(true);
-    expect(canAccessAdminPanel({ role: 'admin' } as any)).toBe(true);
-    expect(canAccessAdminPanel({ canAccessAdmin: true } as any)).toBe(true);
-    expect(canAccessAdminPanel({ role: 'partner' } as any)).toBe(false);
+    expect(canAccessAdminPanel(asAdminAccessUser({ role: 'staff' }))).toBe(true);
+    expect(canAccessAdminPanel(asAdminAccessUser({ role: 'admin' }))).toBe(true);
+    expect(canAccessAdminPanel(asAdminAccessUser({ canAccessAdmin: true }))).toBe(true);
+    expect(canAccessAdminPanel(asAdminAccessUser({ role: 'partner' }))).toBe(false);
   });
 
   it('keeps partner access separate from internal staff access', () => {
-    expect(canAccessPartnerArea({ role: 'partner' } as any)).toBe(true);
-    expect(canAccessPartnerArea({ role: 'admin' } as any)).toBe(true);
-    expect(canAccessPartnerArea({ role: 'staff' } as any)).toBe(false);
+    expect(canAccessPartnerArea(asPartnerAccessUser({ role: 'partner' }))).toBe(true);
+    expect(canAccessPartnerArea(asPartnerAccessUser({ role: 'admin' }))).toBe(true);
+    expect(canAccessPartnerArea(asPartnerAccessUser({ role: 'staff' }))).toBe(false);
   });
 });

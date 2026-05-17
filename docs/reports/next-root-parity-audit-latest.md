@@ -43,7 +43,7 @@ Arquivos `src` versionados no `master` considerados na amostra `ts/tsx/css/svg`:
 - `src/app/plans/page.tsx`: troca de navegacao para checkout, mantendo regras de downgrade e ciclo.
 - `src/app/marketplace/page.tsx`: troca de query params e navegacao, mantendo compra, leitura, pedidos e KYC.
 - `src/components/shared/layout/Layout.tsx`: troca de `Link`/navegacao e protecao SSR de `sessionStorage`, mantendo shell.
-- `src/providers/DataProvider.tsx`: ajuste de assinatura de `deleteComment` para contrato real usado pela UI.
+- `src/state/question-bank/useQuestionBankActions.ts`: contrato de comentarios/questoes mantido no store dedicado apos remocao do provider legado.
 - `src/app/practice/page.tsx`: troca de query params e navegacao para App Router, mantendo filtros, destaque por URL, auth modal, comentarios e resposta de questoes.
 - `src/app/simulation/page.tsx`: troca de query params e navegacao para App Router, mantendo simulados, modo imersivo, filtros, revisao e resultado final.
 

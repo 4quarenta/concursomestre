@@ -42,7 +42,7 @@ export const accountService = {
       };
     }
 
-    const response = await apiClient.post<any>(ENDPOINTS.users.update, sanitizedPayload) as any;
+    const response = await apiClient.post(ENDPOINTS.users.update, sanitizedPayload) as unknown;
     const envelope = assertApiSuccess(response, 'Erro ao atualizar perfil. Tente novamente.');
 
     return {

@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Crown, CheckCircle2, X, Sparkles, ArrowRight } from 'lucide-react';
+import { Crown, CheckCircle2, X, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
 import { CanonicalPlanName, getEffectivePlanDisplayName } from '@services/plans/planAccess';

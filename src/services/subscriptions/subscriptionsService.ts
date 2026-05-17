@@ -10,6 +10,7 @@
 */
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 
 type SubscriptionApiPayload = Record<string, unknown>;
 type SubscriptionApiPayloadWithUrl = SubscriptionApiPayload & {
@@ -186,6 +187,7 @@ export const subscriptionsService = {
     plan_id: number;
     auto_renew?: boolean;
     coupon_code?: string;
+    payment_method_id?: string;
     billing_mode?: 'single_installment' | 'term_recurring';
     installment_count?: number;
   }): Promise<SubscriptionApiPayloadWithUrl> {
@@ -201,7 +203,7 @@ export const subscriptionsService = {
 
       return mergeResponsePayloadWithUrl(response, {});
     } catch (error) {
-      console.error('Error creating Stripe checkout session:', error);
+      clientLog.error('Error creating Stripe checkout session:', error);
       throw error;
     }
   },
@@ -232,7 +234,7 @@ export const subscriptionsService = {
 
       return mergeResponsePayload(response, {});
     } catch (error) {
-      console.error('Error creating Stripe inline subscription:', error);
+      clientLog.error('Error creating Stripe inline subscription:', error);
       throw error;
     }
   },
@@ -263,7 +265,7 @@ export const subscriptionsService = {
 
       return mergeResponsePayload(response, {});
     } catch (error) {
-      console.error('Error finalizing Stripe subscription:', error);
+      clientLog.error('Error finalizing Stripe subscription:', error);
       throw error;
     }
   },
@@ -332,7 +334,7 @@ export const subscriptionsService = {
         coupon: merged.coupon ?? null,
       };
     } catch (error) {
-      console.error('Error validating coupon:', error);
+      clientLog.warn('Error validating coupon:', error);
       throw error;
     }
   },
@@ -354,7 +356,7 @@ export const subscriptionsService = {
 
       return mergeResponsePayloadWithUrl(response, {});
     } catch (error) {
-      console.error('Error creating Stripe portal session:', error);
+      clientLog.error('Error creating Stripe portal session:', error);
       throw error;
     }
   },
@@ -372,6 +374,25 @@ export const subscriptionsService = {
     assertApiSuccess(
       response,
       'Nao foi possivel atualizar a renovacao automatica.',
+    );
+
+    return mergeResponsePayload(response, {});
+  },
+
+  /**
+   * Sincroniza a assinatura Stripe do usuario atual para recuperar renovacoes
+   * que tenham sido confirmadas no provedor mas ainda nao refletidas localmente.
+   * @since 1.0.0
+   */
+  async syncCurrentStripeState(): Promise<SubscriptionApiPayload> {
+    const response = await apiClient.post<SubscriptionApiPayload>(
+      ENDPOINTS.subscriptions.syncCurrent,
+      {},
+    );
+
+    assertApiSuccess(
+      response,
+      'Nao foi possivel sincronizar a assinatura agora.',
     );
 
     return mergeResponsePayload(response, {});
@@ -403,7 +424,7 @@ export const subscriptionsService = {
         refund_id: typeof merged.refund_id === 'string' || merged.refund_id === null ? merged.refund_id : null,
       };
     } catch (error) {
-      console.error('Error canceling subscription:', error);
+      clientLog.error('Error canceling subscription:', error);
       throw error;
     }
   },
@@ -422,7 +443,7 @@ export const subscriptionsService = {
 
       return mergeResponsePayload(response, {});
     } catch (error) {
-      console.error('Error canceling refund request:', error);
+      clientLog.warn('Error canceling refund request:', error);
       throw error;
     }
   },
@@ -441,7 +462,7 @@ export const subscriptionsService = {
 
       return mergeResponsePayload(response, {});
     } catch (error) {
-      console.error('Error undoing cancellation request:', error);
+      clientLog.warn('Error undoing cancellation request:', error);
       throw error;
     }
   },

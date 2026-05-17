@@ -19,7 +19,7 @@ export interface LogEntry {
   type: 'log' | 'error' | 'warn' | 'request' | 'response' | 'api-error';
   message: string;
   timestamp: Date;
-  details?: any;
+  details?: unknown;
 }
 
 type LogListener = (logs: LogEntry[]) => void;
@@ -50,7 +50,7 @@ class DebugLogger {
     });
   }
 
-  public addLog(type: LogEntry['type'], message: string, details?: any) {
+  public addLog(type: LogEntry['type'], message: string, details?: unknown) {
     const entry: LogEntry = {
       id: Math.random().toString(36).substring(2, 9),
       type,

@@ -17,6 +17,7 @@ import {
   type AdminLeadSegment,
 } from '@services/admin/adminService';
 import { downloadAuthenticatedFile } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 import { useToast } from '@providers/ToastProvider';
 import {
   ADMIN_FIELD_CLASS,
@@ -195,7 +196,7 @@ const AdminFinanceAnalyticsPanel = () => {
         setSegments(segmentsPayload.segments || []);
       })
       .catch((error) => {
-        console.error('Failed to load finance analytics:', error);
+        clientLog.warn('Failed to load finance analytics:', error);
         if (isCurrent) {
           setPayload(EMPTY_PAYLOAD);
           setSegments([]);
@@ -335,7 +336,7 @@ const AdminFinanceAnalyticsPanel = () => {
     try {
       await downloadAuthenticatedFile(url, 'analytics-export.csv');
     } catch (error) {
-      console.error('Failed to export analytics CSV:', error);
+      clientLog.warn('Failed to export analytics CSV:', error);
       addToast('Não foi possível exportar o CSV agora.', 'error');
     }
   };

@@ -12,9 +12,10 @@
 import React from 'react';
 import { CheckCircle2, Clock3, CreditCard, Lock, Plus, ShieldCheck, WalletCards } from 'lucide-react';
 import { formatMaskedCardLabelAscii } from '@services/billing';
+import type { SavedCard } from '@services/billing';
 
 interface CheckoutStripePaymentMethodPanelProps {
-  stripeCards: any[];
+  stripeCards: SavedCard[];
   isLoadingStripeCards: boolean;
   selectedStripeCardId: string | null;
   onSelectSavedCard: (cardId: string) => void;
@@ -75,7 +76,7 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
           type="button"
           onClick={() => {
             if (hasSavedCards) {
-              onSelectSavedCard(selectedStripeCardId || stripeCards[0].id);
+              onSelectSavedCard(selectedStripeCardId || String(stripeCards[0].id));
             }
           }}
           disabled={!hasSavedCards || isLoadingStripeCards}
@@ -154,14 +155,15 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            {stripeCards.map((card: any) => {
-              const isSelected = selectedStripeCardId === card.id;
+            {stripeCards.map((card) => {
+              const cardId = String(card.id);
+              const isSelected = selectedStripeCardId === cardId;
 
               return (
                 <button
-                  key={card.id}
+                  key={cardId}
                   type="button"
-                  onClick={() => onSelectSavedCard(card.id)}
+                  onClick={() => onSelectSavedCard(cardId)}
                   className={`rounded-[1.5rem] border p-4 text-left transition-all ${
                     isSelected
                       ? 'border-indigo-500 bg-indigo-50 shadow-sm dark:border-indigo-400 dark:bg-indigo-500/10'

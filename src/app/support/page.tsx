@@ -36,6 +36,7 @@ import {
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
 import { readApiErrorMessage } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 import { supportService, type SupportReply, type SupportThread } from '@services/support/supportService';
 
 type SupportTab = 'bug' | 'feedback' | 'info' | 'donation';
@@ -172,7 +173,7 @@ const Support: React.FC = () => {
         preserveLocalThreads ? mergeSupportThreads(threads, currentThreads) : threads
       ));
     } catch (error) {
-      console.error('Error fetching feedback history', error);
+      clientLog.warn('Error fetching feedback history', error);
       if (notifyOnError) {
         addToast(readApiErrorMessage(error, 'Nao foi possivel carregar seu historico agora.'), 'error');
       }
@@ -260,7 +261,7 @@ const Support: React.FC = () => {
       setComposeStep(1);
       void fetchHistory(true, true);
     } catch (error) {
-      console.error('Error creating support thread', error);
+      clientLog.warn('Error creating support thread', error);
       addToast(readApiErrorMessage(error, 'Nao foi possivel enviar sua solicitacao.'), 'error');
     } finally {
       setIsSubmitting(false);
@@ -294,7 +295,7 @@ const Support: React.FC = () => {
       const threadReplies = await supportService.listReplies(threadId);
       setReplies((currentReplies) => ({ ...currentReplies, [threadId]: threadReplies }));
     } catch (error) {
-      console.error('Error fetching support replies', error);
+      clientLog.warn('Error fetching support replies', error);
       addToast(readApiErrorMessage(error, 'Nao foi possivel carregar a conversa completa.'), 'error');
     } finally {
       setLoadingReplies(null);
@@ -324,7 +325,7 @@ const Support: React.FC = () => {
       await fetchHistory(false);
       addToast('Resposta enviada com sucesso.', 'success');
     } catch (error) {
-      console.error('Error sending support reply', error);
+      clientLog.warn('Error sending support reply', error);
       addToast(readApiErrorMessage(error, 'Nao foi possivel enviar sua resposta.'), 'error');
     } finally {
       setSendingReplyId(null);
@@ -357,7 +358,7 @@ const Support: React.FC = () => {
           setReplies((currentReplies) => ({ ...currentReplies, [requestedThreadId]: threadReplies }));
         })
         .catch((error) => {
-          console.error('Error opening support thread from notification', error);
+          clientLog.warn('Error opening support thread from notification', error);
           addToast(readApiErrorMessage(error, 'Nao foi possivel abrir a conversa de suporte.'), 'error');
         })
         .finally(() => setLoadingReplies(null));

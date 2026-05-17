@@ -11,6 +11,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+  error?: string;
+} | null | undefined;
+
 const { mockDownloadAuthenticatedFile, mockGet, mockPost, mockPut } = vi.hoisted(() => ({
   mockDownloadAuthenticatedFile: vi.fn(),
   mockGet: vi.fn(),
@@ -25,11 +32,11 @@ vi.mock('@services/api', () => ({
     put: mockPut,
   },
   downloadAuthenticatedFile: mockDownloadAuthenticatedFile,
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) return response.data;
     return response ?? fallback;
   },
-  assertApiSuccess: (response: any, fallbackMessage: string) => {
+  assertApiSuccess: (response: MockApiResponse, fallbackMessage: string) => {
     if (!response?.success) {
       throw new Error(response?.message || response?.error || fallbackMessage);
     }
@@ -68,7 +75,7 @@ vi.mock('@services/api', () => ({
 }));
 
 vi.mock('@services/questions/questionPublication', () => ({
-  withQuestionPublicationAliases: (question: any) => question,
+  withQuestionPublicationAliases: (question: unknown) => question,
 }));
 
 import { adminService } from '../adminService';
@@ -160,7 +167,7 @@ describe('adminService', () => {
     await expect(adminService.saveSystemSettings({
       paymentProvider: 'stripe',
       activeTheme: 'default',
-    } as any)).resolves.toEqual({
+    })).resolves.toEqual({
       paymentProvider: 'stripe',
       activeTheme: 'default',
     });

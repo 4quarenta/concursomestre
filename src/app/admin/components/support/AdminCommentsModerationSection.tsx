@@ -14,6 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react';
 import { downloadAuthenticatedFile } from '@services/api';
 import { ENDPOINTS } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 import {
   adminService,
   type AdminCommentModerationCounts,
@@ -222,7 +223,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
     }
 
     lastErrorKeyRef.current = requestKey;
-    console.error('Failed to load moderation comments:', moderationQuery.error);
+    clientLog.warn('Failed to load moderation comments:', moderationQuery.error);
     addToastRef.current('Nao foi possivel carregar a fila de comentarios.', 'error');
   }, [moderationQuery.error, moderationQuery.isError, requestParams]);
 
@@ -275,7 +276,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
       addToast('Comentario atualizado.', 'success');
       await queryClient.invalidateQueries({ queryKey: ['admin', 'comments-moderation'] });
     } catch (error) {
-      console.error('Failed to update moderation item:', error);
+      clientLog.warn('Failed to update moderation item:', error);
       addToast('Nao foi possivel atualizar o comentario.', 'error');
     } finally {
       setActionLoading(null);
@@ -300,7 +301,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
       setSelectedIds([]);
       await queryClient.invalidateQueries({ queryKey: ['admin', 'comments-moderation'] });
     } catch (error) {
-      console.error('Failed to bulk update moderation items:', error);
+      clientLog.warn('Failed to bulk update moderation items:', error);
       addToast('Nao foi possivel atualizar os comentarios selecionados.', 'error');
     } finally {
       setActionLoading(null);
@@ -311,7 +312,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
     try {
       await downloadAuthenticatedFile(buildExportUrl(activeTab, origin, search), 'moderacao-comentarios.csv');
     } catch (error) {
-      console.error('Failed to export moderation comments:', error);
+      clientLog.warn('Failed to export moderation comments:', error);
       addToast('Nao foi possivel exportar os comentarios agora.', 'error');
     }
   };

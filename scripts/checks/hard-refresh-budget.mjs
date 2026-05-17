@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_BASELINE_PATH = path.resolve(SCRIPT_DIR, '..', '..', 'tmp-hard-refresh-baseline-latest.json');
+const DEFAULT_BASELINE_PATH = path.resolve(SCRIPT_DIR, '..', '..', 'docs', 'reports', 'artifacts', 'hard-refresh-baseline-latest.json');
 const BASELINE_PATH = process.env.CM_BASELINE_OUTPUT_PATH || DEFAULT_BASELINE_PATH;
 
 const DEFAULT_ROUTE_BUDGETS = {

@@ -46,6 +46,10 @@ const getCycleCount = (plan: Plan) => {
     return Number(plan.interval_count || 1);
   }
 
+  if ((plan.interval_unit === 'day' || plan.interval_unit === 'week') && Number(plan.interval_count || 1) > 0) {
+    return Number(plan.interval_count || 1);
+  }
+
   return 1;
 };
 
@@ -89,6 +93,10 @@ const getConfiguredCycleAmount = (
     return Number(configuredPricing.quarterly || 0);
   }
 
+  if (plan.interval_unit !== 'month') {
+    return Number(plan.price || 0);
+  }
+
   return Number(configuredPricing.monthly || 0);
 };
 
@@ -108,7 +116,15 @@ export const resolvePlanCycleKey = (plan: Plan): PlanBillingCycleKey | null => {
   return null;
 };
 
-const getCycleLabel = (cycleCount: number) => {
+const getCycleLabel = (plan: Plan, cycleCount: number) => {
+  if (plan.interval_unit === 'day') {
+    return cycleCount <= 1 ? 'dia' : `${cycleCount} dias`;
+  }
+
+  if (plan.interval_unit === 'week') {
+    return cycleCount <= 1 ? 'semana' : `${cycleCount} semanas`;
+  }
+
   if (cycleCount === 12) {
     return 'ano';
   }
@@ -163,7 +179,7 @@ export const resolvePlanOffer = ({
     originalCycleAmount,
     discountedCycleAmount,
     cycleCount,
-    cycleLabel: getCycleLabel(cycleCount),
+    cycleLabel: getCycleLabel(plan, cycleCount),
     effectiveDiscountPercent,
     displayName: configuredDisplayName || plan.name,
   };

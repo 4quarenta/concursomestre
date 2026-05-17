@@ -11,10 +11,11 @@ import {
   type UserProgressFetchScope,
 } from './userProgressQuery';
 import { useUserProgressStore } from './userProgressStore';
+import { clientLog } from '@services/monitoring/clientLog';
 
 /**
  * User-progress actions backed by Zustand + TanStack Query.
- * Replaces DataProvider dependency for progress-centric pages.
+ * Fonte oficial das mutacoes de progresso usadas por paginas de estudo/perfil.
  *
  * @since 1.0.0
  */
@@ -107,7 +108,7 @@ export const useUserProgressActions = () => {
         notes: requestedScope.includeNotes,
       });
     } catch (error) {
-      console.error('Failed to load user progress:', error);
+      clientLog.warn('Failed to load user progress:', error);
     }
   }, [
     authIsLoading,

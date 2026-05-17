@@ -6,7 +6,7 @@ import { useNotificationsStore } from './notificationsStore';
 
 /**
  * Exposes notification mutations using the dedicated notifications store.
- * This keeps UI domains independent from DataProvider while preserving behavior.
+ * This keeps notification behavior isolated from unrelated UI domains.
  *
  * @since 1.0.0
  */

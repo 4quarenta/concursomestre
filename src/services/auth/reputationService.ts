@@ -11,6 +11,7 @@
 
 import { apiClient } from '@services/api';
 import type { ApiResponse } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 
 export interface ReputationData {
     user_id: number;
@@ -39,7 +40,7 @@ export const reputationService = {
             );
             return response.data.data || null;
         } catch (error) {
-            console.error('Error fetching reputation:', error);
+            clientLog.warn('Error fetching reputation:', error);
             return null;
         }
     },
@@ -84,7 +85,7 @@ export const reputationService = {
             );
             return response.data.success;
         } catch (error) {
-            console.error('Error awarding XP:', error);
+            clientLog.warn('Error awarding XP:', error);
             return false;
         }
     },

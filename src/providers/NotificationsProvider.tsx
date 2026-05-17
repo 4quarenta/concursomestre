@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@providers/AuthProvider';
 import { buildNotificationsQueryKey, fetchNotificationsList } from '@/state/notifications/notificationsQuery';
 import { useNotificationsStore } from '@/state/notifications/notificationsStore';
+import { clientLog } from '@services/monitoring/clientLog';
 
 interface NotificationsProviderProps {
   children: React.ReactNode;
@@ -76,7 +77,7 @@ export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({ ch
       replaceNotifications(userId, notifications);
       lastFetchAtRef.current = Date.now();
     } catch (error) {
-      console.error('[NotificationsProvider] Failed to load notifications:', error);
+      clientLog.warn('[NotificationsProvider] Failed to load notifications:', error);
     } finally {
       fetchInFlightRef.current = false;
     }

@@ -17,6 +17,7 @@
     "test:headers": "powershell -ExecutionPolicy Bypass -File scripts/checks/verify-standard-file-header.ps1",
     "check:text-encoding": "node scripts/checks/check-mojibake.mjs",
     "fix:text-encoding": "node scripts/checks/fix-mojibake.mjs",
+    "check:billing-e2e": "node scripts/checks/run-billing-e2e-validation.mjs",
     "check:hard-refresh-budget": "node scripts/checks/hard-refresh-budget.mjs",
     "check:production-local": "node scripts/checks/production-readiness-local.mjs"
   },

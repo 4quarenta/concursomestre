@@ -10,6 +10,7 @@
 */
 
 import { apiClient, ENDPOINTS } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 
 export type LifecycleAnalyticsEventName =
   | 'identifiable_visit'
@@ -97,9 +98,7 @@ export const analyticsTrackingService = {
         externalHooks: input.externalHooks || undefined,
       });
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[analyticsTrackingService] failed to track lifecycle event', input.eventName, error);
-      }
+      clientLog.warn('[analyticsTrackingService] failed to track lifecycle event', input.eventName, error);
     }
   },
 };

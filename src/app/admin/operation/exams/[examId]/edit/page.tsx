@@ -20,6 +20,7 @@ import { useConfirm } from '@providers/ModalProvider';
 import { useToast } from '@providers/ToastProvider';
 import { canAccessAdminPanel } from '@services/auth';
 import { filtersService } from '@services/filters';
+import { clientLog } from '@services/monitoring/clientLog';
 import { questionService } from '@services/questions';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import { useSystemSettingsActions } from '@/state/app-config/useSystemSettingsActions';
@@ -51,10 +52,17 @@ const slugifyTaxonomy = (value: string) => normalizeTaxonomyText(value)
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '');
 
-const readTaxonomyName = (item: any) => String(item?.name || item?.nome || item?.sigla || '').trim();
-const readTaxonomySigla = (item: any) => String(item?.sigla || item?.name || item?.nome || '').trim();
+type ExamTaxonomyItem = {
+  id?: string | number;
+  name?: string;
+  nome?: string;
+  sigla?: string;
+};
 
-const findMatchingExamTaxonomy = (items: any[] = [], name: string, sigla: string, id?: string) => {
+const readTaxonomyName = (item: ExamTaxonomyItem | null | undefined) => String(item?.name || item?.nome || item?.sigla || '').trim();
+const readTaxonomySigla = (item: ExamTaxonomyItem | null | undefined) => String(item?.sigla || item?.name || item?.nome || '').trim();
+
+const findMatchingExamTaxonomy = (items: ExamTaxonomyItem[] = [], name: string, sigla: string, id?: string) => {
   const normalizedId = String(id || '');
   if (normalizedId) {
     const byId = items.find((item) => String(item?.id || '') === normalizedId);
@@ -71,6 +79,21 @@ const findMatchingExamTaxonomy = (items: any[] = [], name: string, sigla: string
       || (normalizedSigla && (itemSigla === normalizedSigla || itemName === normalizedSigla)),
     );
   });
+};
+
+const findExamInQuestionsById = (questions: Question[], examId: string): Prova | null => {
+  if (!examId || examId === 'new') {
+    return null;
+  }
+
+  for (const question of questions) {
+    const found = (question.provas || []).find((prova) => String(prova?.id ?? '') === String(examId));
+    if (found) {
+      return normalizeProvaRecord(found);
+    }
+  }
+
+  return null;
 };
 
 const AdminExamEditPage = () => {
@@ -91,6 +114,8 @@ const AdminExamEditPage = () => {
   const [isSaving, setIsSaving] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const originalExamIdRef = React.useRef<string | null>(null);
+  const draftHydrationKeyRef = React.useRef('');
+  const draftStateRef = React.useRef<ExamDraftState | null>(null);
 
   React.useEffect(() => {
     if (!isAuthLoading && !canAccessAdminPanel(currentUser)) {
@@ -102,14 +127,20 @@ const AdminExamEditPage = () => {
     void ensureTaxonomiesLoaded();
   }, [ensureTaxonomiesLoaded]);
 
+  React.useEffect(() => {
+    draftStateRef.current = draft;
+  }, [draft]);
+
   const examBank = React.useMemo(
-    () => mergeExamBankSources(systemSettings, questions),
-    [questions, systemSettings],
+    () => mergeExamBankSources(systemSettings, []),
+    [systemSettings],
   );
 
   const existingExam = React.useMemo(
-    () => examBank.find((item) => String(item.id) === String(examId)) || null,
-    [examBank, examId],
+    () => examBank.find((item) => String(item.id) === String(examId))
+      || findExamInQuestionsById(questions, String(examId))
+      || null,
+    [examBank, examId, questions],
   );
 
   React.useEffect(() => {
@@ -118,17 +149,35 @@ const AdminExamEditPage = () => {
     }
 
     if (isNew) {
+      if (draftHydrationKeyRef.current === 'new' && draftStateRef.current) {
+        return;
+      }
       originalExamIdRef.current = null;
+      draftHydrationKeyRef.current = 'new';
       setDraft(createEmptyExamDraft());
       return;
     }
 
     if (!existingExam) {
+      if (draftHydrationKeyRef.current === 'not-found' && draftStateRef.current === null) {
+        return;
+      }
+      draftHydrationKeyRef.current = 'not-found';
       setDraft(null);
       return;
     }
 
+    const nextHydrationKey = String(existingExam.id || '');
+    if (
+      draftHydrationKeyRef.current === nextHydrationKey
+      && draftStateRef.current
+      && String(draftStateRef.current.id || '') === nextHydrationKey
+    ) {
+      return;
+    }
+
     originalExamIdRef.current = String(existingExam.id);
+    draftHydrationKeyRef.current = nextHydrationKey;
     setDraft(createDraftFromProva(existingExam));
   }, [existingExam, isNew, isSystemSettingsLoaded]);
 
@@ -174,7 +223,7 @@ const AdminExamEditPage = () => {
     const currentList = type === 'banca'
       ? (systemSettings.taxonomies?.agencies || [])
       : (systemSettings.taxonomies?.organizations || []);
-    const existing = findMatchingExamTaxonomy(currentList as any[], trimmedName, trimmedSigla, currentId);
+    const existing = findMatchingExamTaxonomy(currentList as ExamTaxonomyItem[], trimmedName, trimmedSigla, currentId);
     if (existing) {
       return existing;
     }
@@ -190,7 +239,7 @@ const AdminExamEditPage = () => {
     const taxonomies = await filtersService.listTaxonomies();
     void ensureTaxonomiesLoaded(true);
     const nextList = type === 'banca' ? taxonomies.agencies : taxonomies.organizations;
-    return findMatchingExamTaxonomy(nextList as any[], trimmedName, trimmedSigla, String(createdId))
+    return findMatchingExamTaxonomy(nextList as ExamTaxonomyItem[], trimmedName, trimmedSigla, String(createdId))
       || {
         id: createdId || trimmedName || trimmedSigla,
         name: trimmedName || trimmedSigla,
@@ -204,8 +253,8 @@ const AdminExamEditPage = () => {
       const agency = await ensureExamTaxonomy('banca', payload.name, payload.sigla);
       addToast('Banca vinculada a taxonomia.', 'success');
       return agency;
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel cadastrar a banca.', 'error');
+    } catch (error: unknown) {
+      addToast(error instanceof Error ? error.message : 'Nao foi possivel cadastrar a banca.', 'error');
       return null;
     }
   }, [addToast, ensureExamTaxonomy]);
@@ -215,8 +264,8 @@ const AdminExamEditPage = () => {
       const organization = await ensureExamTaxonomy('orgao', payload.name, payload.sigla);
       addToast('Orgao vinculado a taxonomia.', 'success');
       return organization;
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel cadastrar o orgao.', 'error');
+    } catch (error: unknown) {
+      addToast(error instanceof Error ? error.message : 'Nao foi possivel cadastrar o orgao.', 'error');
       return null;
     }
   }, [addToast, ensureExamTaxonomy]);
@@ -226,13 +275,13 @@ const AdminExamEditPage = () => {
       return;
     }
 
-    let resolvedAgency: any = null;
-    let resolvedOrganization: any = null;
+    let resolvedAgency: ExamTaxonomyItem | null = null;
+    let resolvedOrganization: ExamTaxonomyItem | null = null;
     try {
       resolvedAgency = await ensureExamTaxonomy('banca', draft.bancaNome, draft.bancaSigla, draft.bancaId);
       resolvedOrganization = await ensureExamTaxonomy('orgao', draft.orgaoNome, draft.orgaoSigla, draft.orgaoId);
-    } catch (error: any) {
-      addToast(error?.message || 'Nao foi possivel sincronizar banca/orgao com as taxonomias.', 'error');
+    } catch (error: unknown) {
+      addToast(error instanceof Error ? error.message : 'Nao foi possivel sincronizar banca/orgao com as taxonomias.', 'error');
       return;
     }
 
@@ -305,7 +354,7 @@ const AdminExamEditPage = () => {
         router.replace(buildAdminExamEditPath(normalized.id));
       }
     } catch (error) {
-      console.error('Error saving exam:', error);
+      clientLog.warn('Error saving exam:', error);
       addToast('Nao foi possivel salvar a prova.', 'error');
     } finally {
       setIsSaving(false);
@@ -347,12 +396,27 @@ const AdminExamEditPage = () => {
 
       router.push(buildAdminPath('operation', 'exams'));
     } catch (error) {
-      console.error('Error deleting exam:', error);
+      clientLog.warn('Error deleting exam:', error);
       addToast('Nao foi possivel remover a prova.', 'error');
     } finally {
       setIsDeleting(false);
     }
   }, [addToast, confirm, examBank, existingExam, router, saveSystemSettingsNow, syncLinkedQuestions, systemSettings, updateSystemSettings]);
+
+  const linkedQuestionProbeId = React.useMemo(
+    () => String(existingExam?.id || draft?.id || ''),
+    [existingExam?.id, draft?.id],
+  );
+
+  const linkedQuestionsCount = React.useMemo(() => {
+    if (!linkedQuestionProbeId) {
+      return 0;
+    }
+
+    return questions.reduce((count, question) => (
+      isQuestionLinkedToProva(question, linkedQuestionProbeId) ? count + 1 : count
+    ), 0);
+  }, [linkedQuestionProbeId, questions]);
 
   const renderAdminShell = (children: React.ReactNode) => (
     <AdminStandaloneShell
@@ -404,11 +468,6 @@ const AdminExamEditPage = () => {
   if (!draft) {
     return null;
   }
-
-  const linkedQuestionsCount = questions.filter((question) => {
-    const probeId = originalExamIdRef.current || draft.id;
-    return probeId ? isQuestionLinkedToProva(question, probeId) : false;
-  }).length;
 
   return renderAdminShell(
     <AdminExamEditorPage

@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import type { Ranking } from '@types';
 import { readApiErrorMessage } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 
 type ToastHandler = (message: string, type?: string) => void;
 
@@ -42,7 +43,7 @@ export const useRankingEditorWorkflow = ({
       closeRankingEditor();
       addToast('Ranking atualizado com sucesso!', 'success');
     } catch (error) {
-      console.error(error);
+      clientLog.warn('Error saving ranking:', error);
       addToast(readApiErrorMessage(error, 'Erro ao salvar ranking'), 'error');
     }
   };

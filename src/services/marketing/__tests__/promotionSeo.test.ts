@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Metadata } from 'next';
 import type { Promotion } from 'types';
 import { buildPromotionMetadata } from '../promotionSeo';
+
+type RobotsObject = {
+  index?: boolean;
+  googleBot?: {
+    index?: boolean;
+  };
+};
+
+const readRobotsObject = (robots: Metadata['robots']) => robots as RobotsObject;
 
 const makePromotion = (patch: Partial<Promotion> = {}) => ({
   isActive: true,
@@ -50,7 +60,7 @@ describe('promotion SEO metadata', () => {
     expect(metadata.title).toBe('Oferta Black Friday');
     expect(metadata.description).toBe('Plano Elite com desconto especial.');
     expect(metadata.alternates?.canonical).toBe('https://concursomestre.com.br/promo/black-friday');
-    expect((metadata.robots as any).index).toBe(true);
+    expect(readRobotsObject(metadata.robots).index).toBe(true);
   });
 
   it('marks wrong or inactive promotion slugs as noindex', async () => {
@@ -67,8 +77,9 @@ describe('promotion SEO metadata', () => {
     const metadata = await buildPromotionMetadata('campanha-antiga');
 
     expect(String(metadata.title)).toContain('Promocao indisponivel');
-    expect((metadata.robots as any).index).toBe(false);
-    expect((metadata.robots as any).googleBot.index).toBe(false);
+    const robots = readRobotsObject(metadata.robots);
+    expect(robots.index).toBe(false);
+    expect(robots.googleBot?.index).toBe(false);
   });
 
   it('marks the promotion as noindex when the promo feature is disabled', async () => {
@@ -83,6 +94,6 @@ describe('promotion SEO metadata', () => {
 
     const metadata = await buildPromotionMetadata('black-friday');
 
-    expect((metadata.robots as any).index).toBe(false);
+    expect(readRobotsObject(metadata.robots).index).toBe(false);
   });
 });

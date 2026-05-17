@@ -50,6 +50,7 @@ export interface LawSummary {
   id: string;
   slug: string;
   areaId: string;
+  lawTopicFilterId?: string | null;
   acronym?: string;
   sigla?: string | null;
   catalogId?: string;
@@ -65,6 +66,7 @@ export interface LawSummary {
   date: string;
   aliases: string[];
   summary: string;
+  preamble?: string;
   ementa?: string;
   status: LegalContentStatus;
   officialUrl: string;
@@ -103,6 +105,32 @@ export interface LegalArticleBlock {
   notes?: string[];
   isRecentlyChanged?: boolean;
   previousText?: string;
+}
+
+export type LegalRichContentBlockType =
+  | 'paragraph'
+  | 'bullet_list'
+  | 'table'
+  | 'warning'
+  | 'tip'
+  | 'macete'
+  | 'jurisprudence'
+  | 'example'
+  | 'comparison'
+  | 'summary';
+
+export interface LegalRichContentBlock {
+  type: LegalRichContentBlockType;
+  title?: string;
+  content?: string;
+  items?: string[];
+  headers?: string[];
+  rows?: string[][];
+  target?: {
+    kind?: LegalArticleBlock['kind'] | 'article' | 'section';
+    label?: string;
+    blockId?: string;
+  };
 }
 
 export interface LegalArticleParagraph {
@@ -161,6 +189,8 @@ export interface LawArticle {
     section?: string;
     subsectionLabel?: string | null;
     subsection?: string;
+    resolvedSubtopic?: string;
+    resolvedAssunto?: string;
   };
   blocks: LegalArticleBlock[];
   officialAnchor?: string;
@@ -177,6 +207,12 @@ export interface TeacherComment {
   title: string;
   body: string;
   texto?: string;
+  importance?: 'alta' | 'media' | 'baixa' | string;
+  style?: string;
+  richBlocks?: LegalRichContentBlock[];
+  blocks?: LegalRichContentBlock[];
+  keywords?: string[];
+  avoidRepetitionNote?: string;
   examFocus: string[];
   pitfalls: string[];
   relatedRefs: string[];
@@ -279,6 +315,31 @@ export interface LegalSyncLog {
   revokedArticles?: number;
 }
 
+export interface LawSectionEditorial {
+  sectionKey: string;
+  sectionTitle: string;
+  rangeLabel: string;
+  articleCount: number;
+  importance?: 'alta' | 'media' | 'baixa' | string;
+  style?: string;
+  summary: string;
+  blocks?: LegalRichContentBlock[];
+  examFocus: string[];
+  examFocusText?: string;
+  keywords?: string[];
+  avoidRepetitionNote?: string;
+  macetes: string[];
+  doctrine: string[];
+  jurisprudence: ArticleJurisprudence[];
+  sumulas: LegalArticleSyllabus[];
+  highlights: Array<{
+    articleId: string;
+    articleNumber: string;
+    title: string;
+    excerpt: string;
+  }>;
+}
+
 export interface LawDetail extends LawSummary {
   area: LegalArea;
   ementa: string;
@@ -291,6 +352,7 @@ export interface LawDetail extends LawSummary {
   updates: LawUpdate[];
   syncLogs?: LegalSyncLog[];
   progress?: LegalUserProgress;
+  sectionEditorials?: LawSectionEditorial[];
 }
 
 export type LegalEditorialGenerationScope =
@@ -302,7 +364,8 @@ export type LegalEditorialGenerationScope =
   | 'field-macete'
   | 'field-doutrina'
   | 'field-jurisprudencia'
-  | 'field-sumulas';
+  | 'field-sumulas'
+  | 'section-analysis';
 
 export type LegalEditorialGenerationStatus = 'success' | 'partial' | 'failed' | 'skipped' | 'pending' | 'running' | 'completed' | 'stopped';
 
@@ -316,8 +379,8 @@ export interface LegalEditorialBatchItem {
   stageCStatus: LegalEditorialGenerationStatus;
   errorMessage?: string | null;
   warnings: string[];
-  result: Record<string, any>;
-  attempts: Record<string, any>;
+  result: Record<string, unknown>;
+  attempts: Record<string, unknown>;
   startedAt?: string | null;
   finishedAt?: string | null;
 }
@@ -342,7 +405,7 @@ export interface LegalEditorialStageResult {
   status: LegalEditorialGenerationStatus;
   warnings: string[];
   regeneratedFields: string[];
-  attempts: Record<string, any>;
+  attempts: Record<string, unknown>;
   approvedCount: number;
 }
 
@@ -364,6 +427,7 @@ export interface LegalEditorialGenerationResult {
   articleNumber?: string;
   persisted: boolean;
   editorial: LegalArticleEditorialSnapshot;
+  sectionEditorial?: LawSectionEditorial;
   stages: {
     stageA: LegalEditorialStageResult;
     stageB: LegalEditorialStageResult;

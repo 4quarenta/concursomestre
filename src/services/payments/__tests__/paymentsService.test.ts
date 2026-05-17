@@ -11,6 +11,16 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+} | null | undefined;
+
+type MockApiError = {
+  message?: unknown;
+} | null | undefined;
+
 const { mockGet, mockPost } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
@@ -27,15 +37,15 @@ vi.mock('@services/api', () => ({
       processMaterial: 'payments/process-payment.php',
     },
   },
-  assertApiSuccess: (response: any) => ({
+  assertApiSuccess: (response: MockApiResponse) => ({
     success: response?.success !== false,
     raw: response,
   }),
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) return response.data;
     return response ?? fallback;
   },
-  readApiErrorMessage: (error: any, fallback: string) => {
+  readApiErrorMessage: (error: MockApiError, fallback: string) => {
     if (typeof error?.message === 'string') return error.message;
     return fallback;
   },

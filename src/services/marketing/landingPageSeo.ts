@@ -32,20 +32,20 @@ const getApiBaseUrl = () => normalizeSiteUrl(
   'http://localhost/questao-pro-backend/api/',
 );
 
-const readEnvelopeData = (payload: unknown): Record<string, any> => {
+const readEnvelopeData = (payload: unknown): Record<string, unknown> => {
   if (!payload || typeof payload !== 'object') {
     return {};
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'data')) {
     const data = (payload as { data?: unknown }).data;
-    return data && typeof data === 'object' ? data as Record<string, any> : {};
+    return data && typeof data === 'object' ? data as Record<string, unknown> : {};
   }
 
-  return payload as Record<string, any>;
+  return payload as Record<string, unknown>;
 };
 
-const fetchPublicSettingsForLandingSeo = async (): Promise<Record<string, any>> => {
+const fetchPublicSettingsForLandingSeo = async (): Promise<Record<string, unknown>> => {
   if (typeof fetch !== 'function') {
     return {};
   }
@@ -77,7 +77,10 @@ const fetchPublicSettingsForLandingSeo = async (): Promise<Record<string, any>> 
 export const resolvePublishedMarketingLandingForSeo = async (slug: string): Promise<LandingSeoResolution> => {
   const settings = await fetchPublicSettingsForLandingSeo();
   const siteName = String(settings.siteName || websiteManifest.website.applicationName || 'ConcursoMestre').trim();
-  const pages = mergeMarketingLandingPages(settings.landingPages, siteName);
+  const landingPages = Array.isArray(settings.landingPages)
+    ? settings.landingPages as Partial<MarketingLandingPage>[]
+    : [];
+  const pages = mergeMarketingLandingPages(landingPages, siteName);
   const landing = getPublishedMarketingLandingBySlug(pages, normalizeLandingSlug(slug));
 
   return {

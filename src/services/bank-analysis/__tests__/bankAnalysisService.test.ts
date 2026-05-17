@@ -11,6 +11,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+} | null | undefined;
+
 const { mockGet } = vi.hoisted(() => ({
   mockGet: vi.fn(),
 }));
@@ -19,7 +23,7 @@ vi.mock('@services/api', () => ({
   apiClient: {
     get: mockGet,
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) {
       return response.data;
     }

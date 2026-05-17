@@ -11,10 +11,11 @@ import {
   mergeSystemSettings,
   resolvePersistedSystemSettings,
 } from './systemSettings';
+import { clientLog } from '@services/monitoring/clientLog';
 
 /**
  * System settings actions backed by Zustand + TanStack Query.
- * It keeps admin settings mutations out of DataProvider.
+ * It keeps admin settings mutations centralized in the app-config domain.
  *
  * @since 1.0.0
  */
@@ -35,6 +36,7 @@ export const useSystemSettingsActions = () => {
     lastSavedSystemSettingsRef.current = systemSettings;
   }, [systemSettings]);
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- callback reprocessa a fila pendente apos concluir o save atual.
   const flushSystemSettingsSave = useCallback(async () => {
     const nextSettings = pendingSystemSettingsRef.current;
     if (!nextSettings) return;
@@ -55,7 +57,7 @@ export const useSystemSettingsActions = () => {
       queryClient.setQueryData(buildSystemSettingsQueryKey('admin'), persistedSettings);
       void queryClient.invalidateQueries({ queryKey: buildSystemSettingsQueryKey('public') });
     } catch (error) {
-      console.error('Failed to persist system settings:', error);
+      clientLog.error('Failed to persist system settings:', error);
       replaceSystemSettings(lastSavedSystemSettingsRef.current);
       addToast('Erro ao salvar configuracoes. As alteracoes nao foram persistidas.', 'error');
       throw error;
@@ -111,7 +113,7 @@ export const useSystemSettingsActions = () => {
       void queryClient.invalidateQueries({ queryKey: buildSystemSettingsQueryKey('public') });
       return officialSettings;
     } catch (error) {
-      console.error('Failed to persist system settings immediately:', error);
+      clientLog.error('Failed to persist system settings immediately:', error);
       replaceSystemSettings(lastSavedSystemSettingsRef.current);
       addToast('Erro ao salvar configuracoes. As alteracoes nao foram persistidas.', 'error');
       throw error;

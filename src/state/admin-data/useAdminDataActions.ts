@@ -6,6 +6,7 @@ import type { ErrorReport, Ranking, RankingEntry, UserProfile } from '@types';
 import { useToast } from '@providers/ToastProvider';
 import { adminService } from '@services/admin/adminService';
 import { rankingsService } from '@services/rankings';
+import { clientLog } from '@services/monitoring/clientLog';
 import {
   buildAdminReportsQueryKey,
   buildAdminUsersQueryKey,
@@ -43,7 +44,7 @@ const patchRankingEntries = (ranking: Ranking, nextEntry: RankingEntry): Ranking
 
 /**
  * Admin data actions backed by Zustand + TanStack Query.
- * This keeps ranking/user domains decoupled from DataProvider while preserving behavior.
+ * This keeps ranking, user and report domains coordinated through one admin store.
  *
  * @since 1.0.0
  */
@@ -105,7 +106,7 @@ export const useAdminDataActions = () => {
       });
       replaceUsers(nextUsers);
     } catch (error) {
-      console.error('Failed to load users:', error);
+      clientLog.warn('Failed to load users:', error);
     }
   }, [isUsersLoaded, queryClient, replaceUsers]);
 
@@ -119,7 +120,7 @@ export const useAdminDataActions = () => {
       });
       replaceReports(nextReports);
     } catch (error) {
-      console.error('Failed to load reports:', error);
+      clientLog.warn('Failed to load reports:', error);
     }
   }, [isReportsLoaded, queryClient, replaceReports]);
 
@@ -145,7 +146,7 @@ export const useAdminDataActions = () => {
       )));
       addToast(`Denuncia ${action === 'resolved' ? 'resolvida' : 'ignorada'}.`, 'success');
     } catch (error) {
-      console.error('Failed to resolve report:', error);
+      clientLog.error('Failed to resolve report:', error);
       addToast('Erro ao atualizar a denuncia.', 'error');
       throw error;
     }
@@ -161,7 +162,7 @@ export const useAdminDataActions = () => {
       });
       replaceRankings(nextRankings);
     } catch (error) {
-      console.error('Failed to load rankings:', error);
+      clientLog.warn('Failed to load rankings:', error);
     }
   }, [isRankingsLoaded, queryClient, replaceRankings]);
 
@@ -180,7 +181,7 @@ export const useAdminDataActions = () => {
       )));
       addToast('Dados do usuário atualizados.', 'success');
     } catch (error) {
-      console.error('Failed to update user:', error);
+      clientLog.error('Failed to update user:', error);
       addToast('Erro ao atualizar usuário no servidor.', 'error');
       throw error;
     }
@@ -194,7 +195,7 @@ export const useAdminDataActions = () => {
       await rankingsService.create(ranking);
       addToast('Ranking criado com sucesso!', 'success');
     } catch (error) {
-      console.error('Failed to create ranking:', error);
+      clientLog.error('Failed to create ranking:', error);
       removeRankingFromStore(ranking.id);
       patchRankingsCache((current) => current.filter((item) => item.id !== ranking.id));
       addToast('Erro ao criar ranking no servidor.', 'error');
@@ -211,7 +212,7 @@ export const useAdminDataActions = () => {
       )));
       addToast('Ranking atualizado com sucesso!', 'success');
     } catch (error) {
-      console.error('Failed to update ranking:', error);
+      clientLog.error('Failed to update ranking:', error);
       addToast('Erro ao atualizar ranking.', 'error');
       throw error;
     }
@@ -224,7 +225,7 @@ export const useAdminDataActions = () => {
       patchRankingsCache((current) => current.filter((item) => item.id !== rankingId));
       addToast('Ranking excluído com sucesso!', 'success');
     } catch (error) {
-      console.error('Failed to delete ranking:', error);
+      clientLog.error('Failed to delete ranking:', error);
       addToast('Erro ao excluir ranking.', 'error');
       throw error;
     }
@@ -248,7 +249,7 @@ export const useAdminDataActions = () => {
       await rankingsService.join(rankingId, entry.userId, entry);
       addToast('Gabarito enviado!', 'success');
     } catch (error) {
-      console.error('Failed to submit ranking entry:', error);
+      clientLog.error('Failed to submit ranking entry:', error);
       addToast('Falha de conexão ao enviar gabarito.', 'error');
       throw error;
     }
@@ -263,7 +264,7 @@ export const useAdminDataActions = () => {
       )));
       addToast(`Ranking ${status === 'approved' ? 'aprovado' : 'rejeitado'}!`, 'success');
     } catch (error) {
-      console.error('Failed to moderate ranking:', error);
+      clientLog.error('Failed to moderate ranking:', error);
       addToast('Erro ao moderar ranking.', 'error');
       throw error;
     }

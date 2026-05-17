@@ -11,15 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import {
-  BookOpen,
-  DollarSign,
-  LayoutDashboard,
-  Megaphone,
-  MessageSquare,
-  Settings,
-  ShoppingBag,
-} from 'lucide-react';
+import { BookOpen, DollarSign, LayoutDashboard, Megaphone, MessageSquare, Settings, ShoppingBag } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useTheme } from '@providers/ThemeProvider';
 import { useToast } from '@providers/ToastProvider';
@@ -69,16 +61,7 @@ type AdminSettingsWithFeedbackCount = {
   adminFeedbackCount?: number | string | null;
 };
 
-export type {
-  AdminFinanceSection,
-  AdminMarketingSection,
-  AdminMarketplaceSection,
-  AdminPageTab,
-  AdminPanelSection,
-  AdminOperationSection,
-  AdminSettingsSection,
-  AdminSupportSection,
-} from '../../config/adminPageNavigationConfig';
+export type { AdminFinanceSection, AdminMarketingSection, AdminMarketplaceSection, AdminPageTab, AdminPanelSection, AdminOperationSection, AdminSettingsSection, AdminSupportSection } from '../../config/adminPageNavigationConfig';
 
 /**
  * Controller principal da pagina administrativa.
@@ -97,17 +80,8 @@ export const useAdminPageController = () => {
   const rankings = useAdminDataStore((store) => store.rankings);
   const notifications = useNotificationsStore((store) => store.notifications);
   const systemSettings = useAppConfigStore((store) => store.systemSettings);
-  const {
-    updateSystemSettings,
-    saveSystemSettingsNow,
-  } = useSystemSettingsActions();
-  const {
-    ensureUsersLoaded,
-    ensureReportsLoaded,
-    ensureRankingsLoaded,
-    resolveReport,
-    updateRanking,
-  } = useAdminDataActions();
+  const { updateSystemSettings, saveSystemSettingsNow } = useSystemSettingsActions();
+  const { ensureUsersLoaded, ensureReportsLoaded, ensureRankingsLoaded, resolveReport, updateRanking } = useAdminDataActions();
   const { ensureTaxonomiesLoaded } = useTaxonomyActions();
   const { markNotificationAsRead } = useNotificationsActions();
   const { materials, transactions, moderateMaterial, deleteMaterial } = useMarketplace();

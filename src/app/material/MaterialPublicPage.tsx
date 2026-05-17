@@ -41,13 +41,19 @@ const MaterialPublicPage: React.FC = () => {
 
   React.useEffect(() => {
     if (!id) {
-      setError('Material nao encontrado.');
-      setIsLoading(false);
-      return;
+      const frameId = window.requestAnimationFrame(() => {
+        setError('Material nao encontrado.');
+        setIsLoading(false);
+      });
+      return () => window.cancelAnimationFrame(frameId);
     }
 
     let isMounted = true;
-    setIsLoading(true);
+    const loadingFrameId = window.requestAnimationFrame(() => {
+      if (isMounted) {
+        setIsLoading(true);
+      }
+    });
 
     marketplaceService.getMaterialById(id)
       .then((payload) => {
@@ -78,6 +84,7 @@ const MaterialPublicPage: React.FC = () => {
 
     return () => {
       isMounted = false;
+      window.cancelAnimationFrame(loadingFrameId);
     };
   }, [id]);
 

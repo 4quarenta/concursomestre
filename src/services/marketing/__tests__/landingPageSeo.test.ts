@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Metadata } from 'next';
 import { buildMarketingLandingMetadata } from '../landingPageSeo';
 import { createDefaultPlansLandingPage } from '../landingPages';
+
+type RobotsObject = {
+  index?: boolean;
+  googleBot?: {
+    index?: boolean;
+  };
+};
+
+const readRobotsObject = (robots: Metadata['robots']) => robots as RobotsObject;
 
 const jsonResponse = (payload: unknown) => new Response(JSON.stringify(payload), {
   status: 200,
@@ -45,7 +55,7 @@ describe('landing page SEO metadata', () => {
     expect(metadata.title).toBe('Campanha Especial SEO');
     expect(metadata.description).toBe('Descricao da campanha especial.');
     expect(metadata.alternates?.canonical).toBe('https://concursomestre.com.br/oferta/campanha-especial');
-    expect((metadata.robots as any).index).toBe(true);
+    expect(readRobotsObject(metadata.robots).index).toBe(true);
     expect(metadata.openGraph?.title).toBe('Oferta ConcursoMestre');
   });
 
@@ -68,8 +78,9 @@ describe('landing page SEO metadata', () => {
     const metadata = await buildMarketingLandingMetadata('rascunho');
 
     expect(String(metadata.title)).toContain('Campanha indisponivel');
-    expect((metadata.robots as any).index).toBe(false);
-    expect((metadata.robots as any).googleBot.index).toBe(false);
+    const robots = readRobotsObject(metadata.robots);
+    expect(robots.index).toBe(false);
+    expect(robots.googleBot?.index).toBe(false);
   });
 
   it('falls back to the default published landings when settings are unavailable', async () => {
@@ -82,6 +93,6 @@ describe('landing page SEO metadata', () => {
 
     expect(String(metadata.title)).toContain('Plano Elite');
     expect(metadata.alternates?.canonical).toBe('https://concursomestre.com.br/elite');
-    expect((metadata.robots as any).index).toBe(true);
+    expect(readRobotsObject(metadata.robots).index).toBe(true);
   });
 });

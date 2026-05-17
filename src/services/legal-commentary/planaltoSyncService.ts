@@ -150,7 +150,8 @@ export const runPlanaltoSyncPreview = async (
         changedArticles: diff.changed.length,
         revokedArticles: diff.revoked.length,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Falha desconhecida ao sincronizar lei.';
       logs.push({
         id: `sync-${law.id}-${Date.now()}`,
         lawId: law.id,
@@ -158,7 +159,7 @@ export const runPlanaltoSyncPreview = async (
         startedAt: logStartedAt,
         finishedAt: new Date().toISOString(),
         sourceUrl: law.officialUrl,
-        message: error?.message || 'Falha desconhecida ao sincronizar lei.',
+        message,
       });
     }
   }

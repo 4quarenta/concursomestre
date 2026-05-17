@@ -18,8 +18,10 @@ import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
 import { canAccessAdminPanel } from '@services/auth';
+import { planService } from '@services/plans';
 import { adminService, type AdminUserDetailsPayload } from '@services/admin/adminService';
 import { readApiErrorMessage } from '@services/api';
+import type { Plan } from '@types';
 import AdminStandaloneShell from '../../../../components/shared/AdminStandaloneShell';
 import AdminUserEditorPage, { type AdminUserEditorForm } from '../../../../components/users/AdminUserEditorPage';
 import { buildAdminPath, buildAdminUserEditPath } from '../../../../config/adminPageNavigationConfig';
@@ -76,6 +78,59 @@ const buildUserFormFromDetails = (details: AdminUserDetailsPayload | null): Admi
   };
 };
 
+type AdminAvailablePlanItem = {
+  id?: string | number;
+  name?: string;
+  price?: number | string | null;
+  active?: number | string | boolean;
+  is_active?: number | string | boolean;
+};
+
+const mergeDetailedUserWithCatalogPlans = (
+  detailedUser: AdminUserDetailsPayload,
+  catalogPlans: Plan[],
+): AdminUserDetailsPayload => {
+  const existingPlans = Array.isArray(detailedUser?.available_plans)
+    ? (detailedUser.available_plans as AdminAvailablePlanItem[])
+    : [];
+  const mergedById = new Map<string, AdminAvailablePlanItem>();
+
+  existingPlans.forEach((plan) => {
+    const key = String(plan?.id || '').trim();
+    if (!key) return;
+    mergedById.set(key, plan);
+  });
+
+  catalogPlans.forEach((plan) => {
+    const key = String(plan?.id || '').trim();
+    if (!key) return;
+    const catalogAsAvailablePlan: AdminAvailablePlanItem = {
+      id: plan.id,
+      name: plan.name,
+      price: plan.price,
+      active: plan.is_active === false ? 0 : 1,
+      is_active: plan.is_active === false ? 0 : 1,
+    };
+    const current = mergedById.get(key);
+    mergedById.set(key, current
+      ? {
+          ...catalogAsAvailablePlan,
+          ...current,
+          id: current.id ?? catalogAsAvailablePlan.id,
+          name: current.name || catalogAsAvailablePlan.name,
+          price: current.price ?? catalogAsAvailablePlan.price,
+          active: current.active ?? catalogAsAvailablePlan.active,
+          is_active: current.is_active ?? catalogAsAvailablePlan.is_active,
+        }
+      : catalogAsAvailablePlan);
+  });
+
+  return {
+    ...detailedUser,
+    available_plans: Array.from(mergedById.values()),
+  };
+};
+
 const AdminUserEditPage = () => {
   const params = useParams<{ userId?: string | string[] }>();
   const router = useRouter();
@@ -119,11 +174,15 @@ const AdminUserEditPage = () => {
       setLoadError('');
     });
 
-    adminService.getUserDetails(String(userId))
-      .then((payload) => {
+    Promise.all([
+      adminService.getUserDetails(String(userId)),
+      planService.getPlans(),
+    ])
+      .then(([payload, catalogPlans]) => {
         if (cancelled) return;
-        setDetails(payload);
-        setForm(buildUserFormFromDetails(payload));
+        const mergedPayload = mergeDetailedUserWithCatalogPlans(payload, catalogPlans);
+        setDetails(mergedPayload);
+        setForm(buildUserFormFromDetails(mergedPayload));
       })
       .catch((error) => {
         if (cancelled) return;
@@ -180,7 +239,11 @@ const AdminUserEditPage = () => {
         return;
       }
 
-      const nextDetails = await adminService.getUserDetails(String(userId));
+      const [nextDetailsRaw, catalogPlans] = await Promise.all([
+        adminService.getUserDetails(String(userId)),
+        planService.getPlans(),
+      ]);
+      const nextDetails = mergeDetailedUserWithCatalogPlans(nextDetailsRaw, catalogPlans);
       setDetails(nextDetails);
       setForm(buildUserFormFromDetails(nextDetails));
       addToast(result.message || 'Usuario atualizado com sucesso.', 'success');
@@ -210,7 +273,11 @@ const AdminUserEditPage = () => {
         action,
         ...data,
       });
-      const nextDetails = await adminService.getUserDetails(String(details.profile.id));
+      const [nextDetailsRaw, catalogPlans] = await Promise.all([
+        adminService.getUserDetails(String(details.profile.id)),
+        planService.getPlans(),
+      ]);
+      const nextDetails = mergeDetailedUserWithCatalogPlans(nextDetailsRaw, catalogPlans);
 
       setDetails(nextDetails);
       setForm(buildUserFormFromDetails(nextDetails));

@@ -13,7 +13,22 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { AlertTriangle, BookOpen, CheckCircle2, Edit3, ExternalLink, FileText, History, Loader2, Plus, RefreshCcw, Search, Trash2, X, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  BookOpen,
+  CheckCircle2,
+  Edit3,
+  ExternalLink,
+  FileText,
+  History,
+  Loader2,
+  Plus,
+  RefreshCcw,
+  Search,
+  Trash2,
+  X,
+  XCircle,
+} from 'lucide-react';
 import { useConfirm } from '@providers/ModalProvider';
 import { useToast } from '@providers/ToastProvider';
 import { legalCommentaryApiService, type PlanaltoCatalogItem, type PlanaltoCatalogSource } from '@services/legal-commentary';

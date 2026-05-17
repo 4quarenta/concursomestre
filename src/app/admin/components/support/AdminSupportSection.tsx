@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import { useToast } from '@providers/ToastProvider';
 import type { ErrorReport } from '@types';
 import { adminService, type AdminCommentModerationCounts } from '@services/admin/adminService';
+import { clientLog } from '@services/monitoring/clientLog';
 import { AdminFeedback } from './AdminFeedback';
 import AdminCommentsModerationSection from './AdminCommentsModerationSection';
 import {
@@ -225,7 +226,7 @@ const AdminSupportSection = ({
       });
       addToast('Denuncia resolvida com sucesso.', 'success');
     } catch (error) {
-      console.error('Error resolving report from support:', error);
+      clientLog.warn('Error resolving report from support:', error);
       addToast('Nao foi possivel resolver a denuncia.', 'error');
     } finally {
       setResolvingReportId(null);
@@ -277,7 +278,7 @@ const AdminSupportSection = ({
       setModeratingReport(null);
       setModerationResolution('');
     } catch (error) {
-      console.error('Error moderating report from support:', error);
+      clientLog.warn('Error moderating report from support:', error);
       addToast('Nao foi possivel moderar a denuncia.', 'error');
     } finally {
       setResolvingReportId(null);

@@ -12,6 +12,7 @@
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Filter, Loader2, MessageSquare, Search, Send } from 'lucide-react';
 import { adminService, type AdminFeedbackReply, type AdminFeedbackThread } from '@services/admin/adminService';
+import { clientLog } from '@services/monitoring/clientLog';
 import { useToast } from '@providers/ToastProvider';
 import {
   ADMIN_FIELD_CLASS,
@@ -131,7 +132,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       setSupportNowMs(Date.now());
       setFeedbacks(items);
     } catch (error) {
-      console.error('Error fetching feedback:', error);
+      clientLog.warn('Error fetching feedback:', error);
       addToast('Nao foi possivel carregar os feedbacks.', 'error');
     } finally {
       setLoading(false);
@@ -217,7 +218,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       await fetchFeedback();
       addToast('Status do feedback atualizado.', 'success');
     } catch (error) {
-      console.error('Error updating feedback status:', error);
+      clientLog.warn('Error updating feedback status:', error);
       addToast('Nao foi possivel atualizar o status do feedback.', 'error');
     } finally {
       setUpdatingStatusId(null);
@@ -240,7 +241,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       const threadReplies = await adminService.getFeedbackReplies(id);
       setReplies((current) => ({ ...current, [id]: threadReplies }));
     } catch (error) {
-      console.error('Error fetching feedback replies:', error);
+      clientLog.warn('Error fetching feedback replies:', error);
       addToast('Nao foi possivel carregar a conversa.', 'error');
     } finally {
       setLoadingRepliesId(null);
@@ -260,7 +261,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       setReplyDrafts((current) => ({ ...current, [parentId]: '' }));
       addToast('Resposta enviada com sucesso.', 'success');
     } catch (error) {
-      console.error('Error sending feedback reply:', error);
+      clientLog.warn('Error sending feedback reply:', error);
       addToast('Nao foi possivel enviar a resposta.', 'error');
     } finally {
       setSendingReplyId(null);
@@ -524,4 +525,3 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
     </div>
   );
 };
-

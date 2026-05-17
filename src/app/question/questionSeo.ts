@@ -32,25 +32,28 @@ const unique = (values: Array<string | undefined | null>) => {
   return result;
 };
 
-const readNamedValue = (item: any, keys: string[]) => {
+const readNamedValue = (item: unknown, keys: string[]) => {
   if (!item) return '';
   if (typeof item === 'string' || typeof item === 'number') return String(item);
+  if (typeof item !== 'object') return '';
+
+  const record = item as Record<string, unknown>;
 
   for (const key of keys) {
-    if (item[key]) return String(item[key]);
+    if (record[key]) return String(record[key]);
   }
 
   return '';
 };
 
 export const getQuestionContextLabels = (question: Partial<Question>) => {
-  const bancas = unique((question.bancas || []).map((item: any) => readNamedValue(item, ['sigla', 'nome', 'name'])));
-  const orgaos = unique((question.orgaos || []).map((item: any) => readNamedValue(item, ['sigla', 'nome', 'name'])));
-  const cargos = unique((question.cargos || []).map((item: any) => readNamedValue(item, ['descricao', 'descrição', 'name', 'nome'])));
-  const assuntos = unique((question.assuntos || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'slug'])));
-  const carreiras = unique((question.carreiras || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'descricao', 'descrição'])));
+  const bancas = unique((question.bancas || []).map((item) => readNamedValue(item, ['sigla', 'nome', 'name'])));
+  const orgaos = unique((question.orgaos || []).map((item) => readNamedValue(item, ['sigla', 'nome', 'name'])));
+  const cargos = unique((question.cargos || []).map((item) => readNamedValue(item, ['descricao', 'descrição', 'name', 'nome'])));
+  const assuntos = unique((question.assuntos || []).map((item) => readNamedValue(item, ['nome', 'name', 'slug'])));
+  const carreiras = unique((question.carreiras || []).map((item) => readNamedValue(item, ['nome', 'name', 'descricao', 'descrição'])));
   const anos = unique((question.anos || []).map((ano) => String(ano)));
-  const provas = unique((question.provas || []).map((item: any) => readNamedValue(item, ['nome', 'name', 'slug'])));
+  const provas = unique((question.provas || []).map((item) => readNamedValue(item, ['nome', 'name', 'slug'])));
   const nivel = readNamedValue(question.nivel || question.level, ['nome', 'name', 'descricao', 'descrição']) || String(question.nivel || question.level || '').trim();
 
   return {

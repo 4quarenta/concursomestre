@@ -61,7 +61,7 @@ const AdminDatabaseNavigation = ({
 }: AdminDatabaseNavigationProps) => {
   const activeCategoryConfig = categories.find((category) => category.id === activeCategory);
   const visibleTabs = (activeCategoryConfig?.tabs || []).filter((tab) => (
-    tab !== 'import' || bulkImportEnabled
+    (tab !== 'import' && tab !== 'gran-crawler') || bulkImportEnabled
   ));
   const activeSectionMeta = subTabMeta[activeSubTab];
 

@@ -10,21 +10,30 @@
 */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { UserProfile } from '@types';
 
 const mockPost = vi.fn();
 const mockGet = vi.fn();
 
 const storageState = new Map<string, string>();
 let cookieJar = '';
-const windowListeners = new Map<string, Set<(event: any) => void>>();
+type MockWindowEvent = Event | MessageEvent | StorageEvent | { type: string; [key: string]: unknown };
+type MockWindowWithStorageEmitter = Window & {
+  __emitStorage: (event: MockWindowEvent) => void;
+};
+const windowListeners = new Map<string, Set<(event: MockWindowEvent) => void>>();
 
 class MockBroadcastChannel {
   public onmessage: ((event: MessageEvent) => void) | null = null;
   private listeners = new Set<(event: MessageEvent) => void>();
 
-  constructor(_name: string) {}
+  constructor(name: string) {
+    void name;
+  }
 
-  postMessage(_data: unknown) {}
+  postMessage(data: unknown) {
+    void data;
+  }
 
   addEventListener(_type: string, listener: (event: MessageEvent) => void) {
     this.listeners.add(listener);
@@ -62,7 +71,7 @@ describe('auth session manager', () => {
     cookieJar = '';
     windowListeners.clear();
 
-    const emitWindowEvent = (type: string, event: any) => {
+    const emitWindowEvent = (type: string, event: MockWindowEvent) => {
       const listeners = windowListeners.get(type);
       listeners?.forEach((listener) => listener(event));
     };
@@ -104,12 +113,12 @@ describe('auth session manager', () => {
     };
 
     const windowMock = {
-      addEventListener: vi.fn((type: string, listener: (event: any) => void) => {
+      addEventListener: vi.fn((type: string, listener: (event: MockWindowEvent) => void) => {
         const listeners = windowListeners.get(type) ?? new Set();
         listeners.add(listener);
         windowListeners.set(type, listeners);
       }),
-      removeEventListener: vi.fn((type: string, listener: (event: any) => void) => {
+      removeEventListener: vi.fn((type: string, listener: (event: MockWindowEvent) => void) => {
         windowListeners.get(type)?.delete(listener);
       }),
       dispatchEvent: vi.fn((event: { type: string }) => {
@@ -121,7 +130,7 @@ describe('auth session manager', () => {
         pathname: '/',
       },
       atob: (value: string) => Buffer.from(value, 'base64').toString('binary'),
-      __emitStorage: (event: any) => emitWindowEvent('storage', event),
+      __emitStorage: (event: MockWindowEvent) => emitWindowEvent('storage', event),
     };
 
     vi.stubGlobal('localStorage', localStorageMock);
@@ -256,7 +265,7 @@ describe('auth session manager', () => {
 
     const pending = session.refreshAuthSession({ reason: 'http-401', force: true });
 
-    (window as any).__emitStorage({
+    (window as MockWindowWithStorageEmitter).__emitStorage({
       key: 'cm-auth-event',
       newValue: JSON.stringify({
         type: 'refresh-success',
@@ -304,7 +313,7 @@ describe('auth session manager', () => {
       id: 'user-1',
       name: 'Teste',
       email: 'teste@teste.com',
-    } as any);
+    } as UserProfile);
 
     expect(session.getAccessToken()).toBe(validToken);
 

@@ -11,11 +11,54 @@
 
 import { apiClient, ENDPOINTS, readApiData } from '@services/api';
 import { withRequestCoalescing } from '@services/api/requestCoalescer';
-import type { Plan } from '@types';
+import type { DiscountCode, Plan } from '@types';
 import { cardsService } from '@services/billing';
+import { clientLog } from '@services/monitoring/clientLog';
 import { subscriptionsService } from '@services/subscriptions';
 
 type StripeBillingMode = 'single_installment' | 'term_recurring';
+type PlanApiEnvelope<TData extends Record<string, unknown> = Record<string, unknown>> = TData & {
+  success?: boolean;
+  message?: string | null;
+  data?: TData | null;
+};
+type CheckoutCoupon = DiscountCode & {
+  discount_amount?: number;
+  discount_percentage?: number;
+};
+type StripeCheckoutSessionResponse = PlanApiEnvelope<{
+  url?: string | null;
+  redirect_url?: string | null;
+}>;
+type StripeSubscriptionPayload = {
+  subscription_id?: string | null;
+  client_secret?: string | null;
+  payment_intent_status?: string | null;
+  confirmation_type?: 'payment' | 'setup' | string | null;
+  payment_intent_id?: string | null;
+  save_card?: boolean;
+  card_saved?: boolean;
+  card_save_warning?: string | null;
+  approved?: boolean;
+  access_granted?: boolean;
+};
+type StripeSubscriptionResponse = PlanApiEnvelope<StripeSubscriptionPayload>;
+type StripeFinalizeSubscriptionResponse = PlanApiEnvelope<StripeSubscriptionPayload>;
+type StripeSetupIntentResponse = Awaited<ReturnType<typeof cardsService.createStripeSetupIntent>>;
+type StripeCardSyncResponse = Awaited<ReturnType<typeof cardsService.syncStripeCard>>;
+type StripePortalSessionResponse = PlanApiEnvelope<{
+  url?: string | null;
+  redirect_url?: string | null;
+}>;
+type StripePixCapabilityResponse = PlanApiEnvelope;
+type CouponValidationResult = PlanApiEnvelope<{
+  coupon?: CheckoutCoupon | null;
+}>;
+type SubscriptionActionResponse = PlanApiEnvelope<{
+  refund_processed?: boolean;
+  refund_id?: string | null;
+}>;
+type SubscriptionGenericResponse = PlanApiEnvelope;
 
 /**
  * Fachada oficial do dominio de planos.
@@ -31,11 +74,11 @@ export const planService = {
   async getPlans(): Promise<Plan[]> {
     return withRequestCoalescing('plans:list', async () => {
       try {
-        const response = await apiClient.get<any>(ENDPOINTS.plans.list);
+        const response = await apiClient.get<unknown>(ENDPOINTS.plans.list);
         const plans = readApiData<Plan[]>(response, []);
         return Array.isArray(plans) ? plans : [];
       } catch (error) {
-        console.error('Error fetching plans:', error);
+        clientLog.warn('Error fetching plans:', error);
         return [];
       }
     }, 5000);
@@ -49,10 +92,11 @@ export const planService = {
     plan_id: number;
     auto_renew?: boolean;
     coupon_code?: string;
+    payment_method_id?: string;
     billing_mode?: StripeBillingMode;
     installment_count?: number;
-  }): Promise<any> {
-    return subscriptionsService.createStripeCheckoutSession(payload);
+  }): Promise<StripeCheckoutSessionResponse> {
+    return subscriptionsService.createStripeCheckoutSession(payload) as Promise<StripeCheckoutSessionResponse>;
   },
 
   /**
@@ -68,8 +112,8 @@ export const planService = {
     save_card?: boolean;
     billing_mode?: StripeBillingMode;
     installment_count?: number;
-  }): Promise<any> {
-    return subscriptionsService.createStripeSubscription(payload);
+  }): Promise<StripeSubscriptionResponse> {
+    return subscriptionsService.createStripeSubscription(payload) as Promise<StripeSubscriptionResponse>;
   },
 
   /**
@@ -85,15 +129,15 @@ export const planService = {
     saved_card_id?: string;
     save_card?: boolean;
     billing_mode?: StripeBillingMode;
-  }): Promise<any> {
-    return subscriptionsService.finalizeStripeSubscription(payload);
+  }): Promise<StripeFinalizeSubscriptionResponse> {
+    return subscriptionsService.finalizeStripeSubscription(payload) as Promise<StripeFinalizeSubscriptionResponse>;
   },
 
   /**
    * Prepara o setup intent usado para salvar um cartao Stripe.
    * @since 1.0.0
    */
-  async createStripeSetupIntent(): Promise<any> {
+  async createStripeSetupIntent(): Promise<StripeSetupIntentResponse> {
     return cardsService.createStripeSetupIntent();
   },
 
@@ -101,7 +145,7 @@ export const planService = {
    * Sincroniza o cartao Stripe salvo com o cofre local.
    * @since 1.0.0
    */
-  async syncStripeCard(paymentMethodId: string): Promise<any> {
+  async syncStripeCard(paymentMethodId: string): Promise<StripeCardSyncResponse> {
     return cardsService.syncStripeCard(paymentMethodId);
   },
 
@@ -109,24 +153,24 @@ export const planService = {
    * Abre o portal da Stripe para gerenciar assinatura e billing.
    * @since 1.0.0
    */
-  async createStripePortalSession(): Promise<any> {
-    return subscriptionsService.createStripePortalSession();
+  async createStripePortalSession(): Promise<StripePortalSessionResponse> {
+    return subscriptionsService.createStripePortalSession() as Promise<StripePortalSessionResponse>;
   },
 
   /**
    * Consulta a disponibilidade operacional de PIX via capability Stripe.
    * @since 1.0.0
    */
-  async getStripePixCapability(): Promise<any> {
-    return subscriptionsService.getStripePixCapability();
+  async getStripePixCapability(): Promise<StripePixCapabilityResponse> {
+    return subscriptionsService.getStripePixCapability() as Promise<StripePixCapabilityResponse>;
   },
 
   /**
    * Solicita a ativação operacional de PIX na Stripe via backend oficial.
    * @since 1.0.0
    */
-  async requestStripePixCapability(): Promise<any> {
-    return subscriptionsService.requestStripePixCapability();
+  async requestStripePixCapability(): Promise<StripePixCapabilityResponse> {
+    return subscriptionsService.requestStripePixCapability() as Promise<StripePixCapabilityResponse>;
   },
 
   /**
@@ -142,41 +186,41 @@ export const planService = {
       targetType?: 'plan' | 'item';
       targetId?: string | number;
     } = {},
-  ): Promise<any> {
-    return subscriptionsService.validateCoupon(code, amount, options);
+  ): Promise<CouponValidationResult> {
+    return subscriptionsService.validateCoupon(code, amount, options) as Promise<CouponValidationResult>;
   },
 
   /**
    * Solicita cancelamento da assinatura ativa.
    * @since 1.0.0
    */
-  async cancelSubscription(userId: string, reason?: string, details?: string, captchaToken?: string | null): Promise<any> {
+  async cancelSubscription(userId: string, reason?: string, details?: string, captchaToken?: string | null): Promise<SubscriptionActionResponse> {
     void userId;
-    return subscriptionsService.cancelSubscription(reason, details, captchaToken);
+    return subscriptionsService.cancelSubscription(reason, details, captchaToken) as Promise<SubscriptionActionResponse>;
   },
 
   /**
    * Cancela uma solicitacao de reembolso pendente.
    * @since 1.0.0
    */
-  async cancelRefundRequest(): Promise<any> {
-    return subscriptionsService.cancelRefundRequest();
+  async cancelRefundRequest(): Promise<SubscriptionGenericResponse> {
+    return subscriptionsService.cancelRefundRequest() as Promise<SubscriptionGenericResponse>;
   },
 
   /**
    * Reverte a solicitacao de cancelamento/reembolso.
    * @since 1.0.0
    */
-  async undoCancellationRequest(): Promise<any> {
-    return subscriptionsService.undoCancellationRequest();
+  async undoCancellationRequest(): Promise<SubscriptionGenericResponse> {
+    return subscriptionsService.undoCancellationRequest() as Promise<SubscriptionGenericResponse>;
   },
 
   /**
    * Atualiza a preferencia de renovacao automatica.
    * @since 1.0.0
    */
-  async updateRenewal(autoRenew: boolean): Promise<any> {
-    return subscriptionsService.updateRenewal(autoRenew);
+  async updateRenewal(autoRenew: boolean): Promise<SubscriptionGenericResponse> {
+    return subscriptionsService.updateRenewal(autoRenew) as Promise<SubscriptionGenericResponse>;
   },
 };
 

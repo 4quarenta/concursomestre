@@ -9,8 +9,9 @@
 *
 */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Link from 'next/link';
 import {
   Calendar,
   Check,
@@ -62,9 +63,10 @@ import type {
   Transaction,
   UserProfile,
 } from '@types';
-import { adminService, type AdminRevenueProjectionPayload } from '@services/admin/adminService';
+import { adminService, type AdminPlanCatalogItem, type AdminRevenueProjectionPayload } from '@services/admin/adminService';
 import { subscriptionsService } from '@services/subscriptions';
 import { readApiErrorMessage } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 import { PLAN_DETAILS, PRICING } from '@constants';
 import {
   DEFAULT_PLAN_ENTITLEMENTS,
@@ -86,6 +88,7 @@ import { buildAdminMarketplaceSellerMetrics, type AdminMarketplaceSellerMetric }
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 import AdminMarketing from './AdminMarketing';
 import AdminFinanceAnalyticsPanel from './AdminFinanceAnalyticsPanel';
+import { buildAdminUserEditPath } from '../../config/adminPageNavigationConfig';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_MODAL_FOOTER_CLASS,
@@ -226,6 +229,15 @@ type ProjectionTransactionRow = AdminFinanceTransaction & {
   timestamp: number;
 };
 
+type SellerBulkAction = 'activate' | 'suspend' | 'ban';
+
+type AdminCatalogPlanDraft = {
+  price: number;
+  interval_count: number;
+  interval_unit: 'day' | 'week' | 'month' | 'year';
+  active: boolean;
+};
+
 const clonePlanDetails = (source?: Partial<PlanDetailsByPlan>): PlanDetailsByPlan => Object.fromEntries(
   Object.entries(source || {}).map(([plan, config]) => [
     plan,
@@ -309,6 +321,41 @@ const EMPTY_REVENUE_PROJECTION: AdminRevenueProjectionPayload = {
 
 const formatAdminMoney = (value: number) =>
   `R$ ${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const SELLER_BULK_ACTION_LABEL: Record<SellerBulkAction, string> = {
+  activate: 'Ativar',
+  suspend: 'Suspender',
+  ban: 'Banir',
+};
+
+const SELLER_BULK_ACTION_STATUS: Record<SellerBulkAction, UserProfile['status']> = {
+  activate: 'active',
+  suspend: 'suspended',
+  ban: 'banned',
+};
+
+const getSellerStatusLabel = (value: unknown) => {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized === 'active') return 'Ativo';
+  if (normalized === 'suspended') return 'Suspenso';
+  if (normalized === 'banned') return 'Banido';
+  if (normalized === 'pending') return 'Pendente';
+  return normalized || 'Ativo';
+};
+
+const getSellerStatusBadgeClass = (value: unknown) => {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized === 'banned') {
+    return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300';
+  }
+  if (normalized === 'suspended') {
+    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300';
+  }
+  if (normalized === 'pending') {
+    return 'border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300';
+  }
+  return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300';
+};
 
 const parseProjectionTimestamp = (value?: string | null) => {
   if (!value) {
@@ -491,6 +538,11 @@ const AdminFinance = ({
   ));
   const [draftActiveTheme, setDraftActiveTheme] = useState(systemSettings.activeTheme || 'default');
   const [draftActivePromotion, setDraftActivePromotion] = useState(systemSettings.activePromotion || undefined);
+  const [catalogPlans, setCatalogPlans] = useState<AdminPlanCatalogItem[]>([]);
+  const [catalogPlansLoading, setCatalogPlansLoading] = useState(false);
+  const [catalogPlanSavingId, setCatalogPlanSavingId] = useState<number | null>(null);
+  const [catalogPlanDrafts, setCatalogPlanDrafts] = useState<Record<number, AdminCatalogPlanDraft>>({});
+  const catalogPlansRequestRef = useRef(false);
   const [adminFinanceNowMs, setAdminFinanceNowMs] = useState(0);
   const refundRequests = useMemo(
     () => allTransactions?.filter((t) => String(t.status || '') === 'refund_requested') || [],
@@ -506,6 +558,17 @@ const AdminFinance = ({
   // --- NOVOS CALCULOS POR VENDEDOR ---
   const [viewingSellerDetails, setViewingSellerDetails] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'available_desc' | 'available_asc' | 'date_asc' | 'date_desc'>('available_desc');
+  const [sellerSearch, setSellerSearch] = useState('');
+  const [sellerStatusFilter, setSellerStatusFilter] = useState<'all' | 'active' | 'suspended' | 'banned' | 'pending'>('all');
+  const [selectedSellerIds, setSelectedSellerIds] = useState<string[]>([]);
+  const [sellerBulkAction, setSellerBulkAction] = useState<SellerBulkAction>('activate');
+  const [sellerActionLoading, setSellerActionLoading] = useState(false);
+  const [sellerMaterialModerationLoadingId, setSellerMaterialModerationLoadingId] = useState<string | null>(null);
+  const [pendingSellerBulkConfirmation, setPendingSellerBulkConfirmation] = useState<{
+    action: SellerBulkAction;
+    sellerIds: string[];
+  } | null>(null);
+  const [sellerStatusOverrides, setSellerStatusOverrides] = useState<Record<string, UserProfile['status']>>({});
   const automationDownloadUrl = automationHelper?.download_url || '';
   const automationCronUrl = automationHelper?.cron_url || '';
   const automationCronCommand = automationHelper?.linux_command || '';
@@ -532,6 +595,76 @@ const AdminFinance = ({
     activeTheme: draftActiveTheme,
     activePromotion: draftActivePromotion,
   }), [draftActivePromotion, draftActiveTheme, draftCoupons, draftLegalCommentaryFeatureConfig, draftPlanDetails, draftPlanEntitlements, draftPlanUsageLimits, draftPricing, systemSettings]);
+
+  const testCatalogPlan = useMemo(() => (
+    catalogPlans.find((plan) => plan.is_test_plan)
+    || catalogPlans.find((plan) => {
+      const intervalUnit = String(plan.interval_unit || '').toLowerCase();
+      const intervalCount = Number(plan.interval_count || 0);
+      return (intervalUnit === 'day' || intervalUnit === 'week') && intervalCount > 0 && intervalCount <= 7;
+    })
+    || null
+  ), [catalogPlans]);
+
+  const testCatalogPlanDraft = testCatalogPlan ? catalogPlanDrafts[testCatalogPlan.id] : null;
+
+  const syncCatalogPlanDrafts = useCallback((plans: AdminPlanCatalogItem[]) => {
+    setCatalogPlanDrafts(() => plans.reduce<Record<number, AdminCatalogPlanDraft>>((acc, plan) => {
+      acc[plan.id] = {
+        price: Number(plan.price || 0),
+        interval_count: Math.max(1, Number(plan.interval_count || 1)),
+        interval_unit: (['day', 'week', 'month', 'year'].includes(String(plan.interval_unit || 'month'))
+          ? String(plan.interval_unit)
+          : 'month') as 'day' | 'week' | 'month' | 'year',
+        active: plan.active !== false,
+      };
+      return acc;
+    }, {}));
+  }, []);
+
+  const loadPlanCatalog = useCallback(async (options?: { force?: boolean; silent?: boolean }) => {
+    if (!options?.force && catalogPlansRequestRef.current) {
+      return;
+    }
+
+    catalogPlansRequestRef.current = true;
+    setCatalogPlansLoading(true);
+
+    try {
+      const items = await adminService.getPlanCatalog();
+      setCatalogPlans(items);
+      syncCatalogPlanDrafts(items);
+    } catch (error) {
+      if (!options?.silent) {
+        const message = readApiErrorMessage(error, 'Nao foi possivel carregar o catalogo de planos.');
+        addToast(message, 'error');
+      }
+    } finally {
+      catalogPlansRequestRef.current = false;
+      setCatalogPlansLoading(false);
+    }
+  }, [addToast, syncCatalogPlanDrafts]);
+
+  const usersForSellerMetrics = useMemo<UserProfile[]>(() => (
+    (allUsers || []).map((user) => {
+      const overrideStatus = sellerStatusOverrides[String(user.id)];
+      if (!overrideStatus || overrideStatus === user.status) {
+        return user;
+      }
+      return {
+        ...user,
+        status: overrideStatus,
+      };
+    })
+  ), [allUsers, sellerStatusOverrides]);
+
+  const sellerUsersById = useMemo(() => {
+    const map = new Map<string, UserProfile>();
+    usersForSellerMetrics.forEach((user) => {
+      map.set(String(user.id), user);
+    });
+    return map;
+  }, [usersForSellerMetrics]);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -568,6 +701,23 @@ const AdminFinance = ({
   }, [initialSection]);
 
   useEffect(() => {
+    if (activeSection !== 'plans') {
+      return;
+    }
+
+    let cancelled = false;
+    const frameId = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      void loadPlanCatalog();
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [activeSection, loadPlanCatalog]);
+
+  useEffect(() => {
     const updateNow = () => setAdminFinanceNowMs(Date.now());
     const frameId = window.requestAnimationFrame(updateNow);
     const intervalId = window.setInterval(updateNow, 60_000);
@@ -596,7 +746,7 @@ const AdminFinance = ({
           }
         })
         .catch((error) => {
-          console.error('Failed to load confirmed revenue projection:', error);
+          clientLog.warn('Failed to load confirmed revenue projection:', error);
           if (!cancelled) {
             setRevenueProjection(EMPTY_REVENUE_PROJECTION);
           }
@@ -633,10 +783,10 @@ const AdminFinance = ({
   };
 
   const sellersMetrics = useMemo(() => buildAdminMarketplaceSellerMetrics({
-    users: allUsers || [],
+    users: usersForSellerMetrics || [],
     materials: allMaterials || [],
     transactions: (allTransactions || []) as unknown as Record<string, unknown>[],
-  }), [allMaterials, allTransactions, allUsers]);
+  }), [allMaterials, allTransactions, usersForSellerMetrics]);
 
   useEffect(() => {
     if (activeSection !== 'automation' || automationHelper || automationHelperRequestRef.current) return;
@@ -756,6 +906,45 @@ const AdminFinance = ({
       return 0;
     });
   }, [sellersMetrics, sortBy]);
+
+  const filteredSellers = useMemo(() => {
+    const normalizedSearch = sellerSearch.trim().toLowerCase();
+
+    return sortedSellers.filter((seller) => {
+      const status = String(seller.status || 'active').toLowerCase();
+      if (sellerStatusFilter !== 'all' && status !== sellerStatusFilter) {
+        return false;
+      }
+
+      if (!normalizedSearch) {
+        return true;
+      }
+
+      return [seller.id, seller.name, seller.email]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedSearch);
+    });
+  }, [sellerSearch, sellerStatusFilter, sortedSellers]);
+
+  const [sellerPage, setSellerPage] = useState(1);
+  const SELLERS_PER_PAGE = 12;
+  const sellerTotalPages = Math.max(1, Math.ceil(filteredSellers.length / SELLERS_PER_PAGE));
+  const sellerPageSafe = Math.min(sellerPage, sellerTotalPages);
+  const paginatedSellers = useMemo(
+    () => filteredSellers.slice((sellerPageSafe - 1) * SELLERS_PER_PAGE, sellerPageSafe * SELLERS_PER_PAGE),
+    [filteredSellers, sellerPageSafe],
+  );
+
+  const filteredSellerIds = useMemo(() => filteredSellers.map((seller) => seller.id), [filteredSellers]);
+  const sellerIdSet = useMemo(() => new Set(sortedSellers.map((seller) => seller.id)), [sortedSellers]);
+  const normalizedSelectedSellerIds = useMemo(
+    () => selectedSellerIds.filter((sellerId) => sellerIdSet.has(sellerId)),
+    [selectedSellerIds, sellerIdSet],
+  );
+  const selectedSellerIdsSet = useMemo(() => new Set(normalizedSelectedSellerIds), [normalizedSelectedSellerIds]);
+  const allFilteredSelected = filteredSellerIds.length > 0 && filteredSellerIds.every((sellerId) => selectedSellerIdsSet.has(sellerId));
 
   const projectedTransactionRows = useMemo<ProjectionTransactionRow[]>(
     () => buildProjectedTransactionRows(revenueProjection),
@@ -1012,10 +1201,142 @@ const AdminFinance = ({
       applyPersistedFinanceSettings(persistedSettings);
       addToast('Planos e regras de acesso salvos com sucesso.', 'success');
     } catch (error) {
-      console.error('Error saving pricing settings:', error);
+      clientLog.warn('Error saving pricing settings:', error);
       addToast('Não foi possível salvar as configurações dos planos.', 'error');
     } finally {
       setIsSavingPricing(false);
+    }
+  };
+
+  const handleCatalogPlanDraftChange = (
+    planId: number,
+    patch: Partial<AdminCatalogPlanDraft>,
+  ) => {
+    setCatalogPlanDrafts((prev) => {
+      const current = prev[planId];
+      if (!current) {
+        return prev;
+      }
+
+      const nextIntervalUnit = (patch.interval_unit ?? current.interval_unit) as AdminCatalogPlanDraft['interval_unit'];
+      const nextIntervalCount = Math.max(
+        1,
+        Number(patch.interval_count ?? current.interval_count),
+      );
+
+      return {
+        ...prev,
+        [planId]: {
+          ...current,
+          ...patch,
+          interval_unit: nextIntervalUnit,
+          interval_count: nextIntervalCount,
+          price: Number(patch.price ?? current.price),
+          active: patch.active ?? current.active,
+        },
+      };
+    });
+  };
+
+  const handleCatalogPlanIntervalStep = (planId: number, delta: number) => {
+    const plan = catalogPlans.find((item) => item.id === planId);
+    if (!plan || plan.can_edit_interval !== true) {
+      return;
+    }
+
+    const current = catalogPlanDrafts[planId];
+    if (!current) {
+      return;
+    }
+
+    handleCatalogPlanDraftChange(planId, {
+      interval_count: Math.min(30, Math.max(1, Number(current.interval_count || 1) + delta)),
+      interval_unit: 'day',
+    });
+  };
+
+  const handleSaveCatalogPlan = async (
+    planId: number,
+    overrides: Partial<AdminCatalogPlanDraft> = {},
+    successMessage = 'Plano atualizado com sucesso.',
+  ): Promise<boolean> => {
+    const currentDraft = catalogPlanDrafts[planId];
+    const draft = currentDraft ? { ...currentDraft, ...overrides } : undefined;
+    const plan = catalogPlans.find((item) => item.id === planId);
+    if (!draft || catalogPlanSavingId !== null) {
+      return false;
+    }
+    if (!plan) {
+      return false;
+    }
+
+    setCatalogPlanSavingId(planId);
+    try {
+      const payload: {
+        plan_id: number;
+        price: number;
+        interval_count?: number;
+        interval_unit?: 'day' | 'week' | 'month' | 'year';
+        active?: boolean;
+      } = {
+        plan_id: planId,
+        price: Number(draft.price || 0),
+      };
+
+      if (plan.can_edit_interval === true) {
+        payload.interval_count = Math.max(1, Number(draft.interval_count || 1));
+        payload.interval_unit = draft.interval_unit;
+      }
+
+      if (plan.can_toggle_active === true) {
+        payload.active = draft.active;
+      }
+
+      const updatedPlan = await adminService.updatePlanCatalog(payload);
+
+      setCatalogPlans((prev) => prev.map((plan) => (
+        plan.id === planId ? updatedPlan : plan
+      )));
+
+      handleCatalogPlanDraftChange(planId, {
+        price: Number(updatedPlan.price || 0),
+        interval_count: Math.max(1, Number(updatedPlan.interval_count || 1)),
+        interval_unit: updatedPlan.interval_unit,
+        active: updatedPlan.active !== false,
+      });
+
+      addToast(successMessage, 'success');
+      return true;
+    } catch (error) {
+      const message = readApiErrorMessage(error, 'Nao foi possivel atualizar o plano selecionado.');
+      addToast(message, 'error');
+      return false;
+    } finally {
+      setCatalogPlanSavingId(null);
+    }
+  };
+
+  const handleToggleTestCatalogPlanActive = async () => {
+    if (!testCatalogPlan || !testCatalogPlanDraft || catalogPlanSavingId !== null) {
+      return;
+    }
+
+    if (testCatalogPlan.can_toggle_active !== true) {
+      addToast('Este plano ainda nao permite ativar/desativar. Recarregue o painel apos a migracao do catalogo.', 'error');
+      return;
+    }
+
+    const nextActive = !testCatalogPlanDraft.active;
+    handleCatalogPlanDraftChange(testCatalogPlan.id, { active: nextActive });
+
+    const saved = await handleSaveCatalogPlan(
+      testCatalogPlan.id,
+      { active: nextActive },
+      nextActive ? 'Plano de teste ativado.' : 'Plano de teste desativado.',
+    );
+
+    if (!saved) {
+      handleCatalogPlanDraftChange(testCatalogPlan.id, { active: testCatalogPlanDraft.active });
     }
   };
 
@@ -1234,7 +1555,7 @@ const AdminFinance = ({
   };
 
   // --- REEMBOLSOS ---
-  const { resolveRefund } = useMarketplace();
+  const { resolveRefund, moderateMaterial } = useMarketplace();
   const requestResolveRefund = (transactionId: string, resolution: 'approved' | 'retention_offer') => {
     if (refundActionKey) return;
     setPendingRefundDecision({ transactionId, resolution });
@@ -1323,7 +1644,142 @@ const AdminFinance = ({
     }
   };
 
+  const openSellerDetails = (sellerId: string) => {
+    setViewingSellerDetails(sellerId);
+  };
+
+  const toggleSellerSelection = (sellerId: string) => {
+    setSelectedSellerIds((currentIds) => (
+      currentIds.includes(sellerId)
+        ? currentIds.filter((id) => id !== sellerId)
+        : [...currentIds, sellerId]
+    ));
+  };
+
+  const toggleSelectAllFilteredSellers = () => {
+    if (allFilteredSelected) {
+      setSelectedSellerIds((currentIds) => currentIds.filter((sellerId) => !filteredSellerIds.includes(sellerId)));
+      return;
+    }
+
+    setSelectedSellerIds((currentIds) => Array.from(new Set([...currentIds, ...filteredSellerIds])));
+  };
+
+  const requestBulkSellerAction = () => {
+    if (sellerActionLoading) return;
+    if (normalizedSelectedSellerIds.length === 0) {
+      addToast('Selecione ao menos um vendedor para aplicar a acao em massa.', 'error');
+      return;
+    }
+
+    setPendingSellerBulkConfirmation({
+      action: sellerBulkAction,
+      sellerIds: [...normalizedSelectedSellerIds],
+    });
+  };
+
+  const runSellerStatusUpdate = async (action: SellerBulkAction, sellerIds: string[]) => {
+    if (sellerActionLoading || sellerIds.length === 0) return;
+
+    const nextStatus = SELLER_BULK_ACTION_STATUS[action];
+    setSellerActionLoading(true);
+
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const sellerId of sellerIds) {
+      const user = sellerUsersById.get(sellerId);
+      if (!user) {
+        failureCount += 1;
+        continue;
+      }
+
+      try {
+        await adminService.performUserActionWithResult({
+          user_id: String(user.id),
+          action: 'update_profile',
+          name: String(user.name || ''),
+          email: String(user.email || ''),
+          cpf: user.cpf || '',
+          phone: user.phone || '',
+          targetExam: user.targetExam || '',
+          role: user.role || 'partner',
+          status: nextStatus,
+          reputation: Number(user.reputation ?? 100),
+        });
+        successCount += 1;
+      } catch (error) {
+        failureCount += 1;
+        clientLog.warn('Failed to update seller status', error);
+      }
+    }
+
+    if (successCount > 0) {
+      setSellerStatusOverrides((current) => {
+        const next = { ...current };
+        sellerIds.forEach((sellerId) => {
+          next[sellerId] = nextStatus;
+        });
+        return next;
+      });
+
+      addToast(`${successCount} vendedor(es) atualizado(s) para ${getSellerStatusLabel(nextStatus).toLowerCase()}.`, 'success');
+    }
+
+    if (failureCount > 0) {
+      addToast(`${failureCount} vendedor(es) nao puderam ser atualizados.`, 'error');
+    }
+
+    setSelectedSellerIds((currentIds) => currentIds.filter((id) => !sellerIds.includes(id)));
+    setPendingSellerBulkConfirmation(null);
+    setSellerActionLoading(false);
+  };
+
+  const confirmBulkSellerAction = async () => {
+    if (!pendingSellerBulkConfirmation) return;
+    await runSellerStatusUpdate(
+      pendingSellerBulkConfirmation.action,
+      pendingSellerBulkConfirmation.sellerIds,
+    );
+  };
+
+  const requestSingleSellerStatusAction = (sellerId: string, action: SellerBulkAction) => {
+    if (sellerActionLoading) return;
+    setPendingSellerBulkConfirmation({
+      action,
+      sellerIds: [sellerId],
+    });
+  };
+
+  const handleModerateSellerMaterial = async (
+    materialId: string,
+    status: 'approved' | 'rejected',
+  ) => {
+    if (sellerMaterialModerationLoadingId) return;
+
+    setSellerMaterialModerationLoadingId(materialId);
+    try {
+      await moderateMaterial(
+        materialId,
+        status,
+        status === 'approved'
+          ? 'Aprovado via painel de vendedores.'
+          : 'Rejeitado via painel de vendedores para revisão do conteúdo.',
+      );
+    } finally {
+      setSellerMaterialModerationLoadingId(null);
+    }
+  };
+
   const selectedSeller = viewingSellerDetails ? sellersMetrics.find(s => s.id === viewingSellerDetails) : null;
+  const selectedSellerUser = selectedSeller ? (sellerUsersById.get(selectedSeller.id) || null) : null;
+  const selectedSellerMaterials = useMemo(() => {
+    if (!selectedSeller) return [];
+
+    return (allMaterials || [])
+      .filter((material) => String(material.authorId || '').trim() === selectedSeller.id)
+      .sort((left, right) => Number(right.createdAt || 0) - Number(left.createdAt || 0));
+  }, [allMaterials, selectedSeller]);
 
   return (
     <div className="space-y-5 animate-slide-up md:space-y-6">
@@ -1342,6 +1798,25 @@ const AdminFinance = ({
         onCancel={() => {
           setPendingRefundDecision(null);
           setRefundActionKey(null);
+        }}
+      />
+
+      <AdminConfirmDialog
+        isOpen={pendingSellerBulkConfirmation !== null}
+        title={`Confirmar acao: ${pendingSellerBulkConfirmation ? SELLER_BULK_ACTION_LABEL[pendingSellerBulkConfirmation.action] : ''}`}
+        description={
+          pendingSellerBulkConfirmation
+            ? `${pendingSellerBulkConfirmation.sellerIds.length} vendedor(es) terao status atualizado para ${getSellerStatusLabel(SELLER_BULK_ACTION_STATUS[pendingSellerBulkConfirmation.action]).toLowerCase()}.`
+            : ''
+        }
+        confirmLabel={pendingSellerBulkConfirmation ? SELLER_BULK_ACTION_LABEL[pendingSellerBulkConfirmation.action] : 'Confirmar'}
+        cancelLabel="Cancelar"
+        tone={pendingSellerBulkConfirmation?.action === 'ban' ? 'danger' : 'primary'}
+        loading={sellerActionLoading}
+        onConfirm={() => void confirmBulkSellerAction()}
+        onCancel={() => {
+          if (sellerActionLoading) return;
+          setPendingSellerBulkConfirmation(null);
         }}
       />
 
@@ -1553,28 +2028,92 @@ const AdminFinance = ({
               <div>
                 <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900 dark:text-slate-100"><Users size={18} className="text-sky-700 dark:text-sky-300" /> Vendedores</h3>
                 <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Usuarios com perfil de vendedor/parceiro, mesmo sem vendas registradas.
+                  Lista operacional no padrao WordPress com busca, acao em massa e moderacao.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ordenar por:</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                  {filteredSellers.length} vendedor(es)
+                </span>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                   className={`${ADMIN_FIELD_CLASS} w-[180px] py-0 pl-3 pr-8 text-xs font-bold`}
                 >
-                  <option value="available_desc">Maior Valor a Repassar</option>
-                  <option value="available_asc">Menor Valor a Repassar</option>
-                  <option value="date_asc">Data Próxima</option>
-                  <option value="date_desc">Data Distante</option>
+                  <option value="available_desc">Maior valor disponivel</option>
+                  <option value="available_asc">Menor valor disponivel</option>
+                  <option value="date_asc">Pagamento mais proximo</option>
+                  <option value="date_desc">Pagamento mais distante</option>
                 </select>
               </div>
             </div>
+            <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative w-full sm:max-w-[320px]">
+                  <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                  <input
+                    type="search"
+                    value={sellerSearch}
+                    onChange={(event) => {
+                      setSellerSearch(event.target.value);
+                      setSellerPage(1);
+                    }}
+                    placeholder="Buscar vendedor..."
+                    className={`${ADMIN_FIELD_CLASS} h-10 w-full pl-9 text-sm`}
+                  />
+                </div>
+
+                <select
+                  value={sellerStatusFilter}
+                  onChange={(event) => {
+                    setSellerStatusFilter(event.target.value as typeof sellerStatusFilter);
+                    setSellerPage(1);
+                  }}
+                  className={`${ADMIN_FIELD_CLASS} h-10 min-w-[150px] py-0 text-xs font-bold`}
+                >
+                  <option value="all">Todos os status</option>
+                  <option value="active">Ativos</option>
+                  <option value="suspended">Suspensos</option>
+                  <option value="banned">Banidos</option>
+                  <option value="pending">Pendentes</option>
+                </select>
+              </div>
+
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <select
+                  value={sellerBulkAction}
+                  onChange={(event) => setSellerBulkAction(event.target.value as SellerBulkAction)}
+                  className={`${ADMIN_FIELD_CLASS} h-10 min-w-[170px] py-0 text-xs font-bold`}
+                >
+                  <option value="activate">Ativar selecionados</option>
+                  <option value="suspend">Suspender selecionados</option>
+                  <option value="ban">Banir selecionados</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={requestBulkSellerAction}
+                  disabled={sellerActionLoading || normalizedSelectedSellerIds.length === 0}
+                  className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-10 justify-center px-4 text-xs font-black uppercase tracking-[0.12em]`}
+                >
+                  {sellerActionLoading ? <Loader2 size={14} className="animate-spin" /> : null}
+                  Aplicar
+                </button>
+              </div>
+            </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1040px] text-left text-xs">
+              <table className="w-full min-w-[1180px] text-left text-xs">
                 <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
                   <tr>
-                    <th className="p-4 pl-4 sm:p-6 sm:pl-8">Vendedor</th>
+                    <th className="w-[52px] p-4 text-center">
+                      <input
+                        type="checkbox"
+                        checked={allFilteredSelected}
+                        onChange={toggleSelectAllFilteredSellers}
+                        className="h-4 w-4 rounded-sm border-slate-300 text-sky-700 focus:ring-sky-700 dark:border-slate-700 dark:bg-slate-950"
+                        aria-label="Selecionar vendedores filtrados"
+                      />
+                    </th>
+                    <th className="p-4 pl-0 sm:p-6 sm:pl-0">Vendedor</th>
                     <th className="p-4 text-center sm:p-6">Status</th>
                     <th className="p-4 text-center sm:p-6">Materiais</th>
                     <th className="p-4 text-right sm:p-6">Vendas</th>
@@ -1585,18 +2124,59 @@ const AdminFinance = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
-                  {sortedSellers.length === 0 ? (
-                    <tr><td colSpan={8} className="p-6 text-center text-slate-400 italic sm:p-8">Nenhum usuario vendedor encontrado.</td></tr>
+                  {paginatedSellers.length === 0 ? (
+                    <tr><td colSpan={9} className="p-6 text-center text-slate-400 italic sm:p-8">Nenhum usuario vendedor encontrado com os filtros atuais.</td></tr>
                   ) : (
-                    sortedSellers.map((seller: AdminMarketplaceSellerMetric) => (
+                    paginatedSellers.map((seller: AdminMarketplaceSellerMetric) => (
                       <tr key={seller.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
-                        <td className="p-4 pl-4 sm:p-6 sm:pl-8">
+                        <td className="p-4 text-center sm:p-6">
+                          <input
+                            type="checkbox"
+                            checked={selectedSellerIdsSet.has(seller.id)}
+                            onChange={() => toggleSellerSelection(seller.id)}
+                            className="h-4 w-4 rounded-sm border-slate-300 text-sky-700 focus:ring-sky-700 dark:border-slate-700 dark:bg-slate-950"
+                            aria-label={`Selecionar ${seller.name}`}
+                          />
+                        </td>
+                        <td className="p-4 pl-0 sm:p-6 sm:pl-0">
                           <div className="font-bold text-slate-900 dark:text-slate-100">{seller.name}</div>
                           <div className="text-[10px] text-slate-400">{seller.email}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                            <button
+                              type="button"
+                              onClick={() => openSellerDetails(seller.id)}
+                              className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                            >
+                              Ver
+                            </button>
+                            <span className="text-slate-300 dark:text-slate-700">|</span>
+                            <Link
+                              href={buildAdminUserEditPath(seller.id)}
+                              className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                            >
+                              Editar
+                            </Link>
+                            <span className="text-slate-300 dark:text-slate-700">|</span>
+                            <button
+                              type="button"
+                              onClick={() => openSellerDetails(seller.id)}
+                              className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                            >
+                              Vendas
+                            </button>
+                            <span className="text-slate-300 dark:text-slate-700">|</span>
+                            <button
+                              type="button"
+                              onClick={() => openSellerDetails(seller.id)}
+                              className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                            >
+                              Produtos
+                            </button>
+                          </div>
                         </td>
                         <td className="p-4 text-center sm:p-6">
-                          <span className="inline-flex rounded-sm border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300">
-                            {String(seller.status || 'active')}
+                          <span className={`inline-flex rounded-sm border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getSellerStatusBadgeClass(seller.status)}`}>
+                            {getSellerStatusLabel(seller.status)}
                           </span>
                         </td>
                         <td className="p-4 text-center text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400 sm:p-6">
@@ -1617,18 +2197,62 @@ const AdminFinance = ({
                           </div>
                         </td>
                         <td className="p-4 text-center sm:p-6">
-                          <button
-                            onClick={() => setViewingSellerDetails(seller.id)}
-                            className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-4 py-2 text-[10px] font-black uppercase text-sky-700 transition-all hover:border-sky-300 hover:bg-sky-50 dark:border-slate-700 dark:bg-slate-800 dark:text-sky-300 dark:hover:bg-sky-900/20"
-                          >
-                            Ver Extrato Detalhado
-                          </button>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openSellerDetails(seller.id)}
+                              className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-sky-700 transition-colors hover:bg-sky-50 dark:border-slate-700 dark:bg-slate-900 dark:text-sky-300 dark:hover:bg-sky-900/20"
+                            >
+                              Detalhes
+                            </button>
+                            {String(seller.status || '').toLowerCase() === 'banned' ? (
+                              <button
+                                type="button"
+                                onClick={() => requestSingleSellerStatusAction(seller.id, 'activate')}
+                                disabled={sellerActionLoading}
+                                className="rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
+                              >
+                                Reativar
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => requestSingleSellerStatusAction(seller.id, 'ban')}
+                                disabled={sellerActionLoading}
+                                className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-60 dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                              >
+                                Banir
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 text-xs dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+              <span className="font-medium text-slate-500 dark:text-slate-400">Selecionados: {normalizedSelectedSellerIds.length}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSellerPage((current) => Math.max(1, Math.min(sellerTotalPages, current) - 1))}
+                  disabled={sellerPageSafe === 1}
+                  className="rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Anterior
+                </button>
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Pagina {sellerPageSafe} de {sellerTotalPages}</span>
+                <button
+                  type="button"
+                  onClick={() => setSellerPage((current) => Math.min(sellerTotalPages, Math.min(sellerTotalPages, current) + 1))}
+                  disabled={sellerPageSafe === sellerTotalPages}
+                  className="rounded-sm border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Proxima
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1643,6 +2267,9 @@ const AdminFinance = ({
                 <span className="mb-2 block w-fit rounded-sm bg-sky-50 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">Extrato do Vendedor</span>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">{selectedSeller.name}</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{selectedSeller.email}</p>
+                <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                  CPF: {selectedSellerUser?.cpf || '-'} | Telefone: {selectedSellerUser?.phone || '-'}
+                </p>
               </div>
               <button onClick={() => setViewingSellerDetails(null)} className="rounded-sm p-2 text-slate-400 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700"><X size={22} /></button>
             </div>
@@ -1661,7 +2288,83 @@ const AdminFinance = ({
               </div>
               <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
                 <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase mb-1">Materiais</p>
-                <p className="text-xl font-black text-slate-700 dark:text-slate-200">{selectedSeller.publishedMaterialsCount || 0}/{selectedSeller.materialsCount || 0}</p>
+                <p className="text-xl font-black text-slate-700 dark:text-slate-200">{selectedSeller.publishedMaterialsCount || 0}/{selectedSellerMaterials.length || selectedSeller.materialsCount || 0}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 border-b border-slate-100 p-4 dark:border-slate-800 sm:p-6 lg:grid-cols-3">
+              <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Pagamentos</p>
+                <dl className="mt-2 space-y-1.5 text-xs">
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500 dark:text-slate-400">Banco</dt><dd className="font-semibold text-slate-800 dark:text-slate-100">{selectedSellerUser?.bankAccount?.bankName || '-'}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500 dark:text-slate-400">Agencia</dt><dd className="font-semibold text-slate-800 dark:text-slate-100">{selectedSellerUser?.bankAccount?.agency || '-'}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500 dark:text-slate-400">Conta</dt><dd className="font-semibold text-slate-800 dark:text-slate-100">{selectedSellerUser?.bankAccount?.account || '-'}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500 dark:text-slate-400">Titular</dt><dd className="font-semibold text-slate-800 dark:text-slate-100">{selectedSellerUser?.bankAccount?.holderName || '-'}</dd></div>
+                </dl>
+              </div>
+              <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Documentos</p>
+                <dl className="mt-2 space-y-1.5 text-xs">
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500 dark:text-slate-400">CPF</dt><dd className="font-semibold text-slate-800 dark:text-slate-100">{selectedSellerUser?.cpf || '-'}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500 dark:text-slate-400">Email verificado</dt><dd className="font-semibold text-slate-800 dark:text-slate-100">{selectedSellerUser?.emailVerified ? 'Sim' : 'Nao'}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500 dark:text-slate-400">Telefone</dt><dd className="font-semibold text-slate-800 dark:text-slate-100">{selectedSellerUser?.phone || '-'}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500 dark:text-slate-400">Endereco</dt><dd className="text-right font-semibold text-slate-800 dark:text-slate-100">{selectedSellerUser?.address?.city || '-'} {selectedSellerUser?.address?.state ? `- ${selectedSellerUser.address.state}` : ''}</dd></div>
+                </dl>
+              </div>
+              <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Produtos</p>
+                <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">{selectedSellerMaterials.length} material(is) vinculado(s)</p>
+                {selectedSellerMaterials.length === 0 ? (
+                  <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Sem materiais cadastrados.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2 text-xs">
+                    {selectedSellerMaterials.slice(0, 4).map((material) => {
+                      const status = String(material.status || 'pending');
+                      const isModerating = sellerMaterialModerationLoadingId === material.id;
+                      return (
+                        <li key={`seller-material-preview-${material.id}`} className="rounded-sm border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900/60">
+                          <div className="truncate font-semibold text-slate-700 dark:text-slate-200">{material.title}</div>
+                          <div className="mt-1 flex items-center justify-between gap-2">
+                            <span className={`inline-flex rounded-sm border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] ${
+                              status === 'approved'
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300'
+                                : status === 'rejected'
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300'
+                                  : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300'
+                            }`}>
+                              {status}
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                disabled={isModerating}
+                                onClick={() => void handleModerateSellerMaterial(material.id, 'approved')}
+                                className="rounded-sm border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/30"
+                              >
+                                {isModerating ? '...' : 'Aprovar'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isModerating}
+                                onClick={() => void handleModerateSellerMaterial(material.id, 'rejected')}
+                                className="rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-60 dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300 dark:hover:bg-rose-900/30"
+                              >
+                                {isModerating ? '...' : 'Rejeitar'}
+                              </button>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <div className="mt-2">
+                  <Link
+                    href="/admin/marketplace/materials"
+                    className="text-[11px] font-semibold text-sky-700 hover:underline dark:text-sky-300"
+                  >
+                    Abrir moderacao completa
+                  </Link>
+                </div>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-0">
@@ -2347,6 +3050,142 @@ const AdminFinance = ({
                 </div>
               </div>
             ))}
+
+            <div className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-6 p-5`}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h4 className="text-lg font-black text-sky-700 dark:text-sky-300 uppercase tracking-tight">
+                    Plano de teste
+                  </h4>
+                  <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                    Ciclo curto para validacao de checkout
+                  </p>
+                </div>
+
+                {testCatalogPlanDraft ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleTestCatalogPlanActive()}
+                    className={`inline-flex items-center gap-1.5 rounded-sm px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition-all ${
+                      testCatalogPlanDraft.active
+                        ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
+                        : 'border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                    }`}
+                    disabled={!testCatalogPlan?.can_toggle_active || catalogPlanSavingId === testCatalogPlan?.id}
+                  >
+                    {catalogPlanSavingId === testCatalogPlan?.id ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : testCatalogPlanDraft.active ? (
+                      <Check size={11} />
+                    ) : (
+                      <X size={11} />
+                    )}
+                    {catalogPlanSavingId === testCatalogPlan?.id
+                      ? 'Salvando...'
+                      : testCatalogPlanDraft.active
+                        ? 'Ativo'
+                        : 'Desativado'}
+                  </button>
+                ) : null}
+              </div>
+
+              {catalogPlansLoading ? (
+                <div className="flex min-h-[150px] items-center justify-center rounded-sm border border-slate-200 bg-white text-xs font-bold text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                  Carregando plano teste...
+                </div>
+              ) : testCatalogPlan && testCatalogPlanDraft ? (
+                <div className="space-y-4">
+                  <div className="rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/50">
+                    <p className="text-sm font-black text-slate-900 dark:text-slate-100">{testCatalogPlan.name}</p>
+                    <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                      ID {testCatalogPlan.id}. Aparece na tela de planos somente quando estiver ativo.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Valor</label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">R$</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={testCatalogPlanDraft.price}
+                          onChange={(event) => handleCatalogPlanDraftChange(testCatalogPlan.id, { price: Number(event.target.value) })}
+                          className={`${ADMIN_FIELD_CLASS} h-11 w-full pl-12 pr-4 text-lg font-black`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Duracao</label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleCatalogPlanIntervalStep(testCatalogPlan.id, -1)}
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-sm border border-slate-300 text-sm font-black text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                          aria-label="Diminuir duracao"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={30}
+                          value={testCatalogPlanDraft.interval_count}
+                          onChange={(event) => handleCatalogPlanDraftChange(testCatalogPlan.id, {
+                            interval_count: Number(event.target.value),
+                            interval_unit: 'day',
+                          })}
+                          className={`${ADMIN_FIELD_CLASS} h-11 w-24 px-2 text-center text-sm font-black`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleCatalogPlanIntervalStep(testCatalogPlan.id, 1)}
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-sm border border-slate-300 text-sm font-black text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                          aria-label="Aumentar duracao"
+                        >
+                          +
+                        </button>
+                        <span className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">dias</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                      Use apenas para validar renovacao, webhook, reembolso e expiracao em sandbox.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveCatalogPlan(testCatalogPlan.id)}
+                      disabled={catalogPlanSavingId === testCatalogPlan.id}
+                      className={ADMIN_PRIMARY_BUTTON_CLASS}
+                    >
+                      {catalogPlanSavingId === testCatalogPlan.id ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                      {catalogPlanSavingId === testCatalogPlan.id ? 'Salvando...' : 'Salvar teste'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 rounded-sm border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+                  <p className="font-bold">Plano de teste nao encontrado.</p>
+                  <p className="text-xs font-medium">
+                    Recarregue o catalogo. Se o backend estiver atualizado, ele cria o teste padrao automaticamente.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void loadPlanCatalog({ force: true })}
+                    className={ADMIN_SECONDARY_BUTTON_CLASS}
+                  >
+                    <ArrowRight size={14} />
+                    Recarregar plano teste
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className={`${ADMIN_SURFACE_CLASS} mt-8 overflow-hidden`}>

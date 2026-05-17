@@ -26,6 +26,10 @@ export type ChangelogVersion = {
   content_json: ChangelogCategory[];
 };
 
+type ChangelogListPayload = {
+  versions?: ChangelogVersion[];
+};
+
 /**
  * Centraliza a leitura do changelog público da plataforma.
  * @since 1.0.0
@@ -36,15 +40,15 @@ export const changelogService = {
    * @since 1.0.0
    */
   async listVersions(): Promise<ChangelogVersion[]> {
-    const response = await apiClient.get<any>(ENDPOINTS.changelog.list) as any;
-    const payload = readApiData<any>(response, []);
+    const response = await apiClient.get(ENDPOINTS.changelog.list) as unknown;
+    const payload = readApiData<ChangelogVersion[] | ChangelogListPayload>(response, []);
 
     if (Array.isArray(payload)) {
-      return payload as ChangelogVersion[];
+      return payload;
     }
 
     if (Array.isArray(payload?.versions)) {
-      return payload.versions as ChangelogVersion[];
+      return payload.versions;
     }
 
     return [];

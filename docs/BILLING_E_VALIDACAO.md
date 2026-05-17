@@ -4,6 +4,16 @@
 - O fluxo oficial continua como credito proporcional local no backend, nao prorata nativo Stripe.
 - Relatorios executaveis atuais ficam em `docs/reports/` e `scripts/checks/output/`.
 
+## Status atual (`2026-05-16`)
+
+- Billing/Stripe: **GO local**.
+- `npm run check:billing-e2e`: `7 OK`, `0 RISCO`, `0 CRITICO`, `0 NAO_COMPROVADO`.
+- `billing-renewal-check.mjs`: `22 OK`, `0 RISCO`, `0 CRITICO`, `0 NAO_COMPROVADO`.
+- A renovacao usa o preco vigente do plano na plataforma e nao reaplica cupons/descontos de checkout automaticamente.
+- A sincronizacao com Stripe recebeu o `price` do plano no contexto de finalizacao, evitando item de assinatura com valor `0` e renovacao sem cobranca.
+- Renovacao, webhooks e reconciliacao sao fluxos servidor-servidor. Eles nao dependem de usuario logado, access token, sessao admin ou tela de perfil aberta.
+- Antes do go-live, repetir o mesmo fluxo com webhook publico/tunel na VPS/staging.
+
 ## Origem dos cartoes salvos
 
 - A fonte de verdade dos cartoes salvos e a Stripe. O checkout e o perfil devem listar cartoes pelo service oficial `cardsService.listSavedCards()` sem enviar `user_id` manualmente; o backend resolve o usuario autenticado pela sessao.
@@ -20,9 +30,9 @@
 
 - A regra oficial de renovacao e:
   - contrato atual congelado no valor aceito;
-  - proxima renovacao pelo preco efetivo vigente;
-  - preco efetivo vigente = preco publico atual + promocoes automaticas + cupons autoaplicados validos.
-- A proxima renovacao da assinatura e projetada localmente e sincronizada no Stripe por `Subscription Schedule`.
+  - proxima renovacao pelo preco vigente do plano na plataforma;
+  - cupons/descontos de checkout nao sao reaplicados automaticamente em renovacao, salvo regra recorrente explicita futura.
+- A proxima renovacao da assinatura e projetada localmente e sincronizada no Stripe. Quando o intervalo nao muda, o backend atualiza o `subscription_item`; quando a estrutura do ciclo exigir, usa mecanismo remoto equivalente sem prorratear o ciclo atual.
 - Toda cobranca aprovada envia:
   - email com recibo/comprovante;
   - notificacao in-app.
@@ -761,7 +771,8 @@ Regra:
 - `C:\dev\concursomestre\src\app\profile\page.tsx`
 - `C:\dev\concursomestre\src\app\admin\components\settings\AdminSettings.tsx`
 - `C:\dev\concursomestre\src\app\admin\components\finance\AdminFinance.tsx`
-- `C:\dev\concursomestre\src\providers\DataProvider.tsx`
+- `C:\dev\concursomestre\src\state\app-config\systemSettings.ts`
+- `C:\dev\concursomestre\src\state\app-config\useSystemSettingsActions.ts`
 - `C:\dev\concursomestre\src\types\global.ts`
 - `C:\dev\concursomestre\README.md`
 

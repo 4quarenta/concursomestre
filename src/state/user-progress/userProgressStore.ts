@@ -40,7 +40,7 @@ const buildNewNote = (questionId: number, text: string): UserNote => ({
 
 /**
  * Store especializado para progresso do usuario.
- * Ele concentra respostas, comentarios do perfil e notas, tirando esse dominio do DataProvider aos poucos.
+ * Ele concentra respostas, comentarios do perfil e notas em um dominio proprio.
  *
  * @since 1.0.0
  */

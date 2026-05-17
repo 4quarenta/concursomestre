@@ -180,6 +180,10 @@ const getCalendarDayOrdinal = (date: Date) => {
 };
 
 const getCalendarDayDifference = (start: Date, end: Date) => getCalendarDayOrdinal(end) - getCalendarDayOrdinal(start);
+const addDaysInSaoPauloCalendar = (date: Date, dayDelta: number) => {
+  const targetOrdinal = getCalendarDayOrdinal(date) + dayDelta;
+  return new Date((targetOrdinal * MS_PER_DAY) + (12 * 60 * 60 * 1000));
+};
 
 const getDaysInMonth = (year: number, month: number) => new Date(Date.UTC(year, month, 0, 12, 0, 0)).getUTCDate();
 
@@ -201,31 +205,86 @@ const resolveBillingCycle = (
   billing: UserProfile['billing'] | null | undefined,
   subscription: SubscriptionWithProviderWindow | null | undefined,
 ): BillingCycle => {
-  if (billing?.billingCycle === 'annual' || billing?.billingCycle === 'quarterly' || billing?.billingCycle === 'monthly') {
-    return billing.billingCycle;
-  }
+  const intervalUnit = String(subscription?.plan?.interval_unit || '').toLowerCase();
+  const intervalCount = Math.max(1, Number(subscription?.plan?.interval_count || 1));
 
-  if (subscription?.plan?.interval_unit === 'year') {
+  if (intervalUnit === 'year') {
     return 'annual';
   }
 
-  if (subscription?.plan?.interval_count === 3) {
+  if (intervalUnit === 'month' && intervalCount >= 12) {
+    return 'annual';
+  }
+
+  if (intervalUnit === 'month' && intervalCount === 3) {
     return 'quarterly';
+  }
+
+  if (intervalUnit === 'month') {
+    return 'monthly';
+  }
+
+  // Billing pode estar atrasado para ciclos curtos; usamos mensal como fallback visual.
+  if (billing?.billingCycle === 'annual' || billing?.billingCycle === 'quarterly' || billing?.billingCycle === 'monthly') {
+    return billing.billingCycle;
   }
 
   return 'monthly';
 };
 
-const getExpectedCycleMonths = (billingCycle: BillingCycle) => {
-  if (billingCycle === 'annual') return 12;
-  if (billingCycle === 'quarterly') return 3;
-  return 1;
-};
+type ExpectedTermDuration =
+  | { mode: 'months'; value: number; minimumExpectedDays: number }
+  | { mode: 'days'; value: number; minimumExpectedDays: number };
 
-const getMinimumExpectedDays = (billingCycle: BillingCycle) => {
-  if (billingCycle === 'annual') return 330;
-  if (billingCycle === 'quarterly') return 75;
-  return 25;
+const resolveExpectedTermDuration = (
+  subscription: SubscriptionWithProviderWindow | null | undefined,
+  billingCycle: BillingCycle,
+): ExpectedTermDuration => {
+  const intervalUnit = String(subscription?.plan?.interval_unit || '').toLowerCase();
+  const intervalCount = Math.max(1, Number(subscription?.plan?.interval_count || 1));
+
+  if (intervalUnit === 'day') {
+    return {
+      mode: 'days',
+      value: intervalCount,
+      minimumExpectedDays: Math.max(1, intervalCount - 1),
+    };
+  }
+
+  if (intervalUnit === 'week') {
+    const expectedDays = intervalCount * 7;
+    return {
+      mode: 'days',
+      value: expectedDays,
+      minimumExpectedDays: Math.max(1, expectedDays - 1),
+    };
+  }
+
+  if (intervalUnit === 'month') {
+    const monthCount = Math.max(1, intervalCount);
+    return {
+      mode: 'months',
+      value: monthCount,
+      minimumExpectedDays: monthCount >= 12 ? 330 : monthCount >= 3 ? 75 : 25,
+    };
+  }
+
+  if (intervalUnit === 'year') {
+    return {
+      mode: 'months',
+      value: Math.max(1, intervalCount) * 12,
+      minimumExpectedDays: 330,
+    };
+  }
+
+  if (billingCycle === 'annual') {
+    return { mode: 'months', value: 12, minimumExpectedDays: 330 };
+  }
+  if (billingCycle === 'quarterly') {
+    return { mode: 'months', value: 3, minimumExpectedDays: 75 };
+  }
+
+  return { mode: 'months', value: 1, minimumExpectedDays: 25 };
 };
 
 /**
@@ -239,7 +298,7 @@ export const resolveProfileSubscriptionTimeline = ({
   now = new Date(),
 }: ResolveProfileSubscriptionTimelineInput): ResolvedProfileSubscriptionTimeline => {
   const billingCycle = resolveBillingCycle(billing, subscription);
-  const expectedMonths = getExpectedCycleMonths(billingCycle);
+  const expectedTermDuration = resolveExpectedTermDuration(subscription, billingCycle);
 
   const providerStart = parseSubscriptionDate(subscription?.provider_current_period_start ?? null);
   const providerEnd = parseSubscriptionDate(subscription?.provider_current_period_end ?? null);
@@ -255,17 +314,39 @@ export const resolveProfileSubscriptionTimeline = ({
   let termEndAt = providerEnd ?? localEnd ?? null;
 
   if (termStartAt && !termEndAt) {
-    termEndAt = addMonthsInSaoPauloCalendar(termStartAt, expectedMonths);
+    termEndAt = expectedTermDuration.mode === 'months'
+      ? addMonthsInSaoPauloCalendar(termStartAt, expectedTermDuration.value)
+      : addDaysInSaoPauloCalendar(termStartAt, expectedTermDuration.value);
   }
 
   if (!termStartAt && termEndAt) {
-    termStartAt = addMonthsInSaoPauloCalendar(termEndAt, -expectedMonths);
+    termStartAt = expectedTermDuration.mode === 'months'
+      ? addMonthsInSaoPauloCalendar(termEndAt, -expectedTermDuration.value)
+      : addDaysInSaoPauloCalendar(termEndAt, -expectedTermDuration.value);
+  }
+
+  // Para ciclos curtos (dia/semana), prioriza a próxima cobrança quando o período local vier inconsistente.
+  if (expectedTermDuration.mode === 'days' && termStartAt && nextChargeAt) {
+    const expectedDays = expectedTermDuration.value;
+    const nextChargeDays = getCalendarDayDifference(termStartAt, nextChargeAt);
+    const currentTermDays = termEndAt ? getCalendarDayDifference(termStartAt, termEndAt) : null;
+    const nextChargeLooksValid = nextChargeDays >= expectedTermDuration.minimumExpectedDays
+      && nextChargeDays <= (expectedDays + 2);
+    const termLooksOutlier = currentTermDays !== null && currentTermDays > (expectedDays + 2);
+
+    if (nextChargeLooksValid && (termEndAt === null || termLooksOutlier)) {
+      termEndAt = nextChargeAt;
+    }
   }
 
   if (termStartAt && termEndAt) {
     const actualDays = getCalendarDayDifference(termStartAt, termEndAt);
-    if (actualDays <= 0 || actualDays < getMinimumExpectedDays(billingCycle)) {
-      termEndAt = addMonthsInSaoPauloCalendar(termStartAt, expectedMonths);
+    const exceedsShortCycleWindow = expectedTermDuration.mode === 'days'
+      && actualDays > (expectedTermDuration.value + 2);
+    if (actualDays <= 0 || actualDays < expectedTermDuration.minimumExpectedDays || exceedsShortCycleWindow) {
+      termEndAt = expectedTermDuration.mode === 'months'
+        ? addMonthsInSaoPauloCalendar(termStartAt, expectedTermDuration.value)
+        : addDaysInSaoPauloCalendar(termStartAt, expectedTermDuration.value);
     }
   }
 

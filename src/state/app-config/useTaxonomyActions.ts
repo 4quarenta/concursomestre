@@ -18,7 +18,7 @@ const hasTaxonomyPayload = (taxonomies: unknown): boolean => {
 
 /**
  * Taxonomy actions bound to the app-config store.
- * It replaces DataProvider dependency for taxonomy loading.
+ * It lazily hydrates taxonomy data used by filters, editors and profile flows.
  *
  * @since 1.0.0
  */

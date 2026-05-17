@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Question } from '@types';
 import { adminService } from '@services/admin/adminService';
 import { readApiErrorMessage } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 
 type ToastHandler = (message: string, type?: string) => void;
 
@@ -160,7 +161,7 @@ export const useAdminQuestionsWorkflow = ({
         page: response.page,
       });
     } catch (error) {
-      console.error('Error loading questions:', error);
+      clientLog.warn('Error loading questions:', error);
       addToast(readApiErrorMessage(error, 'Erro ao carregar questoes administrativas.'), 'error');
     }
   }, [addToast, keyword]);

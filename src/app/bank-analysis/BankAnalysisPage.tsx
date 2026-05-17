@@ -59,6 +59,7 @@ import AuthModal from '../../components/shared/overlays/AuthModal';
 import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 import { CHART_COLORS } from './constants';
 import { bankAnalysisService } from '@services/bank-analysis';
+import { clientLog } from '@services/monitoring/clientLog';
 import { getBenefitRequiredPlan, hasPlanBenefit, type CanonicalPlanName } from '@services/plans/planAccess';
 import type {
   BankIntelLink,
@@ -988,23 +989,28 @@ const BankAnalysis: React.FC = () => {
 
   useEffect(() => {
     if (!selectedAgency || !hasXRayAccess) {
-      setBankDetails(null);
-      setBankScrapedInfo(null);
-      setStats(null);
-      setIsAnalyzing(false);
-      return undefined;
+      const resetFrame = window.requestAnimationFrame(() => {
+        setBankDetails(null);
+        setBankScrapedInfo(null);
+        setStats(null);
+        setIsAnalyzing(false);
+      });
+
+      return () => window.cancelAnimationFrame(resetFrame);
     }
 
     let isActive = true;
-    setIsAnalyzing(true);
-    setProgress(0);
-    setLoadingText('Conectando à base de questões...');
-    setStats(null);
-
     const agencyData = agencyOptions.find((agency) => getTaxonomyName(agency) === selectedAgency);
-    setBankDetails(agencyData ? { description: agencyData.description, website: agencyData.website } : null);
-    setBankScrapedInfo(null);
-    setIsLoadingBankInfo(Boolean(agencyData?.website));
+    const initFrame = window.requestAnimationFrame(() => {
+      if (!isActive) return;
+      setIsAnalyzing(true);
+      setProgress(0);
+      setLoadingText('Conectando à base de questões...');
+      setStats(null);
+      setBankDetails(agencyData ? { description: agencyData.description, website: agencyData.website } : null);
+      setBankScrapedInfo(null);
+      setIsLoadingBankInfo(Boolean(agencyData?.website));
+    });
 
     if (agencyData?.website) {
       bankAnalysisService.getBankIntel(agencyData.website)
@@ -1013,7 +1019,7 @@ const BankAnalysis: React.FC = () => {
           setBankScrapedInfo({ emAndamento: data.emAndamento || [], realizados: data.realizados || [] });
         })
         .catch((error) => {
-          console.error('Failed fetching bank intel', error);
+          clientLog.warn('Failed fetching bank intel', error);
           if (isActive) setBankScrapedInfo({ emAndamento: [], realizados: [] });
         })
         .finally(() => {
@@ -1053,7 +1059,7 @@ const BankAnalysis: React.FC = () => {
       }, 350);
     }).catch((error) => {
       if (!isActive) return;
-      console.error('Failed to fetch xray stats', error);
+      clientLog.warn('Failed to fetch xray stats', error);
       window.clearInterval(interval);
       setLoadingText('Erro na análise.');
       window.setTimeout(() => {
@@ -1063,6 +1069,7 @@ const BankAnalysis: React.FC = () => {
 
     return () => {
       isActive = false;
+      window.cancelAnimationFrame(initFrame);
       window.clearInterval(interval);
     };
   }, [agencyOptions, hasXRayAccess, selectedAgency, selectedRole, selectedYear]);

@@ -18,7 +18,7 @@ interface AppConfigState {
 
 /**
  * Store global de configuracao do app.
- * Ele passa a ser a fonte oficial de settings, tirando essa responsabilidade do DataProvider.
+ * Ele e a fonte oficial de settings compartilhadas no frontend.
  *
  * @since 1.0.0
  */

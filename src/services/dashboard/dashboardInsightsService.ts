@@ -122,7 +122,7 @@ export const filterAnswersByRange = (
  */
 export const getQuestionPrimarySubject = (question: Question | undefined | null): string => {
   const subjectEntry = Array.isArray(question?.assuntos)
-    ? question.assuntos.find((item: any) => Boolean(item?.materia)) || question.assuntos[0]
+    ? question.assuntos.find((item) => Boolean(item?.materia)) || question.assuntos[0]
     : null;
 
   const rawName = subjectEntry && typeof subjectEntry === 'object'

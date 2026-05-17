@@ -166,8 +166,17 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
   const [pendingDelete, setPendingDelete] = useState<MarketingLandingPage | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const createdLandingIdRef = React.useRef('');
+  const hasLoadedPlansRef = React.useRef(false);
 
   useEffect(() => {
+    if (!editorOnly && screen !== 'editor') {
+      return;
+    }
+    if (hasLoadedPlansRef.current) {
+      return;
+    }
+
+    hasLoadedPlansRef.current = true;
     let mounted = true;
     planService.getPlans()
       .then((plans) => {
@@ -184,7 +193,7 @@ const AdminLandingPagesManager: React.FC<AdminLandingPagesManagerProps> = ({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [editorOnly, screen]);
 
   useEffect(() => {
     const mergedPages = mergeMarketingLandingPages(systemSettings.landingPages, siteName);

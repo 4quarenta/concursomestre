@@ -18,6 +18,7 @@ import { useAuth } from '@providers/AuthProvider';
 import PdfViewer from '../../components/shared/overlays/PdfViewer';
 import { Loader2, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { getAssetUrl } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 
 const ReaderPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -31,19 +32,39 @@ const ReaderPage: React.FC = () => {
     const [materialTitle, setMaterialTitle] = useState<string>('');
 
     useEffect(() => {
+        let frameId: number | null = null;
+        const scheduleState = (nextState: {
+            error?: string | null;
+            loading?: boolean;
+            materialUrl?: string;
+            materialTitle?: string;
+        }) => {
+            frameId = window.requestAnimationFrame(() => {
+                if ('error' in nextState) setError(nextState.error ?? null);
+                if ('loading' in nextState) setLoading(Boolean(nextState.loading));
+                if ('materialUrl' in nextState) setMaterialUrl(nextState.materialUrl || '');
+                if ('materialTitle' in nextState) setMaterialTitle(nextState.materialTitle || '');
+            });
+        };
+
         if (!currentUser) {
             router.push('/auth');
-            return;
+            return () => {
+                if (frameId !== null) window.cancelAnimationFrame(frameId);
+            };
         }
 
         if (!id) {
-            setError("Material não especificado.");
-            setLoading(false);
-            return;
+            scheduleState({ error: "Material não especificado.", loading: false });
+            return () => {
+                if (frameId !== null) window.cancelAnimationFrame(frameId);
+            };
         }
 
         if (isLoadingMaterials || isLoadingTransactions) {
-            return; // Aguarda carregamento global do marketplace
+            return () => {
+                if (frameId !== null) window.cancelAnimationFrame(frameId);
+            }; // Aguarda carregamento global do marketplace
         }
 
 
@@ -56,31 +77,40 @@ const ReaderPage: React.FC = () => {
 
 
         if (!material) {
-            console.warn('[ReaderPage] Material not found in database.');
-            setError("Material não encontrado.");
-            setLoading(false);
-            return;
+            clientLog.warn('[ReaderPage] Material not found in database.');
+            scheduleState({ error: "Material não encontrado.", loading: false });
+            return () => {
+                if (frameId !== null) window.cancelAnimationFrame(frameId);
+            };
         }
 
         // Removed hasPurchasedId because it bypasses refunds. Must have a valid transaction!
         const hasAccess = !!transaction || isAuthor || isAdmin;
 
         if (!hasAccess) {
-            setError("Você não possui permissão para acessar este material ou ele não existe.");
-            setLoading(false);
-            return;
+            scheduleState({ error: "Você não possui permissão para acessar este material ou ele não existe.", loading: false });
+            return () => {
+                if (frameId !== null) window.cancelAnimationFrame(frameId);
+            };
         }
 
         if (!material.fileUrl) {
-            setError("O arquivo deste material não está disponível.");
-            setLoading(false);
-            return;
+            scheduleState({ error: "O arquivo deste material não está disponível.", loading: false });
+            return () => {
+                if (frameId !== null) window.cancelAnimationFrame(frameId);
+            };
         }
 
-        setMaterialUrl(getAssetUrl(material.fileUrl));
-        setMaterialTitle(material.title);
-        // Using explicit material finding rather than a new state to avoid unneeded renders
-        setLoading(false);
+        scheduleState({
+            error: null,
+            loading: false,
+            materialUrl: getAssetUrl(material.fileUrl),
+            materialTitle: material.title,
+        });
+
+        return () => {
+            if (frameId !== null) window.cancelAnimationFrame(frameId);
+        };
 
     }, [id, currentUser, transactions, materials, isLoadingMaterials, isLoadingTransactions, router]);
 

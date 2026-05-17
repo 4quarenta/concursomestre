@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { filtersService } from '@services/filters';
 import { readApiErrorMessage } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import { slugify } from './slugify';
 
@@ -91,7 +92,7 @@ export const useAdminTaxonomyWorkflow = ({
     try {
       await ensureTaxonomiesLoaded(true);
     } catch (error) {
-      console.error('Error fetching filters:', error);
+      clientLog.warn('Error fetching filters:', error);
     }
   }, [ensureTaxonomiesLoaded]);
 

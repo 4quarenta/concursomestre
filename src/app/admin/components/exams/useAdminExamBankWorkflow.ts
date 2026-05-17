@@ -11,6 +11,7 @@
 
 import { useMemo, useState } from 'react';
 import type { Prova, Question, SystemSettings } from '@types';
+import { clientLog } from '@services/monitoring/clientLog';
 import {
   applyProvaToQuestion,
   buildProvaSearchText,
@@ -229,7 +230,7 @@ export const useAdminExamBankWorkflow = ({
 
       cancelEditingExam();
     } catch (error) {
-      console.error('Error saving exam bank record:', error);
+      clientLog.warn('Error saving exam bank record:', error);
       addToast('Nao foi possivel salvar a prova.', 'error');
     } finally {
       setActionLoading(null);
@@ -262,7 +263,7 @@ export const useAdminExamBankWorkflow = ({
       cancelDeleteExam();
       cancelEditingExam();
     } catch (error) {
-      console.error('Error deleting exam bank record:', error);
+      clientLog.warn('Error deleting exam bank record:', error);
       addToast('Nao foi possivel remover a prova.', 'error');
     } finally {
       setActionLoading(null);

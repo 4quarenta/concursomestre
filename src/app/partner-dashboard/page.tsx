@@ -37,6 +37,7 @@ import { DashboardSidebar } from '../../components/shared/layout/DashboardSideba
 import Footer from '../../components/shared/layout/Footer';
 import { getAssetUrl } from '@services/api';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { clientLog } from '@services/monitoring/clientLog';
 import { useNotificationsStore } from '@/state/notifications/notificationsStore';
 import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
 
@@ -365,7 +366,7 @@ const PartnerDashboard: React.FC = () => {
         // Note: Toast is handled in context
       }
     } catch (err) {
-      console.error(err);
+      clientLog.warn('Partner material submit failed:', err);
       addToast("Ocorreu um erro inesperado ao enviar o formulário.", "error");
     } finally {
       setIsPublishing(false);
@@ -417,7 +418,7 @@ const PartnerDashboard: React.FC = () => {
         setCoverFile(null);
       }
     } catch (err) {
-      console.error(err);
+      clientLog.warn('Partner material update failed:', err);
       addToast("Erro ao atualizar material.", "error");
     } finally {
       setIsPublishing(false);

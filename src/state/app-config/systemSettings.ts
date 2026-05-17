@@ -1,5 +1,5 @@
 import { PRICING, PLAN_DETAILS } from '@constants/index';
-import type { SystemSettings } from '@types';
+import type { DiscountCode, SystemSettings } from '@types';
 import { DEFAULT_STRIPE_PAYMENT_METHODS_SETTINGS, normalizeStripePaymentMethodsSettings } from '@services/payments/stripePaymentMethodsConfig';
 import { DEFAULT_PLAN_ENTITLEMENTS, DEFAULT_PLAN_USAGE_LIMITS } from '@constants/subscriptions/planEntitlements';
 import {
@@ -110,6 +110,12 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   hasRecaptchaSecretConfigured: false,
   googleAuthClientId: '',
   hasGoogleAuthClientConfigured: false,
+  facebookAuthAppId: '',
+  facebookAuthAppSecret: '',
+  hasFacebookAuthConfigured: false,
+  appleAuthClientId: '',
+  appleAuthRedirectUri: '',
+  hasAppleAuthConfigured: false,
   hasSmtpPasswordConfigured: false,
   emailTemplates: DEFAULT_EMAIL_TEMPLATES,
 };
@@ -138,6 +144,47 @@ const normalizeFeatureFlag = (value: unknown, fallback: boolean): boolean => {
   }
 
   return fallback;
+};
+
+const normalizeDiscountCodes = (value: unknown): DiscountCode[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map<DiscountCode | null>((coupon) => {
+      const rawCoupon = (coupon || {}) as Partial<DiscountCode> & Record<string, unknown>;
+      const code = String(rawCoupon.code || '').trim().toUpperCase();
+
+      if (!code) {
+        return null;
+      }
+
+      const targetType = rawCoupon.targetType === 'plan' || rawCoupon.targetType === 'item'
+        ? rawCoupon.targetType
+        : 'all';
+      const targetId = targetType === 'all'
+        ? null
+        : String(rawCoupon.targetId || '').trim() || null;
+      const discountAmount = rawCoupon.discountAmount === undefined
+        ? undefined
+        : Math.max(0, Number(rawCoupon.discountAmount || 0));
+
+      const normalizedCoupon: DiscountCode = {
+        code,
+        discountPercentage: Math.max(0, Number(rawCoupon.discountPercentage || 0)),
+        ...(discountAmount !== undefined ? { discountAmount } : {}),
+        uses: Math.max(0, Number(rawCoupon.uses || 0)),
+        maxUses: Math.max(0, Number(rawCoupon.maxUses || 0)),
+        expiresAt: typeof rawCoupon.expiresAt === 'string' ? rawCoupon.expiresAt : undefined,
+        autoApply: Boolean(rawCoupon.autoApply),
+        targetType,
+        targetId,
+      };
+
+      return normalizedCoupon;
+    })
+    .filter((coupon): coupon is DiscountCode => coupon !== null);
 };
 
 export const mergeSystemSettings = (
@@ -212,6 +259,11 @@ export const mergeSystemSettings = (
   const mergedEmailTemplates = normalizeEmailTemplates(
     (payload.emailTemplates as Partial<SystemSettings['emailTemplates']>) ?? base.emailTemplates,
   );
+  const mergedCoupons = normalizeDiscountCodes(
+    Object.prototype.hasOwnProperty.call(payload, 'coupons')
+      ? payload.coupons
+      : base.coupons,
+  );
 
   FEATURE_SETTING_KEYS.forEach((featureKey) => {
     const hasNestedValue = Object.prototype.hasOwnProperty.call(incomingFeatures, featureKey);
@@ -233,6 +285,7 @@ export const mergeSystemSettings = (
     stripePaymentMethods: mergedStripePaymentMethods,
     legalCommentaryFeatureConfig: mergedLegalCommentaryFeatureConfig,
     emailTemplates: mergedEmailTemplates,
+    coupons: mergedCoupons,
   };
 };
 
@@ -268,6 +321,18 @@ export const sanitizePersistedSystemSettings = (settings: SystemSettings): Syste
     nextSettings.hasGoogleAuthClientConfigured = true;
   }
 
+  const facebookAppId = typeof nextSettings.facebookAuthAppId === 'string' ? nextSettings.facebookAuthAppId.trim() : '';
+  const facebookAppSecret = typeof nextSettings.facebookAuthAppSecret === 'string' ? nextSettings.facebookAuthAppSecret.trim() : '';
+  if (facebookAppId !== '' && facebookAppSecret !== '') {
+    nextSettings.hasFacebookAuthConfigured = true;
+  }
+  nextSettings.facebookAuthAppSecret = '';
+
+  const appleClientId = typeof nextSettings.appleAuthClientId === 'string' ? nextSettings.appleAuthClientId.trim() : '';
+  if (appleClientId !== '') {
+    nextSettings.hasAppleAuthConfigured = true;
+  }
+
   const smtpPass = typeof nextSettings.smtpPass === 'string' ? nextSettings.smtpPass.trim() : '';
   if (smtpPass !== '') {
     nextSettings.hasSmtpPasswordConfigured = true;
@@ -281,11 +346,13 @@ export const resolvePersistedSystemSettings = (
   fallback: SystemSettings,
   persisted?: Partial<SystemSettings> | null,
 ): SystemSettings => {
+  const fallbackSettings = sanitizePersistedSystemSettings(mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, fallback));
+
   if (persisted && Object.keys(persisted).length > 0) {
-    return sanitizePersistedSystemSettings(mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, persisted));
+    return sanitizePersistedSystemSettings(mergeSystemSettings(fallbackSettings, persisted));
   }
 
-  return sanitizePersistedSystemSettings(mergeSystemSettings(DEFAULT_SYSTEM_SETTINGS, fallback));
+  return fallbackSettings;
 };
 
 export default DEFAULT_SYSTEM_SETTINGS;

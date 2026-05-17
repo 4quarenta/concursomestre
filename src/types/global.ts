@@ -73,6 +73,18 @@ export interface Assunto {
   palavrasChave?: string[];
 }
 
+export interface QuestionTaxonomyLabel {
+  id?: number | string;
+  nome?: string;
+  name?: string;
+  descricao?: string;
+  sigla?: string;
+  slug?: string;
+  [key: string]: unknown;
+}
+
+export type QuestionLevelValue = string | number | QuestionTaxonomyLabel | null;
+
 export interface QuestionItem {
   id: number;
   ordem: number;
@@ -174,15 +186,15 @@ export interface Question {
   cargos: Cargo[];
   assuntos: Assunto[];
   anos: number[];
-  carreiras?: any[];
-  areas?: any[];
+  carreiras?: QuestionTaxonomyLabel[];
+  areas?: QuestionTaxonomyLabel[];
   tiposProva?: number[];
   ultimoAno?: {
     rank: number;
     stamp: string;
   };
-  nivel?: string | any;
-  level?: string | any; // Can be string "Superior" or many object from backend
+  nivel?: QuestionLevelValue;
+  level?: QuestionLevelValue; // Can be string "Superior" or object from backend
   isCanceled?: boolean;
   isOutdated?: boolean;
 
@@ -407,6 +419,7 @@ export interface UserProfile {
   referralCode?: string;
   googleId?: string;
   facebookId?: string;
+  appleId?: string;
   studyStreak?: {
     current: number;
     best: number;
@@ -845,6 +858,17 @@ export interface GlobalTaxonomies {
   modalities: string[];
 }
 
+export interface FirebaseClientConfig {
+  apiKey?: string;
+  authDomain?: string;
+  projectId?: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId?: string;
+  measurementId?: string;
+  [key: string]: string | number | boolean | null | undefined;
+}
+
 export type StripePaymentMethodId = 'card' | 'pix' | 'boleto' | 'apple_pay' | 'google_pay' | string;
 
 export interface StripePaymentMethodSetting {
@@ -939,6 +963,12 @@ export interface SystemSettings {
   googleAnalyticsId?: string;
   googleAuthClientId?: string;
   hasGoogleAuthClientConfigured?: boolean;
+  facebookAuthAppId?: string;
+  facebookAuthAppSecret?: string;
+  hasFacebookAuthConfigured?: boolean;
+  appleAuthClientId?: string;
+  appleAuthRedirectUri?: string;
+  hasAppleAuthConfigured?: boolean;
   metaPixelId?: string;
   supportPhone?: string;
   pixKey?: string;
@@ -961,7 +991,7 @@ export interface SystemSettings {
   stripeWebhookSecret?: string;
   hasStripeSecretConfigured?: boolean;
   hasStripeWebhookConfigured?: boolean;
-  firebaseConfig?: any;
+  firebaseConfig?: FirebaseClientConfig;
   taxonomies?: GlobalTaxonomies;
   examBank?: Prova[];
   seo?: SeoSettings;
@@ -1032,7 +1062,7 @@ export interface UserSubscription {
   plan_id: number;
   status: 'active' | 'past_due' | 'canceled' | 'incomplete' | 'trialing';
   auto_renew?: boolean;
-  payment_provider?: 'stripe';
+  payment_provider?: 'stripe' | 'manual_admin';
   payment_checkout_mode?: 'internal' | 'redirect';
   card_vault_provider?: 'local' | 'stripe';
   provider_subscription_id?: string | null;

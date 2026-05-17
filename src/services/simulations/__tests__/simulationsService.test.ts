@@ -11,6 +11,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+  error?: string;
+} | null | undefined;
+
 const { mockPost, mockGet } = vi.hoisted(() => ({
   mockPost: vi.fn(),
   mockGet: vi.fn(),
@@ -21,7 +28,7 @@ vi.mock('@services/api', () => ({
     get: mockGet,
     post: mockPost,
   },
-  assertApiSuccess: (response: any, fallbackMessage: string) => {
+  assertApiSuccess: (response: MockApiResponse, fallbackMessage: string) => {
     if (!response?.success) {
       throw new Error(response?.message || response?.error || fallbackMessage);
     }
@@ -33,7 +40,7 @@ vi.mock('@services/api', () => ({
       raw: response,
     };
   },
-  readApiData: (response: any, fallback: any) => response?.data ?? response ?? fallback,
+  readApiData: (response: MockApiResponse, fallback: unknown) => response?.data ?? response ?? fallback,
   ENDPOINTS: {
     simulations: {
       list: 'simulationsList',
@@ -43,6 +50,8 @@ vi.mock('@services/api', () => ({
 }));
 
 import { simulationsService } from '../index';
+
+type SimulationSavePayload = Parameters<typeof simulationsService.saveSimulation>[0];
 
 describe('simulationsService', () => {
   beforeEach(() => {
@@ -66,7 +75,7 @@ describe('simulationsService', () => {
       durationSeconds: 180,
       status: 'completed',
       score: 8,
-    } as any;
+    } as SimulationSavePayload;
 
     const result = await simulationsService.saveSimulation(session);
 

@@ -96,7 +96,7 @@ Arquivos ajustados:
 - `src/app/admin/components/import/AdminImportSection.tsx`
 - `src/app/admin/components/panel/AdminPanelSection.tsx`
 - `src/components/shared/feedback/DevModeBanner.tsx`
-- `src/providers/DataProvider.tsx`
+- `src/state/app-config/useSystemSettingsActions.ts`
 - `src/types/global.ts`
 
 Mudancas:
@@ -119,7 +119,7 @@ O fluxo de SMTP foi alinhado ao mesmo modelo de segredos administrativos:
 Arquivos ajustados:
 
 - `src/types/global.ts`
-- `src/providers/DataProvider.tsx`
+- `src/state/app-config/useSystemSettingsActions.ts`
 - `src/app/admin/components/settings/AdminSettings.tsx`
 - `C:/xampp/htdocs/questao-pro-backend/modules/admin/services/AdminSettingsService.php`
 

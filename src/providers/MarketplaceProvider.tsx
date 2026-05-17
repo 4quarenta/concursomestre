@@ -11,7 +11,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import type { Material, Transaction } from '@types';
+import type { Material, QuestaoComentario, Transaction } from '@types';
 import { useAuth } from './AuthProvider';
 import { useToast } from './ToastProvider';
 import { readApiErrorMessage } from '@services/api';
@@ -19,6 +19,7 @@ import { marketplaceService } from '@services/marketplace';
 import { reputationService } from '@services/auth';
 import { commentService } from '@services/comments';
 import { notificationService } from '@services/notifications';
+import { clientLog } from '@services/monitoring/clientLog';
 import { useAdminDataActions } from '@/state/admin-data/useAdminDataActions';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
 
@@ -36,7 +37,7 @@ interface MarketplaceContextType {
     reason?: string,
     evidenceUrl?: string,
   ) => Promise<void>;
-  addMaterialComment: (materialId: string, text: string, parentId?: string) => Promise<any>;
+  addMaterialComment: (materialId: string, text: string, parentId?: string) => Promise<QuestaoComentario | null>;
   likeMaterialComment: (materialId: string, commentId: string) => Promise<void>;
   requestRefund: (transactionId: string, reason: string) => void;
   fetchUserTransactions: () => void;
@@ -103,6 +104,13 @@ const isPrivilegedTransactionViewer = (
   user?: { role?: string; isAdmin?: boolean } | null,
 ): boolean => Boolean(user?.isAdmin || user?.role === 'admin' || user?.role === 'staff');
 
+type TransactionMergeFields = Transaction & {
+  internalId?: string | number;
+  providerTransactionId?: string | number;
+  providerInvoiceId?: string | number;
+  timestamp?: string | number;
+};
+
 /**
  * Mescla consultas complementares de transacoes sem duplicar registros.
  * @since 1.0.0
@@ -111,7 +119,7 @@ const mergeTransactionsById = (transactionGroups: Transaction[][]): Transaction[
   const merged = new Map<string, Transaction>();
 
   transactionGroups.flat().forEach((transaction, index) => {
-    const transactionLike = transaction as any;
+    const transactionLike = transaction as TransactionMergeFields;
     const key = String(
       transactionLike.id
       || transactionLike.internalId
@@ -124,7 +132,7 @@ const mergeTransactionsById = (transactionGroups: Transaction[][]): Transaction[
   });
 
   return Array.from(merged.values()).sort((left, right) => (
-    Number((right as any).timestamp || 0) - Number((left as any).timestamp || 0)
+    Number((right as TransactionMergeFields).timestamp || 0) - Number((left as TransactionMergeFields).timestamp || 0)
   ));
 };
 
@@ -199,7 +207,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           setMaterials(materialsList);
         }
       })
-      .catch((error) => console.error('Failed to load materials:', error))
+      .catch((error) => clientLog.warn('Failed to load materials:', error))
       .finally(() => setIsLoadingMaterials(false));
   }, [shouldLoadMaterials]);
 
@@ -214,7 +222,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const txs = await marketplaceService.getUserTransactions(currentUserId);
       setTransactions(txs);
     } catch (error) {
-      console.error('Error fetching user transactions:', error);
+      clientLog.warn('Error fetching user transactions:', error);
     }
   }, [currentUserId]);
 
@@ -253,7 +261,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 setTransactions(mergeTransactionsById([latestTransactions, pendingRefundTransactions]));
               }
             })
-            .catch((error) => console.error('Failed to load all transactions:', error))
+            .catch((error) => clientLog.warn('Failed to load all transactions:', error))
             .finally(() => {
               if (!isCancelled) {
                 setIsLoadingTransactions(false);
@@ -323,10 +331,11 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       );
 
       addToast('Compra realizada com sucesso! O material foi adicionado a sua biblioteca.', 'success');
-    } catch (error: any) {
-      console.error('Error purchasing material:', error);
-      if (error.message !== 'KYC_REQUIRED') {
-        addToast(`Erro na compra: ${error.message}`, 'error');
+    } catch (error: unknown) {
+      clientLog.error('Error purchasing material:', error);
+      const errorMessage = readApiErrorMessage(error, 'Erro ao processar compra.');
+      if (errorMessage !== 'KYC_REQUIRED') {
+        addToast(`Erro na compra: ${errorMessage}`, 'error');
       }
     }
   };
@@ -345,9 +354,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       })));
       sendNotification(currentUser!.id, 'Reembolso Solicitado', 'Sua solicitacao esta em análise.', 'info', 'marketplace');
       addToast('Solicitacao de reembolso enviada.', 'success');
-    } catch (error: any) {
-      console.error('Refund request error:', error);
-      addToast(error.message || 'Erro ao processar solicitacao.', 'error');
+    } catch (error: unknown) {
+      clientLog.error('Refund request error:', error);
+      addToast(readApiErrorMessage(error, 'Erro ao processar solicitacao.'), 'error');
     }
   };
 
@@ -363,7 +372,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       addToast('Material enviado para aprovação com sucesso!', 'success');
       return true;
     } catch (error) {
-      console.error('Error publishing material:', error);
+      clientLog.error('Error publishing material:', error);
       addToast('Erro ao publicar material. Verifique sua conexão.', 'error');
       return false;
     }
@@ -383,7 +392,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         },
       });
     } catch (error) {
-      console.error('Upload error:', error);
+      clientLog.error('Upload error:', error);
       addToast('Erro no upload do arquivo.', 'error');
       return null;
     } finally {
@@ -404,8 +413,8 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       })));
       addToast('Material atualizado com sucesso!', 'success');
       return true;
-    } catch (error: any) {
-      console.error('Update material error:', error);
+    } catch (error: unknown) {
+      clientLog.error('Update material error:', error);
       addToast(readApiErrorMessage(error, 'Erro ao atualizar material.'), 'error');
       return false;
     }
@@ -448,7 +457,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       addToast('Moderação aplicada com sucesso!', 'success');
     } catch (error) {
-      console.error('Moderation error:', error);
+      clientLog.error('Moderation error:', error);
       addToast('Erro ao processar moderação.', 'error');
     }
   };
@@ -494,7 +503,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         'success',
       );
     } catch (error) {
-      console.error('Resolve refund error:', error);
+      clientLog.error('Resolve refund error:', error);
       setTransactions(previousTransactions);
       addToast('Erro ao processar reembolso.', 'error');
     }
@@ -504,7 +513,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
    * Adiciona um comentário em um material e atualiza a arvore local.
    * @since 1.0.0
    */
-  const addMaterialComment = async (materialId: string, text: string, parentId?: string) => {
+  const addMaterialComment = async (materialId: string, text: string, parentId?: string): Promise<QuestaoComentario | null> => {
     if (!currentUser) return null;
 
     try {
@@ -538,9 +547,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         'success',
       );
 
-      return result.comment ?? result;
+      return result.comment ?? null;
     } catch (error) {
-      console.error('Failed to add comment:', error);
+      clientLog.error('Failed to add comment:', error);
       addToast('Erro ao adicionar comentário.', 'error');
       return null;
     }
@@ -556,7 +565,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       await commentService.likeComment(commentId, currentUser.id);
     } catch (error) {
-      console.error('Falha ao curtir comentário:', error);
+      clientLog.error('Falha ao curtir comentario:', error);
       return;
     }
 
@@ -590,7 +599,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       await commentService.deleteComment(commentId, currentUser.id);
     } catch (error) {
-      console.error('Falha ao deletar comentário no backend:', error);
+      clientLog.error('Falha ao deletar comentario no backend:', error);
       addToast('Erro ao deletar comentário.', 'error');
       return;
     }
@@ -614,7 +623,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setMaterials((prev) => prev.filter((material) => material.id !== id));
       addToast('Material removido com sucesso!', 'success');
     } catch (error) {
-      console.error('Delete material error:', error);
+      clientLog.error('Delete material error:', error);
       addToast('Erro ao remover material.', 'error');
     }
   };

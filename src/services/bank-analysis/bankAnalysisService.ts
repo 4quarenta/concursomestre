@@ -35,7 +35,7 @@ type XrayChartDatum = {
 
 type XrayTopicDatum = {
   topic: string;
-  count: number;
+  count?: number;
   percent: number;
 };
 
@@ -57,48 +57,94 @@ export type BankXrayPayload = {
   recommendation: string;
 };
 
-const normalizeChartDatum = (item: any): XrayChartDatum => ({
-  name: String(item?.name || 'Sem nome'),
-  value: Number(item?.value || 0),
-});
+type BankAnalysisApiPayload = Record<string, unknown>;
 
-const normalizeBreakdownDatum = (item: any): XrayBreakdownDatum => ({
-  subject: String(item?.subject || 'Sem materia'),
-  total: Number(item?.total || 0),
-  percent: Number(item?.percent || 0),
-  topics: Array.isArray(item?.topics)
-    ? item.topics.map((topic: any) => ({
-        topic: String(topic?.topic || 'Sem assunto'),
-        count: Number(topic?.count || 0),
-        percent: Number(topic?.percent || 0),
-      }))
-    : [],
-});
+export type BankPatternInsightsPayload = unknown;
 
-const normalizeExamDatum = (item: any, index: number) => ({
-  id: item?.id ?? `exam-${index}`,
-  year: item?.year ?? '-',
-  name: String(item?.name || 'Prova sem identificacao'),
-});
+const asPayload = (value: unknown): BankAnalysisApiPayload => (
+  value && typeof value === 'object' ? value as BankAnalysisApiPayload : {}
+);
 
-const normalizeXrayPayload = (payload: any): BankXrayPayload => ({
-  total: Number(payload?.total || 0),
-  textStyle: String(payload?.textStyle || 'Objetiva e Direta'),
-  contextUsage: Number(payload?.contextUsage || 0),
-  difficultyData: Array.isArray(payload?.difficultyData)
-    ? payload.difficultyData.map(normalizeChartDatum)
-    : [],
-  subjectData: Array.isArray(payload?.subjectData)
-    ? payload.subjectData.map(normalizeChartDatum)
-    : [],
-  detailedBreakdown: Array.isArray(payload?.detailedBreakdown)
-    ? payload.detailedBreakdown.map(normalizeBreakdownDatum)
-    : [],
-  examList: Array.isArray(payload?.examList)
-    ? payload.examList.map(normalizeExamDatum)
-    : [],
-  recommendation: String(payload?.recommendation || ''),
-});
+const normalizeChartDatum = (item: unknown): XrayChartDatum => {
+  const payload = asPayload(item);
+  return {
+    name: String(payload.name || 'Sem nome'),
+    value: Number(payload.value || 0),
+  };
+};
+
+const normalizeBreakdownDatum = (item: unknown): XrayBreakdownDatum => {
+  const payload = asPayload(item);
+  return {
+    subject: String(payload.subject || 'Sem materia'),
+    total: Number(payload.total || 0),
+    percent: Number(payload.percent || 0),
+    topics: Array.isArray(payload.topics)
+      ? payload.topics.map((topic) => {
+          const topicPayload = asPayload(topic);
+          const normalizedTopic: XrayTopicDatum = {
+            topic: String(topicPayload.topic || 'Sem assunto'),
+            percent: Number(topicPayload.percent || 0),
+          };
+
+          if (topicPayload.count !== undefined && topicPayload.count !== null) {
+            normalizedTopic.count = Number(topicPayload.count || 0);
+          }
+
+          return normalizedTopic;
+        })
+      : [],
+  };
+};
+
+const normalizeExamDatum = (item: unknown, index: number) => {
+  const payload = asPayload(item);
+  const id = typeof payload.id === 'string' || typeof payload.id === 'number'
+    ? payload.id
+    : `exam-${index}`;
+  const year = typeof payload.year === 'string' || typeof payload.year === 'number'
+    ? payload.year
+    : '-';
+  return {
+    id,
+    year,
+    name: String(payload.name || 'Prova sem identificacao'),
+  };
+};
+
+const normalizeXrayPayload = (payload: unknown): BankXrayPayload => {
+  const data = asPayload(payload);
+  return {
+    total: Number(data.total || 0),
+    textStyle: String(data.textStyle || 'Objetiva e Direta'),
+    contextUsage: Number(data.contextUsage || 0),
+    difficultyData: Array.isArray(data.difficultyData)
+      ? data.difficultyData.map(normalizeChartDatum)
+      : [],
+    subjectData: Array.isArray(data.subjectData)
+      ? data.subjectData.map(normalizeChartDatum)
+      : [],
+    detailedBreakdown: Array.isArray(data.detailedBreakdown)
+      ? data.detailedBreakdown.map(normalizeBreakdownDatum)
+      : [],
+    examList: Array.isArray(data.examList)
+      ? data.examList.map(normalizeExamDatum)
+      : [],
+    recommendation: String(data.recommendation || ''),
+  };
+};
+
+const normalizeIntelLinks = (value: unknown): BankIntelLink[] => (
+  Array.isArray(value)
+    ? value.map((item) => {
+        const payload = asPayload(item);
+        return {
+          text: String(payload.text || ''),
+          url: String(payload.url || ''),
+        };
+      }).filter((item) => item.text || item.url)
+    : []
+);
 
 /**
  * Fachada oficial do dominio de raio-x. Ela centraliza a leitura dos payloads
@@ -115,11 +161,11 @@ export const bankAnalysisService = {
     const response = await apiClient.get(
       ENDPOINTS.statistics.bancaInfo,
       { params: { url } },
-    ) as any;
+    ) as unknown;
 
-    const payload = readApiData<any>(response, {});
+    const payload = readApiData<BankAnalysisApiPayload>(response, {});
 
-    if (payload?.error) {
+    if (payload.error) {
       return {
         emAndamento: [],
         realizados: [],
@@ -127,8 +173,8 @@ export const bankAnalysisService = {
     }
 
     return {
-      emAndamento: Array.isArray(payload?.emAndamento) ? payload.emAndamento : [],
-      realizados: Array.isArray(payload?.realizados) ? payload.realizados : [],
+      emAndamento: normalizeIntelLinks(payload.emAndamento),
+      realizados: normalizeIntelLinks(payload.realizados),
     };
   },
 
@@ -146,9 +192,9 @@ export const bankAnalysisService = {
           ano: filters.ano || undefined,
         },
       },
-    ) as any;
+    ) as unknown;
 
-    const payload = readApiData<any>(response, {});
+    const payload = readApiData<unknown>(response, {});
     return normalizeXrayPayload(payload);
   },
 
@@ -159,7 +205,7 @@ export const bankAnalysisService = {
   async getAnalysis(boardId: string): Promise<BankAnalysis> {
     const response = await apiClient.get(ENDPOINTS.bankAnalysis.board, {
       params: { boardId },
-    }) as any;
+    }) as unknown;
 
     const payload = readApiData<{ analysis?: BankAnalysis }>(response, {});
     return payload.analysis || (payload as unknown as BankAnalysis);
@@ -170,7 +216,7 @@ export const bankAnalysisService = {
    * @since 1.0.0
    */
   async getUserAnalytics(): Promise<AnalyticsData> {
-    const response = await apiClient.get(ENDPOINTS.bankAnalysis.user) as any;
+    const response = await apiClient.get(ENDPOINTS.bankAnalysis.user) as unknown;
     const payload = readApiData<{ analytics?: AnalyticsData }>(response, {});
     return payload.analytics || (payload as AnalyticsData);
   },
@@ -180,12 +226,12 @@ export const bankAnalysisService = {
    * indiretamente por partes legadas do app.
    * @since 1.0.0
    */
-  async getPatternInsights(boardId: string): Promise<any> {
+  async getPatternInsights(boardId: string): Promise<BankPatternInsightsPayload> {
     const response = await apiClient.get(ENDPOINTS.bankAnalysis.insights, {
       params: { boardId },
-    }) as any;
+    }) as unknown;
 
-    const payload = readApiData<{ insights?: any }>(response, {});
+    const payload = readApiData<{ insights?: BankPatternInsightsPayload }>(response, {});
     return payload.insights ?? payload;
   },
 };

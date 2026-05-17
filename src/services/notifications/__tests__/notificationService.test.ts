@@ -11,6 +11,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type MockApiResponse = {
+  data?: unknown;
+  success?: boolean;
+  message?: string;
+} | null | undefined;
+
 const { mockGet, mockPost } = vi.hoisted(() => ({
   mockGet: vi.fn(),
   mockPost: vi.fn(),
@@ -21,7 +27,7 @@ vi.mock('@services/api', () => ({
     get: mockGet,
     post: mockPost,
   },
-  assertApiSuccess: (response: any) => {
+  assertApiSuccess: (response: MockApiResponse) => {
     if (!response?.success) {
       throw new Error(response?.message || 'erro');
     }
@@ -33,7 +39,7 @@ vi.mock('@services/api', () => ({
       raw: response,
     };
   },
-  readApiData: (response: any, fallback: any) => {
+  readApiData: (response: MockApiResponse, fallback: unknown) => {
     if (response?.data !== undefined) {
       return response.data;
     }

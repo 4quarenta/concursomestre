@@ -22,6 +22,7 @@ import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
+import { clientLog } from '@services/monitoring/clientLog';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import CommentsSection from '../../components/shared/feedback/CommentsSection';
 import AdBanner from '../../components/shared/feedback/AdBanner';
@@ -131,7 +132,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                     setUserRating(data.userRating);
                 }
             } catch (err) {
-                console.error("Failed to fetch user rating", err);
+                clientLog.warn("Failed to fetch user rating", err);
             }
         };
         fetchUserRating();
@@ -155,7 +156,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                     setter(payload.data);
                 }
             } catch (err) {
-                console.error(`Falha ao carregar comentários ${targetId}:`, err);
+                clientLog.warn(`Falha ao carregar comentários ${targetId}:`, err);
             }
         };
 
@@ -185,7 +186,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                 addToast('⚠️ ' + data.message, 'warning');
             }
         } catch (error: unknown) {
-            console.error('Rating error:', error);
+            clientLog.warn('Rating error:', error);
             addToast('Erro ao enviar avaliacao: ' + getUnknownErrorMessage(error, 'Tente novamente.'), 'error');
         } finally {
             setSubmittingRating(false);
@@ -247,7 +248,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                 throw new Error("Erro na resposta");
             }
         } catch (err) {
-            console.error("Falha ao adicionar comentário:", err);
+            clientLog.warn("Falha ao adicionar comentário:", err);
             addToast("Erro ao enviar mensagem.", "error");
             // Remove temp (rollback)
             setter(prev => {
@@ -278,7 +279,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
                 user_id: currentUser.id
             });
         } catch (err) {
-            console.error("Error liking comment", err);
+            clientLog.warn("Error liking comment", err);
             // Ignore rollback for simplicity unless needed
         }
     };
@@ -737,7 +738,7 @@ const Marketplace: React.FC = () => {
             setShowCancelRefundModal(false);
             setCancelRefundTxId(null);
         } catch (error) {
-            console.error('Erro ao cancelar reembolso:', error);
+            clientLog.warn('Erro ao cancelar reembolso:', error);
             addToast('Erro ao cancelar solicitação.', 'error');
         }
     };

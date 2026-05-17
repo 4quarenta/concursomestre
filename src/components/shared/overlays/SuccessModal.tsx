@@ -10,7 +10,7 @@
 */
 
 import React, { useEffect } from 'react';
-import { X, Check, ArrowRight, Download, BookOpen } from 'lucide-react';
+import { X, Check, BookOpen } from 'lucide-react';
 import { Material } from '@types';
 import confetti from 'canvas-confetti';
 
@@ -30,7 +30,7 @@ export const SuccessModal: React.FC<SuccessModalProps> = ({ material, onClose, o
 
         const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
 
-        const interval: any = setInterval(function () {
+        const interval: ReturnType<typeof setInterval> = setInterval(function () {
             const timeLeft = animationEnd - Date.now();
 
             if (timeLeft <= 0) {
@@ -71,7 +71,7 @@ export const SuccessModal: React.FC<SuccessModalProps> = ({ material, onClose, o
                     </h2>
                     <p className="text-slate-500 dark:text-slate-300 mb-8 leading-relaxed">
                         Você já tem acesso total ao material <br />
-                        <span className="font-bold text-slate-800 dark:text-slate-100">"{material.title}"</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-100">&quot;{material.title}&quot;</span>
                     </p>
 
                     <div className="space-y-3">

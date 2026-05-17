@@ -1,19 +1,21 @@
 import type { LegalHighlightEntry } from '@types';
 
 const LEGAL_HIGHLIGHTS_PREFIX = 'cm:legal-commentary:highlights:';
+const LEGAL_HIGHLIGHT_COLORS = new Set<LegalHighlightEntry['color']>(['yellow', 'blue', 'pink', 'green']);
 
-const normalizeHighlightEntry = (entry: any): LegalHighlightEntry | null => {
+const normalizeHighlightEntry = (entry: unknown): LegalHighlightEntry | null => {
   if (!entry || typeof entry !== 'object') {
     return null;
   }
 
-  const type = entry.type === 'selection' || entry.type === 'block' ? entry.type : null;
-  const articleId = String(entry.articleId || '').trim();
-  const color = String(entry.color || '').trim();
-  const id = String(entry.id || '').trim();
-  const createdAt = Number(entry.createdAt);
+  const payload = entry as Record<string, unknown>;
+  const type = payload.type === 'selection' || payload.type === 'block' ? payload.type : null;
+  const articleId = String(payload.articleId || '').trim();
+  const color = String(payload.color || '').trim() as LegalHighlightEntry['color'];
+  const id = String(payload.id || '').trim();
+  const createdAt = Number(payload.createdAt);
 
-  if (!type || !articleId || !color || !id || !Number.isFinite(createdAt)) {
+  if (!type || !articleId || !LEGAL_HIGHLIGHT_COLORS.has(color) || !id || !Number.isFinite(createdAt)) {
     return null;
   }
 
@@ -21,15 +23,15 @@ const normalizeHighlightEntry = (entry: any): LegalHighlightEntry | null => {
     id,
     type,
     articleId,
-    color: color as LegalHighlightEntry['color'],
+    color,
     createdAt,
-    unitId: typeof entry.unitId === 'string' ? entry.unitId : undefined,
-    unitLabel: typeof entry.unitLabel === 'string' ? entry.unitLabel : undefined,
-    preview: typeof entry.preview === 'string' ? entry.preview : undefined,
-    selectedText: typeof entry.selectedText === 'string' ? entry.selectedText : undefined,
-    startAnchor: typeof entry.startAnchor === 'string' ? entry.startAnchor : undefined,
-    endAnchor: typeof entry.endAnchor === 'string' ? entry.endAnchor : undefined,
-    blockId: typeof entry.blockId === 'string' ? entry.blockId : undefined,
+    unitId: typeof payload.unitId === 'string' ? payload.unitId : undefined,
+    unitLabel: typeof payload.unitLabel === 'string' ? payload.unitLabel : undefined,
+    preview: typeof payload.preview === 'string' ? payload.preview : undefined,
+    selectedText: typeof payload.selectedText === 'string' ? payload.selectedText : undefined,
+    startAnchor: typeof payload.startAnchor === 'string' ? payload.startAnchor : undefined,
+    endAnchor: typeof payload.endAnchor === 'string' ? payload.endAnchor : undefined,
+    blockId: typeof payload.blockId === 'string' ? payload.blockId : undefined,
   };
 };
 

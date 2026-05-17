@@ -10,7 +10,6 @@
 */
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
-import type { ApiResponse } from '@services/api';
 import type { ErrorReport } from '@types';
 
 export interface CreateReportInput {
@@ -28,6 +27,12 @@ export interface CreateReportResult {
   message?: string;
 }
 
+type CreateReportPayload = {
+  id?: string | number;
+  duplicate?: boolean;
+  message?: string;
+};
+
 /**
  * Fachada oficial do dominio de denúncias.
  * Centraliza criacao autenticada e leitura administrativa.
@@ -40,17 +45,17 @@ export const reportsService = {
    * @since 1.0.0
    */
   async createReport(input: CreateReportInput): Promise<CreateReportResult> {
-    const response = await apiClient.post<any>(ENDPOINTS.reports.create, {
+    const response = await apiClient.post(ENDPOINTS.reports.create, {
       reporter_id: input.reporterId,
       target_type: input.targetType,
       target_id: String(input.targetId),
       reason: input.reason,
       details: input.details,
       evidence_url: input.evidenceUrl,
-    }) as any;
+    }) as unknown;
 
     const envelope = assertApiSuccess(response, 'Falha ao registrar denúncia.');
-    const payload = readApiData<Record<string, any>>(response, {});
+    const payload = readApiData<CreateReportPayload>(response, {});
 
     return {
       id: String(payload.id ?? envelope.raw?.id ?? ''),
@@ -64,7 +69,7 @@ export const reportsService = {
    * @since 1.0.0
    */
   async listReports(): Promise<ErrorReport[]> {
-    const response = await apiClient.get<ApiResponse<ErrorReport[]>>(ENDPOINTS.reports.list) as any;
+    const response = await apiClient.get(ENDPOINTS.reports.list) as unknown;
     const payload = readApiData<ErrorReport[]>(response, []);
     return Array.isArray(payload) ? payload : [];
   },

@@ -15,6 +15,7 @@ import { accountService } from '@services/auth';
 import { notificationService } from '@services/notifications';
 import { questionService } from '@services/questions';
 import { simulationsService } from '@services/simulations';
+import { clientLog } from '@services/monitoring/clientLog';
 import { useToast } from '@providers/ToastProvider';
 import {
   bootstrapAuthSession,
@@ -220,7 +221,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     void bootstrapAuthSession().catch((error) => {
-      console.error('Failed to bootstrap auth session:', error);
+      clientLog.error('Failed to bootstrap auth session:', error);
       dispatch({ type: 'LOGOUT' });
     });
 
@@ -281,7 +282,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           resolve();
         })
         .catch(err => {
-          console.error('Failed to update user profile', err);
+          clientLog.error('Failed to update user profile', err);
           const errorMessage = err.response?.data?.message || err.message || 'Erro ao atualizar perfil. Tente novamente.';
           addToast(errorMessage, 'error');
           reject(err);
@@ -312,7 +313,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         `Você ganhou ${payload} pontos de experiencia. Continue assim!`,
         'info',
         'system',
-      ).catch(err => console.warn('Falha ao criar notificação de XP:', err));
+      ).catch(err => clientLog.warn('Falha ao criar notificacao de XP:', err));
     }
 
     if (newLevel > previousLevel) {
@@ -327,7 +328,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         'success',
         'system',
         '/profile/personal',
-      ).catch(err => console.warn('Falha ao criar notificação de level up:', err));
+      ).catch(err => clientLog.warn('Falha ao criar notificacao de level up:', err));
     }
   }, [state.currentUser]);
 
@@ -341,7 +342,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (state.currentUser) {
       questionService.toggleSavedQuestion(state.currentUser.id, payload).catch(err => {
-        console.error('Failed to toggle save', err);
+        clientLog.error('Failed to toggle save', err);
       });
     }
   }, [state.currentUser]);
@@ -358,7 +359,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     simulationsService.saveSimulation(payload)
-        .catch(e => console.error('Failed to save sim', e));
+        .catch(e => clientLog.error('Failed to save sim', e));
   }, [state.currentUser?.id]);
 
   /**
@@ -396,7 +397,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           resolve(true);
         })
         .catch(err => {
-          console.error('Failed to update user to partner role', err);
+          clientLog.error('Failed to update user to partner role', err);
           resolve(false);
         });
     });
@@ -416,7 +417,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updateCurrentUserSnapshot(user);
       dispatch({ type: 'LOGIN', payload: user });
     } catch (err) {
-      console.error('Failed to refresh user data:', err);
+      clientLog.error('Failed to refresh user data:', err);
     }
   }, []);
 

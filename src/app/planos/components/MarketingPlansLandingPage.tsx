@@ -9,7 +9,7 @@
 *
 */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -43,6 +43,7 @@ import { ThemeOrnaments } from '../../landing/components/ThemeOrnaments';
 import useMarketingPlansLanding from '../hooks/useMarketingPlansLanding';
 
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
+type PlanPricingByName = Partial<Record<PlanName, Partial<Record<BillingCycle, number>>>>;
 
 interface MarketingPlansLandingPageProps {
   slug: string;
@@ -62,7 +63,7 @@ const formatCurrency = (value: number) => `R$ ${Number(value || 0).toLocaleStrin
 const getCycleCount = (cycle: BillingCycle) => (cycle === 'annual' ? 12 : cycle === 'quarterly' ? 3 : 1);
 const getCycleLabel = (cycle: BillingCycle) => (cycle === 'annual' ? 'ano' : cycle === 'quarterly' ? 'cada 3 meses' : 'mes');
 
-const getConfiguredCycleAmount = (planName: PlanName, cycle: BillingCycle, pricing: any) => {
+const getConfiguredCycleAmount = (planName: PlanName, cycle: BillingCycle, pricing: PlanPricingByName) => {
   if (cycle === 'annual') {
     return Number(pricing?.[planName]?.annual || 0);
   }
@@ -75,9 +76,12 @@ const getConfiguredCycleAmount = (planName: PlanName, cycle: BillingCycle, prici
 };
 
 const isPlanInCycle = (plan: Plan, cycle: BillingCycle) => {
-  const isMonthly = plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 1;
-  const isQuarterly = plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 3;
-  const isAnnual = plan.interval_unit === 'year' || (plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 12);
+  const intervalUnit = String(plan.interval_unit || '').toLowerCase();
+  const intervalCount = Number(plan.interval_count || 1);
+  const isMonthly = intervalUnit === 'month' && intervalCount === 1;
+  const isQuarterly = intervalUnit === 'month' && intervalCount === 3;
+  const isAnnual = intervalUnit === 'year' || (intervalUnit === 'month' && intervalCount === 12);
+  const isCustomShortCycle = intervalUnit === 'day' || intervalUnit === 'week';
 
   if (Number(plan.price || 0) === 0) {
     return true;
@@ -91,7 +95,7 @@ const isPlanInCycle = (plan: Plan, cycle: BillingCycle) => {
     return isAnnual;
   }
 
-  return isMonthly;
+  return isMonthly || isCustomShortCycle;
 };
 
 const buildCanonicalUrl = (slug: string, customCanonical?: string) => {
@@ -175,7 +179,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
     return serialized ? `?${serialized}` : '';
   }, [searchParams]);
 
-  const appendTracking = (path: string) => `${path}${trackingQueryString}`;
+  const appendTracking = useCallback((path: string) => `${path}${trackingQueryString}`, [trackingQueryString]);
 
   const availablePlansByCanonical = useMemo(() => {
     return plans
@@ -271,8 +275,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
   const limitedOfferEndsAt = systemSettings.limitedOfferCountdown?.endsAt || '';
   const hasActiveLimitedOfferCountdown = Boolean(
     systemSettings.limitedOfferCountdown?.enabled
-    && limitedOfferEndsAt
-    && new Date(limitedOfferEndsAt).getTime() > Date.now(),
+    && limitedOfferEndsAt,
   );
 
   const seoPayload = useMemo(() => ({
@@ -282,7 +285,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
     robots: 'index,follow',
     ogTitle: landingPage?.seo?.ogTitle || `${siteName} | Escolha o plano ideal para acelerar sua preparacao`,
     ogDescription: landingPage?.seo?.ogDescription || landingPage?.seo?.metaDescription || `Acesse questoes, simulados, gabaritos comentados e recursos premium do ${siteName}.`,
-  }), [landingPage?.seo?.canonicalUrl, landingPage?.seo?.metaDescription, landingPage?.seo?.ogDescription, landingPage?.seo?.ogTitle, siteName, slug]);
+  }), [landingPage?.seo?.canonicalUrl, landingPage?.seo?.metaDescription, landingPage?.seo?.ogDescription, landingPage?.seo?.ogTitle, landingPage?.seo?.title, siteName, slug]);
 
   useDocumentSeo(seoPayload);
 

@@ -12,6 +12,7 @@
 import type { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { logger } from '../../utils/helpers/DebugLogger';
 import { getAccessToken, isAccessTokenExpired, refreshAuthSession } from '@services/auth/session';
+import { clientLog } from '@services/monitoring/clientLog';
 
 export interface AuthAwareRequestConfig extends InternalAxiosRequestConfig {
     _retry?: boolean;
@@ -86,6 +87,9 @@ const isAuthEndpoint = (url?: string | null): boolean => {
     const normalizedUrl = url.toLowerCase();
     return normalizedUrl.includes('auth/login.php')
         || normalizedUrl.includes('auth/register.php')
+        || normalizedUrl.includes('auth/google.php')
+        || normalizedUrl.includes('auth/facebook.php')
+        || normalizedUrl.includes('auth/apple.php')
         || normalizedUrl.includes('auth/refresh.php')
         || normalizedUrl.includes('auth/logout.php')
         || normalizedUrl.includes('auth/forgot-password.php')
@@ -102,6 +106,14 @@ export const registerApiInterceptors = (apiClient: AxiosInterceptorClient): void
         async (config: InternalAxiosRequestConfig) => {
             const authAwareConfig = config as AuthAwareRequestConfig;
             let token = getAccessToken();
+
+            if (
+                token
+                && authAwareConfig._skipRefreshHandling
+                && isAccessTokenExpired(token, 0)
+            ) {
+                token = null;
+            }
 
             if (
                 token
@@ -203,27 +215,27 @@ export const registerApiInterceptors = (apiClient: AxiosInterceptorClient): void
 
                 switch (status) {
                     case 401:
-                        console.error('Unauthorized request:', error.config?.url, readResponseMessage(data));
+                        clientLog.error('Unauthorized request:', error.config?.url, readResponseMessage(data));
                         break;
                     case 403:
-                        console.error('Access forbidden:', readResponseMessage(data));
+                        clientLog.error('Access forbidden:', readResponseMessage(data));
                         break;
                     case 404:
-                        console.error('Resource not found:', error.config?.url);
+                        clientLog.error('Resource not found:', error.config?.url);
                         break;
                     case 429:
-                        console.error('Rate limit exceeded. Please try again later.');
+                        clientLog.error('Rate limit exceeded. Please try again later.');
                         break;
                     case 500:
-                        console.error('Server error:', readResponseMessage(data));
+                        clientLog.error('Server error:', readResponseMessage(data));
                         break;
                     default:
-                        console.error('API Error:', readResponseMessage(data) || 'Unknown error');
+                        clientLog.error('API Error:', readResponseMessage(data) || 'Unknown error');
                 }
             } else if (error.request) {
-                console.error('Network Error: No response from server');
+                clientLog.error('Network Error: No response from server');
             } else {
-                console.error('Request Setup Error:', error.message);
+                clientLog.error('Request Setup Error:', error.message);
                 if (process.env.NODE_ENV === 'development') {
                     logger.addLog('error', `Setup Error: ${error.message}`);
                 }

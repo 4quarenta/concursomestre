@@ -12,6 +12,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import { useTheme } from '@providers/ThemeProvider';
 
 type BrandLogoSurface = 'theme' | 'light' | 'dark';
@@ -67,13 +68,13 @@ const BrandLogo: React.FC<BrandLogoProps> = ({
       style={{ width }}
       aria-hidden={alt ? undefined : true}
     >
-      <img
+      <Image
         src={src}
         alt={sharedProps.alt}
         width={sharedProps.width}
         height={sharedProps.height}
-        loading={priority ? 'eager' : 'lazy'}
-        decoding="async"
+        priority={priority}
+        unoptimized
         className={sharedProps.className}
       />
     </span>

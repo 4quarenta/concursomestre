@@ -74,13 +74,19 @@ export const useMarketingPlansLanding = ({ slug }: UseMarketingPlansLandingOptio
 
   useEffect(() => {
     if (!previewId || !canAccessPreview) {
-      setPreviewPages(null);
-      setPreviewLoaded(!previewId);
-      return;
+      const frameId = window.requestAnimationFrame(() => {
+        setPreviewPages(null);
+        setPreviewLoaded(!previewId);
+      });
+      return () => window.cancelAnimationFrame(frameId);
     }
 
     let active = true;
-    setPreviewLoaded(false);
+    const loadingFrameId = window.requestAnimationFrame(() => {
+      if (active) {
+        setPreviewLoaded(false);
+      }
+    });
 
     adminService.getSystemSettings()
       .then((settings) => {
@@ -103,6 +109,7 @@ export const useMarketingPlansLanding = ({ slug }: UseMarketingPlansLandingOptio
 
     return () => {
       active = false;
+      window.cancelAnimationFrame(loadingFrameId);
     };
   }, [canAccessPreview, previewId, siteName]);
 

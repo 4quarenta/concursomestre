@@ -9,7 +9,7 @@
 *
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AlertCircle,
   Check,
@@ -17,16 +17,21 @@ import {
   ChevronDown,
   Copy,
   CreditCard,
+  FileText,
   Handshake,
   Loader2,
   Lock,
   MapPin,
   PencilLine,
   QrCode,
+  Smartphone,
   Tag,
   User,
+  Wallet,
 } from 'lucide-react';
 import { formatMaskedCardLabelAscii } from '@services/billing';
+import type { SavedCard } from '@services/billing';
+import type { Stripe, StripeCardCvcElement } from '@stripe/stripe-js';
 import type { Address } from '@types';
 import StripeCardElementForm from './StripeCardElementForm';
 import StripeSavedCardCvcForm from './StripeSavedCardCvcForm';
@@ -36,6 +41,23 @@ interface InstallmentOption {
   value: string;
   label: string;
 }
+
+interface EnabledCheckoutPaymentMethod {
+  id: string;
+  label: string;
+  stripeType?: string;
+  recurringSupported?: boolean;
+}
+
+type CheckoutStripeStep = {
+  clientSecret?: string | null;
+  status?: string | null;
+  confirmationType?: 'payment' | 'setup' | 'none' | string | null;
+  subscriptionId?: string | null;
+  paymentMethodId?: string | null;
+  paymentIntentId?: string | null;
+  saveCard?: boolean;
+};
 
 interface CheckoutPaymentStageProps {
   planName: string;
@@ -56,9 +78,9 @@ interface CheckoutPaymentStageProps {
   stripeRequiresSavedCard: boolean;
   isStripeInternalCheckout: boolean;
   isLoadingStripeCards: boolean;
-  stripeCards: any[];
+  stripeCards: SavedCard[];
   selectedStripeCardId: string | null;
-  selectedStripeCard: any;
+  selectedStripeCard: SavedCard | null;
   stripePublishableKey: string;
   currentUserName?: string;
   currentUserEmail?: string;
@@ -67,7 +89,6 @@ interface CheckoutPaymentStageProps {
   emailVerified?: boolean;
   hasMissingRequirements?: boolean;
   nextRenewalLabel?: string | null;
-  paymentBreakdownLabel?: string | null;
   paymentProtectionLabel?: string | null;
   installmentOptions?: InstallmentOption[];
   selectedInstallmentValue?: string;
@@ -75,17 +96,20 @@ interface CheckoutPaymentStageProps {
   legalNotice?: React.ReactNode;
   pixCapabilityStatus?: string;
   pixCapabilityMessage?: string;
+  enabledPaymentMethods?: EnabledCheckoutPaymentMethod[];
   enabledPaymentMethodIds?: string[];
+  selectedPaymentMethodId: string;
   onCouponCodeChange: (value: string) => void;
   onApplyCoupon: () => void;
   onRemoveCoupon: () => void;
+  onPaymentMethodChange: (value: string) => void;
   onAutoRenewChange: (value: boolean) => void;
   onSaveCardChange: (value: boolean) => void;
   onSelectSavedCard: (cardId: string) => void;
   onSelectNewCard: () => void;
-  onConfirmSavedCard: (args: { stripe: any; cvcElement: any }) => Promise<void>;
-  onPaymentMethodCreated: (paymentMethodId: string) => Promise<any>;
-  onPaymentFinalized: (step?: any) => Promise<void> | void;
+  onConfirmSavedCard: (args: { stripe: Stripe; cvcElement: StripeCardCvcElement }) => Promise<void>;
+  onPaymentMethodCreated: (paymentMethodId: string) => Promise<CheckoutStripeStep | undefined>;
+  onPaymentFinalized: (step?: CheckoutStripeStep) => Promise<void> | void;
   onConfirmClick: () => void;
   onInstallmentChange: (value: string) => void;
   onEditBillingInfo: () => void;
@@ -245,10 +269,10 @@ const CheckoutBillingInfoCard: React.FC<{
  * @since v1.0.0
  */
 const CheckoutPaymentMethodCard: React.FC<{
-  stripeCards: any[];
+  stripeCards: SavedCard[];
   isLoadingStripeCards: boolean;
   selectedStripeCardId: string | null;
-  selectedStripeCard: any;
+  selectedStripeCard: SavedCard | null;
   isStripeInternalCheckout: boolean;
   stripePublishableKey: string;
   currentUserName?: string;
@@ -261,8 +285,9 @@ const CheckoutPaymentMethodCard: React.FC<{
   processing: boolean;
   pixCapabilityStatus?: string;
   pixCapabilityMessage?: string;
+  enabledPaymentMethods: EnabledCheckoutPaymentMethod[];
   enabledPaymentMethodIds: string[];
-  paymentMethod: 'card' | 'pix';
+  paymentMethod: string;
   paymentReady: boolean;
   confirmLabel: string;
   processingLabel: string;
@@ -273,16 +298,16 @@ const CheckoutPaymentMethodCard: React.FC<{
   couponSavingsLabel?: string | null;
   autoRenew: boolean;
   onSaveCardChange: (value: boolean) => void;
-  onPaymentMethodChange: (value: 'card' | 'pix') => void;
+  onPaymentMethodChange: (value: string) => void;
   onCouponCodeChange: (value: string) => void;
   onApplyCoupon: () => void;
   onRemoveCoupon: () => void;
   onAutoRenewChange: (value: boolean) => void;
   onSelectSavedCard: (cardId: string) => void;
   onSelectNewCard: () => void;
-  onConfirmSavedCard: (args: { stripe: any; cvcElement: any }) => Promise<void>;
-  onPaymentMethodCreated: (paymentMethodId: string) => Promise<any>;
-  onPaymentFinalized: (step?: any) => Promise<void> | void;
+  onConfirmSavedCard: (args: { stripe: Stripe; cvcElement: StripeCardCvcElement }) => Promise<void>;
+  onPaymentMethodCreated: (paymentMethodId: string) => Promise<CheckoutStripeStep | undefined>;
+  onPaymentFinalized: (step?: CheckoutStripeStep) => Promise<void> | void;
   onStripeReadyChange: (ready: boolean) => void;
   onInstallmentChange: (value: string) => void;
   onConfirmClick: () => void;
@@ -303,6 +328,7 @@ const CheckoutPaymentMethodCard: React.FC<{
   processing,
   pixCapabilityStatus,
   pixCapabilityMessage,
+  enabledPaymentMethods,
   enabledPaymentMethodIds,
   paymentMethod,
   paymentReady,
@@ -334,7 +360,28 @@ const CheckoutPaymentMethodCard: React.FC<{
   const pixIsActive = pixCapabilityStatus === 'active';
   const canUseCard = enabledPaymentMethodIds.includes('card');
   const canUsePix = enabledPaymentMethodIds.includes('pix');
+  const hasEnabledMethods = enabledPaymentMethodIds.length > 0;
+  const displayPaymentMethods = useMemo(() => (
+    enabledPaymentMethods.length > 0
+      ? enabledPaymentMethods
+      : enabledPaymentMethodIds.map((methodId) => ({ id: methodId, label: methodId.toUpperCase() }))
+  ), [enabledPaymentMethodIds, enabledPaymentMethods]);
+  const paymentMethodMap = useMemo(() => new Map(displayPaymentMethods.map((method) => [method.id, method])), [displayPaymentMethods]);
+  const selectedMethodMeta = paymentMethodMap.get(paymentMethod);
+  const paymentMethodLabel = selectedMethodMeta?.label || paymentMethod.toUpperCase();
+  const isCardFlow = paymentMethod === 'card' && canUseCard;
+  const isPixFlow = paymentMethod === 'pix' && canUsePix;
+  const isRedirectFlow = !isCardFlow && hasEnabledMethods && enabledPaymentMethodIds.includes(paymentMethod);
   const [showCouponInput, setShowCouponInput] = useState(false);
+
+  const getMethodIcon = (methodId: string) => {
+    if (methodId === 'card') return CreditCard;
+    if (methodId === 'pix') return QrCode;
+    if (methodId === 'boleto') return FileText;
+    if (methodId === 'apple_pay') return Smartphone;
+    if (methodId === 'google_pay') return Wallet;
+    return Wallet;
+  };
 
   return (
     <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none md:p-8">
@@ -347,49 +394,41 @@ const CheckoutPaymentMethodCard: React.FC<{
       </div>
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2">
-        {canUseCard ? (
-          <button
-            type="button"
-            onClick={() => onPaymentMethodChange('card')}
-            className={`flex items-center justify-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${
-              paymentMethod === 'card'
-                ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-indigo-200'
-                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-[#0f1020] dark:text-slate-300'
-            }`}
-          >
-            <CreditCard size={16} />
-            <span>Cartão de crédito</span>
-          </button>
-        ) : null}
-        {canUsePix ? (
-          <button
-            type="button"
-            onClick={() => onPaymentMethodChange('pix')}
-            className={`flex items-center justify-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${
-              paymentMethod === 'pix'
-                ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-indigo-200'
-                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-[#0f1020] dark:text-slate-300'
-            }`}
-          >
-            <QrCode size={16} />
-            <span>PIX</span>
-          </button>
-        ) : null}
+        {displayPaymentMethods.map((method) => {
+          const Icon = getMethodIcon(method.id);
+          const isSelected = paymentMethod === method.id;
+
+          return (
+            <button
+              key={method.id}
+              type="button"
+              onClick={() => onPaymentMethodChange(method.id)}
+              className={`flex items-center justify-center gap-2 rounded-lg border-2 px-4 py-3 text-sm font-medium transition-all ${
+                isSelected
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-indigo-200'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-[#0f1020] dark:text-slate-300'
+              }`}
+            >
+              <Icon size={16} />
+              <span>{method.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="rounded-[1.5rem] border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-[#0f1020]">
         <div className="space-y-5">
-          {!canUseCard && !canUsePix ? (
+          {!hasEnabledMethods ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
               Nenhuma forma de pagamento compatível está ativa no painel admin.
             </div>
-          ) : paymentMethod === 'card' && canUseCard ? (
+          ) : isCardFlow ? (
             <>
               <div className="flex flex-wrap gap-3">
                 {hasSavedCards ? (
                   <button
                     type="button"
-                    onClick={() => onSelectSavedCard(selectedStripeCardId || stripeCards[0].id)}
+                    onClick={() => onSelectSavedCard(selectedStripeCardId || String(stripeCards[0].id))}
                     className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm transition-all ${
                       usingSavedCard
                         ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-indigo-200'
@@ -424,13 +463,14 @@ const CheckoutPaymentMethodCard: React.FC<{
               {hasSavedCards && usingSavedCard ? (
             <>
               <div className="space-y-3">
-                {stripeCards.map((card: any) => {
-                  const isSelected = selectedStripeCardId === card.id;
+                {stripeCards.map((card) => {
+                  const cardId = String(card.id);
+                  const isSelected = selectedStripeCardId === cardId;
                   return (
                     <button
-                      key={card.id}
+                      key={cardId}
                       type="button"
-                      onClick={() => onSelectSavedCard(card.id)}
+                      onClick={() => onSelectSavedCard(cardId)}
                       className={`w-full rounded-lg border p-4 text-left transition-colors ${
                         isSelected
                           ? 'border-slate-900 bg-slate-50 dark:border-indigo-400 dark:bg-indigo-500/10'
@@ -459,7 +499,7 @@ const CheckoutPaymentMethodCard: React.FC<{
                     publishableKey={stripePublishableKey}
                     formId={CHECKOUT_STRIPE_FORM_IDS.savedCard}
                     cardBrand={selectedStripeCard?.brand}
-                    last4={selectedStripeCard?.last_four_digits}
+                    last4={String(selectedStripeCard?.last_four_digits || selectedStripeCard?.last4 || selectedStripeCard?.last_four || '')}
                     label="CVV (para sua segurança)"
                     hideDescription
                     hideTrustNote
@@ -500,7 +540,7 @@ const CheckoutPaymentMethodCard: React.FC<{
             </>
           )}
             </>
-          ) : canUsePix ? (
+          ) : isPixFlow ? (
             <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-[#111428]">
               <div className="flex flex-col items-center py-6 text-center">
                 <div className="mb-5 rounded-xl border border-slate-200 bg-white p-8 dark:border-slate-700 dark:bg-[#0f1020]">
@@ -510,7 +550,7 @@ const CheckoutPaymentMethodCard: React.FC<{
                   {pixIsActive ? 'PIX ativo na conta Stripe' : 'PIX ainda não está ativo para assinaturas neste checkout'}
                 </p>
                 <p className="mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">
-                  {pixCapabilityMessage || 'A capability pix_payments pode ser solicitada via API, mas assinatura recorrente segue usando cartão até a Stripe liberar o fluxo operacional compatível.'}
+                  {pixCapabilityMessage || 'O PIX depende de capability ativa na Stripe para operar com segurança no fluxo de assinatura.'}
                 </p>
               </div>
 
@@ -518,7 +558,7 @@ const CheckoutPaymentMethodCard: React.FC<{
                 <p className="mb-2 text-xs text-slate-600 dark:text-slate-400">Código PIX</p>
                 <div className="flex items-center justify-between gap-3">
                   <code className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
-                    {pixIsActive ? 'Capability ativa. Aguardando contrato de cobrança PIX recorrente.' : 'Aguardando ativação segura pela Stripe...'}
+                    {pixIsActive ? 'PIX habilitado. A finalização ocorre na página segura da Stripe.' : 'Aguardando ativação segura da capability PIX na Stripe...'}
                   </code>
                   <button
                     type="button"
@@ -533,13 +573,30 @@ const CheckoutPaymentMethodCard: React.FC<{
 
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <p className="text-sm text-amber-900">
-                  Use cartão de crédito para concluir agora. PIX depende de capability ativa e fluxo oficial Stripe para não criar cobrança fora do contrato financeiro.
+                  Se a capability PIX ainda não estiver ativa na sua conta Stripe, selecione cartão para concluir imediatamente.
+                </p>
+              </div>
+            </div>
+          ) : isRedirectFlow ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-[#111428]">
+              <div className="flex flex-col items-start gap-3">
+                <p className="rounded-full bg-indigo-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+                  Checkout hospedado Stripe
+                </p>
+                <h3 className="text-base font-black text-slate-950 dark:text-white">
+                  {paymentMethodLabel}
+                </h3>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  Esse método será concluído na tela oficial da Stripe para manter o fluxo de cobrança compatível e seguro.
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Ao continuar, você será redirecionado para finalizar o pagamento e retornar automaticamente para a plataforma.
                 </p>
               </div>
             </div>
           ) : null}
 
-          {paymentMethod === 'card' && canUseCard && installmentOptions.length > 1 ? (
+          {isCardFlow && installmentOptions.length > 1 ? (
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Parcelamento
@@ -559,7 +616,7 @@ const CheckoutPaymentMethodCard: React.FC<{
             </div>
           ) : null}
 
-          {paymentMethod === 'card' && canUseCard && !usingSavedCard ? (
+          {isCardFlow && !usingSavedCard ? (
             <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
               <input
                 type="checkbox"
@@ -627,7 +684,7 @@ const CheckoutPaymentMethodCard: React.FC<{
                 <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
                   <Check className="size-4" />
                   <span>
-                    Cupom "{appliedCouponCode}" {appliedCouponSource === 'auto' ? 'aplicado automaticamente' : 'aplicado com sucesso'}
+                    Cupom &quot;{appliedCouponCode}&quot; {appliedCouponSource === 'auto' ? 'aplicado automaticamente' : 'aplicado com sucesso'}
                   </span>
                 </div>
                 {couponSavingsLabel ? (
@@ -641,7 +698,7 @@ const CheckoutPaymentMethodCard: React.FC<{
 
           <AutoRenewToggleCard enabled={autoRenew} onChange={onAutoRenewChange} />
 
-          {paymentMethod === 'card' && canUseCard ? (
+          {hasEnabledMethods ? (
             <button
               type="button"
               onClick={onConfirmClick}
@@ -679,11 +736,6 @@ const CheckoutOrderSummarySidebar: React.FC<{
   planName: string;
   billingCycle: string;
   planBenefits: string[];
-  couponCode: string;
-  applyingCoupon: boolean;
-  appliedCouponCode?: string | null;
-  appliedCouponSource?: 'auto' | 'manual' | null;
-  couponSavingsLabel?: string | null;
   subtotalLabel: string;
   couponDiscountLabel?: string | null;
   residualCreditDiscountLabel?: string | null;
@@ -692,26 +744,17 @@ const CheckoutOrderSummarySidebar: React.FC<{
   paymentMethodLabel: string;
   installmentSummaryLabel: string;
   nextRenewalLabel?: string | null;
-  paymentBreakdownLabel?: string | null;
   paymentProtectionLabel?: string | null;
   legalNotice?: React.ReactNode;
   processing: boolean;
   paymentReady: boolean;
   confirmLabel: string;
   processingLabel: string;
-  onCouponCodeChange: (value: string) => void;
-  onApplyCoupon: () => void;
-  onRemoveCoupon: () => void;
   onConfirmClick: () => void;
 }> = ({
   planName,
   billingCycle,
   planBenefits,
-  couponCode,
-  applyingCoupon,
-  appliedCouponCode,
-  appliedCouponSource,
-  couponSavingsLabel,
   subtotalLabel,
   couponDiscountLabel,
   residualCreditDiscountLabel,
@@ -720,16 +763,12 @@ const CheckoutOrderSummarySidebar: React.FC<{
   paymentMethodLabel,
   installmentSummaryLabel,
   nextRenewalLabel,
-  paymentBreakdownLabel,
   paymentProtectionLabel,
   legalNotice,
   processing,
   paymentReady,
   confirmLabel,
   processingLabel,
-  onCouponCodeChange,
-  onApplyCoupon,
-  onRemoveCoupon,
   onConfirmClick,
 }) => {
   return (
@@ -921,7 +960,6 @@ const CheckoutPaymentStage: React.FC<CheckoutPaymentStageProps> = ({
   emailVerified,
   hasMissingRequirements,
   nextRenewalLabel,
-  paymentBreakdownLabel,
   paymentProtectionLabel,
   installmentOptions = [],
   selectedInstallmentValue = '1',
@@ -929,10 +967,13 @@ const CheckoutPaymentStage: React.FC<CheckoutPaymentStageProps> = ({
   legalNotice,
   pixCapabilityStatus,
   pixCapabilityMessage,
+  enabledPaymentMethods = [],
   enabledPaymentMethodIds = ['card'],
+  selectedPaymentMethodId,
   onCouponCodeChange,
   onApplyCoupon,
   onRemoveCoupon,
+  onPaymentMethodChange,
   onAutoRenewChange,
   onSaveCardChange,
   onSelectSavedCard,
@@ -946,30 +987,24 @@ const CheckoutPaymentStage: React.FC<CheckoutPaymentStageProps> = ({
   confirmLabel,
   processingLabel,
 }) => {
-  const [stripeReady, setStripeReady] = useState(!isStripeInternalCheckout);
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'pix'>('card');
+  const [stripeReady, setStripeReady] = useState(false);
+  const paymentMethod = selectedPaymentMethodId || enabledPaymentMethodIds[0] || '';
   const canUseCard = enabledPaymentMethodIds.includes('card');
-  const canUsePix = enabledPaymentMethodIds.includes('pix');
+  const isCardFlow = paymentMethod === 'card' && canUseCard;
+  const methodMap = useMemo(() => {
+    const source = enabledPaymentMethods.length > 0
+      ? enabledPaymentMethods
+      : enabledPaymentMethodIds.map((methodId) => ({ id: methodId, label: methodId.toUpperCase() }));
+    return new Map(source.map((method) => [method.id, method]));
+  }, [enabledPaymentMethodIds, enabledPaymentMethods]);
+  const paymentMethodLabel = methodMap.get(paymentMethod)?.label || paymentMethod || 'Método';
 
-  useEffect(() => {
-    setStripeReady(!isStripeInternalCheckout);
-  }, [isStripeInternalCheckout, selectedStripeCardId]);
-
-  useEffect(() => {
-    if (paymentMethod === 'card' && !canUseCard && canUsePix) {
-      setPaymentMethod('pix');
-    }
-
-    if (paymentMethod === 'pix' && !canUsePix && canUseCard) {
-      setPaymentMethod('card');
-    }
-  }, [canUseCard, canUsePix, paymentMethod]);
-
-  const paymentReady = canUseCard && paymentMethod === 'card' && (!isStripeInternalCheckout || stripeReady);
-  const paymentMethodLabel = paymentMethod === 'pix' ? 'PIX' : 'Cartão';
-  const installmentSummaryLabel = paymentMethod === 'pix'
-    ? 'À vista'
-    : `${selectedInstallmentValue || '1'}x de ${dueLabel}`;
+  const paymentReady = isCardFlow
+    ? (!isStripeInternalCheckout || stripeReady)
+    : paymentMethod === 'pix'
+      ? pixCapabilityStatus === 'active'
+      : Boolean(paymentMethod);
+  const installmentSummaryLabel = isCardFlow ? `${selectedInstallmentValue || '1'}x de ${dueLabel}` : 'À vista';
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
@@ -1003,6 +1038,7 @@ const CheckoutPaymentStage: React.FC<CheckoutPaymentStageProps> = ({
           processing={processing}
           pixCapabilityStatus={pixCapabilityStatus}
           pixCapabilityMessage={pixCapabilityMessage}
+          enabledPaymentMethods={enabledPaymentMethods}
           enabledPaymentMethodIds={enabledPaymentMethodIds}
           paymentMethod={paymentMethod}
           paymentReady={paymentReady}
@@ -1015,7 +1051,7 @@ const CheckoutPaymentStage: React.FC<CheckoutPaymentStageProps> = ({
           couponSavingsLabel={couponSavingsLabel}
           autoRenew={autoRenew}
           onSaveCardChange={onSaveCardChange}
-          onPaymentMethodChange={setPaymentMethod}
+          onPaymentMethodChange={onPaymentMethodChange}
           onCouponCodeChange={onCouponCodeChange}
           onApplyCoupon={onApplyCoupon}
           onRemoveCoupon={onRemoveCoupon}
@@ -1036,11 +1072,6 @@ const CheckoutPaymentStage: React.FC<CheckoutPaymentStageProps> = ({
         planName={planName}
         billingCycle={billingCycle}
         planBenefits={planBenefits}
-        couponCode={couponCode}
-        applyingCoupon={applyingCoupon}
-        appliedCouponCode={appliedCouponCode}
-        appliedCouponSource={appliedCouponSource}
-        couponSavingsLabel={couponSavingsLabel}
         subtotalLabel={subtotalLabel}
         couponDiscountLabel={couponDiscountLabel}
         residualCreditDiscountLabel={residualCreditDiscountLabel}
@@ -1049,16 +1080,12 @@ const CheckoutPaymentStage: React.FC<CheckoutPaymentStageProps> = ({
         paymentMethodLabel={paymentMethodLabel}
         installmentSummaryLabel={installmentSummaryLabel}
         nextRenewalLabel={nextRenewalLabel}
-        paymentBreakdownLabel={paymentBreakdownLabel}
         paymentProtectionLabel={paymentProtectionLabel}
         legalNotice={legalNotice}
         processing={processing}
         paymentReady={paymentReady}
         confirmLabel={confirmLabel}
         processingLabel={processingLabel}
-        onCouponCodeChange={onCouponCodeChange}
-        onApplyCoupon={onApplyCoupon}
-        onRemoveCoupon={onRemoveCoupon}
         onConfirmClick={onConfirmClick}
       />
     </div>

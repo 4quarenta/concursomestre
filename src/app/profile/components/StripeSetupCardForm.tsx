@@ -28,7 +28,6 @@ interface StripeSetupCardFormProps {
   billingEmail?: string;
   submitLabel?: string;
   onSaved: (paymentMethodId: string) => Promise<void> | void;
-  onSetupIntentConsumed?: () => Promise<void> | void;
 }
 
 const buildStripeElementOptions = (isDarkMode: boolean) => ({
@@ -53,13 +52,25 @@ const buildStripeElementOptions = (isDarkMode: boolean) => ({
 const fieldShellClassName =
   'min-h-[56px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 transition-all focus-within:border-indigo-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 dark:border-slate-700 dark:bg-[#0f1020] dark:focus-within:border-indigo-400 dark:focus-within:bg-[#111428] dark:focus-within:ring-indigo-500/10';
 
+type StripeCardFieldChangeEvent = {
+  complete?: boolean;
+  error?: {
+    message?: string;
+  };
+};
+
+const readErrorMessage = (error: unknown, fallback: string): string => (
+  error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message
+    : fallback
+);
+
 const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publishableKey'>> = ({
   clientSecret,
   billingName,
   billingEmail,
   submitLabel = 'Salvar cartão',
   onSaved,
-  onSetupIntentConsumed,
 }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -92,7 +103,7 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
     return () => observer.disconnect();
   }, []);
 
-  const setFieldState = (field: 'cardNumber' | 'cardExpiry' | 'cardCvc', event: any) => {
+  const setFieldState = (field: 'cardNumber' | 'cardExpiry' | 'cardCvc', event: StripeCardFieldChangeEvent) => {
     setFieldErrors((prev) => {
       const next = { ...prev };
       if (event.error?.message) {
@@ -144,8 +155,8 @@ const StripeSetupCardFormInner: React.FC<Omit<StripeSetupCardFormProps, 'publish
 
       const paymentMethodId = String(result.setupIntent.payment_method);
       await onSaved(paymentMethodId);
-    } catch (saveError: any) {
-      setError(saveError.message || 'Falha ao salvar o cartão na Stripe.');
+    } catch (saveError: unknown) {
+      setError(readErrorMessage(saveError, 'Falha ao salvar o cartão na Stripe.'));
     } finally {
       setSaving(false);
     }

@@ -160,12 +160,15 @@ const formatCurrency = (value: number) => `R$ ${Number(value || 0).toLocaleStrin
 })}`;
 
 const isPlanInCycle = (plan: Plan, cycle: LandingBillingCycle) => {
-  const isMonthly = plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 1;
-  const isQuarterly = plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 3;
-  const isAnnual = plan.interval_unit === 'year' || (plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 12);
+  const intervalUnit = String(plan.interval_unit || '').toLowerCase();
+  const intervalCount = Number(plan.interval_count || 1);
+  const isMonthly = intervalUnit === 'month' && intervalCount === 1;
+  const isQuarterly = intervalUnit === 'month' && intervalCount === 3;
+  const isAnnual = intervalUnit === 'year' || (intervalUnit === 'month' && intervalCount === 12);
+  const isCustomShortCycle = intervalUnit === 'day' || intervalUnit === 'week';
 
   if (Number(plan.price || 0) === 0) return true;
-  if (cycle === 'monthly') return isMonthly;
+  if (cycle === 'monthly') return isMonthly || isCustomShortCycle;
   if (cycle === 'quarterly') return isQuarterly;
   return isAnnual;
 };

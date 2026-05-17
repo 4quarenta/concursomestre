@@ -10,7 +10,7 @@
 */
 
 import { chromium } from '@playwright/test';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -34,7 +34,7 @@ const TARGET_ROUTES = (process.env.CM_TARGET_ROUTES || '')
   .filter(Boolean);
 const ROUTES_TO_MEASURE = TARGET_ROUTES.length > 0 ? TARGET_ROUTES : DEFAULT_TARGET_ROUTES;
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_OUTPUT_PATH = path.resolve(SCRIPT_DIR, '..', '..', 'tmp-hard-refresh-baseline-latest.json');
+const DEFAULT_OUTPUT_PATH = path.resolve(SCRIPT_DIR, '..', '..', 'docs', 'reports', 'artifacts', 'hard-refresh-baseline-latest.json');
 const OUTPUT_PATH = process.env.CM_BASELINE_OUTPUT_PATH || DEFAULT_OUTPUT_PATH;
 
 /**
@@ -394,6 +394,7 @@ const run = async () => {
       routes: results,
     };
 
+    await mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
     await writeFile(OUTPUT_PATH, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
     console.log(JSON.stringify(payload, null, 2));
   } catch (error) {

@@ -12,7 +12,10 @@
 import { useEffect, useState } from 'react';
 import { adminService } from '@services/admin/adminService';
 import { readApiErrorMessage } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
+import { planService } from '@services/plans';
 import type { AdminUserActionResult, AdminUserDetailsPayload } from '@services/admin/adminService';
+import type { Plan } from '@types';
 
 type ToastHandler = (message: string, type?: string) => void;
 export type DetailTab = 'overview' | 'subscription' | 'transactions' | 'comments' | 'support';
@@ -81,6 +84,61 @@ const buildEditUserForm = (detailedUser: AdminUserDetailsPayload | null): EditUs
   reputation: String(Number(detailedUser?.profile?.reputation ?? 100)),
 });
 
+type AdminAvailablePlanItem = {
+  id?: string | number;
+  name?: string;
+  price?: number | string | null;
+  active?: number | string | boolean;
+  is_active?: number | string | boolean;
+};
+
+const mergeDetailedUserWithCatalogPlans = (
+  detailedUser: AdminUserDetailsPayload,
+  catalogPlans: Plan[],
+): AdminUserDetailsPayload => {
+  const existingPlans = Array.isArray(detailedUser?.available_plans)
+    ? (detailedUser.available_plans as AdminAvailablePlanItem[])
+    : [];
+  const mergedById = new Map<string, AdminAvailablePlanItem>();
+
+  existingPlans.forEach((plan) => {
+    const key = String(plan?.id || '').trim();
+    if (!key) return;
+    mergedById.set(key, plan);
+  });
+
+  catalogPlans.forEach((plan) => {
+    const key = String(plan?.id || '').trim();
+    if (!key) return;
+
+    const catalogAsAvailablePlan: AdminAvailablePlanItem = {
+      id: plan.id,
+      name: plan.name,
+      price: plan.price,
+      active: plan.is_active === false ? 0 : 1,
+      is_active: plan.is_active === false ? 0 : 1,
+    };
+    const current = mergedById.get(key);
+
+    mergedById.set(key, current
+      ? {
+          ...catalogAsAvailablePlan,
+          ...current,
+          id: current.id ?? catalogAsAvailablePlan.id,
+          name: current.name || catalogAsAvailablePlan.name,
+          price: current.price ?? catalogAsAvailablePlan.price,
+          active: current.active ?? catalogAsAvailablePlan.active,
+          is_active: current.is_active ?? catalogAsAvailablePlan.is_active,
+        }
+      : catalogAsAvailablePlan);
+  });
+
+  return {
+    ...detailedUser,
+    available_plans: Array.from(mergedById.values()),
+  };
+};
+
 /**
  * Orquestra o modal detalhado de usuarios do admin.
  * O hook centraliza carregamento, refresh, edicao e mutacoes operacionais sem deixar regra na tela.
@@ -100,11 +158,15 @@ export const useAdminUserProfileWorkflow = ({
   const [editUserForm, setEditUserForm] = useState<EditUserForm>(createEmptyEditUserForm);
 
   const refreshDetailedUser = async (userId: string, options?: { syncState?: boolean }) => {
-    const response = await adminService.getUserDetails(userId);
+    const [response, catalogPlans] = await Promise.all([
+      adminService.getUserDetails(userId),
+      planService.getPlans(),
+    ]);
+    const mergedResponse = mergeDetailedUserWithCatalogPlans(response, catalogPlans);
     if (options?.syncState !== false) {
-      setDetailedUser(response);
+      setDetailedUser(mergedResponse);
     }
-    return response;
+    return mergedResponse;
   };
 
   useEffect(() => {
@@ -127,14 +189,17 @@ export const useAdminUserProfileWorkflow = ({
 
     let isCancelled = false;
 
-    void adminService.getUserDetails(String(viewingProfileId))
-      .then((response) => {
+    void Promise.all([
+      adminService.getUserDetails(String(viewingProfileId)),
+      planService.getPlans(),
+    ])
+      .then(([response, catalogPlans]) => {
         if (!isCancelled) {
-          setDetailedUser(response);
+          setDetailedUser(mergeDetailedUserWithCatalogPlans(response, catalogPlans));
         }
       })
       .catch((error) => {
-        console.error(error);
+        clientLog.warn('Error loading user details:', error);
         addToast(readApiErrorMessage(error, 'Erro ao carregar detalhes do usuario.'), 'error');
         if (!isCancelled) {
           setDetailedUser(null);
@@ -193,7 +258,7 @@ export const useAdminUserProfileWorkflow = ({
         user: nextUser,
       };
     } catch (error) {
-      console.error(error);
+      clientLog.warn('Error performing admin user action:', error);
       addToast(readApiErrorMessage(error, 'Erro ao realizar a acao.'), 'error');
       throw error;
     } finally {

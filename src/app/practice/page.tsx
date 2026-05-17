@@ -26,6 +26,7 @@ import { getEffectivePlanName } from '@services/plans/planAccess';
 import { questionService } from '@services/questions';
 import { reportsService } from '@services/reports';
 import { commentService } from '@services/comments';
+import { clientLog } from '@services/monitoring/clientLog';
 import { notificationService } from '@services/notifications';
 import {
   ENEM_FOCUS_NAME,
@@ -629,7 +630,7 @@ const Practice: React.FC = () => {
         }
       })
       .catch((error) => {
-        console.error('Failed to save answer:', error);
+        clientLog.warn('Failed to save answer:', error);
         addToast('Erro ao salvar resposta.', 'error');
       });
   }, [addToast, applyQuestionAnswer, currentUserId, updateUser, upsertUserAnswer]);
@@ -698,7 +699,7 @@ const Practice: React.FC = () => {
 
       addToast(result.message || 'Denuncia enviada com sucesso!', 'success');
     }).catch((error) => {
-      console.error('Failed to create report:', error);
+      clientLog.warn('Failed to create report:', error);
       addToast((error as Error).message || 'Erro ao enviar denuncia.', 'error');
     });
   }, [addLocalReport, addToast, currentUserId, reports]);
@@ -733,7 +734,7 @@ const Practice: React.FC = () => {
         );
       }
     }).catch((error) => {
-      console.error('Failed to save comment:', error);
+      clientLog.warn('Failed to save comment:', error);
       addToast((error as Error).message || 'Erro de conexao ao salvar comentario.', 'error');
     });
   }, [addQuestionComment, addToast, currentUserId, currentUserName]);
@@ -747,7 +748,7 @@ const Practice: React.FC = () => {
     }
 
     commentService.likeComment(commentId, currentUserId).catch((error) => {
-      console.error('Failed to save like:', error);
+      clientLog.warn('Failed to save like:', error);
       addToast((error as Error).message || 'Erro de conexao ao curtir comentario.', 'error');
     });
   }, [addToast, currentUserId, likeQuestionComment]);

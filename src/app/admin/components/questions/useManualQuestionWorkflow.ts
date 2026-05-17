@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Question, SystemSettings } from '@types';
 import { readApiErrorMessage } from '@services/api';
+import { clientLog } from '@services/monitoring/clientLog';
 import { aiService } from '@services/questions';
 import {
   normalizeQuestionPublishStatus,
@@ -631,7 +632,7 @@ export const useManualQuestionWorkflow = ({
       }
       closeManualModal();
     } catch (error) {
-      console.error('Error saving manual question:', error);
+      clientLog.warn('Error saving manual question:', error);
       addToast(readApiErrorMessage(error, 'Erro ao salvar questao. Revise os campos e tente novamente.'), 'error');
     }
   };

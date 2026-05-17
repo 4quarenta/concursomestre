@@ -4,7 +4,97 @@ Data: `2026-05-05`
 
 Veredito: `Nao pronto`
 
+## Atualizacao incremental (`2026-05-16`)
+
+- Etapa **Billing/Stripe**: **Pronta localmente** no recorte auditado. A suite E2E com Stripe em modo teste fechou `GO` com `7/7` cenarios OK: renovacao por Test Clock, auto-renew off/on, upgrade com credito proporcional local, refund concorrente, webhook duplicado, webhook fora de ordem e webhook atrasado com reconciliacao.
+- `scripts/checks/billing-renewal-check.mjs`: checklist agregado fechou `GO` com `22/22` itens OK, sem `RISCO`, `CRITICO` ou `NAO_COMPROVADO`.
+- `modules/subscriptions/services/SubscriptionsBillingSupport.php`: renovacao deixou de reaplicar cupons/descontos de checkout automaticamente; a proxima cobranca usa o preco vigente do plano na plataforma, preservando a regra comercial pedida para renovacoes.
+- `modules/subscriptions/services/SubscriptionsService.php`: finalizacao/sincronizacao Stripe passou a carregar o `price` do plano no contexto local, evitando sincronizar `R$ 0,00` no item de assinatura e impedindo renovacoes sem cobranca.
+- Renovacao e reconciliacao ficaram documentadas e travadas como **server-side**: webhook Stripe e cron de reconciliacao usam assinatura remota/`CRON_SECRET`, sem depender de usuario logado, access token, sessao ou tela de perfil aberta.
+- `src/services/monitoring/clientLog.ts`: logs globais de erro/aviso do cliente agora ficam no `DebugLogger` e so imprimem no console quando `NEXT_PUBLIC_CLIENT_LOGS=verbose` ou `localStorage.cm:debug-logs=1`, reduzindo ruido de DevTools sem esconder diagnostico.
+- `src/services/api/interceptors.ts`, `src/providers/AuthProvider.tsx`, `src/providers/NotificationsProvider.tsx`: erros esperados de HTTP/auth/notificacoes passaram a usar o logger controlado, removendo prints diretos em fluxos globais.
+- `src/providers/MarketplaceProvider.tsx`, `src/state/question-bank/useQuestionBankActions.ts`, `src/state/user-progress/useUserProgressActions.ts`, `src/state/app-config/useSystemSettingsActions.ts` e `src/state/admin-data/useAdminDataActions.ts`: dominios globais/stores passaram para `clientLog`; o recorte tambem removeu `any` residual do `MarketplaceProvider`, corrigiu export invalido em `/plans` e manteve o typecheck verde.
+- Nova rodada de higiene runtime: `subscriptionsService`, `planService`, `notificationService`, `auth/session`, `reputationService`, `analyticsTrackingService`, `/checkout`, `/practice`, `QuestionCard`, moderacao de comentarios, suporte admin, provas, taxonomias, rankings, logs admin, analytics financeiro, perfil detalhado admin, suporte, marketplace, perfil, PDF reader, cronograma, raio-x de banca, parceiro, simulados e leitor passaram a usar `clientLog`; a varredura runtime agora encontra apenas 2 ocorrencias de `console.error/warn/log/debug`, ambas intencionais dentro do proprio wrapper `src/services/monitoring/clientLog.ts`.
+- `planService`, `auth/session` e editor admin de provas tiveram `any` exposto removido no recorte auditado, com contratos minimos para checkout Stripe, cupom, portal, renovacao, cancelamento e taxonomias de prova.
+- Comentarios legados sobre `DataProvider` foram limpos dos stores ativos (`app-config`, `question-bank`, `user-progress`, `notifications`, `admin-data` e `AppConfigProvider`); `rg "DataProvider" src` fora de testes nao retorna referencias de runtime.
+- O artefato de hard refresh saiu da raiz e foi movido para `docs/reports/artifacts/hard-refresh-baseline-latest.json`; `hard-refresh-baseline.mjs` e `hard-refresh-budget.mjs` usam esse caminho por padrao, e a suite de arquitetura agora bloqueia o retorno de `tmp-hard-refresh-baseline-latest.json` na raiz. `npm run check:hard-refresh-budget` e `npm run check:production-local` passaram apos a mudanca.
+- Configuracoes admin: o bloco duplicado de Homepage foi removido e a varredura do admin de settings nao encontrou mais `Homepage`, `homePage`, `landingContent` ou `AdminLandingContent`; a observacao 30 passou a `Concluido`.
+- Cupons admin: `mergeSystemSettings()` passou a normalizar cupons e `resolvePersistedSystemSettings()` agora completa respostas parciais do backend sobre o estado salvo pelo admin. Isso trava a remocao de cupom contra reaparecimento por default e preserva alteracoes quando o backend retorna payload parcial; `src/state/app-config/__tests__/systemSettings.test.ts` cobre os cenarios.
+- Upgrade manual admin: `manual_admin` virou provider nao cobrável em `payment_provider.php`, o upgrade manual cancela assinatura Stripe remota antes de conceder acesso gratuito, e o perfil exibe concessao manual sem tratar como Stripe. Falta E2E sandbox para confirmar Stripe/billing/analytics ponta a ponta.
+- Tipagem compartilhada: `src/types/global.ts` ficou sem `any` explicito, com contratos flexiveis para taxonomias de questoes, nivel vindo como texto/numero/objeto e `firebaseConfig`; `AdminImportSection` passou a renderizar nivel de questao via texto normalizado, evitando objeto React invalido no preview de importacao.
+- Higiene de tipagem/runtime: `accountService`, `commentsService`, `changelogService`, `studyScheduleService`, `reportsService`, `supportService`, `promotionSeo`, `landingPageSeo`, `questionPublication`, `questionFlags`, SEO publico de questao, `dashboardInsightsService`, simulado, service de Raio-X da banca, `legalCommentaryApiService`, listagem publica e reader interno de Lei Comentada, ranking, checkout Stripe/cartao salvo, perfil Stripe, modal de pagamento do marketplace, landing de planos, editor admin de Lei Comentada, `DebugLogger`, tipos de Lei Comentada, `SuccessModal`, privacidade, comentarios e testes de servicos sairam de `any` explicito ou avisos dirigidos no recorte auditado. A varredura atual em `src` (sem testes/fixtures) retorna `0` ocorrencias de `any` explicito, com `npm run typecheck`, `npm run lint` e `npm run check:production-local` verdes.
+- Higiene local: logs temporarios ignorados pelo Git foram removidos da raiz; apenas dois logs do dev server continuam bloqueados por processo ativo e ficaram documentados em `production-removal-candidates-latest.md`.
+- Evidencias desta rodada:
+  - `npm run check:billing-e2e`: **GO**, `7 OK`
+  - `node scripts/checks/billing-renewal-check.mjs`: **GO**, `22 OK`
+  - `npm run check:production-local`: **OK** apos a limpeza de tipagem runtime (`any` explicito = `0`)
+  - `rg "\bany\b" src --glob "*.ts" --glob "*.tsx"` filtrando testes/fixtures: **ok**, sem ocorrencias de runtime
+  - `npx eslint` no recorte final (`admin/operation/lei-comentada/[lawId]/edit`, `DebugLogger`, `SuccessModal`, tipos de Lei Comentada, ranking, checkout, comentarios, Lei Comentada publica, privacidade e landing de planos) com `--max-warnings=0`: **ok**
+  - `npx eslint src --format json`: **ok**, `0` erros e `0` warnings
+  - `npm run lint`: **ok**
+  - `npm run check:production-local -- --with-build`: **ok**, incluindo build Next 16/Turbopack e 39 paginas estaticas geradas
+  - `npm run build`: **OK** com Next/Turbopack apos os ajustes de Lei Comentada, checkout/Stripe e docs
+  - `npm run check:text-encoding`: **ok**
+  - `npm run typecheck`: **ok**
+  - `npm run lint`: **ok**; snapshot atual posterior desta auditoria esta em `0` warnings
+  - `npm run build`: **ok**
+  - `C:\xampp\php\php.exe -l modules/subscriptions/services/SubscriptionsService.php`: **ok**
+  - `C:\xampp\php\php.exe -l modules/subscriptions/services/SubscriptionsBillingSupport.php`: **ok**
+  - `C:\xampp\php\php.exe tests/SubscriptionsCronWiringTest.php`: **ok**, incluindo guarda anti-dependencia de login/admin no cron
+  - `C:\xampp\php\php.exe tests/SubscriptionsCheckoutWiringTest.php`: **ok**, incluindo guarda anti-dependencia de login/admin no webhook Stripe
+  - `npx eslint src/services/monitoring/clientLog.ts src/services/api/interceptors.ts src/providers/NotificationsProvider.tsx src/providers/AuthProvider.tsx --max-warnings=0`: **ok**
+- `npx eslint src/app/plans/page.tsx src/providers/MarketplaceProvider.tsx src/state/admin-data/useAdminDataActions.ts src/state/question-bank/useQuestionBankActions.ts src/state/user-progress/useUserProgressActions.ts src/state/app-config/useSystemSettingsActions.ts src/services/monitoring/clientLog.ts --max-warnings=0`: **ok**
+- `npx eslint` no recorte de servicos/logs quentes (`notificationService`, `planService`, `auth/session`, `subscriptionsService`, `practice`, `QuestionCard`, `CheckoutPage`, moderacao e financeiro admin) com `--max-warnings=0`: **ok**
+- `npx eslint` no recorte final de runtime visual (`PdfViewer`, `cronograma`, `bank-analysis`, `partner-dashboard`, `simulation`, `reader`, `support`, `marketplace`, `profile` e `clientLog`) com `--max-warnings=0`: **ok**
+- `npx eslint src/state/app-config/systemSettings.ts src/state/app-config/__tests__/systemSettings.test.ts --max-warnings=0`: **ok**
+- `npx vitest run --pool=threads src/state/app-config/__tests__/systemSettings.test.ts`: **ok**, 5 testes de cupom/settings.
+- `C:\xampp\php\php.exe -l` em `AdminUserActionsService.php`, `payment_provider.php`, `UsersService.php` e `SubscriptionsBillingSupport.php`: **ok**.
+- `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\AdminUserActionsWiringTest.php`: **ok**.
+- `npx eslint src/types/global.ts src/app/admin/components/import/AdminImportSection.tsx --max-warnings=0`: **ok**.
+- `npx eslint` nos servicos pequenos limpos (`accountService`, `commentsService`, `changelogService`, `studyScheduleService`, `reportsService`, `supportService`, `promotionSeo`, `landingPageSeo`, `questionPublication`, `questionFlags`, SEO publico de questao, `dashboardInsightsService`, `bankAnalysisService`) com `--max-warnings=0`: **ok**.
+- `npx vitest run --pool=threads src/services/bank-analysis/__tests__/bankAnalysisService.test.ts`: **ok**, 3 testes.
+- `rg "console\\.(error|warn|log|debug)" src --glob '!**/*.test.*' -n`: apenas `src/services/monitoring/clientLog.ts`
+  - `src/services/admin/__tests__/adminArchitecture.test.ts`: guarda arquitetural ampliada para bloquear `console.error/warn/log/debug` direto no runtime, exceto o wrapper `clientLog`: **ok**
+  - `npm run check:production-local`: **ok**
+
+## Atualizacao incremental (`2026-05-15`)
+
+- `src/app/lei-comentada/[slug]/page.tsx`: notas de professor/doutrina/jurisprudencia/sumulas agora podem ser posicionadas entre os blocos do texto legal, vinculadas a caput, paragrafo, inciso, alinea ou item, em vez de ficarem apenas ao fim do artigo.
+- `modules/legal_commentary/services/LegalCommentaryAiGenerationService.php`: prompt de IA de Lei Comentada foi endurecido para gerar material de estudo premium em JSON/blocos ricos, com variacao natural por relevancia do dispositivo, contexto de lei/titulo/capitulo/artigo/blocos, anti-repeticao e prudencia contra jurisprudencia/sumula inventada.
+- `modules/legal_commentary/repositories/LegalCommentaryRepository.php` + `src/types/legalCommentary.ts`: persistencia e contrato passaram a aceitar blocos ricos opcionais em comentarios e analise de secao, mantendo compatibilidade com texto legado.
+- `src/app/lei-comentada/[slug]/page.tsx`: o box "Analise aprofundada" exibe a analise do capitulo/secao quando ela existir; quando o conteudo novo em blocos ricos existe, os campos legados nao sao misturados no mesmo box.
+- `modules/subscriptions/services/SubscriptionsService.php`: sincronizacao de renovacao Stripe deixou de criar `Subscription Schedule` para ciclos simples em que o intervalo nao muda; nesses casos atualiza o `subscription_item` com `proration_behavior=none`, evitando fragilidade em ciclos curtos como o plano teste de 2 dias.
+- `modules/subscriptions/services/SubscriptionsService.php`: reconciliacao Stripe agora diferencia fatura antiga ja paga de fatura nova que cobre o proximo ciclo. Se o periodo local venceu sem fatura confirmada para o ciclo seguinte, a assinatura vira `past_due`, o acesso e revogado e o usuario recebe notificacao.
+- Validacoes desta rodada:
+  - `npm run typecheck`: **ok**
+  - `npm run lint`: **ok**; snapshot atual posterior desta auditoria esta em `0` warnings
+  - `npm run build`: **ok**
+  - `C:\xampp\php\php.exe -l modules/subscriptions/services/SubscriptionsService.php`: **ok**
+  - `C:\xampp\php\php.exe -l modules/legal_commentary/services/LegalCommentaryAiGenerationService.php`: **ok**
+  - `C:\xampp\php\php.exe -l modules/legal_commentary/repositories/LegalCommentaryRepository.php`: **ok**
+  - `node scripts/checks/billing-renewal-check.mjs`: substituido pela rodada de 2026-05-16 com **GO** (`22 OK`, sem itens pendentes).
+
+## Atualizacao incremental (`2026-05-09`)
+
+- `src/app/lei-comentada/page.tsx`: refino da experiencia para o padrao visual da plataforma com lista limpa por area, leis com titulo completo (`Lei nº ...`) e detalhamento de secoes por faixa de artigos (`Art. X ao Art. Y`), reduzindo densidade de cards aninhados e melhorando escaneabilidade.
+- `src/app/lei-comentada/page.tsx`: robustez no parser de artigos para aceitar `number` e `numero` no agrupamento de secoes, evitando perda de estrutura quando o payload vier com chave alternativa.
+- `src/app/lei-comentada/page.tsx`: `ensureLawOutline` passou a usar callback estavel com `ref` para estado de outlines, reduzindo reexecucoes desnecessarias e risco de fetch redundante por re-render.
+- `src/app/admin/operation/lei-comentada/[lawId]/edit/page.tsx`: carga inicial do editor admin foi protegida por `loadKey + in-flight promise` para evitar bootstrap duplicado em remount/strict mode, reduzindo flicker e requests redundantes.
+- `src/services/questions/questionService.ts`: leitura de `getQuestionForAdminEdit` agora usa coalescencia por chave (`15s`), reduzindo chamadas duplicadas no editor administrativo.
+- `src/app/admin/operation/questions/[questionId]/edit/page.tsx`: fluxo de carga da questao foi protegido por `questionLoadKey + in-flight promise`, com reaproveitamento do estado ja carregado para o mesmo `questionId`.
+- `src/app/admin/operation/exams/[examId]/edit/page.tsx`: hidratacao do draft da prova passou a usar `draftHydrationKey`, evitando re-hidratacoes repetidas no mesmo exame durante edicao.
+- `src/app/admin/components/questions/AdminQuestionsSection.tsx`: ajustes de copy/accent em mensagens de grade/salvamento para reduzir inconsistencia textual visivel no fluxo operacional.
+- `src/services/auth/session.ts`: sessao passou a normalizar aliases de perfil no bootstrap/refresh (`photo_url -> photoUrl`, `email_verified`, `comments_count`, `target_exam` e flags de acesso), corrigindo falta de atualizacao da foto em pontos que dependem de `currentUser.photoUrl`.
+- Validacoes desta rodada:
+  - `npx eslint src/app/lei-comentada/page.tsx --max-warnings=0`: **ok**
+  - `npm run typecheck`: **ok**
+  - `npm run check:hard-refresh-budget`: **ok**
+  - `npm run check:production-local`: **ok**
+
 ## Atualizacao incremental (`2026-05-08`)
+
+- `src/app/admin/components/shared/useAdminPageController.tsx`: shell do admin voltou ao limite arquitetural da suite critica (helper "thin"), mantendo o preflight de producao verde.
+- Preflight consolidado reexecutado com sucesso: `npm run check:production-local` e `npm run check:production-local -- --with-build` (**ok**).
 
 - `src/providers/AppConfigProvider.tsx`: bootstrap de `admin/settings.php` em `/admin/panel/*` foi adiado para uma janela posterior (`8s`), mantendo o hard refresh do painel sem essa leitura inicial.
 - `src/app/admin/components/support/AdminCommentsModerationSection.tsx`: fila de moderacao foi migrada de loader manual para `React Query` com chave estavel, cache curto (`staleTime=12s`), invalidacao por mutacao e `refetchOnWindowFocus/reconnect` desligados para evitar rajadas.
@@ -12,7 +102,7 @@ Veredito: `Nao pronto`
 - `scripts/checks/hard-refresh-budget.mjs` + `npm run check:hard-refresh-budget`: adicionada trava automatica para falhar quando rotas criticas tiverem requests duplicadas, requests com falha ou excederem budget de `xhr/fetch` e `load`.
 - `src/components/shared/layout/Layout.tsx`: avatares globais agora usam `currentUser.photoUrl` (fallback por inicial), corrigindo inconsistencias apos upload de foto no perfil.
 - Higiene de producao: removidos logs de diagnostico (`console.log`/`console.debug`) em `QuestionCard`, `ReaderPage`, `PdfViewer` e `AdBanner`; busca em `src` nao encontrou `quick-login`, `debugger` ou debug log residual.
-- Baseline tecnico atualizado (`tmp-hard-refresh-baseline-latest.json`) sem duplicatas/falhas:
+- Baseline tecnico atualizado (`docs/reports/artifacts/hard-refresh-baseline-latest.json`) sem duplicatas/falhas:
   - `/dashboard`: `DCL=323ms`, `load=587ms`, `xhr/fetch=3`
   - `/practice`: `DCL=285ms`, `load=512ms`, `xhr/fetch=4`
   - `/admin/panel/dashboard`: `DCL=348ms`, `load=689ms`, `xhr/fetch=3` (`admin/settings.php` fora do bootstrap imediato)
@@ -41,7 +131,7 @@ Veredito: `Nao pronto`
 - `C:/xampp/htdocs/questao-pro-backend/tests/ApiResidualSurfaceWiringTest.php`: superficie publica da API passou a bloquear a mesma classe ampliada de artefatos operacionais.
 - `src/app/practice/page.tsx`: bootstrap de respostas do usuario em `/practice` passou para janela pos-primeiro-paint (`3.2s`), com carga imediata apenas quando o filtro `Excluir Respondidas` estiver ativo.
 - `src/app/dashboard/DashboardPage.tsx`: bootstrap de respostas no dashboard passou para janela pos-primeiro-paint (`4s` + idle), removendo `users/answers.php` do hard refresh inicial de `/dashboard`.
-- Baseline tecnico reexecutado (`tmp-hard-refresh-baseline-latest.json`) sem duplicatas/falhas, com reducao adicional no `/practice`:
+- Baseline tecnico reexecutado (`docs/reports/artifacts/hard-refresh-baseline-latest.json`) sem duplicatas/falhas, com reducao adicional no `/practice`:
   - `/dashboard`: `DCL=149ms`, `load=318ms`, `xhr/fetch=4`
   - `/practice`: `DCL=170ms`, `load=292ms`, `xhr/fetch=5` (antes `6`)
   - `/admin/panel/dashboard`: `DCL=175ms`, `load=400ms`, `xhr/fetch=4`
@@ -74,6 +164,11 @@ Veredito: `Nao pronto`
 - `src/app/admin/components/support/AdminFeedback.tsx`: interface de feedback do admin foi migrada para list table no padrao WordPress (filtros + tabela + conversa expandida por linha), reduzindo UI card-heavy.
 - `src/app/admin/components/settings/LogViewer.tsx`: logs agora explicam e alternam modo de exibicao (`Todas as linhas` vs `So repetidos`) sem perder categorizacao e destaque de frequencia.
 - `src/app/auth/components/Auth.tsx` + `modules/auth/*`: Google login passou a tentar apenas autenticacao no primeiro passo; quando a conta nao existe, exige `nome + telefone` para concluir cadastro social. Backend valida e persiste telefone no cadastro Google.
+- `src/app/auth/components/Auth.tsx` + `src/app/admin/components/settings/AdminSettings.tsx` + `src/config/securityHeaders.ts` + `modules/auth/*`: login/cadastro social com Facebook e Apple implementados localmente (frontend, backend, validacao e campos de configuracao no admin), incluindo ajuste de CSP para scripts/endpoints desses provedores. Falta homologacao com credenciais reais em staging/producao.
+- `src/proxy.ts`: links legados de ativacao/reset (`/activate`, `/activation`, `/verify-email`, `/confirm`, `/recover`, `/forgot-password`, `/reset`) passaram a redirecionar para as rotas canonicas (`/confirm-email` e `/reset-password`), reduzindo o fluxo que caia na home em URLs antigas.
+- `src/app/checkout/CheckoutPage.tsx` + `src/app/checkout/components/CheckoutPaymentStage.tsx`: checkout passou a consumir metodos ativos do painel em tempo real (com selecao dinamica por metodo), separando fluxo interno (cartao) de fluxo hospedado Stripe (pix/boleto/wallets), com bloqueio automatico de recorrencia quando o metodo nao suporta.
+- `src/app/admin/components/settings/StripePaymentMethodsSettings.tsx`: painel administrativo de metodos Stripe ganhou controle operacional de `checkoutSupported` e `recurringSupported`, reduzindo configuracao incoerente de metodo ativo que nao aparecia no checkout.
+- `modules/subscriptions/validators/SubscriptionsValidator.php` + `modules/subscriptions/services/SubscriptionsService.php`: backend passou a receber `payment_method_id` no checkout hospedado, validar compatibilidade por metodo (ativo, checkout, recorrencia, capability PIX) e derivar `payment_method_types` por metodo selecionado.
 
 ## Atualizacao incremental (`2026-05-07`)
 
@@ -85,7 +180,7 @@ Veredito: `Nao pronto`
 - `src/app/admin/components/shared/useAdminPageController.tsx` + `src/app/admin/components/dashboard/AdminDashboard.tsx`: o painel `dashboard` deixou de prefetchar `reportsList` no primeiro paint e passou a usar `dashboardAnalytics.counts.reports_count` para o contador de denuncias abertas; o preload de denuncias ficou restrito a `support/reports` e `panel/alerts`.
 - `src/app/admin/components/shared/useAdminPageController.tsx`: o controller do admin passou a inicializar o estado da aba/secao pela rota real na primeira renderizacao, removendo montagem transitoria de `panel/dashboard` em paginas de suporte e evitando fetch desnecessario de `analytics_dashboard`.
 - `scripts/checks/hard-refresh-baseline.mjs`: baseline passou a registrar `failedRequests` e `xhrFetchSummary` por rota (top endpoints XHR/fetch), deixando o diagnostico de carga inicial auditavel.
-- `scripts/checks/hard-refresh-baseline.mjs`: baseline agora tambem salva automaticamente o ultimo snapshot em `tmp-hard-refresh-baseline-latest.json`, facilitando comparacao entre rodadas sem redirecionamento manual.
+- `scripts/checks/hard-refresh-baseline.mjs`: baseline agora tambem salva automaticamente o ultimo snapshot em `docs/reports/artifacts/hard-refresh-baseline-latest.json`, facilitando comparacao entre rodadas sem redirecionamento manual.
 - `modules/auth/services/AuthService.php`, `modules/auth/controllers/AuthController.php`, `modules/auth/routes.php`, `src/services/auth/session.ts` e `src/services/auth/__tests__/session.test.ts`: bootstrap de autenticacao passou a reaproveitar o payload de usuario no `refresh.php` (quando solicitado), removendo a chamada extra de `auth/me.php` no hard refresh logado.
 - `src/providers/NotificationsProvider.tsx`: o primeiro fetch de notificacoes saiu do bootstrap imediato e passou para janela pos-primeiro-paint (delay controlado), reduzindo carga inicial em hard refresh sem perder polling/foco.
 - `src/app/admin/components/dashboard/AdminDashboard.tsx`: o card "Feedback recente" passou a carregar apos o primeiro paint; `admin/feedback.php` saiu do bootstrap imediato do `panel/dashboard`.
@@ -94,7 +189,7 @@ Veredito: `Nao pronto`
 - `scripts/tasks/production_preflight.php`: reexecutado em ambiente local de desenvolvimento; resultado esperado `fail` para requisitos de deploy publico (APP_ENV=production, APP_URL HTTPS publico, CORS sem localhost, credenciais/segredos de producao e usuario DB dedicado).
 - `scripts/tasks/production_log_audit.php`: reexecutado; sem bloqueio operacional nesta rodada (`fail_on=none`), mas com alta repeticao de logs informativos de auth (`refresh_rotated`/`auth_session_created`) e ausencia esperada do arquivo legado `api/subscriptions/subscription_cron.log`.
 - `scripts/tasks/production_smoke.php`: reexecutado com sucesso apos as mudancas, cobrindo API/web/DB localmente sem regressao funcional.
-- Baseline tecnico (`tmp-hard-refresh-baseline-latest.json`) confirmou ausencia de duplicatas e falhas em `GET`/`POST` XHR/fetch nas rotas criticas:
+- Baseline tecnico (`docs/reports/artifacts/hard-refresh-baseline-latest.json`) confirmou ausencia de duplicatas e falhas em `GET`/`POST` XHR/fetch nas rotas criticas:
   - `/dashboard`
   - `/practice`
   - `/admin/panel/dashboard`
@@ -317,7 +412,7 @@ Backend PHP em `C:/xampp/htdocs/questao-pro-backend`:
 | Banco e cron | Pronto local parcial | Nao pronto ate teste de carga/staging | `CronLockWiringTest`, `CronSecretHardeningWiringTest`, `SubscriptionsCronWiringTest`, `SubscriptionsCheckoutWiringTest`, `MarketplaceSchemaCompatibilityWiringTest`, `MarketplaceGamificationWiringTest` e `ProductionSmokeWiringTest` passaram; cron HTTP e execucao manual admin da reconciliacao Stripe compartilham lock; smoke local abriu 3 conexoes e uso ficou em 3/151; schema do marketplace/gamificacao foi normalizado localmente |
 | Notificacoes/gamificacao | Pronto local parcial | Nao pronto total | Comentarios moderados, curtidas sociais, feedback/suporte, denuncias aceitas, rankings com XP/reputacao/badges basicos, campanhas automaticas, compras/reembolsos de materiais com XP/reputacao/badges, streaks, badges basicos, `past_due` Stripe e reembolso pendente cobertos; UI de notificacoes passa ESLint sem avisos; falta prova gateway real e smoke de deep links |
 | Sanitizacao HTML | Pronto local | Nao pronto ate smoke/staging | Questoes, comentarios e textos/SEO de landings saneados; landing publica bloqueia HTML executavel e canonical sensivel por teste; JSON-LD publico usa serializacao segura; teste de arquitetura bloqueia `dangerouslySetInnerHTML` sem sanitizer conhecido. Se futuramente houver bloco de HTML bruto, deve nascer como feature separada com sandbox/review server-side |
-| Pagamentos/webhooks | Pronto local parcial | Nao pronto | Suite operacional de webhook Stripe passou, alias/canonico estao cobertos, config publica exige chaves validas, verify-payment exige dono autenticado e Stripe Connect bloqueia redirect externo; falta sandbox com webhook publico/tunel |
+| Pagamentos/webhooks | Pronto local | Pronto com ressalvas ate homologacao VPS | Suite E2E Stripe em modo teste passou (`7 OK`): renovacao real por Test Clock, auto-renew, upgrade/pro-rata local, refund concorrente, webhook duplicado, fora de ordem e atrasado com reconciliacao. Alias/canonico, config publica, verify-payment autenticado e Stripe Connect seguem cobertos. Falta apenas homologar webhook publico/tunel e chaves finais na VPS antes do go-live |
 | Deploy VPS/backup/rollback | Pronto local parcial | Nao pronto | Backup, verificador e restore dry-run seguro passaram; falta executar restore real em banco temporario da VPS e rollback completo |
 | Logs/observabilidade | Pronto local parcial | Nao pronto | Scanner de logs e analise no endpoint admin prontos; falta rotacao/alerta real na VPS |
 | Headers de seguranca | Pronto local parcial | Nao pronto ate validar proxy HTTPS | Frontend/API com CSP, clickjacking e nosniff; frontend remove `unsafe-eval` em producao e API local confirmou headers; preflight exige `APP_ENV=production`, `APP_URL` publico, CORS HTTPS sem wildcard e reset DB desativado |
@@ -505,23 +600,30 @@ Observacao: os testes PHP exibem o aviso conhecido `Module "openssl" is already 
 
 ## Atualizacao incremental (`2026-05-09`)
 
+- Performance admin (add/edit): `getUserDetails`, `getAdminDetail`, `getAdminLawUpdates` e `getAdminEditorialBatchStatus` passaram a deduplicar chamadas em voo; editor de Lei Comentada passou a reaproveitar taxonomias do store (com fallback) e so consulta lote editorial ao abrir a aba de IA; editor de Landing deixou de consultar planos quando a tela esta apenas em listagem.
 - `src/app/admin/components/finance/AdminFinanceAnalyticsPanel.tsx`: adicionado bloco operacional `Cobrança em risco (quem e por quê)` com detalhamento por usuário/e-mail/sinal/último evento, cobrindo explicitamente os segmentos `payment_failed` e `subscriber_at_risk`.
 - `src/app/admin/components/questions/AdminQuestionsSection.tsx`: ajustes de copy/acentuação em rótulos críticos (Questões, Comentário, Análise detalhada, Publicação, Página/Próxima) e mensagens de ação em massa para reduzir inconsistências linguísticas no painel.
 - `src/app/notifications/page.tsx`: validado uso do modal padronizado (`useConfirm`) para limpeza e exclusão permanente na lixeira de notificações, sem `window.confirm`.
 - `C:/xampp/htdocs/questao-pro-backend/modules/admin/repositories/AdminUserActionsRepository.php`: verificado que upgrade manual do admin grava assinatura `manual_admin` sem renovação automática (`auto_renew=0`), reduzindo risco de cobrança indevida; falta prova E2E do fluxo completo.
+- `src/proxy.ts` + `src/app/page.tsx`: links legados de autenticação com token agora redirecionam no servidor para `/reset-password` ou `/confirm-email`, evitando cair primeiro na home em fluxos de ativação/redefinição.
+- `C:/xampp/htdocs/questao-pro-backend/modules/admin/services/AdminUserDetailsService.php` + `.../repositories/AdminUserDetailsRepository.php` + `src/app/admin/components/users/UserProfileAdminModal.tsx`: perfil detalhado do admin passou a incluir feedback/sugestões/avaliações e denúncias enviadas pelo usuário, com métricas de relacionamento no modal.
+- `src/state/app-config/systemSettings.ts` e `src/state/app-config/__tests__/systemSettings.test.ts`: removido cupom default fixo, adicionada normalizacao de cupons e alterado o merge de resposta parcial para completar sobre o estado salvo pelo admin. Isso evita reaparição involuntaria apos remocao no painel e tambem evita perda de alteracoes quando o backend retorna payload parcial.
+- `src/app/admin/config/adminPageNavigationConfig.ts`, `src/app/admin/components/database/adminDatabaseNavigationConfig.ts`, `src/app/admin/components/import/AdminGranCrawlerSection.tsx`: painel admin ganhou acesso oficial ao crawler da Gran por seção dedicada (`/admin/operation/gran-crawler`) sem depender de URL manual.
+- `src/app/admin/components/settings/AdminSettings.tsx`: removido bloco duplicado de conteúdo da homepage na aba `Geral`; componente legado `AdminLandingContentSection.tsx` foi eliminado para reduzir ruído de configuração.
+- `docs/reports/production-removal-candidates-latest.md`: inventario inicial de limpeza com itens removidos, candidatos imediatos locais e candidatos condicionados a validacao.
 
 ## Bloqueios para producao
 
 ### P0
 
-- Prova real de pagamentos ausente: antes de vender, precisa validar checkout Stripe, webhook publico, cron de reconciliacao, renovacao, `past_due`, cancelamento e reembolso com sandbox real.
+- Homologacao final de pagamentos na VPS: a prova local com Stripe em modo teste esta verde, mas antes de vender precisa repetir checkout Stripe, webhook publico, cron de reconciliacao, renovacao, `past_due`, cancelamento e reembolso no dominio final/tunel de staging com as chaves corretas.
 - Banco/operacao sem prova de carga: houve historico de `Too many connections`; as travas de cron foram implementadas, mas ainda precisa provar limites de conexao e queries principais em ambiente parecido com a VPS.
 - Checklist de segredos e ambiente ainda precisa ser validado no ambiente final: o preflight agora barra `APP_ENV` incorreto, `APP_URL` local, CORS inseguro, Stripe/Google malformados e segredos fracos, mas ele precisa ser executado na VPS antes do go live.
 - Backup/restore ainda sem ensaio real na VPS: scripts de backup, verificacao e restore seguro existem, mas o restore precisa ser executado em banco temporario e seguido de smoke antes do go live.
 
 ### P1
 
-- Lint raiz esta verde, mas ainda ha volume de avisos de tipagem/React que deve ser reduzido por dominio antes de escalar o time. O recorte recente deixou painel principal, marketing e redes sociais da homepage sem avisos no ESLint direcionado.
+- Lint raiz esta verde: `0` warnings e `0` errors em `npm run lint`. O recorte recente deixou runtime e testes de `src` sem avisos agregados, incluindo painel principal, marketing, redes sociais da homepage, ranking, checkout, comentarios, Lei Comentada publica, privacidade, landing de planos, rotas publicas secundarias, layout global com `next/font` e mocks de servicos tipados.
 - Notificacoes e gamificacao ainda nao possuem motor unico geral de regras nem testes E2E evento-a-evento para ranking real e todos os webhooks financeiros reais; marketplace/social/rankings ja possuem ledger idempotente local para XP/reputacao/badges.
 - Landing pages/campanhas com textos e SEO administraveis ja saneiam markup/URLs perigosas, incluindo canonical sensivel e protocolo relativo. Se o editor passar a aceitar codigo HTML bruto, ainda sera obrigatorio aplicar sandbox/sanitizador dedicado antes de publicar.
 - Logs agora possuem scanner local e analise no endpoint admin, mas ainda faltam rotacao/retencao/alerta real configurados na VPS.

@@ -12,7 +12,7 @@
 */
 
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -34,7 +34,7 @@ const BILLING_CYCLE_OPTIONS = [
 
 type BillingCycle = typeof BILLING_CYCLE_OPTIONS[number]['key'];
 
-export const PlansPage: React.FC = () => {
+const PlansPage: React.FC = () => {
     const { currentUser } = useAuth();
     const systemSettings = useAppConfigStore((state) => state.systemSettings);
     const isSystemSettingsLoaded = useAppConfigStore((state) => state.isSystemSettingsLoaded);
@@ -47,11 +47,7 @@ export const PlansPage: React.FC = () => {
     const [showDowngradeModal, setShowDowngradeModal] = useState(false);
     const [pendingDowngradePlan, setPendingDowngradePlan] = useState<Plan | null>(null);
 
-    useEffect(() => {
-        void loadPlans();
-    }, []);
-
-    const loadPlans = async () => {
+    const loadPlans = useCallback(async () => {
         try {
             const data = await planService.getPlans();
             setPlans(data);
@@ -60,28 +56,49 @@ export const PlansPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [addToast]);
+
+    useEffect(() => {
+        const timerId = window.setTimeout(() => {
+            void loadPlans();
+        }, 0);
+
+        return () => window.clearTimeout(timerId);
+    }, [loadPlans]);
 
     const planDisplayNames = useMemo(() => {
         return plans.reduce<Record<number, string>>((accumulator, plan) => {
-            accumulator[plan.id] = getConfiguredPlanDisplayName(plan.name, systemSettings.planDetails, plan.name);
+            const isCustomShortCycle = plan.interval_unit === 'day' || plan.interval_unit === 'week';
+            accumulator[plan.id] = isCustomShortCycle
+                ? plan.name
+                : getConfiguredPlanDisplayName(plan.name, systemSettings.planDetails, plan.name);
             return accumulator;
         }, {});
     }, [plans, systemSettings.planDetails]);
 
     const filteredPlans = useMemo(() => {
-        return plans.filter((plan) => {
+        const visiblePlans = plans.filter((plan) => {
             if (!isPlanEnabledByName(plan.name, systemSettings.planDetails)) return false;
             if (plan.price === 0) return true;
 
-            const isMonthly = plan.interval_unit === 'month' && plan.interval_count === 1;
-            const isQuarterly = plan.interval_unit === 'month' && plan.interval_count === 3;
-            const isAnnual = plan.interval_unit === 'year' || (plan.interval_unit === 'month' && plan.interval_count === 12);
+            const intervalUnit = String(plan.interval_unit || '').toLowerCase();
+            const intervalCount = Number(plan.interval_count || 1);
+            const isMonthly = intervalUnit === 'month' && intervalCount === 1;
+            const isQuarterly = intervalUnit === 'month' && intervalCount === 3;
+            const isAnnual = intervalUnit === 'year' || (intervalUnit === 'month' && intervalCount === 12);
+            const isCustomShortCycle = intervalUnit === 'day' || intervalUnit === 'week';
 
-            if (billingCycle === 'monthly') return isMonthly;
+            if (billingCycle === 'monthly') return isMonthly || isCustomShortCycle;
             if (billingCycle === 'quarterly') return isQuarterly;
             if (billingCycle === 'annual') return isAnnual;
             return false;
+        });
+
+        return visiblePlans.sort((left, right) => {
+            const leftPrice = Number(left.price || 0);
+            const rightPrice = Number(right.price || 0);
+            if (leftPrice !== rightPrice) return leftPrice - rightPrice;
+            return String(left.name || '').localeCompare(String(right.name || ''), 'pt-BR');
         });
     }, [billingCycle, plans, systemSettings.planDetails]);
 
@@ -138,17 +155,8 @@ export const PlansPage: React.FC = () => {
                 if (normalized.includes('essencial')) return 1;
                 return 0;
             };
-            const getTimeScore = (currentPlan: Plan) => {
-                if (currentPlan.interval_unit === 'year') return 12;
-                if (currentPlan.interval_unit === 'month') return currentPlan.interval_count || 1;
-                return 1;
-            };
-
             const currentTier = getTier(currentUser.subscription?.plan?.name || '');
             const targetTier = getTier(plan.name);
-            const currentPlanInList = plans.find((currentPlan) => currentPlan.id === currentUser?.subscription?.plan_id);
-            const currentTimeScore = currentPlanInList ? getTimeScore(currentPlanInList) : 0;
-            const targetTimeScore = getTimeScore(plan);
 
             if (currentUser.subscription?.plan_id === plan.id) {
                 addToast('Esse já é o plano ativo da sua assinatura.', 'info');

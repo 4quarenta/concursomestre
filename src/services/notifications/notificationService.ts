@@ -11,6 +11,7 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 import { getAccessToken, isAccessTokenExpired } from '@services/auth/session';
+import { clientLog } from '@services/monitoring/clientLog';
 import type { Notification } from 'types';
 
 type NotificationListPayload = {
@@ -78,7 +79,7 @@ export const notificationService = {
       const response = await apiClient.get<Notification[] | NotificationListPayload>(ENDPOINTS.notifications.list);
       return readNotifications(response);
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      clientLog.warn('Error fetching notifications:', error);
       return [];
     }
   },
@@ -188,7 +189,7 @@ export const notificationService = {
       assertApiSuccess(response, 'Não foi possível enviar a notificação.');
       return { success: true };
     } catch (error) {
-      console.error('Error sending notification:', error);
+      clientLog.warn('Error sending notification:', error);
       return { success: false };
     }
   },

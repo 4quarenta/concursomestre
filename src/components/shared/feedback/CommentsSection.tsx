@@ -12,6 +12,7 @@
 
 
 import React, { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { MessageSquare, XCircle, ThumbsUp, Reply, Crown, Zap, Star, Flag, Trash2 } from 'lucide-react';
 import RichTextEditor from '../ui/RichTextEditor';
 import type { QuestaoComentario as Comment } from '@types';
@@ -74,10 +75,13 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
             <div className={`${isHighlighted ? 'ring-2 ring-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 border-indigo-200' : (depth > 0 ? 'bg-slate-50/50 dark:bg-slate-900/20' : 'bg-white dark:bg-slate-800')} p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm space-y-2 transition-all`}>
                 <div className="flex justify-between items-center text-[10px]">
                     <div className="flex items-center gap-2">
-                        <img
+                        <Image
                             src={getAssetUrl(comment.userAvatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.userName)}&background=random&color=fff&size=32`}
                             alt={comment.userName}
-                            className="w-6 h-6 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+                            width={24}
+                            height={24}
+                            unoptimized
+                            className="h-6 w-6 rounded-full border border-slate-200 object-cover dark:border-slate-700"
                         />
                         <div className="flex flex-col">
                             <div className="flex items-center gap-1.5">
@@ -213,10 +217,17 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
 
     // Check for URL hash parameter to highlight external deep link
     useEffect(() => {
+        let frameId: number | null = null;
+        const scheduleHighlight = (commentId: string) => {
+            frameId = window.requestAnimationFrame(() => setLastAddedId(commentId));
+        };
+
         const searchCommentId = new URLSearchParams(window.location.search).get('comment');
         if (searchCommentId) {
-            setLastAddedId(searchCommentId);
-            return;
+            scheduleHighlight(searchCommentId);
+            return () => {
+                if (frameId !== null) window.cancelAnimationFrame(frameId);
+            };
         }
 
         const hash = window.location.hash;
@@ -229,11 +240,15 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
             const url = new URL(urlStr, window.location.origin);
             const commentId = url.searchParams.get('comment');
             if (commentId) {
-                setLastAddedId(commentId); // Use existing highlight logic
+                scheduleHighlight(commentId);
             }
-        } catch (e) {
+        } catch {
             // Ignore parse errors
         }
+
+        return () => {
+            if (frameId !== null) window.cancelAnimationFrame(frameId);
+        };
     }, [isExpanded]); // Run when section becomes visible
 
     useEffect(() => {
@@ -293,7 +308,8 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
 
             const latest = findLatestId(comments);
             if (latest) {
-                setLastAddedId(latest);
+                const frameId = window.requestAnimationFrame(() => setLastAddedId(latest));
+                return () => window.cancelAnimationFrame(frameId);
             }
         }
     }, [comments, lastAddedId]);
@@ -301,7 +317,7 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
     if (!isExpanded) return null;
 
     return (
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6" data-target-id={targetId}>
             <div className="space-y-3" ref={commentEditorRef}>
                 <h3 className="text-[9px] font-bold text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-2">
                     <MessageSquare size={14} /> {title}
@@ -348,21 +364,21 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                         onLike={(id) => onLikeComment(id)}
                         onReport={(id) => openReportModal(id)}
                         onDelete={async (id) => {
-                            if (comment.userId === currentUser?.id) {
-                                const confirmed = await confirm({
-                                    title: "Deletar Comentário",
-                                    description: "Esta ação não pode ser desfeita. Deseja realmente excluir este comentário?",
-                                    confirmText: "Deletar",
-                                    cancelText: "Voltar",
-                                    type: 'danger'
-                                });
-                                if (confirmed) {
-                                    onDeleteComment?.(id);
-                                }
+                            const confirmed = await confirm({
+                                title: "Deletar Comentário",
+                                description: "Esta ação não pode ser desfeita. Deseja realmente excluir este comentário?",
+                                confirmText: "Deletar",
+                                cancelText: "Voltar",
+                                type: 'danger'
+                            });
+                            if (confirmed) {
+                                onDeleteComment?.(id);
                             }
                         }}
                         highlightedId={lastAddedId}
                         currentUserId={currentUser?.id}
+                        restrictedReplies={restrictedReplies}
+                        ownerId={ownerId}
                     />
                 ))}
                 {comments.length === 0 && (

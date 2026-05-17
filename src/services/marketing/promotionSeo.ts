@@ -34,20 +34,20 @@ const stripMetadataText = (value: unknown, fallback: string) => {
   return normalized || fallback;
 };
 
-const readEnvelopeData = (payload: unknown): Record<string, any> => {
+const readEnvelopeData = (payload: unknown): Record<string, unknown> => {
   if (!payload || typeof payload !== 'object') {
     return {};
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'data')) {
     const data = (payload as { data?: unknown }).data;
-    return data && typeof data === 'object' ? data as Record<string, any> : {};
+    return data && typeof data === 'object' ? data as Record<string, unknown> : {};
   }
 
-  return payload as Record<string, any>;
+  return payload as Record<string, unknown>;
 };
 
-const fetchPublicSettingsForPromotionSeo = async (): Promise<Record<string, any>> => {
+const fetchPublicSettingsForPromotionSeo = async (): Promise<Record<string, unknown>> => {
   if (typeof fetch !== 'function') {
     return {};
   }
@@ -80,7 +80,10 @@ export const resolveActivePromotionForSeo = async (slug: string) => {
   const settings = await fetchPublicSettingsForPromotionSeo();
   const siteName = stripMetadataText(settings.siteName, websiteManifest.website.applicationName || 'ConcursoMestre');
   const promotion = settings.activePromotion as Promotion | undefined;
-  const promoEnabled = settings.features?.landingPagePromoEnabled !== false;
+  const features = settings.features && typeof settings.features === 'object'
+    ? settings.features as Record<string, unknown>
+    : {};
+  const promoEnabled = features.landingPagePromoEnabled !== false;
 
   return {
     promotion: promoEnabled && isPromotionActiveForSlug(promotion, slug) ? promotion || null : null,

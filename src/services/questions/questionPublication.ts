@@ -5,19 +5,22 @@ export type QuestionVisibilityStatus = 'public' | 'elite' | 'internal';
 
 const normalizeToken = (value: unknown) => String(value || '').trim().toLowerCase();
 
-export const normalizeQuestionPublishStatus = (question: Record<string, any>): QuestionPublishStatus => {
+const asQuestionPublicationRecord = (question: object): Record<string, unknown> => question as Record<string, unknown>;
+
+export const normalizeQuestionPublishStatus = (question: object): QuestionPublishStatus => {
+  const record = asQuestionPublicationRecord(question);
   const explicitState = normalizeToken(
-    question.publishStatus
-    || question.publish_status
-    || question.publicationStatus
-    || question.publication_status
-    || question.editorialStatus
-    || question.editorial_status
-    || question.estadoEditorial
-    || question.estado_editorial,
+    record.publishStatus
+    || record.publish_status
+    || record.publicationStatus
+    || record.publication_status
+    || record.editorialStatus
+    || record.editorial_status
+    || record.estadoEditorial
+    || record.estado_editorial,
   );
 
-  const rawState = explicitState || normalizeToken(question.status);
+  const rawState = explicitState || normalizeToken(record.status);
 
   if (['scheduled', 'programado'].includes(rawState)) {
     return 'scheduled';
@@ -39,11 +42,12 @@ export const normalizeQuestionPublishStatus = (question: Record<string, any>): Q
   return 'published';
 };
 
-export const normalizeQuestionVisibilityStatus = (question: Record<string, any>): QuestionVisibilityStatus => {
+export const normalizeQuestionVisibilityStatus = (question: object): QuestionVisibilityStatus => {
+  const record = asQuestionPublicationRecord(question);
   const rawVisibility = normalizeToken(
-    question.visibilityStatus
-    || question.visibility_status
-    || question.visibility,
+    record.visibilityStatus
+    || record.visibility_status
+    || record.visibility,
   );
 
   if (['elite', 'premium'].includes(rawVisibility)) {
@@ -87,21 +91,25 @@ export const normalizeQuestionDateInput = (value: unknown): string => {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 16);
 };
 
-export const resolveQuestionScheduledAt = (question: Record<string, any>): Date | null => {
-  const candidate = question.scheduledAt
-    || question.scheduled_at
-    || question.publishAt
-    || question.publish_at;
+export const resolveQuestionScheduledAt = (question: object): Date | null => {
+  const record = asQuestionPublicationRecord(question);
+  const candidate = record.scheduledAt
+    || record.scheduled_at
+    || record.publishAt
+    || record.publish_at;
 
   if (!candidate) {
     return null;
   }
 
-  const date = new Date(candidate);
+  const dateInput = typeof candidate === 'string' || typeof candidate === 'number' || candidate instanceof Date
+    ? candidate
+    : String(candidate);
+  const date = new Date(dateInput);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-export const isQuestionPubliclyVisible = (question: Record<string, any>): boolean => {
+export const isQuestionPubliclyVisible = (question: object): boolean => {
   if (normalizeQuestionVisibilityStatus(question) !== 'public') {
     return false;
   }
@@ -120,20 +128,21 @@ export const isQuestionPubliclyVisible = (question: Record<string, any>): boolea
   return true;
 };
 
-export const withQuestionPublicationAliases = <T extends Record<string, any>>(question: T): T & Question => {
+export const withQuestionPublicationAliases = <T extends object>(question: T): T & Question => {
+  const record = asQuestionPublicationRecord(question);
   const publishStatus = normalizeQuestionPublishStatus(question);
   const visibilityStatus = normalizeQuestionVisibilityStatus(question);
   const scheduledAt = normalizeQuestionDateInput(
-    question.scheduledAt
-    || question.scheduled_at
-    || question.publishAt
-    || question.publish_at,
+    record.scheduledAt
+    || record.scheduled_at
+    || record.publishAt
+    || record.publish_at,
   );
   const publishedAt = normalizeQuestionDateInput(
-    question.publishedAt
-    || question.published_at
-    || question.publicationDate
-    || question.publication_date,
+    record.publishedAt
+    || record.published_at
+    || record.publicationDate
+    || record.publication_date,
   );
 
   return {

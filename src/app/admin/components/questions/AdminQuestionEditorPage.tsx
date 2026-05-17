@@ -373,6 +373,12 @@ const AdminQuestionEditorPage = ({
   const [groupSearch, setGroupSearch] = React.useState('');
   const [isGroupSearchOpen, setIsGroupSearchOpen] = React.useState(false);
   const [isLoadingGroups, setIsLoadingGroups] = React.useState(false);
+  const isMountedRef = React.useRef(true);
+  const hasLoadedGroupsRef = React.useRef(false);
+  const groupsRequestRef = React.useRef<Promise<void> | null>(null);
+  React.useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
   const MULTIPLE_CHOICE_LABEL = 'Múltipla Escolha';
   const MID_LEVEL_LABEL = 'Médio';
   const publishState = resolveAdminPublishState(manualQ as Record<string, unknown>);
@@ -503,33 +509,50 @@ const AdminQuestionEditorPage = ({
       .slice(0, 12);
   }, [groupSearch, manualQ.grupoQuestao, questionGroups]);
 
+  const loadQuestionGroups = React.useCallback((force = false) => {
+    if (!force && hasLoadedGroupsRef.current) {
+      return Promise.resolve();
+    }
+
+    if (groupsRequestRef.current) {
+      return groupsRequestRef.current;
+    }
+
+    setIsLoadingGroups(true);
+    const request = adminService.getQuestionGroups()
+      .then((items) => {
+        if (!isMountedRef.current) return;
+        setQuestionGroups(items);
+        hasLoadedGroupsRef.current = true;
+      })
+      .catch(() => {
+        if (!isMountedRef.current) return;
+        setQuestionGroups([]);
+      })
+      .finally(() => {
+        if (isMountedRef.current) {
+          setIsLoadingGroups(false);
+        }
+        groupsRequestRef.current = null;
+      });
+
+    groupsRequestRef.current = request;
+    return request;
+  }, []);
+
   React.useEffect(() => {
-    let isMounted = true;
+    if (!isGroupSearchOpen && !selectedGroupId) {
+      return;
+    }
+
     const frameId = window.requestAnimationFrame(() => {
-      setIsLoadingGroups(true);
-      adminService.getQuestionGroups()
-        .then((items) => {
-          if (isMounted) {
-            setQuestionGroups(items);
-          }
-        })
-        .catch(() => {
-          if (isMounted) {
-            setQuestionGroups([]);
-          }
-        })
-        .finally(() => {
-          if (isMounted) {
-            setIsLoadingGroups(false);
-          }
-        });
+      void loadQuestionGroups();
     });
 
     return () => {
-      isMounted = false;
       window.cancelAnimationFrame(frameId);
     };
-  }, []);
+  }, [isGroupSearchOpen, loadQuestionGroups, selectedGroupId]);
 
   React.useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -1355,5 +1378,3 @@ const AdminQuestionEditorPage = ({
 };
 
 export default AdminQuestionEditorPage;
-
-

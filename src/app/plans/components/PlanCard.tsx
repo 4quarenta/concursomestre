@@ -46,6 +46,21 @@ export const PlanCard: React.FC<PlanCardProps> = ({
     return (displayName || fallbackName).trim().toUpperCase();
   }, [displayName, plan.name]);
 
+  const billingSuffixLabel = useMemo(() => {
+    const unit = String(plan.interval_unit || '').toLowerCase();
+    const count = Math.max(1, Number(plan.interval_count || 1));
+
+    if (unit === 'day') {
+      return count === 1 ? '/dia' : `/${count} dias`;
+    }
+
+    if (unit === 'week') {
+      return count === 1 ? '/semana' : `/${count} semanas`;
+    }
+
+    return '/mes';
+  }, [plan.interval_count, plan.interval_unit]);
+
   const { monthlyPrice, totalPrice, originalMonthlyPrice, originalTotalPrice, isDiscounted, discountLabel } = useMemo(() => {
     if (isFree) {
       return {
@@ -58,7 +73,11 @@ export const PlanCard: React.FC<PlanCardProps> = ({
       };
     }
 
-    const fallbackCycleDivisor = plan.interval_unit === 'year' ? 12 : (plan.interval_count || 1);
+    const fallbackCycleDivisor = plan.interval_unit === 'year'
+      ? 12
+      : plan.interval_unit === 'month'
+        ? (plan.interval_count || 1)
+        : 1;
     const resolvedOffer = offer || null;
     const resolvedMonthlyPrice = resolvedOffer?.discountedMonthlyAmount ?? (plan.price / fallbackCycleDivisor);
     const resolvedTotalPrice = resolvedOffer?.discountedCycleAmount ?? plan.price;
@@ -76,7 +95,13 @@ export const PlanCard: React.FC<PlanCardProps> = ({
     };
   }, [isFree, offer, plan]);
 
-  const cycleDivisor = offer?.cycleCount || (plan.interval_unit === 'year' ? 12 : (plan.interval_count || 1));
+  const cycleDivisor = offer?.cycleCount || (
+    plan.interval_unit === 'year'
+      ? 12
+      : plan.interval_unit === 'month'
+        ? (plan.interval_count || 1)
+        : 1
+  );
   const finalPrice = Math.max(0, totalPrice - proRatedCredit);
   const hasUpgradeDiscount = proRatedCredit > 0 && !isCurrent && !isDisabled;
   const displayMonthlyPrice = hasUpgradeDiscount ? finalPrice / cycleDivisor : monthlyPrice;
@@ -121,7 +146,7 @@ export const PlanCard: React.FC<PlanCardProps> = ({
                     maximumFractionDigits: 2,
                   })}
             </span>
-            <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-500">/mes</span>
+            <span className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-500">{billingSuffixLabel}</span>
           </div>
 
           {hasUpgradeDiscount && (

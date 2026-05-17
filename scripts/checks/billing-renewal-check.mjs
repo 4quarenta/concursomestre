@@ -211,11 +211,13 @@ pushCheck(
 pushCheck(
   'D2',
   'Reconciliação tenta recuperar renovacao perdida',
-  hasText(serviceFile, 'latest_invoice') && hasText(serviceFile, 'handleStripeInvoicePaid($stripe, $latestInvoice)')
+  hasText(serviceFile, 'resolveLatestPaidStripeInvoice')
+    && hasText(serviceFile, 'handleStripeInvoicePaid($stripe, $latestInvoice')
+    && hasText(serviceFile, 'overdue_without_confirmed_payment')
     ? 'OK'
     : 'RISCO',
   [serviceFile],
-  'Se o webhook falhar, o cron precisa tentar reaproveitar a ultima fatura paga.'
+  'Se o webhook falhar, o cron tenta materializar a ultima fatura paga; se o periodo venceu sem fatura nova que cubra o proximo ciclo, bloqueia o acesso como past_due e notifica o usuario em vez de manter assinatura ativa sem cobranca confirmada.'
 );
 
 pushCheck(

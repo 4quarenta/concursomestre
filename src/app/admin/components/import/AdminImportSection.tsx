@@ -46,6 +46,12 @@ type ExtractedQuestionPreview = Question & {
   year?: string | number;
 };
 
+const getQuestionLevelText = (level: Question['nivel'] | Question['level']) => {
+  if (level === null || level === undefined || level === '') return 'Superior';
+  if (typeof level === 'string' || typeof level === 'number') return String(level);
+  return String(level.nome || level.name || level.descricao || 'Superior');
+};
+
 interface AdminImportSectionProps {
   systemSettings: SystemSettings;
   onGeminiApiKeyChange: (value: string) => void;
@@ -328,7 +334,7 @@ const AdminImportSection = ({
                       </div>
                       <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
                         <Layers size={12} />
-                        <span className="text-[10px] font-bold uppercase">{question.nivel || 'Superior'}</span>
+                        <span className="text-[10px] font-bold uppercase">{getQuestionLevelText(question.nivel || question.level)}</span>
                       </div>
                       <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500">
                         <TrendingUp size={12} />

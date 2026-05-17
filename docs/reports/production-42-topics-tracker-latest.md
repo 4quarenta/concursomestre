@@ -1,58 +1,58 @@
 # Tracker - 42 Observacoes de Producao
 
-Data base: `2026-05-09`
+Data base: `2026-05-16`
 
 ## Resumo atual
 
-- **Concluidos:** `17`
-- **Parciais:** `13`
-- **Pendentes:** `12`
+- **Concluidos:** `30`
+- **Parciais:** `12`
+- **Pendentes:** `0`
 
 ## Status por observacao
 
 | # | Status | Observacao (resumo) | Evidencia atual |
 | --- | --- | --- | --- |
-| 1 | Parcial | Reset abre home antes da tela de reset | Redirecionamento legado na raiz foi reforcado em `src/app/page.tsx`, falta validar UX final em todos os links antigos |
-| 2 | Pendente | Link de ativacao nao abre fluxo de parabens esperado | Ainda sem evidencia funcional final do modal no fluxo completo |
+| 1 | Concluido | Reset abre home antes da tela de reset | Redirecionamento canonico no servidor via `src/proxy.ts` + aliases em `src/app/page.tsx` para links antigos de reset |
+| 2 | Concluido | Link de ativacao nao abre fluxo de parabens esperado | Canonizacao de auth foi centralizada em `src/services/auth/canonicalAuthRedirect.ts`, com cobertura no `proxy`, na raiz (`src/app/page.tsx`) e em rotas alias server-side (`/activate`, `/activation`, `/verify-email`, `/confirm`), garantindo que links legados caiam direto em `/confirm-email`; testes adicionados em `canonicalAuthRedirect.test.ts` |
 | 3 | Concluido | Tempo de estudos com media diaria | `src/app/dashboard/DashboardPage.tsx` |
 | 4 | Concluido | Desempenho por materia sem falso "sem dados" | `src/app/performance-subjects/PerformanceSubjectsPage.tsx` |
 | 5 | Concluido | Avaliar plataforma sem pagina propria, via modal | `src/app/profile/ProfilePage.tsx` |
-| 6 | Concluido | Foto atualizada refletindo no layout global | `src/components/shared/layout/Layout.tsx` |
+| 6 | Concluido | Foto atualizada refletindo no layout global | `Layout` passou a priorizar `currentUser.photoUrl` e a sessao/auth normaliza `photo_url -> photoUrl` no bootstrap/refresh, garantindo reflexo consistente apos upload (`src/components/shared/layout/Layout.tsx`, `src/services/auth/session.ts`) |
 | 7 | Concluido | Dashboard do aluno com foco em "hoje" por padrao | `src/app/dashboard/DashboardPage.tsx` |
 | 8 | Concluido | Foco sem destrinchar subitens | `src/services/filters/index.ts` |
 | 9 | Concluido | Badge "Inedita" centralizado | `src/app/questions/components/QuestionCard.tsx` |
-| 10 | Parcial | Comentario/analise com melhor formatacao de texto | Editor rico saneado (`RichTextEditor`), falta calibrar padrao final de geracao IA |
+| 10 | Concluido | Comentario/analise com melhor formatacao de texto | Renderizador matematico/comentarios agora normaliza HTML legado para Markdown antes da sanitizacao (`MathRichText`), evitando exibicao crua de `<ul><li>` e suportando negrito/italico/sublinhado de forma consistente |
 | 11 | Concluido | Sair da tela cheia no simulado perto de finalizar | `src/app/simulation/page.tsx` |
-| 12 | Parcial | Border-radius global mais contido | Padrao admin consolidado; falta varredura final em todas as telas publicas |
-| 13 | Parcial | Foco de estudo no perfil baseado em dados da plataforma | Fluxo depende das taxonomias; requer validacao funcional completa |
-| 14 | Pendente | Acesso ao crawler do Gran no admin | Sem implementacao validada |
+| 12 | Parcial | Border-radius global mais contido | Padrao admin consolidado; Lei Comentada foi refinada para lista limpa com box/borda/sombra e raio menor no miolo (areas/leis/secoes Art. X ao Art. Y) seguindo a linguagem das telas principais; falta varredura final em todas as telas publicas |
+| 13 | Concluido | Foco de estudo no perfil baseado em dados da plataforma | Modal "Escolha seu foco" passou a consumir `systemSettings.taxonomies.careers` com normalizacao de label e carregamento de taxonomias via store (`useTaxonomyActions`), mantendo fallback seguro |
+| 14 | Concluido | Acesso ao crawler do Gran no admin | Nova secao operacional `Crawler Gran` em Operacao com entrada oficial para `scripts/importers/questions/gran/index.php` (`src/app/admin/components/import/AdminGranCrawlerSection.tsx`) |
 | 15 | Concluido | Telefone obrigatorio no cadastro e dados pessoais | `Auth.tsx`, `ProfilePage.tsx`, backend auth validators |
 | 16 | Concluido | Confirmacao de excluir notificacao fora do padrao | Fluxo usa modal padrao (`useConfirm`) em limpar lixeira e excluir permanente em `src/app/notifications/page.tsx` |
 | 17 | Concluido | Comentarios com deteccao automatica de spam | `modules/comments/services/CommentsService.php` |
 | 18 | Concluido | Dashboard admin com "hoje" por padrao | `src/app/admin/components/dashboard/AdminDashboard.tsx` |
 | 19 | Concluido | `admin/support/feedback` no padrao WordPress | `src/app/admin/components/support/AdminFeedback.tsx` |
-| 20 | Parcial | Resolver denuncia direto da questao aberta | Moderacao avancou; falta prova de resolucao inline no fluxo exato pedido |
-| 21 | Parcial | Texto de visibilidade e outros ajustes de escrita | Grade de questoes revisada com acentuacao/rotulos em `src/app/admin/components/questions/AdminQuestionsSection.tsx`; falta varredura global de copy |
-| 22 | Parcial | Add/edit admin muito lentos | Bootstrap e fetches melhorados; falta tuning especifico por pagina de edicao |
-| 23 | Parcial | Upgrade manual admin sem cobranca | Fluxo admin cria assinatura `payment_provider='manual_admin'`, `auto_renew=0` e `cancel_at_period_end=1` em `modules/admin/repositories/AdminUserActionsRepository.php`; falta homologar E2E com billing/analytics |
-| 24 | Pendente | Perfil detalhado com denuncias/feedback/sugestoes/avaliacoes | Ainda nao consolidado no modal/perfil admin |
-| 25 | Pendente | Tabela vendedores estilo usuarios + gestao completa | Escopo ainda aberto |
+| 20 | Concluido | Resolver denuncia direto da questao aberta | Tela de edicao de questao com denuncia vinculada agora permite resolver/ignorar inline, sem voltar para a fila de suporte (`src/app/admin/operation/questions/[questionId]/edit/page.tsx`) |
+| 21 | Parcial | Texto de visibilidade e outros ajustes de escrita | Grade de questoes e fluxo de geracao revisados com acentuacao/rotulos em `src/app/admin/components/questions/AdminQuestionsSection.tsx` (incluindo correcoes de textos como "Questão sem enunciado" e mensagens de erro de salvamento); falta varredura global de copy |
+| 22 | Parcial | Add/edit admin muito lentos | Tuning aplicado nas rotas de edicao: editor de questao deixou de receber o banco inteiro em memoria (passa apenas questao ativa), editor de prova parou de fazer merge pesado com todas as questoes no mount, editor de Lei Comentada passou a reaproveitar taxonomias do store (com fallback), evita reload duplicado por chave/promise no mount e so consulta lote editorial ao abrir a aba de IA, editor de Landing deixou de consultar planos quando esta apenas na listagem, `getUserDetails/getAdminDetail/getAdminLawUpdates` ganharam deduplicacao in-flight com TTL curto, `getQuestionForAdminEdit` ganhou coalescencia por 15s no service, `operation/questions/[questionId]/edit` passou a deduplicar carga por `questionId` em remounts, e `operation/exams/[examId]/edit` passou a preservar draft hidratado evitando rehidratacao desnecessaria durante edicao. Nesta etapa, o editor de Lei Comentada tambem recebeu limpeza estrutural (sem duplicidade Resumo/Ementa, novo campo de Preâmbulo, vínculo Matéria→Lei→Título→Capítulo enxuto, labels de taxonomia normalizadas para evitar exibir IDs crus como 503/504 e fallback hierárquico consistente). Lei Comentada publica tambem recebeu carga de secoes em modo leve (`outline=1`) com timeout dedicado e cache separado para evitar "Carregando secoes da lei..." infinito. Build/budget/preflight local ok; falta homologacao final de fluidez com massa real em staging/VPS. |
+| 23 | Parcial | Upgrade manual admin sem cobranca | `manual_admin` virou provider nao cobrável oficial; upgrade manual cancela assinatura Stripe remota antes de conceder beneficio gratuito e perfil exibe "Concessao manual"; falta homologar E2E com Stripe sandbox/billing/analytics |
+| 24 | Concluido | Perfil detalhado com denuncias/feedback/sugestoes/avaliacoes | Backend exposto em `AdminUserDetailsService/Repository` e nova aba `Relacionamento` no modal (`UserProfileAdminModal.tsx`) |
+| 25 | Parcial | Tabela vendedores estilo usuarios + gestao completa | `AdminFinance` recebeu grade WP-like com busca/filtro, selecao em massa, acao em lote (ativar/suspender/banir), acoes por linha (ver/editar/vendas/produtos), modal com pagamentos/documentos e moderacao rapida de materiais (aprovar/rejeitar); falta apenas homologacao funcional ponta a ponta com massa real |
 | 26 | Concluido | Badge de materiais aguardando aprovacao no menu | `AdminStats` + `useAdminPageController` + `AdminNavigationSidebar` |
 | 27 | Concluido | Cobranca em risco sem detalhamento de falha/usuario | Painel financeiro agora lista usuario, email, sinal e ultimo evento em `src/app/admin/components/finance/AdminFinanceAnalyticsPanel.tsx` |
-| 28 | Pendente | Cenarios Stripe "partial/not supported" | Ainda com pendencias de homologacao/staging |
-| 29 | Parcial | `CRON_SECRET` nao configurado | Preflight e lock prontos; falta ambiente final com segredo configurado |
-| 30 | Pendente | Limpeza de "lixo" em configuracoes | Revisao funcional ainda pendente |
-| 31 | Pendente | Seguranca admin com IP suspeito/banimento | Sem modulo fechado |
+| 28 | Concluido | Cenarios Stripe "partial/not supported" | Suite E2E local com Stripe em modo teste fechou `GO` (`7 OK`) e o checklist agregado fechou `GO` (`22 OK`). Coberto: renovacao por Test Clock, auto-renew off/on, upgrade com credito proporcional local, refund concorrente, webhook duplicado, fora de ordem e atrasado com reconciliacao. O plano teste curto respeita duracao/preco de 2 dias, reembolso concluido cancela assinatura imediatamente, e renovacao usa preco vigente do plano sem reaplicar cupom de checkout. Falta apenas homologacao operacional do dominio/VPS, tratada na auditoria macro, nao como pendencia funcional deste topico. |
+| 29 | Parcial | `CRON_SECRET` nao configurado | Segredo local forte configurado em `.env` e preflight passou em `CRON_SECRET/CRON_SECRET_STRENGTH`; ainda faltam ajustes de ambiente de producao (`APP_ENV`, `APP_URL` HTTPS, CORS publico e usuario DB dedicado) |
+| 30 | Concluido | Limpeza de "lixo" em configuracoes | Removido bloco duplicado de Homepage em Configuracoes Gerais e componente legado eliminado (`src/app/admin/components/settings/AdminSettings.tsx`, `src/app/admin/components/settings/AdminLandingContentSection.tsx`). Varredura atual do admin de settings nao encontrou `Homepage`, `homePage`, `landingContent` ou `AdminLandingContent`; permanece apenas a configuracao estrutural de landing usada pela homepage publica |
+| 31 | Concluido | Seguranca admin com IP suspeito/banimento | Novo endpoint `admin/security_ips.php` com lista de IPs suspeitos (sinais e score), bloqueio/desbloqueio manual no painel (`AdminSettings`), tabela de ban (`security_ip_bans`) e enforcement real nas rotas de auth/middleware (`IpBanGuard`) |
 | 32 | Parcial | Google login pedindo dados pessoais se conta nao existir | Fluxo implementado localmente; falta validacao E2E completa |
-| 33 | Pendente | Remover cupom re-adiciona | Sem correcao validada |
-| 34 | Pendente | Login/cadastro Facebook | Nao implementado |
-| 35 | Pendente | Login Apple | Nao implementado |
-| 36 | Pendente | Metodos de pagamento do painel nao aparecem no checkout | Sem fechamento completo |
+| 33 | Concluido | Remover cupom re-adiciona | `src/state/app-config/systemSettings.ts` normaliza cupons, trata `null` como lista vazia e completa respostas parciais do backend sobre o estado salvo; `src/state/app-config/__tests__/systemSettings.test.ts` trava default vazio, remocao e resposta parcial |
+| 34 | Parcial | Login/cadastro Facebook | Fluxo social implementado no frontend (`Auth.tsx`) e backend (`api/auth/facebook.php`, `modules/auth/*`), com campos admin para `facebookAuthAppId`/`facebookAuthAppSecret`; falta homologacao E2E com app real (Meta) |
+| 35 | Parcial | Login Apple | Fluxo social implementado no frontend (`Auth.tsx`) e backend (`api/auth/apple.php`, `modules/auth/*`), com campos admin para `appleAuthClientId`/`appleAuthRedirectUri`; falta homologacao E2E com credenciais Apple reais |
+| 36 | Concluido | Metodos de pagamento do painel nao aparecem no checkout | Checkout agora consome metodos ativos do painel em tempo real, permite selecao dinamica (cartao/pix/boleto/wallets) e envia `payment_method_id` ao backend; admin ganhou controle de `checkoutSupported` e `recurringSupported` por metodo (`CheckoutPage`, `CheckoutPaymentStage`, `StripePaymentMethodsSettings`, `SubscriptionsValidator`, `SubscriptionsService`) |
 | 37 | Concluido | Reportar comentario com motivo (igual reportar questao) | `src/components/shared/feedback/CommentsSection.tsx` |
-| 38 | Parcial | Muitos erros/violations no console | Reducao relevante; falta zerar backlog residual |
-| 39 | Parcial | Limpeza de codigo morto + comentarios | Avanco em higiene/arquitetura; ainda ha passivo |
+| 38 | Concluido | Muitos erros/violations no console | Fluxos de runtime passaram para `clientLog`, preservando diagnostico no DebugLogger e evitando `console.error/warn/log/debug` direto salvo modo verbose. A varredura atual de `src` encontra apenas 2 ocorrencias intencionais dentro do proprio `src/services/monitoring/clientLog.ts`. Recorte validado com ESLint direcionado sem warnings, `typecheck`, `check:text-encoding` e `check:production-local` |
+| 39 | Parcial | Limpeza de codigo morto + comentarios | Avanco em higiene/arquitetura; `MarketplaceProvider` teve `any` residual removido no recorte auditado, `/plans` deixou de exportar simbolo invalido no App Router, `planService`, `auth/session` e editor admin de provas perderam `any` exposto no recorte de lint, `src/types/global.ts` ficou sem `any` explicito e ganhou contratos flexiveis para taxonomias/level/firebase, o importador admin passou a renderizar nivel de questao como texto seguro. Nesta rodada tambem sairam `any` explicitos de `accountService`, comentarios, changelog, cronograma, denuncias, suporte, SEO de landing/promo, publicacao/flags de questoes, SEO publico de questao, insights do dashboard, simulado, service de Raio-X da banca, `legalCommentaryApiService`, listagem publica e reader interno de Lei Comentada, ranking, checkout Stripe/cartao salvo, perfil Stripe, modal de pagamento do marketplace, landing de planos, editor admin de Lei Comentada, `DebugLogger`, tipos de Lei Comentada, `SuccessModal`, privacidade, comentarios, telas publicas secundarias e mocks de testes de servicos. A varredura atual de runtime em `src` (sem testes/fixtures) retornou `0` ocorrencias de `any` explicito; `npm run typecheck`, `npm run lint` e `npm run check:production-local` passaram. Snapshot agregado atual: `npx eslint src --format json` com `0` erros e `0` warnings. Logs temporarios locais foram removidos, logs diretos de runtime foram centralizados, fontes globais migraram para `next/font` e comentarios legados sobre `DataProvider` foram limpos dos stores ativos; ainda ha passivo por dominio para limpeza final de arquivos/legados e revisao manual de codigos mortos |
 | 40 | Concluido | Visualizador de logs com visao completa | `src/app/admin/components/settings/LogViewer.tsx` |
-| 41 | Pendente | Lista objetiva de arquivos removiveis | Falta relatorio final de descarte seguro |
+| 41 | Parcial | Lista objetiva de arquivos removiveis | Relatorio objetivo mantido em `docs/reports/production-removal-candidates-latest.md`; limpeza real ja aplicada em artefatos locais (`.codex-dev*.log`, `.tmp-dev*.log`, `.tmp-next-start*.log`, `tmp-next-start-3102.log`), baseline de hard refresh movido para `docs/reports/artifacts/hard-refresh-baseline-latest.json` e componente legado removido; pendente apenas a limpeza final dos dois logs webpack ainda bloqueados por processo ativo e a fase 2 por dominio |
 | 42 | Parcial | Modelos de e-mail editaveis no admin | Secao pronta local, falta homologacao SMTP real |
 
 ## Auditoria de producao (macro)

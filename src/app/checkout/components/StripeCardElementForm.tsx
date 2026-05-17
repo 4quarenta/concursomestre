@@ -18,18 +18,44 @@ import {
   useElements,
   useStripe,
 } from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
+import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { CreditCard, Loader2, Lock } from 'lucide-react';
 import type { Address } from '@types';
 
 type StripePaymentStep = {
   clientSecret?: string | null;
   status?: string | null;
-  confirmationType?: 'payment' | 'setup' | 'none';
+  confirmationType?: 'payment' | 'setup' | 'none' | string | null;
   subscriptionId?: string | null;
   paymentMethodId?: string | null;
   paymentIntentId?: string | null;
   saveCard?: boolean;
+};
+
+type StripeCardFieldChangeEvent = {
+  complete?: boolean;
+  brand?: string;
+  error?: {
+    message?: string;
+  };
+};
+
+type StripeConfirmationResult =
+  | Awaited<ReturnType<Stripe['confirmCardPayment']>>
+  | Awaited<ReturnType<Stripe['confirmCardSetup']>>;
+
+const readErrorMessage = (error: unknown, fallback: string): string => (
+  error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message
+    : fallback
+);
+
+const readPaymentIntentId = (confirmation: StripeConfirmationResult | null): string | null => {
+  if (!confirmation || !('paymentIntent' in confirmation)) {
+    return null;
+  }
+
+  return confirmation.paymentIntent?.id || null;
 };
 
 interface StripeCardElementFormProps {
@@ -150,7 +176,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
     return () => observer.disconnect();
   }, []);
 
-  const setFieldState = (field: 'cardNumber' | 'cardExpiry' | 'cardCvc', event: any) => {
+  const setFieldState = (field: 'cardNumber' | 'cardExpiry' | 'cardCvc', event: StripeCardFieldChangeEvent) => {
     setFieldErrors((prev) => {
       const next = { ...prev };
       if (event.error?.message) {
@@ -225,7 +251,7 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
         return;
       }
 
-      let confirmation: any = null;
+      let confirmation: StripeConfirmationResult | null = null;
       if (nextStep.clientSecret) {
         confirmation =
           nextStep.confirmationType === 'setup'
@@ -247,11 +273,11 @@ const StripeCardElementFormInner: React.FC<Omit<StripeCardElementFormProps, 'pub
         paymentIntentId:
           nextStep.paymentIntentId ||
           (nextStep.confirmationType === 'payment'
-            ? ((confirmation as any)?.paymentIntent?.id || null)
+            ? readPaymentIntentId(confirmation)
             : null),
       });
-    } catch (submitError: any) {
-      setError(submitError?.message || 'Falha ao processar o pagamento com cartão.');
+    } catch (submitError: unknown) {
+      setError(readErrorMessage(submitError, 'Falha ao processar o pagamento com cartão.'));
     } finally {
       setSubmitting(false);
     }

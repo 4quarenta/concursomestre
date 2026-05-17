@@ -27,8 +27,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
     isOpen,
     onClose,
     title = "Acesso Restrito",
-    description = "Para utilizar esta funcionalidade e salvar seu progresso, você precisa estar conectado à sua conta.",
-    actionSource = "funcionalidade"
+    description = "Para utilizar esta funcionalidade e salvar seu progresso, você precisa estar conectado à sua conta."
 }) => {
     const router = useRouter();
 

@@ -134,7 +134,7 @@ Os principais dominios funcionais do produto hoje sao:
 - Papel: painel principal do aluno.
 - Como funciona:
   - resume progresso, desempenho, atalhos e recomendacoes
-  - depende de AuthProvider e DataProvider
+  - depende de AuthProvider, AppConfigProvider e stores dedicados de progresso/notificacoes
 #### /practice
 - Arquivo: src/app/practice/page.tsx
 - Papel: pratica de questões.
@@ -220,14 +220,21 @@ otificationService
 ## Providers globais
 ### AppProviders
 - compoe a arvore oficial de providers
-- garante ordem consistente de autenticação, dados, marketplace, tema, toast e modal
+- garante ordem consistente de autenticação, configuracao, marketplace, tema, toast, modal e query cache
 ### AuthProvider
 - guarda o usuário autenticado
 - centraliza login, logout, refresh de sessão e eventos da conta
 - exp?e dados de assinatura, progresso e permissao do usuário
-### DataProvider
-- hidrata taxonomias, questões, relatórios, configurações e caches de dados globais
-- organiza parte relevante do bootstrap da aplicação autenticada
+### QueryProvider
+- configura o TanStack Query para cache, deduplicacao e invalidacao de leituras do frontend
+### AppConfigProvider
+- hidrata configuracoes publicas/admin e taxonomias por demanda usando o store de app-config
+### Stores Zustand
+- `app-config`: settings, modulos e taxonomias
+- `question-bank`: listagem, paginacao e estado local das questoes
+- `user-progress`: respostas, comentarios do perfil e notas do usuario
+- `notifications`: notificacoes, lixeira e mutacoes de leitura
+- `admin-data`: usuarios, denuncias/relatorios e rankings administrativos
 ### MarketplaceProvider
 - concentra estado global do marketplace que precisa sobreviver entre telas
 - coordena atualizacao otimista de compra, transação e reembolso

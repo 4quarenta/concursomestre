@@ -22,6 +22,7 @@ import { isPlatformOriginalQuestion, isQuestionCanceled, questionService } from 
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import MathRichText from '@/components/shared/math/MathRichText';
 import { commentService } from '@services/comments';
+import { clientLog } from '@services/monitoring/clientLog';
 
 const fixHtmlImages = (html: string) => {
   const normalizedHtml = normalizeQuestionRichHtml(html);
@@ -341,7 +342,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       const comments = await commentService.getComments(String(questionId), authenticatedUserId || undefined);
       setQuestionComments(questionId, comments);
     } catch (error) {
-      console.error(`[QuestionCard] Failed to fetch comments for ${questionId}`, error);
+      clientLog.warn(`[QuestionCard] Failed to fetch comments for ${questionId}`, error);
       addToast('Erro ao carregar comentarios.', 'error');
     }
   }, [addToast, authenticatedUserId, setQuestionComments]);
@@ -357,7 +358,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       addToast('Denuncia enviada com sucesso.', 'success');
       return true;
     } catch (error) {
-      console.error('[QuestionCard] Failed to report comment:', error);
+      clientLog.warn('[QuestionCard] Failed to report comment:', error);
       addToast('Erro de conexao ao enviar denuncia.', 'error');
       return false;
     }
@@ -371,7 +372,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       await commentService.deleteComment(commentId, authenticatedUserId);
       addToast('Comentario excluido com sucesso.', 'success');
     } catch (error) {
-      console.error('[QuestionCard] Failed to delete comment:', error);
+      clientLog.warn('[QuestionCard] Failed to delete comment:', error);
       addToast('Erro ao excluir comentario.', 'error');
       await fetchComments(questionId);
     }
@@ -495,7 +496,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         const data = await questionService.getQuestionStats(question.id);
         setLocalStats(data);
       } catch (err) {
-        console.error("Failed to load stats", err);
+        clientLog.warn("Failed to load stats", err);
       } finally {
         setLoadingStats(false);
       }
@@ -648,7 +649,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         title: 'Desafio ConcursoMestre',
         text: textToShare,
         url: questionUrl
-      }).catch(console.error);
+      }).catch((error) => clientLog.warn('Failed to share question:', error));
     } else {
       navigator.clipboard.writeText(`${textToShare}\n\nLink: ${questionUrl}`);
       addToast('Link e texto copiados para a área de transferência.', 'success');
@@ -681,7 +682,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     setIsPreparingNoteModal(true);
     Promise.resolve(maybePromise)
       .catch((error) => {
-        console.error('Failed to preload question notes:', error);
+        clientLog.warn('Failed to preload question notes:', error);
       })
       .finally(() => {
         setIsPreparingNoteModal(false);

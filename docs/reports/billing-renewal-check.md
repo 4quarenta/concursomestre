@@ -2,8 +2,8 @@
 
 Resultado final: **GO**
 
-OK: 21
-RISCO: 1
+OK: 22
+RISCO: 0
 CRITICO: 0
 NAO_COMPROVADO: 0
 
@@ -18,7 +18,7 @@ NAO_COMPROVADO: 0
 | C3 | Webhook cobre eventos essenciais | OK | `C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php` |
 | C4 | Webhook atrasado e fora de ordem validados pela suite | OK | `C:/dev/concursomestre/scripts/checks/output/billing-e2e-report.json`<br>`C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php`<br>`C:/xampp/htdocs/questao-pro-backend/api/subscriptions/stripe_webhook.php` |
 | D1 | Reconciliação Stripe ativa | OK | `C:/xampp/htdocs/questao-pro-backend/api/subscriptions/cron_stripe_reconciliation.php`<br>`C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php` |
-| D2 | Reconciliação tenta recuperar renovacao perdida | RISCO | `C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php` |
+| D2 | Reconciliação tenta recuperar renovacao perdida | OK | `C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php` |
 | E1 | Auto renew on exige payment method no backend | OK | `C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php` |
 | E2 | Auto renew off sincroniza cancel_at_period_end | OK | `C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php` |
 | E3 | Cancelamento apos 7 dias nao bloqueia desligamento da renovacao | OK | `C:/xampp/htdocs/questao-pro-backend/modules/subscriptions/services/SubscriptionsService.php` |
@@ -43,7 +43,7 @@ NAO_COMPROVADO: 0
 - **C3**: Eventos essenciais de ciclo, falha, cancelamento e refund.
 - **C4**: Depende da suite operacional com Stripe real em modo teste e simulacao controlada de entrega.
 - **D1**: Confere a ponte oficial do cron e o loop de reconciliacao.
-- **D2**: Se o webhook falhar, o cron precisa tentar reaproveitar a ultima fatura paga.
+- **D2**: Se o webhook falhar, o cron tenta materializar a ultima fatura paga; se o periodo venceu sem fatura nova que cubra o proximo ciclo, bloqueia o acesso como past_due e notifica o usuario em vez de manter assinatura ativa sem cobranca confirmada.
 - **E1**: Nao basta a UI esconder o toggle.
 - **E2**: O backend precisa propagar o desligamento da renovacao para a Stripe.
 - **E3**: Depois de 7 dias a regra esperada e encerrar apenas a renovacao futura.

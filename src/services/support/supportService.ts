@@ -41,16 +41,36 @@ export type CreatedSupportThreadResult = {
   parent_id: number | null;
 };
 
-const readCreatedThreadId = (payload: any) => Number(
-  payload?.id
-  || payload?.feedback_id
-  || payload?.thread_id
-  || payload?.insert_id
-  || payload?.feedback?.id
-  || payload?.thread?.id
-  || payload?.data?.id
-  || 0,
+type SupportRecord = Record<string, unknown>;
+
+type SupportPayload = SupportRecord & {
+  feedback?: SupportThread[] | SupportRecord;
+  replies?: SupportReply[];
+  thread?: SupportRecord;
+  data?: SupportRecord;
+};
+
+const asSupportRecord = (value: unknown): SupportRecord => (
+  value && typeof value === 'object' ? value as SupportRecord : {}
 );
+
+const readCreatedThreadId = (payload: unknown) => {
+  const record = asSupportRecord(payload);
+  const feedback = asSupportRecord(record.feedback);
+  const thread = asSupportRecord(record.thread);
+  const data = asSupportRecord(record.data);
+
+  return Number(
+    record.id
+    || record.feedback_id
+    || record.thread_id
+    || record.insert_id
+    || feedback.id
+    || thread.id
+    || data.id
+    || 0,
+  );
+};
 
 /**
  * Centraliza o fluxo da central de suporte/feedback do usuario.
@@ -65,8 +85,9 @@ export const supportService = {
    * @since 1.0.0
    */
   async listThreads(): Promise<SupportThread[]> {
-    const response = await apiClient.get(ENDPOINTS.feedback.list) as any;
-    const payload = readApiData<any>(response, {});
+    const response = await apiClient.get(ENDPOINTS.feedback.list) as unknown;
+    const payload = readApiData<SupportThread[] | SupportPayload>(response, {});
+    const responsePayload = asSupportRecord(response) as SupportPayload;
 
     if (Array.isArray(payload)) {
       return payload;
@@ -76,8 +97,8 @@ export const supportService = {
       return payload.feedback;
     }
 
-    if (Array.isArray(response?.feedback)) {
-      return response.feedback;
+    if (Array.isArray(responsePayload.feedback)) {
+      return responsePayload.feedback;
     }
 
     return [];
@@ -89,15 +110,16 @@ export const supportService = {
    * @since 1.0.0
    */
   async listReplies(threadId: number): Promise<SupportReply[]> {
-    const response = await apiClient.get(`${ENDPOINTS.feedback.list}?id=${threadId}`) as any;
-    const payload = readApiData<any>(response, {});
+    const response = await apiClient.get(`${ENDPOINTS.feedback.list}?id=${threadId}`) as unknown;
+    const payload = readApiData<SupportPayload>(response, {});
+    const responsePayload = asSupportRecord(response) as SupportPayload;
 
     if (Array.isArray(payload?.replies)) {
       return payload.replies;
     }
 
-    if (Array.isArray(response?.replies)) {
-      return response.replies;
+    if (Array.isArray(responsePayload.replies)) {
+      return responsePayload.replies;
     }
 
     return [];
@@ -110,10 +132,10 @@ export const supportService = {
    * @since 1.0.0
    */
   async createThread(input: CreateSupportThreadInput): Promise<CreatedSupportThreadResult> {
-    const response = await apiClient.post(ENDPOINTS.feedback.create, input) as any;
+    const response = await apiClient.post(ENDPOINTS.feedback.create, input) as unknown;
     assertApiSuccess(response, 'Nao foi possivel enviar a solicitacao.');
 
-    const payload = readApiData<any>(response, {});
+    const payload = readApiData<SupportPayload>(response, {});
 
     return {
       id: readCreatedThreadId(payload),
@@ -136,11 +158,11 @@ export const supportService = {
       type,
       reason: 'Resposta do usuario',
       details,
-    }) as any;
+    }) as unknown;
 
     assertApiSuccess(response, 'Nao foi possivel enviar a solicitacao.');
 
-    const payload = readApiData<any>(response, {});
+    const payload = readApiData<SupportPayload>(response, {});
 
     return {
       id: readCreatedThreadId(payload),

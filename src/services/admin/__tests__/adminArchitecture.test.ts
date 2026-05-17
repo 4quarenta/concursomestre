@@ -137,6 +137,22 @@ const findDirectRechartsResponsiveContainerImports = () => (
     })
 );
 
+const findDirectRuntimeConsoleCalls = () => (
+  listSourceFiles('src')
+    .filter((filePath) => !filePath.includes(`${path.sep}__tests__${path.sep}`))
+    .filter((filePath) => !filePath.endsWith(`${path.sep}services${path.sep}monitoring${path.sep}clientLog.ts`))
+    .flatMap((filePath) => {
+      const relativePath = path.relative(root, filePath);
+      const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+
+      return lines.flatMap((line, index) =>
+        /console\.(?:error|warn|log|debug)\s*\(/.test(line)
+          ? [`${relativePath}:${index + 1}:${line.trim()}`]
+          : []
+      );
+    })
+);
+
 describe('admin architecture', () => {
   it('keeps the admin page as a thin composition shell', () => {
     expect(countLines('src/app/admin/page.tsx')).toBeLessThanOrEqual(60);
@@ -165,6 +181,7 @@ describe('admin architecture', () => {
     expect(findPatternMatches('src', /\buseData\s*\(/)).toEqual([]);
     expect(findPatternMatches('src', /from\s+['"][^'"]*DataProvider['"]/)).toEqual([]);
     expect(findPatternMatches('src', /\bdebugger\b|console\.(?:log|debug)\s*\(/)).toEqual([]);
+    expect(findDirectRuntimeConsoleCalls()).toEqual([]);
     expect(findPatternMatches('src', /\bwindow\.confirm\s*\(|\balert\s*\(/)).toEqual([]);
     expect(listRelativeSourceFiles('src').some((filePath) => /quick[-_]?login/i.test(filePath))).toBe(false);
   });
@@ -249,6 +266,11 @@ describe('admin architecture', () => {
     expect(fs.existsSync(path.resolve(root, 'src/features'))).toBe(false);
     expect(fs.existsSync(path.resolve(root, 'src/core'))).toBe(false);
     expect(findLegacyLayerImports()).toEqual([]);
+  });
+
+  it('keeps generated audit artifacts out of the project root', () => {
+    expect(fs.existsSync(path.resolve(root, 'tmp-hard-refresh-baseline-latest.json'))).toBe(false);
+    expect(fs.existsSync(path.resolve(root, 'docs/reports/artifacts/hard-refresh-baseline-latest.json'))).toBe(true);
   });
 
   it('keeps the engineering rules documented in the repository', () => {

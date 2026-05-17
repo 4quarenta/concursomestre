@@ -22,7 +22,7 @@ const ADMIN_PANEL_SETTINGS_DELAY_MS = 8_000;
 
 /**
  * Bridge entre React Query e o store de configuracao.
- * Ele carrega settings publicas/admin conforme a sessao e hidrata o Zustand sem depender do DataProvider.
+ * Ele carrega settings publicas/admin conforme a sessao e hidrata o Zustand.
  *
  * @since 1.0.0
  */
