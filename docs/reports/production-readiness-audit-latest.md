@@ -6,6 +6,20 @@ Veredito: `Nao pronto`
 
 ## Atualizacao incremental (`2026-05-16`)
 
+- Etapa **Superficie publica backend**: **Pronta localmente** no recorte auditado. O backup `C:/xampp/htdocs/questao-pro-backend/backend.zip` (`177 MB`) foi movido para `C:/xampp/private-backups/questao-pro-backend/backend.zip`, fora de `htdocs`, preservando o arquivo sem expo-lo por URL publica.
+- `C:/xampp/htdocs/questao-pro-backend/.htaccess`: passou a bloquear download direto de backups/dumps (`zip`, `sql`, `bak`, `old`, compactados) e acesso direto a diretorios internos sensiveis (`config`, `database`, `modules`, `runtime`, `shared`, `storage`, `tests`, `vendor`).
+- `C:/xampp/htdocs/questao-pro-backend/.htaccess`: a pasta `scripts/` tambem ficou bloqueada por URL, com allowlist explicito apenas para `scripts/importers/questions/gran/index.php` e `scripts/importers/questions/gran/import_worker.php`, preservando o crawler aberto pelo painel admin sem expor debug/checks/manual-tests/setup/migrations/tasks.
+- `config/production_preflight.php`: ganhou o check `BACKEND_ROOT_ARTIFACTS_CLEAN`, que falha se alguem recolocar backup/log/dump na raiz publica do backend.
+- Evidencias da etapa:
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\BackendRootCleanupWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionPreflightWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionPreflightBehaviorTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ApiResidualSurfaceWiringTest.php`: **ok**
+  - HTTP local: `scripts/debug/debug_db.php` retornou `403`, `storage/logs/settings.log` retornou `403` e `scripts/importers/questions/gran/index.php` retornou `200`.
+- Etapa **Uploads publicos**: **Pronta localmente** no recorte auditado. `uploads/.htaccess` passou a desativar includes, desligar engine PHP quando `mod_php` estiver presente, negar dotfiles e remover `Authorization` dos headers CORS de assets estaticos. Smoke HTTP com arquivos temporarios confirmou `403` para `.php`, `.svg` e dotfile em `uploads/`.
+- Evidencias de uploads:
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\UploadSecurityWiringTest.php`: **ok**
+  - HTTP local: `uploads/__cm_smoke.php`, `uploads/__cm_smoke.svg` e `uploads/.cm-smoke` retornaram `403`.
 - Etapa **Billing/Stripe**: **Pronta localmente** no recorte auditado. A suite E2E com Stripe em modo teste fechou `GO` com `7/7` cenarios OK: renovacao por Test Clock, auto-renew off/on, upgrade com credito proporcional local, refund concorrente, webhook duplicado, webhook fora de ordem e webhook atrasado com reconciliacao.
 - `scripts/checks/billing-renewal-check.mjs`: checklist agregado fechou `GO` com `22/22` itens OK, sem `RISCO`, `CRITICO` ou `NAO_COMPROVADO`.
 - `modules/subscriptions/services/SubscriptionsBillingSupport.php`: renovacao deixou de reaplicar cupons/descontos de checkout automaticamente; a proxima cobranca usa o preco vigente do plano na plataforma, preservando a regra comercial pedida para renovacoes.

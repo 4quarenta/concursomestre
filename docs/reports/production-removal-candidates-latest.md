@@ -37,6 +37,12 @@ Data base: `2026-05-16`
    - Evidencia: `scripts/checks/hard-refresh-budget.mjs` e `scripts/checks/hard-refresh-baseline.mjs` agora usam `docs/reports/artifacts/` por padrao; `npm run check:hard-refresh-budget` passou.
    - Risco: baixo.
 
+5. `C:/xampp/htdocs/questao-pro-backend/backend.zip`
+   - Status: movido para `C:/xampp/private-backups/questao-pro-backend/backend.zip`.
+   - Motivo: backup grande (`177 MB`) estava dentro da raiz servida pelo Apache e poderia ser baixado diretamente se o servidor aceitasse arquivos estaticos.
+   - Evidencia: raiz publica do backend ficou sem o arquivo; `.htaccess` passou a bloquear extensoes de backup/dump e diretorios internos; `BackendRootCleanupWiringTest.php`, `ProductionPreflightWiringTest.php`, `ProductionPreflightBehaviorTest.php` e `ApiResidualSurfaceWiringTest.php` passaram.
+   - Risco: baixo; o arquivo foi preservado fora de `htdocs`.
+
 ## Candidatos seguros para limpeza imediata
 
 1. Arquivos temporarios ainda presentes por lock de processo local:
