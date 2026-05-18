@@ -11,6 +11,10 @@ Data: `2026-05-05`
   - A unica excecao de `scripts/` ficou documentada em allowlist: `scripts/importers/questions/gran/index.php` e `scripts/importers/questions/gran/import_worker.php`, pois o painel admin ainda usa essa ferramenta operacional.
   - `production_preflight.php` agora inclui `BACKEND_ROOT_ARTIFACTS_CLEAN`, impedindo release se backup/log/dump voltar para a raiz publica.
   - Testes locais: `BackendRootCleanupWiringTest.php`, `ProductionPreflightWiringTest.php`, `ProductionPreflightBehaviorTest.php` e `ApiResidualSurfaceWiringTest.php` passaram; smoke HTTP confirmou `403` para `scripts/debug/debug_db.php` e `storage/logs/settings.log`, mantendo `200` para o crawler Gran.
+- Etapa "Uploads publicos": **Pronta localmente** no recorte auditado.
+- Concluido agora:
+  - `uploads/.htaccess` passou a desativar includes, desligar engine PHP quando `mod_php` estiver presente, negar dotfiles e retirar `Authorization` dos headers CORS de assets estaticos.
+  - `UploadSecurityWiringTest.php` passou e smoke HTTP confirmou `403` para upload temporario `.php`, `.svg` e dotfile.
 - Etapa "Billing/Stripe": **Pronta localmente**.
 - Concluido agora:
   - `npm run check:billing-e2e` fechou `GO` com `7 OK`: renovacao Stripe ponta a ponta, auto-renew off/on, upgrade com credito proporcional local, refund concorrente, webhook duplicado, webhook fora de ordem e webhook atrasado com reconciliacao.
