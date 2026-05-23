@@ -23,6 +23,7 @@ Backend:
 - `APP_ENV=production`
 - `APP_DEBUG=false`
 - `APP_URL=https://www.seu-dominio.com`
+- Use `C:/xampp/htdocs/questao-pro-backend/.env.production.example` como base do `.env` da VPS e troque todos os `CHANGE_ME`.
 - `APP_TIMEZONE=America/Sao_Paulo`
 - `ADMIN_DATABASE_RESET_ENABLED=false`
 - `ADMIN_DATABASE_RESET_CONFIRMATION=` vazio em release normal
@@ -42,10 +43,20 @@ Backend:
 - `STRIPE_PUBLISHABLE_KEY=pk_live_or_test`
 - `STRIPE_SECRET_KEY=sk_live_or_test`
 - `STRIPE_WEBHOOK_SECRET=whsec_...`
+- `STRIPE_WEBHOOK_HEALTH_PATH=/var/www/questao-pro-backend/storage/logs/subscriptions/stripe_webhook_health.json` opcional
+- `STRIPE_WEBHOOK_HEALTH_MAX_AGE_MINUTES=1440` opcional; ajuste menor em staging se quiser exigir teste recente
+- `SMTP_HOST=smtp.seu-provedor.com`
+- `SMTP_PORT=587`
+- `SMTP_SECURE=tls` ou `ssl`
+- `SMTP_USER=mailer@seu-dominio.com`
+- `SMTP_PASS=...`
+- `MAIL_FROM_ADDRESS=no-reply@seu-dominio.com`
+- `MAIL_FROM_NAME=ConcursoMestre`
 - `MYSQLDUMP_PATH=/usr/bin/mysqldump`
 - `BACKUP_DIR=/var/backups/concursomestre/mysql`
 - `BACKUP_RETENTION_DAYS=14`
 - `SMOKE_API_BASE_URL=https://api.seu-dominio.com/api`
+- `SMOKE_WEB_BASE_URL=https://app.seu-dominio.com`
 - `SMOKE_TIMEOUT_SECONDS=8`
 - `SMOKE_DB_CONNECTIONS=3`
 - `LOG_AUDIT_FILES=/var/log/nginx/error.log,/var/log/php/error.log,/var/log/concursomestre/stripe-cron.log,/var/log/concursomestre/mysql-backup.log,/var/www/questao-pro-backend/storage/logs/subscriptions/subscription_cron.log`
@@ -77,7 +88,8 @@ Backend:
    - Incluir `database/migrations/20260501_platform_testimonials.sql` para depoimentos publicos aprovados na home.
    - Incluir `database/migrations/20260501_rankings_notifications.sql` para preservar o criador do ranking e permitir notificacoes de moderacao.
    - Incluir `database/migrations/20260501_marketing_automation_events.sql` para idempotencia e auditoria de campanhas automaticas.
-   - Executar `C:/xampp/htdocs/questao-pro-backend/scripts/migrations/migrate_marketplace_schema_compatibility.php` apos o deploy do backend para normalizar `transactions`, `material_ratings`, IDs textuais do marketplace e tabelas de gamificacao (`user_badges`, `user_gamification_events`).
+   - Executar via CLI a unica migracao PHP operacional allowlisted, `C:/xampp/htdocs/questao-pro-backend/scripts/migrations/migrate_marketplace_schema_compatibility.php`, apos o deploy do backend para normalizar `transactions`, `material_ratings`, IDs textuais do marketplace e tabelas de gamificacao (`user_badges`, `user_gamification_events`).
+   - Nao publicar migracoes PHP ad hoc em `scripts/migrations`; novas alteracoes de schema devem entrar em `database/migrations/`.
 3. Conferir `.env` backend com valores de producao.
 4. Instalar dependencias frontend com `npm ci`.
 5. Rodar o preflight frontend consolidado:
@@ -88,6 +100,7 @@ npm run lint
 ```
 
 O preflight consolidado executa encoding, typecheck, orcamento de hard refresh, suites criticas de arquitetura/SEO/XSS/charts e build quando `--with-build` for informado.
+Quando encontra o backend local, tambem executa suites PHP criticas de billing: checkout/webhook Stripe, cron, sync de planos e saldo de termo parcelado. Configure `PHP_BIN` e `BACKEND_ROOT` para caminhos diferentes; use `--skip-backend` somente quando o backend nao estiver disponivel naquele host.
 Se as credenciais de admin mudarem no ambiente local, exporte antes:
 
 ```bash
@@ -102,30 +115,38 @@ set CM_LOGIN_PASSWORD_CANDIDATES=SuaSenhaAtual,OutraSenhaFallback
 
 ```bash
 /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/production_preflight.php
-/usr/bin/php /var/www/questao-pro-backend/scripts/tasks/production_smoke.php --api-base-url=https://api.seu-dominio.com/api --db-connections=3
+/usr/bin/php /var/www/questao-pro-backend/scripts/tasks/production_smoke.php --api-base-url=https://api.seu-dominio.com/api --web-base-url=https://app.seu-dominio.com --db-connections=3
 ```
 
-O preflight precisa retornar `success=true`. Ele deve reprovar `APP_ENV` diferente de `production`, `APP_URL` local, CORS invalido/HTTP/wildcard, reset administrativo de banco habilitado, segredos fracos, Stripe/Google malformados e artefatos operacionais publicados em `api/`.
+O preflight precisa retornar `success=true`. Ele deve reprovar `APP_ENV` diferente de `production`, `APP_URL` local, CORS invalido/HTTP/wildcard, reset administrativo de banco habilitado, usuario MySQL `root`, conexao persistente (`DB_PERSISTENT=true`), timeout de banco fora de 1-10s, segredos fracos, Stripe/Google malformados, SMTP transacional ausente, remetente invalido, modelos essenciais de e-mail desativados/incompletos, SDK/autoload legado de Mercado Pago, `BACKUP_DIR` dentro da raiz publica, backups historicos em `storage/backups/legacy-code`, artefatos operacionais publicados em `api/`, backups/dumps na raiz do backend, scripts de desenvolvimento dentro da arvore publica, heartbeat ausente/antigo da reconciliacao Stripe e heartbeat ausente/antigo do webhook Stripe.
+O smoke precisa retornar `success=true`. Ele valida endpoints publicos (`plans`, `questionsList`, `settings`), rotas web principais, conexoes MySQL, HTTPS em hosts publicos e headers minimos de seguranca (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`).
 
 10. Executar teste de carga moderada em janela controlada e acompanhar MySQL/PHP logs.
 11. Conferir headers de seguranca no frontend e na API: CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` e HSTS em HTTPS.
 12. Conferir hardening de uploads: `file_uploads=On`, `upload_max_filesize`/`post_max_size` coerentes com a plataforma, sem execucao de scripts em `/uploads`.
 13. Conferir `RATE_LIMIT_DIR` criado e gravavel pelo usuario do PHP; ajustar limites em staging antes de abrir trafego publico.
 14. Confirmar que `api/` nao contem logs, dumps SQL, arquivos `.txt` operacionais ou artefatos temporarios. O preflight falha em `API_PUBLIC_ARTIFACTS_CLEAN` se encontrar algo.
-15. Validar depoimentos da home: com zero aprovados, a home deve exibir os mocks; depois, enviar uma avaliacao no perfil com nome publico/contexto, marcar como `resolved` no suporte/admin e confirmar que ela aparece na home; ao tirar de `resolved`, ela deve sair da home.
-16. Validar notificacoes de suporte/moderacao: usuario envia feedback, admin responde, usuario recebe notificacao in-app e o link `/support?threadId=<id>` abre a conversa correta; usuario cria denuncia, admin resolve e denunciante recebe notificacao de resultado.
-17. Validar rankings: usuario autenticado cria ranking, admin aprova/rejeita e o criador recebe notificacao; participante envia gabarito e recebe confirmacao; admin publica gabarito oficial e participantes recebem notificacao apontando para `/ranking/<id>`.
-18. Validar campanhas automaticas: executar primeiro `process_marketing_automations.php --dry-run=true --limit=20`, conferir elegiveis; depois executar em campanha controlada com `--execute=PROCESS_MARKETING_AUTOMATIONS --limit=20`, confirmar notificacao/e-mail e que uma segunda execucao nao duplica envios.
+15. Confirmar que `scripts/debug`, `scripts/manual-tests`, `scripts/setup`, `scripts/maintenance`, `scripts/seed`, `scripts/seeds`, checks temporarios e migracoes PHP fora do allowlist nao existem na arvore publica. O preflight falha em `BACKEND_DEV_SCRIPT_ARTIFACTS_CLEAN` se algum deles voltar. Em `scripts/migrations`, apenas `migrate_marketplace_schema_compatibility.php` pode existir.
+16. Confirmar que `vendor/mercadopago`, `MercadoPago\\` e `mercadopago/dx-php` nao existem no deploy. O produto esta Stripe-only; o preflight falha em `PAYMENT_LEGACY_MERCADOPAGO_SDK_REMOVED` se o SDK/autoload legado voltar.
+17. Confirmar `BACKUP_DIR` fora da raiz publica, existente e gravavel. O preflight falha em `BACKUP_DIR_OUTSIDE_PUBLIC_ROOT` se o backup apontar para `htdocs`, nao existir ou nao permitir escrita.
+18. Confirmar que `storage/backups/legacy-code` nao existe no deploy. Backups historicos de codigo devem ficar em arquivo privado fora de `htdocs`; o preflight falha em `LEGACY_CODE_BACKUPS_OUTSIDE_PUBLIC_ROOT` se essa pasta voltar.
+16. Validar depoimentos da home: com zero aprovados, a home deve exibir os mocks; depois, enviar uma avaliacao no perfil com nome publico/contexto, marcar como `resolved` no suporte/admin e confirmar que ela aparece na home; ao tirar de `resolved`, ela deve sair da home.
+17. Validar notificacoes de suporte/moderacao: usuario envia feedback, admin responde, usuario recebe notificacao in-app e o link `/support?threadId=<id>` abre a conversa correta; usuario cria denuncia, admin resolve e denunciante recebe notificacao de resultado.
+18. Validar rankings: usuario autenticado cria ranking, admin aprova/rejeita e o criador recebe notificacao; participante envia gabarito e recebe confirmacao; admin publica gabarito oficial e participantes recebem notificacao apontando para `/ranking/<id>`.
+19. Validar campanhas automaticas: executar primeiro `process_marketing_automations.php --dry-run=true --limit=20`, conferir elegiveis; depois executar em campanha controlada com `--execute=PROCESS_MARKETING_AUTOMATIONS --limit=20`, confirmar notificacao/e-mail e que uma segunda execucao nao duplica envios.
+20. Validar e-mail transacional: no painel admin, executar `Testar SMTP`; em `Modelos de e-mail`, abrir pelo menos um modelo de cada familia (auth, suporte, denuncia, transacao e assinatura) e usar `Enviar teste` no modal para validar assunto, HTML/texto e placeholders. Depois disparar cadastro/confirmacao, reset de senha, recibo de assinatura, falha de pagamento, lembrete de renovacao, resposta de suporte e reembolso controlado. O envio real precisa chegar na caixa de entrada, sem cair em `mail()` local.
+21. Validar webhook Stripe no dominio final: enviar evento real pelo painel da Stripe ou pelo Stripe CLI apontando para `api/subscriptions/stripe_webhook.php`; confirmar que `storage/logs/subscriptions/stripe_webhook_health.json` foi atualizado, que `Painel > Saude do billing > Ultimo webhook` mostra o evento e que `production_preflight.php` passa no check `STRIPE_WEBHOOK_HEALTH_RECENT`.
 
 ## Crons
 
 Ativo:
 
 ```bash
-0 * * * * curl -fsS "https://api.seu-dominio.com/api/subscriptions/cron_stripe_reconciliation.php?key=$CRON_SECRET" >> /var/log/concursomestre/stripe-cron.log 2>&1
+*/15 * * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/reconcile_stripe_subscriptions.php >> /var/log/concursomestre/stripe-cron.log 2>&1
 0 3 * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/backup_mysql.php >> /var/log/concursomestre/mysql-backup.log 2>&1
 */15 * * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/production_log_audit.php >> /var/log/concursomestre/log-audit.log 2>&1
 */30 * * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/process_marketing_automations.php --execute=PROCESS_MARKETING_AUTOMATIONS --limit=100 >> /var/log/concursomestre/marketing-automation.log 2>&1
+0 8 * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/check_subscription_card_expiry.php >> /var/log/concursomestre/card-expiry.log 2>&1
 ```
 
 Remover/desativar:
@@ -136,7 +157,10 @@ Remover/desativar:
 Regras:
 
 - O backend ja usa lock exclusivo por job em `config/cron_lock.php`; ainda assim, mantenha apenas um agendamento por job na VPS.
+- A reconciliacao Stripe deve rodar por CLI para nao depender de usuario logado, navegador, sessao ou disponibilidade HTTP local. O endpoint `cron_stripe_reconciliation.php` permanece como compatibilidade protegida por `CRON_SECRET`, mas o cron recomendado e `scripts/tasks/reconcile_stripe_subscriptions.php`.
 - A execucao manual admin da reconciliacao Stripe (`automation_helper.php?action=run_now`) usa o mesmo lock `subscriptions_stripe_reconciliation`; se retornar conflito, aguarde o cron atual finalizar em vez de reexecutar.
+- A cada execucao, a reconciliacao Stripe grava o heartbeat privado `storage/logs/subscriptions/subscription_cron_health.json`; no painel, conferir `Painel > Saude do billing > Ultima reconciliacao`. Se ficar `stale` por mais de 30 minutos, tratar como incidente operacional antes de liberar venda.
+- O preflight tambem confere esse heartbeat pelo check `SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT`. Em staging/producao, rode o cron uma vez antes do go-live e confirme que o arquivo esta recente.
 - `CRON_LOCK_DIR` precisa existir e ser gravavel pelo usuario do PHP/cron.
 - Nunca expor `CRON_SECRET` em painel publico.
 - Logar status e duracao da execucao.
@@ -152,6 +176,7 @@ Stripe:
 - Eventos minimos: assinatura criada/atualizada/cancelada, invoice paid/failed, payment intent succeeded/failed, refund updated.
 - Validar assinatura com `STRIPE_WEBHOOK_SECRET`.
 - Testar replay/idempotencia.
+- O endpoint grava heartbeat privado em `storage/logs/subscriptions/stripe_webhook_health.json`; antes do go-live, confirme no admin e no preflight que o ultimo evento e recente. Esse indicador nao substitui os testes de checkout/renovacao, mas impede deploy sem evidencia minima de recebimento do webhook.
 
 Google:
 
@@ -301,6 +326,13 @@ Rollback:
 3. Restaurar backend PHP anterior.
 4. Se houve migration destrutiva, restaurar dump em banco temporario e promover.
 5. Reexecutar smoke de auth, questoes, checkout e admin.
+
+## Validacao local mais recente (`2026-05-22`)
+
+- `npm run check:production-local -- --with-build`: OK, incluindo build Next/Turbopack completo.
+- Suite PHP critica local: OK para preflight, auth social, catalogo de e-mails, campanhas, checkout/cron/notificacoes/sync de assinaturas e politica de lembretes de renovacao.
+- `git diff --check`: OK; apenas avisos LF/CRLF do Git no Windows.
+- Observacao: se o servidor final emitir `Module "openssl" is already loaded`, remover a duplicidade de carregamento da extensao no `php.ini`/conf.d antes do go-live para manter logs limpos.
 
 ## Checklist final
 

@@ -78,7 +78,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
       if (!isMounted) return;
 
       if (!id) {
-        setError('Questao nao encontrada.');
+        setError('Questão não encontrada.');
         setIsLoading(false);
         return;
       }
@@ -106,7 +106,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
             return;
           }
 
-          setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel carregar a questao.');
+          setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar a questão.');
         })
         .finally(() => {
           if (isMounted) {
@@ -154,11 +154,11 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
 
   const metadataItems = [
     { label: 'Banca', value: question?.bancas?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
-    { label: 'Orgao', value: question?.orgaos?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
+    { label: 'Órgão', value: question?.orgaos?.map((item) => item.sigla || item.nome).filter(Boolean).join(', ') },
     { label: 'Cargo', value: question?.cargos?.map(getQuestionRoleLabel).filter(Boolean).join(', ') },
     { label: 'Ano', value: question?.anos?.join(', ') },
     { label: 'Assuntos', value: question?.assuntos?.map((item) => item.nome).filter(Boolean).join(', ') },
-    { label: 'Modalidade', value: question?.tipo === 'certo ou errado' ? 'Certo ou errado' : 'Multipla escolha' },
+    { label: 'Modalidade', value: question?.tipo === 'certo ou errado' ? 'Certo ou errado' : 'Múltipla escolha' },
   ].filter((item) => item.value);
 
   const structuredData = React.useMemo(() => {
@@ -170,7 +170,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
       name: buildQuestionMetaTitle(question),
       description: buildQuestionMetaDescription(question),
       url: buildAbsoluteUrl(canonicalPath || `/question/${question.id}`),
-      educationalLevel: questionContext?.nivel || 'Concursos publicos',
+      educationalLevel: questionContext?.nivel || 'Concursos públicos',
       about: keywordPills,
       assesses: questionContext?.assuntos?.join(', ') || questionContext?.assunto || 'Conhecimentos para concursos',
       provider: {
@@ -208,7 +208,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
         <div className={`${PLATFORM_SURFACE_CARD_CLASS} flex min-h-[320px] items-center justify-center p-8`}>
           <div className="flex items-center gap-3 text-sm font-bold text-slate-500 dark:text-slate-400">
             <Loader2 size={18} className="animate-spin text-indigo-600" />
-            Carregando questao publica...
+            Carregando questão pública...
           </div>
         </div>
       </section>
@@ -219,14 +219,14 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
     return (
       <section className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} px-4 py-8 sm:px-6 lg:px-8`}>
         <div className={`${PLATFORM_SURFACE_CARD_CLASS} space-y-4 p-8`}>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-600">Questao indisponivel</p>
-          <h1 className={PLATFORM_PAGE_TITLE_CLASS}>Nao foi possivel abrir esta questao</h1>
-          <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>{error || 'A questao solicitada nao esta disponivel no momento.'}</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-600">Questão indisponível</p>
+          <h1 className={PLATFORM_PAGE_TITLE_CLASS}>Não foi possível abrir esta questão</h1>
+          <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>{error || 'A questão solicitada não está disponível no momento.'}</p>
           <Link
             href="/practice"
             className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-700"
           >
-            Ir para a pratica <ArrowRight size={14} />
+            Ir para a prática <ArrowRight size={14} />
           </Link>
         </div>
       </section>
@@ -244,18 +244,18 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
     <section className={`mx-auto w-full ${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} space-y-6 px-4 py-8 sm:px-6 lg:px-8`}>
       <div className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden ${isCanceledQuestion ? 'border-red-400 ring-2 ring-red-100 dark:border-red-700 dark:ring-red-900/30' : ''}`}>
         <div className="border-b border-slate-200 bg-gradient-to-br from-indigo-50 via-white to-sky-50 p-4 sm:p-5 md:p-6 dark:border-slate-800 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Questao comentada para concurso</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Questão comentada para concurso</p>
           <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-3">
               <h1 className={PLATFORM_PAGE_TITLE_CLASS}>{buildQuestionPageHeading(question)}</h1>
               <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
-                Resolva esta questao de concurso com enunciado, alternativas e filtros por banca, orgao, cargo, ano e assunto. Na pratica, voce tambem acompanha historico, comentarios e evolucao dos seus acertos.
+                Resolva esta questão de concurso com enunciado, alternativas e filtros por banca, órgão, cargo, ano e assunto. Na prática, você também acompanha histórico, comentários e evolução dos seus acertos.
               </p>
               {(keywordPills.length > 0 || isOriginalQuestion || isCanceledQuestion) && (
                 <div className="flex flex-wrap gap-2">
                   {isOriginalQuestion && (
                     <span className="inline-flex min-h-6 items-center justify-center rounded-md border border-violet-100 bg-violet-600 px-3 py-1 text-[10px] font-black uppercase leading-none tracking-widest text-white shadow-sm dark:border-violet-500/20">
-                      Inedita
+                      Inédita
                     </span>
                   )}
                   {isCanceledQuestion && (
@@ -281,7 +281,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
               aria-disabled={isCanceledQuestion}
               className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all ${isCanceledQuestion ? 'cursor-not-allowed bg-red-500 opacity-80' : 'bg-indigo-600 hover:bg-indigo-700'}`}
             >
-              {isCanceledQuestion ? 'Questao anulada' : 'Resolver na pratica'} {!isCanceledQuestion && <ArrowRight size={14} />}
+              {isCanceledQuestion ? 'Questão anulada' : 'Resolver na prática'} {!isCanceledQuestion && <ArrowRight size={14} />}
             </Link>
           </div>
         </div>
@@ -299,10 +299,10 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
           )}
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr),360px]">
-            <article className="space-y-6 rounded-[2rem] border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <article className="space-y-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 md:p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
                 <FileQuestion size={14} />
-                Questao #{question.id}
+                Questão #{question.id}
               </div>
               <div
                 className="prose prose-slate max-w-none text-sm leading-7 dark:prose-invert"
@@ -315,7 +315,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
                   {isCanceledQuestion ? (
                     <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
                       <AlertTriangle className="mt-0.5 shrink-0" size={16} />
-                      <span>Questao anulada. As alternativas ficam disponiveis apenas para consulta.</span>
+                      <span>Questão anulada. As alternativas ficam disponíveis apenas para consulta.</span>
                     </div>
                   ) : null}
                   {question.itens.map((item, index) => (
@@ -350,19 +350,19 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
 
             <aside className="space-y-4">
               <div className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
-                <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Resumo rapido</h2>
+                <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Resumo rápido</h2>
                 <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
                   <div className="flex items-center gap-2">
                     <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-300" />
-                    <span>{question.commentsCount || 0} comentarios na comunidade</span>
+                    <span>{question.commentsCount || 0} comentários na comunidade</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar size={16} className="text-sky-600 dark:text-sky-300" />
-                    <span>{question.anos?.length ? question.anos.join(', ') : 'Ano nao informado'}</span>
+                    <span>{question.anos?.length ? question.anos.join(', ') : 'Ano não informado'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Building2 size={16} className="text-indigo-600 dark:text-indigo-300" />
-                    <span>{question.bancas?.[0]?.sigla || question.bancas?.[0]?.nome || 'Banca nao informada'}</span>
+                    <span>{question.bancas?.[0]?.sigla || question.bancas?.[0]?.nome || 'Banca não informada'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <GraduationCap size={16} className="text-amber-600 dark:text-amber-300" />
@@ -370,13 +370,13 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
                   </div>
                   <div className="flex items-center gap-2">
                     <Tag size={16} className="text-fuchsia-600 dark:text-fuchsia-300" />
-                    <span>{question.tipo === 'certo ou errado' ? 'Certo ou errado' : 'Multipla escolha'}</span>
+                    <span>{question.tipo === 'certo ou errado' ? 'Certo ou errado' : 'Múltipla escolha'}</span>
                   </div>
                 </div>
               </div>
 
               {showFreeAccountCta && (
-                <div className="overflow-hidden rounded-[2rem] border border-indigo-200 bg-indigo-50 p-5 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-500/10">
+                <div className="overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm dark:border-indigo-500/20 dark:bg-indigo-500/10">
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700 dark:text-indigo-300">
                     <Sparkles size={14} />
                     Conta gratuita
@@ -385,7 +385,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
                     Crie sua conta 100% gratuita
                   </h2>
                   <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
-                    Salve esta questao, acompanhe seu historico de acertos, monte cadernos de revisao e continue estudando por banca, assunto e dificuldade.
+                    Salve esta questão, acompanhe seu histórico de acertos, monte cadernos de revisão e continue estudando por banca, assunto e dificuldade.
                   </p>
                   <div className="mt-4 space-y-2">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
@@ -394,7 +394,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
                     </div>
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
                       <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-300" />
-                      Comentarios, anotacoes e estatisticas
+                      Comentários, anotações e estatísticas
                     </div>
                   </div>
                   <Link
@@ -422,7 +422,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
               <div className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
                 <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Continuar no fluxo oficial</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  Abra a questao dentro da pratica para responder, acompanhar estatisticas, ver materiais relacionados e registrar seu historico.
+                  Abra a questão dentro da prática para responder, acompanhar estatísticas, ver materiais relacionados e registrar seu histórico.
                 </p>
                 <div className="mt-5 flex flex-col gap-3">
                   <Link
@@ -434,7 +434,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
                     aria-disabled={isCanceledQuestion}
                     className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-[0.18em] text-white transition-all ${isCanceledQuestion ? 'cursor-not-allowed bg-red-500 opacity-80' : 'bg-indigo-600 hover:bg-indigo-700'}`}
                   >
-                    {isCanceledQuestion ? 'Questao anulada' : 'Abrir na pratica'} {!isCanceledQuestion && <ArrowRight size={14} />}
+                    {isCanceledQuestion ? 'Questão anulada' : 'Abrir na prática'} {!isCanceledQuestion && <ArrowRight size={14} />}
                   </Link>
                   <Link
                     href="/plans"
@@ -453,7 +453,7 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
       isOpen={showAuthModal}
       onClose={() => setShowAuthModal(false)}
       title="Entre para responder"
-      description="Crie uma conta gratuita ou acesse sua conta para responder esta questao no fluxo oficial da pratica e salvar seu progresso."
+      description="Crie uma conta gratuita ou acesse sua conta para responder esta questão no fluxo oficial da prática e salvar seu progresso."
       actionSource="questao-publica"
     />
     </>

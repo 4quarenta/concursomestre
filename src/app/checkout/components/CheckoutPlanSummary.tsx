@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -30,7 +30,7 @@ const CheckoutPlanSummary: React.FC<CheckoutPlanSummaryProps> = ({
   benefits,
 }) => {
   return (
-    <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#121528]">
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#121528]">
       <div className="grid gap-0 lg:grid-cols-[1fr_320px]">
         <div className="min-w-0 space-y-4 p-5 md:p-6">
           <div className="flex flex-wrap items-center gap-2">

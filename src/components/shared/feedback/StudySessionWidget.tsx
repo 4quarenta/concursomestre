@@ -71,7 +71,7 @@ const StudySessionWidget: React.FC<StudySessionWidgetProps> = ({
   }
 
   return (
-    <aside className="fixed right-4 top-1/2 z-40 w-[min(20rem,calc(100vw-2rem))] -translate-y-1/2 rounded-[2rem] border border-slate-200 bg-white/96 p-4 shadow-2xl shadow-slate-200/60 backdrop-blur dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-none">
+    <aside className="fixed right-4 top-1/2 z-40 w-[min(20rem,calc(100vw-2rem))] -translate-y-1/2 rounded-2xl border border-slate-200 bg-white/96 p-4 shadow-2xl shadow-slate-200/60 backdrop-blur dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-none">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[9px] font-black uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Sessao atual</p>

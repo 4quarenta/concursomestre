@@ -201,6 +201,7 @@ const CheckoutPage: React.FC = () => {
     const [formData, setFormData] = useState({
         name: '',
         phone: '',
+        cpf: '',
         email: '',
         password: '',
         confirmPassword: ''
@@ -839,6 +840,12 @@ const CheckoutPage: React.FC = () => {
                     return;
                 }
 
+                if (!isValidCpf(formData.cpf)) {
+                    addToast('Informe um CPF válido para criar a conta.', 'error');
+                    setAuthLoading(false);
+                    return;
+                }
+
                 if (!acceptedCheckoutTerms) {
                     addToast('Aceite os Termos de adesão para criar a conta e continuar.', 'error');
                     setAuthLoading(false);
@@ -853,6 +860,7 @@ const CheckoutPage: React.FC = () => {
                 const result = await authFlowService.register({
                     name: formData.name.trim(),
                     phone: formData.phone.trim(),
+                    cpf: formData.cpf.replace(/\D/g, ''),
                     email: formData.email.trim(),
                     password: formData.password,
                     captchaToken,
@@ -1613,6 +1621,7 @@ const CheckoutPage: React.FC = () => {
             setFormData({
                 name: '',
                 phone: '',
+                cpf: '',
                 email: '',
                 password: '',
                 confirmPassword: '',
@@ -1662,7 +1671,7 @@ const CheckoutPage: React.FC = () => {
                 <div className="grid grid-cols-1 items-start gap-8">
                     <div className={`${step === 'success' ? 'mx-auto max-w-3xl' : ''} space-y-6 transition-all duration-700`}>
                         {step === 'identification' && (
-                            <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/60 animate-in zoom-in-95 duration-500 dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none">
+                            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60 animate-in zoom-in-95 duration-500 dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none">
                                 <div className="grid min-h-[560px] lg:grid-cols-[0.92fr_1.08fr]">
                                     <div className="relative overflow-hidden bg-slate-950 p-7 text-white md:p-10">
                                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.38),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.24),transparent_34%)]" />
@@ -1797,6 +1806,15 @@ const CheckoutPage: React.FC = () => {
                                                         </div>
                                                     </div>
                                                 )}
+                                                {authMode === 'register' && (
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">CPF</label>
+                                                        <div className="relative">
+                                                            <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                                            <input type="text" required value={formData.cpf} onChange={e => setFormData({ ...formData, cpf: e.target.value })} className="w-full h-14 pl-12 pr-4 bg-slate-50 dark:bg-[#0f1020] border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-900 dark:text-white font-bold outline-none focus:border-indigo-500 transition-all placeholder:text-slate-400" placeholder="000.000.000-00" />
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">E-mail</label>
                                                     <div className="relative">
@@ -1861,7 +1879,7 @@ const CheckoutPage: React.FC = () => {
                         {step === 'payment' && (
                             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                                 {hasRepeatedActivePlanPurchase ? (
-                                    <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 dark:border-amber-500/20 dark:bg-amber-500/10">
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-500/20 dark:bg-amber-500/10">
                                         <div className="flex items-start gap-3">
                                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
                                                 <AlertTriangle size={18} />
@@ -1975,7 +1993,7 @@ const CheckoutPage: React.FC = () => {
 
             {showDowngradeModal && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm">
-                    <div className="bg-slate-900 w-full max-w-lg rounded-3xl p-8 border border-slate-800 text-center space-y-6">
+                    <div className="bg-slate-900 w-full max-w-lg rounded-2xl p-8 border border-slate-800 text-center space-y-6">
                         <div className="w-20 h-20 bg-amber-500/10 rounded-2xl flex items-center justify-center mx-auto"><AlertTriangle size={40} className="text-amber-500" /></div>
                         <h3 className="text-xl font-black text-white uppercase tracking-tight">Aviso de Downgrade</h3>
                     <p className="text-sm text-slate-400 leading-relaxed">Você está mudando para um plano inferior. Benefícios exclusivos do seu plano atual (<span className="text-indigo-400 font-bold">{currentUser?.subscription?.plan?.name}</span>) serão perdidos na próxima renovação.</p>
@@ -1990,7 +2008,7 @@ const CheckoutPage: React.FC = () => {
                         className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
                         onClick={() => setShowCheckoutRequirementsModal(false)}
                     />
-                    <div className="relative z-10 my-auto flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-[#1a1c2e] md:p-8">
+                    <div className="relative z-10 my-auto flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-[#1a1c2e] md:p-8">
                         <div className="flex flex-none flex-col gap-3 border-b border-slate-100 pb-5 dark:border-slate-800 md:flex-row md:items-start md:justify-between">
                             <div className="space-y-2">
                                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Checkout seguro</p>
@@ -2024,8 +2042,9 @@ const CheckoutPage: React.FC = () => {
                                                 type="button"
                                                 onClick={handleResendConfirmation}
                                                 disabled={isResendingConfirmation}
-                                                className="h-11 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                                             >
+                                                {isResendingConfirmation ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
                                                 {isResendingConfirmation ? 'Enviando...' : 'Reenviar e-mail'}
                                             </button>
                                         )}

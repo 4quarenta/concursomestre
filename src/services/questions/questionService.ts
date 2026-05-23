@@ -213,7 +213,29 @@ export const questionService = {
     );
 
     const payload = readApiData<UserAnswer[]>(response, []);
-    return Array.isArray(payload) ? payload : [];
+    if (!Array.isArray(payload)) {
+      return [];
+    }
+
+    return payload.map((item) => {
+      const legacyItem = item as UserAnswer & {
+        selected_option_index?: number | string | null;
+        is_correct?: boolean | number | null;
+      };
+      const selectedOptionIndex = Number(
+        item.selectedOptionIndex
+        ?? legacyItem.selected_option_index
+        ?? 0,
+      );
+      const rawTimestamp = Number(item.timestamp || 0);
+
+      return {
+        ...item,
+        selectedOptionIndex: Number.isFinite(selectedOptionIndex) ? selectedOptionIndex : 0,
+        isCorrect: Boolean(item.isCorrect ?? legacyItem.is_correct),
+        timestamp: rawTimestamp > 0 && rawTimestamp < 10_000_000_000 ? rawTimestamp * 1000 : rawTimestamp,
+      };
+    });
   },
 
   /**

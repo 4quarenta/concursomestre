@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -58,7 +58,7 @@ const CheckoutSummarySidebar: React.FC<CheckoutSummarySidebarProps> = ({
 }) => {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-1000">
-      <div className="sticky top-8 overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 transition-all dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none">
+      <div className="sticky top-8 overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 transition-all dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none">
         <h2 className="mb-6 flex items-center gap-3 border-b border-slate-100 pb-4 text-sm font-black uppercase tracking-[0.2em] text-slate-900 dark:border-slate-800 dark:text-white">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
             <Lock size={16} />
@@ -157,7 +157,7 @@ const CheckoutSummarySidebar: React.FC<CheckoutSummarySidebarProps> = ({
         </div>
       </div>
 
-      <div className="rounded-[2rem] border border-emerald-100 bg-white p-5 shadow-sm dark:border-emerald-500/20 dark:bg-[#1a1c2e]">
+      <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm dark:border-emerald-500/20 dark:bg-[#1a1c2e]">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">Segurança e controle</p>
         <div className="mt-4 space-y-3">
           {[

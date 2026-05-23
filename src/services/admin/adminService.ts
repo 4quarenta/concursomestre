@@ -211,6 +211,7 @@ export interface AdminStatsPayload {
   trial_subscriptions: number;
   mrr: number;
   new_users: number;
+  new_questions: number;
   seller_payout: number;
   available_seller_payout: number;
   transactions_count: number;
@@ -380,6 +381,9 @@ export interface AdminRevenueProjectionItem {
   projectedAmount: number;
   nextBillingAt?: string | null;
   currentPeriodEnd?: string | null;
+  intervalUnit?: 'day' | 'week' | 'month' | 'year' | string;
+  intervalCount?: number;
+  projectionMode?: 'installments' | 'auto_renew' | string;
 }
 
 export interface AdminRevenueProjectionPayload {
@@ -998,6 +1002,7 @@ export const adminService = {
           trial_subscriptions: 0,
           mrr: 0,
           new_users: 0,
+          new_questions: 0,
           seller_payout: 0,
           available_seller_payout: 0,
           transactions_count: 0,
@@ -1499,6 +1504,19 @@ export const adminService = {
     const result = assertApiSuccess(response, 'Nao foi possivel testar o SMTP.');
     return {
       message: result.message || 'SMTP validado com sucesso.',
+      data: toLooseRecord(result.data),
+    };
+  },
+
+  /**
+   * Envia um e-mail de teste usando um modelo editavel do painel.
+   * @since v1.0.0
+   */
+  async testEmailTemplate(payload: object): Promise<AdminSettingsTestResult> {
+    const response = await requestApi<AdminLooseRecord>(apiClient.post<ApiResponse>(`${ENDPOINTS.settings.update}?action=test_email_template`, payload));
+    const result = assertApiSuccess(response, 'Nao foi possivel testar o modelo de e-mail.');
+    return {
+      message: result.message || 'Modelo de e-mail testado com sucesso.',
       data: toLooseRecord(result.data),
     };
   },

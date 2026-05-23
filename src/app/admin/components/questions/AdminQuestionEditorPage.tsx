@@ -895,7 +895,7 @@ const AdminQuestionEditorPage = ({
             </div>
             <div className="space-y-6 p-5">
               <div className="space-y-2">
-                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Contexto de questao vinculado</label>
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Contexto de questão vinculado</label>
                 <div className="relative">
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={15} />
@@ -907,7 +907,7 @@ const AdminQuestionEditorPage = ({
                         setGroupSearch(event.target.value);
                         setIsGroupSearchOpen(true);
                       }}
-                      placeholder={isLoadingGroups ? 'Carregando contextos...' : 'Pesquisar contexto de questao existente...'}
+                      placeholder={isLoadingGroups ? 'Carregando contextos...' : 'Pesquisar contexto de questão existente...'}
                       className={`${ADMIN_FIELD_CLASS} h-10 w-full pl-9 pr-24`}
                     />
                     {selectedQuestionGroup ? (
@@ -959,7 +959,7 @@ const AdminQuestionEditorPage = ({
                       {String(selectedQuestionGroup.image_url || selectedQuestionGroup.imageUrl || '').trim() ? (
                         <Image
                           src={resolveApiResourceUrl(String(selectedQuestionGroup.image_url || selectedQuestionGroup.imageUrl))}
-                          alt="Imagem do contexto da questao"
+                          alt="Imagem do contexto da questão"
                           width={112}
                           height={80}
                           unoptimized
@@ -1150,10 +1150,10 @@ const AdminQuestionEditorPage = ({
 
               <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Origem da questao</label>
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Origem da questão</label>
                   <div className="grid gap-2">
                     {[
-                      { value: 'platform', title: 'Inedita', detail: 'Gerada pela plataforma' },
+                      { value: 'platform', title: 'Inédita', detail: 'Gerada pela plataforma' },
                       { value: 'exam', title: 'De concurso', detail: 'Retirada de prova' },
                     ].map((option) => (
                       <label

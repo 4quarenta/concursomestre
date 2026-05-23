@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -663,7 +663,7 @@ const PartnerDashboard: React.FC = () => {
                       gradient: 'from-purple-500/20 to-pink-500/20'
                     },
                   ].map((stat, i) => (
-                    <div key={i} className="group relative bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-indigo-500/5 transition-all duration-500 overflow-hidden">
+                    <div key={i} className="group relative bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-indigo-500/5 transition-all duration-500 overflow-hidden">
                       <div className={`absolute top-0 right-0 w-32 h-32 bg-gradient-to-br ${stat.gradient} blur-3xl -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-700 opacity-50`}></div>
                       <div className="relative z-10 flex flex-col h-full justify-between gap-4">
                         <div className={`w-12 h-12 rounded-2xl bg-${stat.color}-50 dark:bg-${stat.color}-900/20 flex items-center justify-center text-${stat.color}-600 dark:text-${stat.color}-400`}>
@@ -692,7 +692,7 @@ const PartnerDashboard: React.FC = () => {
                 {/* Chart and Recent Sales */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Chart */}
-                  <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                  <div className="lg:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <div className="flex justify-between items-center mb-10">
                       <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3">
                         <BarChart3 size={18} className="text-indigo-600 dark:text-indigo-400" />
@@ -747,7 +747,7 @@ const PartnerDashboard: React.FC = () => {
                   </div>
 
                   {/* Recent Activity */}
-                  <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-full">
+                  <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col h-full">
                     <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 mb-8">
                       <Activity size={18} className="text-indigo-600 dark:text-indigo-400" />
                       Últimas Vendas
@@ -798,7 +798,7 @@ const PartnerDashboard: React.FC = () => {
                 </div>
 
                 {/* Recent Reviews and Questions */}
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                   <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-3 mb-8">
                     <HelpCircle size={18} className="text-indigo-600 dark:text-indigo-400" />
                     Avaliações e Perguntas Recentes
@@ -862,7 +862,7 @@ const PartnerDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-sm p-8">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-8">
                   <div className="divide-y divide-slate-100 dark:divide-slate-800">
                     {(() => {
                       const allComments = myMaterials.flatMap(m =>
@@ -1007,7 +1007,7 @@ const PartnerDashboard: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors duration-300">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors duration-300">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 uppercase font-bold border-b border-slate-100 dark:border-slate-800">
                       <tr>
@@ -1134,7 +1134,7 @@ const PartnerDashboard: React.FC = () => {
                           rows={5}
                           value={newMaterial.description}
                           onChange={e => setNewMaterial({ ...newMaterial, description: e.target.value })}
-                          className="w-full p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-[2.5rem] text-sm font-medium text-slate-600 dark:text-slate-300 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all resize-none"
+                          className="w-full p-6 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-medium text-slate-600 dark:text-slate-300 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all resize-none"
                           placeholder="Descreva o que seu material aborda, para quem é indicado e seus diferenciais..."
                         />
                       </div>
@@ -1235,7 +1235,7 @@ const PartnerDashboard: React.FC = () => {
                           <FileText size={16} className="text-indigo-500" />
                           Arquivo Principal (PDF)
                         </label>
-                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group">
+                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group">
                           <input type="file" accept=".pdf" className="hidden" onChange={e => setFullFile(e.target.files?.[0] || null)} />
                           <div className="flex flex-col items-center gap-2">
                             <UploadCloud size={20} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
@@ -1252,7 +1252,7 @@ const PartnerDashboard: React.FC = () => {
                           <Eye size={16} className="text-indigo-500" />
                           Imagem de Capa (JPG/PNG)
                         </label>
-                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group overflow-hidden relative">
+                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group overflow-hidden relative">
                           <input type="file" accept="image/*" className="hidden" onChange={e => setCoverFile(e.target.files?.[0] || null)} />
                           {coverFile ? (
                             <Image
@@ -1354,7 +1354,7 @@ const PartnerDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="bg-white/5 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/10 flex flex-col justify-between gap-6">
+                    <div className="bg-white/5 backdrop-blur-xl p-8 rounded-2xl border border-white/10 flex flex-col justify-between gap-6">
                       <div>
                         <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-4">Conta de Recebimento</p>
                         <div className="flex items-center gap-4 mb-2">
@@ -1727,7 +1727,7 @@ const PartnerDashboard: React.FC = () => {
                       <div className="space-y-3">
                         <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Documento de Identidade</p>
                         <p className="text-[9px] text-slate-400 font-bold">Envie uma foto do RG, CNH ou Passaporte (frente e verso em uma única imagem). Necessário para autorizar os saques.</p>
-                        <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-all group">
+                        <label className="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-all group">
                           <input type="file" accept="image/*,application/pdf" className="hidden"
                             onChange={e => setDocFile(e.target.files?.[0] || null)} />
                           {docFile ? (
@@ -1801,7 +1801,7 @@ const PartnerDashboard: React.FC = () => {
                   </div>
 
                   {editingMaterial.status === 'approved' && (
-                    <div className="bg-amber-50 dark:bg-amber-900/20 p-6 rounded-[2rem] border border-amber-100 dark:border-amber-900/40 flex gap-4">
+                    <div className="bg-amber-50 dark:bg-amber-900/20 p-6 rounded-2xl border border-amber-100 dark:border-amber-900/40 flex gap-4">
                       <AlertTriangle className="text-amber-600 flex-shrink-0" size={20} />
                       <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 leading-relaxed uppercase">
                         Este material já foi aprovado. Alterações críticas (como o arquivo PDF) exigem uma nova solicitação caso queira mudar o conteúdo principal.
@@ -1922,7 +1922,7 @@ const PartnerDashboard: React.FC = () => {
                         <Eye size={16} className="text-indigo-500" />
                         Alterar Imagem de Capa
                       </label>
-                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-[2rem] cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group overflow-hidden relative">
+                      <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl cursor-pointer hover:border-indigo-500 hover:bg-white dark:hover:bg-slate-800 transition-all bg-white dark:bg-slate-900 group overflow-hidden relative">
                         <input type="file" accept="image/*" className="hidden" onChange={e => setCoverFile(e.target.files?.[0] || null)} />
                         {(coverFile || editingMaterial.coverUrl) ? (
                           <Image

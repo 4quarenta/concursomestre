@@ -17,15 +17,12 @@ import {
   AlertTriangle,
   BookOpen,
   CheckCircle2,
-  Edit3,
   ExternalLink,
   FileText,
-  History,
   Loader2,
   Plus,
   RefreshCcw,
   Search,
-  Trash2,
   X,
   XCircle,
 } from 'lucide-react';
@@ -100,8 +97,10 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
   const confirm = useConfirm();
   const [query, setQuery] = React.useState(filter);
   const [laws, setLaws] = React.useState<LawSummary[]>([]);
+  const [selectedLawIds, setSelectedLawIds] = React.useState<Set<string>>(() => new Set());
   const [home, setHome] = React.useState<LegalHomeSnapshot>(EMPTY_HOME);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [isBulkDeleting, setIsBulkDeleting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [syncingId, setSyncingId] = React.useState<string | null>(null);
   const [isSyncModalOpen, setIsSyncModalOpen] = React.useState(false);
@@ -135,6 +134,8 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
     return new Map<string, string>(entries);
   }, [home.areas]);
   const selectedSourceLookup = React.useMemo(() => new Set(selectedSourceIds), [selectedSourceIds]);
+  const visibleLawIds = React.useMemo(() => laws.map((law) => law.id), [laws]);
+  const allVisibleSelected = visibleLawIds.length > 0 && visibleLawIds.every((lawId) => selectedLawIds.has(lawId));
 
   const loadLaws = React.useCallback(async (nextQuery = query) => {
     setIsLoading(true);
@@ -142,6 +143,12 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
       const payload = await legalCommentaryApiService.getAdminList(nextQuery);
       setLaws(payload.laws || []);
       setHome(payload.home || EMPTY_HOME);
+      setSelectedLawIds((current) => {
+        if (current.size === 0) return current;
+        const allowedIds = new Set((payload.laws || []).map((law) => law.id));
+        const next = new Set([...current].filter((lawId) => allowedIds.has(lawId)));
+        return next.size === current.size ? current : next;
+      });
     } catch {
       addToast('Nao foi possivel carregar as leis comentadas.', 'error');
     } finally {
@@ -175,6 +182,30 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
     ));
   }, []);
 
+  const toggleSelectAllVisible = React.useCallback(() => {
+    setSelectedLawIds((current) => {
+      if (visibleLawIds.length === 0) return current;
+      if (visibleLawIds.every((lawId) => current.has(lawId))) {
+        return new Set([...current].filter((lawId) => !visibleLawIds.includes(lawId)));
+      }
+
+      return new Set([...current, ...visibleLawIds]);
+    });
+  }, [visibleLawIds]);
+
+  const toggleLawSelection = React.useCallback((lawId: string) => {
+    setSelectedLawIds((current) => {
+      const next = new Set(current);
+      if (next.has(lawId)) {
+        next.delete(lawId);
+      } else {
+        next.add(lawId);
+      }
+
+      return next;
+    });
+  }, []);
+
   const handleDelete = async (law: LawSummary) => {
     const confirmed = await confirm({
       title: 'Remover lei comentada',
@@ -194,6 +225,38 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
       addToast('Nao foi possivel remover a lei.', 'error');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const selectedLaws = laws.filter((law) => selectedLawIds.has(law.id));
+    if (selectedLaws.length === 0) return;
+
+    const confirmed = await confirm({
+      title: 'Mover leis para a lixeira',
+      description: `Mover ${selectedLaws.length} lei(s) comentada(s) selecionada(s) para a lixeira?`,
+      confirmText: 'Mover para lixeira',
+      cancelText: 'Cancelar',
+      type: 'danger',
+    });
+    if (!confirmed) return;
+
+    setIsBulkDeleting(true);
+    try {
+      let succeeded = 0;
+      for (const law of selectedLaws) {
+        await legalCommentaryApiService.deleteAdminLaw(law.id);
+        succeeded += 1;
+      }
+
+      setSelectedLawIds(new Set());
+      addToast(`${succeeded} lei(s) movida(s) para a lixeira.`, 'success');
+      await loadLaws(query);
+    } catch {
+      addToast('Nao foi possivel concluir a acao em massa.', 'error');
+      await loadLaws(query);
+    } finally {
+      setIsBulkDeleting(false);
     }
   };
 
@@ -591,10 +654,35 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         <div className={ADMIN_SURFACE_HEADER_CLASS}>
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Leis cadastradas</p>
         </div>
+        <div className="flex flex-col gap-3 border-b border-slate-100 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleBulkDelete()}
+              disabled={selectedLawIds.size === 0 || isBulkDeleting}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {isBulkDeleting ? <Loader2 size={14} className="animate-spin" /> : null}
+              Mover para lixeira
+            </button>
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              {selectedLawIds.size > 0 ? `${selectedLawIds.size} lei(s) selecionada(s)` : 'Selecione leis para aplicar a acao em massa.'}
+            </span>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[980px] text-left text-xs">
             <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 dark:border-slate-800 dark:bg-slate-800/50">
               <tr>
+                <th className="w-12 p-4">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    aria-label="Selecionar leis visiveis"
+                    className="h-4 w-4 rounded-sm border-slate-300 text-sky-700 focus:ring-sky-700 dark:border-slate-700 dark:bg-slate-900"
+                  />
+                </th>
                 <th className="p-4">Lei</th>
                 <th className="p-4">Area</th>
                 <th className="p-4">Artigos</th>
@@ -607,10 +695,19 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="p-10 text-center text-sm font-bold text-slate-500">Carregando leis...</td>
+                  <td colSpan={8} className="p-10 text-center text-sm font-bold text-slate-500">Carregando leis...</td>
                 </tr>
               ) : laws.length > 0 ? laws.map((law) => (
                 <tr key={law.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                  <td className="p-4 align-top">
+                    <input
+                      type="checkbox"
+                      checked={selectedLawIds.has(law.id)}
+                      onChange={() => toggleLawSelection(law.id)}
+                      aria-label={`Selecionar ${law.shortTitle}`}
+                      className="h-4 w-4 rounded-sm border-slate-300 text-sky-700 focus:ring-sky-700 dark:border-slate-700 dark:bg-slate-900"
+                    />
+                  </td>
                   <td className="p-4">
                     <div className="flex items-start gap-3">
                       <div className="rounded-md bg-indigo-50 p-3 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
@@ -657,46 +754,54 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                     </p>
                   </td>
                   <td className="p-4">
-                    <div className="flex justify-center gap-2">
+                    <div className="flex flex-wrap justify-center gap-x-2 gap-y-1 text-[11px]">
+                      <Link
+                        href={`/lei-comentada/${law.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                      >
+                        Ver
+                      </Link>
+                      <span className="text-slate-300 dark:text-slate-700">|</span>
                       <Link
                         href={getLawEditPath(law.id)}
-                        className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-300"
-                        title="Editar lei"
+                        className="font-medium text-sky-700 hover:text-sky-900 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
                       >
-                        <Edit3 size={16} />
+                        Editar
                       </Link>
+                      <span className="text-slate-300 dark:text-slate-700">|</span>
                       <button
                         type="button"
                         disabled={syncingId === law.id}
                         onClick={() => void handleSyncLaw(law)}
-                        className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-40 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300"
-                        title="Sincronizar lei"
+                        className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline disabled:cursor-not-allowed disabled:opacity-45 dark:text-emerald-300 dark:hover:text-emerald-200"
                       >
-                        {syncingId === law.id ? <Loader2 className="animate-spin" size={16} /> : <RefreshCcw size={16} />}
+                        {syncingId === law.id ? 'Sincronizando...' : 'Sincronizar'}
                       </button>
+                      <span className="text-slate-300 dark:text-slate-700">|</span>
                       <button
                         type="button"
                         onClick={() => void handleOpenUpdatesModal(law)}
-                        className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
-                        title="Ver atualizacoes"
+                        className="font-medium text-amber-700 hover:text-amber-900 hover:underline dark:text-amber-300 dark:hover:text-amber-200"
                       >
-                        <History size={16} />
+                        Atualizações
                       </button>
+                      <span className="text-slate-300 dark:text-slate-700">|</span>
                       <button
                         type="button"
                         disabled={deletingId === law.id}
                         onClick={() => void handleDelete(law)}
-                        className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-500/10"
-                        title="Remover lei"
+                        className="font-medium text-red-600 hover:text-red-800 hover:underline disabled:cursor-not-allowed disabled:opacity-45 dark:text-red-400 dark:hover:text-red-300"
                       >
-                        <Trash2 size={16} />
+                        {deletingId === law.id ? 'Removendo...' : 'Lixeira'}
                       </button>
                     </div>
                   </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={7} className="p-10 text-center">
+                  <td colSpan={8} className="p-10 text-center">
                     <BookOpen className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={34} />
                     <p className="text-sm font-black text-slate-900 dark:text-slate-100">Nenhuma lei cadastrada no banco.</p>
                     <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">Crie a primeira lei para publicar o modulo Lei Comentada.</p>

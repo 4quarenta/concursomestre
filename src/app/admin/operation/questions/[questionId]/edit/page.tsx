@@ -39,10 +39,10 @@ const resolveQuestionId = (value?: string | string[]) =>
 
 const getReportResolutionText = (report: ErrorReport | null) => {
   if (!report) {
-    return 'Questao revisada pela moderacao administrativa.';
+    return 'Questão revisada pela moderação administrativa.';
   }
 
-  return `Questao revisada a partir da denuncia "${report.reason || 'sem motivo informado'}".`;
+  return `Questão revisada a partir da denúncia "${report.reason || 'sem motivo informado'}".`;
 };
 
 const AdminQuestionEditPage = () => {
@@ -115,7 +115,7 @@ const AdminQuestionEditPage = () => {
       questionLoadKeyRef.current = '';
       questionLoadPromiseRef.current = null;
       const frameId = window.requestAnimationFrame(() => {
-        setLoadError('ID da questao nao informado.');
+        setLoadError('ID da questão não informado.');
         setIsQuestionLoading(false);
       });
       return () => {
@@ -186,7 +186,7 @@ const AdminQuestionEditPage = () => {
         if (!isCurrent) return;
 
         if (!payload || !payload.id) {
-          setLoadError('Questao nao encontrada.');
+          setLoadError('Questão não encontrada.');
           setQuestion(null);
           return;
         }
@@ -196,7 +196,7 @@ const AdminQuestionEditPage = () => {
       .catch((error) => {
         if (!isCurrent) return;
         clientLog.warn('Error loading question for admin edit:', error);
-        setLoadError('Nao foi possivel carregar esta questao.');
+        setLoadError('Não foi possível carregar esta questão.');
       })
       .finally(() => {
         if (isCurrent) {
@@ -222,7 +222,7 @@ const AdminQuestionEditPage = () => {
     onAddQuestion: async (payload: Question) => {
       const response = await questionService.createQuestions([payload]);
       if (!response.success) {
-        throw new Error('Falha ao criar a questao.');
+        throw new Error('Falha ao criar a questão.');
       }
 
       const createdQuestion = response?.created?.[0] || payload;
@@ -239,7 +239,7 @@ const AdminQuestionEditPage = () => {
     onUpdateQuestion: async (payload: Question) => {
       const response = await questionService.updateQuestion(String(payload.id), payload);
       if (!response.success) {
-        throw new Error('Falha ao atualizar a questao.');
+        throw new Error('Falha ao atualizar a questão.');
       }
       upsertQuestion(payload);
 
@@ -296,7 +296,7 @@ const AdminQuestionEditPage = () => {
         status,
         status === 'resolved'
           ? getReportResolutionText(linkedReport)
-          : 'Denuncia analisada e ignorada pela moderacao administrativa.',
+          : 'Denúncia analisada e ignorada pela moderação administrativa.',
         linkedReport.evidenceUrl,
       );
     } catch (error) {
@@ -310,7 +310,7 @@ const AdminQuestionEditPage = () => {
     <AdminStandaloneShell
       activeTab="operation"
       activeSectionKey="questions"
-      pageTitle="Questoes"
+      pageTitle="Questões"
       showPageHeader={false}
     >
       {children}
@@ -325,17 +325,17 @@ const AdminQuestionEditPage = () => {
         </div>
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">
-            {linkedReport ? 'Denuncia vinculada' : reportId ? 'Carregando denuncia' : 'Edicao administrativa'}
+            {linkedReport ? 'Denúncia vinculada' : reportId ? 'Carregando denúncia' : 'Edição administrativa'}
           </p>
           <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">
-            {linkedReport?.reason || 'Revise exatamente o conteudo desta questao antes de salvar.'}
+            {linkedReport?.reason || 'Revise exatamente o conteúdo desta questão antes de salvar.'}
           </p>
           <p className="mt-1 max-w-4xl text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-            {linkedReport?.details || (reportId && !isReportsLoaded ? 'Aguarde enquanto o contexto da denuncia e carregado.' : 'Ao salvar, voce volta para a fila administrativa correspondente.')}
+            {linkedReport?.details || (reportId && !isReportsLoaded ? 'Aguarde enquanto o contexto da denúncia é carregado.' : 'Ao salvar, você volta para a fila administrativa correspondente.')}
           </p>
           {linkedReport ? (
             <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-              Denunciante: {linkedReport.userName || 'Nao informado'} - ID #{linkedReport.id}
+              Denunciante: {linkedReport.userName || 'Não informado'} - ID #{linkedReport.id}
             </p>
           ) : null}
         </div>
@@ -368,7 +368,7 @@ const AdminQuestionEditPage = () => {
               className="inline-flex items-center gap-2 rounded-sm border border-rose-300 bg-rose-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-300"
             >
               {isResolvingReportInline ? <Loader2 size={13} className="animate-spin" /> : null}
-              Ignorar denuncia
+              Ignorar denúncia
             </button>
             <button
               type="button"
@@ -377,7 +377,7 @@ const AdminQuestionEditPage = () => {
               className={ADMIN_PRIMARY_BUTTON_CLASS}
             >
               {isResolvingReportInline ? <Loader2 size={13} className="animate-spin" /> : null}
-              Resolver denuncia
+              Resolver denúncia
             </button>
           </>
         ) : null}
@@ -390,7 +390,7 @@ const AdminQuestionEditPage = () => {
       <div className="flex min-h-[360px] items-center justify-center text-slate-500 dark:text-slate-400">
         <div className="inline-flex items-center gap-3 rounded-sm border border-slate-300 bg-white px-5 py-4 text-sm font-bold shadow-none dark:border-slate-700 dark:bg-slate-900">
           <Loader2 className="animate-spin" size={18} />
-          Carregando editor da questao...
+          Carregando editor da questão...
         </div>
       </div>,
     );
@@ -406,10 +406,10 @@ const AdminQuestionEditPage = () => {
         <div className="w-full max-w-xl rounded-sm border border-slate-300 bg-white p-8 text-center shadow-none dark:border-slate-700 dark:bg-slate-900">
           <ShieldCheck className="mx-auto text-rose-500" size={32} />
           <h1 className="mt-4 text-xl font-black text-slate-900 dark:text-slate-100">
-            Nao foi possivel abrir o editor
+            Não foi possível abrir o editor
           </h1>
           <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-            {loadError || 'A questao ainda esta sendo preparada para edicao.'}
+            {loadError || 'A questão ainda está sendo preparada para edição.'}
           </p>
           <button
             type="button"

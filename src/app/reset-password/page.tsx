@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -114,7 +114,7 @@ const ResetPasswordPage: React.FC = () => {
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50 dark:from-slate-950 dark:to-slate-900 p-4">
-        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl p-10 text-center space-y-5 border border-slate-100 dark:border-slate-800 animate-scale-in">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-2xl shadow-2xl p-10 text-center space-y-5 border border-slate-100 dark:border-slate-800 animate-scale-in">
           <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto">
             <CheckCircle2 size={40} />
           </div>
@@ -142,7 +142,7 @@ const ResetPasswordPage: React.FC = () => {
           priority
         />
 
-        <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 animate-scale-in">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 animate-scale-in">
           <div className="mb-8">
             <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-3">
               <KeyRound size={28} className="text-indigo-600" />

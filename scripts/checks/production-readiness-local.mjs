@@ -12,11 +12,15 @@
 */
 
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const isWindows = process.platform === 'win32';
 const npmCommand = isWindows ? 'npm.cmd' : 'npm';
 const npxCommand = isWindows ? 'npx.cmd' : 'npx';
 const args = new Set(process.argv.slice(2));
+const phpBin = process.env.PHP_BIN || 'C:/xampp/php/php.exe';
+const backendRoot = process.env.BACKEND_ROOT || 'C:/xampp/htdocs/questao-pro-backend';
 
 const criticalVitestTargets = [
   {
@@ -43,6 +47,29 @@ const criticalVitestTargets = [
     name: 'Headers/CSP frontend',
     target: 'src/config/__tests__/securityHeaders.test.ts',
   },
+  {
+    name: 'Marketplace vendedores admin',
+    target: 'src/app/admin/components/shared/__tests__/adminMarketplaceMetrics.test.ts',
+  },
+];
+
+const criticalPhpTargets = [
+  {
+    name: 'Billing checkout/webhook wiring',
+    target: 'tests/SubscriptionsCheckoutWiringTest.php',
+  },
+  {
+    name: 'Billing cron wiring',
+    target: 'tests/SubscriptionsCronWiringTest.php',
+  },
+  {
+    name: 'Billing plan sync wiring',
+    target: 'tests/SubscriptionsPlanSyncWiringTest.php',
+  },
+  {
+    name: 'Billing saldo de termo parcelado',
+    target: 'tests/SubscriptionsTermDebtBehaviorTest.php',
+  },
 ];
 
 const checks = [
@@ -57,6 +84,16 @@ const checks = [
     args: ['run', 'typecheck'],
   },
   {
+    name: 'Artefatos gerados fora da raiz',
+    command: npmCommand,
+    args: ['run', 'check:generated-artifacts'],
+  },
+  {
+    name: 'Convencao Next proxy',
+    command: npmCommand,
+    args: ['run', 'check:next-proxy'],
+  },
+  {
     name: 'Budget de hard refresh',
     command: npmCommand,
     args: ['run', 'check:hard-refresh-budget'],
@@ -67,6 +104,18 @@ const checks = [
     args: ['vitest', 'run', '--pool=threads', suite.target],
   })),
 ];
+
+const backendChecksEnabled = !args.has('--skip-backend')
+  && fs.existsSync(phpBin)
+  && fs.existsSync(backendRoot);
+
+if (backendChecksEnabled) {
+  checks.push(...criticalPhpTargets.map((suite) => ({
+    name: `Suite critica PHP: ${suite.name}`,
+    command: phpBin,
+    args: [path.join(backendRoot, suite.target)],
+  })));
+}
 
 if (args.has('--with-build')) {
   checks.push({
@@ -102,6 +151,11 @@ const runCheck = (check) => new Promise((resolve, reject) => {
 });
 
 try {
+  if (!backendChecksEnabled && !args.has('--skip-backend')) {
+    console.log(`[production-readiness] Backend PHP ignorado: nao encontrei PHP_BIN=${phpBin} ou BACKEND_ROOT=${backendRoot}.`);
+    console.log('[production-readiness] Use PHP_BIN/BACKEND_ROOT para incluir as suites PHP locais.');
+  }
+
   for (const check of checks) {
     await runCheck(check);
   }

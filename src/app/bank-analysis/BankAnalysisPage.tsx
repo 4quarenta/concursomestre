@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -109,7 +109,7 @@ type XrayDiagnosis = {
   topTopic: FlatTopic | null;
 };
 
-const PANEL_CLASS = 'rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900';
+const PANEL_CLASS = 'rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900';
 const INNER_PANEL_CLASS = 'rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50';
 const FIELD_CLASS = 'h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-800 outline-none transition-all focus:border-amber-300 focus:bg-white focus:ring-4 focus:ring-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:border-amber-500 dark:focus:bg-slate-900';
 
@@ -461,7 +461,7 @@ const XrayLoadingState = ({
 
 const EmptyAnalysisState = () => (
   <div className={`${PANEL_CLASS} border-dashed px-6 py-20 text-center`}>
-    <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-slate-50 text-slate-300 dark:bg-slate-800/50 dark:text-slate-600">
+    <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-50 text-slate-300 dark:bg-slate-800/50 dark:text-slate-600">
       <Search size={38} />
     </div>
     <h3 className="mt-6 text-lg font-black text-slate-800 dark:text-slate-200">Aguardando seleção</h3>
@@ -918,9 +918,9 @@ const RecommendationPanel = ({
   if (!recommendation) return null;
 
   return (
-    <section className="rounded-3xl bg-gradient-to-br from-indigo-600 to-violet-700 p-6 text-white shadow-xl shadow-indigo-200 dark:from-indigo-900 dark:to-violet-950 dark:shadow-none md:p-8">
+    <section className="rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 p-6 text-white shadow-xl shadow-indigo-200 dark:from-indigo-900 dark:to-violet-950 dark:shadow-none md:p-8">
       <div className="flex flex-col gap-5 md:flex-row md:items-start">
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl border border-white/20 bg-white/10 backdrop-blur">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/10 backdrop-blur">
           <BrainCircuit size={32} />
         </div>
         <div className="min-w-0 flex-1">

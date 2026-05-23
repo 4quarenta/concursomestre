@@ -43,6 +43,47 @@ type QuestionSourceMetadata = Question & {
 
 const readCurrentTimeMs = () => Date.now();
 
+type UserAnswerWithLegacyAliases = UserAnswer & {
+  selected_option_index?: number | string | null;
+  selectedOption?: number | string | null;
+  optionId?: number | string | null;
+};
+
+const readAnswerSelectionValue = (answer: UserAnswerWithLegacyAliases) => (
+  answer.selectedOptionIndex
+  ?? answer.selected_option_index
+  ?? answer.selectedOption
+  ?? answer.optionId
+);
+
+const resolveAnsweredOptionLabel = (question: Question, answer: UserAnswerWithLegacyAliases): string => {
+  const options = question.itens || [];
+  const rawSelection = readAnswerSelectionValue(answer);
+  const selectedIndex = Number(rawSelection);
+
+  if (Number.isInteger(selectedIndex) && selectedIndex >= 0 && selectedIndex < options.length) {
+    return options[selectedIndex]?.rotulo || String.fromCharCode(65 + selectedIndex);
+  }
+
+  const legacyOneBasedIndex = selectedIndex - 1;
+  if (Number.isInteger(legacyOneBasedIndex) && legacyOneBasedIndex >= 0 && legacyOneBasedIndex < options.length) {
+    return options[legacyOneBasedIndex]?.rotulo || String.fromCharCode(65 + legacyOneBasedIndex);
+  }
+
+  const normalizedRawSelection = String(rawSelection ?? '').trim();
+  const selectedById = options.find((item) => String(item.id) === normalizedRawSelection);
+  if (selectedById?.rotulo) {
+    return selectedById.rotulo;
+  }
+
+  const selectedByLabel = options.find((item) => String(item.rotulo || '').trim().toUpperCase() === normalizedRawSelection.toUpperCase());
+  if (selectedByLabel?.rotulo) {
+    return selectedByLabel.rotulo;
+  }
+
+  return normalizedRawSelection || '-';
+};
+
 const getAssuntoNome = (assunto: Assunto) => (assunto.nome || assunto.name || '').trim().toLowerCase();
 
 const getAssuntoTopico = (assunto: Assunto & { topico?: string }) => (
@@ -343,7 +384,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       setQuestionComments(questionId, comments);
     } catch (error) {
       clientLog.warn(`[QuestionCard] Failed to fetch comments for ${questionId}`, error);
-      addToast('Erro ao carregar comentarios.', 'error');
+      addToast('Erro ao carregar comentários.', 'error');
     }
   }, [addToast, authenticatedUserId, setQuestionComments]);
 
@@ -359,7 +400,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       return true;
     } catch (error) {
       clientLog.warn('[QuestionCard] Failed to report comment:', error);
-      addToast('Erro de conexao ao enviar denuncia.', 'error');
+      addToast('Erro de conexão ao enviar denúncia.', 'error');
       return false;
     }
   }, [addToast, authenticatedUserId]);
@@ -373,7 +414,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       addToast('Comentario excluido com sucesso.', 'success');
     } catch (error) {
       clientLog.warn('[QuestionCard] Failed to delete comment:', error);
-      addToast('Erro ao excluir comentario.', 'error');
+      addToast('Erro ao excluir comentário.', 'error');
       await fetchComments(questionId);
     }
   }, [addToast, authenticatedUserId, deleteQuestionComment, fetchComments]);
@@ -706,14 +747,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               href={buildQuestionPath(question)}
               prefetch={false}
               className="text-[10px] font-bold text-slate-300 transition-colors hover:text-indigo-500 hover:underline dark:text-slate-600 dark:hover:text-indigo-400"
-              title={`Abrir pagina da questao ${question.id}`}
+              title={`Abrir página da questão ${question.id}`}
             >
               Q{question.id}
             </Link>
             <div className="flex gap-1.5">
               <span className="inline-flex items-center justify-center px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 text-[8px] font-bold rounded-md uppercase tracking-wide">{(question.assuntos && question.assuntos.length > 0) ? question.assuntos[0].nome : 'Geral'}</span>
               <span className="inline-flex items-center justify-center px-2 py-0.5 bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 text-[8px] font-bold rounded border border-slate-200 dark:border-slate-600 uppercase">{['', 'Muito Fácil', 'Fácil', 'Médio', 'Difícil', 'Muito Difícil'][Number(question.dificuldade)] || 'Dificuldade ' + question.dificuldade}</span>
-              {isOriginalQuestion && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-violet-600 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Inedita</span>}
+              {isOriginalQuestion && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-violet-600 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Inédita</span>}
               {isCanceledQuestion && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-red-500 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Anulada</span>}
               {(question.desatualizada || question.isOutdated) && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-amber-500 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Desatualizada</span>}
               {(existingAnswer || sessionAnswer) && !(mode === 'simulation' && hideFeedback) && (
@@ -910,7 +951,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           {isCanceledQuestion ? (
             <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
               <AlertTriangle className="mt-0.5 shrink-0" size={16} />
-              <span>Questao anulada. As alternativas ficam apenas para consulta e a resposta nao sera registrada.</span>
+              <span>Questão anulada. As alternativas ficam apenas para consulta e a resposta não será registrada.</span>
             </div>
           ) : null}
 
@@ -1089,7 +1130,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               onClick={handleSubmit}
               className="px-8 py-3 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest rounded-xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all disabled:opacity-30 text-[10px] shadow-lg shadow-slate-200 dark:shadow-none"
             >
-              {isCanceledQuestion ? 'Questao anulada' : 'Responder'}
+              {isCanceledQuestion ? 'Questão anulada' : 'Responder'}
             </button>
           ) : null}
         </div>
@@ -1241,7 +1282,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         {/* Modal de Anotações Simplificado */}
         {isNoteModalOpen && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-xl animate-scale-in overflow-hidden flex flex-col transition-colors">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl animate-scale-in overflow-hidden flex flex-col transition-colors">
               <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-yellow-50/50 dark:bg-yellow-900/20">
                 <h3 className="font-bold text-slate-800 dark:text-slate-100 text-xs uppercase tracking-widest flex items-center gap-2"><StickyNote size={16} /> Minha Anotação</h3>
                 <button onClick={() => setIsNoteModalOpen(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"><XCircle size={20} /></button>
@@ -1266,7 +1307,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         {/* Modal de Histórico */}
         {isHistoryModalOpen && typeof document !== 'undefined' && createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md shadow-xl animate-scale-in overflow-hidden flex flex-col transition-colors">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md shadow-xl animate-scale-in overflow-hidden flex flex-col transition-colors">
               <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
                 <h3 className="font-bold text-slate-800 dark:text-slate-100 text-xs uppercase tracking-widest flex items-center gap-2"><History size={16} /> Histórico de Resoluções</h3>
                 <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"><XCircle size={20} /></button>
@@ -1282,7 +1323,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                       <div key={i} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
                         <div className="flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${h.isCorrect ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-                            {(question.itens || []).find(item => item.id === h.selectedOptionIndex)?.rotulo || '?'}
+                            {resolveAnsweredOptionLabel(question, h)}
                           </div>
                           <div>
                             <p className={`text-xs font-bold ${h.isCorrect ? 'text-emerald-600' : 'text-red-600'}`}>{h.isCorrect ? 'Correto' : 'Incorreto'}</p>
@@ -1312,7 +1353,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       onClick={() => setPlanUpgradeModal(null)}
     >
       <div
-        className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 p-8 max-w-sm w-full text-center"
+        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-8 max-w-sm w-full text-center"
         onClick={e => e.stopPropagation()}
       >
         <div className="mx-auto mb-5 w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
@@ -1391,7 +1432,7 @@ const RelatedAnnotatedLawsSection = ({ question, onClose, initialMatches = [] }:
           return;
         }
 
-        setError(requestError instanceof Error ? requestError.message : 'Nao foi possivel carregar as leis relacionadas.');
+        setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar as leis relacionadas.');
       })
       .finally(() => {
         if (isMounted) {

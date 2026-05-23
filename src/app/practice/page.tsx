@@ -178,6 +178,27 @@ const hasVisiblePracticeFilters = (filters: PracticeFilters) => Object.values(fi
 
 const formatQuestionCount = (count: number) => `${count} ${count === 1 ? 'Questão' : 'Questões'}`;
 
+const serializePracticeQueryValue = (value: unknown) => toFilterValues(value).join(',');
+
+const buildPracticeQuestionQueryParams = (filters: PracticeFilters) => {
+  const params: Record<string, string | boolean> = {};
+
+  if (filters.keyword.trim()) params.keyword = filters.keyword.trim();
+  for (const key of MULTI_FILTER_KEYS) {
+    const value = serializePracticeQueryValue(filters[key]);
+    if (value) {
+      params[key] = value;
+    }
+  }
+  for (const key of BOOLEAN_FILTER_KEYS) {
+    if (filters[key]) {
+      params[key] = true;
+    }
+  }
+
+  return params;
+};
+
 const normalizePracticeText = (value: unknown) => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -647,12 +668,12 @@ const Practice: React.FC = () => {
     ));
 
     if (duplicate) {
-      addToast('Ja existe uma denuncia pendente para este item.', 'warning');
+      addToast('Já existe uma denúncia pendente para este item.', 'warning');
       return;
     }
 
     if (!currentUserId) {
-      addToast('Faca login para enviar uma denuncia.', 'warning');
+      addToast('Faça login para enviar uma denúncia.', 'warning');
       return;
     }
 
@@ -663,7 +684,7 @@ const Practice: React.FC = () => {
         : report.commentId;
 
     if (!targetId) {
-      addToast('Alvo da denuncia invalido.', 'error');
+      addToast('Alvo da denúncia inválido.', 'error');
       return;
     }
 
@@ -676,7 +697,7 @@ const Practice: React.FC = () => {
       evidenceUrl: report.evidenceUrl,
     }).then((result) => {
       if (result.duplicate) {
-        addToast(result.message || 'Ja existe uma denuncia pendente para este item.', 'warning');
+        addToast(result.message || 'Já existe uma denúncia pendente para este item.', 'warning');
         return;
       }
 
@@ -700,7 +721,7 @@ const Practice: React.FC = () => {
       addToast(result.message || 'Denuncia enviada com sucesso!', 'success');
     }).catch((error) => {
       clientLog.warn('Failed to create report:', error);
-      addToast((error as Error).message || 'Erro ao enviar denuncia.', 'error');
+      addToast((error as Error).message || 'Erro ao enviar denúncia.', 'error');
     });
   }, [addLocalReport, addToast, currentUserId, reports]);
 
@@ -727,15 +748,15 @@ const Practice: React.FC = () => {
       if (result.requiresModeration) {
         void notificationService.sendNotification(
           'admin',
-          'Comentario aguardando moderacao',
-          `${currentUserName || comment.userName || 'Usuario'} enviou comentario na questao #${questionId}.`,
+          'Comentário aguardando moderação',
+          `${currentUserName || comment.userName || 'Usuário'} enviou comentário na questão #${questionId}.`,
           'warning',
           'moderation',
         );
       }
     }).catch((error) => {
       clientLog.warn('Failed to save comment:', error);
-      addToast((error as Error).message || 'Erro de conexao ao salvar comentario.', 'error');
+      addToast((error as Error).message || 'Erro de conexão ao salvar comentário.', 'error');
     });
   }, [addQuestionComment, addToast, currentUserId, currentUserName]);
 
@@ -743,13 +764,13 @@ const Practice: React.FC = () => {
     likeQuestionComment(questionId, commentId);
 
     if (!currentUserId) {
-      addToast('Faca login para curtir.', 'warning');
+      addToast('Faça login para curtir.', 'warning');
       return;
     }
 
     commentService.likeComment(commentId, currentUserId).catch((error) => {
       clientLog.warn('Failed to save like:', error);
-      addToast((error as Error).message || 'Erro de conexao ao curtir comentario.', 'error');
+      addToast((error as Error).message || 'Erro de conexão ao curtir comentário.', 'error');
     });
   }, [addToast, currentUserId, likeQuestionComment]);
 
@@ -914,6 +935,7 @@ const Practice: React.FC = () => {
   }, [filters, questions, currentUser?.savedQuestionIds, userAnswers, highlightedQuestionId]);
 
   const hasActiveFilters = useMemo(() => hasVisiblePracticeFilters(filters), [filters]);
+  const questionQueryParams = useMemo(() => buildPracticeQuestionQueryParams(filters), [filters]);
 
   const resolvedQuestions = useMemo(() => {
     if (highlightedQuestionId) {
@@ -927,15 +949,23 @@ const Practice: React.FC = () => {
     return filteredQuestions;
   }, [filteredQuestions, hasActiveFilters, highlightedQuestionId, questions]);
 
+  const displayedQuestionTotal = useMemo(() => {
+    if (!highlightedQuestionId) {
+      return totalQuestions || resolvedQuestions.length;
+    }
+
+    return resolvedQuestions.length;
+  }, [highlightedQuestionId, resolvedQuestions.length, totalQuestions]);
+
   const loadNextPage = useCallback(async () => {
     if (isLoadingMore || questions.length >= totalQuestions) return;
     
     setIsLoadingMore(true);
     const nextPage = lastFetchedPage + 1;
-    await fetchMoreQuestions(nextPage);
+    await fetchMoreQuestions(nextPage, questionQueryParams);
     setLastFetchedPage(nextPage);
     setIsLoadingMore(false);
-  }, [fetchMoreQuestions, isLoadingMore, lastFetchedPage, questions.length, totalQuestions]);
+  }, [fetchMoreQuestions, isLoadingMore, lastFetchedPage, questionQueryParams, questions.length, totalQuestions]);
 
   const paginatedList = useMemo(() => resolvedQuestions.slice(0, visibleCount), [resolvedQuestions, visibleCount]);
 
@@ -1025,7 +1055,7 @@ const Practice: React.FC = () => {
       setIsLoadingMore(true);
 
       try {
-        await ensureQuestionsLoaded();
+        await ensureQuestionsLoaded(false, questionQueryParams);
         if (active) {
           setLastFetchedPage(1);
         }
@@ -1041,7 +1071,7 @@ const Practice: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [ensureQuestionsLoaded, isLoadingMore, isQuestionsLoaded]);
+  }, [ensureQuestionsLoaded, isLoadingMore, isQuestionsLoaded, questionQueryParams]);
 
   useEffect(() => {
     const resolveScrollableParent = (element: HTMLElement | null): HTMLElement | Window => {
@@ -1158,14 +1188,17 @@ const Practice: React.FC = () => {
   const applyFilters = useCallback(() => {
     setIsFiltering(true);
     setTimeout(() => {
-      setFilters(sanitizeFiltersForFocus(pendingFilters));
+      const nextFilters = sanitizeFiltersForFocus(pendingFilters);
+      setFilters(nextFilters);
       setFilterTimestamp((timestamp) => timestamp + 1);
       setVisibleCount(PAGE_SIZE);
       setCurrentQuestionIndex(0);
-      setIsFiltering(false);
+      setLastFetchedPage(1);
+      void ensureQuestionsLoaded(true, buildPracticeQuestionQueryParams(nextFilters))
+        .finally(() => setIsFiltering(false));
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 500);
-  }, [pendingFilters, sanitizeFiltersForFocus]);
+  }, [ensureQuestionsLoaded, pendingFilters, sanitizeFiltersForFocus]);
 
   const clearFilter = useCallback((key: PracticeFilterKey) => {
     let defaultValue: PracticeFilterValue = isMultiFilterKey(key) ? [] : key === 'keyword' ? '' : 'All';
@@ -1494,7 +1527,7 @@ const Practice: React.FC = () => {
 
       {/* Painel de Filtros Principal - Hidden when viewing specific question */}
       {!highlightedQuestionId && (
-        <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors duration-300">
+        <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 transition-colors duration-300">
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="flex-1 relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={18} />
@@ -1513,6 +1546,7 @@ const Practice: React.FC = () => {
                   setFilters(DEFAULT_FILTERS);
                   setPendingFilters(DEFAULT_FILTERS);
                   setLastFetchedPage(1);
+                  void ensureQuestionsLoaded(true, {});
                 }}
                   className="h-12 px-4 text-slate-300 dark:text-slate-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                 title="Limpar todos os filtros"
@@ -1679,7 +1713,7 @@ const Practice: React.FC = () => {
             <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-black text-[10px] uppercase tracking-wider">
                 <CheckCircle size={14} />
-                {formatQuestionCount(resolvedQuestions.length)}
+                {formatQuestionCount(displayedQuestionTotal)}
               </div>
               <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors">
                 <button
@@ -1703,7 +1737,7 @@ const Practice: React.FC = () => {
           resolvedQuestions.length > 0 ? (
             <div className="relative min-h-[400px]">
               {isFiltering && (
-                <div className="absolute inset-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center rounded-3xl transition-all animate-fade-in">
+                <div className="absolute inset-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center rounded-2xl transition-all animate-fade-in">
                   <div className="flex flex-col items-center gap-3">
                     <Loader2 className="animate-spin text-indigo-600 dark:text-indigo-400" size={40} />
                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Filtrando questões...</span>
@@ -1791,7 +1825,7 @@ const Practice: React.FC = () => {
                   >
                     <ChevronLeft size={16} /> Anterior
                   </button>
-                  <span className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em]">Questão {currentQuestionIndex + 1} / {filteredQuestions.length}</span>
+                  <span className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em]">Questão {currentQuestionIndex + 1} / {displayedQuestionTotal}</span>
                   <button
                     onClick={() => {
                       setCurrentQuestionIndex(Math.min(resolvedQuestions.length - 1, currentQuestionIndex + 1));
@@ -1807,7 +1841,7 @@ const Practice: React.FC = () => {
 
             </div>
           ) : (
-            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-800 p-10 sm:p-14 md:p-20 text-center space-y-4 transition-colors duration-300">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 p-10 sm:p-14 md:p-20 text-center space-y-4 transition-colors duration-300">
               <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-full w-fit mx-auto text-slate-300 dark:text-slate-600"><Search size={48} /></div>
               <h3 className="text-xl font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Nenhuma questão encontrada</h3>
               <p className="text-sm text-slate-400 dark:text-slate-600 max-w-xs mx-auto mb-6">Tente ajustar seus filtros para encontrar o que procura.</p>
@@ -1816,6 +1850,7 @@ const Practice: React.FC = () => {
                   setFilters(DEFAULT_FILTERS);
                   setPendingFilters(DEFAULT_FILTERS);
                   setLastFetchedPage(1);
+                  void ensureQuestionsLoaded(true, {});
                 }}
                   className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
               >

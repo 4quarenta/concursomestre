@@ -23,6 +23,9 @@ type CouponValidationResponse = SubscriptionApiPayload & {
 type CancelSubscriptionResponse = SubscriptionApiPayload & {
   refund_processed?: boolean;
   refund_id?: string | null;
+  debt_settled?: boolean;
+  debt_settlement_amount?: number;
+  debt_transaction_id?: number | string | null;
 };
 
 let automationHelperRequest: Promise<SubscriptionApiPayload> | null = null;
@@ -406,6 +409,7 @@ export const subscriptionsService = {
     reason?: string,
     details?: string,
     captchaToken?: string | null,
+    confirmDebtCharge = false,
   ): Promise<CancelSubscriptionResponse> {
     try {
       const response = await apiClient.post<CancelSubscriptionResponse>(
@@ -414,6 +418,7 @@ export const subscriptionsService = {
           reason,
           details,
           captchaToken,
+          confirmDebtCharge,
         },
       );
       const merged = mergeResponsePayload(response, {} as CancelSubscriptionResponse);
@@ -422,6 +427,11 @@ export const subscriptionsService = {
         ...assertApiSuccess(response, 'Nao foi possivel cancelar a assinatura.').raw,
         refund_processed: typeof merged.refund_processed === 'boolean' ? merged.refund_processed : false,
         refund_id: typeof merged.refund_id === 'string' || merged.refund_id === null ? merged.refund_id : null,
+        debt_settled: typeof merged.debt_settled === 'boolean' ? merged.debt_settled : false,
+        debt_settlement_amount: typeof merged.debt_settlement_amount === 'number' ? merged.debt_settlement_amount : 0,
+        debt_transaction_id: typeof merged.debt_transaction_id === 'number' || typeof merged.debt_transaction_id === 'string' || merged.debt_transaction_id === null
+          ? merged.debt_transaction_id
+          : null,
       };
     } catch (error) {
       clientLog.error('Error canceling subscription:', error);

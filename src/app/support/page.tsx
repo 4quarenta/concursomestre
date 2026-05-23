@@ -60,8 +60,8 @@ const SUPPORT_CATEGORIES: SupportCategoryConfig[] = [
     title: 'Reportar problema',
     eyebrow: 'Estabilidade',
     description: 'Use esta area para erros de navegacao, travamentos, telas em branco e comportamentos inesperados.',
-    placeholder: 'Conte o que aconteceu, quais passos voce fez e o que esperava ver.',
-    subjectPlaceholder: 'Ex: erro ao salvar questao',
+    placeholder: 'Conte o que aconteceu, quais passos você fez e o que esperava ver.',
+    subjectPlaceholder: 'Ex: erro ao salvar questão',
     serviceType: 'bug',
     icon: Bug,
     accentClassName: 'text-rose-600 dark:text-rose-300',
@@ -95,7 +95,7 @@ const SUPPORT_CATEGORIES: SupportCategoryConfig[] = [
     id: 'donation',
     title: 'Apoiar a plataforma',
     eyebrow: 'Comunidade',
-    description: 'Aqui ficam as formas de contribuir financeiramente com a manutencao e a evolucao do ConcursoMestre.',
+    description: 'Aqui ficam as formas de contribuir financeiramente com a manutenção e a evolução do ConcursoMestre.',
     placeholder: '',
     subjectPlaceholder: '',
     serviceType: null,
@@ -131,7 +131,7 @@ const mergeSupportThreads = (officialThreads: SupportThread[], localThreads: Sup
 
 /**
  * Organiza a central de suporte em um workspace mais claro.
- * A pagina separa categoria, formulario, historico e doacao sem misturar prioridades.
+ * A página separa categoria, formulário, histórico e doação sem misturar prioridades.
  *
  * @since 1.0.0
  */
@@ -162,7 +162,7 @@ const Support: React.FC = () => {
   const canSubmitThread = Boolean(currentUser && !isLoading && activeCategory.serviceType);
 
   /**
-   * Busca o historico oficial do usuario ao trocar de contexto.
+   * Busca o histórico oficial do usuário ao trocar de contexto.
    *
    * @since 1.0.0
    */
@@ -175,7 +175,7 @@ const Support: React.FC = () => {
     } catch (error) {
       clientLog.warn('Error fetching feedback history', error);
       if (notifyOnError) {
-        addToast(readApiErrorMessage(error, 'Nao foi possivel carregar seu historico agora.'), 'error');
+        addToast(readApiErrorMessage(error, 'Não foi possível carregar seu histórico agora.'), 'error');
       }
     }
   }, [addToast]);
@@ -217,7 +217,7 @@ const Support: React.FC = () => {
     event.preventDefault();
 
     if (!canSubmitThread || !activeCategory.serviceType) {
-      addToast('Sua sessao ainda nao esta pronta para enviar.', 'warning');
+      addToast('Sua sessão ainda não está pronta para enviar.', 'warning');
       return;
     }
 
@@ -262,7 +262,7 @@ const Support: React.FC = () => {
       void fetchHistory(true, true);
     } catch (error) {
       clientLog.warn('Error creating support thread', error);
-      addToast(readApiErrorMessage(error, 'Nao foi possivel enviar sua solicitacao.'), 'error');
+      addToast(readApiErrorMessage(error, 'Não foi possível enviar sua solicitação.'), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -296,7 +296,7 @@ const Support: React.FC = () => {
       setReplies((currentReplies) => ({ ...currentReplies, [threadId]: threadReplies }));
     } catch (error) {
       clientLog.warn('Error fetching support replies', error);
-      addToast(readApiErrorMessage(error, 'Nao foi possivel carregar a conversa completa.'), 'error');
+      addToast(readApiErrorMessage(error, 'Não foi possível carregar a conversa completa.'), 'error');
     } finally {
       setLoadingReplies(null);
     }
@@ -326,7 +326,7 @@ const Support: React.FC = () => {
       addToast('Resposta enviada com sucesso.', 'success');
     } catch (error) {
       clientLog.warn('Error sending support reply', error);
-      addToast(readApiErrorMessage(error, 'Nao foi possivel enviar sua resposta.'), 'error');
+      addToast(readApiErrorMessage(error, 'Não foi possível enviar sua resposta.'), 'error');
     } finally {
       setSendingReplyId(null);
     }
@@ -359,7 +359,7 @@ const Support: React.FC = () => {
         })
         .catch((error) => {
           clientLog.warn('Error opening support thread from notification', error);
-          addToast(readApiErrorMessage(error, 'Nao foi possivel abrir a conversa de suporte.'), 'error');
+          addToast(readApiErrorMessage(error, 'Não foi possível abrir a conversa de suporte.'), 'error');
         })
         .finally(() => setLoadingReplies(null));
     }, 0);
@@ -400,7 +400,7 @@ const Support: React.FC = () => {
     }
 
     return [
-      'A chave PIX fica disponivel logo abaixo.',
+      'A chave PIX fica disponível logo abaixo.',
       'As contribuicoes ajudam servidor, manutencao e melhorias.',
       'Use apenas os canais oficiais mostrados nesta tela.',
     ];
@@ -459,7 +459,7 @@ const Support: React.FC = () => {
                 {[
                   'Escolha a categoria certa para evitar retrabalho.',
                   'Descreva o contexto com clareza.',
-                  'Acompanhe as respostas no historico logo abaixo.',
+                  'Acompanhe as respostas no histórico logo abaixo.',
                 ].map((step, index) => (
                   <div key={step} className="flex items-start gap-3">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-black text-white dark:bg-indigo-500">
@@ -503,7 +503,7 @@ const Support: React.FC = () => {
                     </div>
                   </div>
                   <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-slate-600 dark:text-slate-300">
-                    O projeto continua evoluindo com manutencao constante, servidor, desenvolvimento e revisao de conteudo. Se a plataforma te ajuda de verdade, esta e a area oficial para contribuir.
+                    O projeto continua evoluindo com manutenção constante, servidor, desenvolvimento e revisão de conteúdo. Se a plataforma te ajuda de verdade, esta é a área oficial para contribuir.
                   </p>
                   <div className="mt-6 grid gap-3 md:grid-cols-2">
                     <div className="rounded-[1.6rem] border border-emerald-200 bg-white p-5 dark:border-emerald-500/20 dark:bg-slate-900">
@@ -628,7 +628,7 @@ const Support: React.FC = () => {
                   </div>
                   {!canSubmitThread ? (
                     <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium leading-5 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-                      Aguarde a sessao carregar para enviar.
+                      Aguarde a sessão carregar para enviar.
                     </p>
                   ) : null}
                   {composeStep === 1 ? (
@@ -651,7 +651,7 @@ const Support: React.FC = () => {
                         className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
                       >
                         <Send size={16} />
-                        {isSubmitting ? 'Enviando...' : 'Enviar solicitacao'}
+                        {isSubmitting ? 'Enviando...' : 'Enviar solicitação'}
                       </button>
                       <button
                         type="button"
@@ -680,7 +680,7 @@ const Support: React.FC = () => {
               {filteredHistory.length === 0 ? (
                 <div className="rounded-[1.8rem] border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center dark:border-slate-700 dark:bg-slate-950">
                   <p className="text-base font-black text-slate-900 dark:text-slate-100">Nenhuma conversa aberta ainda.</p>
-                  <p className="mt-2 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">Assim que voce enviar algo, o historico vai aparecer aqui com status e respostas.</p>
+                  <p className="mt-2 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">Assim que você enviar algo, o histórico vai aparecer aqui com status e respostas.</p>
                 </div>
               ) : filteredHistory.map((thread) => {
                 const statusMeta = STATUS_META[thread.status];
@@ -728,7 +728,7 @@ const Support: React.FC = () => {
                         </div>
                         {isLocalThread ? (
                           <p className="mt-4 rounded-[1.6rem] border border-amber-200 bg-amber-50 p-4 text-xs font-medium leading-5 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-                            Conversa enviada e aguardando sincronizacao do historico oficial.
+                            Conversa enviada e aguardando sincronização do histórico oficial.
                           </p>
                         ) : (
                           <div className="mt-4 rounded-[1.6rem] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -740,7 +740,7 @@ const Support: React.FC = () => {
                                 {sendingReplyId === thread.id ? 'Enviando...' : 'Responder'}
                               </button>
                             </div>
-                            <p className="mt-3 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Quando houver resposta do suporte pelo painel administrativo, a conversa continua aqui e o historico fica centralizado.</p>
+                            <p className="mt-3 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Quando houver resposta do suporte pelo painel administrativo, a conversa continua aqui e o histórico fica centralizado.</p>
                           </div>
                         )}
                       </div>

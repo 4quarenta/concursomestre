@@ -154,7 +154,7 @@ const AdminQuestionAiGenerationModal = ({
                     <p className="text-sm font-medium text-red-600 dark:text-red-300">{item.error}</p>
                   ) : (
                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                      {item.status === 'running' ? 'Gerando conteudo...' : 'Aguardando processamento.'}
+                      {item.status === 'running' ? 'Gerando conteúdo...' : 'Aguardando processamento.'}
                     </p>
                   )}
                 </div>

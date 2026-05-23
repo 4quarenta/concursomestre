@@ -303,7 +303,7 @@ const ManualQuestionModal = ({
               placeholder="Ex: Cebraspe, FGV..."
             />
             <SmartTagSelector
-              label="Orgao(s)"
+              label="Órgão(s)"
               options={existingOrgaos}
               selected={(manualQ.orgaos || []).map(getQuestionOptionLabel).filter(Boolean)}
               onChange={(value) => updateManualQ({ orgaos: value })}
@@ -337,7 +337,7 @@ const ManualQuestionModal = ({
                       setIsProvaSearchOpen(true);
                     }}
                     onFocus={() => setIsProvaSearchOpen(true)}
-                    placeholder="Digite nome, banca, orgao, cargo, ano ou ID"
+                    placeholder="Digite nome, banca, órgão, cargo, ano ou ID"
                     className={`${ADMIN_FIELD_CLASS} h-10 w-full pl-10 pr-24 font-semibold`}
                   />
                   <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2">
@@ -432,7 +432,7 @@ const ManualQuestionModal = ({
                       <p className="text-sm font-black text-slate-900 dark:text-slate-100">{selectedProva.banca?.sigla || selectedProva.banca?.nome || '-'}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Orgao</p>
+                      <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Órgão</p>
                       <p className="text-sm font-black text-slate-900 dark:text-slate-100">{selectedProva.orgao?.sigla || selectedProva.orgao?.nome || '-'}</p>
                     </div>
                     <div>
@@ -452,7 +452,7 @@ const ManualQuestionModal = ({
                   </div>
                 ) : (
                   <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Prova nao encontrada para este ID. Verifique se o cadastro existe no banco de provas.
+                    Prova não encontrada para este ID. Verifique se o cadastro existe no banco de provas.
                   </p>
                 )}
               </div>
@@ -489,7 +489,7 @@ const ManualQuestionModal = ({
                   onChange={(event) => handleTypeChange(event.target.value)}
                   className={`${ADMIN_FIELD_CLASS} h-10 w-full font-semibold`}
                 >
-                  <option value={MULTIPLE_CHOICE_LABEL}>Multipla Escolha</option>
+                  <option value={MULTIPLE_CHOICE_LABEL}>Múltipla escolha</option>
                   <option value="Certo/Errado">Certo/Errado</option>
                 </select>
               </div>

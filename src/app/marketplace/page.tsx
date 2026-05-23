@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -307,7 +307,7 @@ const MaterialDetailModal: React.FC<MaterialDetailModalProps> = ({
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex justify-center animate-in fade-in duration-300">
             {/* Modal Container with scroll */}
-            <div className="w-full h-full md:h-[90vh] md:w-[90vw] md:max-w-6xl bg-slate-50 dark:bg-slate-900 md:rounded-3xl md:my-auto flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-scale-in relative">
+            <div className="w-full h-full md:h-[90vh] md:w-[90vw] md:max-w-6xl bg-slate-50 dark:bg-slate-900 md:rounded-2xl md:my-auto flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-scale-in relative">
 
                 {/* Header (Sticky) */}
                 <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-6 py-4 sticky top-0 z-20 flex items-center justify-between">
@@ -805,7 +805,7 @@ const Marketplace: React.FC = () => {
             {/* Aviso de KYC */}
             {showKYCWarning && ReactDOM.createPortal(
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-slate-900 max-w-sm w-full rounded-[2rem] p-8 text-center space-y-5 shadow-2xl animate-scale-in border border-slate-200 dark:border-slate-800 transition-colors">
+                    <div className="bg-white dark:bg-slate-900 max-w-sm w-full rounded-2xl p-8 text-center space-y-5 shadow-2xl animate-scale-in border border-slate-200 dark:border-slate-800 transition-colors">
                         <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto border border-amber-100 dark:border-amber-800/30">
                             <ShieldAlert size={24} />
                         </div>
@@ -911,8 +911,8 @@ const Marketplace: React.FC = () => {
 
                         {/* Grid vs List Rendering */}
                         {activeMaterials.length === 0 ? (
-                            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-12 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 transition-colors">
-                                <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+                            <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 transition-colors">
+                                <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-center mx-auto mb-6">
                                     <ShoppingBag size={40} className="text-slate-300 dark:text-slate-600" />
                                 </div>
                                 <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2">Nenhum material disponivel</h3>
@@ -973,7 +973,7 @@ const Marketplace: React.FC = () => {
                                     );
                                 }
                                 return (
-                                    <div key={item.id} className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-600 transition-all group flex flex-col h-full cursor-pointer" onClick={() => setSelectedMaterial(item)}>
+                                    <div key={item.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-600 transition-all group flex flex-col h-full cursor-pointer" onClick={() => setSelectedMaterial(item)}>
                                         <div className="h-36 bg-slate-100 dark:bg-slate-800 relative overflow-hidden transition-colors">
                                             {item.coverUrl ? <Image src={getAssetUrl(item.coverUrl)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt="" width={360} height={220} unoptimized /> : <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-600"><FileText size={40} /></div>}
                                             <div className="absolute top-3 left-3"><span className="px-2 py-0.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur text-indigo-700 dark:text-indigo-400 text-[9px] font-black uppercase tracking-widest rounded-md shadow-sm border border-slate-100 dark:border-slate-800 transition-colors">{item.type}</span></div>
@@ -1036,7 +1036,7 @@ const Marketplace: React.FC = () => {
                     </>
                 ) : (
                     /* ABA MEUS PEDIDOS */
-                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden animate-slide-up transition-colors">
                         <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 flex items-center justify-between transition-colors">
                             <h3 className="font-black text-slate-900 dark:text-slate-100 flex items-center gap-2 transition-colors"><History size={18} className="text-indigo-600 dark:text-indigo-400" /> Histórico de Compras</h3>
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{myOrders.length} Pedidos</span>
@@ -1154,7 +1154,7 @@ const Marketplace: React.FC = () => {
                         {/* Modal de Cancelamento de Reembolso */}
                         {showCancelRefundModal && createPortal(
                             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[10000] flex items-center justify-center p-4 animate-in fade-in transition-all">
-                                <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl p-6 animate-scale-in border border-slate-200 dark:border-slate-800 text-center space-y-4">
+                                <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl p-6 animate-scale-in border border-slate-200 dark:border-slate-800 text-center space-y-4">
                                     <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto border border-amber-100 dark:border-amber-800/30">
                                         <AlertTriangle size={24} />
                                     </div>
@@ -1186,7 +1186,7 @@ const Marketplace: React.FC = () => {
                         {/* Área de Pedido de Reembolso Modal/Overlay */}
                         {refundTxId && createPortal(
                             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[10000] flex items-center justify-center p-4 animate-in fade-in transition-all">
-                                <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl p-8 animate-scale-in border border-slate-200 dark:border-slate-800">
+                                <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl p-8 animate-scale-in border border-slate-200 dark:border-slate-800">
                                     <div className="flex items-center justify-between mb-6">
                                         <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
                                             <RefreshCcw className="text-red-500" /> Solicitar Reembolso

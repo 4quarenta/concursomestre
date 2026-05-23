@@ -63,9 +63,9 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="w-full max-w-sm overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-2xl animate-in zoom-in slide-in-from-bottom-4 duration-500 dark:border-slate-800 dark:bg-slate-900">
+      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in slide-in-from-bottom-4 duration-500 dark:border-slate-800 dark:bg-slate-900">
         <div className="space-y-6 p-8 text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl border border-slate-100 bg-slate-50 shadow-inner dark:border-slate-700 dark:bg-slate-800">
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 shadow-inner dark:border-slate-700 dark:bg-slate-800">
             {getIcon()}
           </div>
 

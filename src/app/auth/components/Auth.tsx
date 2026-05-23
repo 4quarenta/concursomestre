@@ -132,6 +132,7 @@ type AuthApiUser = Record<string, unknown> & {
   id?: string;
   name?: string;
   email?: string;
+  cpf?: string;
   phone?: string;
   role?: string;
   billing?: Record<string, unknown>;
@@ -172,10 +173,25 @@ type PendingSocialSignup = {
   token: string;
   email: string;
   name: string;
+  cpf: string;
   phone: string;
 };
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const isValidCpf = (value: string): boolean => {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
+
+  const calcCheckDigit = (base: string, factor: number) => {
+    const total = base.split('').reduce((sum, digit) => sum + (Number(digit) * factor--), 0);
+    const result = 11 - (total % 11);
+    return result > 9 ? 0 : result;
+  };
+
+  return calcCheckDigit(digits.slice(0, 9), 10) === Number(digits[9])
+    && calcCheckDigit(digits.slice(0, 10), 11) === Number(digits[10]);
+};
 
 const getSocialProviderLabel = (provider: SocialProvider): string => {
   if (provider === 'facebook') return 'Facebook';
@@ -265,6 +281,7 @@ const buildUserProfile = (rawUser: UserProfile | AuthApiUser): UserProfile => {
     id: user.id,
     name: user.name,
     email: user.email,
+    cpf: resolveOptionalString(user.cpf),
     emailVerified: Boolean(user.emailVerified ?? user.email_verified ?? false),
     phone: resolveOptionalString(user.phone),
     level: Number(user.level || 1),
@@ -297,12 +314,28 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const { theme } = useTheme();
 
   const registrationEnabled = systemSettings?.features?.registrationEnabled !== false;
-  const rawGoogleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || systemSettings?.googleAuthClientId || '';
+  const envGoogleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+  const envFacebookAppId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || '';
+  const envAppleClientId = process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || '';
+  const rawGoogleClientId = envGoogleClientId || systemSettings?.googleAuthClientId || '';
   const googleClientId = normalizeGoogleClientId(rawGoogleClientId);
   const hasInvalidGoogleClientId = hasInvalidGoogleClientIdCandidate(rawGoogleClientId);
-  const facebookAppId = String(process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || systemSettings?.facebookAuthAppId || '').trim();
-  const appleClientId = String(process.env.NEXT_PUBLIC_APPLE_CLIENT_ID || systemSettings?.appleAuthClientId || '').trim();
+  const facebookAppId = String(envFacebookAppId || systemSettings?.facebookAuthAppId || '').trim();
+  const appleClientId = String(envAppleClientId || systemSettings?.appleAuthClientId || '').trim();
   const appleRedirectUriFromSettings = String(process.env.NEXT_PUBLIC_APPLE_REDIRECT_URI || systemSettings?.appleAuthRedirectUri || '').trim();
+  const hasGoogleProviderConfigured = Boolean(
+    googleClientId
+    && !hasInvalidGoogleClientId
+    && (envGoogleClientId || systemSettings?.hasGoogleAuthClientConfigured)
+  );
+  const hasFacebookProviderConfigured = Boolean(
+    facebookAppId
+    && (envFacebookAppId || systemSettings?.hasFacebookAuthConfigured)
+  );
+  const hasAppleProviderConfigured = Boolean(
+    appleClientId
+    && (envAppleClientId || systemSettings?.hasAppleAuthConfigured)
+  );
   const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
 
   const [searchQueryString, setSearchQueryString] = useState('');
@@ -329,6 +362,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [pendingSocialSignup, setPendingSocialSignup] = useState<PendingSocialSignup | null>(null);
   const [formData, setFormData] = useState({
     name: '',
+    cpf: '',
     phone: '',
     email: '',
     password: '',
@@ -498,6 +532,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   const handleRegister = async () => {
     if (!formData.name.trim()) { setError('Informe seu nome.'); return; }
+    const normalizedCpf = formData.cpf.replace(/\D/g, '');
+    if (!normalizedCpf) { setError('Informe seu CPF.'); return; }
+    if (!isValidCpf(normalizedCpf)) { setError('CPF inválido. Verifique e tente novamente.'); return; }
     const normalizedPhone = formData.phone.replace(/\D/g, '');
     if (!normalizedPhone) { setError('Informe seu telefone com DDD.'); return; }
     if (![10, 11].includes(normalizedPhone.length)) { setError('Telefone inválido. Use DDD + número com 10 ou 11 dígitos.'); return; }
@@ -513,6 +550,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       const referralCode = searchParams.get('ref') || searchParams.get('referral');
       const result = await authFlowService.register({
         name: formData.name.trim(),
+        cpf: normalizedCpf,
         phone: normalizedPhone,
         email: formData.email.trim(),
         password: formData.password,
@@ -645,11 +683,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       token,
       name: defaults?.name?.trim() || formData.name || '',
       email: defaults?.email?.trim() || formData.email || '',
+      cpf: formData.cpf || '',
       phone: '',
     });
     setMode('signup');
     setError(`Complete nome e telefone para concluir o cadastro com ${provider === 'apple' ? 'Apple' : provider === 'facebook' ? 'Facebook' : 'Google'}.`);
-  }, [formData.email, formData.name]);
+  }, [formData.cpf, formData.email, formData.name]);
 
   const handleGoogleCredential = React.useCallback(async (response: GoogleCredentialResponse) => {
     const credential = response.credential || '';
@@ -694,9 +733,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     }
 
     const normalizedName = pending.name.trim();
+    const normalizedCpf = pending.cpf.replace(/\D/g, '');
     const normalizedPhone = pending.phone.replace(/\D/g, '');
     if (!normalizedName) {
       setError('Informe seu nome completo para concluir o cadastro.');
+      return;
+    }
+
+    if (!normalizedCpf || !isValidCpf(normalizedCpf)) {
+      setError('Informe um CPF válido para concluir o cadastro.');
       return;
     }
 
@@ -726,6 +771,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         createIfMissing: true,
         profile: {
           name: normalizedName,
+          cpf: normalizedCpf,
           phone: normalizedPhone,
           email: pending.email,
         },
@@ -967,8 +1013,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     if (isForgot) return null;
 
     const socialBusy = isGoogleLoading || isFacebookLoading || isAppleLoading;
-    const isFacebookAvailable = !!facebookAppId && facebookScriptReady && !facebookScriptFailed;
-    const isAppleAvailable = !!appleClientId && appleScriptReady && !appleScriptFailed;
+    const isGoogleAvailable = hasGoogleProviderConfigured && googleScriptReady && !googleScriptFailed;
+    const isFacebookAvailable = hasFacebookProviderConfigured && facebookScriptReady && !facebookScriptFailed;
+    const isAppleAvailable = hasAppleProviderConfigured && appleScriptReady && !appleScriptFailed;
+
+    if (!isGoogleAvailable && !isFacebookAvailable && !isAppleAvailable) {
+      return null;
+    }
 
     return (
       <div className="space-y-4">
@@ -977,56 +1028,51 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           ou
           <span className="h-px bg-slate-200 dark:bg-slate-800" />
         </div>
-        <div className="relative min-h-[44px]">
-          {googleClientId && !googleScriptFailed ? (
+        {isGoogleAvailable ? (
+          <div className="relative min-h-[44px]">
             <>
-              {(isGoogleLoading || !googleScriptReady) && (
+              {isGoogleLoading && (
                 <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80">
                   <Loader2 size={18} className="animate-spin text-indigo-600" />
                 </div>
               )}
               <div ref={googleButtonRef} className="flex min-h-[44px] w-full justify-center" />
             </>
-          ) : (
+          </div>
+        ) : null}
+        {(isFacebookAvailable || isAppleAvailable) ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {isFacebookAvailable ? (
             <button
               type="button"
-              disabled
-              className="flex h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-400 dark:border-slate-700 dark:bg-slate-900"
-              title={hasInvalidGoogleClientId ? 'Client ID do Google invalido.' : googleScriptFailed ? 'Nao foi possivel carregar o script do Google.' : 'Google OAuth ainda nao configurado.'}
+              onClick={() => void handleFacebookLogin()}
+              disabled={socialBusy}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
-              Entrar com Google indisponível
+              {isFacebookLoading ? <Loader2 size={16} className="animate-spin" /> : <span className="text-base leading-none">f</span>}
+              Entrar com Facebook
             </button>
-          )}
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => void handleFacebookLogin()}
-            disabled={!isFacebookAvailable || socialBusy}
-            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            title={!facebookAppId ? 'Facebook OAuth ainda nao configurado.' : facebookScriptFailed ? 'Nao foi possivel carregar o script do Facebook.' : undefined}
-          >
-            {isFacebookLoading ? <Loader2 size={16} className="animate-spin" /> : <span className="text-base leading-none">f</span>}
-            Entrar com Facebook
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleAppleLogin()}
-            disabled={!isAppleAvailable || socialBusy}
-            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            title={!appleClientId ? 'Apple OAuth ainda nao configurado.' : appleScriptFailed ? 'Nao foi possivel carregar o script da Apple.' : undefined}
-          >
-            {isAppleLoading ? <Loader2 size={16} className="animate-spin" /> : <span className="text-base leading-none">A</span>}
-            Entrar com Apple
-          </button>
-        </div>
+            ) : null}
+            {isAppleAvailable ? (
+              <button
+                type="button"
+                onClick={() => void handleAppleLogin()}
+                disabled={socialBusy}
+                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              >
+                {isAppleLoading ? <Loader2 size={16} className="animate-spin" /> : <span className="text-base leading-none">A</span>}
+                Entrar com Apple
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     );
   };
 
   const renderAuthLayout = (children: React.ReactNode, narrow = false) => (
     <div className="min-h-[100dvh] bg-[#f5f7ff] text-slate-950 dark:bg-slate-950 dark:text-slate-100 lg:grid lg:grid-cols-[47%_53%]">
-      {googleClientId && (
+      {hasGoogleProviderConfigured && (
         <Script
           src="https://accounts.google.com/gsi/client"
           strategy="afterInteractive"
@@ -1040,7 +1086,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           }}
         />
       )}
-      {facebookAppId && (
+      {hasFacebookProviderConfigured && (
         <Script
           src="https://connect.facebook.net/pt_BR/sdk.js"
           strategy="afterInteractive"
@@ -1054,7 +1100,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           }}
         />
       )}
-      {appleClientId && (
+      {hasAppleProviderConfigured && (
         <Script
           src="https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js"
           strategy="afterInteractive"
@@ -1125,7 +1171,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   if (mode === 'forgot-success') {
     return renderAuthLayout(
       <>
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl shadow-slate-200/70 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xl shadow-slate-200/70 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
             <CheckCircle2 size={34} />
           </div>
@@ -1148,7 +1194,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   if (mode === 'two-factor') {
     return renderAuthLayout(
       <>
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/70 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/70 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
           <div className="mb-8 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
               <ShieldCheck size={32} />
@@ -1196,7 +1242,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   return renderAuthLayout(
     <>
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/70 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none sm:p-8">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/70 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 dark:shadow-none sm:p-8">
         <div className="mb-7 text-center">
           {isForgot && (
             <button
@@ -1221,6 +1267,108 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               Voltar para login
             </button>
           </div>
+        ) : pendingSocialSignup ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSocialProfileSignup();
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/20">
+              <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                Conta {getSocialProviderLabel(pendingSocialSignup.provider)} autenticada sem cadastro local. Complete seus dados pessoais para criar a conta.
+              </p>
+              {pendingSocialSignup.email ? (
+                <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
+                  E-mail: <strong>{pendingSocialSignup.email}</strong>
+                </p>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Nome completo</label>
+              <div className="relative">
+                <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={pendingSocialSignup.name}
+                  onChange={(event) => {
+                    setPendingSocialSignup((current) => current ? { ...current, name: event.target.value } : current);
+                    setError('');
+                  }}
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
+                  placeholder="Seu nome completo"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">CPF</label>
+              <div className="relative">
+                <ShieldCheck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  required
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={pendingSocialSignup.cpf}
+                  onChange={(event) => {
+                    setPendingSocialSignup((current) => current ? { ...current, cpf: event.target.value } : current);
+                    setError('');
+                  }}
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
+                  placeholder="000.000.000-00"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
+              <div className="relative">
+                <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="tel"
+                  required
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={pendingSocialSignup.phone}
+                  onChange={(event) => {
+                    setPendingSocialSignup((current) => current ? { ...current, phone: event.target.value } : current);
+                    setError('');
+                  }}
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
+                  placeholder="(11) 99999-9999"
+                />
+              </div>
+            </div>
+
+            {renderMessage()}
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                type="submit"
+                disabled={isGoogleLoading || isFacebookLoading || isAppleLoading}
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#4b28ff] text-sm font-bold text-white transition hover:bg-[#3d20d6] disabled:opacity-60"
+              >
+                {isGoogleLoading || isFacebookLoading || isAppleLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+                Concluir cadastro
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingSocialSignup(null);
+                  setError('');
+                  switchMode('login');
+                }}
+                className="h-12 w-full rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignup && (
@@ -1236,6 +1384,25 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     onChange={(event) => update('name', event.target.value)}
                     className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
                     placeholder="Seu nome completo"
+                  />
+                </div>
+              </div>
+            )}
+
+            {isSignup && (
+              <div className="space-y-2">
+                <label className="ml-0.5 text-xs font-black uppercase tracking-widest text-slate-500">CPF</label>
+                <div className="relative">
+                  <ShieldCheck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    required
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={formData.cpf}
+                    onChange={(event) => update('cpf', event.target.value)}
+                    className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
+                    placeholder="000.000.000-00"
                   />
                 </div>
               </div>
@@ -1369,71 +1536,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             {renderGoogleButton()}
 
-            {pendingSocialSignup && (
-              <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-900/40 dark:bg-indigo-950/20">
-                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
-                  Conta {getSocialProviderLabel(pendingSocialSignup.provider)} encontrada sem cadastro local. Complete os dados para criar a conta.
-                </p>
-                {pendingSocialSignup.email ? (
-                  <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
-                    E-mail: <strong>{pendingSocialSignup.email}</strong>
-                  </p>
-                ) : null}
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Nome completo</label>
-                  <input
-                    type="text"
-                    value={pendingSocialSignup.name}
-                    onChange={(event) => {
-                      setPendingSocialSignup((current) => current ? { ...current, name: event.target.value } : current);
-                      setError('');
-                    }}
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
-                    placeholder="Seu nome completo"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Telefone / WhatsApp</label>
-                  <input
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    value={pendingSocialSignup.phone}
-                    onChange={(event) => {
-                      setPendingSocialSignup((current) => current ? { ...current, phone: event.target.value } : current);
-                      setError('');
-                    }}
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
-                    placeholder="(11) 99999-9999"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleSocialProfileSignup()}
-                    disabled={isGoogleLoading || isFacebookLoading || isAppleLoading}
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#4b28ff] text-sm font-bold text-white transition hover:bg-[#3d20d6] disabled:opacity-60"
-                  >
-                    {isGoogleLoading || isFacebookLoading || isAppleLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
-                    Concluir cadastro
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPendingSocialSignup(null)}
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            )}
           </form>
         )}
 
-        {!isForgot && (
+        {!isForgot && !pendingSocialSignup && (
           <div className="mt-7 text-center">
             <p className="text-xs font-medium text-slate-500">
               {isSignup ? 'Já tem uma conta?' : 'Ainda não tem uma conta?'}

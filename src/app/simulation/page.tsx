@@ -898,7 +898,7 @@ const Simulation: React.FC = () => {
    const renderReadySimulations = () => (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
          {readySimulationPresets.map((preset) => (
-            <div key={preset.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm transition-colors">
+            <div key={preset.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm transition-colors">
                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                   <div className="space-y-3">
                      <div className="flex items-center gap-3">
@@ -927,7 +927,7 @@ const Simulation: React.FC = () => {
    const renderSimulationResults = () => {
       if (!currentUser) {
          return (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900">
                <History className="mx-auto mb-4 text-slate-300 dark:text-slate-600" size={34} />
                <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">Entre para ver seus resultados</h3>
                <p className="mx-auto mt-2 max-w-md text-sm font-medium text-slate-500 dark:text-slate-400">Seu histórico de simulados, médias e insights ficam salvos na conta.</p>
@@ -949,7 +949,7 @@ const Simulation: React.FC = () => {
 
       if (completedSimulations.length === 0) {
          return (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900">
                <BarChart3 className="mx-auto mb-4 text-slate-300 dark:text-slate-600" size={34} />
                <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">Nenhum resultado ainda</h3>
                <p className="mx-auto mt-2 max-w-md text-sm font-medium text-slate-500 dark:text-slate-400">Comece por um simulado pronto ou crie um próprio para gerar sua primeira análise.</p>
@@ -970,7 +970,7 @@ const Simulation: React.FC = () => {
                   const accuracy = getSimulationAccuracy(session);
                   const isAboveAverage = accuracy >= simulationStats.averageAccuracy;
                   return (
-                     <div key={session.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm transition-colors">
+                     <div key={session.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm transition-colors">
                         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
                            <div className="flex-1 space-y-3">
                               <div>
@@ -1006,7 +1006,7 @@ const Simulation: React.FC = () => {
                })}
             </div>
 
-            <div className="rounded-3xl border border-indigo-100 bg-indigo-50 p-5 transition-colors dark:border-indigo-900/40 dark:bg-indigo-900/20">
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 transition-colors dark:border-indigo-900/40 dark:bg-indigo-900/20">
                <div className="mb-4 flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm dark:bg-slate-900 dark:text-indigo-400">
                      <BrainCircuit size={20} />
@@ -1031,7 +1031,7 @@ const Simulation: React.FC = () => {
    if (systemSettings.features.simulationsEnabled === false) {
       return (
          <div className="flex flex-col items-center justify-center py-20 px-6 text-center animate-fade-in">
-            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-3xl flex items-center justify-center text-slate-400 mb-6">
+            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 mb-6">
                <GraduationCap size={40} />
             </div>
             <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 mb-2">Simulados indisponiveis</h2>
@@ -1065,7 +1065,7 @@ const Simulation: React.FC = () => {
             {simulationTab === 'results' ? renderSimulationResults() : null}
 
             {simulationTab === 'custom' ? (
-            <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-7 md:space-y-8 transition-colors">
+            <div className="bg-white dark:bg-slate-900 p-4 sm:p-6 md:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-7 md:space-y-8 transition-colors">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <SearchableMultiSelect
                      label="Foco"
@@ -1201,7 +1201,7 @@ const Simulation: React.FC = () => {
 
             {showPalette && (
                <div className="fixed inset-0 z-50 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowPalette(false)}>
-                  <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-5 shadow-2xl transition-colors animate-scale-in dark:border-slate-800 dark:bg-slate-900 sm:p-8" onClick={e => e.stopPropagation()}>
+                  <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl transition-colors animate-scale-in dark:border-slate-800 dark:bg-slate-900 sm:p-8" onClick={e => e.stopPropagation()}>
                      <div className="flex justify-between items-center mb-6">
                         <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Navegação da Prova</h4>
                         <button onClick={() => setShowPalette(false)} className="text-slate-300 dark:text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"><X size={20} /></button>
@@ -1315,7 +1315,7 @@ const Simulation: React.FC = () => {
                </div>
             </header>
 
-            <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 md:p-10 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-8 md:gap-10 transition-colors">
+            <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 md:p-10 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center gap-8 md:gap-10 transition-colors">
                <div className={`w-32 h-32 rounded-full border-[8px] flex flex-col items-center justify-center relative transition-colors ${accuracy >= 70 ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-amber-500 text-amber-600 dark:text-amber-400'}`}>
                   <div className="absolute inset-0 bg-current opacity-5 rounded-full" />
                   <span className="text-3xl font-black">{accuracy}%</span>
@@ -1444,7 +1444,7 @@ const Simulation: React.FC = () => {
                />
             </div>
 
-            <div className="mt-8 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 rounded-3xl p-5 sm:p-6 md:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 transition-colors">
+            <div className="mt-8 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl p-5 sm:p-6 md:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 transition-colors">
                <div className="w-14 h-14 bg-white dark:bg-slate-900 rounded-2xl shadow-sm flex items-center justify-center text-indigo-600 dark:text-indigo-400 flex-shrink-0 transition-colors"><Zap size={28} /></div>
                <div>
                   <h4 className="text-sm font-black text-indigo-900 dark:text-indigo-100 uppercase mb-1 transition-colors">Dica de Estudo</h4>

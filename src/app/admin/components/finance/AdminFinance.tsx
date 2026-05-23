@@ -289,6 +289,28 @@ const isPaidTransactionStatus = (status: unknown) => PAID_TRANSACTION_STATUSES.h
 
 const readTransactionAmount = (transaction: Partial<AdminFinanceTransaction>) => Number(transaction?.amount || 0);
 
+const readRecordValue = (record: object | null | undefined, key: string) => (
+  (record as Record<string, unknown> | null | undefined)?.[key]
+);
+
+const readMarketplaceMaterialSellerId = (material: Material | null | undefined) => String(
+  material?.authorId
+  || readRecordValue(material, 'author_id')
+  || readRecordValue(material, 'sellerId')
+  || readRecordValue(material, 'seller_id')
+  || '',
+).trim();
+
+const readMarketplaceMaterialTimestamp = (material: Material | null | undefined) => {
+  const rawCreatedAt = material?.createdAt ?? readRecordValue(material, 'created_at');
+  if (typeof rawCreatedAt === 'number' && Number.isFinite(rawCreatedAt)) {
+    return rawCreatedAt;
+  }
+
+  const parsed = Date.parse(String(rawCreatedAt || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const readTransactionPlatformFee = (transaction: Partial<AdminFinanceTransaction>) => {
   const amount = readTransactionAmount(transaction);
   const platformFee = Number(transaction?.platformFee ?? transaction?.platform_fee);
@@ -366,9 +388,29 @@ const parseProjectionTimestamp = (value?: string | null) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : Date.now();
 };
 
-const addProjectionMonths = (timestamp: number, monthOffset: number) => {
+const addProjectionInterval = (
+  timestamp: number,
+  offset: number,
+  intervalUnit: string = 'month',
+  intervalCount: number = 1,
+) => {
   const date = new Date(timestamp);
-  date.setMonth(date.getMonth() + monthOffset);
+  const amount = Math.max(1, Number(intervalCount || 1)) * offset;
+
+  if (amount <= 0) {
+    return date.getTime();
+  }
+
+  if (intervalUnit === 'day') {
+    date.setDate(date.getDate() + amount);
+  } else if (intervalUnit === 'week') {
+    date.setDate(date.getDate() + (amount * 7));
+  } else if (intervalUnit === 'year') {
+    date.setFullYear(date.getFullYear() + amount);
+  } else {
+    date.setMonth(date.getMonth() + amount);
+  }
+
   return date.getTime();
 };
 
@@ -389,7 +431,13 @@ const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload
 
     return Array.from({ length: remaining }, (_, index) => {
       const installmentNumber = Number(item.paidInstallments || 0) + index + 1;
-      const dueTimestamp = addProjectionMonths(baseTimestamp, index);
+      const dueTimestamp = addProjectionInterval(
+        baseTimestamp,
+        index,
+        item.intervalUnit || 'month',
+        Number(item.intervalCount || 1),
+      );
+      const isAutoRenewProjection = item.projectionMode === 'auto_renew';
 
       return {
         id: `projection-${item.subscriptionId || item.userId}-${installmentNumber}`,
@@ -398,7 +446,9 @@ const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload
         providerTransactionId: item.subscriptionId,
         transactionName: `Receita projetada - ${item.planName || item.cycleLabel}`,
         planName: item.planName || item.cycleLabel,
-        description: `Parcela futura ${installmentNumber} de ${item.totalInstallments} (${item.cycleLabel}).`,
+        description: isAutoRenewProjection
+          ? `Renovacao futura ${index + 1} (${item.cycleLabel}).`
+          : `Parcela futura ${installmentNumber} de ${item.totalInstallments} (${item.cycleLabel}).`,
         buyerName: item.userName,
         buyerEmail: item.userEmail,
         sellerName: 'Plataforma',
@@ -414,9 +464,11 @@ const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload
         timestamp: dueTimestamp,
         dateFormatted: new Date(dueTimestamp).toLocaleDateString('pt-BR'),
         dateTimeFormatted: new Date(dueTimestamp).toLocaleString('pt-BR'),
-        scheduleLabel: item.status === 'past_due' ? 'Projecao em risco' : 'Parcela pre-aprovada',
+        scheduleLabel: item.status === 'past_due'
+          ? 'Projecao em risco'
+          : (isAutoRenewProjection ? 'Renovacao futura' : 'Parcela pre-aprovada'),
         installmentNumber,
-        installmentCount: item.totalInstallments,
+        installmentCount: isAutoRenewProjection ? remaining : item.totalInstallments,
         isRevenueProjection: true,
       };
     });
@@ -1777,8 +1829,8 @@ const AdminFinance = ({
     if (!selectedSeller) return [];
 
     return (allMaterials || [])
-      .filter((material) => String(material.authorId || '').trim() === selectedSeller.id)
-      .sort((left, right) => Number(right.createdAt || 0) - Number(left.createdAt || 0));
+      .filter((material) => readMarketplaceMaterialSellerId(material) === selectedSeller.id)
+      .sort((left, right) => readMarketplaceMaterialTimestamp(right) - readMarketplaceMaterialTimestamp(left));
   }, [allMaterials, selectedSeller]);
 
   return (

@@ -1060,6 +1060,8 @@ export interface UserSubscription {
   id: number;
   user_id: string;
   plan_id: number;
+  created_at?: string | number | null;
+  createdAt?: string | number | null;
   status: 'active' | 'past_due' | 'canceled' | 'incomplete' | 'trialing';
   auto_renew?: boolean;
   payment_provider?: 'stripe' | 'manual_admin';

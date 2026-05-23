@@ -12,7 +12,12 @@
 - A renovacao usa o preco vigente do plano na plataforma e nao reaplica cupons/descontos de checkout automaticamente.
 - A sincronizacao com Stripe recebeu o `price` do plano no contexto de finalizacao, evitando item de assinatura com valor `0` e renovacao sem cobranca.
 - Renovacao, webhooks e reconciliacao sao fluxos servidor-servidor. Eles nao dependem de usuario logado, access token, sessao admin ou tela de perfil aberta.
-- Antes do go-live, repetir o mesmo fluxo com webhook publico/tunel na VPS/staging.
+- Webhook Stripe agora grava heartbeat privado (`storage/logs/subscriptions/stripe_webhook_health.json`) quando um evento valido e processado/ignorado/duplicado; o admin exibe `webhook_health` em `Painel > Saude do billing` e o preflight bloqueia producao sem evento recente.
+- Renovacao confirmada por webhook ou reconciliacao agora grava notificacao in-app especifica de `Assinatura renovada`; quando a tela de assinatura sincroniza uma invoice materializada, ela tambem recarrega o cache de notificacoes do usuario para nao depender do polling global.
+- A aba de assinatura segura a renderizacao inicial enquanto consulta o estado Stripe, evitando mostrar um ciclo vencido/obsoleto como se fosse o estado final.
+- Planos trimestrais/anuais parcelados exibem o progresso do **termo contratado inteiro**. Exemplo: uma assinatura anual com parcelas mensais deve mostrar `63 de 365 dias utilizados`, e nao reiniciar o contador a cada parcela de 30 dias.
+- Cancelamento fora dos 7 dias da primeira assinatura, quando houver parcelas pre-aprovadas pendentes, exige quitacao confirmada pelo usuario. Depois da quitacao, a recorrencia remota e cancelada, a renovacao local fica desligada e o acesso permanece ate o fim do termo contratado.
+- Antes do go-live, repetir o mesmo fluxo com webhook publico/tunel na VPS/staging e confirmar `STRIPE_WEBHOOK_HEALTH_RECENT` junto do `SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT`.
 
 ## Origem dos cartoes salvos
 
@@ -24,24 +29,52 @@
 - A estrategia completa de consolidacao do customer canônico esta documentada em `docs/STRIPE_CUSTOMER_CANONICALIZATION.md`.
 - Se a sincronizacao com a Stripe falhar, a UI deve exibir erro de sincronizacao em vez de mostrar `0` cartoes como se fosse estado real.
 - O cartao associado a renovacao de assinatura fica marcado no espelho local por `locked_by_recurring = 1`. Ele nao pode ser removido enquanto for o unico cartao da assinatura; o usuario deve adicionar outro cartao e defini-lo como padrao para mover o vinculo.
-- A verificacao de validade do cartao preferencial ocorre no payload autenticado do perfil e tambem pode ser executada periodicamente por `C:\xampp\htdocs\questao-pro-backend\scripts\checks\check_subscription_card_expiry.php`. Cartao vencido ou proximo do vencimento gera `paymentIssue` e uma notificacao deduplicada para orientar o usuario a atualizar o metodo de pagamento.
+- A verificacao de validade do cartao preferencial ocorre no payload autenticado do perfil e tambem pode ser executada periodicamente por `C:\xampp\htdocs\questao-pro-backend\scripts\tasks\check_subscription_card_expiry.php`. Cartao vencido ou proximo do vencimento gera `paymentIssue` e uma notificacao deduplicada para orientar o usuario a atualizar o metodo de pagamento.
+
+## Stripe Customer x Accounts v2
+
+- Assinatura de aluno continua usando o modelo correto para consumidor final: `users.stripe_customer_id` + `user_subscriptions.provider_subscription_id`, com `Customer`, `Checkout/PaymentIntent`, `Subscription`, `Invoice` e `PaymentMethod`.
+- `Accounts v2` nao deve substituir automaticamente `Customer` para aluno comum. A recomendacao da Stripe para Accounts v2 e especialmente relevante quando a mesma entidade e uma conta conectada que recebe pagamentos e tambem paga assinatura da plataforma.
+- Marketplace/vendedor e o ponto que precisa de decisao propria. O codigo atual ainda cria conta conectada Express v1 (`stripe_account_id`) no fluxo de vendedores, preservando compatibilidade do onboarding atual.
+- Decisao de producao: nao migrar assinatura de aluno para Accounts v2 neste ciclo. Abrir trilha separada para avaliar/migrar vendedores/marketplace para Accounts v2 quando houver necessidade real de unificar `Account` + cobranca de assinatura do mesmo vendedor.
+- Antes de migrar Connect para v2, validar pais/recursos/capabilities exigidos, limitacoes da Stripe, onboarding, webhooks, relatorios financeiros, payouts, KYC, mapeamento local de vendedor e smoke de compra/reembolso em sandbox.
 
 ## Renovacao, recibos e inadimplencia
 
 - A regra oficial de renovacao e:
   - contrato atual congelado no valor aceito;
-  - proxima renovacao pelo preco vigente do plano na plataforma;
+  - parcelas pre-aprovadas do termo atual seguem o valor aceito na contratacao;
+  - apenas a proxima renovacao sem faturas pre-aprovadas pendentes usa o preco vigente do plano na plataforma;
   - cupons/descontos de checkout nao sao reaplicados automaticamente em renovacao, salvo regra recorrente explicita futura.
 - A proxima renovacao da assinatura e projetada localmente e sincronizada no Stripe. Quando o intervalo nao muda, o backend atualiza o `subscription_item`; quando a estrutura do ciclo exigir, usa mecanismo remoto equivalente sem prorratear o ciclo atual.
 - Toda cobranca aprovada envia:
   - email com recibo/comprovante;
-  - notificacao in-app.
+  - notificacao in-app; em renovacao, o titulo e a mensagem devem explicitar que a assinatura foi renovada, valor cobrado e novo ciclo quando disponivel.
 - Toda falha de cobranca envia:
   - email com orientacao de regularizacao;
   - notificacao in-app;
   - bloqueio real de acesso premium.
-- O lembrete preventivo de renovacao e enviado 5 dias antes da cobranca.
+- O lembrete preventivo de 5 dias so e enviado quando o ciclo do plano e maior que 5 dias; planos curtos, como o teste de 2 dias, recebem apenas o aviso de "renova amanha".
+- A reconciliacao Stripe deve rodar por CLI (`scripts/tasks/reconcile_stripe_subscriptions.php`) em cron, independente de usuario logado, sessao ou navegador aberto.
+- A reconciliacao grava heartbeat privado em `storage/logs/subscriptions/subscription_cron_health.json`; o painel admin consome esse estado em `Saude do billing` para mostrar execucao recente, stale, alertas, assinaturas checadas e invoices materializadas.
+- O preflight de producao valida esse heartbeat no check `SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT`; em go-live, a reconciliacao precisa ter rodado recentemente antes de liberar venda.
+- O webhook Stripe grava heartbeat separado em `storage/logs/subscriptions/stripe_webhook_health.json`; o preflight valida `STRIPE_WEBHOOK_HEALTH_RECENT`, reduzindo risco de endpoint quebrado ou segredo incorreto passar despercebido antes de vender.
+- O mesmo preflight agora valida `SMTP_CONFIGURED_FOR_PRODUCTION`, `MAIL_SENDER_CONFIGURED` e `ESSENTIAL_EMAIL_TEMPLATES_ENABLED`. Portanto, renovacao, recibo, falha de pagamento e avisos de renovacao nao devem ser homologados como prontos sem SMTP real e modelos transacionais ativos.
 - A documentacao operacional completa dessa camada esta em `docs/STRIPE_RENEWAL_PRICING_AND_COLLECTIONS.md`.
+
+## Faturas pre-aprovadas em planos parcelados
+
+- Definicao tecnica: fatura pre-aprovada e uma parcela futura de um termo ja contratado, nao uma nova renovacao. Ela representa debito do usuario com a plataforma pelo valor total do trimestre/ano que foi dividido em cobrancas menores para nao ocupar o limite total do cartao no ato da compra.
+- Exemplo: se o plano anual custa `R$ 120,00` e o usuario escolhe pagar em 12 parcelas de `R$ 10,00`, as 11 parcelas futuras sao saldo contratado pendente. Alterar o preco do plano depois da compra nao altera esse saldo; o preco novo so vale para a renovacao posterior, quando nao houver fatura pre-aprovada do termo atual.
+- Cancelamento dentro dos 7 primeiros dias da primeira assinatura segue o fluxo de reembolso legal.
+- Cancelamento depois desse prazo:
+  - soma parcelas pre-aprovadas pendentes;
+  - exige confirmacao explicita do usuario;
+  - tenta debitar o saldo com o cartao padrao na Stripe;
+  - marca o termo como quitado localmente;
+  - cancela a assinatura remota para impedir novas invoices;
+  - preserva o acesso local ate `current_period_end` do termo contratado.
+- Se a quitacao for recusada pela Stripe, o cancelamento nao deve desligar o termo nem ocultar a divida. O usuario precisa atualizar o cartao ou tentar novamente.
 
 ## Arquivos absorvidos
 
@@ -1635,7 +1668,7 @@ Todo fluxo ativo de Mercado Pago foi removido do produto.
 - `api/payments/create-preference.php`
 - `api/payments/webhook.php`
 
-Os endpoints descontinuados respondem `410`.
+Os endpoints descontinuados respondem `410` diretamente, sem abrir conexao MySQL.
 
 ## Regras atuais
 
@@ -1697,7 +1730,7 @@ O checkout legado de Mercado Pago foi removido.
 - `api/subscriptions/cron_scheduled_payments.php`
 - `api/subscriptions/sync_plans_mp.php`
 
-Todos os endpoints descontinuados respondem `410`.
+Todos os endpoints descontinuados respondem `410` diretamente, sem abrir conexao MySQL.
 
 ## Fonte operacional
 
@@ -1733,7 +1766,7 @@ Esse service:
 ## Estado atual
 
 O sync legado de planos do Mercado Pago foi encerrado.
-O endpoint `api/subscriptions/sync_plans_mp.php` responde `410`.
+O endpoint `api/subscriptions/sync_plans_mp.php` responde `410` diretamente, sem abrir conexao MySQL.
 
 ## Regra atual
 

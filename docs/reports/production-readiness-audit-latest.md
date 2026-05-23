@@ -2,13 +2,66 @@
 
 Data: `2026-05-05`
 
-Veredito: `Nao pronto`
+Veredito: `Nao pronto para go-live final; pronto localmente para homologacao controlada em VPS/staging`
+
+## Atualizacao incremental (`2026-05-23`)
+
+- Etapa **Assinaturas parceladas - termo contratado e cancelamento com saldo pendente**: **Pronta localmente**.
+- A tela de assinatura voltou a calcular progresso por termo completo em planos trimestrais/anuais parcelados, usando `created_at/current_period_start/current_period_end` locais como fonte de acesso e os timestamps Stripe apenas como referencia financeira de parcela.
+- O payload autenticado do usuario passou a expor `created_at` e periodos Stripe auxiliares para a UI resolver corretamente `dias utilizados/restantes` sem confundir parcela mensal com vigencia anual/trimestral.
+- Cancelamento fora dos 7 dias da primeira assinatura agora trata faturas pre-aprovadas como saldo devedor do termo contratado: o backend calcula parcelas pendentes, exige confirmacao explicita, cobra o saldo via PaymentIntent off-session, registra transacao aprovada, marca o termo como quitado, cancela a assinatura remota para impedir novas invoices e preserva acesso local ate o fim do termo.
+- O modal de cancelamento mostra quantidade de parcelas pendentes, total a quitar, checkbox de confirmacao e bloqueia o envio enquanto a confirmacao nao existir. Tambem foi removido o modal antigo morto de cancelamento que permanecia no arquivo de perfil.
+- Cobertura automatizada adicionada: `subscriptionDateUtils.test.ts` trava o caso anual parcelado para nao voltar a exibir progresso mensal; `subscriptionsService.test.ts` trava envio de `confirmDebtCharge`; `SubscriptionsCheckoutWiringTest.php` passou a verificar a camada backend de confirmacao, cobranca do saldo, quitacao local e preservacao de acesso apos webhook de cancelamento Stripe; `SubscriptionsTermDebtBehaviorTest.php` valida o calculo real de saldo pendente e a regra de preservar acesso ate o fim do termo quitado.
+- `scripts/checks/production-readiness-local.mjs` passou a incluir suites PHP criticas de billing quando `PHP_BIN` e `BACKEND_ROOT` existirem, cobrindo checkout/webhook, cron, sync de planos e saldo de termo parcelado no mesmo comando local de release. Use `--skip-backend` apenas quando o backend local nao estiver disponivel.
+- Evidencias locais:
+  - `npx eslint src/app/profile/ProfilePage.tsx --max-warnings=0`: **ok**
+  - `npx eslint src/services/subscriptions/__tests__/subscriptionsService.test.ts src/app/profile/components/__tests__/subscriptionDateUtils.test.ts --max-warnings=0`: **ok**
+  - `npx vitest run --pool=threads src/services/subscriptions/__tests__/subscriptionsService.test.ts src/app/profile/components/__tests__/subscriptionDateUtils.test.ts`: **ok**, `19` testes
+  - `npm run typecheck`: **ok**
+  - `npm run check:text-encoding`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\subscriptions\services\SubscriptionsService.php`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\subscriptions\validators\SubscriptionsValidator.php`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\subscriptions\repositories\SubscriptionsRepository.php`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\users\services\UsersService.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SubscriptionsCheckoutWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SubscriptionsPlanSyncWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SubscriptionsCronWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\tests\SubscriptionsTermDebtBehaviorTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SubscriptionsTermDebtBehaviorTest.php`: **ok**
+  - `npm run check:production-local`: **ok**, incluindo frontend critico, hard refresh e suites PHP de billing.
+- Observacao operacional: a homologacao ainda precisa repetir cancelamento/quitacao com Stripe em sandbox/test clock, incluindo caso de cartao que exige autenticacao, para validar UX de falha off-session.
+
+## Atualizacao incremental (`2026-05-22`)
+
+- Etapa **Prova macro local de release**: **Pronta localmente**.
+- Frontend validado por `npm run check:production-local -- --with-build`: encoding sem mojibake, typecheck Next/TypeScript, artefatos gerados fora da raiz, hard refresh dentro do budget, suites criticas de arquitetura/SEO/XSS/sanitizacao/charts/CSP/marketplace e build Next 16/Turbopack completo. O build gerou `39` paginas estaticas e compilou com sucesso.
+- Backend critico validado por testes PHP locais:
+  - `ProductionPreflightWiringTest.php`: **ok**
+  - `ProductionPreflightBehaviorTest.php`: **ok**
+  - `SocialAuthProfileCompletionWiringTest.php`: **ok**
+  - `SocialAuthProvidersWiringTest.php`: **ok**
+  - `EmailTemplatesCatalogParityTest.php`: **ok**
+  - `MarketingAutomationWiringTest.php`: **ok**
+  - `SubscriptionsCheckoutWiringTest.php`: **ok**
+  - `SubscriptionsCronWiringTest.php`: **ok**
+  - `SubscriptionsNotificationsWiringTest.php`: **ok**
+  - `SubscriptionsPlanSyncWiringTest.php`: **ok**
+  - `SubscriptionsRenewalReminderPolicyTest.php`: **ok**
+- `git diff --check`: **ok**; apenas avisos LF/CRLF do Git no Windows, sem erro de whitespace.
+- Etapa **Smoke externo de staging/VPS**: **Pronta para execucao em staging**. `scripts/tasks/production_smoke.php` agora captura headers reais, falha se host publico estiver em HTTP, valida headers minimos (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`) e continua cobrindo `plans`, `questionsList`, `settings`, rotas web e MySQL.
+- Evidencias do smoke:
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_smoke.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionSmokeWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_smoke.php --web-base-url= --api-base-url=http://localhost/questao-pro-backend/api --db-connections=1`: **ok**, com `plans`, `questionsList`, `settings`, headers de API, MySQL e transporte local aprovados.
+- Observacao operacional: o PHP local ainda emite o warning `Module "openssl" is already loaded`, causado por configuracao duplicada de extensao no ambiente XAMPP. O warning nao quebrou os testes, mas deve ser limpo na imagem/servidor final para reduzir ruido.
+- Veredito desta etapa: **pronta localmente**. Veredito de go-live permanece **nao pronto** ate repetir a mesma matriz em VPS/staging com dominio HTTPS, SMTP real, OAuth real, Stripe webhook publico, cron real, backup/restore e smoke externo.
 
 ## Atualizacao incremental (`2026-05-16`)
 
 - Etapa **Superficie publica backend**: **Pronta localmente** no recorte auditado. O backup `C:/xampp/htdocs/questao-pro-backend/backend.zip` (`177 MB`) foi movido para `C:/xampp/private-backups/questao-pro-backend/backend.zip`, fora de `htdocs`, preservando o arquivo sem expo-lo por URL publica.
 - `C:/xampp/htdocs/questao-pro-backend/.htaccess`: passou a bloquear download direto de backups/dumps (`zip`, `sql`, `bak`, `old`, compactados) e acesso direto a diretorios internos sensiveis (`config`, `database`, `modules`, `runtime`, `shared`, `storage`, `tests`, `vendor`).
 - `C:/xampp/htdocs/questao-pro-backend/.htaccess`: a pasta `scripts/` tambem ficou bloqueada por URL, com allowlist explicito apenas para `scripts/importers/questions/gran/index.php` e `scripts/importers/questions/gran/import_worker.php`, preservando o crawler aberto pelo painel admin sem expor debug/checks/manual-tests/setup/migrations/tasks.
+- `C:/xampp/htdocs/questao-pro-backend/.htaccess`: arquivos de ambiente agora usam bloqueio amplo (`.env` e `.env.*`), cobrindo tambem `.env.example`.
 - `config/production_preflight.php`: ganhou o check `BACKEND_ROOT_ARTIFACTS_CLEAN`, que falha se alguem recolocar backup/log/dump na raiz publica do backend.
 - Evidencias da etapa:
   - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\BackendRootCleanupWiringTest.php`: **ok**
@@ -16,10 +69,53 @@ Veredito: `Nao pronto`
   - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionPreflightBehaviorTest.php`: **ok**
   - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ApiResidualSurfaceWiringTest.php`: **ok**
   - HTTP local: `scripts/debug/debug_db.php` retornou `403`, `storage/logs/settings.log` retornou `403` e `scripts/importers/questions/gran/index.php` retornou `200`.
+  - HTTP local: `.env` e `.env.example` retornaram `403`.
 - Etapa **Uploads publicos**: **Pronta localmente** no recorte auditado. `uploads/.htaccess` passou a desativar includes, desligar engine PHP quando `mod_php` estiver presente, negar dotfiles e remover `Authorization` dos headers CORS de assets estaticos. Smoke HTTP com arquivos temporarios confirmou `403` para `.php`, `.svg` e dotfile em `uploads/`.
 - Evidencias de uploads:
   - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\UploadSecurityWiringTest.php`: **ok**
   - HTTP local: `uploads/__cm_smoke.php`, `uploads/__cm_smoke.svg` e `uploads/.cm-smoke` retornaram `403`.
+- Etapa **Auth/CSRF/CORS**: **Pronta localmente** no recorte auditado. A suite passou a travar `Secure` em cookies de auth quando producao/HTTPS exigir, refresh token `HttpOnly`, cookie CSRF legivel pelo frontend para double-submit, SameSite configurado e revogacao da familia de sessao em `csrf_mismatch`. Smoke HTTP confirmou que origem externa (`https://evil.example`) nao recebe `Access-Control-Allow-Origin`, enquanto `http://localhost:3000` recebe CORS local esperado.
+- Evidencias de Auth/CSRF/CORS:
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SharedAuthInfrastructureWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\AuthFlowTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SecurityHeadersWiringTest.php`: **ok**
+- Etapa **Artefatos de desenvolvimento no backend**: **Pronta localmente** no recorte auditado. Foram movidos para fora de `htdocs` os diretorios `scripts/debug`, `scripts/manual-tests`, `scripts/setup`, `scripts/maintenance`, `scripts/seed`, `scripts/seeds` e os checks temporarios `scripts/checks/temp_check_plans.php` e `scripts/checks/temp_check_transactions.php`, preservados em `C:/xampp/private-backups/questao-pro-backend/dev-scripts-archive/2026-05-18`.
+- `config/production_preflight.php`: ganhou o check `BACKEND_DEV_SCRIPT_ARTIFACTS_CLEAN`, que falha se instaladores, debug/manual-tests/setup/maintenance/seed/seeds ou checks temporarios voltarem para a arvore publica.
+- `scripts/migrations`: a pasta foi reduzida para a unica migracao PHP operacional allowlisted, `migrate_marketplace_schema_compatibility.php`, que ja possui guarda CLI. As demais migracoes PHP legadas foram arquivadas fora de `htdocs` em `C:/xampp/private-backups/questao-pro-backend/dev-scripts-archive/2026-05-18/scripts/migrations-legacy`; o preflight agora falha se outro PHP aparecer em `scripts/migrations`.
+- Evidencias de limpeza operacional:
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\BackendRootCleanupWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionPreflightWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionPreflightBehaviorTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\MarketplaceSchemaCompatibilityWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\MarketplaceGamificationWiringTest.php`: **ok**
+  - HTTP local: `scripts/debug/debug_db.php`, `scripts/manual-tests/test_api.php`, `scripts/setup/composer.phar`, `scripts/maintenance/reset_admin_pwd.php`, `scripts/maintenance/update_plans.php`, `scripts/seed/seed_admin.php` e `scripts/seeds/seed_database.php` retornaram `403`; `scripts/importers/questions/gran/index.php` permaneceu `200`.
+  - HTTP local: `scripts/migrations/fix_migration.php` retornou `403`; `scripts/migrations/migrate_marketplace_schema_compatibility.php` retornou `403` via web e segue executavel somente por CLI.
+  - Varredura local: nao ha `api/migrations`, `migrations/` raiz nem diretorios publicos de install/setup/seed/debug; os unicos matches operacionais foram `api/users/create_stripe_setup_intent.php` e `api/auth/setup_2fa.php`, que sao endpoints reais de produto.
+- Etapa **Tarefas operacionais de billing**: **Pronta localmente** no recorte auditado. `check_subscription_card_expiry.php` saiu de `scripts/checks/` e passou para `scripts/tasks/`, com guarda `PHP_SAPI === cli`; o runbook agora inclui cron diario para alertas de cartao vencido/proximo do vencimento.
+- Etapa **Renovacao Stripe sem usuario logado**: **Pronta localmente** no recorte auditado. Foi criada a tarefa CLI `scripts/tasks/reconcile_stripe_subscriptions.php`, usando o mesmo lock `subscriptions_stripe_reconciliation`, para o cron rodar por PHP direto e nao depender de navegador, usuario logado, sessao ou chamada HTTP local. O runbook passou a recomendar execucao a cada 15 minutos.
+- Etapa **Lembretes de renovacao**: **Pronta localmente** no recorte auditado. O lembrete "Sua assinatura vai renovar em 5 dias" passou a ser enviado somente quando o ciclo do plano for maior que 5 dias; planos curtos, como o teste de 2 dias, usam o novo template editavel `subscription_renewal_tomorrow` com o aviso "Seu plano renovara amanha".
+- Etapa **Observabilidade do cron Stripe**: **Pronta localmente** no recorte auditado. A reconciliacao agora grava `storage/logs/subscriptions/subscription_cron_health.json` com ultima execucao, status, assinaturas checadas, alertas e invoices materializadas; o helper do admin devolve `cron_health`, e a tela `Painel > Saude do billing` passa a mostrar quando o cron esta sem execucao recente, com alerta ou saudavel.
+- Etapa **Preflight do cron Stripe**: **Pronta localmente** no recorte auditado. `config/production_preflight.php` passou a validar `SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT`, falhando em producao quando o heartbeat da reconciliacao Stripe estiver ausente, invalido, `stale/error/unknown` ou mais antigo que a janela permitida.
+- Etapa **Observabilidade/preflight do webhook Stripe**: **Pronta localmente** no recorte auditado. O webhook Stripe agora grava `storage/logs/subscriptions/stripe_webhook_health.json` para eventos validos processados, ignorados ou duplicados; o helper do admin devolve `webhook_health`, `Painel > Saude do billing` mostra o ultimo evento recebido e `production_preflight.php` falha em producao se `STRIPE_WEBHOOK_HEALTH_RECENT` estiver ausente, invalido, em erro ou antigo demais.
+- Etapa **E-mail transacional/preflight SMTP**: **Pronta localmente** no recorte auditado. O envio real passou a usar `shared/utils/MailConfiguration.php`, que resolve SMTP do painel admin com fallback `.env`; `config/production_preflight.php` agora bloqueia producao sem `SMTP_CONFIGURED_FOR_PRODUCTION`, `MAIL_SENDER_CONFIGURED` e `ESSENTIAL_EMAIL_TEMPLATES_ENABLED`, cobrindo confirmacao de conta, reset, recibos, falha de pagamento, lembretes de renovacao, suporte e reembolso.
+- Etapa **Teste operacional de modelos de e-mail**: **Pronta localmente** no recorte auditado. O painel de modelos de e-mail agora envia teste por modelo a partir do modal de edicao, usando o rascunho atual e placeholders de exemplo. O backend expõe `settings?action=test_email_template`, valida chave do catalogo e SMTP, renderiza o template sem persistir o rascunho e força o teste a usar o payload temporario em vez de configurações antigas salvas. Campanhas automaticas agora tambem usam o catalogo editavel (`marketing_campaign_message`) em vez de HTML direto no service.
+- Etapa **Renovacao Stripe - notificacao e UX de perfil**: **Pronta localmente** no recorte auditado. Invoices pagas de renovacao agora geram notificacao in-app especifica de `Assinatura renovada`, com log operacional se a persistencia falhar; a aba de assinatura aguarda a primeira sincronizacao Stripe antes de exibir o ciclo e recarrega o cache de notificacoes quando materializa invoice, evitando snapshot vencido e aviso atrasado na UI.
+- Evidencias de billing operacional:
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\shared\utils\MailConfiguration.php`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\shared\utils\Mailer.php`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\scripts\tasks\check_subscription_card_expiry.php`: **ok**
+  - HTTP local: `scripts/tasks/check_subscription_card_expiry.php` retornou `403`.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SubscriptionsRenewalReminderPolicyTest.php`: **ok**
+  - `npx eslint src/app/profile/ProfilePage.tsx --max-warnings=0`: **ok**
+  - `npx tsc --noEmit --pretty false`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SubscriptionsCronWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionPreflightWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionPreflightBehaviorTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\EmailTemplatesCatalogParityTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\MarketingAutomationWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\subscriptions\services\SubscriptionsService.php`: **ok**
+  - `npx eslint src/app/admin/components/panel/AdminPanelSection.tsx --max-warnings=0`: **ok**
+  - `npx tsc --noEmit --pretty false`: **ok**
 - Etapa **Billing/Stripe**: **Pronta localmente** no recorte auditado. A suite E2E com Stripe em modo teste fechou `GO` com `7/7` cenarios OK: renovacao por Test Clock, auto-renew off/on, upgrade com credito proporcional local, refund concorrente, webhook duplicado, webhook fora de ordem e webhook atrasado com reconciliacao.
 - `scripts/checks/billing-renewal-check.mjs`: checklist agregado fechou `GO` com `22/22` itens OK, sem `RISCO`, `CRITICO` ou `NAO_COMPROVADO`.
 - `modules/subscriptions/services/SubscriptionsBillingSupport.php`: renovacao deixou de reaplicar cupons/descontos de checkout automaticamente; a proxima cobranca usa o preco vigente do plano na plataforma, preservando a regra comercial pedida para renovacoes.
@@ -34,7 +130,9 @@ Veredito: `Nao pronto`
 - O artefato de hard refresh saiu da raiz e foi movido para `docs/reports/artifacts/hard-refresh-baseline-latest.json`; `hard-refresh-baseline.mjs` e `hard-refresh-budget.mjs` usam esse caminho por padrao, e a suite de arquitetura agora bloqueia o retorno de `tmp-hard-refresh-baseline-latest.json` na raiz. `npm run check:hard-refresh-budget` e `npm run check:production-local` passaram apos a mudanca.
 - Configuracoes admin: o bloco duplicado de Homepage foi removido e a varredura do admin de settings nao encontrou mais `Homepage`, `homePage`, `landingContent` ou `AdminLandingContent`; a observacao 30 passou a `Concluido`.
 - Cupons admin: `mergeSystemSettings()` passou a normalizar cupons e `resolvePersistedSystemSettings()` agora completa respostas parciais do backend sobre o estado salvo pelo admin. Isso trava a remocao de cupom contra reaparecimento por default e preserva alteracoes quando o backend retorna payload parcial; `src/state/app-config/__tests__/systemSettings.test.ts` cobre os cenarios.
-- Upgrade manual admin: `manual_admin` virou provider nao cobrável em `payment_provider.php`, o upgrade manual cancela assinatura Stripe remota antes de conceder acesso gratuito, e o perfil exibe concessao manual sem tratar como Stripe. Falta E2E sandbox para confirmar Stripe/billing/analytics ponta a ponta.
+- Upgrade manual admin: `manual_admin` virou provider nao cobravel em `payment_provider.php`; upgrade manual cancela assinatura Stripe remota antes de conceder acesso gratuito; dias acrescidos pelo admin tambem convertem a linha ativa para concessao `manual_admin`, sem `auto_renew`, sem `provider_subscription_id` e sem proximas projecoes de renovacao. O calculo manual agora respeita `day`, `week`, `month` e `year`, evitando que o plano teste de 2 dias vire ciclo mensal nesse fluxo.
+- Marketplace vendedores admin: a grade WP-like ja permite busca, filtro, selecao em massa, status, ver/editar/vendas/produtos e moderacao rapida de materiais. A etapa atual corrigiu a normalizacao do modal de detalhes para aceitar `authorId`, `author_id`, `sellerId` e `seller_id`, alinhando contadores, produtos e transacoes com os formatos reais do backend.
+- Ambiente/cron VPS: o preflight agora reprova producao sem `CRON_SECRET` forte, `APP_ENV=production`, `APP_URL` HTTPS/publico, CORS HTTPS sem localhost/wildcard, usuario DB dedicado, `DB_PERSISTENT=false`, timeout DB entre 1 e 10 segundos, heartbeat recente de cron Stripe e heartbeat recente de webhook Stripe. O backend recebeu `.env.production.example` para evitar deploy copiando valores XAMPP/localhost.
 - Tipagem compartilhada: `src/types/global.ts` ficou sem `any` explicito, com contratos flexiveis para taxonomias de questoes, nivel vindo como texto/numero/objeto e `firebaseConfig`; `AdminImportSection` passou a renderizar nivel de questao via texto normalizado, evitando objeto React invalido no preview de importacao.
 - Higiene de tipagem/runtime: `accountService`, `commentsService`, `changelogService`, `studyScheduleService`, `reportsService`, `supportService`, `promotionSeo`, `landingPageSeo`, `questionPublication`, `questionFlags`, SEO publico de questao, `dashboardInsightsService`, simulado, service de Raio-X da banca, `legalCommentaryApiService`, listagem publica e reader interno de Lei Comentada, ranking, checkout Stripe/cartao salvo, perfil Stripe, modal de pagamento do marketplace, landing de planos, editor admin de Lei Comentada, `DebugLogger`, tipos de Lei Comentada, `SuccessModal`, privacidade, comentarios e testes de servicos sairam de `any` explicito ou avisos dirigidos no recorte auditado. A varredura atual em `src` (sem testes/fixtures) retorna `0` ocorrencias de `any` explicito, com `npm run typecheck`, `npm run lint` e `npm run check:production-local` verdes.
 - Higiene local: logs temporarios ignorados pelo Git foram removidos da raiz; apenas dois logs do dev server continuam bloqueados por processo ativo e ficaram documentados em `production-removal-candidates-latest.md`.
@@ -177,11 +275,14 @@ Veredito: `Nao pronto`
 - `scripts/tasks/production_smoke.php`: **ok** (API/web/DB sem regressao apos ajustes de lazy bootstrap)
 - `src/app/admin/components/support/AdminFeedback.tsx`: interface de feedback do admin foi migrada para list table no padrao WordPress (filtros + tabela + conversa expandida por linha), reduzindo UI card-heavy.
 - `src/app/admin/components/settings/LogViewer.tsx`: logs agora explicam e alternam modo de exibicao (`Todas as linhas` vs `So repetidos`) sem perder categorizacao e destaque de frequencia.
-- `src/app/auth/components/Auth.tsx` + `modules/auth/*`: Google login passou a tentar apenas autenticacao no primeiro passo; quando a conta nao existe, exige `nome + telefone` para concluir cadastro social. Backend valida e persiste telefone no cadastro Google.
-- `src/app/auth/components/Auth.tsx` + `src/app/admin/components/settings/AdminSettings.tsx` + `src/config/securityHeaders.ts` + `modules/auth/*`: login/cadastro social com Facebook e Apple implementados localmente (frontend, backend, validacao e campos de configuracao no admin), incluindo ajuste de CSP para scripts/endpoints desses provedores. Falta homologacao com credenciais reais em staging/producao.
+- `src/app/auth/components/Auth.tsx` + `modules/auth/*`: Google login passou a tentar apenas autenticacao no primeiro passo; quando a conta nao existe, exibe uma etapa dedicada de Dados Pessoais, sem misturar com cadastro por senha, e so cria a conta apos receber `nome + telefone` normalizado. Backend valida e persiste telefone no cadastro Google; `SocialAuthProfileCompletionWiringTest.php` trava esse fluxo e o guard compartilhado para provedores sociais.
+- `src/app/auth/components/Auth.tsx` + `src/app/admin/components/settings/AdminSettings.tsx` + `src/config/securityHeaders.ts` + `modules/auth/*`: login/cadastro social com Facebook e Apple implementados localmente (frontend, backend, validacao e campos de configuracao no admin), incluindo ajuste de CSP para scripts/endpoints desses provedores, validação de formato das credenciais no admin e exemplos de env frontend/backend. Falta homologacao com credenciais reais em staging/producao.
 - `src/proxy.ts`: links legados de ativacao/reset (`/activate`, `/activation`, `/verify-email`, `/confirm`, `/recover`, `/forgot-password`, `/reset`) passaram a redirecionar para as rotas canonicas (`/confirm-email` e `/reset-password`), reduzindo o fluxo que caia na home em URLs antigas.
 - `src/app/checkout/CheckoutPage.tsx` + `src/app/checkout/components/CheckoutPaymentStage.tsx`: checkout passou a consumir metodos ativos do painel em tempo real (com selecao dinamica por metodo), separando fluxo interno (cartao) de fluxo hospedado Stripe (pix/boleto/wallets), com bloqueio automatico de recorrencia quando o metodo nao suporta.
 - `src/app/admin/components/settings/StripePaymentMethodsSettings.tsx`: painel administrativo de metodos Stripe ganhou controle operacional de `checkoutSupported` e `recurringSupported`, reduzindo configuracao incoerente de metodo ativo que nao aparecia no checkout.
+- `vendor/mercadopago/dx-php` no backend local foi arquivado fora de `htdocs` e removido do autoload gerado, porque `composer.json`/`composer.lock` atuais ja estao Stripe-only. O autoload continuou carregando Stripe/PHPMailer/TCPDF e deixou `MercadoPago\\MercadoPagoConfig` ausente.
+- `config/production_preflight.php`: ganhou `PAYMENT_LEGACY_MERCADOPAGO_SDK_REMOVED`, que reprova release se `vendor/mercadopago`, `MercadoPago\\` ou `mercadopago/dx-php` reaparecerem no SDK/autoload local; `ProductionPreflightWiringTest.php` e `ProductionPreflightBehaviorTest.php` passaram com fixture contaminada.
+- `storage/backups/legacy-code`: backup historico de codigo foi movido para `C:/xampp/private-backups/questao-pro-backend/storage-archive/2026-05-20/legacy-code`; o preflight ganhou `BACKUP_DIR_OUTSIDE_PUBLIC_ROOT` e `LEGACY_CODE_BACKUPS_OUTSIDE_PUBLIC_ROOT`, exigindo backups fora de `htdocs`.
 - `modules/subscriptions/validators/SubscriptionsValidator.php` + `modules/subscriptions/services/SubscriptionsService.php`: backend passou a receber `payment_method_id` no checkout hospedado, validar compatibilidade por metodo (ativo, checkout, recorrencia, capability PIX) e derivar `payment_method_types` por metodo selecionado.
 
 ## Atualizacao incremental (`2026-05-07`)
@@ -288,6 +389,7 @@ Backend PHP em `C:/xampp/htdocs/questao-pro-backend`:
 - `api/subscriptions/cron_stripe_reconciliation.php` e `api/tasks/ProcessRewards.php`: validam segredo e adquirem lock antes da conexao de banco.
 - `api/subscriptions/automation_helper.php` e `modules/subscriptions/routes.php`: a acao administrativa `run_now` da reconciliacao Stripe passou a carregar o helper de lock e reutilizar `subscriptions_stripe_reconciliation`, evitando execucao paralela por clique duplo, abas simultaneas ou operador concorrente.
 - `api/subscriptions/cron_recurring.php` e `api/subscriptions/cron_scheduled_payments.php`: deixam de abrir MySQL para bridges removidas do Mercado Pago.
+- `api/payments/create-preference.php`, `api/payments/webhook.php`, `api/subscriptions/create.php`, `api/subscriptions/process_payment.php`, `api/subscriptions/sync_plans_mp.php`, `api/subscriptions/webhook.php` e `api/subscriptions/webhook_mp.php`: endpoints Mercado Pago descontinuados agora respondem `410` diretamente, sem `config/database.php` e sem `getConnection()`.
 - `modules/admin/repositories/AdminCommentsModerationRepository.php`: status de moderacao agora notifica o autor e, ao aprovar, dispara notificacoes sociais de resposta/material.
 - `modules/subscriptions/services/SubscriptionsService.php`: falha de cobranca Stripe (`past_due`) notifica admins, e reembolso pendente de assinatura passa a notificar todos os admins ativos no app.
 - `modules/questions/services/QuestionsRewardService.php` e `modules/questions/repositories/QuestionsRepository.php`: respostas passam a atualizar streak diario e badges idempotentes (`user_streaks`, `user_badges`).
@@ -435,7 +537,7 @@ Backend PHP em `C:/xampp/htdocs/questao-pro-backend`:
 | Analytics tracking | Pronto local parcial | Nao pronto ate observar trafego em staging | Endpoint limita volume, nao confia em `userId` do cliente e limita payloads grandes; falta monitorar volume real e 429 |
 | Cronograma Elite | Pronto local parcial | Nao pronto ate smoke com usuario Elite real | Backend persiste por usuario e UI sincroniza com fallback local; falta teste ponta a ponta em staging |
 | Superficie publica da API | Pronto local | Nao pronto ate preflight passar na VPS | Log operacional removido de `api/`; cron grava em `storage/logs/subscriptions`; preflight e teste residual bloqueiam novos artefatos |
-| Google login | Pronto local parcial | Nao pronto ate OAuth real em staging | Frontend valida Client ID, nao carrega script invalido e trata falha do script Google; falta Client ID real autorizado no Google Cloud e backend com mesmo ID |
+| Google login | Pronto local | Nao pronto ate OAuth real em staging | Frontend valida Client ID, nao carrega script invalido, trata falha do script Google e exige Dados Pessoais antes de criar conta social inexistente; falta Client ID real autorizado no Google Cloud e backend com mesmo ID |
 | SEO publico | Pronto local parcial | Nao pronto ate dominio/Search Console | `NEXT_PUBLIC_CANONICAL_URL` alimenta metadata/sitemap/robots; sitemap filtra landings reservadas/privadas e tem testes de alinhamento com robots; falta validacao no dominio final |
 | SEO privado | Pronto local | Nao pronto ate validar deploy | Rotas privadas principais tem `noindex`; cronograma Elite corrigido; sitemap dinamico filtra drafts, elite/internal, itens pendentes e slugs de landing reservados |
 | Landings publicas | Pronto local parcial | Nao pronto ate smoke no dominio final | `/l/[slug]` tem metadata server-side para publicadas, `noindex` para rascunhos/inexistentes e sitemap inclui landings publicadas customizadas; falta validar OG/canonical externo |
@@ -521,8 +623,8 @@ Backend:
 | `RateLimiterHardeningWiringTest.php` | Passou |
 | `AnalyticsTrackingSecurityTest.php` | Passou; tracking autenticado usa usuario da sessao, anonimo ignora `userId` do cliente e metadata grande e rejeitada |
 | `LegalCommentaryAdminWiringTest.php` | Passou; handlers admin exigem `requireAdminSessionContext($db)` e bridges delegam para as rotas protegidas |
-| `ProductionPreflightWiringTest.php` | Passou com checks `GOOGLE_CLIENT_ID_FORMAT`, `STRIPE_*_FORMAT`, `STRIPE_KEY_MODE_MATCH`, `RATE_LIMIT_RUNTIME_WRITABLE` e `API_PUBLIC_ARTIFACTS_CLEAN` |
-| `ProductionPreflightBehaviorTest.php` | Passou; prova `APP_ENV=production`, `APP_URL` publico, CORS valido/HTTPS/sem wildcard e reprova `development`, localhost, HTTP e wildcard |
+| `ProductionPreflightWiringTest.php` | Passou com checks `GOOGLE_CLIENT_ID_FORMAT`, `STRIPE_*_FORMAT`, `STRIPE_KEY_MODE_MATCH`, `RATE_LIMIT_RUNTIME_WRITABLE`, `API_PUBLIC_ARTIFACTS_CLEAN`, `SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT`, `STRIPE_WEBHOOK_HEALTH_RECENT` e SMTP/templates transacionais |
+| `ProductionPreflightBehaviorTest.php` | Passou; prova `APP_ENV=production`, `APP_URL` publico, CORS valido/HTTPS/sem wildcard, heartbeats recentes de cron/webhook Stripe, SMTP/remetente/templates essenciais e reprova `development`, localhost, HTTP, wildcard, heartbeat antigo, SMTP ausente e remetente invalido |
 | `AdminDatabaseResetProductionGuardTest.php` | Passou; reset DB em producao fica bloqueado por padrao e exige confirmacao operacional |
 | `StripeConfigurationWiringTest.php` | Passou; runtime valida formato de secret, publishable e webhook secret Stripe |
 | `AdminSettingsValidatorStripeTest.php` | Passou; painel rejeita chaves Stripe invalidas e mistura `test`/`live` no mesmo save |
@@ -543,6 +645,8 @@ Backend:
 | `src/config/__tests__/siteUrl.test.ts` | Passou, cobrindo `NEXT_PUBLIC_CANONICAL_URL` para sitemap/canonical |
 | `src/config/__tests__/googleAuth.test.ts` | Passou, 3 testes cobrindo Client ID valido, placeholders invalidos e configuracao ausente |
 | `GoogleAuthWiringTest.php` | Passou; backend valida formato do Client ID Google e audiencia do token |
+| `SocialAuthProfileCompletionWiringTest.php` | Passou; frontend tenta OAuth sem auto-criar usuario, mostra etapa dedicada de Dados Pessoais e backend exige telefone antes de criar conta social |
+| `SocialAuthProvidersWiringTest.php` | Passou; Facebook/Apple possuem endpoints oficiais, SDKs/CSP, validacao de token/claims e validacao de credenciais no admin |
 | `src/services/seo/__tests__/privateSeo.test.ts` | Passou, 6 testes cobrindo disallow/noindex, cronograma, filtros de sitemap dinamico e landings publicadas |
 | `src/components/__tests__/PageTransition.test.tsx` | Passou, cobrindo HTML SSR estavel para transicao de pagina |
 | `src/components/shared/charts/__tests__/StableResponsiveContainer.test.tsx` | Passou, 2 testes cobrindo shell SSR com dimensao fixa e fallback antes de medir |
@@ -615,16 +719,40 @@ Observacao: os testes PHP exibem o aviso conhecido `Module "openssl" is already 
 ## Atualizacao incremental (`2026-05-09`)
 
 - Performance admin (add/edit): `getUserDetails`, `getAdminDetail`, `getAdminLawUpdates` e `getAdminEditorialBatchStatus` passaram a deduplicar chamadas em voo; editor de Lei Comentada passou a reaproveitar taxonomias do store (com fallback) e so consulta lote editorial ao abrir a aba de IA; editor de Landing deixou de consultar planos quando a tela esta apenas em listagem.
+- Observacao 22 (add/edit admin lento): **Concluida localmente**. As rotas standalone de edicao foram revisadas para usar endpoints de detalhe/cache em vez de bootstrap amplo do banco, e a evidencia final fechou com `npm run check:hard-refresh-budget` e `npm run check:production-local` passando. A prova de fluidez com massa real fica na homologacao de staging/VPS da release, nao como pendencia funcional deste topico.
+- Observacao 39 (limpeza de codigo morto/artefatos): **Concluida localmente**. O cache incremental `tsconfig.tsbuildinfo` foi removido da raiz e redirecionado para `.next/tsconfig.tsbuildinfo`; `scripts/checks/check-generated-artifacts.mjs` entrou no preflight local via `npm run check:generated-artifacts`, impedindo retorno de caches/logs/baselines gerados na raiz. A varredura de runtime segue sem `quick-login`, `debugger`, `DataProvider/useData`, `alert/confirm/eval` nativos, e o relatorio de remocao registra que nao ha candidato seguro imediato pendente.
 - `src/app/admin/components/finance/AdminFinanceAnalyticsPanel.tsx`: adicionado bloco operacional `Cobrança em risco (quem e por quê)` com detalhamento por usuário/e-mail/sinal/último evento, cobrindo explicitamente os segmentos `payment_failed` e `subscriber_at_risk`.
 - `src/app/admin/components/questions/AdminQuestionsSection.tsx`: ajustes de copy/acentuação em rótulos críticos (Questões, Comentário, Análise detalhada, Publicação, Página/Próxima) e mensagens de ação em massa para reduzir inconsistências linguísticas no painel.
+- `src/app/question/QuestionPublicPage.tsx`, `src/app/question/layout.tsx`, `src/app/questions/components/QuestionCard.tsx`, `src/app/practice/page.tsx`, `src/app/dashboard/DashboardPage.tsx`, `src/app/support/page.tsx`, `src/app/admin/operation/questions/[questionId]/edit/page.tsx` e componentes admin de questões: concluída a varredura visível de copy do tópico 21, corrigindo rótulos/mensagens como `Questão`, `Inédita`, `Órgão`, `Múltipla escolha`, `histórico`, `denúncia`, `comentário` e estados vazios. Validação direcionada com ESLint e `check:text-encoding` passou sem warnings/mojibake.
+- `src/constants/layout.ts`, `src/app/**/*` e `src/components/shared/**/*`: concluída a padronização de border-radius do tópico 12. O card base da plataforma agora usa `rounded-2xl`, e os tokens exagerados `rounded-3xl`, `rounded-[2rem]` e `rounded-[2.5rem]` foram normalizados para reduzir a sensação de UI excessivamente arredondada em telas públicas, áreas logadas e overlays compartilhados. Validação: `rg` sem esses tokens em `src/app`/`src/components/shared`, `npm run lint`, `npm run check:text-encoding` e `git diff --check` OK.
+- `docs/reports/production-removal-candidates-latest.md` e raiz do frontend: concluída a limpeza objetiva do tópico 41. Os dois logs webpack locais que ainda estavam presos (`.tmp-dev3000-webpack-err.log` e `.tmp-dev3000-webpack-out.log`) foram removidos apos encerrar o processo local que mantinha lock; o dev server foi religado na porta `3000`. O relatorio agora registra que nao ha candidato seguro imediato pendente, deixando limpezas futuras condicionadas a validação por dominio.
 - `src/app/notifications/page.tsx`: validado uso do modal padronizado (`useConfirm`) para limpeza e exclusão permanente na lixeira de notificações, sem `window.confirm`.
-- `C:/xampp/htdocs/questao-pro-backend/modules/admin/repositories/AdminUserActionsRepository.php`: verificado que upgrade manual do admin grava assinatura `manual_admin` sem renovação automática (`auto_renew=0`), reduzindo risco de cobrança indevida; falta prova E2E do fluxo completo.
+- `C:/xampp/htdocs/questao-pro-backend/modules/admin/repositories/AdminUserActionsRepository.php`: upgrade manual e acrescimo de dias pelo admin agora gravam/convertam assinatura para `manual_admin`, sem renovacao automatica (`auto_renew=0`), sem id remoto Stripe e sem proxima projecao de cobranca.
 - `src/proxy.ts` + `src/app/page.tsx`: links legados de autenticação com token agora redirecionam no servidor para `/reset-password` ou `/confirm-email`, evitando cair primeiro na home em fluxos de ativação/redefinição.
 - `C:/xampp/htdocs/questao-pro-backend/modules/admin/services/AdminUserDetailsService.php` + `.../repositories/AdminUserDetailsRepository.php` + `src/app/admin/components/users/UserProfileAdminModal.tsx`: perfil detalhado do admin passou a incluir feedback/sugestões/avaliações e denúncias enviadas pelo usuário, com métricas de relacionamento no modal.
 - `src/state/app-config/systemSettings.ts` e `src/state/app-config/__tests__/systemSettings.test.ts`: removido cupom default fixo, adicionada normalizacao de cupons e alterado o merge de resposta parcial para completar sobre o estado salvo pelo admin. Isso evita reaparição involuntaria apos remocao no painel e tambem evita perda de alteracoes quando o backend retorna payload parcial.
 - `src/app/admin/config/adminPageNavigationConfig.ts`, `src/app/admin/components/database/adminDatabaseNavigationConfig.ts`, `src/app/admin/components/import/AdminGranCrawlerSection.tsx`: painel admin ganhou acesso oficial ao crawler da Gran por seção dedicada (`/admin/operation/gran-crawler`) sem depender de URL manual.
 - `src/app/admin/components/settings/AdminSettings.tsx`: removido bloco duplicado de conteúdo da homepage na aba `Geral`; componente legado `AdminLandingContentSection.tsx` foi eliminado para reduzir ruído de configuração.
 - `docs/reports/production-removal-candidates-latest.md`: inventario inicial de limpeza com itens removidos, candidatos imediatos locais e candidatos condicionados a validacao.
+
+## Atualizacao incremental (`2026-05-23`)
+
+- Bloco das 14 observacoes recentes: **pronto localmente**.
+- Concluido nesta rodada:
+  - `src/app/dashboard/DashboardPage.tsx`: cards superiores reorganizados para manter `Motivacao Diaria` e `Sequencia de Estudos` em 2/3 da largura e `Tempo de Estudos` em 1/3, com leitura/questoes/media em lista compacta e total destacado.
+  - `src/providers/StudyTrackerProvider.tsx`: tempo de estudo salva ao sair de rota rastreada para rota comum, alem de manter pausa por inatividade e aviso de fechamento de aba.
+  - `C:/xampp/htdocs/questao-pro-backend/modules/admin/routes.php` e `.../validators/AdminStatsValidator.php`: `admin/stats` assume `today` quando o periodo nao e informado.
+  - `/practice` e backend `questionsList`: total de questoes passa a usar `COUNT(*)` com os filtros aplicados, mantendo `100` apenas como tamanho de lote/paginacao.
+  - `src/app/questions/components/QuestionCard.tsx` e `src/services/questions/questionService.ts`: historico de resolucoes normaliza respostas atuais e legadas, evitando `?` quando a alternativa marcada existe.
+  - `src/proxy.ts` + `scripts/checks/check-next-proxy-convention.mjs`: projeto permanece na convencao `proxy` do Next, com trava contra retorno de `middleware.ts`.
+  - `src/app/auth/components/Auth.tsx` e backend auth: CPF obrigatorio no cadastro comum/social pendente; botoes Google/Facebook/Apple so aparecem quando provider e SDK/chave estao configurados.
+  - `src/app/admin/components/legal-commentary/AdminLegalCommentarySection.tsx`: acoes de Lei Comentada ganharam selecao/bulk action no padrao WordPress.
+  - `src/app/checkout/CheckoutPage.tsx`: botao `Reenviar E-mail` exibe spinner e bloqueia clique duplicado durante envio.
+  - Admin financeiro/dashboard: projecoes passam a considerar assinaturas ativas com renovacao ativa e receitas separadas por bruto/disponivel/comissao/MRR.
+  - `C:/xampp/htdocs/questao-pro-backend/modules/transactions/services/TransactionsService.php`: projecao de parcelas Stripe futuras ignora assinaturas `past_due/incomplete` e avanca datas conforme slots financeiros ja ocupados, evitando acumulacao de pre-aprovadas na mesma data apos falha de pagamento.
+  - `src/constants/layout.ts` e `src/app/admin/components/shared/adminPanelStyles.ts`: sombras dos boxes padronizadas em `shadow-sm` calibrado.
+- Validacao local: `npm run typecheck` passou; `php -l` passou nos arquivos backend alterados, com o aviso conhecido do XAMPP `Module "openssl" is already loaded`.
+- Estado: **pronto local para homologacao controlada**. Nao muda o veredito de producao porque pagamento/webhook/cron/SMTP/OAuth ainda precisam prova real em VPS/staging.
 
 ## Bloqueios para producao
 

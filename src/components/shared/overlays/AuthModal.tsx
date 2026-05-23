@@ -36,7 +36,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
     return ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
             <div
-                className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in slide-in-from-bottom-4 duration-500"
+                className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in slide-in-from-bottom-4 duration-500"
             >
                 {/* Header Decorativo */}
                 <div className="relative h-32 bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center overflow-hidden">
@@ -44,7 +44,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
                         <div className="absolute top-0 left-0 w-20 h-20 bg-white rounded-full -translate-x-10 -translate-y-10" />
                         <div className="absolute bottom-0 right-0 w-32 h-32 bg-white rounded-full translate-x-16 translate-y-16" />
                     </div>
-                    <div className="relative bg-white/20 p-4 rounded-3xl backdrop-blur-md border border-white/30 shadow-xl">
+                    <div className="relative bg-white/20 p-4 rounded-2xl backdrop-blur-md border border-white/30 shadow-xl">
                         <Lock size={32} className="text-white" />
                     </div>
                     <button

@@ -32,6 +32,7 @@ import {
 import StudySessionWidget from '../components/shared/feedback/StudySessionWidget';
 
 const IDLE_TIMEOUT_MS = 60_000;
+const AUTO_STOP_IDLE_MS = 5 * 60_000;
 const TICK_INTERVAL_MS = 1_000;
 const PERSISTED_STATISTICS_SYNC_TTL_MS = 120_000;
 const WIDGET_STORAGE_KEY = 'cm-study-widget-expanded';
@@ -98,8 +99,10 @@ export const StudyTrackerBridge: React.FC = () => {
   const tracker = useStudyTracker();
   const lastInteractionAtRef = React.useRef<number>(0);
   const lastTickAtRef = React.useRef<number>(0);
+  const stopStudySessionRef = React.useRef<() => Promise<void>>(async () => undefined);
   const lastStatisticsSyncKeyRef = React.useRef<string | null>(null);
   const lastStatisticsSyncAtRef = React.useRef<number>(0);
+  const previousPathnameRef = React.useRef(pathname);
   const shouldLoadPersistedStatistics = shouldSyncPersistedStatistics(pathname);
 
   React.useEffect(() => {
@@ -237,11 +240,17 @@ export const StudyTrackerBridge: React.FC = () => {
         return;
       }
 
-      if (now - lastInteractionAtRef.current > IDLE_TIMEOUT_MS) {
+      const idleMs = now - lastInteractionAtRef.current;
+      if (idleMs > AUTO_STOP_IDLE_MS && getStudyTrackerSnapshot().sessionTotals.totalSeconds > 0) {
+        void stopStudySessionRef.current();
         return;
       }
 
-    const trackedMode = resolveTrackedStudyMode(pathname);
+      if (idleMs > IDLE_TIMEOUT_MS) {
+        return;
+      }
+
+      const trackedMode = resolveTrackedStudyMode(pathname);
       if (!trackedMode) {
         return;
       }
@@ -299,6 +308,44 @@ export const StudyTrackerBridge: React.FC = () => {
       lastTickAtRef.current = Date.now();
     }
   }, [addToast, currentUser?.id, pathname]);
+
+  React.useEffect(() => {
+    stopStudySessionRef.current = stopStudySession;
+  }, [stopStudySession]);
+
+  React.useEffect(() => {
+    const previousPathname = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+
+    if (!currentUser?.id) {
+      return;
+    }
+
+    const wasTrackingStudy = resolveTrackedStudyMode(previousPathname) !== null;
+    const isTrackingStudy = resolveTrackedStudyMode(pathname) !== null;
+    const hasUnsavedStudyTime = getStudyTrackerSnapshot().sessionTotals.totalSeconds > 0;
+
+    if (wasTrackingStudy && !isTrackingStudy && hasUnsavedStudyTime) {
+      void stopStudySessionRef.current();
+    }
+  }, [currentUser?.id, pathname]);
+
+  React.useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      const snapshot = getStudyTrackerSnapshot();
+      if (snapshot.isSaving || snapshot.sessionTotals.totalSeconds <= 0) {
+        return;
+      }
+
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   const handleWidgetToggle = React.useCallback(() => {
     setStudyTrackerWidgetExpanded(!getStudyTrackerSnapshot().isWidgetExpanded);

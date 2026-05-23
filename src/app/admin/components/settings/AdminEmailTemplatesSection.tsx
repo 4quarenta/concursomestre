@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -11,7 +11,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit3, Mail, Save, X } from 'lucide-react';
+import { Edit3, Loader2, Mail, Save, Send, X } from 'lucide-react';
 import type { EmailTemplateModel } from '@types';
 import {
   ADMIN_FIELD_CLASS,
@@ -25,12 +25,22 @@ import {
 type AdminEmailTemplatesSectionProps = {
   templates: EmailTemplateModel[];
   onChange: (templates: EmailTemplateModel[]) => void;
+  defaultTestEmail?: string;
+  onSendTest?: (template: EmailTemplateModel, targetEmail: string) => Promise<string>;
 };
 
-const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({ templates, onChange }) => {
+const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
+  templates,
+  onChange,
+  defaultTestEmail = '',
+  onSendTest,
+}) => {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<EmailTemplateModel | null>(null);
+  const [testTargetEmail, setTestTargetEmail] = useState(defaultTestEmail);
+  const [testingKey, setTestingKey] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const editingTemplate = useMemo(
     () => templates.find((template) => template.key === editingKey) || null,
@@ -77,6 +87,8 @@ const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
   const openEditor = (template: EmailTemplateModel) => {
     setEditingKey(template.key);
     setDraft({ ...template });
+    setTestTargetEmail(defaultTestEmail);
+    setTestResult(null);
   };
 
   const closeEditor = () => {
@@ -104,6 +116,28 @@ const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
       )),
     );
     closeEditor();
+  };
+
+  const sendTemplateTest = async () => {
+    if (!draft || !onSendTest || testingKey) {
+      return;
+    }
+
+    const targetEmail = testTargetEmail.trim();
+    setTestingKey(draft.key);
+    setTestResult(null);
+
+    try {
+      const message = await onSendTest(draft, targetEmail);
+      setTestResult({ ok: true, message });
+    } catch (error) {
+      setTestResult({
+        ok: false,
+        message: error instanceof Error ? error.message : 'Nao foi possivel enviar o teste do modelo.',
+      });
+    } finally {
+      setTestingKey(null);
+    }
   };
 
   return (
@@ -205,7 +239,7 @@ const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
 
       {editingTemplate && draft && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-4xl rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
             <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex items-start justify-between gap-3`}>
               <div>
                 <h4 className="text-lg font-black text-slate-900 dark:text-slate-100">{editingTemplate.name}</h4>
@@ -264,6 +298,42 @@ const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
                 Placeholders disponiveis: {'{{name}}'}, {'{{email}}'}, {'{{confirm_url}}'}, {'{{reset_url}}'}, {'{{login_url}}'}, {'{{app_url}}'}, {'{{xp_bonus}}'}, {'{{support_url}}'}, {'{{billing_url}}'}, {'{{admin_url}}'}, {'{{receipt_url}}'}, {'{{reason}}'}, {'{{status_line}}'}, {'{{content}}'}.
               </div>
+
+              {onSendTest && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                    <div className="grid flex-1 gap-2">
+                      <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Enviar teste para</label>
+                      <input
+                        type="email"
+                        value={testTargetEmail}
+                        onChange={(event) => setTestTargetEmail(event.target.value)}
+                        className={`w-full ${ADMIN_FIELD_CLASS}`}
+                        placeholder="admin@concursomestre.com"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void sendTemplateTest()}
+                      disabled={testingKey === draft.key || testTargetEmail.trim() === ''}
+                      className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-3 text-[10px] uppercase tracking-[0.16em]`}
+                    >
+                      {testingKey === draft.key ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                      {testingKey === draft.key ? 'Enviando...' : 'Enviar teste'}
+                    </button>
+                  </div>
+                  {testResult && (
+                    <div className={`mt-3 rounded-xl border px-3 py-2 text-xs font-semibold ${
+                      testResult.ok
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/10 dark:text-emerald-300'
+                        : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-900/10 dark:text-rose-300'
+                    }`}
+                    >
+                      {testResult.message}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button type="button" onClick={closeEditor} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.16em]`}>

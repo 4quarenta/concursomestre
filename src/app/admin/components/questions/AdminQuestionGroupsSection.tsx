@@ -128,7 +128,7 @@ const AdminQuestionGroupsSection = () => {
         return new Set(Array.from(previous).filter((id) => availableIds.has(id)));
       });
     } catch (error) {
-      setNotice({ type: 'error', message: readApiErrorMessage(error, 'Nao foi possivel carregar os contextos.') });
+      setNotice({ type: 'error', message: readApiErrorMessage(error, 'Não foi possível carregar os contextos.') });
     } finally {
       setIsLoading(false);
     }
@@ -230,7 +230,7 @@ const AdminQuestionGroupsSection = () => {
       setDraft((previous) => ({ ...previous, image_url: imageUrl }));
       setNotice({ type: 'success', message: 'Imagem enviada para o contexto.' });
     } catch (error) {
-      setNotice({ type: 'error', message: readApiErrorMessage(error, 'Nao foi possivel enviar a imagem.') });
+      setNotice({ type: 'error', message: readApiErrorMessage(error, 'Não foi possível enviar a imagem.') });
     } finally {
       setIsUploading(false);
       if (uploadInputRef.current) {
@@ -259,7 +259,7 @@ const AdminQuestionGroupsSection = () => {
       setDraft(EMPTY_DRAFT);
       await loadContexts();
     } catch (error) {
-      setNotice({ type: 'error', message: readApiErrorMessage(error, 'Nao foi possivel salvar o contexto.') });
+      setNotice({ type: 'error', message: readApiErrorMessage(error, 'Não foi possível salvar o contexto.') });
     } finally {
       setIsSaving(false);
     }
@@ -303,7 +303,7 @@ const AdminQuestionGroupsSection = () => {
       setSelectedIds((previous) => new Set(Array.from(previous).filter((id) => !ids.includes(id))));
       await loadContexts();
     } catch (error) {
-      setNotice({ type: 'error', message: readApiErrorMessage(error, 'Nao foi possivel remover os contextos.') });
+      setNotice({ type: 'error', message: readApiErrorMessage(error, 'Não foi possível remover os contextos.') });
     } finally {
       setIsDeleting(false);
     }
@@ -322,7 +322,7 @@ const AdminQuestionGroupsSection = () => {
         <div className={`${ADMIN_MODAL_HEADER_CLASS} shrink-0`}>
           <div>
             <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-              {draft.id ? `Editar contexto #${draft.id}` : 'Adicionar contexto de questao'}
+              {draft.id ? `Editar contexto #${draft.id}` : 'Adicionar contexto de questão'}
             </h3>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Texto, imagem e vinculos por ID usados no enunciado das questoes.
@@ -423,7 +423,7 @@ const AdminQuestionGroupsSection = () => {
 
               <div className="rounded-sm border border-slate-300 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-300">Questoes vinculadas</label>
+                  <label className="text-[11px] font-semibold uppercase text-slate-600 dark:text-slate-300">Questões vinculadas</label>
                   <span className="rounded-sm border border-slate-300 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
                     {draft.questionIds.length} vinculada(s)
                   </span>
@@ -458,12 +458,12 @@ const AdminQuestionGroupsSection = () => {
                           key={id}
                           className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
                         >
-                          Questao #{id}
+                          Questão #{id}
                           <button
                             type="button"
                             onClick={() => handleRemoveQuestionId(id)}
                             className="text-slate-400 hover:text-red-600 dark:hover:text-red-400"
-                            aria-label={`Desvincular questao ${id}`}
+                            aria-label={`Desvincular questão ${id}`}
                           >
                             <X size={12} />
                           </button>
@@ -471,7 +471,7 @@ const AdminQuestionGroupsSection = () => {
                       ))}
                     </div>
                   ) : (
-                    <p className="py-3 text-center text-xs font-medium text-slate-400">Nenhuma questao vinculada por ID.</p>
+                    <p className="py-3 text-center text-xs font-medium text-slate-400">Nenhuma questão vinculada por ID.</p>
                   )}
                 </div>
               </div>
@@ -555,7 +555,7 @@ const AdminQuestionGroupsSection = () => {
               </th>
               <th className="w-[42%] border-b border-slate-300 px-4 py-3 dark:border-slate-700">Contexto</th>
               <th className="w-[30%] border-b border-slate-300 px-4 py-3 dark:border-slate-700">Imagem</th>
-              <th className="w-[16%] border-b border-slate-300 px-4 py-3 text-center dark:border-slate-700">Questoes vinculadas</th>
+              <th className="w-[16%] border-b border-slate-300 px-4 py-3 text-center dark:border-slate-700">Questões vinculadas</th>
             </tr>
           </thead>
           <tbody>

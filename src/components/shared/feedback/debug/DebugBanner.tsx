@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -126,7 +126,7 @@ const DebugBanner: React.FC = () => {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="w-[450px] max-h-[600px] bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col mb-4 pointer-events-auto"
+            className="w-[450px] max-h-[600px] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col mb-4 pointer-events-auto"
           >
             <div className="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center bg-gradient-to-r from-slate-800 to-indigo-950">
               <div className="flex items-center gap-2">

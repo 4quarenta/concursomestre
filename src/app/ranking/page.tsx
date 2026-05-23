@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -359,8 +359,8 @@ const RankingPage: React.FC = () => {
                </div>
 
                {filteredRankings.length === 0 ? (
-                  <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-12 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 transition-colors">
-                     <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+                  <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border-2 border-dashed border-slate-100 dark:border-slate-800 transition-colors">
+                     <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex items-center justify-center mx-auto mb-6">
                         <Trophy size={40} className="text-slate-300 dark:text-slate-600" />
                      </div>
                      <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2">Nenhum ranking disponível</h3>
@@ -376,7 +376,7 @@ const RankingPage: React.FC = () => {
                ) : viewMode === 'grid' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                      {filteredRankings.map(r => (
-                        <div key={r.id} onClick={() => setSelectedRanking(r)} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full">
+                        <div key={r.id} onClick={() => setSelectedRanking(r)} className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group flex flex-col h-full">
                            <div className="flex items-start justify-between mb-4">
                               <div className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-100 dark:border-slate-700 transition-colors">
                                  {r.imageUrl ? (
@@ -497,7 +497,7 @@ const RankingPage: React.FC = () => {
                   </div>
                </div>
 
-               <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-8 relative overflow-hidden transition-colors">
+               <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-8 relative overflow-hidden transition-colors">
                   <div className="flex-1 space-y-4">
                      <div className="flex items-center gap-3">
                         <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide border transition-colors ${selectedRanking.keyStatus === 'official' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800/30' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-800/30'}`}>
@@ -543,7 +543,7 @@ const RankingPage: React.FC = () => {
                   </div>
                </div>
 
-               <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
+               <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
                   <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50 transition-colors">
                      <h3 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2 transition-colors"><Trophy size={14} className="text-amber-500" /> Classificação Geral</h3>
                   </div>
@@ -603,7 +603,7 @@ const RankingPage: React.FC = () => {
          {/* MODAL CRIAR / EDITAR RANKING */}
          {(isCreating || isEditing) && (
             <div className="fixed inset-0 bg-white/90 dark:bg-slate-950/90 backdrop-blur-sm z-[100] flex items-center justify-center p-6 transition-colors">
-               <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2.5rem] border border-slate-200 dark:border-slate-800 p-8 shadow-2xl animate-scale-in max-h-[90vh] overflow-y-auto no-scrollbar transition-colors">
+               <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-800 p-8 shadow-2xl animate-scale-in max-h-[90vh] overflow-y-auto no-scrollbar transition-colors">
                   <div className="flex justify-between items-center mb-6">
                      <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">{isEditing ? 'Configurar Ranking' : 'Novo Ranking'}</h2>
                      <button onClick={() => { setIsCreating(false); setIsEditing(false); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"><X size={20} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-slate-100" /></button>
@@ -723,7 +723,7 @@ const RankingPage: React.FC = () => {
          {/* MODAL PARTICIPAR (ENVIAR GABARITO) */}
          {isParticipating && selectedRanking && (
             <div className="fixed inset-0 bg-slate-900/80 dark:bg-slate-950/95 backdrop-blur-sm z-[100] flex items-center justify-center p-6 transition-colors">
-               <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-[2.5rem] shadow-2xl animate-scale-in overflow-hidden flex flex-col max-h-[90vh] border border-slate-200 dark:border-slate-800 transition-colors">
+               <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-2xl shadow-2xl animate-scale-in overflow-hidden flex flex-col max-h-[90vh] border border-slate-200 dark:border-slate-800 transition-colors">
                   <div className="bg-slate-50 dark:bg-slate-800 p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center transition-colors">
                      <div>
                         <h2 className="text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Enviar Gabarito</h2>

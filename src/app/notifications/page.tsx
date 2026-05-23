@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -335,7 +335,7 @@ const Page: React.FC = () => {
             </div>
           ))
         ) : (
-          <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 border-dashed text-slate-300 dark:text-slate-700 space-y-4 transition-colors">
+          <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 border-dashed text-slate-300 dark:text-slate-700 space-y-4 transition-colors">
             <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-full transition-colors">
               <Inbox size={48} className="opacity-50" />
             </div>

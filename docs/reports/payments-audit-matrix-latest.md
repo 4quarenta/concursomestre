@@ -2,6 +2,17 @@
 
 Data: `2026-04-19`
 
+## Atualizacao de billing (`2026-05-23`)
+
+- **Pronto local parcial:** renovacao automatica em perfil preserva a decisao local (`auto_renew`) mesmo quando ha assinatura Stripe ativa com parcelas futuras; isso evita religar renovacao automaticamente apos o usuario desligar em plano anual/trimestral.
+- **Pronto local parcial:** tela de assinatura voltou a usar o termo contratado completo para planos trimestrais/anuais parcelados, exibindo progresso como `63/365` em vez de reiniciar por parcela mensal.
+- **Pronto local parcial:** janela de reembolso usa a primeira transacao paga real e so aparece nos 7 primeiros dias da primeira assinatura.
+- **Pronto local parcial:** projecao financeira admin inclui renovacoes automaticas ativas e descarta contratos `past_due` da lista de pre-aprovadas para evitar acumulacao depois de falha de pagamento.
+- **Pronto local parcial:** lista/projecao de transacoes Stripe parceladas agora tambem evita projetar novas pre-aprovadas em assinaturas `past_due/incomplete` e avanca a data projetada quando ja existe uma fatura futura/rejeitada ocupando o slot.
+- **Pronto local parcial:** cancelamento fora da garantia legal, em termo parcelado com faturas pre-aprovadas pendentes, exige confirmacao do usuario, quita o saldo via PaymentIntent off-session, marca o termo como quitado, cancela a recorrencia remota e preserva acesso local ate o fim contratado.
+- **Cobertura local:** Vitest cobre `confirmDebtCharge` no service e progresso anual parcelado em `subscriptionDateUtils`; `SubscriptionsCheckoutWiringTest.php` cobre o contrato backend de confirmacao/quitacao/preservacao de acesso; `SubscriptionsTermDebtBehaviorTest.php` cobre calculo de saldo pendente e preservacao de acesso do termo quitado.
+- **Pendente staging:** smoke com Stripe real/test clock para confirmar webhook publico, invoice seguinte, e-mail/notificacao de renovacao e consistencia do portal Stripe.
+
 ## Escopo
 
 Esta matriz registra o estado atual dos fluxos de pagamento encontrados na base Next consolidada.

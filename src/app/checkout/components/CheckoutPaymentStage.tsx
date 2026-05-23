@@ -384,7 +384,7 @@ const CheckoutPaymentMethodCard: React.FC<{
   };
 
   return (
-    <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none md:p-8">
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60 dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none md:p-8">
       <div className="mb-6">
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">Etapa 2</p>
         <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 dark:text-white">Método de pagamento</h2>
@@ -773,7 +773,7 @@ const CheckoutOrderSummarySidebar: React.FC<{
 }) => {
   return (
     <div className="lg:sticky lg:top-6">
-      <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/60 dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60 dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none">
         <div className="relative overflow-hidden bg-slate-950 p-5 sm:p-6 text-white">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.34),transparent_44%)]" />
           <div className="relative z-10">

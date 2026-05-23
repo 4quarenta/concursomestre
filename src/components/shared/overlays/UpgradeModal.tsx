@@ -49,7 +49,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
             <div
-                className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in slide-in-from-bottom-4 duration-500 relative"
+                className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden animate-in zoom-in slide-in-from-bottom-4 duration-500 relative"
             >
                 {/* Header Decorativo */}
                 <div className="relative h-36 bg-slate-900 dark:bg-indigo-950 flex items-center justify-center overflow-hidden">
@@ -59,7 +59,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                     </div>
 
                     <div className="relative flex flex-col items-center gap-2 z-10">
-                        <div className={`p-4 rounded-3xl backdrop-blur-md border shadow-xl ${requiredPlan === 'Elite' ? 'bg-amber-500/20 border-amber-500/40 text-amber-500' : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'}`}>
+                        <div className={`p-4 rounded-2xl backdrop-blur-md border shadow-xl ${requiredPlan === 'Elite' ? 'bg-amber-500/20 border-amber-500/40 text-amber-500' : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'}`}>
                             <Crown size={40} className="animate-pulse" />
                         </div>
                         <span className={`text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full border ${requiredPlan === 'Elite' ? 'bg-amber-950/40 border-amber-500/30 text-amber-400' : 'bg-indigo-950/40 border-indigo-500/30 text-indigo-300'}`}>

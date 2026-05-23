@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -152,7 +152,7 @@ const Page: React.FC = () => {
         priority
       />
 
-      <div className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-slate-800 dark:bg-slate-900 animate-scale-in">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-slate-800 dark:bg-slate-900 animate-scale-in">
         {status === 'loading' && (
           <div className="flex flex-col items-center space-y-6 py-8">
             {!token && currentUser && !currentUser.emailVerified ? (

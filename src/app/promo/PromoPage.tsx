@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -95,7 +95,7 @@ const PromoLanding: React.FC<PromoLandingProps> = ({ slug = '' }) => {
             return (
               <article
                 key={`${feature}-${index}`}
-                className="group relative overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-10 shadow-xl transition-all hover:-translate-y-2 dark:border-slate-800 dark:bg-slate-900"
+                className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-10 shadow-xl transition-all hover:-translate-y-2 dark:border-slate-800 dark:bg-slate-900"
               >
                 <div className="mb-8 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-900 shadow-sm transition-all group-hover:bg-indigo-600 group-hover:text-white dark:bg-slate-800 dark:text-indigo-400">
                   <Icon size={32} />
@@ -114,7 +114,7 @@ const PromoLanding: React.FC<PromoLandingProps> = ({ slug = '' }) => {
       </section>
 
       <section className="bg-slate-900 px-6 py-24 text-center transition-colors dark:bg-slate-950">
-        <div className="relative mx-auto max-w-4xl overflow-hidden rounded-[2rem] bg-gradient-to-br from-indigo-600 to-purple-700 p-12 text-white shadow-2xl transition-colors dark:from-indigo-700 dark:to-purple-900 md:p-20">
+        <div className="relative mx-auto max-w-4xl overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-700 p-12 text-white shadow-2xl transition-colors dark:from-indigo-700 dark:to-purple-900 md:p-20">
           <div className="relative z-10 flex flex-col items-center">
             <h2 className="mb-8 text-4xl font-black md:text-5xl">Plano Elite Anual</h2>
             <div className="mb-10 flex flex-col items-center justify-center gap-4 md:flex-row">

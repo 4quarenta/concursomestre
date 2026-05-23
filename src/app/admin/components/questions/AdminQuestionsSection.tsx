@@ -311,7 +311,7 @@ const getGeneratedQuestionMissingFilters = (question: Question) => {
   if (!hasEntityValue(subjectItems)) missing.push('Materia');
   if (!getEntityLabel(question.difficulty || question.dificuldade)) missing.push('Dificuldade');
   if (!hasEntityValue(question.bancas)) missing.push('Banca');
-  if (!hasEntityValue(question.orgaos)) missing.push('Orgao');
+  if (!hasEntityValue(question.orgaos)) missing.push('Órgão');
   if (!Array.isArray(question.anos) || question.anos.length === 0) missing.push('Ano');
   if (!getEntityLabel(question.level || question.nivel)) missing.push('Nivel');
   if (!hasEntityValue(assuntoItems)) missing.push('Assunto');
@@ -1003,7 +1003,7 @@ const AdminQuestionsSection = ({
         ? { status: 'success', result, isSaved: true }
         : { status: 'error', error: 'Nenhum conte\u00fado salvo foi encontrado para esta quest\u00e3o.' });
       setGenerationProgress(100);
-      setGenerationCurrentLabel(result ? 'Resultado carregado.' : 'Conteudo nao encontrado.');
+      setGenerationCurrentLabel(result ? 'Resultado carregado.' : 'Conteúdo não encontrado.');
       if (result) {
         setGeneratedContentById((current) => ({
           ...current,
@@ -1011,7 +1011,7 @@ const AdminQuestionsSection = ({
         }));
       }
     } catch (error) {
-      updateGenerationItem(id, { status: 'error', error: readApiErrorMessage(error, 'Nao foi possivel carregar o resultado.') });
+      updateGenerationItem(id, { status: 'error', error: readApiErrorMessage(error, 'Não foi possível carregar o resultado.') });
       setGenerationProgress(100);
       setGenerationCurrentLabel('Falha ao carregar resultado.');
     }
@@ -1062,7 +1062,7 @@ const AdminQuestionsSection = ({
         } catch (error) {
           updateGenerationItem(id, {
             status: 'error',
-            error: readApiErrorMessage(error, 'Nao foi possivel gerar este conteudo.'),
+            error: readApiErrorMessage(error, 'Não foi possível gerar este conteúdo.'),
           });
         } finally {
           setGenerationProgress(Math.round(((index + 1) / normalizedTargets.length) * 100));
@@ -1106,7 +1106,7 @@ const AdminQuestionsSection = ({
           const updateResult = await onUpdate(payload);
 
           if (isActionFailure(updateResult)) {
-            throw new Error(updateResult.message || 'Nao foi possivel salvar o conteudo gerado.');
+            throw new Error(updateResult.message || 'Não foi possível salvar o conteúdo gerado.');
           }
 
           const fieldPatch = generationKind === 'teacher'
@@ -1131,14 +1131,14 @@ const AdminQuestionsSection = ({
           updateGenerationItem(item.id, {
             isSaved: false,
             isSaving: false,
-            error: readApiErrorMessage(error, 'Nao foi possivel salvar este resultado.'),
+            error: readApiErrorMessage(error, 'Não foi possível salvar este resultado.'),
           });
         }
       }
 
       setGenerationCurrentLabel(savedCount === pendingResults.length
         ? 'Resultado(s) salvo(s) com sucesso.'
-        : 'Alguns resultado(s) nao foram salvos. Confira os avisos abaixo.');
+        : 'Alguns resultado(s) não foram salvos. Confira os avisos abaixo.');
       if (savedCount > 0) {
         await onRefresh?.();
       }

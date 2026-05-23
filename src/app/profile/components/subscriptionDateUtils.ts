@@ -15,9 +15,12 @@ export const SUBSCRIPTION_TIME_ZONE = 'America/Sao_Paulo';
 
 type BillingCycle = 'monthly' | 'quarterly' | 'annual';
 type SubscriptionWithProviderWindow = UserSubscription & {
+  created_at?: string | number | null;
+  createdAt?: string | number | null;
   provider_current_period_start?: string | number | null;
   provider_current_period_end?: string | number | null;
   next_billing_at?: string | number | null;
+  next_renewal_date?: string | number | null;
 };
 
 interface ResolveProfileSubscriptionTimelineInput {
@@ -299,19 +302,25 @@ export const resolveProfileSubscriptionTimeline = ({
 }: ResolveProfileSubscriptionTimelineInput): ResolvedProfileSubscriptionTimeline => {
   const billingCycle = resolveBillingCycle(billing, subscription);
   const expectedTermDuration = resolveExpectedTermDuration(subscription, billingCycle);
+  const totalInstallments = Math.max(1, Number(subscription?.total_installments || 1));
+  const isInstallmentTerm = totalInstallments > 1
+    && expectedTermDuration.mode === 'months'
+    && expectedTermDuration.value > 1;
 
   const providerStart = parseSubscriptionDate(subscription?.provider_current_period_start ?? null);
   const providerEnd = parseSubscriptionDate(subscription?.provider_current_period_end ?? null);
   const localStart = parseSubscriptionDate(subscription?.current_period_start ?? null);
   const localEnd = parseSubscriptionDate(subscription?.current_period_end ?? null);
+  const createdAt = parseSubscriptionDate(subscription?.created_at ?? subscription?.createdAt ?? null);
   const nextChargeAt = parseSubscriptionDate(
     billing?.nextBilling
+      ?? subscription?.next_renewal_date
       ?? subscription?.next_billing_at
       ?? ((localEnd && providerEnd && localEnd.getTime() !== providerEnd.getTime()) ? localEnd : null),
   );
 
-  let termStartAt = providerStart ?? localStart ?? null;
-  let termEndAt = providerEnd ?? localEnd ?? null;
+  let termStartAt = isInstallmentTerm ? (localStart ?? providerStart ?? null) : (providerStart ?? localStart ?? null);
+  let termEndAt = isInstallmentTerm ? (localEnd ?? providerEnd ?? null) : (providerEnd ?? localEnd ?? null);
 
   if (termStartAt && !termEndAt) {
     termEndAt = expectedTermDuration.mode === 'months'
@@ -336,6 +345,36 @@ export const resolveProfileSubscriptionTimeline = ({
 
     if (nextChargeLooksValid && (termEndAt === null || termLooksOutlier)) {
       termEndAt = nextChargeAt;
+    }
+  }
+
+  if (isInstallmentTerm) {
+    const renewalIteration = Math.max(0, Number(subscription?.renewal_iteration || 0));
+    const anchorStart = createdAt
+      ? addMonthsInSaoPauloCalendar(createdAt, expectedTermDuration.value * renewalIteration)
+      : null;
+    const anchorEnd = anchorStart
+      ? addMonthsInSaoPauloCalendar(anchorStart, expectedTermDuration.value)
+      : null;
+
+    if (
+      anchorStart
+      && anchorEnd
+      && getCalendarDayDifference(anchorStart, now) >= 0
+      && getCalendarDayDifference(now, anchorEnd) >= 0
+    ) {
+      termStartAt = anchorStart;
+      termEndAt = anchorEnd;
+    } else if (termEndAt) {
+      const canonicalStart = addMonthsInSaoPauloCalendar(termEndAt, -expectedTermDuration.value);
+      const currentTermDays = termStartAt ? getCalendarDayDifference(termStartAt, termEndAt) : 0;
+      if (!termStartAt || currentTermDays < expectedTermDuration.minimumExpectedDays) {
+        termStartAt = canonicalStart;
+      }
+    }
+
+    if (termStartAt) {
+      termEndAt = addMonthsInSaoPauloCalendar(termStartAt, expectedTermDuration.value);
     }
   }
 

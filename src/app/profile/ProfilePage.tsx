@@ -18,6 +18,7 @@ import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import ReCAPTCHA from 'react-google-recaptcha';
+import { useQueryClient } from '@tanstack/react-query';
 import {
    User, Star, Book, Shield,
    CreditCard, StickyNote, Zap, TrendingUp,
@@ -38,6 +39,8 @@ import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useConfirm } from '@providers/ModalProvider';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { buildNotificationsQueryKey, fetchNotificationsList } from '@/state/notifications/notificationsQuery';
+import { useNotificationsStore } from '@/state/notifications/notificationsStore';
 import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
 import { useUserProgressActions } from '@/state/user-progress/useUserProgressActions';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
@@ -74,6 +77,7 @@ import {
 import {
     formatDateInSaoPaulo,
     formatDateTimeInSaoPaulo,
+    parseSubscriptionDate,
     resolveProfileSubscriptionTimeline,
 } from './components/subscriptionDateUtils';
 import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from '@services/plans/planAccess';
@@ -274,6 +278,8 @@ const Profile: React.FC = () => {
     const pathname = usePathname() || '/profile';
     const searchParams = useSearchParams();
     const router = useRouter();
+    const queryClient = useQueryClient();
+    const replaceNotifications = useNotificationsStore((state) => state.replaceNotifications);
     const location = React.useMemo(() => {
         const search = searchParams?.toString();
         return {
@@ -325,6 +331,7 @@ const Profile: React.FC = () => {
     const [cancelReason, setCancelReason] = useState('');
     const [cancelDetails, setCancelDetails] = useState('');
     const [cancelCaptchaToken, setCancelCaptchaToken] = useState<string | null>(null);
+    const [confirmOutstandingDebtCharge, setConfirmOutstandingDebtCharge] = useState(false);
     const [isCancelingSubscription, setIsCancelingSubscription] = useState(false);
     const [isUpdatingRenewal, setIsUpdatingRenewal] = useState(false);
     const [optimisticAutoRenew, setOptimisticAutoRenew] = useState<boolean | null>(null);
@@ -333,7 +340,10 @@ const Profile: React.FC = () => {
     const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
     const cancelRequestInFlightRef = React.useRef(false);
     const renewalRequestInFlightRef = React.useRef(false);
+    const billingSyncRequestInFlightRef = React.useRef(false);
     const lastBillingSyncAtRef = React.useRef(0);
+    const [hasSyncedBillingSnapshot, setHasSyncedBillingSnapshot] = useState(false);
+    const [isSyncingBillingSnapshot, setIsSyncingBillingSnapshot] = useState(false);
     const [lawNotes, setLawNotes] = useState<LegalCommentaryStoredNote[]>([]);
     const [materialNotes, setMaterialNotes] = useState<MaterialNotebookNote[]>([]);
     const [favoriteLaws, setFavoriteLaws] = useState<LawSummary[]>([]);
@@ -358,6 +368,18 @@ const Profile: React.FC = () => {
             window.clearInterval(intervalId);
         };
     }, []);
+
+    React.useEffect(() => {
+        lastBillingSyncAtRef.current = 0;
+        billingSyncRequestInFlightRef.current = false;
+
+        const frameId = window.requestAnimationFrame(() => {
+            setHasSyncedBillingSnapshot(false);
+            setIsSyncingBillingSnapshot(false);
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [currentUserKey]);
 
     React.useEffect(() => {
         void ensureTaxonomiesLoaded();
@@ -890,22 +912,39 @@ const Profile: React.FC = () => {
             setIsCancelingSubscription(false);
             return;
         }
+
+        if (requiresOutstandingDebtConfirmation && !confirmOutstandingDebtCharge) {
+            addToast('Confirme a quitação das parcelas pre-aprovadas antes de cancelar.', 'warning');
+            cancelRequestInFlightRef.current = false;
+            setIsCancelingSubscription(false);
+            return;
+        }
         
         const isRefundable = isWithinRefundWindow;
+        const shouldSettleDebt = requiresOutstandingDebtConfirmation && confirmOutstandingDebtCharge;
 
         try {
             const res = await planService.cancelSubscription(
                 currentUser.id, 
                 cancelReason || (isRefundable ? 'arrependimento' : 'user_request'),
                 cancelDetails || undefined,
-                cancelCaptchaToken
+                cancelCaptchaToken,
+                shouldSettleDebt
             );
             if (res.success) {
-                addToast(res.message || (isRefundable ? 'Solicitacao de cancelamento com reembolso registrada.' : 'Renovacao automatica atualizada.'), 'success');
+                addToast(
+                    res.message || (res.debt_settled
+                        ? 'Saldo contratado quitado. A renovação foi desligada e seu acesso segue até o fim do termo.'
+                        : (isRefundable
+                            ? 'Solicitacao de cancelamento com reembolso registrada.'
+                            : 'Renovacao automatica atualizada.')),
+                    'success'
+                );
                 setShowCancelModal(false);
                 setCancelReason('');
                 setCancelDetails('');
                 setCancelCaptchaToken(null);
+                setConfirmOutstandingDebtCharge(false);
                 await refreshUser();
                 setOptimisticAutoRenew(null);
             } else {
@@ -923,6 +962,7 @@ const Profile: React.FC = () => {
         if (isCancelingSubscription) return;
         setShowCancelModal(false);
         setCancelCaptchaToken(null);
+        setConfirmOutstandingDebtCharge(false);
     };
 
     const handleRenewalToggle = async () => {
@@ -991,28 +1031,60 @@ const Profile: React.FC = () => {
         }
     }, [addToast, currentUser]);
 
-    const syncStripeSubscriptionState = React.useCallback(async () => {
+    const refreshNotificationsAfterBillingSync = React.useCallback(async () => {
+        const userId = currentUser?.id;
+        if (!userId) return;
+
+        try {
+            const notifications = await queryClient.fetchQuery({
+                queryKey: buildNotificationsQueryKey(userId),
+                queryFn: () => fetchNotificationsList(userId),
+                staleTime: 0,
+            });
+            replaceNotifications(userId, notifications);
+        } catch (error) {
+            clientLog.warn('Failed to refresh billing notifications', error);
+        }
+    }, [currentUser?.id, queryClient, replaceNotifications]);
+
+    const syncStripeSubscriptionState = React.useCallback(async (options?: { force?: boolean; showLoader?: boolean }) => {
         if (!currentUser?.id || !isStripeBilling || !hasActiveSubscription) {
+            setHasSyncedBillingSnapshot(true);
             return;
         }
 
         const now = Date.now();
-        if (now - lastBillingSyncAtRef.current < 90_000) {
+        if (!options?.force && now - lastBillingSyncAtRef.current < 90_000) {
+            setHasSyncedBillingSnapshot(true);
             return;
         }
+
+        if (billingSyncRequestInFlightRef.current) {
+            return;
+        }
+
+        billingSyncRequestInFlightRef.current = true;
         lastBillingSyncAtRef.current = now;
+        if (options?.showLoader) {
+            setIsSyncingBillingSnapshot(true);
+        }
 
         try {
             const response = await subscriptionsService.syncCurrentStripeState();
             if (response?.materialized_invoice) {
                 addToast('Renovação sincronizada com sucesso.', 'success');
                 void fetchUserTransactions();
+                void refreshNotificationsAfterBillingSync();
             }
             await refreshUser();
         } catch (syncError) {
             clientLog.warn('Failed to sync Stripe subscription state', syncError);
+        } finally {
+            billingSyncRequestInFlightRef.current = false;
+            setHasSyncedBillingSnapshot(true);
+            setIsSyncingBillingSnapshot(false);
         }
-    }, [addToast, currentUser?.id, fetchUserTransactions, hasActiveSubscription, isStripeBilling, refreshUser]);
+    }, [addToast, currentUser?.id, fetchUserTransactions, hasActiveSubscription, isStripeBilling, refreshNotificationsAfterBillingSync, refreshUser]);
 
     const formatTransactionAmount = (amount: number | string) => {
         const numericAmount = typeof amount === 'number' ? amount : Number(amount || 0);
@@ -1145,9 +1217,9 @@ const Profile: React.FC = () => {
 
     const activeSubscription = currentUser?.subscription || null;
     const serverAutoRenewState = activeSubscription
-        ? (typeof activeSubscription.cancel_at_period_end === 'boolean'
-            ? !activeSubscription.cancel_at_period_end
-            : Boolean(activeSubscription.auto_renew))
+        ? (typeof activeSubscription.auto_renew === 'boolean'
+            ? activeSubscription.auto_renew
+            : !Boolean(activeSubscription.cancel_at_period_end))
         : false;
     const resolvedAutoRenew = optimisticAutoRenew ?? serverAutoRenewState;
     const subscriptionPlanName = stripPlanCycleSuffix(currentUser?.planDisplayName || activeSubscription?.plan?.name || effectivePlanDisplayName) || 'Plano Gratuito';
@@ -1191,14 +1263,27 @@ const Profile: React.FC = () => {
         usedDays: subscriptionUsedDays,
         progressPercent: subscriptionCycleProgress,
         nextChargeAt: subscriptionNextChargeAt,
-        daysSinceStart: subscriptionDaysSinceStart,
     } = subscriptionTimeline;
     const hasPendingRefundRequest = userTransactions.some((transaction) => String(transaction.status || '').toLowerCase() === 'refund_requested');
     const installmentCount = Math.max(1, Number(activeSubscription?.total_installments || 1));
     const paidInstallments = Math.max(0, Number(activeSubscription?.paid_installments || 0));
+    const firstPaidPlanTransactionAt = userTransactions
+        .filter((transaction) => {
+            const status = String(transaction.status || '').toLowerCase();
+            const type = String(transaction.type || '').toLowerCase();
+            return type === 'plan'
+                && Number(transaction.amount || 0) > 0
+                && ['approved', 'completed', 'refund_requested', 'refunded'].includes(status);
+        })
+        .map((transaction) => parseSubscriptionDate(transaction.createdAt || transaction.created_at || transaction.dueDate || null))
+        .filter((date): date is Date => Boolean(date))
+        .sort((left, right) => left.getTime() - right.getTime())[0] || null;
+    const firstPaidChargeDaysSinceStart = firstPaidPlanTransactionAt && profileNowMs > 0
+        ? Math.max(0, Math.floor((profileNowMs - firstPaidPlanTransactionAt.getTime()) / (24 * 60 * 60 * 1000)))
+        : null;
     const isFirstSubscriptionCharge = paidInstallments <= 1;
-    const isWithinRefundWindow = isFirstSubscriptionCharge && subscriptionDaysSinceStart !== null
-        ? subscriptionDaysSinceStart < 7
+    const isWithinRefundWindow = isFirstSubscriptionCharge && firstPaidChargeDaysSinceStart !== null
+        ? firstPaidChargeDaysSinceStart < 7
         : false;
     const currentInstallment = installmentCount > 1
         ? Math.min(Math.max(paidInstallments, 1), installmentCount)
@@ -1206,11 +1291,23 @@ const Profile: React.FC = () => {
     const termCommitmentRemaining = installmentCount > 1 && paidInstallments < installmentCount;
     const recurringAmount = Number(activeSubscription?.recurring_amount || 0);
     const subscriptionChargeAmount = recurringAmount > 0 ? recurringAmount : Number(activeSubscription?.plan?.price || 0);
+    const pendingInstallmentsCount = Math.max(0, installmentCount - paidInstallments);
+    const outstandingTermDebtAmount = termCommitmentRemaining && subscriptionChargeAmount > 0
+        ? Number((pendingInstallmentsCount * subscriptionChargeAmount).toFixed(2))
+        : 0;
+    const requiresOutstandingDebtConfirmation = hasActiveSubscription
+        && !isWithinRefundWindow
+        && outstandingTermDebtAmount > 0;
+    const outstandingTermDebtLabel = formatTransactionAmount(outstandingTermDebtAmount);
     const nextChargeReferenceDate = subscriptionNextChargeAt || subscriptionEndDate;
-    const nextRenewalAmount = Number(activeSubscription?.next_renewal_amount || subscriptionChargeAmount || 0);
+    const nextRenewalAmount = termCommitmentRemaining && recurringAmount > 0
+        ? recurringAmount
+        : Number(activeSubscription?.next_renewal_amount || subscriptionChargeAmount || 0);
     const nextRenewalDate = activeSubscription?.next_renewal_date || nextChargeReferenceDate;
     const nextRenewalCycleLabel = String(activeSubscription?.next_renewal_cycle_label || subscriptionCycleLabel || 'Mensal');
-    const nextRenewalPriceSourceLabel = activeSubscription?.next_renewal_price_source === 'auto_coupon'
+    const nextRenewalPriceSourceLabel = termCommitmentRemaining
+        ? 'valor contratado nas parcelas pre-aprovadas'
+        : activeSubscription?.next_renewal_price_source === 'auto_coupon'
         ? 'cupom autoaplicado vigente'
         : 'preço atual do plano';
     const subscriptionValueDescription = showFreeInactiveSubscriptionState
@@ -1264,6 +1361,10 @@ const Profile: React.FC = () => {
         : hasActiveSubscription
             ? 'Cobranca em dia'
             : 'Sem cobranca ativa';
+    const shouldShowBillingSyncGate = activeTab === 'billing'
+        && isStripeBilling
+        && hasActiveSubscription
+        && !hasSyncedBillingSnapshot;
 
     React.useEffect(() => {
         const frameId = window.requestAnimationFrame(() => {
@@ -1374,7 +1475,35 @@ const Profile: React.FC = () => {
         }
     };
 
-    const renderBillingTab = () => (
+    const renderBillingTab = () => {
+        if (shouldShowBillingSyncGate) {
+            return (
+                <div className="space-y-5">
+                    <section className={`${PLATFORM_SURFACE_CARD_CLASS} px-5 py-8 md:px-6`}>
+                        <div className="flex flex-col items-center justify-center gap-4 py-10 text-center">
+                            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-100 bg-indigo-50 text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
+                                <Loader2 size={22} className="animate-spin" />
+                            </span>
+                            <div className="max-w-md space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                                    Assinatura
+                                </p>
+                                <h2 className="text-lg font-black text-slate-900 dark:text-slate-100">
+                                    Sincronizando cobrança
+                                </h2>
+                                <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+                                    {isSyncingBillingSnapshot
+                                        ? 'Estamos consultando a Stripe antes de exibir seu ciclo atual para evitar mostrar dados vencidos.'
+                                        : 'Preparando a sincronização do seu ciclo atual.'}
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            );
+        }
+
+        return (
         <div className="space-y-5">
             {currentUser?.paymentIssue && (
                 <div className={`rounded-[1.5rem] border px-4 py-4 ${currentUser.paymentIssue.type === 'expiring_card' ? 'border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10' : 'border-rose-200 bg-rose-50 dark:border-rose-500/20 dark:bg-rose-500/10'}`}>
@@ -1771,7 +1900,8 @@ const Profile: React.FC = () => {
                 )}
             </div>
         </div>
-    );
+        );
+    };
 
     const renderBillingHistoryTab = () => (
         <div className="space-y-6">
@@ -1793,7 +1923,7 @@ const Profile: React.FC = () => {
                 </button>
             </div>
 
-            <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 {isLoadingTransactions ? (
                     <div className="flex items-center justify-center px-6 py-20">
                         <Loader2 size={28} className="animate-spin text-indigo-500" />
@@ -1948,7 +2078,7 @@ const Profile: React.FC = () => {
                         initial={{ opacity: 0, scale: 0.95, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="relative z-10 w-full max-w-lg overflow-hidden rounded-3xl border border-rose-100 bg-white shadow-2xl dark:border-rose-900/20 dark:bg-slate-900"
+                        className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-2xl dark:border-rose-900/20 dark:bg-slate-900"
                     >
                         <button
                             type="button"
@@ -1971,7 +2101,9 @@ const Profile: React.FC = () => {
                                 <p className="mx-auto max-w-md text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
                                     {isWithinRefundWindow
                                         ? 'Você ainda esta no período de garantia. Se cancelar agora, o reembolso pode ser solicitado e seu acesso sera encerrado com segurança.'
-                                        : 'Sua aprovação esta cada dia mais proxima. Cancelando agora, a renovação automática sera desligada e o acesso seguira somente ate o fim do ciclo vigente.'}
+                                        : (requiresOutstandingDebtConfirmation
+                                            ? 'Este plano possui parcelas pre-aprovadas do termo contratado. Para cancelar agora, o saldo pendente precisa ser quitado e seu acesso seguirá até o fim do contrato.'
+                                            : 'Sua aprovação esta cada dia mais proxima. Cancelando agora, a renovação automática sera desligada e o acesso seguira somente ate o fim do ciclo vigente.')}
                                 </p>
                             </div>
 
@@ -1985,6 +2117,35 @@ const Profile: React.FC = () => {
                                         <p className="text-[11px] font-medium leading-tight text-indigo-900/70 dark:text-indigo-300/70">
                                             Sua satisfacao e prioridade. Cancelando dentro desse prazo, o sistema trata a solicitacao de reembolso com os dados da Stripe.
                                         </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {requiresOutstandingDebtConfirmation && (
+                                <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left dark:border-amber-500/20 dark:bg-amber-500/10">
+                                    <div className="flex items-start gap-3">
+                                        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+                                            <CreditCard size={17} />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">
+                                                Saldo do termo contratado
+                                            </h4>
+                                            <p className="text-xs font-semibold leading-relaxed text-amber-900/80 dark:text-amber-100/80">
+                                                Existem {pendingInstallmentsCount} parcela(s) pre-aprovada(s) pendente(s), totalizando {outstandingTermDebtLabel}. Ao confirmar, esse saldo será debitado agora, a cobrança recorrente será encerrada e o acesso continuará até {formatDateTimeBR(subscriptionEndDate)}.
+                                            </p>
+                                            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-white/70 p-3 text-[11px] font-bold leading-relaxed text-amber-900 transition hover:border-amber-300 dark:border-amber-500/20 dark:bg-slate-900/40 dark:text-amber-100">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={confirmOutstandingDebtCharge}
+                                                    onChange={(event) => setConfirmOutstandingDebtCharge(event.target.checked)}
+                                                    className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                                                />
+                                                <span>
+                                                    Confirmo a quitação do saldo pendente de {outstandingTermDebtLabel} e o desligamento da renovação automática.
+                                                </span>
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -2054,7 +2215,7 @@ const Profile: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={handleCancelSubscription}
-                                    disabled={isCancelingSubscription || (recaptchaEnabled && !cancelCaptchaToken)}
+                                    disabled={isCancelingSubscription || (recaptchaEnabled && !cancelCaptchaToken) || (requiresOutstandingDebtConfirmation && !confirmOutstandingDebtCharge)}
                                     className="flex h-14 items-center justify-center gap-2 rounded-2xl border-2 border-slate-200 bg-transparent text-[10px] font-black uppercase tracking-widest text-slate-400 transition-all hover:border-rose-500/30 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800"
                                 >
                                     {isCancelingSubscription ? <Loader2 size={16} className="animate-spin" /> : null}
@@ -2063,7 +2224,7 @@ const Profile: React.FC = () => {
                             </div>
 
                             <p className="mt-4 text-[9px] font-black uppercase tracking-tight text-slate-400">
-                                Você manterá seu acesso até {formatDateTimeBR(currentUser?.subscription?.current_period_end)}
+                                Você manterá seu acesso até {formatDateTimeBR(subscriptionEndDate)}
                             </p>
                         </div>
                     </motion.div>
@@ -2093,7 +2254,7 @@ const Profile: React.FC = () => {
                         initial={{ opacity: 0, scale: 0.96, y: 16 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.96, y: 16 }}
-                        className="relative z-10 w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+                        className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
                     >
                         <header className="flex items-start justify-between gap-4 border-b border-slate-100 p-6 dark:border-slate-800">
                             <div className="space-y-1">
@@ -2249,7 +2410,10 @@ const Profile: React.FC = () => {
                 void fetchUserCards();
             }
             if (activeTab === 'billing' || activeTab === 'billing-history') {
-                void syncStripeSubscriptionState();
+                void syncStripeSubscriptionState({
+                    force: activeTab === 'billing' && !hasSyncedBillingSnapshot,
+                    showLoader: activeTab === 'billing',
+                });
                 void fetchUserTransactions();
             }
             if (activeTab === 'materials' && marketplaceEnabled) {
@@ -2276,6 +2440,7 @@ const Profile: React.FC = () => {
         fetchUserCards,
         fetchUserMaterials,
         fetchUserTransactions,
+        hasSyncedBillingSnapshot,
         syncStripeSubscriptionState,
         isStripeBilling,
         marketplaceEnabled,
@@ -2421,7 +2586,7 @@ const Profile: React.FC = () => {
    if (!currentUser) {
       return (
          <div className="max-w-xl mx-auto pt-20 pb-20 px-6 text-center animate-fade-in">
-            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-10 shadow-xl border border-slate-200 dark:border-slate-800 relative overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-10 shadow-xl border border-slate-200 dark:border-slate-800 relative overflow-hidden">
                <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
                <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300 dark:text-slate-600">
                   <User size={40} />
@@ -2662,7 +2827,7 @@ const Profile: React.FC = () => {
                      </div>
 
                      {/* RESUMO DO DESEMPENHO */}
-                     <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-8 transition-colors">
+                     <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-8 transition-colors">
                         <div className="flex justify-between items-center">
                            <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-3 uppercase tracking-wide">
                               <span className="w-2 h-5 bg-orange-500 rounded-sm" /> Resumo do meu desempenho
@@ -3706,7 +3871,7 @@ const Profile: React.FC = () => {
 
                      {/* CTA Ver Planos (Atrativo) */}
                      {(!hasActiveSubscription || !isElitePlan) && (
-                        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-200 dark:shadow-none animate-in fade-in zoom-in duration-700 transition-all hover:scale-[1.01]">
+                        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white relative overflow-hidden shadow-xl shadow-indigo-200 dark:shadow-none animate-in fade-in zoom-in duration-700 transition-all hover:scale-[1.01]">
                              <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
                                  <Zap size={140} className="fill-current" />
                              </div>
@@ -4083,7 +4248,7 @@ const Profile: React.FC = () => {
                {activeTab === 'referral' && canAccessReferralTab && (
                    <div className="space-y-6">
                        {/* Banner do Programa */}
-                       <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-200 dark:shadow-none">
+                       <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700 rounded-2xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-200 dark:shadow-none">
                             <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
                                 <Gift size={160} />
                             </div>
@@ -4255,7 +4420,7 @@ const Profile: React.FC = () => {
          {/* Modal de Seleção de Meta */}
          {showGoalModal && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in transition-all">
-               <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in slide-in-from-bottom-4 duration-300">
+               <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in slide-in-from-bottom-4 duration-300">
                   <header className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                      <div>
                         <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">Escolha seu foco</h3>
@@ -4300,104 +4465,6 @@ const Profile: React.FC = () => {
 
          {renderCancelSubscriptionModal()}
          {renderTestimonialModal()}
-
-         {/* Modal de Cancelamento de Assinatura (Portal) */}
-         {false && createPortal(
-            <AnimatePresence>
-               {showCancelModal && currentUser.subscription && (
-                  <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
-                     <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={() => setShowCancelModal(false)}
-                        className="fixed inset-0 bg-slate-900/90 backdrop-blur-md"
-                     />
-                     
-                     <motion.div 
-                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-rose-100 dark:border-rose-900/20 relative z-10"
-                     >
-                        <div className="p-8 text-center space-y-6">
-                             <div className="w-20 h-20 bg-rose-50 dark:bg-rose-500/10 rounded-full flex items-center justify-center mx-auto mb-2 border-2 border-rose-100 dark:border-rose-500/20">
-                                 <ShieldAlert size={40} className="text-rose-600 dark:text-rose-500" />
-                             </div>
-
-                             <div className="space-y-4">
-                                 <div className="space-y-2">
-                                     <h3 className="text-2xl font-black text-slate-900 dark:text-slate-100 italic">
-                                         Já vai nos deixar, {currentUser.name?.split(' ')[0]}?
-                                     </h3>
-                                      <p className="text-sm font-medium text-slate-500 dark:text-slate-400 leading-relaxed px-4">
-                                          {isWithinRefundWindow
-                                              ? 'Você ainda está no período de garantia da primeira assinatura. Se cancelar agora, pode solicitar reembolso integral.'
-                                              : 'Sua aprovação está cada dia mais próxima. Cancelando agora, a renovação automática é desligada e o acesso segue até o fim do ciclo atual.'}
-                                      </p>
-                                 </div>
-
-                                 {/* Banner de Garantia Movido para cá */}
-                                  {isWithinRefundWindow ? (
-                                     <div className="bg-indigo-50 dark:bg-indigo-500/5 border border-indigo-100 dark:border-indigo-500/10 p-4 rounded-2xl flex items-center gap-4 text-left">
-                                        <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20 font-sans">
-                                           <ShieldCheck size={20} className="text-white" />
-                                        </div>
-                                        <div className="flex-1">
-                                           <h4 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Garantia Legal de 7 Dias</h4>
-                                           <p className="text-[11px] font-medium text-indigo-900/60 dark:text-indigo-300/60 leading-tight">
-                                              Essa janela vale apenas para os 7 primeiros dias da primeira assinatura.
-                                           </p>
-                                        </div>
-                                     </div>
-                                  ) : null}
-                             </div>
-
-                             <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl space-y-4 text-left border border-slate-100 dark:border-slate-800">
-                                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Qual o motivo principal?</label>
-                                 <select 
-                                     value={cancelReason}
-                                     onChange={(e) => setCancelReason(e.target.value)}
-                                     className="w-full h-11 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 text-sm font-bold highlight-none outline-none focus:ring-2 focus:ring-rose-500/10"
-                                 >
-                                     <option value="">Selecione uma opção...</option>
-                                     <option value="price">Valor da assinatura</option>
-                                     <option value="usage">Não estou usando o suficiente</option>
-                                     <option value="technical">Problemas técnicos</option>
-                                     <option value="content">Falta de conteúdos específicos</option>
-                                     <option value="other">Outros motivos</option>
-                                 </select>
-                             </div>
-
-                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                                  <button
-                                     onClick={() => setShowCancelModal(false)}
-                                     className="h-14 bg-indigo-600 hover:bg-emerald-500 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 group"
-                                  >
-                                     <Zap size={18} className="fill-current" />
-                                     Manter Acesso VIP
-                                  </button>
-                                  <button
-                                     onClick={() => {
-                                         if (!cancelReason) return addToast('Por favor, selecione um motivo.', 'warning');
-                                         handleCancelSubscription();
-                                     }}
-                                     className="h-14 bg-transparent border-2 border-slate-200 dark:border-slate-800 text-slate-400 hover:text-rose-500 hover:border-rose-500/30 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
-                                  >
-                                     Confirmar Cancelamento
-                                  </button>
-                             </div>
-                             
-                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-tight">
-                                 VOCÊ MANTERÁ SEU ACESSO ATÉ O DIA {new Date(currentUser.subscription.current_period_end).toLocaleDateString()}
-                             </p>
-                        </div>
-                     </motion.div>
-                  </div>
-               )}
-            </AnimatePresence>,
-            document.body
-         )}
       </div>
    );
 };

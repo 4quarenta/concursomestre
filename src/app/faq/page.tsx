@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -223,7 +223,7 @@ const Page: React.FC = () => {
           )}
         </div>
 
-        <div className="bg-indigo-600 rounded-3xl p-8 md:p-12 relative overflow-hidden text-center space-y-6 shadow-2xl shadow-indigo-500/20">
+        <div className="bg-indigo-600 rounded-2xl p-8 md:p-12 relative overflow-hidden text-center space-y-6 shadow-2xl shadow-indigo-500/20">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl" />
           <div className="absolute bottom-0 left-0 w-48 h-48 bg-black/10 rounded-full -ml-24 -mb-24 blur-3xl" />
           <div className="relative space-y-3">

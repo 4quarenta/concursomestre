@@ -57,8 +57,8 @@ interface SubjectInsightRow {
   insight: DashboardPerformanceInsight;
 }
 
-const PANEL_CLASS = 'rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900';
-const MUTED_PANEL_CLASS = 'rounded-2xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50';
+const PANEL_CLASS = 'rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900';
+const MUTED_PANEL_CLASS = 'rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50';
 
 const INSIGHT_TONE_CLASSES: Record<DashboardPerformanceInsight['tone'], {
   accent: string;

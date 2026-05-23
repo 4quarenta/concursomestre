@@ -216,7 +216,7 @@ const Dashboard: React.FC = () => {
 
   /**
    * O dashboard precisa apenas das respostas para renderizar cards e grafico.
-   * Comentarios e notas ficam fora do primeiro paint e comentarios so entram sob demanda.
+   * Comentários e notas ficam fora do primeiro paint e comentários só entram sob demanda.
    *
    * @since 1.0.0
    */
@@ -452,7 +452,7 @@ const Dashboard: React.FC = () => {
                 Dashboard premium
               </h1>
               <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
-                O resumo completo de desempenho, tempo de estudo e evolucao fica disponivel no pacote Elite.
+                O resumo completo de desempenho, tempo de estudo e evolução fica disponível no pacote Elite.
               </p>
             </div>
           </header>
@@ -471,7 +471,7 @@ const Dashboard: React.FC = () => {
                   Desbloqueie o dashboard completo
                 </h2>
                 <p className="text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
-                  Veja motivacao diaria, sequencia de estudos, evolucao do desempenho, distribuicao por materia e insights mais profundos em um unico painel.
+                  Veja motivação diária, sequência de estudos, evolução do desempenho, distribuição por matéria e insights mais profundos em um único painel.
                 </p>
               </div>
 
@@ -516,7 +516,7 @@ const Dashboard: React.FC = () => {
           isOpen={showAuthModal}
           onClose={() => setShowAuthModal(false)}
           title="Entre para desbloquear o dashboard premium"
-          description="Acesse o painel completo do ConcursoMestre e acompanhe sua evolucao com o plano Elite."
+          description="Acesse o painel completo do ConcursoMestre e acompanhe sua evolução com o plano Elite."
         />
         <UpgradeModal
           isOpen={showUpgradeModal}
@@ -539,7 +539,7 @@ const Dashboard: React.FC = () => {
             Visao geral dos seus estudos
           </h1>
           <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
-            Atividade real, motivacao diaria e um retrato claro do que voce ja construiu.
+            Atividade real, motivação diária e um retrato claro do que você já construiu.
           </p>
         </div>
 
@@ -575,7 +575,7 @@ const Dashboard: React.FC = () => {
           accentClassName="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300"
         />
         <MetricCard
-          title="Questoes feitas"
+          title="Questões feitas"
           value={accuracySummary.totalQuestions}
           subtext="Total de respostas registradas no recorte atual."
           accentClassName="bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300"
@@ -594,56 +594,55 @@ const Dashboard: React.FC = () => {
         />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3 xl:grid-cols-[1.25fr_0.9fr_1fr]">
-        <section className="rounded-[2rem] border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-violet-100 p-5 shadow-sm dark:border-indigo-900/40 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/70">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700 shadow-sm dark:bg-indigo-500/20 dark:text-indigo-200">
-              <Lightbulb size={18} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className={`${PLATFORM_SECTION_TITLE_CLASS} text-slate-600 dark:text-slate-400`}>
-                  Motivacao Diaria
-                </h2>
-                <p className="text-[11px] font-bold text-indigo-700 dark:text-indigo-200">{formattedToday}</p>
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
+        <div className="grid gap-3">
+          <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 via-white to-violet-100 p-4 shadow-sm dark:border-indigo-900/40 dark:from-slate-900 dark:via-slate-900 dark:to-indigo-950/70">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 shadow-sm dark:bg-indigo-500/20 dark:text-indigo-200">
+                <Lightbulb size={17} />
               </div>
-              <p className="mt-1 text-xs font-medium leading-5 text-indigo-700/80 dark:text-indigo-200/80">
-                Uma frase curta para iniciar o dia.
-              </p>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className={`${PLATFORM_SECTION_TITLE_CLASS} text-slate-600 dark:text-slate-400`}>
+                    Motivacao Diaria
+                  </h2>
+                  <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-200">{formattedToday}</p>
+                </div>
+                <p className="mt-1 line-clamp-3 text-sm font-semibold italic leading-6 text-indigo-900 dark:text-indigo-100">
+                  &ldquo;{dailyMotivation}&rdquo;
+                </p>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <p className="mt-5 text-center text-lg font-medium italic leading-7 text-indigo-900 dark:text-indigo-100">
-            &ldquo;{dailyMotivation}&rdquo;
-          </p>
-        </section>
+          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-4`}>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
+                  <Flame size={17} />
+                </div>
+                <div>
+                  <h2 className={`${PLATFORM_SECTION_TITLE_CLASS} text-slate-600 dark:text-slate-400`}>Sequencia de Estudos</h2>
+                  <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">Continuidade diaria.</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-3xl font-black tracking-tight text-slate-900 dark:text-slate-100">{studyStreak.current}</p>
+                <p className="text-[11px] font-bold text-amber-600 dark:text-amber-300">
+                  {studyStreak.current === 1 ? 'dia' : 'dias'}
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Melhor marca</p>
+                <p className="text-sm font-black text-slate-900 dark:text-slate-100">{studyStreak.best}d</p>
+              </div>
+            </div>
+          </section>
+        </div>
 
-        <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300">
-              <Flame size={18} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className={`${PLATFORM_SECTION_TITLE_CLASS} text-slate-600 dark:text-slate-400`}>Sequencia de Estudos</h2>
-              <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Zera quando um dia fica sem visita.</p>
-            </div>
-          </div>
-
-          <div className="mt-5 flex items-end justify-between gap-4">
-            <div>
-              <p className="text-5xl font-black tracking-tight text-slate-900 dark:text-slate-100">{studyStreak.current}</p>
-              <p className="mt-1 text-sm font-bold text-amber-600 dark:text-amber-300">
-              {studyStreak.current === 1 ? 'dia consecutivo' : 'dias consecutivos'}
-              </p>
-            </div>
-            <div className="rounded-xl bg-slate-50 px-3 py-2 text-right dark:bg-slate-800">
-              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Melhor marca</p>
-              <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{studyStreak.best}d</p>
-            </div>
-          </div>
-        </section>
-
-        <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
+        <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-4`}>
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300">
               <Calendar size={18} />
@@ -656,27 +655,28 @@ const Dashboard: React.FC = () => {
                 </span>
               </div>
               <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                Leitura, questoes e total acumulado com a sessao atual.
+                Leitura, questões e total acumulado com a sessão atual.
               </p>
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-4">
-            <div className="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-800/70">
+          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_11rem]">
+            <div className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/70 md:col-start-1">
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Leitura</p>
-              <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.readingSeconds)}</p>
+              <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.readingSeconds)}</p>
             </div>
-            <div className="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-800/70">
-              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Questoes</p>
-              <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.questionSeconds)}</p>
+            <div className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/70 md:col-start-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Questões</p>
+              <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.questionSeconds)}</p>
             </div>
-            <div className="rounded-2xl bg-indigo-50 px-3 py-3 dark:bg-indigo-500/10">
+            <div className="flex min-h-36 flex-col justify-between rounded-xl border border-indigo-100 bg-indigo-50 p-4 dark:border-indigo-500/20 dark:bg-indigo-500/10 md:col-start-2 md:row-span-3 md:row-start-1">
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-indigo-500 dark:text-indigo-300">Total</p>
-              <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.totalSeconds)}</p>
+              <p className="mt-2 text-2xl font-black leading-tight text-slate-900 dark:text-slate-100">{formatStudyDuration(displayTotals.totalSeconds)}</p>
+              <p className="mt-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">Inclui a sessão em andamento.</p>
             </div>
-            <div className="rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-800/70">
+            <div className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/70 md:col-start-1">
               <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Media/dia</p>
-              <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">
+              <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
                 {averageDailyStudySeconds > 0 ? formatStudyDuration(averageDailyStudySeconds) : '--'}
               </p>
             </div>
@@ -715,7 +715,7 @@ const Dashboard: React.FC = () => {
                 {showCorrectTimeline ? 'Ocultar acertos' : 'Mostrar acertos'}
               </button>
               <div className="inline-flex rounded-xl bg-indigo-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
-                Questoes respondidas
+                Questões respondidas
               </div>
             </div>
           </div>
@@ -746,9 +746,9 @@ const Dashboard: React.FC = () => {
                     }}
                     formatter={(value: number, name: string) => [
                       `${value}`,
-                      name === 'questions' ? 'Questoes' : 'Acertos',
+                      name === 'questions' ? 'Questões' : 'Acertos',
                     ]}
-                    labelFormatter={(label) => `Periodo: ${label}`}
+                    labelFormatter={(label) => `Período: ${label}`}
                   />
                   <Area type="linear" dataKey="questions" stroke="#4f46e5" fill="url(#questionsFill)" strokeWidth={2.5} name="questions" />
                   {showCorrectTimeline ? (
@@ -757,9 +757,9 @@ const Dashboard: React.FC = () => {
                 </AreaChart>
               </StableResponsiveContainer>
             ) : (
-              <div className="flex h-full flex-col items-center justify-center rounded-[2rem] border border-dashed border-slate-200 bg-slate-50 text-center dark:border-slate-700 dark:bg-slate-950">
-                <p className="text-base font-bold text-slate-700 dark:text-slate-200">Nenhuma questao respondida no periodo.</p>
-                <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Assim que voce resolver questoes, o grafico sera preenchido aqui.</p>
+              <div className="flex h-full flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center dark:border-slate-700 dark:bg-slate-950">
+                <p className="text-base font-bold text-slate-700 dark:text-slate-200">Nenhuma questão respondida no período.</p>
+                <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Assim que você resolver questões, o gráfico será preenchido aqui.</p>
               </div>
             )}
           </div>
@@ -772,7 +772,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div>
               <h2 className={PLATFORM_SECTION_TITLE_CLASS}>Desempenho Geral</h2>
-              <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Acertos, erros e nivel atual.</p>
+              <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">Acertos, erros e nível atual.</p>
             </div>
           </div>
 
@@ -906,10 +906,10 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
             )) : (
-              <div className="rounded-[2rem] border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center dark:border-slate-700 dark:bg-slate-950">
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center dark:border-slate-700 dark:bg-slate-950">
                 <p className="text-base font-bold text-slate-700 dark:text-slate-200">Sem dados por materia no momento.</p>
                 <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                  Assim que voce responder questoes, o ranking por materia aparecera aqui.
+                  Assim que você responder questões, o ranking por matéria aparecerá aqui.
                 </p>
               </div>
             )}

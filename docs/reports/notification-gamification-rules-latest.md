@@ -14,6 +14,11 @@ Correcoes aplicadas nesta auditoria:
 - Respostas a questoes atualizam `user_streaks` e concedem badges idempotentes em `user_badges`.
 - Espelho de cartao Stripe evita duplicidade local quando o mesmo cartao volta com outro PaymentMethod.
 - Falha de cobranca Stripe (`past_due`) notifica o aluno e agora tambem todos os admins ativos com link para financeiro.
+- Renovacao Stripe roda por cron CLI independente de sessao do usuario; recibos, falhas e lembretes usam e-mail + notificacao in-app quando aplicavel.
+- Renovacao Stripe confirmada por invoice paga agora usa notificacao in-app especifica de `Assinatura renovada`, com valor e novo ciclo quando disponiveis; a tela de assinatura recarrega as notificacoes quando a sincronizacao materializa uma invoice.
+- Lembrete de 5 dias so existe para ciclos maiores que 5 dias; ciclos curtos usam o aviso de renovacao no dia seguinte.
+- Webhook Stripe grava heartbeat privado (`stripe_webhook_health.json`) em eventos validos e exposto como `webhook_health` no admin/preflight, para detectar quando notificacoes financeiras deixam de chegar por falha de endpoint ou segredo.
+- E-mails transacionais passaram a depender de um resolvedor unico de SMTP (`shared/utils/MailConfiguration.php`) e o preflight de producao reprova SMTP/remetente/templates essenciais ausentes, reduzindo risco de regras de notificacao ficarem sem canal de e-mail no go-live.
 - Reembolso de assinatura pendente agora gera notificacao in-app para todos os admins ativos, com link direto para a transacao.
 - Eventos de analytics agora ignoram `userId` enviado pelo cliente, usam o usuario autenticado da sessao quando existir e ficam rate-limited para reduzir ruido em campanhas e funis.
 - Avaliacao da plataforma exige dados publicos separados, notifica admin como feedback e so entra na home apos aprovacao administrativa com campos completos.
@@ -55,6 +60,8 @@ Correcoes aplicadas nesta auditoria:
 | Material rejeitado | Autor | In-app | `notifications` | nenhum | Corrigido local parcial |
 | Compra de material | Comprador/vendedor/admin | In-app | `transactions`, `notifications`, `user_gamification_events`, `user_badges` | comprador +25 XP/badge inicial; vendedor +50 XP, +2 reputacao e badge de primeira venda | Corrigido local parcial; falta Stripe sandbox |
 | Assinatura aprovada | Usuario | In-app/email | `user_subscriptions`, `transactions` | badge premium opcional | Parcial |
+| Assinatura renova em 5 dias | Usuario | In-app/email | `user_subscriptions.renewal_reminder_sent_for` | nenhum | Corrigido local; apenas ciclos maiores que 5 dias |
+| Assinatura renova amanha | Usuario | In-app/email | `user_subscriptions.renewal_reminder_sent_for` | nenhum | Corrigido local |
 | Assinatura `past_due` | Usuario/admin | In-app/email | subscription status | nenhum | Corrigido local parcial |
 | Cancelamento solicitado | Usuario/admin | In-app/email | subscription/transaction | nenhum | Parcial |
 | Reembolso solicitado | Admin/vendedor | In-app/email admin | transaction status | nenhum | Corrigido local |

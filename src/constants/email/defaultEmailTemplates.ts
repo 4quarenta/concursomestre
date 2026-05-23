@@ -65,6 +65,15 @@ const DEFAULT_AUTH_EMAIL_TEMPLATES: EmailTemplateModel[] = [
     enabled: true,
   },
   {
+    key: 'marketing_campaign_message',
+    name: 'Marketing - campanha automatica',
+    description: 'Enviado por regras de campanha, como conta recente, inatividade, trial ou proximidade de assinatura.',
+    subject: '{{title}}',
+    htmlBody: '<p>Ola <strong>{{name}}</strong>,</p><p>{{message_html}}</p><p><a href="{{action_url}}" target="_blank" rel="noopener noreferrer">Ver campanha</a></p>',
+    textBody: 'Ola {{name}},\n\n{{message}}\n\nAcesse: {{action_url}}',
+    enabled: true,
+  },
+  {
     key: 'transaction_refund_completed',
     name: 'Transacao - reembolso concluido',
     description: 'Enviado quando um reembolso e processado.',
@@ -121,10 +130,19 @@ const DEFAULT_AUTH_EMAIL_TEMPLATES: EmailTemplateModel[] = [
   {
     key: 'subscription_renewal_reminder',
     name: 'Assinatura - lembrete de renovacao',
-    description: 'Enviado antes da renovacao automatica.',
+    description: 'Enviado 5 dias antes da renovacao automatica, apenas para ciclos maiores que 5 dias.',
     subject: 'Sua assinatura vai renovar em 5 dias',
     htmlBody: '<p>Ola <strong>{{name}}</strong>,</p><p>{{content}}</p>',
     textBody: 'Ola {{name}},\n\nSua assinatura vai renovar em breve.\nDetalhes em: {{billing_url}}',
+    enabled: true,
+  },
+  {
+    key: 'subscription_renewal_tomorrow',
+    name: 'Assinatura - renovacao amanha',
+    description: 'Enviado um dia antes da renovacao automatica.',
+    subject: 'Seu plano renovara amanha',
+    htmlBody: '<p>Ola <strong>{{name}}</strong>,</p><p>{{content}}</p>',
+    textBody: 'Ola {{name}},\n\nSeu plano renovara amanha.\nDetalhes em: {{billing_url}}',
     enabled: true,
   },
   {

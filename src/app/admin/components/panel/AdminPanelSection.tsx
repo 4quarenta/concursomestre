@@ -38,9 +38,33 @@ const PANEL_SECTIONS: { key: AdminPanelSectionKey; label: string }[] = [
 ];
 
 type AutomationHelperInfo = {
+  cli_command?: string;
+  configured?: boolean;
+  cron_health?: {
+    checked?: number | string | null;
+    issues?: number | string | null;
+    last_run_at?: string | null;
+    materialized_invoices?: number | string | null;
+    message?: string | null;
+    status?: 'ok' | 'warning' | 'error' | 'stale' | 'unknown' | string | null;
+    success?: boolean | null;
+    synced_amount?: number | string | null;
+    synced_periods?: number | string | null;
+    synced_status?: number | string | null;
+  };
+  webhook_health?: {
+    event_id?: string | null;
+    event_type?: string | null;
+    last_event_at?: string | null;
+    message?: string | null;
+    object_id?: string | null;
+    status?: 'processed' | 'ignored' | 'duplicate' | 'error' | 'unknown' | string | null;
+    success?: boolean | null;
+  };
   download_url?: string;
   error?: string;
   linux_command?: string;
+  warning?: string;
 };
 
 type StatusRecord = {
@@ -124,6 +148,36 @@ const AdminPanelSection = ({
     .filter((material) => String(material.status || '').toLowerCase() === 'pending');
   const feedbackInboxCount = Number((systemSettings as AdminSettingsWithInbox | undefined)?.adminFeedbackCount || 0);
   const seoScore = calculateSeoCompletenessScore(mergeSeoSettings(systemSettings?.seo));
+  const cronHealth = automationHelper?.cron_health;
+  const cronHealthStatus = String(cronHealth?.status || (automationHelper?.configured ? 'unknown' : 'error')).toLowerCase();
+  const cronHealthTone = cronHealthStatus === 'ok'
+    ? 'emerald'
+    : cronHealthStatus === 'warning'
+      ? 'amber'
+      : cronHealthStatus === 'stale' || cronHealthStatus === 'unknown'
+        ? 'amber'
+        : 'rose';
+  const cronHealthDate = cronHealth?.last_run_at ? new Date(cronHealth.last_run_at) : null;
+  const cronHealthLabel = cronHealthDate && !Number.isNaN(cronHealthDate.getTime())
+    ? new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(cronHealthDate)
+    : 'Nunca executado';
+  const webhookHealth = automationHelper?.webhook_health;
+  const webhookHealthStatus = String(webhookHealth?.status || (systemSettings?.hasStripeWebhookConfigured ? 'unknown' : 'error')).toLowerCase();
+  const webhookHealthTone = ['processed', 'ignored', 'duplicate'].includes(webhookHealthStatus)
+    ? 'emerald'
+    : webhookHealthStatus === 'unknown'
+      ? 'amber'
+      : 'rose';
+  const webhookHealthDate = webhookHealth?.last_event_at ? new Date(webhookHealth.last_event_at) : null;
+  const webhookHealthLabel = webhookHealthDate && !Number.isNaN(webhookHealthDate.getTime())
+    ? new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(webhookHealthDate)
+    : 'Nunca recebido';
 
   const billingHealthItems = useMemo(() => ([
     {
@@ -138,8 +192,18 @@ const AdminPanelSection = ({
     },
     {
       label: 'Cron oficial',
-      value: automationHelper?.linux_command ? 'Disponivel' : 'Nao comprovado',
-      tone: automationHelper?.linux_command ? 'indigo' : 'amber',
+      value: automationHelper?.cli_command || automationHelper?.linux_command ? 'Disponivel' : 'Nao comprovado',
+      tone: automationHelper?.cli_command || automationHelper?.linux_command ? 'indigo' : 'amber',
+    },
+    {
+      label: 'Ultima reconciliacao',
+      value: cronHealthLabel,
+      tone: cronHealthTone,
+    },
+    {
+      label: 'Ultimo webhook',
+      value: webhookHealthLabel,
+      tone: webhookHealthTone,
     },
     {
       label: 'Recorrencia',
@@ -169,6 +233,9 @@ const AdminPanelSection = ({
     },
   ]), [
     automationHelper?.linux_command,
+    automationHelper?.cli_command,
+    cronHealthLabel,
+    cronHealthTone,
     refundRequests.length,
     seoScore,
     sitemapCoveragePercent,
@@ -176,6 +243,8 @@ const AdminPanelSection = ({
     systemSettings?.hasStripeWebhookConfigured,
     systemSettings?.stripeKey,
     systemSettings?.stripePublishableKey,
+    webhookHealthLabel,
+    webhookHealthTone,
   ]);
 
   return (
@@ -297,8 +366,13 @@ const AdminPanelSection = ({
               </div>
               <div className="mt-5 space-y-3 text-xs font-medium text-slate-500 dark:text-slate-400">
                 <p>Webhook ativo: `/subscriptions/stripe_webhook.php`.</p>
-                <p>Cron oficial: {automationHelper?.linux_command || 'NAO COMPROVADO'}.</p>
+                <p>Cron CLI recomendado: {automationHelper?.cli_command || 'NAO COMPROVADO'}.</p>
+                <p>Cron HTTP alternativo: {automationHelper?.linux_command || 'NAO COMPROVADO'}.</p>
                 <p>Download helper: {automationHelper?.download_url || 'NAO COMPROVADO'}.</p>
+                <p>Ultimo webhook: {webhookHealthLabel} - {webhookHealth?.message || 'Sem heartbeat registrado.'}</p>
+                <p>Evento Stripe: {webhookHealth?.event_type || 'NAO COMPROVADO'} ({webhookHealth?.status || 'unknown'}).</p>
+                <p>Ultima execucao: {cronHealthLabel} - {cronHealth?.message || automationHelper?.warning || 'Sem heartbeat registrado.'}</p>
+                <p>Resumo: {Number(cronHealth?.checked || 0)} assinatura(s) checada(s), {Number(cronHealth?.issues || 0)} alerta(s), {Number(cronHealth?.materialized_invoices || 0)} invoice(s) materializada(s).</p>
               </div>
             </div>
 

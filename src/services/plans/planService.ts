@@ -57,6 +57,9 @@ type CouponValidationResult = PlanApiEnvelope<{
 type SubscriptionActionResponse = PlanApiEnvelope<{
   refund_processed?: boolean;
   refund_id?: string | null;
+  debt_settled?: boolean;
+  debt_settlement_amount?: number;
+  debt_transaction_id?: number | string | null;
 }>;
 type SubscriptionGenericResponse = PlanApiEnvelope;
 
@@ -194,9 +197,9 @@ export const planService = {
    * Solicita cancelamento da assinatura ativa.
    * @since 1.0.0
    */
-  async cancelSubscription(userId: string, reason?: string, details?: string, captchaToken?: string | null): Promise<SubscriptionActionResponse> {
+  async cancelSubscription(userId: string, reason?: string, details?: string, captchaToken?: string | null, confirmDebtCharge = false): Promise<SubscriptionActionResponse> {
     void userId;
-    return subscriptionsService.cancelSubscription(reason, details, captchaToken) as Promise<SubscriptionActionResponse>;
+    return subscriptionsService.cancelSubscription(reason, details, captchaToken, confirmDebtCharge) as Promise<SubscriptionActionResponse>;
   },
 
   /**

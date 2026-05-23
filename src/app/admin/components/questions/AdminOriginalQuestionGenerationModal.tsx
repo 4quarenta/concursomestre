@@ -219,7 +219,7 @@ const AdminOriginalQuestionGenerationModal = ({
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
               Geracao IA
             </p>
-            <h2 className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">Questoes ineditas</h2>
+            <h2 className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">Questões inéditas</h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
               {currentLabel || 'Gere um lote novo seguindo o perfil da banca selecionada.'}
             </p>
@@ -364,7 +364,7 @@ const AdminOriginalQuestionGenerationModal = ({
             </label>
             <div className="inline-flex h-10 w-full overflow-hidden rounded-sm border border-slate-300 bg-white text-xs font-bold dark:border-slate-700 dark:bg-slate-900">
               {([
-                ['multipla escolha', 'Multipla escolha'],
+                ['multipla escolha', 'Múltipla escolha'],
                 ['certo ou errado', 'Certo/Errado'],
               ] as Array<[OriginalQuestionModality, string]>).map(([value, label]) => (
                 <button
@@ -519,7 +519,7 @@ const AdminOriginalQuestionGenerationModal = ({
                             Banca: {formatEntities(question.bancas, selectedAgency || '-')}
                           </span>
                           <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-                            Orgao: {formatEntities(question.orgaos, '-')}
+                            Órgão: {formatEntities(question.orgaos, '-')}
                           </span>
                           <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
                             Ano: {Array.isArray(question.anos) && question.anos.length > 0 ? question.anos.join(', ') : '-'}
@@ -621,10 +621,10 @@ const AdminOriginalQuestionGenerationModal = ({
         <div className={`${ADMIN_MODAL_FOOTER_CLASS} flex items-center justify-between gap-3`}>
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
             {completedCount > 0
-              ? `${completedCount} questao(oes) criada(s).`
+              ? `${completedCount} questão(ões) criada(s).`
               : reviewCount > 0
                 ? `${publishCount} para publicar, ${draftCount} em rascunho${invalidReviewCount > 0 ? `, ${invalidReviewCount} com filtro pendente` : ''}.`
-                : 'As questoes geradas ficam em revisao ate voce escolher publicar ou manter em rascunho.'}
+                : 'As questões geradas ficam em revisão até você escolher publicar ou manter em rascunho.'}
           </span>
           <div className="flex items-center gap-2">
             {reviewCount > 0 ? (

@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -51,7 +51,7 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
 
   return (
     <div className="space-y-5">
-      <div className="rounded-[2rem] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-[#0f1020] md:p-5">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-[#0f1020] md:p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
@@ -139,7 +139,7 @@ const CheckoutStripePaymentMethodPanel: React.FC<CheckoutStripePaymentMethodPane
       </div>
 
       {hasSavedCards ? (
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-[#121528]">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-[#121528]">
           <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Cartoes disponiveis</p>

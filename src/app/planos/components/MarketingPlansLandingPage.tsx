@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -303,8 +303,8 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
   if (!landingPage) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-20 dark:bg-slate-950">
-        <div className="max-w-xl rounded-[2.5rem] border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
+        <div className="max-w-xl rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
             <LayoutTemplate size={28} />
           </div>
           <h1 className="mt-6 text-2xl font-black text-slate-900 dark:text-slate-100">Landing nao encontrada</h1>
@@ -361,14 +361,14 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             <div className="flex flex-col gap-4 sm:flex-row">
               <a
                 href={featuredCard?.checkoutHref || appendTracking('/plans')}
-                className={`inline-flex items-center justify-center gap-3 rounded-[2rem] px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:scale-[1.01] active:scale-95 ${currentTheme.button}`}
+                className={`inline-flex items-center justify-center gap-3 rounded-2xl px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-white shadow-xl transition-all hover:scale-[1.01] active:scale-95 ${currentTheme.button}`}
               >
                 {landingPage.hero.primaryCtaLabel}
                 <ArrowRight size={16} />
               </a>
               <a
                 href="#comparar-planos"
-                className="inline-flex items-center justify-center gap-3 rounded-[2rem] border border-slate-200 bg-white px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-slate-900 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800/60"
+                className="inline-flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-8 py-5 text-xs font-black uppercase tracking-[0.2em] text-slate-900 shadow-sm transition-all hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-800/60"
               >
                 {landingPage.hero.secondaryCtaLabel}
               </a>
@@ -384,7 +384,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             <p className="mt-3 text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
               {featuredCard?.description || landingPage.eliteSection.description}
             </p>
-            <div className="mt-6 rounded-[2rem] bg-slate-950 p-6 text-white dark:bg-slate-950">
+            <div className="mt-6 rounded-2xl bg-slate-950 p-6 text-white dark:bg-slate-950">
               {featuredCard?.hasDiscount ? (
                 <>
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-300 line-through">
@@ -456,7 +456,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             </div>
           </div>
 
-          <div className="mb-8 rounded-[2rem] border border-emerald-200 bg-emerald-50/90 p-5 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-950/20">
+          <div className="mb-8 rounded-2xl border border-emerald-200 bg-emerald-50/90 p-5 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-950/20">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
               <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm dark:bg-slate-900 dark:text-emerald-300">
                 <CreditCard size={18} />
@@ -479,7 +479,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
               return (
                 <article
                   key={card.id}
-                  className={`relative flex h-full flex-col overflow-hidden rounded-[2.5rem] border p-8 transition-all ${
+                  className={`relative flex h-full flex-col overflow-hidden rounded-2xl border p-8 transition-all ${
                     card.featured
                       ? 'border-slate-900 bg-slate-900 text-white shadow-2xl dark:border-indigo-500 dark:bg-indigo-600'
                       : 'border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900'
@@ -604,7 +604,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
               { title: 'O que voce recebe', items: landingPage.valueMatrix.whatYouReceive },
               { title: 'O que voce conquista', items: landingPage.valueMatrix.whatYouConquer },
             ].map((column) => (
-              <article key={column.title} className="rounded-[2.5rem] border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <article key={column.title} className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <h3 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{column.title}</h3>
                 <ul className="mt-6 space-y-3">
                   {column.items.map((item) => (
@@ -636,7 +636,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             </ul>
           </div>
 
-          <div className="rounded-[2.5rem] border border-white/10 bg-white/5 p-8">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-8">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-200">Plano Elite</p>
             <h3 className="mt-3 text-3xl font-black">{featuredCard?.displayName || 'Elite'}</h3>
             <p className="mt-3 text-sm font-medium leading-relaxed text-slate-300">
@@ -661,7 +661,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             description="A tabela abaixo ajuda a comparar volume, profundidade e maturidade de recursos entre as opcoes comerciais."
           />
 
-          <div className="overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse">
                 <thead>
@@ -718,7 +718,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
 
       <section className="px-6 py-24">
         <div className="mx-auto max-w-5xl rounded-[2.75rem] border border-emerald-200 bg-emerald-50 p-10 text-center shadow-sm dark:border-emerald-900/30 dark:bg-emerald-900/10">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-white text-emerald-600 shadow-sm dark:bg-slate-900 dark:text-emerald-300">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm dark:bg-slate-900 dark:text-emerald-300">
             <ShieldCheck size={28} />
           </div>
           <h2 className="mt-6 text-4xl font-black tracking-tight text-slate-900 dark:text-white">{landingPage.guarantee.title}</h2>
@@ -736,7 +736,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
 
           <div className="space-y-4">
             {landingPage.faq.map((item) => (
-              <details key={item.id} className="group rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <details key={item.id} className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">

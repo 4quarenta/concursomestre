@@ -43,14 +43,59 @@ Data base: `2026-05-16`
    - Evidencia: raiz publica do backend ficou sem o arquivo; `.htaccess` passou a bloquear extensoes de backup/dump e diretorios internos; `BackendRootCleanupWiringTest.php`, `ProductionPreflightWiringTest.php`, `ProductionPreflightBehaviorTest.php` e `ApiResidualSurfaceWiringTest.php` passaram.
    - Risco: baixo; o arquivo foi preservado fora de `htdocs`.
 
-## Candidatos seguros para limpeza imediata
+6. Scripts de desenvolvimento/debug fora de `htdocs`
+   - Status: movidos para `C:/xampp/private-backups/questao-pro-backend/dev-scripts-archive/2026-05-18`.
+   - Itens:
+     - `C:/xampp/htdocs/questao-pro-backend/scripts/debug`
+     - `C:/xampp/htdocs/questao-pro-backend/scripts/manual-tests`
+     - `C:/xampp/htdocs/questao-pro-backend/scripts/setup`
+     - `C:/xampp/htdocs/questao-pro-backend/scripts/maintenance`
+     - `C:/xampp/htdocs/questao-pro-backend/scripts/seed`
+     - `C:/xampp/htdocs/questao-pro-backend/scripts/seeds`
+     - `C:/xampp/htdocs/questao-pro-backend/scripts/checks/temp_check_plans.php`
+     - `C:/xampp/htdocs/questao-pro-backend/scripts/checks/temp_check_transactions.php`
+   - Motivo: scripts manuais, instaladores, diagnosticos, seeds executaveis e rotinas antigas de manutencao nao devem morar na arvore publica do Apache, mesmo com `.htaccess` bloqueando acesso. O recorte incluia scripts que resetavam senhas para `123456`/`password`, criavam admin padrao e apagavam/recriavam planos.
+   - Evidencia: `BACKEND_DEV_SCRIPT_ARTIFACTS_CLEAN` adicionado ao preflight; `BackendRootCleanupWiringTest.php`, `ProductionPreflightWiringTest.php` e `ProductionPreflightBehaviorTest.php` passaram; smoke HTTP manteve `403` nesses caminhos e `200` no crawler Gran permitido.
+   - Risco: baixo; os arquivos foram preservados em arquivo privado para consulta.
 
-1. Arquivos temporarios ainda presentes por lock de processo local:
+7. Migracoes PHP legadas em `scripts/migrations`
+   - Status: arquivadas em `C:/xampp/private-backups/questao-pro-backend/dev-scripts-archive/2026-05-18/scripts/migrations-legacy`.
+   - Mantido em `htdocs`: apenas `C:/xampp/htdocs/questao-pro-backend/scripts/migrations/migrate_marketplace_schema_compatibility.php`, por ainda ser referenciado pelo runbook e por testes de compatibilidade do marketplace/gamificacao.
+   - Motivo: migracoes PHP ad hoc nao devem ficar publicadas em `htdocs`; novas alteracoes de schema devem ir para `database/migrations/`.
+   - Evidencia: `BackendRootCleanupWiringTest.php`, `ProductionPreflightWiringTest.php`, `ProductionPreflightBehaviorTest.php`, `MarketplaceSchemaCompatibilityWiringTest.php` e `MarketplaceGamificationWiringTest.php` passaram; smoke HTTP confirmou `403` para `scripts/migrations/fix_migration.php` e para a migracao allowlisted via web.
+   - Risco: baixo; a migracao ativa foi preservada e segue bloqueada para HTTP por `.htaccess`/guarda CLI.
+
+8. `tsconfig.tsbuildinfo`
+   - Status: removido do versionamento em `2026-05-20` e reforcado em `2026-05-22`.
+   - Motivo: cache incremental do TypeScript, ja coberto por `*.tsbuildinfo` no `.gitignore`, mudava a cada `typecheck/build` e sujava o Git sem valor de runtime.
+   - Ajuste adicional: `tsconfig.json` passou a gravar o cache incremental em `.next/tsconfig.tsbuildinfo`, e `npm run check:generated-artifacts` foi adicionado ao preflight local para reprovar retorno de artefatos gerados na raiz.
+   - Evidencia: `npm run typecheck` recriou o cache dentro de `.next/`; `npm run check:generated-artifacts` e `npm run check:production-local` passaram.
+   - Risco: baixo; cache gerado automaticamente pela ferramenta.
+
+9. SDK legado do Mercado Pago em `vendor/`
+   - Status: removido da arvore publica do backend em `2026-05-20` e preservado em `C:/xampp/private-backups/questao-pro-backend/vendor-archive/2026-05-20/mercadopago`.
+   - Motivo: `composer.json` e `composer.lock` atuais nao exigem `mercadopago/dx-php`, mas o `vendor` local ainda anunciava `MercadoPago\\` no autoload gerado. Como o produto esta Stripe-only, isso mantinha codigo morto e superficie desnecessaria no deploy local.
+   - Ajuste aplicado: pacote movido para arquivo privado e referencias removidas de `vendor/composer/autoload_psr4.php`, `vendor/composer/autoload_static.php`, `vendor/composer/installed.php` e `vendor/composer/installed.json`.
+   - Evidencia: autoload carrega `Stripe\\StripeClient`, `PHPMailer\\PHPMailer\\PHPMailer` e `TCPDF`, enquanto `MercadoPago\\MercadoPagoConfig` fica ausente; `PAYMENT_LEGACY_MERCADOPAGO_SDK_REMOVED` foi adicionado ao preflight para reprovar retorno de `vendor/mercadopago`, `MercadoPago\\` ou `mercadopago/dx-php`; `PaymentsModuleWiringTest.php`, `SubscriptionsCheckoutWiringTest.php`, `ProductionPreflightWiringTest.php` e `ProductionPreflightBehaviorTest.php` passaram.
+   - Risco: baixo no produto atual; se Mercado Pago voltar no futuro, deve entrar por decisao nova de produto e `composer require`, nao por vendor legado.
+
+10. `C:/xampp/htdocs/questao-pro-backend/storage/backups/legacy-code`
+   - Status: movido para `C:/xampp/private-backups/questao-pro-backend/storage-archive/2026-05-20/legacy-code`.
+   - Motivo: backup historico de codigo dentro de `htdocs`, ainda que bloqueado por `.htaccess`, mistura evidencia antiga com runtime publico e amplia risco se o servidor final nao aplicar as mesmas regras Apache.
+   - Evidencia: `LEGACY_CODE_BACKUPS_OUTSIDE_PUBLIC_ROOT` e `BACKUP_DIR_OUTSIDE_PUBLIC_ROOT` adicionados ao preflight; `BackendRootCleanupWiringTest.php`, `ProductionPreflightWiringTest.php` e `ProductionPreflightBehaviorTest.php` passaram.
+   - Risco: baixo; os arquivos foram preservados fora de `htdocs`.
+
+11. Arquivos temporarios webpack locais
    - `.tmp-dev3000-webpack-err.log`
    - `.tmp-dev3000-webpack-out.log`
-   - Motivo: artefatos de execucao local em uso pelo servidor dev/webpack ativo.
-   - Evidencia: nova tentativa de remocao em `2026-05-16` falhou porque o Windows informou que os arquivos continuam em uso por outro processo. Processo provavel no momento da auditoria: `node.exe` PID `20584`, comando `next dev --webpack --port 3000`.
-   - Acao recomendada: encerrar o processo local e limpar no pre-release.
+   - Status: removidos em `2026-05-22` apos encerrar o processo local `next dev --webpack --port 3000` que mantinha lock nesses arquivos. O servidor local foi religado em background na porta `3000` sem recriar os logs.
+   - Motivo: artefatos de execucao local, sem valor de runtime e ja cobertos pela politica de logs temporarios.
+   - Evidencia: `Test-Path` retornou `False` para ambos os arquivos e `Get-NetTCPConnection -LocalPort 3000` voltou a mostrar listener apos reiniciar o dev server.
+   - Risco: baixo.
+
+## Candidatos seguros para limpeza imediata
+
+- Nenhum candidato imediato pendente nesta data.
 
 ## Candidatos com validacao obrigatoria antes de remover
 

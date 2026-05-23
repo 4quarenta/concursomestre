@@ -1,4 +1,4 @@
-/*
+﻿/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -360,16 +360,16 @@ const AdminSupportSection = ({
       {activeSection === 'reports' ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-[2rem] border border-amber-200 bg-amber-50 p-5 dark:border-amber-900/30 dark:bg-amber-900/10">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900/30 dark:bg-amber-900/10">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Pendentes</p>
               <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{pendingReportsCount}</p>
             </div>
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Acao</p>
               <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Moderacao no alvo</p>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Em questoes, Moderar abre a pagina de edicao da questao denunciada.</p>
             </div>
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Estado</p>
               <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">
                 {resolvingReportId ? 'Processando resolucao...' : 'Fila pronta para tratamento'}

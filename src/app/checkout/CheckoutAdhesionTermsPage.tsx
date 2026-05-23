@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -68,7 +68,7 @@ const CheckoutAdhesionTermsPage: React.FC = () => {
           Voltar
         </button>
 
-        <div className="relative mb-8 overflow-hidden rounded-[2.5rem] bg-slate-950 p-10 shadow-2xl dark:bg-indigo-950/70 md:p-16">
+        <div className="relative mb-8 overflow-hidden rounded-2xl bg-slate-950 p-10 shadow-2xl dark:bg-indigo-950/70 md:p-16">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 via-transparent to-emerald-500/20 opacity-80" />
           <div className="relative z-10 flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
             <div className="max-w-2xl space-y-4 text-white">
@@ -81,7 +81,7 @@ const CheckoutAdhesionTermsPage: React.FC = () => {
                 Condições aplicáveis à contratação de planos pagos, renovação automática, cancelamento e uso dos recursos premium do ConcursoMestre.
               </p>
             </div>
-            <div className="rounded-3xl border border-white/20 bg-white/10 px-6 py-4 text-left backdrop-blur-lg md:text-right">
+            <div className="rounded-2xl border border-white/20 bg-white/10 px-6 py-4 text-left backdrop-blur-lg md:text-right">
               <span className="mb-1 block text-[10px] font-black uppercase tracking-widest text-indigo-100">Última atualização</span>
               <span className="block text-lg font-bold text-white">10 de abril de 2026</span>
             </div>
@@ -90,7 +90,7 @@ const CheckoutAdhesionTermsPage: React.FC = () => {
 
         <div className="flex flex-col items-start gap-8 lg:flex-row">
           <aside className="w-full shrink-0 lg:sticky lg:top-24 lg:w-72">
-            <div className="space-y-1 rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="space-y-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <h2 className="mb-4 ml-2 mt-2 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Sumário</h2>
               {sections.map((item) => (
                 <button
@@ -111,7 +111,7 @@ const CheckoutAdhesionTermsPage: React.FC = () => {
             </div>
           </aside>
 
-          <main className="flex-1 rounded-[2.5rem] border border-slate-200 bg-white p-8 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900 md:p-12">
+          <main className="flex-1 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900 md:p-12">
             <div className="prose prose-slate max-w-none text-slate-600 transition-colors dark:prose-invert dark:text-slate-300">
               <section id="adesao" className="mb-16 scroll-mt-24">
                 <div className="mb-6 flex items-center gap-4">
@@ -143,7 +143,7 @@ const CheckoutAdhesionTermsPage: React.FC = () => {
                   <p>
                     A cobrança é realizada de acordo com o ciclo escolhido no momento da compra, podendo envolver pagamento mensal, trimestral, anual ou outra periodicidade disponibilizada oficialmente pela plataforma.
                   </p>
-                  <div className="rounded-[2rem] border border-slate-200 bg-slate-50 p-6 dark:border-slate-800 dark:bg-slate-800/50">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 dark:border-slate-800 dark:bg-slate-800/50">
                     <h3 className="m-0 mb-4 text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Pontos essenciais</h3>
                     <ul className="m-0 space-y-3 pl-5 text-sm font-medium">
                       <li>O valor final exibido no checkout considera descontos, créditos e condições promocionais válidas naquele momento.</li>

@@ -63,6 +63,12 @@ vi.mock('@services/api', () => ({
   },
 }));
 
+vi.mock('@services/monitoring/clientLog', () => ({
+  clientLog: {
+    error: vi.fn(),
+  },
+}));
+
 import { subscriptionsService } from '../subscriptionsService';
 
 describe('subscriptionsService', () => {
@@ -77,6 +83,16 @@ describe('subscriptionsService', () => {
         cron_url: 'http://localhost/api/subscriptions/cron.php?key=secret',
         download_url: 'http://localhost/api/subscriptions/helper.php?action=download_bat',
         linux_command: '0 * * * * curl -s "http://localhost/api/subscriptions/cron.php?key=secret"',
+        cli_command: '*/15 * * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/reconcile_stripe_subscriptions.php',
+        cron_health: {
+          status: 'ok',
+          checked: 2,
+          issues: 0,
+        },
+        webhook_health: {
+          status: 'processed',
+          event_type: 'invoice.paid',
+        },
       },
     });
 
@@ -84,6 +100,9 @@ describe('subscriptionsService', () => {
 
     expect(mockGet).toHaveBeenCalledWith('subscriptions/automation_helper.php');
     expect(response.cron_url).toContain('cron.php');
+    expect(response.cli_command).toContain('reconcile_stripe_subscriptions.php');
+    expect(response.cron_health).toMatchObject({ status: 'ok', checked: 2 });
+    expect(response.webhook_health).toMatchObject({ status: 'processed', event_type: 'invoice.paid' });
   });
 
   it('runs the automation routine through the official admin helper', async () => {
@@ -370,9 +389,38 @@ describe('subscriptionsService', () => {
       reason: 'budget',
       details: 'Usuario pediu cancelamento com reembolso.',
       captchaToken: 'captcha-token',
+      confirmDebtCharge: false,
     });
     expect(response.refund_processed).toBe(true);
     expect(response.refund_id).toBe('re_123');
+  });
+
+  it('sends explicit debt settlement confirmation when canceling a parcelled term', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        debt_settled: true,
+        debt_settlement_amount: 110,
+        debt_transaction_id: 77,
+      },
+    });
+
+    const response = await subscriptionsService.cancelSubscription(
+      'user_request',
+      'Cancelar termo anual com saldo pendente.',
+      'captcha-token',
+      true,
+    );
+
+    expect(mockPost).toHaveBeenCalledWith('subscriptions/cancel.php', {
+      reason: 'user_request',
+      details: 'Cancelar termo anual com saldo pendente.',
+      captchaToken: 'captcha-token',
+      confirmDebtCharge: true,
+    });
+    expect(response.debt_settled).toBe(true);
+    expect(response.debt_settlement_amount).toBe(110);
+    expect(response.debt_transaction_id).toBe(77);
   });
 
   it('cancels a pending subscription refund request through the official endpoint', async () => {

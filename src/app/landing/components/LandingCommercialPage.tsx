@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 /*
 * ----------------------------------------------------
@@ -350,7 +350,7 @@ const MetricCard = ({
 
 const PlatformMockup = () => (
   <div className="relative mx-auto w-full max-w-3xl">
-    <div className="rounded-[2rem] border-[10px] border-slate-950 bg-slate-950 shadow-2xl shadow-indigo-100">
+    <div className="rounded-2xl border-[10px] border-slate-950 bg-slate-950 shadow-2xl shadow-indigo-100">
       <div className="rounded-[1.35rem] bg-white p-5">
         <div className="grid gap-5 md:grid-cols-[155px_1fr]">
           <aside className="hidden rounded-2xl bg-[#f6f7ff] p-4 md:block">
@@ -513,7 +513,7 @@ const FeaturesSection = () => (
 
 const ApprovalContextSection = () => (
   <section className="mx-auto w-full max-w-7xl px-5 py-12 sm:px-8">
-    <div className="grid gap-8 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+    <div className="grid gap-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
       <div>
         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#684cff]">Aprovação com direção</p>
         <h2 className="mt-3 text-2xl font-black leading-tight tracking-tight text-[#07103a] md:text-3xl">
@@ -624,7 +624,7 @@ export const TestimonialsSection = () => {
 
   return (
     <section id="depoimentos" className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8">
-      <div className="rounded-3xl bg-[#f3f1ff] p-6 sm:p-7 lg:p-8">
+      <div className="rounded-2xl bg-[#f3f1ff] p-6 sm:p-7 lg:p-8">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="md:max-w-xl">
             <SectionTitle className="md:text-left">Quem usa, aprova</SectionTitle>
@@ -815,11 +815,11 @@ export const PricingSection = () => {
       </div>
 
       {!plansLoaded || !isSystemSettingsLoaded ? (
-        <div className="mt-10 rounded-3xl border border-indigo-100 bg-white p-10 text-center shadow-sm">
+        <div className="mt-10 rounded-2xl border border-indigo-100 bg-white p-10 text-center shadow-sm">
           <p className="text-sm font-bold text-slate-500">Carregando catálogo oficial de planos...</p>
         </div>
       ) : visiblePlans.length === 0 ? (
-        <div className="mt-10 rounded-3xl border border-indigo-100 bg-white p-10 text-center shadow-sm">
+        <div className="mt-10 rounded-2xl border border-indigo-100 bg-white p-10 text-center shadow-sm">
           <p className="text-sm font-bold text-slate-500">Nenhum plano ativo encontrado para este ciclo.</p>
         </div>
       ) : (
@@ -844,7 +844,7 @@ export const PricingSection = () => {
             return (
               <article
                 key={plan.id}
-                className={`relative flex h-full flex-col rounded-3xl border bg-white p-6 shadow-sm transition ${
+                className={`relative flex h-full flex-col rounded-2xl border bg-white p-6 shadow-sm transition ${
                   isFeatured ? 'border-[#684cff] shadow-indigo-100' : 'border-indigo-100'
                 }`}
               >
@@ -950,7 +950,7 @@ export const FAQSection = () => {
 
 export const FinalCTA = () => (
   <section className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8">
-    <div className="grid gap-8 rounded-3xl bg-[#07103a] p-7 text-white sm:p-9 lg:grid-cols-[1fr_1.45fr] lg:items-center lg:p-10">
+    <div className="grid gap-8 rounded-2xl bg-[#07103a] p-7 text-white sm:p-9 lg:grid-cols-[1fr_1.45fr] lg:items-center lg:p-10">
       <div>
         <h2 className="text-2xl font-black leading-tight tracking-tight md:text-3xl">Comece grátis hoje e veja a diferença na prática</h2>
         <p className="mt-4 max-w-xl text-sm font-medium leading-6 text-indigo-100">

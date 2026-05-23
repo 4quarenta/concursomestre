@@ -1,4 +1,4 @@
-export const ADMIN_SURFACE_CLASS = 'rounded-sm border border-slate-300 bg-white shadow-none dark:border-slate-700 dark:bg-slate-900';
+export const ADMIN_SURFACE_CLASS = 'rounded-sm border border-slate-300 bg-white shadow-sm shadow-slate-200/60 dark:border-slate-700 dark:bg-slate-900 dark:shadow-none';
 export const ADMIN_SURFACE_HEADER_CLASS = 'border-b border-slate-300 bg-slate-100 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/50';
 export const ADMIN_PAGE_PANEL_CLASS = `${ADMIN_SURFACE_CLASS} p-5`;
 export const ADMIN_MUTED_SURFACE_CLASS = 'rounded-sm border border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/40';

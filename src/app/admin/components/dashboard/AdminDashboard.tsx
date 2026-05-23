@@ -84,6 +84,7 @@ const EMPTY_STATS: AdminStatsPayload = {
   trial_subscriptions: 0,
   mrr: 0,
   new_users: 0,
+  new_questions: 0,
   seller_payout: 0,
   available_seller_payout: 0,
   transactions_count: 0,
@@ -422,18 +423,29 @@ const AdminDashboard = ({
     stats.users_count,
   ]);
 
+  const isAllPeriod = selectedPeriod === 'all';
+  const periodQuestionsCount = isAllPeriod ? platformTotals.questions : Number(stats.new_questions || 0);
+  const periodUsersCount = isAllPeriod ? platformTotals.users : Number(stats.new_users || 0);
+  const periodGrossRevenue = Number(stats.total_revenue || 0);
+  const periodAvailableRevenue = Number(stats.available_total_revenue || stats.available_platform_revenue || 0);
+  const periodPlatformRevenue = Number(stats.platform_revenue || 0);
+
   const summaryCards = useMemo(() => ([
     {
       label: 'Questoes no banco',
-      value: formatNumber(platformTotals.questions),
-      helper: `${formatNumber(platformTotals.exams)} provas cadastradas`,
+      value: formatNumber(periodQuestionsCount),
+      helper: isAllPeriod
+        ? `${formatNumber(platformTotals.exams)} provas cadastradas`
+        : `${formatNumber(platformTotals.questions)} questoes no banco`,
       icon: FileQuestion,
       iconClassName: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300',
     },
     {
       label: 'Usuarios cadastrados',
-      value: formatNumber(platformTotals.users),
-      helper: `${formatNumber(stats.new_users || 0)} novos no periodo`,
+      value: formatNumber(periodUsersCount),
+      helper: isAllPeriod
+        ? `${formatNumber(stats.new_users || 0)} novos nos ultimos 30 dias`
+        : `${formatNumber(platformTotals.users)} usuarios no total`,
       icon: Users,
       iconClassName: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300',
     },
@@ -445,13 +457,13 @@ const AdminDashboard = ({
       iconClassName: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-300',
     },
     {
-      label: 'Receita disponivel',
-      value: formatCurrency(stats.available_platform_revenue || stats.platform_revenue || 0),
-      helper: `MRR ${formatCurrency(stats.mrr || 0)}`,
+      label: 'Receita bruta',
+      value: formatCurrency(periodGrossRevenue),
+      helper: `Disponivel ${formatCurrency(periodAvailableRevenue)}`,
       icon: DollarSign,
       iconClassName: 'bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-300',
     },
-  ]), [platformTotals.comments, platformTotals.exams, platformTotals.pendingComments, platformTotals.questions, platformTotals.users, stats.available_platform_revenue, stats.mrr, stats.new_users, stats.platform_revenue]);
+  ]), [isAllPeriod, periodAvailableRevenue, periodGrossRevenue, periodQuestionsCount, periodUsersCount, platformTotals.comments, platformTotals.exams, platformTotals.pendingComments, platformTotals.questions, platformTotals.users, stats.new_users]);
 
   const platformOverviewItems = useMemo(() => ([
     { label: 'Leis comentadas', value: formatNumber(platformTotals.laws), helper: 'Acervo legislativo publicado' },
@@ -733,16 +745,28 @@ const AdminDashboard = ({
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Receita total da plataforma</p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Soma do periodo selecionado.</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Receita bruta do periodo</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Pagamentos aprovados no recorte selecionado.</p>
               </div>
               <span className="text-right text-lg font-black text-slate-900 dark:text-slate-100">
-                {formatCurrency(stats.platform_revenue || 0)}
+                {formatCurrency(periodGrossRevenue)}
               </span>
             </div>
 
             <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
               <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Receita disponivel</span>
+                <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(periodAvailableRevenue)}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Comissao da plataforma</span>
+                <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(periodPlatformRevenue)}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                <span className="text-slate-500 dark:text-slate-400">MRR estimado</span>
+                <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(stats.mrr || 0)}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                 <span className="text-slate-500 dark:text-slate-400">Saldo retido</span>
                 <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(stats.held_balance || 0)}</span>
               </div>

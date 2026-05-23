@@ -12,7 +12,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { LayoutDashboard, BookOpen, User, Menu, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, BookOpen, User, Menu, X, Trophy, LogOut, Timer, Zap, ShoppingBag, ShieldAlert, Mail, Bell, Check, ArrowRight, Info, Sun, Moon, MessageSquare, Shield, Lock, HelpCircle, Rocket, Crown, FileText, Layers, StickyNote, CreditCard, BarChart3, Package, ShieldCheck, Gift, ChevronDown, CalendarDays, Loader2, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
@@ -173,6 +173,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
+  const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
   const [locationHash, setLocationHash] = useState('');
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -286,11 +287,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [resendTimer]);
 
   const handleResendConfirmation = async () => {
-    if (resendTimer > 0) return;
+    if (resendTimer > 0 || isResendingConfirmation) return;
     // emailVerified é o campo mapeado pelo backend (camelCase)
     if (!user || user.emailVerified) return;
 
     try {
+      setIsResendingConfirmation(true);
       // O interceptor do axios (client.ts) já retorna response.data diretamente
       const response = await apiClient.post<ResendConfirmationResponse>(ENDPOINTS.auth.resendConfirmation, { email: user.email });
       const payload = response.data;
@@ -312,6 +314,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         ? error.message
         : 'Erro do servidor ao reenviar e-mail.';
       addToast(errorMessage, 'error');
+    } finally {
+      setIsResendingConfirmation(false);
     }
   };
 
@@ -519,7 +523,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {showVerificationModal && user && !user.emailVerified && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 max-w-md w-full rounded-[2.5rem] p-8 shadow-2xl relative animate-scale-in border border-slate-100 dark:border-slate-800 text-center">
+          <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 max-w-md w-full rounded-2xl p-8 shadow-2xl relative animate-scale-in border border-slate-100 dark:border-slate-800 text-center">
             <button
               onClick={closeVerificationModal}
               className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors"
@@ -537,11 +541,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </p>
             
             <button
-              disabled={resendTimer > 0}
+              disabled={resendTimer > 0 || isResendingConfirmation}
               onClick={handleResendConfirmation}
               className={`w-full py-4 rounded-2xl text-xs font-black uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-3 ${resendTimer > 0 ? 'bg-slate-100 text-slate-400 dark:bg-slate-800 cursor-not-allowed shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200 dark:shadow-indigo-900/30 active:scale-95'}`}
             >
-              {resendTimer > 0 ? `Aguarde ${resendTimer}s` : <><Rocket size={16} /> Reenviar E-mail</>}
+              {isResendingConfirmation ? <><Loader2 size={16} className="animate-spin" /> Reenviando</> : resendTimer > 0 ? `Aguarde ${resendTimer}s` : <><Rocket size={16} /> Reenviar E-mail</>}
             </button>
             <button
               onClick={closeVerificationModal}
@@ -818,7 +822,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </button>
 
                 {user && isProfileMenuOpen ? (
-                  <div className="absolute right-0 top-full z-50 mt-3 w-[360px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/80 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/30">
+                  <div className="absolute right-0 top-full z-50 mt-3 w-[360px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/80 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/30">
                     <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
                       <p className="text-sm font-black text-slate-900 dark:text-slate-100">{userFirstName}</p>
                       <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{user.email || 'Conta conectada'}</p>
