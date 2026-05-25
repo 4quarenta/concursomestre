@@ -30,16 +30,19 @@ export const getReportTargetId = (report: ErrorReport): string | number | undefi
     question_id?: string | number;
     material_id?: string | number;
     comment_id?: string | number;
+    law_section_id?: string | number;
   };
 
   if (report.targetType === 'question') return report.questionId ?? rawReport.targetId ?? rawReport.question_id;
   if (report.targetType === 'material') return report.materialId ?? rawReport.targetId ?? rawReport.material_id;
+  if (report.targetType === 'law_section') return report.lawSectionId ?? rawReport.targetId ?? rawReport.law_section_id;
   return report.commentId ?? rawReport.targetId ?? rawReport.comment_id;
 };
 
 export const getReportTargetLabel = (targetType: ErrorReport['targetType']) => {
   if (targetType === 'question') return 'Questão';
   if (targetType === 'material') return 'Material';
+  if (targetType === 'law_section') return 'Lei comentada';
   return 'Comentário';
 };
 
@@ -49,6 +52,9 @@ export const getReportTargetBadgeClass = (targetType: ErrorReport['targetType'])
   }
   if (targetType === 'material') {
     return 'bg-amber-50 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400';
+  }
+  if (targetType === 'law_section') {
+    return 'bg-violet-50 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400';
   }
   return 'bg-rose-50 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400';
 };

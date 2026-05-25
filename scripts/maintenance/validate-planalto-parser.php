@@ -43,6 +43,7 @@ $requiredLawFields = [
     'officialUrl',
     'sourceName',
     'ementa',
+    'sections',
     'articles',
 ];
 
@@ -117,8 +118,7 @@ if ($dumpDuplicatesFor !== null && isset($urls[$dumpDuplicatesFor])) {
         }
         echo 'Art. ' . $number . ' => ' . count($items) . PHP_EOL;
         foreach ($items as $article) {
-            $hierarchy = is_array($article['hierarchy'] ?? null) ? $article['hierarchy'] : [];
-            echo '  slug=' . ($article['slug'] ?? '') . ' sub=' . ($hierarchy['resolvedSubtopic'] ?? '') . ' ass=' . ($hierarchy['resolvedAssunto'] ?? '') . ' text=' . mb_substr((string) ($article['text'] ?? ''), 0, 100) . PHP_EOL;
+            echo '  slug=' . ($article['slug'] ?? '') . ' section=' . ($article['sectionId'] ?? '') . ' assunto=' . ($article['assuntoFilterId'] ?? '') . ' text=' . mb_substr((string) ($article['text'] ?? ''), 0, 100) . PHP_EOL;
         }
     }
     exit(0);
@@ -127,14 +127,13 @@ if ($dumpDuplicatesFor !== null && isset($urls[$dumpDuplicatesFor])) {
 if ($dumpArticlesFor !== null && isset($urls[$dumpArticlesFor])) {
     $result = $service->importFromUrl($urls[$dumpArticlesFor], false);
     foreach (($result['law']['articles'] ?? []) as $index => $article) {
-        $hierarchy = is_array($article['hierarchy'] ?? null) ? $article['hierarchy'] : [];
         echo sprintf(
-            "%03d Art. %-8s title=%s sub=%s ass=%s text=%s\n",
+            "%03d Art. %-8s title=%s section=%s assunto=%s text=%s\n",
             $index + 1,
             (string) ($article['number'] ?? ''),
             (string) ($article['title'] ?? ''),
-            (string) ($hierarchy['resolvedSubtopic'] ?? ''),
-            (string) ($hierarchy['resolvedAssunto'] ?? ''),
+            (string) ($article['sectionId'] ?? ''),
+            (string) ($article['assuntoFilterId'] ?? ''),
             mb_substr((string) ($article['text'] ?? ''), 0, 90)
         );
     }
@@ -146,6 +145,7 @@ foreach ($urls as $key => $url) {
         $result = $service->importFromUrl($url, false);
         $law = $result['law'] ?? [];
         $articles = is_array($law['articles'] ?? null) ? $law['articles'] : [];
+        $sections = is_array($law['sections'] ?? null) ? $law['sections'] : [];
         $warnings = [];
 
         foreach ($requiredLawFields as $field) {
@@ -174,10 +174,24 @@ foreach ($urls as $key => $url) {
             if (empty($article['blocks']) || !is_array($article['blocks'])) {
                 $warnings[] = 'article_' . ($index + 1) . '_missing_blocks';
             }
+            if (trim((string) ($article['sectionId'] ?? '')) === '') {
+                $warnings[] = 'article_' . ($index + 1) . '_missing_section';
+            }
 
             $title = trim((string) ($article['title'] ?? ''));
             if ($title !== '' && preg_match('/^\d{3,}$/', $title)) {
                 $warnings[] = 'article_' . ($index + 1) . '_numeric_title_' . $title;
+            }
+        }
+        foreach ($sections as $index => $section) {
+            if (trim((string) ($section['id'] ?? '')) === '') {
+                $warnings[] = 'section_' . ($index + 1) . '_missing_id';
+            }
+            if (trim((string) ($section['displayTitle'] ?? $section['title'] ?? '')) === '') {
+                $warnings[] = 'section_' . ($index + 1) . '_missing_title';
+            }
+            if ((int) ($section['articleCount'] ?? 0) <= 0) {
+                $warnings[] = 'section_' . ($index + 1) . '_missing_article_count';
             }
         }
 
@@ -186,8 +200,9 @@ foreach ($urls as $key => $url) {
         }
 
         echo sprintf(
-            "%-14s artigos=%4d numero=%-24s topico=%-8s avisos=%s\n",
+            "%-14s secoes=%3d artigos=%4d numero=%-24s topico=%-8s avisos=%s\n",
             $key,
+            count($sections),
             count($articles),
             (string) ($law['number'] ?? ''),
             (string) ($law['lawTopicFilterId'] ?? ''),
@@ -195,13 +210,12 @@ foreach ($urls as $key => $url) {
         );
 
         foreach (array_slice($articles, 0, 2) as $article) {
-            $hierarchy = is_array($article['hierarchy'] ?? null) ? $article['hierarchy'] : [];
             echo sprintf(
-                "  Art. %-6s titulo=%s | sub=%s | assunto=%s\n",
+                "  Art. %-6s titulo=%s | section=%s | assunto=%s\n",
                 (string) ($article['number'] ?? ''),
                 (string) ($article['title'] ?? ''),
-                (string) ($hierarchy['resolvedSubtopic'] ?? ''),
-                (string) ($hierarchy['resolvedAssunto'] ?? '')
+                (string) ($article['sectionId'] ?? ''),
+                (string) ($article['assuntoFilterId'] ?? '')
             );
         }
     } catch (Throwable $error) {

@@ -50,12 +50,17 @@ const GlobalLoader: React.FC<GlobalLoaderProps> = ({ forceVisible = false }) => 
                 setProgress(14);
             });
 
-            const timer1 = setTimeout(() => setProgress(42), 90);
-            const timer2 = setTimeout(() => setProgress(68), 260);
-            const timer3 = setTimeout(() => setProgress(84), 900);
+            const timer1 = setTimeout(() => setProgress(46), 80);
+            const timer2 = setTimeout(() => setProgress(72), 180);
+            const timer3 = setTimeout(() => setProgress(86), 520);
             const stallTimer = setTimeout(() => {
                 setProgress(92);
-            }, 3500);
+            }, 1800);
+            const safetyTimer = setTimeout(() => {
+                setIsVisible(false);
+                setProgress(0);
+                resetNavigation();
+            }, 8000);
 
             return () => {
                 window.cancelAnimationFrame(frameId);
@@ -63,6 +68,7 @@ const GlobalLoader: React.FC<GlobalLoaderProps> = ({ forceVisible = false }) => 
                 clearTimeout(timer2);
                 clearTimeout(timer3);
                 clearTimeout(stallTimer);
+                clearTimeout(safetyTimer);
             };
         }
 
@@ -86,10 +92,10 @@ const GlobalLoader: React.FC<GlobalLoaderProps> = ({ forceVisible = false }) => 
     if (!isVisible) return null;
 
     return (
-        <div className="fixed top-0 left-0 w-full h-1 z-[9999]">
+        <div className="pointer-events-none fixed left-0 top-0 z-[9999] h-0.5 w-full overflow-hidden">
             <div
-                className="h-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] transition-all duration-300 ease-out"
-                style={{ width: `${progress}%` }}
+                className="h-full w-full origin-left bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.45)] transition-transform duration-150 ease-out will-change-transform"
+                style={{ transform: `scaleX(${progress / 100})` }}
             />
         </div>
     );

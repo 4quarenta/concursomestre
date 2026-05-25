@@ -125,6 +125,10 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     || pathname.startsWith('/support');
   const shouldRedirectToAuth = alwaysRequiresAuthenticatedUser(pathname)
     || (loginRequired && followsGlobalLoginRequirement(pathname));
+  const shouldGateDuringAuthBootstrap = shouldRedirectToAuth
+    || pathname === '/'
+    || pathname.startsWith('/admin')
+    || pathname === '/partner-dashboard';
   const paymentIssueFixPath = paymentIssue?.actionTarget || `${buildProfilePath('personal')}#saved-cards-personal-section`;
   const paymentIssueMessage = isPastDueSubscription
     ? 'A renovação da sua assinatura falhou. Atualize ou troque o cartão salvo para regularizar as próximas cobranças.'
@@ -179,7 +183,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
     router.replace('/');
   }, [currentUser, isLoading, pathname, router]);
 
-  if (isLoading && !allowAuthLoadingPassThrough) {
+  if (isLoading && !allowAuthLoadingPassThrough && shouldGateDuringAuthBootstrap) {
     return <GlobalLoader forceVisible />;
   }
 

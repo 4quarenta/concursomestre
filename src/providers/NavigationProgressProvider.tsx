@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import {
   AppRouterContext,
   type AppRouterInstance,
@@ -10,9 +10,7 @@ import {
 } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { useNavigationProgressStore } from '@/state/navigation-progress/navigationProgressStore';
 
-const buildRouteKey = (pathname: string, search: string) => (
-  `${pathname}${search ? `?${search}` : ''}`
-);
+const buildRouteKey = (pathname: string) => pathname;
 
 // Barra global de progresso de navegacao: intercepta mudancas de rota e dispara estado de loading imediatamente no clique.
 const normalizeInternalRoute = (href: string, currentRouteKey: string): string | null => {
@@ -35,7 +33,7 @@ const normalizeInternalRoute = (href: string, currentRouteKey: string): string |
       return null;
     }
 
-    const nextRouteKey = buildRouteKey(url.pathname, url.search.replace(/^\?/, ''));
+    const nextRouteKey = buildRouteKey(url.pathname);
     return nextRouteKey === currentRouteKey ? null : nextRouteKey;
   } catch {
     return null;
@@ -57,7 +55,6 @@ const wrapRouter = (
     router.forward();
   },
   refresh() {
-    startNavigation(currentRouteKey);
     router.refresh();
   },
   push(href: string, options?: NavigateOptions) {
@@ -94,9 +91,7 @@ const wrapRouter = (
 export const NavigationProgressProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const router = React.useContext(AppRouterContext);
   const pathname = usePathname() || '/';
-  const searchParams = useSearchParams();
-  const search = searchParams?.toString() || '';
-  const currentRouteKey = React.useMemo(() => buildRouteKey(pathname, search), [pathname, search]);
+  const currentRouteKey = React.useMemo(() => buildRouteKey(pathname), [pathname]);
   const startNavigation = useNavigationProgressStore((store) => store.startNavigation);
   const completeNavigation = useNavigationProgressStore((store) => store.completeNavigation);
 

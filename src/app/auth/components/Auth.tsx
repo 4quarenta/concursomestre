@@ -724,6 +724,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       setIsGoogleLoading(false);
     }
   }, [finalizeSocialAuth, registrationEnabled, searchParams, startPendingSocialSignup]);
+  const googleCredentialHandlerRef = React.useRef(handleGoogleCredential);
+
+  React.useEffect(() => {
+    googleCredentialHandlerRef.current = handleGoogleCredential;
+  }, [handleGoogleCredential]);
 
   const handleSocialProfileSignup = React.useCallback(async () => {
     const pending = pendingSocialSignup;
@@ -805,7 +810,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     buttonContainer.innerHTML = '';
     googleIdentity.initialize({
       client_id: googleClientId,
-      callback: handleGoogleCredential,
+      callback: (response: GoogleCredentialResponse) => {
+        void googleCredentialHandlerRef.current(response);
+      },
       context: isSignup ? 'signup' : 'signin',
       ux_mode: 'popup',
       auto_select: false,
@@ -824,7 +831,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       buttonContainer.innerHTML = '';
       googleIdentity.cancel?.();
     };
-  }, [googleClientId, googleScriptReady, handleGoogleCredential, isAuthForm, isForgot, isSignup, theme]);
+  }, [googleClientId, googleScriptReady, isAuthForm, isForgot, isSignup, theme]);
 
   useEffect(() => {
     if (!facebookAppId || !facebookScriptReady || !isAuthForm || isForgot) {

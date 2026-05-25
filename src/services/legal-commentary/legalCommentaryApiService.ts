@@ -193,9 +193,6 @@ const buildArticleSearchText = (article: LawArticle) => normalizeText([
   article.title,
   article.text,
   article.texto,
-  article.hierarchy?.title,
-  article.hierarchy?.chapter,
-  article.hierarchy?.section,
   ...(Array.isArray(article.blocks) ? article.blocks.slice(0, 4).map((block) => block.text) : []),
 ].join(' '));
 
@@ -362,6 +359,9 @@ const normalizeSectionEditorial = (payload: unknown): LawSectionEditorial | unde
   const record = asRecord(payload);
 
   return {
+    id: record.id ? String(record.id) : undefined,
+    lawId: record.lawId ? String(record.lawId) : undefined,
+    sectionId: record.sectionId ? String(record.sectionId) : null,
     sectionKey: String(record.sectionKey || ''),
     sectionTitle: String(record.sectionTitle || ''),
     rangeLabel: String(record.rangeLabel || ''),
@@ -613,25 +613,10 @@ export const legalCommentaryApiService = {
               const articleMatchedSubjects = new Set<string>(summary.matchedSubjectNames);
               const articleMatchedTopics = new Set<string>(summary.matchedTopicNames);
 
-              if (article.subjectFilterId && subjectIds.has(String(article.subjectFilterId))) {
-                score += 6;
-                const subjectName = subjects.find((item) => item.id === String(article.subjectFilterId))?.name;
-                if (subjectName) {
-                  articleMatchedSubjects.add(subjectName);
-                }
-              }
-
-              if (article.subjectFilterId && topicIds.has(String(article.subjectFilterId))) {
-                score += 12;
-                const topicName = topics.find((item) => item.id === String(article.subjectFilterId))?.name;
-                if (topicName) {
-                  articleMatchedTopics.add(topicName);
-                }
-              }
-
-              if (article.topicFilterId && topicIds.has(String(article.topicFilterId))) {
+              const articleAssuntoId = String(article.assuntoFilterId || article.topicFilterId || '');
+              if (articleAssuntoId && topicIds.has(articleAssuntoId)) {
                 score += 18;
-                const topicName = topics.find((item) => item.id === String(article.topicFilterId))?.name;
+                const topicName = topics.find((item) => item.id === articleAssuntoId)?.name;
                 if (topicName) {
                   articleMatchedTopics.add(topicName);
                 }

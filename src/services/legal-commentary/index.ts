@@ -9,6 +9,4 @@
 *
 */
 
-export * from './legalCommentaryData';
-export * from './legalCommentaryService';
 export * from './legalCommentaryApiService';

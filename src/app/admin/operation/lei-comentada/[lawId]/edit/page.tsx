@@ -19,17 +19,23 @@ import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import {
   AlertCircle,
-  ArrowLeft,
-  Bot,
+  BookOpen,
+  CalendarDays,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Download,
+  Eye,
   ExternalLink,
   FileText,
-  History,
+  GripVertical,
+  Lightbulb,
   Loader2,
+  MessageSquare,
   Plus,
   RefreshCcw,
   Save,
+  Scale,
   Sparkles,
   Trash2,
   X,
@@ -39,12 +45,12 @@ import { useToast } from '@providers/ToastProvider';
 import { canAccessAdminPanel } from '@services/auth';
 import { filtersService } from '@services/filters';
 import { legalCommentaryApiService } from '@services/legal-commentary';
-import { buildLawSections, formatSectionRange, type LawSectionSummary } from '@services/legal-commentary/lawOutline';
 import type {
   ArticleExamTip,
   ArticleJurisprudence,
   LawArticle,
   LawDetail,
+  LawSection,
   LawSectionEditorial,
   LawUpdate,
   LegalArticleBlock,
@@ -106,22 +112,28 @@ type EditableCollectionItem =
   | ArticleJurisprudence
   | NonNullable<AdminLawDraft['sumulas']>[number];
 
+type ArticleEditorialCounts = {
+  teacher: number;
+  tips: number;
+  jurisprudence: number;
+  sumulas: number;
+  doctrine: number;
+  total: number;
+};
+
+type AdminLawSectionOverview = LawSection & {
+  sectionKeyResolved: string;
+  articleIds: string[];
+  articles: number;
+  primaryArticleId: string;
+  articlesList: LawArticle[];
+  counts: ArticleEditorialCounts;
+  savedEditorial?: LawSectionEditorial;
+  hasAnalysis: boolean;
+};
+
 type LegalAiGenerationKind = 'teacher-comment' | 'exam-tip' | 'jurisprudence' | 'sumula' | 'doctrine' | 'bundle';
 type LegalEditorialSection = 'teacher' | 'tips' | 'jurisprudence' | 'sumulas' | 'doctrine' | 'section-analysis' | 'ai';
-
-const LEGAL_EDITORIAL_SECTIONS: Array<{
-  key: LegalEditorialSection;
-  label: string;
-  description: string;
-}> = [
-  { key: 'teacher', label: 'Professor', description: 'Comentario pedagogico principal do artigo.' },
-  { key: 'tips', label: 'Macetes', description: 'Chaves de prova, sem siglas artificiais.' },
-  { key: 'jurisprudence', label: 'Jurisprudencia', description: 'Somente decisoes ligadas ao artigo.' },
-  { key: 'sumulas', label: 'Sumulas', description: 'Enunciados relevantes para o dispositivo.' },
-  { key: 'doctrine', label: 'Doutrina', description: 'Apoio teorico curto e revisavel.' },
-  { key: 'section-analysis', label: 'Capitulos', description: 'Analise aprofundada por capitulo.' },
-  { key: 'ai', label: 'IA e lote', description: 'Geracao assistida e acompanhamento por artigo.' },
-];
 
 const LEGAL_BLOCK_KINDS: Array<{ value: LegalArticleBlock['kind']; label: string }> = [
   { value: 'caput', label: 'Caput' },
@@ -133,6 +145,14 @@ const LEGAL_BLOCK_KINDS: Array<{ value: LegalArticleBlock['kind']; label: string
 ];
 
 const createTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const formatSectionRange = (section: Pick<LawSection, 'fromArticle' | 'toArticle'>) => {
+  const from = String(section.fromArticle || '').trim();
+  const to = String(section.toArticle || '').trim();
+  if (!from && !to) return '';
+  if (!to || from === to) return `Art. ${from}`;
+  return `Art. ${from} ao Art. ${to}`;
+};
 
 const normalizeParam = (value?: string | string[]) => Array.isArray(value) ? value[0] : value;
 
@@ -347,21 +367,6 @@ const normalizeArticleForSave = (article: LawArticle): LawArticle => {
     text,
     paragraphs,
     blocks,
-    hierarchy: {
-      ...(article.hierarchy || {}),
-      title: String(
-        (article.hierarchy as Record<string, unknown>)?.resolvedSubtopic
-        || article.hierarchy?.title
-        || (article.hierarchy as Record<string, unknown>)?.titleLabel
-        || '',
-      ).trim(),
-      chapter: String(
-        (article.hierarchy as Record<string, unknown>)?.resolvedAssunto
-        || article.hierarchy?.chapter
-        || (article.hierarchy as Record<string, unknown>)?.chapterLabel
-        || '',
-      ).trim(),
-    },
   };
 };
 
@@ -529,11 +534,12 @@ const buildLegalAreaFromTaxonomy = (subject?: TaxonomyOption, fallback?: Partial
   };
 };
 
-const buildEmptyArticle = (lawId = 'new'): LawArticle => {
+const buildEmptyArticle = (lawId = 'new', sectionId?: string | null): LawArticle => {
   const id = createTempId('article');
   return {
     id,
     lawId,
+    sectionId: sectionId || null,
     slug: id,
     number: '',
     title: '',
@@ -543,7 +549,6 @@ const buildEmptyArticle = (lawId = 'new'): LawArticle => {
     syllabi: [],
     doctrine: [],
     relatedQuestionCount: 0,
-    hierarchy: {},
     blocks: [
       {
         id: `${id}-caput`,
@@ -552,12 +557,14 @@ const buildEmptyArticle = (lawId = 'new'): LawArticle => {
         text: '',
       },
     ],
+    assuntoFilterId: null,
     subjectFilterId: null,
     topicFilterId: null,
   };
 };
 
 const buildEmptyLaw = (): AdminLawDraft => {
+  const sectionId = createTempId('section');
   return {
   id: '',
   slug: '',
@@ -584,7 +591,16 @@ const buildEmptyLaw = (): AdminLawDraft => {
   jurisprudenceCount: 0,
   examTipCount: 0,
   area: undefined,
-  articles: [buildEmptyArticle()],
+  sections: [{
+    id: sectionId,
+    lawId: 'new',
+    slug: sectionId,
+    title: 'Secao 1',
+    displayTitle: 'Secao 1',
+    articleCount: 1,
+    sortOrder: 0,
+  }],
+  articles: [buildEmptyArticle('new', sectionId)],
   teacherComments: [],
   jurisprudence: [],
   examTips: [],
@@ -667,31 +683,21 @@ const hydrateDraftFromLaw = (
 ): AdminLawDraft => {
   const lawAliases = law as LawDetailAdminAliases;
   const articleIdMap = new Map<string, string>();
+  const sections = (law.sections || []).map((section, index) => ({
+    ...section,
+    id: String(section.id || createTempId(`section-${index + 1}`)),
+    lawId: String(section.lawId || law.id || 'new'),
+    slug: section.slug || `section-${index + 1}`,
+    title: String(section.displayTitle || section.title || `Secao ${index + 1}`),
+    displayTitle: String(section.displayTitle || section.title || `Secao ${index + 1}`),
+    articleCount: Number(section.articleCount || 0),
+    sortOrder: Number(section.sortOrder ?? index),
+  }));
+  const fallbackSectionId = sections[0]?.id || createTempId('section');
   const articles = (law.articles || []).map((article, index) => {
     const nextId = String(article.id || createTempId(`article-${index + 1}`));
     const originalId = String(article.id || '');
-    const hierarchy = (article.hierarchy || {}) as Record<string, unknown>;
     const articleInternalTitle = String(article.title || '').trim();
-    const resolvedSubtopic = String(
-      hierarchy.resolvedSubtopic
-      || hierarchy.title
-      || hierarchy.titleLabel
-      || hierarchy.book
-      || hierarchy.bookLabel
-      || hierarchy.part
-      || hierarchy.partLabel
-      || '',
-    ).trim();
-    const resolvedChapter = String(
-      hierarchy.resolvedAssunto
-      || hierarchy.chapter
-      || hierarchy.chapterLabel
-      || hierarchy.section
-      || hierarchy.sectionLabel
-      || hierarchy.subsection
-      || hierarchy.subsectionLabel
-      || '',
-    ).trim();
     if (originalId) {
       articleIdMap.set(originalId, nextId);
     }
@@ -700,6 +706,7 @@ const hydrateDraftFromLaw = (
       ...article,
       id: nextId,
       lawId: String(article.lawId || law.id || 'new'),
+      sectionId: article.sectionId || fallbackSectionId,
       slug: article.slug || `art-${index + 1}`,
       title: articleInternalTitle,
       blocks: (article.blocks || []).map((block, blockIndex) => ({
@@ -710,15 +717,9 @@ const hydrateDraftFromLaw = (
       jurisprudenceNotes: article.jurisprudenceNotes || [],
       syllabi: article.syllabi || [],
       doctrine: article.doctrine || [],
-      hierarchy: {
-        ...hierarchy,
-        title: resolvedSubtopic || String(hierarchy.title || ''),
-        chapter: resolvedChapter || String(hierarchy.chapter || ''),
-        ...(resolvedSubtopic ? { resolvedSubtopic } : {}),
-        ...(resolvedChapter ? { resolvedAssunto: resolvedChapter } : {}),
-      },
       relatedQuestionCount: article.relatedQuestionCount || 0,
-      subjectFilterId: article.subjectFilterId ?? null,
+      assuntoFilterId: article.assuntoFilterId ?? article.topicFilterId ?? null,
+      subjectFilterId: null,
       topicFilterId: article.topicFilterId ?? null,
     };
 
@@ -763,6 +764,15 @@ const hydrateDraftFromLaw = (
     commentedArticleCount: law.commentedArticleCount || 0,
     jurisprudenceCount: law.jurisprudenceCount || 0,
     examTipCount: law.examTipCount || 0,
+    sections: sections.length > 0 ? sections : [{
+      id: fallbackSectionId,
+      lawId: String(law.id || 'new'),
+      slug: fallbackSectionId,
+      title: 'Secao 1',
+      displayTitle: 'Secao 1',
+      articleCount: articles.length,
+      sortOrder: 0,
+    }],
     articles,
     teacherComments: (law.teacherComments || []).map((comment) => ({
       ...comment,
@@ -813,41 +823,61 @@ const hydrateDraftFromLaw = (
 const getArticleLabel = (article: LawArticle) =>
   article.number ? `Art. ${article.number}` : 'Artigo sem numero';
 
-const getHierarchyDisplayText = (
-  keys: string[],
-  article?: Partial<LawArticle> | null,
-): string => {
-  const hierarchy = (article?.hierarchy || {}) as Record<string, unknown>;
+const hasFilledText = (value: unknown) => String(value || '').trim().length > 0;
 
-  for (const key of keys) {
-    const value = String(hierarchy[key] || '').trim();
-    if (value !== '') {
-      return value;
-    }
-  }
+const buildEmptyEditorialCounts = (): ArticleEditorialCounts => ({
+  teacher: 0,
+  tips: 0,
+  jurisprudence: 0,
+  sumulas: 0,
+  doctrine: 0,
+  total: 0,
+});
 
-  return '';
+const sumEditorialCounts = (items: ArticleEditorialCounts[]): ArticleEditorialCounts => {
+  const total = buildEmptyEditorialCounts();
+  items.forEach((item) => {
+    total.teacher += item.teacher;
+    total.tips += item.tips;
+    total.jurisprudence += item.jurisprudence;
+    total.sumulas += item.sumulas;
+    total.doctrine += item.doctrine;
+  });
+  total.total = total.teacher + total.tips + total.jurisprudence + total.sumulas + total.doctrine;
+  return total;
 };
 
-const getArticleSubtopicDisplayText = (article?: Partial<LawArticle> | null): string => getHierarchyDisplayText([
-  'resolvedSubtopic',
-  'title',
-  'titleLabel',
-  'book',
-  'bookLabel',
-  'part',
-  'partLabel',
-], article);
+const getArticleEditorialCounts = (draft: AdminLawDraft, article: LawArticle): ArticleEditorialCounts => {
+  const teacher = (draft.teacherComments || [])
+    .filter((item) => item.articleId === article.id)
+    .filter((item) => hasFilledText(item.title) || hasFilledText(item.body))
+    .length;
+  const tips = (draft.examTips || [])
+    .filter((item) => item.articleId === article.id)
+    .filter((item) => hasFilledText(item.title) || hasFilledText(item.body))
+    .length;
+  const jurisprudence = (
+    (draft.jurisprudence || [])
+      .filter((item) => item.articleId === article.id)
+      .filter((item) => hasFilledText(item.title) || hasFilledText(item.summary) || hasFilledText(item.examImpact))
+      .length
+    + (article.jurisprudenceNotes || []).filter(hasFilledText).length
+  );
+  const sumulas = (draft.sumulas || [])
+    .filter((item) => item.articleId === article.id)
+    .filter((item) => hasFilledText(item.number) || hasFilledText(item.text))
+    .length;
+  const doctrine = (article.doctrine || article.doutrina || []).filter(hasFilledText).length;
 
-const getArticleAssuntoDisplayText = (article?: Partial<LawArticle> | null): string => getHierarchyDisplayText([
-  'resolvedAssunto',
-  'chapter',
-  'chapterLabel',
-  'section',
-  'sectionLabel',
-  'subsection',
-  'subsectionLabel',
-], article);
+  return {
+    teacher,
+    tips,
+    jurisprudence,
+    sumulas,
+    doctrine,
+    total: teacher + tips + jurisprudence + sumulas + doctrine,
+  };
+};
 
 const FieldLabel = ({ children }: { children: React.ReactNode }) => (
   <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{children}</label>
@@ -1125,6 +1155,12 @@ const AdminLegalCommentaryEditPage = () => {
   const draftRef = React.useRef<AdminLawDraft | null>(null);
   const addToastRef = React.useRef(addToast);
   const [activeArticleId, setActiveArticleId] = React.useState('');
+  const [activeSectionId, setActiveSectionId] = React.useState('');
+  const [openStructureSectionIds, setOpenStructureSectionIds] = React.useState<Set<string>>(() => new Set());
+  const [isStructurePreviewOpen, setIsStructurePreviewOpen] = React.useState(true);
+  const [isEditingOriginalText, setIsEditingOriginalText] = React.useState(false);
+  const [scheduledDate, setScheduledDate] = React.useState('');
+  const [scheduledTime, setScheduledTime] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [isImportingFromPlanalto, setIsImportingFromPlanalto] = React.useState(false);
@@ -1134,10 +1170,10 @@ const AdminLegalCommentaryEditPage = () => {
   const [isCreatingSubtopic, setIsCreatingSubtopic] = React.useState(false);
   const [isCreatingAssunto, setIsCreatingAssunto] = React.useState(false);
   const [aiLoading, setAiLoading] = React.useState<string | null>(null);
-  const [aiProgress, setAiProgress] = React.useState<{ kind: string; label: string; percent: number } | null>(null);
+  const [, setAiProgress] = React.useState<{ kind: string; label: string; percent: number } | null>(null);
   const [sectionAnalysisLoadingKey, setSectionAnalysisLoadingKey] = React.useState<string | null>(null);
   const [isGeneratingAllSectionAnalyses, setIsGeneratingAllSectionAnalyses] = React.useState(false);
-  const [activeEditorialSection, setActiveEditorialSection] = React.useState<LegalEditorialSection>('teacher');
+  const [activeEditorialSection] = React.useState<LegalEditorialSection>('teacher');
   const [isUpdatesModalOpen, setIsUpdatesModalOpen] = React.useState(false);
   const [isUpdatesModalLoading, setIsUpdatesModalLoading] = React.useState(false);
   const [updatesModalItems, setUpdatesModalItems] = React.useState<LawUpdate[]>([]);
@@ -1145,9 +1181,9 @@ const AdminLegalCommentaryEditPage = () => {
   const hasOpenedUpdatesFromQueryRef = React.useRef(false);
   const [batchRun, setBatchRun] = React.useState<LegalEditorialBatchRun | null>(null);
   const [isBatchRunning, setIsBatchRunning] = React.useState(false);
-  const [isBatchRefreshing, setIsBatchRefreshing] = React.useState(false);
-  const [isBatchPaused, setIsBatchPaused] = React.useState(false);
-  const [batchOnlyMissingComments, setBatchOnlyMissingComments] = React.useState(true);
+  const [, setIsBatchRefreshing] = React.useState(false);
+  const [, setIsBatchPaused] = React.useState(false);
+  const [batchOnlyMissingComments] = React.useState(true);
   const batchPauseRef = React.useRef(false);
   const batchStopRef = React.useRef(false);
   const batchStatusLoadedForLawRef = React.useRef('');
@@ -1296,96 +1332,81 @@ const AdminLegalCommentaryEditPage = () => {
   );
 
   const lawSections = React.useMemo(
-    () => buildLawSections(
-      draft?.articles || [],
-      [draft?.id, draft?.slug, draft?.shortTitle, draft?.number].filter(Boolean),
-    ),
-    [draft?.articles, draft?.id, draft?.number, draft?.shortTitle, draft?.slug],
+    () => (draft?.sections || [])
+      .map((section, index) => ({
+        ...section,
+        id: String(section.id || section.slug || `section-${index}`),
+        lawId: String(section.lawId || draft?.id || ''),
+        title: String(section.displayTitle || section.title || `Secao ${index + 1}`),
+        displayTitle: String(section.displayTitle || section.title || `Secao ${index + 1}`),
+        articleCount: Number(section.articleCount || 0),
+        sortOrder: Number(section.sortOrder ?? index),
+      }))
+      .sort((left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0)),
+    [draft?.id, draft?.sections],
   );
 
-  React.useEffect(() => {
-    if (!draft || draft.lawTopicFilterId) {
-      return;
-    }
-
-    const materiaId = String(draft.areaId || '');
-    if (!materiaId) {
-      return;
-    }
-
-    const topicById = new Map(topics.map((item) => [String(item.id), item]));
-    const assuntoById = new Map(specificSubjects.map((item) => [String(item.id), item]));
-
-    const resolveLawTopicFromArticle = (article: LawArticle): string => {
-      const subtopicId = String(article.subjectFilterId || '');
-      if (subtopicId) {
-        const subtopic = topicById.get(subtopicId);
-        if (subtopic) {
-          const directParent = String(subtopic.parentId || '');
-          const root = String(subtopic.rootSubjectId || '');
-          if (directParent === materiaId || root === materiaId) {
-            return subtopicId;
-          }
-
-          const parentTopic = topicById.get(directParent);
-          if (parentTopic) {
-            const parentRoot = String(parentTopic.rootSubjectId || '');
-            const parentParent = String(parentTopic.parentId || '');
-            if (parentParent === materiaId || parentRoot === materiaId) {
-              return String(parentTopic.id);
-            }
-          }
-        }
-      }
-
-      const assuntoId = String(article.topicFilterId || '');
-      if (assuntoId) {
-        const assunto = assuntoById.get(assuntoId);
-        const parentId = String(assunto?.parentId || '');
-        if (!parentId) return '';
-
-        const parentTopic = topicById.get(parentId);
-        if (parentTopic) {
-          const parentParent = String(parentTopic.parentId || '');
-          const parentRoot = String(parentTopic.rootSubjectId || '');
-          if (parentParent === materiaId || parentRoot === materiaId) {
-            return String(parentTopic.id);
-          }
-
-          const grandParentTopic = topicById.get(parentParent);
-          if (grandParentTopic) {
-            const grandParentParent = String(grandParentTopic.parentId || '');
-            const grandParentRoot = String(grandParentTopic.rootSubjectId || '');
-            if (grandParentParent === materiaId || grandParentRoot === materiaId) {
-              return String(grandParentTopic.id);
-            }
-          }
-        }
-      }
-
-      return '';
-    };
-
-    const inferredLawTopicId = (draft.articles || [])
-      .map(resolveLawTopicFromArticle)
-      .find((value) => value !== '');
-
-    if (!inferredLawTopicId) {
-      return;
-    }
-
-    const inferTopicFrameId = window.requestAnimationFrame(() => {
-      setDraft((current) => {
-        if (!current || current.lawTopicFilterId) return current;
-        return {
-          ...current,
-          lawTopicFilterId: inferredLawTopicId,
-        };
+  const sectionEditorialsByKey = React.useMemo(
+    () => {
+      const map = new Map<string, LawSectionEditorial>();
+      (draft?.sectionEditorials || []).forEach((item) => {
+        if (item.sectionId) map.set(String(item.sectionId), item);
+        if (item.sectionKey) map.set(String(item.sectionKey), item);
       });
-    });
+      return map;
+    },
+    [draft?.sectionEditorials],
+  );
 
-    return () => window.cancelAnimationFrame(inferTopicFrameId);
-  }, [draft, specificSubjects, topics]);
+  const sectionOverviews = React.useMemo<AdminLawSectionOverview[]>(() => {
+    if (!draft) {
+      return [];
+    }
+
+    const articles = draft.articles || [];
+    return lawSections.map((section) => {
+      const sectionKeyResolved = section.id;
+      const articlesList = articles.filter((article) => String(article.sectionId || '') === String(section.id));
+      const articleIds = articlesList.map((article) => String(article.id));
+      const savedEditorial = sectionEditorialsByKey.get(sectionKeyResolved);
+      return {
+        ...section,
+        sectionKeyResolved,
+        articleIds,
+        articles: articlesList.length,
+        articleCount: section.articleCount || articlesList.length,
+        primaryArticleId: articleIds[0] || '',
+        articlesList,
+        counts: sumEditorialCounts(articlesList.map((article) => getArticleEditorialCounts(draft, article))),
+        savedEditorial,
+        hasAnalysis: Boolean(savedEditorial),
+      };
+    });
+  }, [draft, lawSections, sectionEditorialsByKey]);
+
+  const activeSectionOverview = React.useMemo(() => (
+    sectionOverviews.find((section) => section.id === activeSectionId || section.sectionKeyResolved === activeSectionId)
+    || sectionOverviews.find((section) => section.articleIds.includes(String(activeArticleId || '')))
+    || sectionOverviews[0]
+    || null
+  ), [activeArticleId, activeSectionId, sectionOverviews]);
+
+  const selectSection = React.useCallback((section: AdminLawSectionOverview) => {
+    setActiveSectionId(section.sectionKeyResolved);
+    const firstArticle = section.articlesList[0];
+    if (firstArticle) {
+      setActiveArticleId(firstArticle.id);
+    }
+  }, []);
+
+  const selectArticleFromSection = React.useCallback((article: LawArticle) => {
+    setActiveArticleId(article.id);
+    setIsStructurePreviewOpen(true);
+    const section = sectionOverviews.find((item) => item.id === article.sectionId || item.articleIds.includes(article.id));
+    if (section) {
+      setActiveSectionId(section.sectionKeyResolved);
+    }
+  }, [sectionOverviews]);
 
   const lawMateriaOptions = React.useMemo(() => {
     const options = [...subjects];
@@ -1440,76 +1461,45 @@ const AdminLegalCommentaryEditPage = () => {
     return filtered;
   }, [draft?.areaId, draft?.lawTopicFilterId, selectedLawTopicFallbackOption, topics]);
 
-  const selectedSubtopicFallbackOption = React.useMemo<TaxonomyOption | null>(() => {
-    const selectedSubtopicId = String(activeArticle?.subjectFilterId || '');
-    if (!selectedSubtopicId) return null;
-    const existing = topics.find((topic) => String(topic.id) === selectedSubtopicId);
-    if (existing && !isNumericOnlyLabel(existing.name)) return existing;
-    const titleName = String(getArticleSubtopicDisplayText(activeArticle) || '').trim();
-    if (!titleName) return null;
-    return {
-      id: selectedSubtopicId,
-      name: titleName,
-      parentId: draft?.lawTopicFilterId || null,
-    };
-  }, [activeArticle, draft?.lawTopicFilterId, topics]);
-
-  const articleSubtopicOptions = React.useMemo(() => {
+  const getSectionSubtopicOptions = React.useCallback((section: LawSection): TaxonomyOption[] => {
     const lawTopicId = String(draft?.lawTopicFilterId || '');
-    const selectedSubtopicId = String(activeArticle?.subjectFilterId || '');
-    const selectedSubtopicCandidate = topics.find((topic) => String(topic.id) === selectedSubtopicId);
-    const selectedSubtopic = (selectedSubtopicCandidate && !isNumericOnlyLabel(selectedSubtopicCandidate.name))
-      ? selectedSubtopicCandidate
-      : selectedSubtopicFallbackOption;
-
+    const selectedSubtopicId = String(section.subtopicFilterId || '');
+    const selectedSubtopic = topics.find((topic) => String(topic.id) === selectedSubtopicId)
+      || (selectedSubtopicId && section.titleName ? {
+        id: selectedSubtopicId,
+        name: section.titleName,
+        parentId: lawTopicId || null,
+      } : null);
     const filtered = lawTopicId
       ? topics.filter((topic) => (
         String(topic.parentId || '') === lawTopicId
         || String(topic.rootSubjectId || '') === lawTopicId
       ))
       : [];
-
     if (selectedSubtopic && !filtered.some((topic) => String(topic.id) === String(selectedSubtopic.id))) {
       filtered.unshift(selectedSubtopic);
     }
-
     return filtered;
-  }, [activeArticle?.subjectFilterId, draft?.lawTopicFilterId, selectedSubtopicFallbackOption, topics]);
+  }, [draft?.lawTopicFilterId, topics]);
 
-  const selectedAssuntoFallbackOption = React.useMemo<TaxonomyOption | null>(() => {
-    const selectedAssuntoId = String(activeArticle?.topicFilterId || '');
-    if (!selectedAssuntoId) return null;
-    const existing = specificSubjects.find((subject) => String(subject.id) === selectedAssuntoId);
-    if (existing && !isNumericOnlyLabel(existing.name)) return existing;
-    const chapterName = String(getArticleAssuntoDisplayText(activeArticle)).trim();
-    if (!chapterName) return null;
-    return {
-      id: selectedAssuntoId,
-      name: chapterName,
-      parentId: activeArticle?.subjectFilterId || draft?.lawTopicFilterId || null,
-    };
-  }, [activeArticle, draft?.lawTopicFilterId, specificSubjects]);
-
-  const articleAssuntoOptions = React.useMemo(() => {
-    const selectedSubtopicId = String(activeArticle?.subjectFilterId || '');
-    const selectedAssuntoId = String(activeArticle?.topicFilterId || '');
+  const getSectionAssuntoOptions = React.useCallback((section: LawSection): TaxonomyOption[] => {
     const lawTopicId = String(draft?.lawTopicFilterId || '');
-    const assuntoParentId = selectedSubtopicId || lawTopicId;
-    const selectedAssuntoCandidate = specificSubjects.find((subject) => String(subject.id) === selectedAssuntoId);
-    const selectedAssunto = (selectedAssuntoCandidate && !isNumericOnlyLabel(selectedAssuntoCandidate.name))
-      ? selectedAssuntoCandidate
-      : selectedAssuntoFallbackOption;
-
-    const filtered = assuntoParentId
-      ? specificSubjects.filter((subject) => String(subject.parentId || '') === assuntoParentId)
+    const parentTaxonomyId = String(section.subtopicFilterId || lawTopicId || '');
+    const selectedAssuntoId = String(section.assuntoFilterId || '');
+    const selectedAssunto = specificSubjects.find((subject) => String(subject.id) === selectedAssuntoId)
+      || (selectedAssuntoId && section.chapterName ? {
+        id: selectedAssuntoId,
+        name: section.chapterName,
+        parentId: parentTaxonomyId || null,
+      } : null);
+    const filtered = parentTaxonomyId
+      ? specificSubjects.filter((subject) => String(subject.parentId || '') === parentTaxonomyId)
       : [];
-
     if (selectedAssunto && !filtered.some((subject) => String(subject.id) === String(selectedAssunto.id))) {
       filtered.unshift(selectedAssunto);
     }
-
     return filtered;
-  }, [activeArticle?.subjectFilterId, activeArticle?.topicFilterId, draft?.lawTopicFilterId, selectedAssuntoFallbackOption, specificSubjects]);
+  }, [draft?.lawTopicFilterId, specificSubjects]);
 
   const reloadKnowledgeTaxonomies = React.useCallback(async () => {
     const knowledgeTaxonomies = await resolveKnowledgeTaxonomies(true);
@@ -1518,38 +1508,6 @@ const AdminLegalCommentaryEditPage = () => {
     setSpecificSubjects(knowledgeTaxonomies.specificSubjects);
     return knowledgeTaxonomies;
   }, [resolveKnowledgeTaxonomies]);
-
-  const updateActiveArticleTaxonomy = React.useCallback((
-    patch: {
-      subjectFilterId?: string | null;
-      topicFilterId?: string | null;
-      title?: string;
-      chapter?: string;
-      resetTitleLabel?: boolean;
-      resetChapterLabel?: boolean;
-    },
-  ) => {
-    setDraft((current) => {
-      if (!current) return current;
-      const nextArticles = (current.articles || []).map((article) => (
-        article.id === activeArticleId
-          ? {
-            ...article,
-            subjectFilterId: patch.subjectFilterId !== undefined ? patch.subjectFilterId : article.subjectFilterId,
-            topicFilterId: patch.topicFilterId !== undefined ? patch.topicFilterId : article.topicFilterId,
-            hierarchy: {
-              ...(article.hierarchy || {}),
-              ...(patch.title !== undefined ? { title: patch.title, resolvedSubtopic: patch.title } : {}),
-              ...(patch.chapter !== undefined ? { chapter: patch.chapter, resolvedAssunto: patch.chapter } : {}),
-              ...(patch.resetTitleLabel ? { titleLabel: '' } : {}),
-              ...(patch.resetChapterLabel ? { chapterLabel: '' } : {}),
-            },
-          }
-          : article
-      ));
-      return { ...current, articles: nextArticles };
-    });
-  }, [activeArticleId]);
 
   const updateLawMateria = (subjectId: string, explicitSubject?: TaxonomyOption) => {
     if (!subjectId) {
@@ -1560,14 +1518,15 @@ const AdminLegalCommentaryEditPage = () => {
         articles: (current.articles || []).map((article) => ({
           ...article,
           subjectFilterId: null,
+          assuntoFilterId: null,
           topicFilterId: null,
-          hierarchy: {
-            ...(article.hierarchy || {}),
-            title: '',
-            chapter: '',
-            titleLabel: '',
-            chapterLabel: '',
-          },
+        })),
+        sections: (current.sections || []).map((section) => ({
+          ...section,
+          subtopicFilterId: null,
+          assuntoFilterId: null,
+          titleName: '',
+          chapterName: '',
         })),
       } : current);
       return;
@@ -1585,14 +1544,15 @@ const AdminLegalCommentaryEditPage = () => {
         articles: (current.articles || []).map((article) => ({
           ...article,
           subjectFilterId: null,
+          assuntoFilterId: null,
           topicFilterId: null,
-          hierarchy: {
-            ...(article.hierarchy || {}),
-            title: '',
-            chapter: '',
-            titleLabel: '',
-            chapterLabel: '',
-          },
+        })),
+        sections: (current.sections || []).map((section) => ({
+          ...section,
+          subtopicFilterId: null,
+          assuntoFilterId: null,
+          titleName: '',
+          chapterName: '',
         })),
       };
     });
@@ -1606,14 +1566,15 @@ const AdminLegalCommentaryEditPage = () => {
         articles: (current.articles || []).map((article) => ({
           ...article,
           subjectFilterId: null,
+          assuntoFilterId: null,
           topicFilterId: null,
-          hierarchy: {
-            ...(article.hierarchy || {}),
-            title: '',
-            chapter: '',
-            titleLabel: '',
-            chapterLabel: '',
-          },
+        })),
+        sections: (current.sections || []).map((section) => ({
+          ...section,
+          subtopicFilterId: null,
+          assuntoFilterId: null,
+          titleName: '',
+          chapterName: '',
         })),
       } : current);
       return;
@@ -1624,33 +1585,22 @@ const AdminLegalCommentaryEditPage = () => {
       return {
         ...current,
         lawTopicFilterId: String(lawTopicId),
-        articles: (current.articles || []).map((article) => {
-          const currentSubtopic = topics.find((topic) => String(topic.id) === String(article.subjectFilterId || ''));
-          const subtopicBelongsToLawTopic = !currentSubtopic
+        articles: (current.articles || []).map((article) => article),
+        sections: (current.sections || []).map((section) => {
+          const currentSubtopic = topics.find((topic) => String(topic.id) === String(section.subtopicFilterId || ''));
+          const belongsToLawTopic = !currentSubtopic
             || String(currentSubtopic.parentId || '') === String(lawTopicId)
             || String(currentSubtopic.rootSubjectId || '') === String(lawTopicId);
 
-          if (subtopicBelongsToLawTopic) {
-            const currentAssunto = specificSubjects.find((subject) => String(subject.id) === String(article.topicFilterId || ''));
-            const assuntoParentId = String(currentAssunto?.parentId || '');
-            const allowedAssuntoParentId = String(article.subjectFilterId || lawTopicId);
-            if (!currentAssunto || assuntoParentId === allowedAssuntoParentId) {
-              return article;
-            }
-          }
-
-          return {
-            ...article,
-            subjectFilterId: null,
-            topicFilterId: null,
-            hierarchy: {
-              ...(article.hierarchy || {}),
-              title: '',
-              chapter: '',
-              titleLabel: '',
-              chapterLabel: '',
-            },
-          };
+          return belongsToLawTopic
+            ? section
+            : {
+              ...section,
+              subtopicFilterId: null,
+              assuntoFilterId: null,
+              titleName: '',
+              chapterName: '',
+            };
         }),
       };
     });
@@ -1757,142 +1707,6 @@ const AdminLegalCommentaryEditPage = () => {
     }
   };
 
-  const createArticleSubtopic = async (rawName: string) => {
-    const name = rawName.trim();
-    const lawTopicId = String(draft?.lawTopicFilterId || '');
-    if (!name) {
-      addToast('Informe o nome do subtopico.', 'info');
-      return;
-    }
-    if (!lawTopicId) {
-      addToast('Selecione o topico da lei antes de criar um subtopico.', 'error');
-      return;
-    }
-
-    const existing = topics.find((topic) => (
-      normalizeTaxonomyText(topic.name) === normalizeTaxonomyText(name)
-      && (
-        String(topic.parentId || '') === lawTopicId
-        || String(topic.rootSubjectId || '') === lawTopicId
-      )
-    ));
-
-    if (existing) {
-      updateActiveArticleTaxonomy({
-        subjectFilterId: String(existing.id),
-        topicFilterId: null,
-        title: existing.name,
-        chapter: '',
-        resetChapterLabel: true,
-      });
-      addToast('Subtopico existente selecionado.', 'info');
-      return;
-    }
-
-    const parentId = Number(lawTopicId);
-    if (!Number.isFinite(parentId)) {
-      addToast('O topico selecionado precisa estar cadastrado nas taxonomias.', 'error');
-      return;
-    }
-
-    setIsCreatingSubtopic(true);
-    try {
-      const createdId = await filtersService.save({
-        type: 'assunto',
-        name,
-        slug: slugifyTaxonomy(name),
-        materia: false,
-        taxonomy_level: 'subtopico',
-        parent_id: parentId,
-        metadata: { taxonomy_level: 'subtopico' },
-      });
-      const knowledgeTaxonomies = await reloadKnowledgeTaxonomies();
-      const created = knowledgeTaxonomies.topics.find((topic) => String(topic.id) === String(createdId))
-        || knowledgeTaxonomies.topics.find((topic) => (
-          normalizeTaxonomyText(topic.name) === normalizeTaxonomyText(name)
-          && (
-            String(topic.parentId || '') === lawTopicId
-            || String(topic.rootSubjectId || '') === lawTopicId
-          )
-        ))
-        || { id: createdId || name, name, parentId: lawTopicId, rootSubjectId: lawTopicId };
-      updateActiveArticleTaxonomy({
-        subjectFilterId: String(created.id),
-        topicFilterId: null,
-        title: created.name,
-        chapter: '',
-        resetChapterLabel: true,
-      });
-      addToast('Subtopico criado e vinculado ao artigo.', 'success');
-    } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel criar o subtopico.'), 'error');
-    } finally {
-      setIsCreatingSubtopic(false);
-    }
-  };
-
-  const createArticleAssunto = async (rawName: string) => {
-    const name = rawName.trim();
-    const parentTaxonomyId = String(activeArticle?.subjectFilterId || draft?.lawTopicFilterId || '');
-    if (!name) {
-      addToast('Informe o nome do capitulo.', 'info');
-      return;
-    }
-    if (!parentTaxonomyId) {
-      addToast('Selecione o topico da lei ou um subtopico antes de criar o assunto.', 'error');
-      return;
-    }
-
-    const existing = specificSubjects.find((subject) => (
-      normalizeTaxonomyText(subject.name) === normalizeTaxonomyText(name)
-      && String(subject.parentId || '') === parentTaxonomyId
-    ));
-
-    if (existing) {
-      updateActiveArticleTaxonomy({
-        topicFilterId: String(existing.id),
-        chapter: existing.name,
-      });
-      addToast('Capitulo existente selecionado.', 'info');
-      return;
-    }
-
-    const parentId = Number(parentTaxonomyId);
-    if (!Number.isFinite(parentId)) {
-      addToast('O item selecionado precisa estar cadastrado nas taxonomias.', 'error');
-      return;
-    }
-
-    setIsCreatingAssunto(true);
-    try {
-      const createdId = await filtersService.save({
-        type: 'assunto',
-        name,
-        slug: slugifyTaxonomy(name),
-        materia: false,
-        taxonomy_level: 'assunto',
-        parent_id: parentId,
-        metadata: { taxonomy_level: 'assunto' },
-      });
-      const knowledgeTaxonomies = await reloadKnowledgeTaxonomies();
-      const created = knowledgeTaxonomies.specificSubjects.find((subject) => String(subject.id) === String(createdId))
-        || knowledgeTaxonomies.specificSubjects.find((subject) => (
-          normalizeTaxonomyText(subject.name) === normalizeTaxonomyText(name)
-          && String(subject.parentId || '') === parentTaxonomyId
-        ))
-        || { id: createdId || name, name, parentId: parentTaxonomyId };
-      updateActiveArticleTaxonomy({
-        topicFilterId: String(created.id),
-        chapter: created.name,
-      });
-      addToast('Capitulo criado e vinculado ao artigo.', 'success');
-    } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel criar o capitulo.'), 'error');
-    } finally {
-      setIsCreatingAssunto(false);
-    }
-  };
-
   const updateLawField = <K extends keyof AdminLawDraft>(field: K, value: AdminLawDraft[K]) => {
     setDraft((current) => current ? { ...current, [field]: value } : current);
   };
@@ -1908,7 +1722,163 @@ const AdminLegalCommentaryEditPage = () => {
     });
   };
 
-  const updateArticleField = (field: keyof LawArticle | 'subjectFilterId' | 'topicFilterId', value: unknown) => {
+  const updateSectionField = (
+    sectionId: string,
+    patch: Partial<LawSection>,
+  ) => {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        sections: (current.sections || []).map((section) => (
+          String(section.id) === String(sectionId)
+            ? {
+              ...section,
+              ...patch,
+              title: String(patch.displayTitle || patch.title || section.displayTitle || section.title || ''),
+              displayTitle: String(patch.displayTitle || patch.title || section.displayTitle || section.title || ''),
+            }
+            : section
+        )),
+        articles: patch.assuntoFilterId !== undefined
+          ? (current.articles || []).map((article) => (
+            String(article.sectionId || '') === String(sectionId)
+              ? {
+                ...article,
+                assuntoFilterId: patch.assuntoFilterId || null,
+                topicFilterId: patch.assuntoFilterId || null,
+              }
+              : article
+          ))
+          : current.articles,
+      };
+    });
+  };
+
+  const addSection = () => {
+    setDraft((current) => {
+      if (!current) return current;
+      const sectionId = createTempId('section');
+      const sectionIndex = (current.sections || []).length;
+      const section: LawSection = {
+        id: sectionId,
+        lawId: String(current.id || 'new'),
+        slug: sectionId,
+        title: `Secao ${sectionIndex + 1}`,
+        displayTitle: `Secao ${sectionIndex + 1}`,
+        articleCount: 0,
+        sortOrder: sectionIndex,
+      };
+      setActiveSectionId(sectionId);
+      return {
+        ...current,
+        sections: [...(current.sections || []), section],
+      };
+    });
+  };
+
+  const createSectionSubtopic = async (sectionId: string, rawName: string) => {
+    const name = rawName.trim();
+    const lawTopicId = String(draft?.lawTopicFilterId || '');
+    if (!name) {
+      addToast('Informe o nome do subtopico.', 'info');
+      return;
+    }
+    if (!lawTopicId) {
+      addToast('Selecione o topico da lei antes de criar um subtopico.', 'error');
+      return;
+    }
+
+    setIsCreatingSubtopic(true);
+    try {
+      const existing = topics.find((topic) => (
+        normalizeTaxonomyText(topic.name) === normalizeTaxonomyText(name)
+        && (String(topic.parentId || '') === lawTopicId || String(topic.rootSubjectId || '') === lawTopicId)
+      ));
+      const createdId = existing?.id || await filtersService.save({
+        type: 'assunto',
+        name,
+        slug: slugifyTaxonomy(name),
+        materia: false,
+        taxonomy_level: 'subtopico',
+        parent_id: Number(lawTopicId),
+        metadata: { taxonomy_level: 'subtopico' },
+      });
+      const knowledgeTaxonomies = existing ? { topics } : await reloadKnowledgeTaxonomies();
+      const created = knowledgeTaxonomies.topics.find((topic) => String(topic.id) === String(createdId))
+        || { id: createdId || name, name, parentId: lawTopicId, rootSubjectId: lawTopicId };
+      updateSectionField(sectionId, {
+        subtopicFilterId: String(created.id),
+        titleName: created.name,
+        assuntoFilterId: null,
+        chapterName: '',
+      });
+      addToast(existing ? 'Subtopico existente selecionado.' : 'Subtopico criado e vinculado a secao.', existing ? 'info' : 'success');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel criar o subtopico da secao.'), 'error');
+    } finally {
+      setIsCreatingSubtopic(false);
+    }
+  };
+
+  const createSectionAssunto = async (sectionId: string, rawName: string) => {
+    const name = rawName.trim();
+    const section = (draft?.sections || []).find((item) => String(item.id) === String(sectionId));
+    const parentTaxonomyId = String(section?.subtopicFilterId || draft?.lawTopicFilterId || '');
+    if (!name) {
+      addToast('Informe o nome do assunto.', 'info');
+      return;
+    }
+    if (!parentTaxonomyId) {
+      addToast('Selecione o topico ou subtópico antes de criar o assunto.', 'error');
+      return;
+    }
+
+    setIsCreatingAssunto(true);
+    try {
+      const existing = specificSubjects.find((subject) => (
+        normalizeTaxonomyText(subject.name) === normalizeTaxonomyText(name)
+        && String(subject.parentId || '') === parentTaxonomyId
+      ));
+      const createdId = existing?.id || await filtersService.save({
+        type: 'assunto',
+        name,
+        slug: slugifyTaxonomy(name),
+        materia: false,
+        taxonomy_level: 'assunto',
+        parent_id: Number(parentTaxonomyId),
+        metadata: { taxonomy_level: 'assunto' },
+      });
+      const knowledgeTaxonomies = existing ? { specificSubjects } : await reloadKnowledgeTaxonomies();
+      const created = knowledgeTaxonomies.specificSubjects.find((subject) => String(subject.id) === String(createdId))
+        || { id: createdId || name, name, parentId: parentTaxonomyId };
+      updateSectionField(sectionId, {
+        assuntoFilterId: String(created.id),
+        chapterName: created.name,
+      });
+      addToast(existing ? 'Assunto existente selecionado.' : 'Assunto criado e vinculado a secao.', existing ? 'info' : 'success');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel criar o assunto da secao.'), 'error');
+    } finally {
+      setIsCreatingAssunto(false);
+    }
+  };
+
+  const moveArticleToSection = (articleId: string, sectionId: string) => {
+    setDraft((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        articles: (current.articles || []).map((article) => (
+          String(article.id) === String(articleId)
+            ? { ...article, sectionId }
+            : article
+        )),
+      };
+    });
+  };
+
+  const updateArticleField = (field: keyof LawArticle | 'subjectFilterId' | 'topicFilterId' | 'assuntoFilterId', value: unknown) => {
     if (!activeArticle) return;
 
     setDraft((current) => {
@@ -2071,9 +2041,16 @@ const AdminLegalCommentaryEditPage = () => {
   const addArticle = () => {
     setDraft((current) => {
       if (!current) return current;
-      const article = buildEmptyArticle(current.id || 'new');
+      const sectionId = activeSectionOverview?.id || current.sections?.[0]?.id || null;
+      const article = buildEmptyArticle(current.id || 'new', sectionId);
       setActiveArticleId(article.id);
-      return { ...current, articles: [...(current.articles || []), article] };
+      if (sectionId) {
+        setActiveSectionId(sectionId);
+      }
+      return {
+        ...current,
+        articles: [...(current.articles || []), article],
+      };
     });
   };
 
@@ -2556,7 +2533,8 @@ const AdminLegalCommentaryEditPage = () => {
   }, [applyEditorialResultToDraft, buildArticleEditorialSnapshot]);
 
   const applySectionEditorialToDraft = React.useCallback((sectionEditorial?: LawSectionEditorial) => {
-    if (!sectionEditorial?.sectionKey) {
+    const editorialKey = String(sectionEditorial?.sectionId || sectionEditorial?.sectionKey || '');
+    if (!sectionEditorial || !editorialKey) {
       return;
     }
 
@@ -2567,7 +2545,7 @@ const AdminLegalCommentaryEditPage = () => {
 
       const existing = current.sectionEditorials || [];
       const nextSectionEditorials = [
-        ...existing.filter((item) => item.sectionKey !== sectionEditorial.sectionKey),
+        ...existing.filter((item) => String(item.sectionId || item.sectionKey || '') !== editorialKey),
         sectionEditorial,
       ];
 
@@ -2578,14 +2556,14 @@ const AdminLegalCommentaryEditPage = () => {
     });
   }, []);
 
-  const generateSectionAnalysis = React.useCallback(async (section: LawSectionSummary, options?: { silent?: boolean }) => {
+  const generateSectionAnalysis = React.useCallback(async (section: AdminLawSectionOverview | LawSection, options?: { silent?: boolean }) => {
     const currentDraft = draftRef.current;
     if (!currentDraft?.id || !/^\d+$/.test(String(currentDraft.id))) {
       addToastRef.current('Salve a lei antes de gerar a analise dos capitulos.', 'info');
       return null;
     }
 
-    const sectionKey = section.sectionKey || section.id;
+    const sectionKey = section.id;
     setSectionAnalysisLoadingKey(sectionKey);
 
     try {
@@ -2595,13 +2573,14 @@ const AdminLegalCommentaryEditPage = () => {
         law: currentDraft,
         section: {
           id: section.id,
+          sectionId: section.id,
           sectionKey,
           sectionTitle: section.title,
           title: section.title,
           rangeLabel: formatSectionRange(section),
           fromArticle: section.fromArticle,
           toArticle: section.toArticle,
-          articleIds: section.articleIds,
+          articleIds: 'articleIds' in section ? section.articleIds : [],
         },
         previewOnly: false,
       });
@@ -2628,8 +2607,8 @@ const AdminLegalCommentaryEditPage = () => {
       return;
     }
 
-    const existingKeys = new Set((currentDraft.sectionEditorials || []).map((item) => item.sectionKey));
-    const pendingSections = lawSections.filter((section) => !existingKeys.has(section.sectionKey || section.id));
+    const existingKeys = new Set((currentDraft.sectionEditorials || []).map((item) => String(item.sectionId || item.sectionKey || '')));
+    const pendingSections = lawSections.filter((section) => !existingKeys.has(section.id));
     const sectionsToGenerate = pendingSections.length > 0 ? pendingSections : lawSections;
 
     if (sectionsToGenerate.length === 0) {
@@ -3054,1046 +3033,666 @@ const AdminLegalCommentaryEditPage = () => {
     );
   }
 
-  const articleComments = (draft.teacherComments || []).filter((item) => item.articleId === activeArticle?.id);
-  const articleTips = (draft.examTips || []).filter((item) => item.articleId === activeArticle?.id);
-  const articleJurisprudence = (draft.jurisprudence || []).filter((item) => item.articleId === activeArticle?.id);
-  const articleSumulas = (draft.sumulas || []).filter((item) => item.articleId === activeArticle?.id);
-  const sectionEditorialsByKey = new Map((draft.sectionEditorials || []).map((item) => [item.sectionKey, item]));
   const recentLawUpdates = (draft.updates || []).slice(0, 3);
-  const activeSectionMeta = LEGAL_EDITORIAL_SECTIONS.find((section) => section.key === activeEditorialSection);
-  const sectionAnalysesCount = lawSections.filter((section) => sectionEditorialsByKey.has(section.sectionKey || section.id)).length;
-  const editorialSectionCounts: Record<LegalEditorialSection, number> = {
-    teacher: articleComments.length,
-    tips: articleTips.length,
-    jurisprudence: articleJurisprudence.length + (activeArticle?.jurisprudenceNotes || []).length,
-    sumulas: articleSumulas.length,
-    doctrine: activeArticle?.doctrine?.length || 0,
-    'section-analysis': sectionAnalysesCount,
-    ai: batchRun ? Math.max(batchRun.processedArticles, batchRun.totalArticles) : batchEligibleArticlesCount,
-  };
-  const batchProgressPercent = batchRun?.totalArticles
-    ? Math.min(100, Math.round((batchRun.processedArticles / batchRun.totalArticles) * 100))
-    : 0;
-  const batchStartLabel = batchOnlyMissingComments
-    ? `Gerar comentarios pendentes (${batchEligibleArticlesCount})`
-    : `Gerar comentarios de todos (${batchEligibleArticlesCount})`;
   const lawStatusValue = String(draft.status || 'active');
   const lastSyncedLabel = draft.lastSyncedAt
     ? new Date(draft.lastSyncedAt).toLocaleString('pt-BR')
     : 'Ainda nao sincronizada';
+  const activeArticleBlocks = activeArticle ? normalizeArticleBlocks(activeArticle) : [];
+  const activeArticleHasSubject = Boolean(activeArticle?.assuntoFilterId || activeArticle?.topicFilterId || activeSectionOverview?.assuntoFilterId || getArticleAssuntoDisplayText(activeArticle));
+  const activeArticleTextPreview = activeArticle
+    ? buildArticleTextFromBlocks(activeArticleBlocks) || activeArticle.text || activeArticle.texto || 'Texto do artigo ainda nao preenchido.'
+    : 'Selecione um artigo para visualizar o conteudo.';
+  const selectedLawTitle = draft.title || draft.shortTitle || 'Lei sem titulo';
+  const selectedLawNumber = draft.number ? `Lei no ${draft.number}` : selectedLawTitle;
+  const pendingUpdatesCount = recentLawUpdates.length;
+  const showPreparationToast = (message = 'Funcionalidade em preparacao.') => addToast(message, 'info');
+  const toggleStructureSection = (sectionKey: string) => {
+    setOpenStructureSectionIds((current) => {
+      const next = new Set(current);
+      if (next.has(sectionKey)) {
+        next.delete(sectionKey);
+      } else {
+        next.add(sectionKey);
+      }
+      return next;
+    });
+  };
+  const confirmAndRemoveArticle = (articleId: string) => {
+    if (!articleId) return;
+    const canRemove = typeof window === 'undefined'
+      ? false
+      : window.confirm('Tem certeza que deseja excluir este artigo? Esta acao remove o artigo do rascunho atual.');
+    if (canRemove) {
+      removeArticle(articleId);
+      addToast('Artigo removido do rascunho.', 'success');
+    }
+  };
+  const previewLaw = () => {
+    if (!draft.slug) {
+      showPreparationToast('Salve a lei com um slug antes de visualizar.');
+      return;
+    }
+    window.open(`/lei-comentada/${draft.slug}`, '_blank', 'noopener,noreferrer');
+  };
+  const schedulePublication = () => {
+    if (!scheduledDate || !scheduledTime) {
+      addToast('Informe data e hora para agendar a publicacao.', 'info');
+      return;
+    }
+    showPreparationToast('Agendamento sera conectado ao fluxo de publicacao.');
+  };
+  const renderArticlePreviewPanel = () => (
+    <div className="space-y-5">
+      {activeArticle ? (
+        <section className="space-y-5 rounded-sm border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-xl font-semibold text-slate-900">{getArticleLabel(activeArticle)}</h3>
+                <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                  activeArticleHasSubject ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'
+                }`}>
+                  {activeArticleHasSubject ? 'Assunto definido' : 'Sem assunto'}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">{activeArticle.title || getArticleAssuntoDisplayText(activeArticle) || 'Artigo sem titulo interno'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsEditingOriginalText((current) => !current)}
+              className="inline-flex h-8 items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <FileText size={13} /> Editar Texto Original
+            </button>
+          </div>
+
+          {isEditingOriginalText ? (
+            <TextArea
+              value={String(activeArticle.text || '')}
+              onChange={(event) => updateArticleField('text', event.target.value)}
+              placeholder="Texto original do artigo..."
+            />
+          ) : (
+            <div className="whitespace-pre-wrap rounded-sm border border-slate-200 bg-white px-3 py-3 text-sm leading-6 text-slate-700">
+              {activeArticleTextPreview}
+            </div>
+          )}
+
+          <div className="rounded-sm border border-slate-200 bg-slate-50 p-4">
+            <p className="mb-3 text-sm font-semibold text-slate-900">Enriquecer este artigo com IA e conteudos juridicos</p>
+            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+              {[
+                { key: 'teacher-comment', title: 'Comentario do Professor', text: 'Gere um comentario didatico e objetivo.', icon: MessageSquare },
+                { key: 'sumula', title: 'Sumulas', text: 'Busque e resuma sumulas relacionadas.', icon: BookOpen },
+                { key: 'doctrine', title: 'Doutrinas', text: 'Selecione e resuma doutrinas relevantes.', icon: FileText },
+                { key: 'jurisprudence', title: 'Jurisprudencia', text: 'Traga julgados relevantes sobre o artigo.', icon: Scale },
+                { key: 'exam-tip', title: 'Macete', text: 'Crie um macete para facilitar a memorizacao.', icon: Lightbulb },
+              ].map((card) => {
+                const Icon = card.icon;
+                return (
+                  <div key={card.key} className="flex min-h-[156px] flex-col rounded-sm border border-slate-200 bg-white p-4">
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-[#f0f6fc] text-[#2271b1]">
+                        <Icon size={18} />
+                      </span>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-semibold leading-5 text-slate-900">{card.title}</h4>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">{card.text}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void generateWithAi(card.key as Exclude<LegalAiGenerationKind, 'bundle'>)}
+                      disabled={Boolean(aiLoading) || isBatchRunning}
+                      className="mt-auto inline-flex h-8 w-full items-center justify-center gap-2 rounded-sm border border-[#2271b1] bg-white px-3 text-xs font-semibold text-[#2271b1] hover:bg-[#f0f6fc] disabled:opacity-60"
+                    >
+                      {aiLoading === card.key ? <Loader2 className="animate-spin" size={13} /> : null}
+                      Gerar
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <details className="rounded-sm border border-slate-200 bg-white" open>
+            <summary className="flex cursor-pointer items-center justify-between px-3 py-3 text-sm font-semibold text-slate-900">
+              Incisos, Alineas, Paragrafos e Outros
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">{activeArticleBlocks.length} itens</span>
+            </summary>
+            <div className="space-y-2 border-t border-slate-200 p-3">
+              {activeArticleBlocks.map((block) => (
+                <div key={block.id} className="grid gap-2 rounded-sm border border-slate-200 bg-slate-50 p-2 md:grid-cols-[130px_160px_minmax(0,1fr)_auto]">
+                  <SelectInput value={block.kind} onChange={(event) => updateArticleBlock(block.id, { kind: event.target.value as LegalArticleBlock['kind'] })}>
+                    {LEGAL_BLOCK_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
+                  </SelectInput>
+                  <TextInput value={block.label || ''} onChange={(event) => updateArticleBlock(block.id, { label: event.target.value })} placeholder="Marcador" />
+                  <TextInput value={block.text || ''} onChange={(event) => updateArticleBlock(block.id, { text: event.target.value })} placeholder="Texto do bloco" />
+                  <button type="button" onClick={() => removeArticleBlock(block.id)} className="rounded-sm border border-red-200 bg-white px-3 text-xs font-semibold text-red-600 hover:bg-red-50">
+                    Excluir
+                  </button>
+                </div>
+              ))}
+              <div className="flex flex-col gap-2 border-t border-slate-200 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => addArticleBlock('inciso')} className="inline-flex h-8 items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                    <Plus size={13} /> Inciso
+                  </button>
+                  <button type="button" onClick={() => addArticleBlock('alinea')} className="inline-flex h-8 items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                    <Plus size={13} /> Alinea
+                  </button>
+                  <button type="button" onClick={() => addArticleBlock('paragraph')} className="inline-flex h-8 items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                    <Plus size={13} /> Paragrafo
+                  </button>
+                </div>
+                <button type="button" onClick={() => confirmAndRemoveArticle(activeArticle.id)} className="inline-flex h-8 items-center justify-center gap-1 rounded-sm border border-red-300 bg-white px-3 text-xs font-medium text-red-600 hover:bg-red-50">
+                  <Trash2 size={13} /> Excluir
+                </button>
+              </div>
+            </div>
+          </details>
+        </section>
+      ) : (
+        <div className="flex min-h-[220px] flex-col items-center justify-center rounded-sm border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+          <FileText className="mb-3 text-slate-300" size={36} />
+          <p className="text-sm font-semibold text-slate-900">Selecione ou adicione um artigo.</p>
+          <button type="button" onClick={addArticle} className="mt-4 inline-flex h-9 items-center gap-2 rounded-sm bg-[#2271b1] px-4 text-sm font-semibold text-white hover:bg-[#135e96]">
+            <Plus size={14} /> Adicionar Artigo
+          </button>
+        </div>
+      )}
+    </div>
+  );
+  const renderSectionAnalysisPanel = (section: AdminLawSectionOverview) => {
+    const sectionAnalysis = section.savedEditorial || null;
+    const isSectionAnalysisLoading = sectionAnalysisLoadingKey === section.sectionKeyResolved;
+    const rangeLabel = formatSectionRange(section);
+    const sectionTokens = [...(sectionAnalysis?.macetes || []), ...(sectionAnalysis?.keywords || [])];
+
+    return (
+      <section className="rounded-sm border border-slate-200 bg-white">
+        <div className="flex flex-col gap-3 border-b border-slate-200 bg-[#f8fbff] px-3 py-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-900">Analise detalhada da secao</h3>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                sectionAnalysis ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+              }`}>
+                {sectionAnalysis ? 'Pronta' : 'Pendente'}
+              </span>
+            </div>
+            <p className="mt-1 text-sm font-medium text-slate-700">{section.title}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {rangeLabel} - {section.articlesList.length} artigo(s)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void generateSectionAnalysis(section)}
+            disabled={isSectionAnalysisLoading || isGeneratingAllSectionAnalyses}
+            className="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-sm border border-[#2271b1] bg-white px-3 text-xs font-semibold text-[#2271b1] hover:bg-[#f0f6fc] disabled:opacity-60"
+          >
+            {isSectionAnalysisLoading ? <Loader2 className="animate-spin" size={13} /> : <Sparkles size={13} />}
+            {sectionAnalysis ? 'Regerar analise' : 'Gerar analise'}
+          </button>
+        </div>
+        <div className="space-y-3 p-3">
+          {sectionAnalysis ? (
+            <>
+              <div className="rounded-sm border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resumo da analise</p>
+                <p className="mt-2 text-sm leading-6 text-slate-700">{sectionAnalysis.summary}</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-sm border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Como cai em prova</p>
+                  <ul className="mt-2 space-y-1 text-sm leading-5 text-slate-700">
+                    {(sectionAnalysis.examFocus || []).slice(0, 3).map((item) => (
+                      <li key={item}>- {item}</li>
+                    ))}
+                    {(sectionAnalysis.examFocus || []).length === 0 ? <li>Nenhum foco registrado.</li> : null}
+                  </ul>
+                </div>
+                <div className="rounded-sm border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Macetes e palavras-chave</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {sectionTokens.slice(0, 6).map((item) => (
+                      <span key={item} className="rounded-full bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700">{item}</span>
+                    ))}
+                    {sectionTokens.length === 0 ? (
+                      <span className="text-sm text-slate-500">Nenhum item registrado.</span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-sm border border-dashed border-slate-300 bg-white p-4 text-sm leading-6 text-slate-600">
+              Esta secao ainda nao possui analise propria. Gere uma analise aqui para orientar o aluno pelo conjunto de artigos, com pegadinhas, pontos de prova e conexoes relevantes.
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  };
+  const renderLawExplorer = () => (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-900">{selectedLawNumber}</p>
+          <p className="mt-1 truncate text-xs text-slate-500">{selectedLawTitle}</p>
+        </div>
+        <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+          {draft.articles?.length || 0} artigos
+        </span>
+      </div>
+
+      <div className="mt-4 max-h-[520px] space-y-2 overflow-y-auto pr-1">
+        {sectionOverviews.map((section) => {
+          const sectionKey = section.sectionKeyResolved;
+          const isActiveSection = activeSectionOverview?.sectionKeyResolved === sectionKey;
+          const isOpen = openStructureSectionIds.has(sectionKey) || isActiveSection;
+          const sectionParentLabel = section.titleName || section.titleLabel || 'Estrutura da lei';
+          const sectionSubtopicOptions = getSectionSubtopicOptions(section);
+          const sectionAssuntoOptions = getSectionAssuntoOptions(section);
+          return (
+            <div
+              key={section.id}
+              className={`rounded-sm border bg-white transition-colors ${
+                isActiveSection ? 'border-[#72aee6] shadow-sm' : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  selectSection(section);
+                  toggleStructureSection(sectionKey);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+              >
+                {isOpen ? <ChevronDown size={15} className="text-slate-500" /> : <ChevronRight size={15} className="text-slate-500" />}
+                <GripVertical size={14} className="text-slate-300" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">{sectionParentLabel}</span>
+                  <span className="block truncate text-sm font-semibold text-slate-900">{section.title}</span>
+                </span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                  {section.articlesList.length}
+                </span>
+              </button>
+              {isOpen ? (
+                <div className="space-y-1 border-t border-slate-200 bg-slate-50 p-2">
+                  <div className="rounded-sm border border-slate-200 bg-white p-3">
+                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                      <div>
+                        <FieldLabel>Nome exibido da secao</FieldLabel>
+                        <TextInput
+                          value={section.displayTitle || section.title || ''}
+                          onChange={(event) => updateSectionField(section.id, {
+                            title: event.target.value,
+                            displayTitle: event.target.value,
+                          })}
+                          placeholder="CAPITULO I - Das Disposicoes Gerais"
+                        />
+                      </div>
+                      <CreatableTaxonomySelect
+                        label="Subtopico (Titulo)"
+                        options={sectionSubtopicOptions}
+                        value={section.subtopicFilterId || ''}
+                        selectedLabelOverride={String(section.titleName || '').trim() || undefined}
+                        placeholder={draft.lawTopicFilterId ? 'Selecione o subtopico' : 'Selecione o topico da lei'}
+                        createLabel="Criar subtopico"
+                        disabled={!draft.lawTopicFilterId}
+                        loading={isCreatingSubtopic}
+                        helper="Classificacao da secao pelo titulo da lei."
+                        onChange={(value, option) => updateSectionField(section.id, {
+                          subtopicFilterId: value || null,
+                          titleName: value ? String(option?.name || '') : '',
+                          assuntoFilterId: null,
+                          chapterName: '',
+                        })}
+                        onCreate={(name) => createSectionSubtopic(section.id, name)}
+                      />
+                      <CreatableTaxonomySelect
+                        label="Assunto (Capitulo)"
+                        options={sectionAssuntoOptions}
+                        value={section.assuntoFilterId || ''}
+                        selectedLabelOverride={String(section.chapterName || '').trim() || undefined}
+                        placeholder="Selecione o assunto"
+                        createLabel="Criar assunto"
+                        disabled={!draft.lawTopicFilterId}
+                        loading={isCreatingAssunto}
+                        helper="Artigos desta secao herdam este assunto."
+                        onChange={(value, option) => updateSectionField(section.id, {
+                          assuntoFilterId: value || null,
+                          chapterName: value ? String(option?.name || '') : '',
+                        })}
+                        onCreate={(name) => createSectionAssunto(section.id, name)}
+                      />
+                    </div>
+                  </div>
+                  <div className="mb-2">
+                    {renderSectionAnalysisPanel(section)}
+                  </div>
+                  {section.articlesList.map((article) => {
+                    const hasSubject = Boolean(article.assuntoFilterId || article.topicFilterId || section.assuntoFilterId || getArticleAssuntoDisplayText(article));
+                    const isActiveArticle = article.id === activeArticle?.id;
+                    return (
+                      <React.Fragment key={article.id}>
+                        <button
+                          type="button"
+                          onClick={() => selectArticleFromSection(article)}
+                          className={`flex w-full items-center gap-2 rounded-sm border px-3 py-2 text-left ${
+                            isActiveArticle
+                              ? 'border-[#72aee6] bg-white shadow-sm'
+                              : 'border-transparent hover:border-slate-200 hover:bg-white'
+                          }`}
+                        >
+                          <FileText size={14} className={isActiveArticle ? 'text-[#2271b1]' : 'text-slate-400'} />
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{getArticleLabel(article)}</span>
+                          <span className={`hidden rounded-full px-2 py-0.5 text-[10px] font-bold sm:inline-flex ${
+                            hasSubject ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'
+                          }`}>
+                            {hasSubject ? 'Assunto definido' : 'Sem assunto'}
+                          </span>
+                        </button>
+                        {isActiveArticle ? (
+                          <div className="rounded-sm border border-[#72aee6] bg-white shadow-sm">
+                            <div className="flex flex-col gap-2 border-b border-slate-200 bg-[#f8fbff] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">Preview do artigo</p>
+                                <p className="text-xs text-slate-500">Aberto logo abaixo do item selecionado.</p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <select
+                                  value={article.sectionId || section.id}
+                                  onChange={(event) => moveArticleToSection(article.id, event.target.value)}
+                                  className="h-8 rounded-sm border border-slate-300 bg-white px-2 text-xs text-slate-700"
+                                  title="Mover artigo para outra secao"
+                                >
+                                  {sectionOverviews.map((option) => (
+                                    <option key={option.id} value={option.id}>{option.title}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => setIsStructurePreviewOpen((current) => !current)}
+                                  className="inline-flex h-8 items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                  {isStructurePreviewOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                                  {isStructurePreviewOpen ? 'Ocultar preview' : 'Exibir preview'}
+                                </button>
+                              </div>
+                            </div>
+                            {isStructurePreviewOpen ? (
+                              <div className="p-3">
+                                {renderArticlePreviewPanel()}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+        {sectionOverviews.length === 0 ? (
+          <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+            Nenhuma secao detectada ainda. Importe uma lei ou adicione artigos manualmente.
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" onClick={addSection} className="inline-flex h-8 items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
+          <Plus size={13} /> Secao
+        </button>
+        <button type="button" onClick={addArticle} className="inline-flex h-8 items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
+          <Plus size={13} /> Artigo
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">Explorer da lei. Reordenacao visual preparada para a proxima etapa.</p>
+    </>
+  );
 
   return renderAdminShell(
       <div className="space-y-5">
-        <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
-          <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between`}>
-            <div className="flex min-w-0 items-start gap-4">
-            <Link href="/admin/operation/lei-comentada" className={`${ADMIN_SECONDARY_BUTTON_CLASS} mt-0.5 h-9 w-9 justify-center p-0`}>
-              <ArrowLeft size={18} />
-            </Link>
+        <div className="space-y-4 text-slate-900">
+          <header className="flex flex-col gap-2 border-b border-slate-300 pb-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                {isNew ? 'Nova lei comentada' : draft.shortTitle || draft.title || 'Editar lei'}
-              </h1>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Base oficial, artigos, comentarios editoriais e sincronizacao com a fonte normativa.
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-normal leading-tight text-slate-900">
+                  {isNew ? 'Adicionar Nova Lei' : 'Editar Lei Comentada'}
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => showPreparationToast('Guia de uso em preparacao.')}
+                  className="inline-flex h-8 items-center rounded-sm border border-[#2271b1] bg-white px-3 text-xs font-medium text-[#2271b1] hover:bg-[#f0f6fc]"
+                >
+                  Ver guia de uso
+                </button>
+              </div>
+              <p className="mt-1 text-sm text-slate-600">
+                Importe uma lei do Planalto, organize pela taxonomia da plataforma e enriqueça com IA.
               </p>
             </div>
-          </div>
+            <Link href="/admin/operation/lei-comentada" className="text-sm font-medium text-[#2271b1] hover:underline">
+              Ver leis
+            </Link>
+          </header>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
-              {!isNew && draft.id ? (
-                <button type="button" onClick={() => void openUpdatesModal()} className={ADMIN_SECONDARY_BUTTON_CLASS}>
-                  <History size={14} /> Atualizacoes
-                </button>
-              ) : null}
-              {!isNew && draft.id ? (
-                <button
-                  type="button"
-                  onClick={() => void syncFromOfficialSource()}
-                  disabled={isSyncingFromOfficial}
-                  className={ADMIN_SECONDARY_BUTTON_CLASS}
-                >
-                  {isSyncingFromOfficial ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
-                  Sincronizar
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void saveLaw()}
-                disabled={isSaving}
-                className={ADMIN_PRIMARY_BUTTON_CLASS}
-              >
-                {isSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
-                Salvar lei
-              </button>
-            </div>
-          </div>
-        </div>
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <main className="space-y-4">
+              <section className="rounded-sm border border-slate-300 bg-white shadow-sm">
+                <div className="border-b border-slate-200 px-4 py-3">
+                  <h2 className="text-base font-semibold text-slate-900">1. Importar Lei do Planalto</h2>
+                </div>
+                <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+                  <div className="space-y-3">
+                    <div>
+                      <FieldLabel>URL da Lei (Planalto)</FieldLabel>
+                      <TextInput
+                        value={draft.officialUrl || ''}
+                        onChange={(event) => updateLawField('officialUrl', event.target.value)}
+                        placeholder="Cole a URL da lei no Planalto"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        Ex.: https://www.planalto.gov.br/ccivil_03/leis/l2848compilado.htm
+                      </p>
+                    </div>
+                    <div className="rounded-sm border border-[#72aee6] bg-[#f0f6fc] px-3 py-2 text-sm text-slate-700">
+                      <span className="font-semibold text-[#135e96]">Dica:</span> A importacao preserva a hierarquia da lei, incluindo titulos, capitulos, secoes e artigos.
+                    </div>
+                  </div>
+                  <div className="flex flex-col justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">O que sera importado automaticamente</p>
+                      <ul className="mt-3 space-y-2 text-sm text-slate-600">
+                        {['Texto completo da lei', 'Todos os artigos', 'Incisos, alineas, paragrafos, caput', 'Estrutura de capitulos/titulos/secoes'].map((item) => (
+                          <li key={item} className="flex items-center gap-2">
+                            <CheckCircle2 size={15} className="text-emerald-600" /> {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="flex flex-col items-start gap-2 sm:items-end">
+                      <button
+                        type="button"
+                        onClick={() => void importFromPlanalto()}
+                        disabled={isImportingFromPlanalto}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-sm bg-[#2271b1] px-5 text-sm font-semibold text-white hover:bg-[#135e96] disabled:opacity-60"
+                      >
+                        {isImportingFromPlanalto ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+                        Importar Lei
+                      </button>
+                      <button type="button" onClick={() => showPreparationToast('Use uma URL publica do Planalto no campo ao lado.')} className="text-xs font-medium text-[#2271b1] hover:underline">
+                        Ver exemplo de URL
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
-        {!isNew && draft.id ? (
-          <div className={`${ADMIN_SURFACE_CLASS} p-4`}>
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_260px]">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-600 dark:text-amber-300">O que mudou</p>
-                <h2 className="mt-1 text-base font-semibold text-slate-900 dark:text-slate-100">
-                  Novidades da ultima sincronizacao
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  Quando o Planalto altera, inclui ou remove artigo, essa area vira o resumo que o aluno ve na leitura.
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={() => void syncFromOfficialSource()}
-                  disabled={isSyncingFromOfficial}
-                  className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center`}
-                >
-                  {isSyncingFromOfficial ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
-                  Sincronizar agora
-                </button>
-                <button type="button" onClick={() => void openUpdatesModal()} className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center`}>
-                  <History size={14} /> Historico completo
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              {recentLawUpdates.length > 0 ? recentLawUpdates.map((update) => (
-                <div key={update.id} className="rounded-sm border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
-                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
-                    {update.changeType === 'created' ? 'Novo' : update.changeType === 'revoked' ? 'Revogado' : 'Alterado'}
+              <section className="rounded-sm border border-slate-300 bg-white shadow-sm">
+                <div className="border-b border-slate-200 px-4 py-3">
+                  <h2 className="text-base font-semibold text-slate-900">2. Classificacao da Lei (Taxonomia da Plataforma)</h2>
+                  <p className="mt-1 text-xs text-slate-600">
+                    A lei sera organizada pelas mesmas categorias usadas nas questoes, permitindo integracao com os mesmos filtros.
                   </p>
-                  <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{update.title}</p>
-                  <p className="mt-1 line-clamp-2 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">{update.summary}</p>
                 </div>
-              )) : (
-                <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 md:col-span-3">
-                  Nenhuma mudanca registrada ainda. Use a sincronizacao para comparar o texto oficial e preencher esta area automaticamente.
-                </div>
-              )}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <main className="space-y-5">
-            <EditorPanel
-              title="Dados da lei"
-              description="Identificacao, fonte oficial e metadados basicos da norma."
-            >
-              <div className="space-y-4">
-                <div>
+                <div className="grid gap-4 p-4 md:grid-cols-2">
                   <CreatableTaxonomySelect
-                    label="Materia"
+                    label="Disciplina / Materia"
                     options={lawMateriaOptions}
                     value={draft.areaId || ''}
-                    placeholder="Selecionar ou criar materia"
+                    placeholder="Selecione a disciplina"
                     createLabel="Criar materia"
                     loading={isCreatingMateria}
-                    helper="Essa materia e a raiz que vincula a lei ao banco de questoes."
+                    helper="Agrupa todas as leis da mesma area."
                     onChange={(value, option) => updateLawMateria(value, option)}
                     onCreate={createMateria}
                   />
-                </div>
-                <div>
                   <CreatableTaxonomySelect
-                    label="Topico (nome da lei)"
+                    label="Topico / Nome da Lei"
                     options={lawTopicoOptions}
                     value={draft.lawTopicFilterId || ''}
                     selectedLabelOverride={String(draft.title || draft.shortTitle || '').trim() || undefined}
-                    placeholder={draft.areaId ? 'Selecionar ou criar topico da lei' : 'Selecione a materia primeiro'}
+                    placeholder={draft.areaId ? 'Selecione o topico' : 'Selecione a materia primeiro'}
                     createLabel="Criar topico"
                     disabled={!draft.areaId}
                     loading={isCreatingLawTopic}
-                    helper="Hierarquia oficial: materia -> topico -> subtopico -> assunto."
+                    helper="A lei inteira fica como topico filho da materia."
                     onChange={(value) => updateLawTopico(value)}
                     onCreate={createLawTopico}
                   />
+                  <div className="rounded-sm border border-[#72aee6] bg-[#f0f6fc] px-3 py-2 text-sm text-[#135e96] md:col-span-2">
+                    <span className="font-semibold">Como funciona:</span> {'Lei = Materia + Topico. Secao = Subtopico + Assunto. Artigos herdam a secao.'}
+                  </div>
                 </div>
-                <div>
-                  <FieldLabel>Nome da lei</FieldLabel>
-                  <TextInput
-                    value={draft.title || draft.shortTitle || ''}
-                    onChange={(event) => updateLawTitle(event.target.value)}
-                    placeholder="Lei Maria da Penha"
-                  />
+              </section>
+
+              <section className="rounded-sm border border-slate-300 bg-white shadow-sm">
+                <div className="border-b border-slate-200 px-4 py-3">
+                  <h2 className="text-base font-semibold text-slate-900">3. Estrutura da Lei</h2>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Organize secoes e artigos em uma arvore ampla, sem dividir espaco com o editor.
+                  </p>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="p-4">
+                  {renderLawExplorer()}
+                </div>
+              </section>
+
+              <details className="rounded-sm border border-slate-300 bg-white shadow-sm">
+                <summary className="cursor-pointer px-4 py-3 text-base font-semibold text-slate-900">4. Informacoes Adicionais (opcional)</summary>
+                <div className="grid gap-4 border-t border-slate-200 p-4 md:grid-cols-2">
+                  <div>
+                    <FieldLabel>Nome da lei</FieldLabel>
+                    <TextInput value={draft.title || draft.shortTitle || ''} onChange={(event) => updateLawTitle(event.target.value)} placeholder="Lei Maria da Penha" />
+                  </div>
+                  <div>
+                    <FieldLabel>Slug</FieldLabel>
+                    <TextInput value={draft.slug || ''} onChange={(event) => updateLawField('slug', event.target.value)} placeholder="lei-maria-da-penha" />
+                  </div>
+                  <div>
+                    <FieldLabel>Numero</FieldLabel>
+                    <TextInput value={draft.number || ''} onChange={(event) => updateLawField('number', event.target.value)} placeholder="11.340/2006" />
+                  </div>
                   <div>
                     <FieldLabel>Sigla</FieldLabel>
-                    <TextInput value={draft.acronym || ''} onChange={(event) => updateLawField('acronym', event.target.value)} placeholder="CP" />
+                    <TextInput value={draft.acronym || ''} onChange={(event) => updateLawField('acronym', event.target.value)} placeholder="LMP" />
                   </div>
-                  <div>
-                    <FieldLabel>Ano</FieldLabel>
-                    <TextInput value={draft.year || ''} onChange={(event) => updateLawField('year', event.target.value)} placeholder="1940" />
+                  <div className="md:col-span-2">
+                    <FieldLabel>Ementa</FieldLabel>
+                    <TextArea value={draft.ementa || ''} onChange={(event) => updateLawField('ementa', event.target.value)} />
                   </div>
                 </div>
-                <div>
-                  <FieldLabel>Numero</FieldLabel>
-                  <TextInput value={draft.number || ''} onChange={(event) => updateLawField('number', event.target.value)} placeholder="Decreto-Lei 2.848" />
-                </div>
-                <div>
-                  <FieldLabel>Slug</FieldLabel>
-                  <TextInput value={draft.slug || ''} onChange={(event) => updateLawField('slug', event.target.value)} placeholder="codigo-penal" />
-                </div>
-                <div>
-                  <FieldLabel>Link oficial do Planalto</FieldLabel>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <TextInput
-                      value={draft.officialUrl || ''}
-                      onChange={(event) => updateLawField('officialUrl', event.target.value)}
-                      placeholder="https://www.planalto.gov.br/..."
-                      className="flex-1"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void importFromPlanalto()}
-                      disabled={isImportingFromPlanalto}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-[10px] font-black uppercase tracking-[0.16em] text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-60 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
-                    >
-                      {isImportingFromPlanalto ? <Loader2 className="animate-spin" size={15} /> : <Download size={15} />}
-                      Importar
+              </details>
+            </main>
+
+            <aside className="space-y-4 xl:sticky xl:top-5 xl:self-start">
+              <section className="rounded-sm border border-slate-300 bg-white shadow-sm">
+                <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">Publicar</h2>
+                <div className="space-y-4 p-4">
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => void saveLaw()} disabled={isSaving} className="h-8 flex-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                      Salvar como rascunho
+                    </button>
+                    <button type="button" onClick={previewLaw} className="h-8 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                      <Eye size={13} className="mr-1 inline" /> Visualizar
                     </button>
                   </div>
-                </div>
-                <div>
-                  <FieldLabel>Preambulo (quando houver)</FieldLabel>
-                  <TextArea
-                    value={String(draft.preamble || '')}
-                    onChange={(event) => updateLawField('preamble', event.target.value)}
-                    placeholder="Ex.: Nos termos do art. 84, inciso IV, da Constituicao Federal..."
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Ementa</FieldLabel>
-                  <TextArea value={draft.ementa || ''} onChange={(event) => updateLawField('ementa', event.target.value)} />
-                </div>
-              </div>
-            </EditorPanel>
-            {activeArticle ? (
-              <>
-                <EditorPanel title={getArticleLabel(activeArticle)} description="Texto legal, vinculos editoriais e estrutura do artigo.">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Texto legal</p>
-                      <h2 className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">{getArticleLabel(activeArticle)}</h2>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeArticle(activeArticle.id)}
-                      className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-red-300 bg-white px-3 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 dark:border-red-800 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-500/10"
-                    >
-                      <Trash2 size={14} /> Remover artigo
-                    </button>
-                  </div>
-
-                  <div className="mt-5 grid gap-4 lg:grid-cols-3">
-                    <div>
-                      <FieldLabel>Numero do artigo</FieldLabel>
-                      <TextInput value={activeArticle.number || ''} onChange={(event) => updateArticleField('number', event.target.value)} placeholder="1o, 121, 5o" />
-                    </div>
-                    <div className="lg:col-span-2">
-                      <FieldLabel>Titulo interno do artigo (opcional)</FieldLabel>
-                      <TextInput
-                        value={String(activeArticle.title || '')}
-                        onChange={(event) => updateArticleField('title', event.target.value)}
-                        placeholder="Ex.: Anterioridade da lei / Lei penal no tempo"
-                      />
-                    </div>
-                    <div className="lg:col-span-3">
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
-                        <div className="flex flex-col gap-1">
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Vinculo com questoes</p>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">
-                            Neste artigo, selecione subtopico e assunto. Quando nao houver subtopico, vincule o assunto direto ao topico da lei.
-                          </p>
-                        </div>
-                        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                          <div>
-                            <CreatableTaxonomySelect
-                              label="Subtopico (titulo)"
-                              options={articleSubtopicOptions}
-                              value={activeArticle.subjectFilterId || ''}
-                              selectedLabelOverride={String(getArticleSubtopicDisplayText(activeArticle) || '').trim() || undefined}
-                              placeholder={draft.lawTopicFilterId ? 'Selecionar ou criar subtopico' : 'Selecione o topico da lei primeiro'}
-                              createLabel="Criar subtopico"
-                              disabled={!draft.lawTopicFilterId}
-                              loading={isCreatingSubtopic}
-                              onChange={(value, option) => {
-                                updateActiveArticleTaxonomy({
-                                  subjectFilterId: value || null,
-                                  topicFilterId: null,
-                                title: value ? String(option?.name || getArticleSubtopicDisplayText(activeArticle) || '') : '',
-                                  chapter: '',
-                                  resetChapterLabel: true,
-                                });
-                              }}
-                              onCreate={createArticleSubtopic}
-                            />
-                          </div>
-                          <div>
-                            <CreatableTaxonomySelect
-                              label="Assunto (capitulo)"
-                              options={articleAssuntoOptions}
-                              value={activeArticle.topicFilterId || ''}
-                              selectedLabelOverride={String(getArticleAssuntoDisplayText(activeArticle) || '').trim() || undefined}
-                              placeholder={draft.lawTopicFilterId ? 'Selecionar ou criar assunto' : 'Selecione o topico da lei primeiro'}
-                              createLabel="Criar assunto"
-                              disabled={!draft.lawTopicFilterId}
-                              loading={isCreatingAssunto}
-                              onChange={(value, option) => updateActiveArticleTaxonomy({
-                                topicFilterId: value || null,
-                                chapter: value ? String(option?.name || getArticleAssuntoDisplayText(activeArticle) || '') : '',
-                              })}
-                              onCreate={createArticleAssunto}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="lg:col-span-3">
-                      <div className="rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/50">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Estrutura legal</p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                              Caput, paragrafos, incisos, alineas e notas oficiais
-                            </p>
-                            <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                              Organize o artigo por blocos. O texto final e montado automaticamente na ordem juridica.
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {LEGAL_BLOCK_KINDS.map((kind) => (
-                              <button
-                                key={kind.value}
-                                type="button"
-                                onClick={() => addArticleBlock(kind.value)}
-                                className="inline-flex h-8 items-center gap-1 rounded-sm border border-slate-300 bg-white px-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                              >
-                                <Plus size={12} /> {kind.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="mt-4 space-y-3">
-                          {(normalizeArticleBlocks(activeArticle) || []).map((block, index, list) => (
-                            <div key={block.id} className="rounded-sm border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/70">
-                              <div className="grid gap-3 lg:grid-cols-[140px_minmax(0,1fr)_auto]">
-                                <SelectInput
-                                  value={block.kind}
-                                  onChange={(event) => updateArticleBlock(block.id, { kind: event.target.value as LegalArticleBlock['kind'] })}
-                                >
-                                  {LEGAL_BLOCK_KINDS.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                  ))}
-                                </SelectInput>
-                                <TextInput
-                                  value={block.label || ''}
-                                  onChange={(event) => updateArticleBlock(block.id, { label: event.target.value })}
-                                  placeholder="Rotulo (ex.: Art. 5o, § 1o, I, a)"
-                                />
-                                <div className="flex items-center justify-end gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => moveArticleBlock(block.id, 'up')}
-                                    disabled={index === 0}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-300 bg-white text-xs font-black text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                                    aria-label="Mover bloco para cima"
-                                  >
-                                    ↑
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => moveArticleBlock(block.id, 'down')}
-                                    disabled={index >= list.length - 1}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-300 bg-white text-xs font-black text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                                    aria-label="Mover bloco para baixo"
-                                  >
-                                    ↓
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeArticleBlock(block.id)}
-                                    disabled={list.length <= 1}
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-40 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20"
-                                    aria-label="Remover bloco"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                              </div>
-                              <TextArea
-                                className="mt-3 min-h-[110px]"
-                                value={block.text || ''}
-                                onChange={(event) => updateArticleBlock(block.id, { text: event.target.value })}
-                                placeholder="Texto do bloco legal..."
-                              />
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="mt-4 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Texto oficial consolidado (preview)</p>
-                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
-                            {buildArticleTextFromBlocks(normalizeArticleBlocks(activeArticle)) || 'Sem conteudo preenchido.'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </EditorPanel>
-
-                <EditorPanel title="Conteudo do artigo" description="IA, lote editorial e ajustes manuais do conteudo complementar.">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Editorial e IA</p>
-                      <h2 className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">Conteudo do artigo</h2>
-                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Gere com IA e ajuste manualmente o conteudo editorial quando necessario.</p>
-                    </div>
-                    {activeEditorialSection === 'ai' ? (
-                      <div className="flex flex-wrap gap-2">
-                        {!isNew && draft.id ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => void startBatchGeneration()}
-                            disabled={isBatchRunning || Boolean(aiLoading) || batchEligibleArticlesCount <= 0}
-                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-60 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
-                          >
-                            {isBatchRunning ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                            {batchStartLabel}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void startBatchGeneration({ onlyMissingComments: false })}
-                            disabled={isBatchRunning || Boolean(aiLoading) || !(draft.articles || []).length}
-                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-[10px] font-black uppercase tracking-[0.14em] text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-60 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20"
-                          >
-                            {isBatchRunning ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                            Gerar comentarios de todos os artigos
-                          </button>
-                        </>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => void generateAiBundle()}
-                          disabled={Boolean(aiLoading) || isBatchRunning}
-                          className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
-                        >
-                          {aiLoading === 'bundle' ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                          Gerar pacote IA
-                        </button>
-                        {[
-                          ['teacher-comment', 'Comentario'],
-                          ['exam-tip', 'Macete'],
-                          ['jurisprudence', 'Jurisprudencia'],
-                          ['sumula', 'Sumula'],
-                          ['doctrine', 'Doutrina'],
-                        ].map(([kind, label]) => (
-                          <button
-                            key={kind}
-                            type="button"
-                            onClick={() => void generateWithAi(kind as Exclude<LegalAiGenerationKind, 'bundle'>)}
-                            disabled={Boolean(aiLoading) || isBatchRunning}
-                            className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-white transition-colors hover:bg-slate-700 disabled:opacity-60 dark:bg-white dark:text-slate-950"
-                          >
-                            {aiLoading === kind ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setActiveEditorialSection('ai')}
-                        className={ADMIN_SECONDARY_BUTTON_CLASS}
-                      >
-                        <Sparkles size={14} /> Abrir IA e lote
-                      </button>
-                    )}
-                  </div>
-
-                  {aiProgress ? (
-                    <div className="mt-5 rounded-sm border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-500/30 dark:bg-indigo-500/10">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-indigo-700 dark:text-indigo-300">Geracao IA</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                            {aiProgress.label} em andamento
-                          </p>
-                        </div>
-                        <span className="text-sm font-black text-indigo-700 dark:text-indigo-200">{aiProgress.percent}%</span>
-                      </div>
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white dark:bg-slate-900">
-                        <div
-                          className="h-full rounded-full bg-indigo-600 transition-all duration-300"
-                          style={{ width: `${aiProgress.percent}%` }}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="mt-5 rounded-sm border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-950">
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {LEGAL_EDITORIAL_SECTIONS.map((section) => (
-                        <button
-                          key={section.key}
-                          type="button"
-                          onClick={() => setActiveEditorialSection(section.key)}
-                          className={`flex min-w-[138px] flex-col rounded-sm border px-3 py-2 text-left transition-colors ${
-                            activeEditorialSection === section.key
-                              ? 'border-sky-600 bg-white text-sky-700 shadow-sm dark:border-sky-500 dark:bg-slate-900 dark:text-sky-300'
-                              : 'border-transparent text-slate-500 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100'
-                          }`}
-                        >
-                          <span className="flex items-center justify-between gap-2 text-xs font-black">
-                            {section.label}
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                              {editorialSectionCounts[section.key]}
-                            </span>
-                          </span>
-                          <span className="mt-1 line-clamp-2 text-[11px] font-medium leading-4 text-slate-500 dark:text-slate-400">
-                            {section.description}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="px-2 pt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                      {activeSectionMeta?.description}
-                    </p>
-                  </div>
-
-                  {editorialCoverage && activeSectionMeta ? (
-                    <div className="mt-5 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Cobertura editorial</p>
-                          <h3 className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
-                            {editorialCoverage.covered}/{editorialCoverage.total} artigo(s) com {activeSectionMeta.label.toLowerCase()}
-                          </h3>
-                          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                            Visualize os pendentes e adicione um bloco vazio em massa quando precisar revisar artigo por artigo.
-                            {editorialCoverage.skippedArticles > 0
-                              ? ` ${editorialCoverage.skippedArticles} artigo(s) finais de expediente foram ignorados.`
-                              : ''}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => addEditorialPlaceholdersToArticles(activeEditorialSection, true)}
-                            disabled={editorialCoverage.missingArticles.length === 0}
-                            className="inline-flex h-9 items-center gap-2 rounded-sm border border-sky-200 bg-sky-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
-                          >
-                            <Plus size={13} /> Adicionar nos pendentes
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => addEditorialPlaceholdersToArticles(activeEditorialSection, false)}
-                            disabled={editorialCoverage.total === 0}
-                            className="inline-flex h-9 items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
-                          >
-                            <Plus size={13} /> Adicionar em todos
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                        <div
-                          className="h-full rounded-full bg-sky-700 transition-all"
-                          style={{
-                            width: editorialCoverage.total
-                              ? `${Math.round((editorialCoverage.covered / editorialCoverage.total) * 100)}%`
-                              : '0%',
-                          }}
-                        />
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {editorialCoverage.missingArticles.length > 0 ? editorialCoverage.missingArticles.slice(0, 18).map((article) => (
-                          <button
-                            key={article.id}
-                            type="button"
-                            onClick={() => setActiveArticleId(article.id)}
-                            className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
-                          >
-                            {getArticleLabel(article)}
-                          </button>
-                        )) : (
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-                            Nenhum artigo pendente
-                          </span>
-                        )}
-                        {editorialCoverage.missingArticles.length > 18 ? (
-                          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-                            +{editorialCoverage.missingArticles.length - 18} pendente(s)
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {activeEditorialSection === 'section-analysis' ? (
-                    <div className="mt-5 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Analise por capitulo</p>
-                          <h3 className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
-                            {sectionAnalysesCount}/{lawSections.length} capitulo(s) com analise
-                          </h3>
-                          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                            Gere a analise aprofundada por capitulo com base no intervalo de artigos e no conteudo editorial ja salvo.
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void generateMissingSectionAnalyses()}
-                            disabled={isGeneratingAllSectionAnalyses || lawSections.length === 0}
-                            className="inline-flex h-9 items-center gap-2 rounded-sm border border-indigo-200 bg-indigo-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-700 transition-colors hover:bg-indigo-100 disabled:opacity-50 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300"
-                          >
-                            {isGeneratingAllSectionAnalyses ? <Loader2 className="animate-spin" size={13} /> : <Sparkles size={13} />}
-                            Gerar faltantes
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void generateMissingSectionAnalyses()}
-                            disabled={isGeneratingAllSectionAnalyses || lawSections.length === 0}
-                            className="inline-flex h-9 items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-800"
-                          >
-                            {isGeneratingAllSectionAnalyses ? <Loader2 className="animate-spin" size={13} /> : <RefreshCcw size={13} />}
-                            Regerar lista
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 space-y-2">
-                        {lawSections.map((section, index) => {
-                          const sectionKey = section.sectionKey || section.id;
-                          const savedEditorial = sectionEditorialsByKey.get(sectionKey);
-                          const loading = sectionAnalysisLoadingKey === sectionKey;
-                          const statusLabel = savedEditorial ? 'Pronto' : 'Pendente';
-                          return (
-                            <div key={section.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
-                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#615fff]">
-                                    Capitulo {String(index + 1).padStart(2, '0')}
-                                  </p>
-                                  <h4 className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
-                                    {section.title}
-                                  </h4>
-                                  <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                                    {formatSectionRange(section)} • {section.articles} artigo(s)
-                                  </p>
-                                  <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-300">
-                                    {savedEditorial?.summary || 'Sem analise aprofundada salva ainda para este capitulo.'}
-                                  </p>
-                                </div>
-                                <div className="flex flex-col items-start gap-2 lg:items-end">
-                                  <span className={`inline-flex h-7 items-center rounded-full px-3 text-[10px] font-black uppercase tracking-[0.14em] ${
-                                    savedEditorial
-                                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
-                                      : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
-                                  }`}>
-                                    {statusLabel}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => void generateSectionAnalysis(section)}
-                                    disabled={loading || isGeneratingAllSectionAnalyses}
-                                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#615fff]/20 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-[#615fff] transition-colors hover:bg-[#615fff]/5 disabled:opacity-50 dark:border-[#615fff]/30 dark:bg-slate-900 dark:hover:bg-[#615fff]/10"
-                                  >
-                                    {loading ? <Loader2 className="animate-spin" size={13} /> : <Sparkles size={13} />}
-                                    {savedEditorial ? 'Regerar' : 'Gerar'}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {lawSections.length === 0 ? (
-                          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-                            Nenhum capitulo detectado para esta lei.
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {activeEditorialSection === 'ai' && !isNew && draft.id ? (
-                    <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Lote editorial</p>
-                          <h3 className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">Status por artigo</h3>
-                          <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-                            O lote processa artigo por artigo, salva o que passou pela validacao e permite reprocessar apenas as falhas.
-                          </p>
-                          <p className="mt-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                            Pausa e parada acontecem entre artigos. O que ja foi salvo permanece no banco.
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={toggleBatchPause}
-                            disabled={!isBatchRunning}
-                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/20"
-                          >
-                            {isBatchPaused ? <CheckCircle2 size={14} /> : <RefreshCcw size={14} />}
-                            {isBatchPaused ? 'Retomar lote' : 'Pausar lote'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={stopBatchRun}
-                            disabled={!isBatchRunning}
-                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20"
-                          >
-                            <AlertCircle size={14} />
-                            Parar lote
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void refreshBatchRun(batchRun?.id)}
-                            disabled={isBatchRefreshing || isBatchRunning}
-                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                          >
-                            {isBatchRefreshing ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
-                            Atualizar status
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void retryFailedBatch()}
-                            disabled={!batchRun || batchRun.failedArticles <= 0 || isBatchRunning}
-                            className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20"
-                          >
-                            <RefreshCcw size={14} />
-                            Reprocessar falhados
-                          </button>
-                        </div>
-                      </div>
-
-                      <label className="mt-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          checked={batchOnlyMissingComments}
-                          onChange={(event) => setBatchOnlyMissingComments(event.target.checked)}
-                          disabled={isBatchRunning}
-                        />
-                        Processar somente artigos sem comentario do professor
-                        <span className="ml-auto rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                          {batchEligibleArticlesCount} elegiveis
-                        </span>
-                      </label>
-
-                      {batchRun ? (
-                        <>
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Processado</p>
-                              <p className="mt-2 text-lg font-black text-slate-900 dark:text-slate-100">
-                                {batchRun.processedArticles}/{batchRun.totalArticles}
-                              </p>
-                            </div>
-                            <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-3 dark:border-indigo-500/20 dark:bg-indigo-500/10">
-                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-300">Progresso</p>
-                              <p className="mt-2 text-lg font-black text-indigo-700 dark:text-indigo-200">{batchProgressPercent}%</p>
-                            </div>
-                            <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-500/20 dark:bg-emerald-500/10">
-                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-300">Sucesso</p>
-                              <p className="mt-2 text-lg font-black text-emerald-700 dark:text-emerald-200">{batchRun.successfulArticles}</p>
-                            </div>
-                            <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
-                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-600 dark:text-amber-300">Parcial</p>
-                              <p className="mt-2 text-lg font-black text-amber-700 dark:text-amber-200">{batchRun.partialArticles}</p>
-                            </div>
-                            <div className="rounded-xl border border-rose-200 bg-rose-50/80 p-3 dark:border-rose-500/20 dark:bg-rose-500/10">
-                              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-600 dark:text-rose-300">Falha</p>
-                              <p className="mt-2 text-lg font-black text-rose-700 dark:text-rose-200">{batchRun.failedArticles}</p>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 flex items-center justify-between gap-3">
-                            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                              {batchProgressPercent}% concluido
-                              {isBatchPaused ? ' • pausado' : ''}
-                              {isBatchRunning && !isBatchPaused ? ' • em execucao' : ''}
-                            </p>
-                            <span className={`inline-flex h-8 items-center rounded-full px-3 text-[10px] font-black uppercase tracking-[0.16em] ${getBatchStatusClasses(batchRun.status)}`}>
-                              {batchRun.status === 'success' || batchRun.status === 'completed' ? <CheckCircle2 size={12} className="mr-1.5" /> : null}
-                              {batchRun.status === 'failed' || batchRun.status === 'stopped' ? <AlertCircle size={12} className="mr-1.5" /> : null}
-                              {batchRun.status === 'running' ? <Loader2 size={12} className="mr-1.5 animate-spin" /> : null}
-                              {formatBatchStatusLabel(batchRun.status)}
-                            </span>
-                          </div>
-
-                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-                            <div
-                              className="h-full rounded-full bg-indigo-600 transition-all"
-                              style={{
-                                width: `${batchProgressPercent}%`,
-                              }}
-                            />
-                          </div>
-
-                          <div className="mt-4 max-h-[280px] space-y-2 overflow-y-auto pr-1">
-                            {batchRun.items.map((item) => (
-                              <div key={item.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center lg:justify-between">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">Art. {item.articleNumber || item.articleId}</p>
-                                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                                    A: {item.stageAStatus} • B: {item.stageBStatus} • C: {item.stageCStatus}
-                                  </p>
-                                  {item.errorMessage ? (
-                                    <p className="mt-1 text-xs font-semibold text-rose-600 dark:text-rose-300">{item.errorMessage}</p>
-                                  ) : null}
-                                  {!item.errorMessage && item.warnings?.[0] ? (
-                                    <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-300">{item.warnings[0]}</p>
-                                  ) : null}
-                                </div>
-                                <div className={`inline-flex h-8 items-center rounded-full px-3 text-[10px] font-black uppercase tracking-[0.16em] ${
-                                  item.status === 'success'
-                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
-                                    : item.status === 'failed'
-                                      ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
-                                      : item.status === 'stopped'
-                                        ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                                      : item.status === 'running'
-                                        ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300'
-                                        : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
-                                }`}>
-                                  {item.status === 'success' ? <CheckCircle2 size={12} className="mr-1.5" /> : null}
-                                  {item.status === 'failed' ? <AlertCircle size={12} className="mr-1.5" /> : null}
-                                  {item.status === 'stopped' ? <AlertCircle size={12} className="mr-1.5" /> : null}
-                                  {item.status === 'running' ? <Loader2 size={12} className="mr-1.5 animate-spin" /> : null}
-                                  {item.status}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                          Nenhum lote editorial registrado para esta lei ainda.
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-
-                    <div className="mt-6 space-y-5">
-                      {activeEditorialSection === 'teacher' ? (
-                      <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-                        <div className="flex items-center justify-between gap-3">
-                          <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Comentarios de professor</h3>
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            {!isNew && draft.id ? (
-                              <button
-                                type="button"
-                                onClick={() => void startBatchGeneration({ onlyMissingComments: false })}
-                                disabled={isBatchRunning || Boolean(aiLoading) || !(draft.articles || []).length}
-                                className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[10px] font-black uppercase text-violet-700 transition-colors hover:bg-violet-100 disabled:opacity-60 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/20"
-                              >
-                                Gerar em varios artigos
-                              </button>
-                            ) : null}
-                            <button type="button" onClick={() => addTeacherComment()} className="rounded-lg bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">Adicionar</button>
-                          </div>
-                        </div>
-                      {articleComments.map((comment) => (
-                        <div key={comment.id} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
-                          <TextInput value={comment.title} onChange={(event) => updateNestedItem('teacherComments', comment.id, 'title', event.target.value)} />
-                          <TextArea value={comment.body} onChange={(event) => updateNestedItem('teacherComments', comment.id, 'body', event.target.value)} />
-                          <button type="button" onClick={() => removeNestedItem('teacherComments', comment.id)} className="text-[10px] font-black uppercase text-red-600">Remover</button>
-                        </div>
-                      ))}
-                    </div>
-                      ) : null}
-
-                    {activeEditorialSection === 'tips' ? (
-                    <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Macetes para prova</h3>
-                        <button type="button" onClick={() => addExamTip()} className="rounded-lg bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">Adicionar</button>
-                      </div>
-                      {articleTips.map((tip) => (
-                        <div key={tip.id} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
-                          <TextInput value={tip.title} onChange={(event) => updateNestedItem('examTips', tip.id, 'title', event.target.value)} />
-                          <TextArea value={tip.body} onChange={(event) => updateNestedItem('examTips', tip.id, 'body', event.target.value)} />
-                          <button type="button" onClick={() => removeNestedItem('examTips', tip.id)} className="text-[10px] font-black uppercase text-red-600">Remover</button>
-                        </div>
-                      ))}
-                    </div>
-                    ) : null}
-
-                    {activeEditorialSection === 'jurisprudence' ? (
-                    <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Jurisprudencia</h3>
-                        <button type="button" onClick={() => addJurisprudence()} className="rounded-lg bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">Adicionar</button>
-                      </div>
-                      {(activeArticle.jurisprudenceNotes || []).map((note, index) => (
-                        <div key={`${activeArticle.id}-juris-note-${index}`} className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-sm font-semibold leading-6 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                          {note}
-                        </div>
-                      ))}
-                      {articleJurisprudence.map((item) => (
-                        <div key={item.id} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
-                          <div className="grid grid-cols-2 gap-2">
-                            <TextInput value={item.court} onChange={(event) => updateNestedItem('jurisprudence', item.id, 'court', event.target.value)} />
-                            <TextInput value={item.precedentType} onChange={(event) => updateNestedItem('jurisprudence', item.id, 'precedentType', event.target.value)} />
-                          </div>
-                          <TextInput value={item.title} onChange={(event) => updateNestedItem('jurisprudence', item.id, 'title', event.target.value)} />
-                          <TextArea value={item.summary} onChange={(event) => updateNestedItem('jurisprudence', item.id, 'summary', event.target.value)} />
-                          <TextArea value={item.examImpact} onChange={(event) => updateNestedItem('jurisprudence', item.id, 'examImpact', event.target.value)} />
-                          <button type="button" onClick={() => removeNestedItem('jurisprudence', item.id)} className="text-[10px] font-black uppercase text-red-600">Remover</button>
-                        </div>
-                      ))}
-                    </div>
-                    ) : null}
-
-                    {activeEditorialSection === 'sumulas' ? (
-                    <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Sumulas</h3>
-                        <button type="button" onClick={() => addSumula()} className="rounded-lg bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">Adicionar</button>
-                      </div>
-                      {articleSumulas.map((item) => (
-                        <div key={item.id} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
-                          <div className="grid grid-cols-2 gap-2">
-                            <TextInput value={item.court} onChange={(event) => updateNestedItem('sumulas', item.id || '', 'court', event.target.value)} />
-                            <TextInput value={item.number} onChange={(event) => updateNestedItem('sumulas', item.id || '', 'number', event.target.value)} />
-                          </div>
-                          <TextArea value={item.text} onChange={(event) => updateNestedItem('sumulas', item.id || '', 'text', event.target.value)} />
-                          <button type="button" onClick={() => removeNestedItem('sumulas', item.id || '')} className="text-[10px] font-black uppercase text-red-600">Remover</button>
-                        </div>
-                      ))}
-                    </div>
-                    ) : null}
-
-                    {activeEditorialSection === 'doctrine' ? (
-                    <div className="space-y-3 rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">Doutrina</h3>
-                        <button type="button" onClick={() => addDoctrine()} className="rounded-lg bg-indigo-50 px-3 py-2 text-[10px] font-black uppercase text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">Adicionar</button>
-                      </div>
-                      {(activeArticle.doctrine || []).map((item, index) => (
-                        <div key={`${activeArticle.id}-doctrine-${index}`} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
-                          <TextArea value={item} onChange={(event) => updateDoctrine(index, event.target.value)} />
-                          <button type="button" onClick={() => removeDoctrine(index)} className="text-[10px] font-black uppercase text-red-600">Remover</button>
-                        </div>
-                      ))}
-                    </div>
-                    ) : null}
-
-                    {activeEditorialSection === 'ai' ? (
-                      <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
-                        Use os botoes no topo desta aba para gerar conteudo. Depois revise cada resultado nas abas Professor, Macetes, Jurisprudencia, Sumulas e Doutrina.
-                      </div>
-                    ) : null}
-                  </div>
-                </EditorPanel>
-              </>
-            ) : (
-              <section className={`${ADMIN_SURFACE_CLASS} p-10 text-center`}>
-                <FileText className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={36} />
-                <p className="text-sm font-black text-slate-900 dark:text-slate-100">Adicione um artigo para comecar.</p>
-                <button type="button" onClick={addArticle} className={`mt-4 ${ADMIN_PRIMARY_BUTTON_CLASS}`}>
-                  <Plus size={16} /> Novo artigo
-                </button>
-              </section>
-            )}
-          </main>
-
-          <aside className="space-y-5">
-            <EditorMetaBox title="Publicar">
-              <div className="space-y-4">
-                <div>
-                  <FieldLabel>Status da lei</FieldLabel>
-                  <SelectInput value={lawStatusValue} onChange={(event) => updateLawField('status', normalizeLawStatus(event.target.value))}>
-                    <option value="active">Ativa</option>
-                    <option value="monitoring">Em monitoramento</option>
-                    <option value="partially_revoked">Parcialmente revogada</option>
-                    <option value="revoked">Revogada</option>
-                  </SelectInput>
-                </div>
-                <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-medium text-slate-500 dark:text-slate-400">Fonte</span>
-                    <span className="text-right font-semibold text-slate-900 dark:text-slate-100">{draft.sourceName || 'Portal do Planalto'}</span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-medium text-slate-500 dark:text-slate-400">Ultima sincronizacao</span>
-                    <span className="text-right font-semibold text-slate-900 dark:text-slate-100">{lastSyncedLabel}</span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-medium text-slate-500 dark:text-slate-400">Artigos</span>
-                    <span className="text-right font-semibold text-slate-900 dark:text-slate-100">{draft.articles?.length || 0}</span>
+                  <div className="space-y-3 text-sm text-slate-700">
+                    <p>Status: <strong>{lawStatusValue === 'active' ? 'Publicado' : 'Rascunho'}</strong> <button type="button" onClick={() => showPreparationToast()} className="text-[#2271b1] hover:underline">Editar</button></p>
+                    <p>Visibilidade: <strong>Publico</strong> <button type="button" onClick={() => showPreparationToast()} className="text-[#2271b1] hover:underline">Editar</button></p>
+                    <p>Publicado em: <strong>Imediatamente</strong> <button type="button" onClick={() => showPreparationToast()} className="text-[#2271b1] hover:underline">Editar</button></p>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2">
-                  {!isNew && draft.id ? (
-                    <button type="button" onClick={() => void openUpdatesModal()} className={ADMIN_SECONDARY_BUTTON_CLASS}>
-                      <History size={14} /> Ver atualizacoes
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => void saveLaw()}
-                    disabled={isSaving}
-                    className={`${ADMIN_PRIMARY_BUTTON_CLASS} justify-center`}
-                  >
+                <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3">
+                  <button type="button" onClick={() => showPreparationToast('Movimento para lixeira em preparacao.')} className="text-xs font-medium text-red-600 hover:underline">Mover para lixeira</button>
+                  <button type="button" onClick={() => void saveLaw()} disabled={isSaving} className="inline-flex h-9 items-center gap-2 rounded-sm bg-[#2271b1] px-4 text-sm font-semibold text-white hover:bg-[#135e96] disabled:opacity-60">
                     {isSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
-                    {isNew ? 'Publicar lei' : 'Atualizar lei'}
+                    {isNew ? 'Publicar' : 'Atualizar'}
                   </button>
                 </div>
-              </div>
-            </EditorMetaBox>
+              </section>
 
-            <EditorMetaBox title="Artigos">
-              <div className="space-y-3">
-                <button type="button" onClick={addArticle} className={`${ADMIN_PRIMARY_BUTTON_CLASS} w-full justify-center`}>
-                  <Plus size={14} /> Adicionar artigo
-                </button>
-                <div className="max-h-[540px] space-y-2 overflow-y-auto pr-1">
-                  {(draft.articles || []).map((article) => (
-                    <button
-                      type="button"
-                      key={article.id}
-                      onClick={() => setActiveArticleId(article.id)}
-                      className={`w-full rounded-sm border px-3 py-2 text-left transition-colors ${
-                        article.id === activeArticle?.id
-                          ? 'border-sky-700 bg-sky-50 text-sky-900 dark:border-sky-600 dark:bg-sky-950/40 dark:text-sky-100'
-                          : 'border-slate-300 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      <p className="text-sm font-semibold">{getArticleLabel(article)}</p>
-                      <p className="mt-1 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{article.title || article.text || 'Sem texto cadastrado'}</p>
-                    </button>
-                  ))}
+              <section className="rounded-sm border border-slate-300 bg-white shadow-sm">
+                <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">Agendar Publicacao</h2>
+                <div className="space-y-3 p-4">
+                  <p className="text-xs text-slate-500">Publicar em:</p>
+                  <div className="grid grid-cols-[1fr_96px] gap-2">
+                    <TextInput value={scheduledDate} onChange={(event) => setScheduledDate(event.target.value)} placeholder="dd/mm/aaaa" />
+                    <TextInput value={scheduledTime} onChange={(event) => setScheduledTime(event.target.value)} placeholder="--:--" />
+                  </div>
+                  <button type="button" onClick={schedulePublication} className="text-sm font-medium text-[#2271b1] hover:underline">
+                    <CalendarDays size={14} className="mr-1 inline" /> Agendar
+                  </button>
                 </div>
-              </div>
-            </EditorMetaBox>
-          </aside>
-        </div>
+              </section>
 
-        <div className={`${ADMIN_SURFACE_CLASS} p-5`}>
-          <div className="flex items-start gap-3">
-            <div className="rounded-sm bg-slate-100 p-3 text-sky-700 dark:bg-slate-800 dark:text-sky-300">
-              <Bot size={18} />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Revisao editorial obrigatoria</p>
-              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                A IA acelera o rascunho, mas o conteudo publicado deve ser conferido contra fonte oficial, jurisprudencia real e criterio pedagogico antes de ficar disponivel aos alunos.
-              </p>
-            </div>
+              <section className="rounded-sm border border-slate-300 bg-white shadow-sm">
+                <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">Atualizacoes da Lei</h2>
+                <div className="space-y-3 p-4 text-sm text-slate-700">
+                  <p>Verifique se ha atualizacoes no site do Planalto e importe as alteracoes.</p>
+                  <p>Ultima verificacao: <strong>{lastSyncedLabel}</strong></p>
+                  <button type="button" onClick={() => void syncFromOfficialSource()} disabled={isSyncingFromOfficial || isNew} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm border border-[#2271b1] bg-white px-3 text-sm font-semibold text-[#2271b1] hover:bg-[#f0f6fc] disabled:opacity-60">
+                    {isSyncingFromOfficial ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
+                    Verificar atualizacoes
+                  </button>
+                  <div className="rounded-sm border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                    {pendingUpdatesCount > 0 ? `${pendingUpdatesCount} atualizacao(oes) recente(s) registrada(s).` : 'Nenhuma alteracao carregada nesta sessao.'}
+                  </div>
+                  <button type="button" onClick={() => void syncFromOfficialSource()} disabled={isSyncingFromOfficial || isNew} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-slate-200 px-3 text-sm font-semibold text-slate-600 disabled:opacity-60">
+                    Importar alteracoes encontradas
+                  </button>
+                  {!isNew && draft.id ? (
+                    <button type="button" onClick={() => void openUpdatesModal()} className="text-xs font-medium text-[#2271b1] hover:underline">
+                      Ver historico de atualizacoes
+                    </button>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="rounded-sm border border-slate-300 bg-white shadow-sm">
+                <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">IA - Gerar informacoes gerais</h2>
+                <div className="space-y-3 p-4 text-sm text-slate-700">
+                  <p>Gere uma analise completa da lei, com resumo, comentarios do professor e pontos importantes.</p>
+                  <button type="button" onClick={() => void generateMissingSectionAnalyses()} disabled={isGeneratingAllSectionAnalyses} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-[#2271b1] px-3 text-sm font-semibold text-white hover:bg-[#135e96] disabled:opacity-60">
+                    {isGeneratingAllSectionAnalyses ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                    Gerar analise da Lei
+                  </button>
+                  <p className="text-xs text-slate-500">Sera criado conteudo global por secao, disponivel para os artigos relacionados.</p>
+                </div>
+              </section>
+            </aside>
           </div>
         </div>
+
         {isUpdatesModalOpen && typeof document !== 'undefined' ? createPortal(
           <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/65 px-4 py-8 backdrop-blur-sm">
             <div className={`${ADMIN_MODAL_PANEL_CLASS} w-full max-w-6xl`}>

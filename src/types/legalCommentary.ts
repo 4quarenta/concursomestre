@@ -96,6 +96,7 @@ export interface LawSummary {
 
 export interface LegalArticleBlock {
   id: string;
+  blockUid?: string;
   kind: 'caput' | 'paragraph' | 'inciso' | 'alinea' | 'item' | 'note';
   label: string;
   text: string;
@@ -105,6 +106,7 @@ export interface LegalArticleBlock {
   notes?: string[];
   isRecentlyChanged?: boolean;
   previousText?: string;
+  sortOrder?: number;
 }
 
 export type LegalRichContentBlockType =
@@ -156,6 +158,7 @@ export interface LegalArticleSyllabus {
 export interface LawArticle {
   id: string;
   lawId: string;
+  sectionId?: string | null;
   slug: string;
   number: string;
   numero?: string;
@@ -176,7 +179,7 @@ export interface LawArticle {
   questoesRelacionadas?: number;
   comentarios?: TeacherComment[];
   jurisprudencia?: ArticleJurisprudence[];
-  hierarchy: {
+  hierarchy?: {
     partLabel?: string | null;
     part?: string;
     bookLabel?: string | null;
@@ -197,8 +200,28 @@ export interface LawArticle {
   isRecentlyChanged?: boolean;
   isFavorite?: boolean;
   readAt?: string;
+  assuntoFilterId?: string | null;
   subjectFilterId?: string | null;
   topicFilterId?: string | null;
+}
+
+export interface LawSection {
+  id: string;
+  lawId: string;
+  slug?: string;
+  title: string;
+  displayTitle?: string;
+  titleLabel?: string | null;
+  titleName?: string | null;
+  chapterLabel?: string | null;
+  chapterName?: string | null;
+  subtopicFilterId?: string | null;
+  assuntoFilterId?: string | null;
+  fromArticle?: string | null;
+  toArticle?: string | null;
+  articleCount: number;
+  sortOrder?: number;
+  isFavorite?: boolean;
 }
 
 export interface TeacherComment {
@@ -262,6 +285,11 @@ export interface LegalUserComment {
   articleId: string;
   userId: string;
   userName: string;
+  userAvatar?: string;
+  avatarUrl?: string;
+  photoUrl?: string;
+  userPhotoUrl?: string;
+  userPlan?: 'Gratuito' | 'Essencial' | 'Pro' | 'Elite' | string;
   body: string;
   status: LegalUserCommentStatus;
   moderationStatus?: 'pending' | 'approved' | 'spam';
@@ -316,6 +344,9 @@ export interface LegalSyncLog {
 }
 
 export interface LawSectionEditorial {
+  id?: string;
+  lawId?: string;
+  sectionId?: string | null;
   sectionKey: string;
   sectionTitle: string;
   rangeLabel: string;
@@ -343,6 +374,7 @@ export interface LawSectionEditorial {
 export interface LawDetail extends LawSummary {
   area: LegalArea;
   ementa: string;
+  sections?: LawSection[];
   articles: LawArticle[];
   teacherComments: TeacherComment[];
   jurisprudence: ArticleJurisprudence[];

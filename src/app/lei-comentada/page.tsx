@@ -24,13 +24,8 @@ import {
 } from '@constants/layout';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { legalCommentaryApiService } from '@services/legal-commentary';
-import {
-  buildLawSections,
-  buildKnownLawOutlineSections,
-  type LawSectionSummary,
-} from '@services/legal-commentary/lawOutline';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
-import type { LawArticle, LawSummary, LegalHomeSnapshot } from '@types';
+import type { LawArticle, LawSection, LawSummary, LegalHomeSnapshot } from '@types';
 import BetaFeaturePage from '../../components/shared/feedback/BetaFeaturePage';
 
 type UserLike = {
@@ -49,6 +44,18 @@ type LawOutlineEntry = {
   sections: LawSectionSummary[];
   errorMessage?: string;
   startedAt?: number;
+};
+
+type LawSectionSummary = {
+  id: string;
+  sectionKey?: string;
+  title: string;
+  fromArticle: string;
+  toArticle: string;
+  articles: number;
+  primaryArticleId: string;
+  articleIds: string[];
+  isFavorite: boolean;
 };
 
 type LawSummaryWithArticleAliases = LawSummary & {
@@ -76,6 +83,43 @@ const EMPTY_LEGAL_HOME: LegalHomeSnapshot = {
 const LAW_OUTLINE_WATCHDOG_MS = 10_000;
 const LAW_OUTLINE_SOFT_TIMEOUT_MS = 8_000;
 const buildSectionFavoriteKey = (lawId: string, sectionId: string) => `${lawId}:${sectionId}`;
+type SectionReadingState = Record<string, { startedAt?: string; completedAt?: string }>;
+
+const getSectionReadingStorageKey = (userKey: string, lawId: string) => `cm:legal-commentary:section-reading:${userKey}:${lawId}`;
+const buildSectionReadingKey = (section: Pick<LawSectionSummary, 'id' | 'fromArticle' | 'toArticle'>) => {
+  const from = String(section.fromArticle || '').trim();
+  const to = String(section.toArticle || from).trim();
+  return from || to ? `${from}:${to}` : String(section.id || '');
+};
+
+const readSectionReadingState = (userKey: string, lawId: string): SectionReadingState => {
+  if (typeof window === 'undefined' || !userKey || !lawId) return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(getSectionReadingStorageKey(userKey, lawId)) || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as SectionReadingState : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveSectionReadingState = (userKey: string, lawId: string, state: SectionReadingState) => {
+  if (typeof window === 'undefined' || !userKey || !lawId) return;
+  window.localStorage.setItem(getSectionReadingStorageKey(userKey, lawId), JSON.stringify(state));
+};
+
+const getSectionReadingEntry = (
+  state: SectionReadingState | undefined,
+  section: Pick<LawSectionSummary, 'id' | 'fromArticle' | 'toArticle'>,
+) => {
+  if (!state) return undefined;
+  return state[buildSectionReadingKey(section)] || state[String(section.id || '')];
+};
+
+const getSectionReadActionLabel = (reading?: { startedAt?: string; completedAt?: string }, progressPercent?: number) => {
+  if (reading?.completedAt || Number(progressPercent || 0) >= 100) return 'Ler novamente';
+  if (reading?.startedAt) return 'Continuar lendo';
+  return 'Começar';
+};
 
 const getUserId = (user: UserLike) => user?.id || user?.userId || user?.email || null;
 
@@ -180,30 +224,32 @@ const resolveLawArticleCount = (law: LawSummary): number => {
   return 1;
 };
 
-const buildFallbackLawSection = (law: LawSummary): LawSectionSummary[] => {
-  const knownSections = buildKnownLawOutlineSections([law.id, law.slug, law.catalogId, law.shortTitle, law.number]);
-  if (knownSections.length > 1) {
-    return knownSections;
-  }
-
-  const totalArticles = resolveLawArticleCount(law);
-
-  return [{
-    id: `full-law-${law.id}`,
-    title: String(law.shortTitle || law.title || 'Texto completo da lei'),
-    fromArticle: '1',
-    toArticle: String(totalArticles),
-    articles: totalArticles,
-    primaryArticleId: '',
-    articleIds: [],
-    isFavorite: false,
-  }];
-};
-
-const buildSectionsFromLawDetail = (law: LawSummary, detail: { articles?: LawArticle[] } | null | undefined): LawSectionSummary[] => {
+const buildSectionsFromLawDetail = (_law: LawSummary, detail: { articles?: LawArticle[]; sections?: LawSection[] } | null | undefined): LawSectionSummary[] => {
   const articles = Array.isArray(detail?.articles) ? detail.articles : [];
-  const sections = buildLawSections(articles, [law.id, law.slug, law.catalogId, law.shortTitle, law.number]);
-  return sections.length > 0 ? sections : buildFallbackLawSection(law);
+  const articlesBySection = new Map<string, LawArticle[]>();
+  articles.forEach((article) => {
+    const sectionId = String(article.sectionId || '');
+    if (!sectionId) return;
+    const collection = articlesBySection.get(sectionId) || [];
+    collection.push(article);
+    articlesBySection.set(sectionId, collection);
+  });
+
+  return (detail?.sections || []).map((section) => {
+    const sectionArticles = articlesBySection.get(String(section.id)) || [];
+    const articleIds = sectionArticles.map((article) => String(article.id));
+    return {
+      id: String(section.id),
+      sectionKey: String(section.slug || section.id),
+      title: String(section.displayTitle || section.title || 'Secao da lei'),
+      fromArticle: String(section.fromArticle || sectionArticles[0]?.number || ''),
+      toArticle: String(section.toArticle || sectionArticles[sectionArticles.length - 1]?.number || ''),
+      articles: Number(section.articleCount || sectionArticles.length),
+      primaryArticleId: articleIds[0] || '',
+      articleIds,
+      isFavorite: Boolean(section.isFavorite),
+    };
+  });
 };
 
 const isFallbackSectionCollection = (law: LawSummary, sections: LawSectionSummary[]) => (
@@ -247,6 +293,7 @@ const AnnotatedLawsPage: React.FC = () => {
   const [expandedLawByArea, setExpandedLawByArea] = React.useState<Record<string, string>>({});
   const [lawOutlineById, setLawOutlineById] = React.useState<Record<string, LawOutlineEntry>>({});
   const [sectionFavoriteBusyMap, setSectionFavoriteBusyMap] = React.useState<Record<string, boolean>>({});
+  const [sectionReadingByLawId, setSectionReadingByLawId] = React.useState<Record<string, SectionReadingState>>({});
   const lawOutlineByIdRef = React.useRef<Record<string, LawOutlineEntry>>({});
   const pendingOutlineIdsRef = React.useRef<Set<string>>(new Set());
   const isMountedRef = React.useRef(true);
@@ -391,6 +438,25 @@ const AnnotatedLawsPage: React.FC = () => {
   }, [query, selectedArea, snapshot.lawsByArea, sortMode]);
 
   React.useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      if (!userId) {
+        setSectionReadingByLawId({});
+        return;
+      }
+
+      const nextState: Record<string, SectionReadingState> = {};
+      snapshot.lawsByArea.forEach((group) => {
+        (group.laws || []).forEach((law) => {
+          nextState[law.id] = readSectionReadingState(userId, law.id);
+        });
+      });
+      setSectionReadingByLawId(nextState);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [snapshot.lawsByArea, userId]);
+
+  React.useEffect(() => {
     if (groupedAreas.length === 0) {
       const resetFrameId = window.requestAnimationFrame(() => {
         setExpandedAreaId('');
@@ -439,12 +505,11 @@ const AnnotatedLawsPage: React.FC = () => {
     pendingOutlineIdsRef.current.add(law.id);
     setLawOutlineById((current) => {
       const previousSections = current[law.id]?.sections || [];
-      const fallbackSections = buildFallbackLawSection(law);
       return {
         ...current,
         [law.id]: {
           status: 'loading',
-          sections: previousSections.length > 0 ? previousSections : fallbackSections,
+          sections: previousSections,
           errorMessage: undefined,
           startedAt: Date.now(),
         },
@@ -575,10 +640,10 @@ const AnnotatedLawsPage: React.FC = () => {
         return {
           ...current,
           [law.id]: {
-            status: 'ready',
-            sections: buildFallbackLawSection(law),
+            status: 'loading',
+            sections: [],
             errorMessage: undefined,
-            startedAt: undefined,
+            startedAt: Date.now(),
           },
         };
       });
@@ -640,8 +705,8 @@ const AnnotatedLawsPage: React.FC = () => {
       return;
     }
 
-    const targetArticleId = String(section.primaryArticleId || '').trim();
-    if (!targetArticleId) {
+    const targetSectionId = String(section.id || '').trim();
+    if (!targetSectionId) {
       addToast('Nao foi possivel identificar esta secao para salvar.', 'error');
       return;
     }
@@ -667,7 +732,7 @@ const AnnotatedLawsPage: React.FC = () => {
     });
 
     try {
-      const result = await legalCommentaryApiService.toggleFavorite('article', targetArticleId);
+      const result = await legalCommentaryApiService.toggleFavorite('article', targetSectionId);
       const persistedFavorite = Boolean(result.isFavorite);
 
       setLawOutlineById((current) => {
@@ -851,23 +916,7 @@ const AnnotatedLawsPage: React.FC = () => {
                       {group.laws.map((law) => {
                         const isLawOpen = expandedLawByArea[group.area.id] === law.id;
                         const outline = lawOutlineById[law.id] || { status: 'idle', sections: [] };
-                        const fallbackSections = buildFallbackLawSection(law);
-                        const guaranteedSections = fallbackSections.length > 0
-                          ? fallbackSections
-                          : [{
-                              id: `full-law-${law.id || 'fallback'}`,
-                              title: String(law.shortTitle || law.title || 'Texto completo da lei'),
-                              fromArticle: '1',
-                              toArticle: String(resolveLawArticleCount(law)),
-                              articles: Math.max(resolveLawArticleCount(law), 1),
-                              primaryArticleId: '',
-                              articleIds: [],
-                              isFavorite: false,
-                            }];
-                        const effectiveSections = outline.sections.length > 0
-                          ? outline.sections
-                          : guaranteedSections;
-                        const usingFallbackSections = isFallbackSectionCollection(law, effectiveSections);
+                        const effectiveSections = outline.sections;
 
                         return (
                           <article key={law.id} className="overflow-hidden border-b border-slate-100 last:border-b-0 dark:border-slate-800">
@@ -937,7 +986,13 @@ const AnnotatedLawsPage: React.FC = () => {
 
                                 {effectiveSections.length > 0 ? (
                                   <div className="space-y-2">
-                                    {effectiveSections.map((section, index) => (
+                                    {effectiveSections.map((section, index) => {
+                                      const sectionReadingKey = buildSectionReadingKey(section);
+                                      const lawReading = sectionReadingByLawId[law.id] || {};
+                                      const readingState = getSectionReadingEntry(lawReading, section);
+                                      const actionLabel = getSectionReadActionLabel(readingState, law.progressPercent);
+
+                                      return (
                                       <div
                                         key={section.id}
                                         className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900 md:flex-row md:items-center md:justify-between"
@@ -954,17 +1009,36 @@ const AnnotatedLawsPage: React.FC = () => {
                                               pathname: `/lei-comentada/${law.slug}`,
                                               query: {
                                                 lawId: law.id,
-                                                ...(usingFallbackSections ? {} : {
-                                                  from: section.fromArticle,
-                                                  to: section.toArticle,
-                                                }),
+                                                sectionId: section.id,
+                                                from: section.fromArticle,
+                                                to: section.toArticle,
                                                 view: 'pdf',
                                               },
                                             }}
                                             onMouseEnter={() => prefetchLaw(law.slug)}
+                                            onClick={() => {
+                                              if (!userId) return;
+                                              const existingReading = getSectionReadingEntry(lawReading, section);
+                                              const nextLawReading = {
+                                                ...lawReading,
+                                                [sectionReadingKey]: {
+                                                  ...existingReading,
+                                                  startedAt: existingReading?.startedAt || new Date().toISOString(),
+                                                },
+                                                [section.id]: {
+                                                  ...existingReading,
+                                                  startedAt: existingReading?.startedAt || new Date().toISOString(),
+                                                },
+                                              };
+                                              saveSectionReadingState(userId, law.id, nextLawReading);
+                                              setSectionReadingByLawId((current) => ({
+                                                ...current,
+                                                [law.id]: nextLawReading,
+                                              }));
+                                            }}
                                             className="inline-flex h-9 items-center justify-center rounded-lg border border-[#2f6ff5] bg-[#2f6ff5] px-4 text-sm font-bold text-white transition-colors hover:bg-[#255ee0]"
                                           >
-                                            Comecar
+                                            {actionLabel}
                                           </Link>
                                           <button
                                             type="button"
@@ -983,7 +1057,8 @@ const AnnotatedLawsPage: React.FC = () => {
                                           </button>
                                         </div>
                                       </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 ) : null}
                               </div>

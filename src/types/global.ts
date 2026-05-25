@@ -117,10 +117,11 @@ export interface QuestionStats {
 
 export interface ErrorReport {
   id: string;
-  targetType: 'question' | 'material' | 'comment';
+  targetType: 'question' | 'material' | 'comment' | 'law_section';
   questionId?: number;
   materialId?: string;
   commentId?: string;
+  lawSectionId?: string;
   userName: string;
   userId?: string;
   reason: string;
