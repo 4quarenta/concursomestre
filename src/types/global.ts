@@ -145,12 +145,40 @@ export interface Prova {
   tipo: number;
   index: string;
   nivel: string;
+  caderno?: string;
+  tipoCaderno?: string;
+  corCaderno?: string;
+  bookletType?: string;
+  bookletColor?: string;
+  examType?: string;
   publishStatus?: 'published' | 'draft' | 'scheduled';
   visibilityStatus?: 'public' | 'elite' | 'internal';
   scheduledAt?: string;
+  pdfUrl?: string;
+  proofUrl?: string;
+  editalUrl?: string;
+  gabaritoUrl?: string;
+  answerKeyUrl?: string;
+  files?: ExamFileAttachment[];
+  examFiles?: ExamFileAttachment[];
   banca: Banca;
   orgao: Orgao;
+  orgaos?: Orgao[];
   cargo: Cargo;
+  cargos?: Cargo[];
+  roles?: string[];
+}
+
+export type ExamFileKind = 'prova' | 'gabarito' | 'edital';
+
+export interface ExamFileAttachment {
+  kind: ExamFileKind;
+  label?: string;
+  name: string;
+  url: string;
+  mimeType?: string;
+  size?: number;
+  uploadedAt?: string;
 }
 
 export interface GrupoQuestao {
@@ -177,6 +205,9 @@ export interface Question {
   enunciado: string;
   enunciado_clean?: string;
   introText?: string;
+  intro_text?: string;
+  referenceText?: string;
+  reference_text?: string;
   imageUrl?: string;
   hasImage?: boolean;
   hasImageItens?: boolean;
@@ -267,6 +298,18 @@ export interface UserAnswer {
   timestamp: number;
   simulationId?: string;
   timeTaken?: number;
+  subjectName?: string;
+  subject?: string;
+  materia?: string;
+  assuntos?: Array<{
+    id?: number | string;
+    nome?: string;
+    name?: string;
+    slug?: string;
+    parentId?: number | string | null;
+    materia?: boolean;
+    meta_materia?: boolean;
+  }>;
 }
 
 export interface UserNote {
@@ -415,6 +458,10 @@ export interface UserProfile {
     shareData: boolean;
     notifications: boolean;
     isPublic?: boolean;
+    showProfilePhoto?: boolean;
+    defaultTheme?: 'system' | 'light' | 'dark';
+    defaultPracticeView?: 'card' | 'list';
+    defaultSimulationView?: 'focus' | 'list';
   };
   photoUrl?: string;
   referralCode?: string;
@@ -898,6 +945,44 @@ export interface EmailTemplateModel {
   updatedAt?: string;
 }
 
+export interface GamificationRuleSettings {
+  key: string;
+  eventName: string;
+  category: string;
+  label: string;
+  description: string;
+  xp: number;
+  maxXp?: number;
+  reputation?: number;
+  repeatability?: string;
+  enabled: boolean;
+}
+
+export interface GamificationSettings {
+  enabled: boolean;
+  rules: GamificationRuleSettings[];
+  updatedAt?: string;
+}
+
+export interface NotificationRuleSettings {
+  key: string;
+  category: string;
+  label: string;
+  trigger: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error' | string;
+  link?: string | null;
+  audience?: string;
+  enabled: boolean;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  rules: NotificationRuleSettings[];
+  updatedAt?: string;
+}
+
 export interface SystemSettings {
   appName?: string;
   activeTheme: AppPromotionTheme;
@@ -947,6 +1032,7 @@ export interface SystemSettings {
     partnerRegistrationEnabled: boolean;
     recurringEnabled: boolean;
     sameTierCycleChangeEnabled: boolean;
+    autoRefundEnabled: boolean;
   };
   adsEnabled?: boolean;
   adsenseClientId?: string;
@@ -954,8 +1040,12 @@ export interface SystemSettings {
   adBannerTop?: string;
   adBannerSidebar?: string;
   adBannerBottom?: string;
+  aiProvider?: 'gemini' | 'openai' | 'auto' | string;
   geminiApiKey?: string;
   hasGeminiApiKeyConfigured?: boolean;
+  openaiApiKey?: string;
+  openAiModel?: string;
+  hasOpenAiApiKeyConfigured?: boolean;
   recaptchaEnabled?: boolean;
   recaptchaSiteKey?: string;
   recaptchaSecretKey?: string;
@@ -972,6 +1062,8 @@ export interface SystemSettings {
   hasAppleAuthConfigured?: boolean;
   metaPixelId?: string;
   supportPhone?: string;
+  legalContactEmail?: string;
+  privacyContactEmail?: string;
   pixKey?: string;
   siteName?: string;
   dailyMotivationMarkdown?: string;
@@ -986,6 +1078,8 @@ export interface SystemSettings {
   mailFromAddress?: string;
   mailFromName?: string;
   emailTemplates?: EmailTemplateModel[];
+  gamification?: GamificationSettings;
+  notificationSettings?: NotificationSettings;
   stripeKey?: string;
   stripePublishableKey?: string;
   stripeSecretKey?: string;

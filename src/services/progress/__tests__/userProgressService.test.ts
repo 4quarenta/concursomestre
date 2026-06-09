@@ -46,14 +46,15 @@ describe('userProgressService', () => {
   });
 
   it('carrega respostas do usuário pelo endpoint oficial de answers', async () => {
+    const timestampInSeconds = 1712000000;
     mockGet.mockResolvedValueOnce({
       success: true,
       data: [
         {
-          questionId: 12,
-          selectedOptionIndex: 1,
-          isCorrect: true,
-          timestamp: 1712000000000,
+          question_id: '12',
+          selected_option_index: '1',
+          is_correct: '1',
+          timestamp: timestampInSeconds,
         },
       ],
     });
@@ -65,6 +66,39 @@ describe('userProgressService', () => {
     });
     expect(answers).toHaveLength(1);
     expect(answers[0].questionId).toBe(12);
+    expect(answers[0].selectedOptionIndex).toBe(1);
+    expect(answers[0].isCorrect).toBe(true);
+    expect(answers[0].timestamp).toBe(timestampInSeconds * 1000);
+  });
+
+  it('aceita payload de respostas encapsulado e preserva a materia da questao', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        answers: [
+          {
+            questionId: 20,
+            selectedOptionIndex: 2,
+            isCorrect: true,
+            created_at: '2026-06-08 12:00:00',
+            subjectName: 'Direito Penal',
+            assuntos: [
+              {
+                id: 5,
+                nome: 'Direito Penal',
+                materia: true,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const answers = await userProgressService.getUserAnswers('user-1');
+
+    expect(answers).toHaveLength(1);
+    expect(answers[0].subjectName).toBe('Direito Penal');
+    expect(answers[0].assuntos?.[0]?.nome).toBe('Direito Penal');
   });
 
   it('normaliza apenas notas de questões no endpoint oficial de notes', async () => {

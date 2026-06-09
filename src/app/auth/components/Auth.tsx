@@ -140,6 +140,12 @@ type AuthApiUser = Record<string, unknown> & {
   billing_cycle?: string;
   photoUrl?: string;
   photo_url?: string;
+  profilePhotoUrl?: string;
+  profile_photo_url?: string;
+  userPhotoUrl?: string;
+  user_photo_url?: string;
+  avatarUrl?: string;
+  avatar_url?: string;
   status?: string;
   emailVerified?: boolean;
   email_verified?: boolean;
@@ -301,7 +307,15 @@ const buildUserProfile = (rawUser: UserProfile | AuthApiUser): UserProfile => {
       cardLast4: resolveOptionalString(resolvedBilling.cardLast4),
       paymentDay: Number(resolvedBilling.paymentDay || 0) || undefined,
     },
-    photoUrl: user.photoUrl || user.photo_url || undefined,
+    photoUrl: user.photoUrl
+      || user.photo_url
+      || user.profilePhotoUrl
+      || user.profile_photo_url
+      || user.userPhotoUrl
+      || user.user_photo_url
+      || user.avatarUrl
+      || user.avatar_url
+      || undefined,
     reputation: Number(user.reputation || 100),
     status: resolveUserStatus(user.status),
     isPartner: canAccessPartnerArea(baseProfile),

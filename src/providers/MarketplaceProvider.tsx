@@ -171,6 +171,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     category: 'system' | 'social' | 'marketplace' | 'moderation' = 'system',
     actionUrl?: string,
     evidenceUrl?: string,
+    eventKey?: string,
   ) => {
     void notificationService.sendNotification(
       userId,
@@ -180,6 +181,7 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       category,
       actionUrl,
       evidenceUrl,
+      eventKey,
     );
   }, []);
 
@@ -310,6 +312,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         `Você adquiriu "${material.title}". Protocolo: ${String(transaction.id).substring(0, 12)}`,
         'success',
         'marketplace',
+        '/profile?tab=materials',
+        undefined,
+        'material_released',
       );
 
       if (material.authorId) {
@@ -319,6 +324,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           `Você vendeu "${material.title}" para ${currentUser.name}. Protocolo: ${String(transaction.id).substring(0, 12)}`,
           'success',
           'marketplace',
+          '/partner',
+          undefined,
+          'marketplace_sale',
         );
       }
 
@@ -328,6 +336,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         `Venda realizada: "${material.title}" por ${currentUser.name}.`,
         'success',
         'marketplace',
+        '/admin/finance/transactions',
+        undefined,
+        'marketplace_purchase_admin',
       );
 
       addToast('Compra realizada com sucesso! O material foi adicionado a sua biblioteca.', 'success');
@@ -352,7 +363,16 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         status: 'refund_requested',
         refundReason: reason,
       })));
-      sendNotification(currentUser!.id, 'Reembolso Solicitado', 'Sua solicitacao esta em análise.', 'info', 'marketplace');
+      sendNotification(
+        currentUser!.id,
+        'Reembolso Solicitado',
+        'Sua solicitacao esta em análise.',
+        'info',
+        'marketplace',
+        '/profile?tab=billing',
+        undefined,
+        'refund_requested',
+      );
       addToast('Solicitacao de reembolso enviada.', 'success');
     } catch (error: unknown) {
       clientLog.error('Refund request error:', error);
@@ -368,7 +388,16 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       const createdMaterial = await marketplaceService.createMaterial(newMaterial);
       setMaterials((prev) => [createdMaterial, ...prev]);
-      sendNotification('admin', 'Novo Material', `Material "${newMaterial.title}" aguardando aprovação.`, 'info', 'marketplace');
+      sendNotification(
+        'admin',
+        'Novo Material',
+        `Material "${newMaterial.title}" aguardando aprovação.`,
+        'info',
+        'marketplace',
+        '/admin/marketplace/materials',
+        undefined,
+        'material_pending_admin',
+      );
       addToast('Material enviado para aprovação com sucesso!', 'success');
       return true;
     } catch (error) {
@@ -584,6 +613,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
           `${currentUser.name} curtiu seu comentário em "${material.title}".`,
           'success',
           'social',
+          undefined,
+          undefined,
+          'comment_like_received',
         );
       }
     }

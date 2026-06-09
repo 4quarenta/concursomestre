@@ -15,6 +15,15 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: '/questions',
+        destination: '/practice',
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

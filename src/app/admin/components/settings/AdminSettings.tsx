@@ -24,11 +24,18 @@ import apiClient from '@services/api/client';
 import { adminService } from '@services/admin/adminService';
 import { parseDailyMotivationMarkdown } from '@services/dashboard/dashboardInsightsService';
 import { normalizeEmailTemplates } from '@constants/email/defaultEmailTemplates';
+import { DEFAULT_SYSTEM_SETTINGS } from '@/state/app-config/systemSettings';
+import {
+  normalizeGamificationSettings,
+  normalizeNotificationSettings,
+} from '@constants/gamificationNotificationSettings';
 import AdminSettingsTabsBar from './AdminSettingsTabsBar';
 import { LogViewer } from './LogViewer';
 import AdminCacheManagement from './AdminCacheManagement';
 import AdminSeoSettingsSection from './AdminSeoSettingsSection';
 import AdminEmailTemplatesSection from './AdminEmailTemplatesSection';
+import AdminGamificationSettingsSection from './AdminGamificationSettingsSection';
+import AdminNotificationSettingsSection from './AdminNotificationSettingsSection';
 import StripePaymentMethodsSettings from './StripePaymentMethodsSettings';
 import { mergeSeoSettings } from './seoSettings';
 import {
@@ -43,7 +50,7 @@ import {
 } from '../shared/adminPanelStyles';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
-type AdminSettingsTab = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
+type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
 type AdminSettingsTabs = React.ComponentProps<typeof AdminSettingsTabsBar>['tabs'];
 
 interface AdminIntegrationCheck {
@@ -142,6 +149,36 @@ const stripFeatureFlagAliases = (settings: SystemSettings): SystemSettings => {
   return nextSettings as SystemSettings;
 };
 
+const ADMIN_SECRET_SETTING_KEYS = [
+  'smtpPass',
+  'geminiApiKey',
+  'openaiApiKey',
+  'recaptchaSecretKey',
+  'facebookAuthAppSecret',
+  'stripeSecretKey',
+  'stripeWebhookSecret',
+] as const;
+
+const isMaskedAdminSecretValue = (value: unknown): boolean => {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) {
+    return true;
+  }
+
+  return /^[*•·xX_-]{6,}$/.test(rawValue)
+    || /^_+hidden_+$/i.test(rawValue)
+    || /^__masked__/i.test(rawValue)
+    || /^digite uma nova/i.test(rawValue);
+};
+
+const stripEmptyAdminSecrets = (settings: SystemSettings & Record<string, unknown>) => {
+  ADMIN_SECRET_SETTING_KEYS.forEach((key) => {
+    if (isMaskedAdminSecretValue(settings[key])) {
+      delete settings[key];
+    }
+  });
+};
+
 const AdminSettings = ({
   systemSettings,
   saveSystemSettingsNow,
@@ -235,6 +272,11 @@ const AdminSettings = ({
   };
 
   const buildSettingsPayload = (): SystemSettings => {
+    const resolvedFeatures = {
+      ...DEFAULT_SYSTEM_SETTINGS.features,
+      ...(systemSettings.features || {}),
+      ...(localSettings.features || {}),
+    };
     const payload = {
       ...stripFeatureFlagAliases(localSettings),
       paymentProvider: 'stripe',
@@ -244,18 +286,15 @@ const AdminSettings = ({
       siteName: localSettings.siteName || 'ConcursoMestre',
       platformFeePercent: Number(localSettings.platformFeePercent ?? 20),
       smtpPort: Number(localSettings.smtpPort || 587),
-      features: {
-        ...(localSettings.features || {}),
-      } as SystemSettings['features'],
+      features: resolvedFeatures,
       seo: localSeoSettings,
     } as SystemSettings & Record<string, unknown>;
 
-    if (!localSettings.smtpPass) {
-      delete payload.smtpPass;
-    }
+    stripEmptyAdminSecrets(payload);
 
     delete payload.hasSmtpPasswordConfigured;
     delete payload.hasGeminiApiKeyConfigured;
+    delete payload.hasOpenAiApiKeyConfigured;
     delete payload.hasRecaptchaSecretConfigured;
     delete payload.hasStripeSecretConfigured;
     delete payload.hasStripeWebhookConfigured;
@@ -292,8 +331,8 @@ const AdminSettings = ({
       setLocalSettings(persistedSettings);
       setLocalSeoSettings(mergeSeoSettings(persistedSettings.seo));
       addToast('Configuracoes salvas com sucesso.', 'success');
-    } catch {
-      addToast('Nao foi possivel salvar as configuracoes.', 'error');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel salvar as configuracoes.'), 'error');
     } finally {
       setIsSavingSettings(false);
     }
@@ -459,13 +498,24 @@ const AdminSettings = ({
   const isStripeSecretConfigured = !!(localSettings.hasStripeSecretConfigured || localSettings.stripeSecretKey);
   const isStripeWebhookConfigured = !!(localSettings.hasStripeWebhookConfigured || localSettings.stripeWebhookSecret);
   const isGeminiConfigured = !!(localSettings.hasGeminiApiKeyConfigured || localSettings.geminiApiKey);
+  const isOpenAiConfigured = !!(localSettings.hasOpenAiApiKeyConfigured || localSettings.openaiApiKey);
   const isRecaptchaSecretConfigured = !!(localSettings.hasRecaptchaSecretConfigured || localSettings.recaptchaSecretKey);
   const isFacebookAuthConfigured = !!(localSettings.hasFacebookAuthConfigured || (localSettings.facebookAuthAppId && localSettings.facebookAuthAppSecret));
   const isAppleAuthConfigured = !!(localSettings.hasAppleAuthConfigured || localSettings.appleAuthClientId);
   const isSmtpPasswordConfigured = !!(localSettings.hasSmtpPasswordConfigured || localSettings.smtpPass);
+  const gamificationSettings = useMemo(
+    () => normalizeGamificationSettings(localSettings.gamification),
+    [localSettings.gamification],
+  );
+  const notificationSettings = useMemo(
+    () => normalizeNotificationSettings(localSettings.notificationSettings),
+    [localSettings.notificationSettings],
+  );
   const settingsTabs: AdminSettingsTabs = [
     { id: 'general', label: 'Geral', icon: Settings },
     { id: 'modules', label: 'Modulos', icon: LayoutDashboard },
+    { id: 'gamification', label: 'Gamificacao', icon: Trophy },
+    { id: 'notifications', label: 'Notificacoes', icon: Bell },
     { id: 'security', label: 'Seguranca', icon: ShieldAlert },
     { id: 'integrations', label: 'Integracoes', icon: Cpu },
     { id: 'email', label: 'E-mail', icon: Mail },
@@ -530,6 +580,14 @@ const AdminSettings = ({
                 <input value={localSettings.supportPhone || ''} onChange={(e) => setField('supportPhone', e.target.value)} className={inputClassName} />
               </div>
               <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>E-mail juridico</label>
+                <input type="email" value={localSettings.legalContactEmail || ''} onChange={(e) => setField('legalContactEmail', e.target.value)} className={inputClassName} placeholder="juridico@seudominio.com" />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                <label className={labelClassName}>E-mail privacidade/DPO</label>
+                <input type="email" value={localSettings.privacyContactEmail || ''} onChange={(e) => setField('privacyContactEmail', e.target.value)} className={inputClassName} placeholder="dpo@seudominio.com" />
+              </div>
+              <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
                 <label className={labelClassName}>Taxa da plataforma (%)</label>
                 <input type="number" value={String(localSettings.platformFeePercent ?? 20)} onChange={(e) => setField('platformFeePercent', Number(e.target.value))} className={inputClassName} />
               </div>
@@ -581,6 +639,23 @@ const AdminSettings = ({
       )}
 
       {activeTab === 'modules' && <div className="grid gap-4 md:grid-cols-2">{featureItems.map((feature) => <button key={feature.id} type="button" onClick={() => setFeature(feature.id, !localSettings.features?.[feature.id])} className={`${ADMIN_PAGE_PANEL_CLASS} flex items-center justify-between p-5 text-left`}><div className="flex items-center gap-3"><feature.icon size={18} className="text-sky-700 dark:text-sky-300" /><div><p className="text-sm font-black text-slate-900 dark:text-slate-100">{feature.label}</p><p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{feature.id}</p></div></div><div className={`rounded-sm px-3 py-1 text-[10px] font-black uppercase ${localSettings.features?.[feature.id] ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>{localSettings.features?.[feature.id] ? 'Ativo' : 'Inativo'}</div></button>)}</div>}
+
+      {activeTab === 'gamification' && (
+        <AdminGamificationSettingsSection
+          settings={gamificationSettings}
+          onChange={(nextSettings) => setField('gamification', nextSettings)}
+        />
+      )}
+
+      {activeTab === 'notifications' && (
+        <AdminNotificationSettingsSection
+          settings={notificationSettings}
+          onChange={(nextSettings) => {
+            setField('notificationSettings', nextSettings);
+            setFeature('notificationsEnabled', nextSettings.enabled);
+          }}
+        />
+      )}
 
       {activeTab === 'security' && (
         <div className="grid gap-5 md:gap-6 lg:grid-cols-2">
@@ -804,7 +879,10 @@ const AdminSettings = ({
             <div className="space-y-2"><input value={localSettings.appleAuthRedirectUri || ''} onChange={(e) => setField('appleAuthRedirectUri', e.target.value)} className={inputClassName} placeholder="Apple Redirect URI (opcional)" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Se vazio, o login usa automaticamente a origem atual + /auth.</p></div>
             <input value={localSettings.googleAnalyticsId || ''} onChange={(e) => setField('googleAnalyticsId', e.target.value)} className={inputClassName} placeholder="Google Analytics ID" />
             <input value={localSettings.metaPixelId || ''} onChange={(e) => setField('metaPixelId', e.target.value)} className={inputClassName} placeholder="Meta Pixel ID" />
-            <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Gemini API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isGeminiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isGeminiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.geminiApiKey || ''} onChange={(e) => setField('geminiApiKey', e.target.value)} className={inputClassName} placeholder={isGeminiConfigured ? 'Digite uma nova chave para substituir a atual' : 'Gemini API key'} />{localSettings.hasGeminiApiKeyConfigured && !localSettings.geminiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend e as chamadas de IA agora passam pelo backend.</p>}</div>
+            <div className="space-y-2 md:col-span-2"><span className={labelClassName}>Provedor padrao de IA</span><select value={localSettings.aiProvider || 'gemini'} onChange={(e) => setField('aiProvider', e.target.value)} className={inputClassName}><option value="gemini">Gemini</option><option value="openai">OpenAI / ChatGPT</option><option value="auto">Automatico: OpenAI se configurado, senao Gemini</option></select><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Todas as geracoes passam pelo backend. O frontend nunca recebe a chave do provedor.</p></div>
+            <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Gemini API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isGeminiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isGeminiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.geminiApiKey || ''} onChange={(e) => setField('geminiApiKey', e.target.value)} className={inputClassName} placeholder={isGeminiConfigured ? 'Digite uma nova chave para substituir a atual' : 'Gemini API key'} />{localSettings.hasGeminiApiKeyConfigured && !localSettings.geminiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend.</p>}</div>
+            <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>OpenAI API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isOpenAiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isOpenAiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.openaiApiKey || ''} onChange={(e) => setField('openaiApiKey', e.target.value)} className={inputClassName} placeholder={isOpenAiConfigured ? 'Digite uma nova chave para substituir a atual' : 'OpenAI API key'} />{localSettings.hasOpenAiApiKeyConfigured && !localSettings.openaiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend.</p>}</div>
+            <div className="space-y-2 md:col-span-2"><span className={labelClassName}>Modelo OpenAI</span><input value={localSettings.openAiModel || 'gpt-4o-mini'} onChange={(e) => setField('openAiModel', e.target.value)} className={inputClassName} placeholder="gpt-4o-mini" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Usado quando o provedor escolhido for OpenAI/ChatGPT. Chamadas antigas que enviam modelo Gemini usam este valor automaticamente.</p></div>
             <div className="space-y-2"><input value={localSettings.recaptchaSiteKey || ''} onChange={(e) => setField('recaptchaSiteKey', e.target.value)} className={inputClassName} placeholder="reCAPTCHA v3 site key" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use chaves do reCAPTCHA v3. O token agora e gerado automaticamente no envio de login, cadastro e reset.</p></div>
             <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>reCAPTCHA v3 secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isRecaptchaSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isRecaptchaSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.recaptchaSecretKey || ''} onChange={(e) => setField('recaptchaSecretKey', e.target.value)} className={inputClassName} placeholder={isRecaptchaSecretConfigured ? 'Digite um novo segredo para substituir o atual' : 'reCAPTCHA v3 secret key'} /></div>
           </div>

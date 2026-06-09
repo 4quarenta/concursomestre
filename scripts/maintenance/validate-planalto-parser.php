@@ -52,8 +52,12 @@ $service = new PlanaltoImportService($db, new LegalCommentaryRepository($db));
 $failures = [];
 $dumpElementsFor = null;
 $dumpArticlesFor = null;
+$dumpSectionsFor = null;
 $dumpMetadataFor = null;
+$dumpClassificationFor = null;
 $dumpDuplicatesFor = null;
+$saveCheckFor = null;
+$onlyKeys = [];
 foreach (array_slice($argv, 1) as $arg) {
     if (str_starts_with($arg, '--dump-elements=')) {
         $dumpElementsFor = substr($arg, strlen('--dump-elements='));
@@ -61,12 +65,76 @@ foreach (array_slice($argv, 1) as $arg) {
     if (str_starts_with($arg, '--dump-articles=')) {
         $dumpArticlesFor = substr($arg, strlen('--dump-articles='));
     }
+    if (str_starts_with($arg, '--dump-sections=')) {
+        $dumpSectionsFor = substr($arg, strlen('--dump-sections='));
+    }
     if (str_starts_with($arg, '--dump-metadata=')) {
         $dumpMetadataFor = substr($arg, strlen('--dump-metadata='));
+    }
+    if (str_starts_with($arg, '--dump-classification=')) {
+        $dumpClassificationFor = substr($arg, strlen('--dump-classification='));
     }
     if (str_starts_with($arg, '--dump-duplicates=')) {
         $dumpDuplicatesFor = substr($arg, strlen('--dump-duplicates='));
     }
+    if (str_starts_with($arg, '--save-check=')) {
+        $saveCheckFor = substr($arg, strlen('--save-check='));
+    }
+    if (str_starts_with($arg, '--only=')) {
+        $onlyKeys = array_values(array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            explode(',', substr($arg, strlen('--only=')))
+        )));
+    }
+}
+
+if ($dumpClassificationFor !== null && isset($urls[$dumpClassificationFor])) {
+    $reflection = new ReflectionClass($service);
+    $fetchHtml = $reflection->getMethod('fetchHtml');
+    $fetchHtml->setAccessible(true);
+    $extractReadableLines = $reflection->getMethod('extractReadableLines');
+    $extractReadableLines->setAccessible(true);
+    $extractMetadataLine = $reflection->getMethod('extractMetadataLine');
+    $extractMetadataLine->setAccessible(true);
+    $extractEmenta = $reflection->getMethod('extractEmenta');
+    $extractEmenta->setAccessible(true);
+    $classifyLaw = $reflection->getMethod('classifyLaw');
+    $classifyLaw->setAccessible(true);
+    $isConstitutionDocument = $reflection->getMethod('isConstitutionDocument');
+    $isConstitutionDocument->setAccessible(true);
+    $html = $fetchHtml->invoke($service, $urls[$dumpClassificationFor]);
+    $lines = $extractReadableLines->invoke($service, $html);
+    $metadata = $extractMetadataLine->invoke($service, $lines, $urls[$dumpClassificationFor]);
+    $ementa = $extractEmenta->invoke($service, $lines);
+    var_export([
+        'metadata' => $metadata,
+        'isConstitution' => $isConstitutionDocument->invoke($service, $metadata, $urls[$dumpClassificationFor]),
+        'classification' => $classifyLaw->invoke($service, $metadata, $ementa, $urls[$dumpClassificationFor]),
+    ]);
+    echo PHP_EOL;
+    exit(0);
+}
+
+if (!empty($onlyKeys)) {
+    $urls = array_intersect_key($urls, array_flip($onlyKeys));
+}
+
+if ($dumpSectionsFor !== null && isset($urls[$dumpSectionsFor])) {
+    $result = $service->importFromUrl($urls[$dumpSectionsFor], false);
+    foreach (($result['law']['sections'] ?? []) as $index => $section) {
+        echo sprintf(
+            "%03d %s | from=%s to=%s count=%s subtopic=%s assunto=%s slug=%s\n",
+            $index + 1,
+            (string) ($section['displayTitle'] ?? $section['title'] ?? ''),
+            (string) ($section['fromArticle'] ?? ''),
+            (string) ($section['toArticle'] ?? ''),
+            (string) ($section['articleCount'] ?? ''),
+            (string) ($section['titleName'] ?? ''),
+            (string) ($section['chapterName'] ?? ''),
+            (string) ($section['slug'] ?? $section['id'] ?? '')
+        );
+    }
+    exit(0);
 }
 
 if ($dumpElementsFor !== null && isset($urls[$dumpElementsFor])) {
@@ -137,6 +205,53 @@ if ($dumpArticlesFor !== null && isset($urls[$dumpArticlesFor])) {
             mb_substr((string) ($article['text'] ?? ''), 0, 90)
         );
     }
+    exit(0);
+}
+
+if ($saveCheckFor !== null && isset($urls[$saveCheckFor])) {
+    $repository = new LegalCommentaryRepository($db);
+    $service = new PlanaltoImportService($db, $repository);
+    $result = $service->importFromUrl($urls[$saveCheckFor], false);
+    $law = $result['law'] ?? [];
+    $law['id'] = '';
+    $law['slug'] = 'tmp-parser-save-' . strtolower($saveCheckFor) . '-' . time();
+    $law['title'] = 'TMP Parser Save - ' . ($law['title'] ?? $saveCheckFor);
+    $law['shortTitle'] = $law['title'];
+    $saved = $repository->saveAdminPayload($law);
+    $savedId = (int) ($saved['id'] ?? 0);
+    $detail = $repository->fetchLawDetail((string) $savedId);
+    $articleCountStmt = $db->prepare('SELECT COUNT(*) FROM law_articles WHERE law_id = :law_id');
+    $articleCountStmt->execute([':law_id' => $savedId]);
+    $storedArticleCount = (int) $articleCountStmt->fetchColumn();
+    $mismatchStmt = $db->prepare(
+        'SELECT COUNT(*)
+         FROM law_articles ar
+         LEFT JOIN law_sections ls ON ls.id = ar.section_id
+         WHERE ar.law_id = :law_id
+           AND COALESCE(ar.assunto_filter_id, 0) <> COALESCE(ls.assunto_filter_id, 0)'
+    );
+    $mismatchStmt->execute([':law_id' => $savedId]);
+    $taxonomyMismatches = (int) $mismatchStmt->fetchColumn();
+    echo 'SAVED id=' . $savedId
+        . ' sections=' . count($detail['sections'] ?? [])
+        . ' articles=' . count($detail['articles'] ?? [])
+        . ' stored_articles=' . $storedArticleCount
+        . ' taxonomy_mismatches=' . $taxonomyMismatches
+        . PHP_EOL;
+    if ($taxonomyMismatches > 0) {
+        throw new RuntimeException('Artigos com assunto divergente do capitulo: ' . $taxonomyMismatches);
+    }
+    foreach (array_slice(($detail['sections'] ?? []), 0, 5) as $index => $section) {
+        echo sprintf(
+            "%03d %s | assunto=%s | count=%s\n",
+            $index + 1,
+            (string) ($section['displayTitle'] ?? $section['title'] ?? ''),
+            (string) ($section['chapterName'] ?? ''),
+            (string) ($section['articleCount'] ?? '')
+        );
+    }
+    $repository->deleteLaw($savedId);
+    echo 'DELETED id=' . $savedId . PHP_EOL;
     exit(0);
 }
 

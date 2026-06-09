@@ -10,7 +10,7 @@
 */
 
 import { useMemo, useState } from 'react';
-import type { Prova, Question, SystemSettings } from '@types';
+import type { ExamFileAttachment, Prova, Question, SystemSettings } from '@types';
 import { clientLog } from '@services/monitoring/clientLog';
 import {
   applyProvaToQuestion,
@@ -30,6 +30,9 @@ export interface ExamDraftState {
   ano: string;
   nivel: string;
   index: string;
+  caderno: string;
+  tipoCaderno: string;
+  corCaderno: string;
   publishStatus: 'published' | 'draft' | 'scheduled';
   visibilityStatus: 'public' | 'elite' | 'internal';
   scheduledAt: string;
@@ -40,6 +43,7 @@ export interface ExamDraftState {
   orgaoSigla: string;
   orgaoNome: string;
   cargoDescricao: string;
+  files: ExamFileAttachment[];
 }
 
 interface UseAdminExamBankWorkflowOptions {
@@ -58,6 +62,9 @@ export const createDraftFromProva = (prova: Prova): ExamDraftState => ({
   ano: String(prova.ano || ''),
   nivel: prova.nivel || '',
   index: prova.index || '',
+  caderno: prova.caderno || [prova.tipoCaderno || prova.bookletType, prova.corCaderno || prova.bookletColor].filter(Boolean).join(' - '),
+  tipoCaderno: prova.tipoCaderno || prova.bookletType || '',
+  corCaderno: prova.corCaderno || prova.bookletColor || '',
   publishStatus: prova.publishStatus || 'published',
   visibilityStatus: prova.visibilityStatus || 'public',
   scheduledAt: prova.scheduledAt || '',
@@ -67,6 +74,7 @@ export const createDraftFromProva = (prova: Prova): ExamDraftState => ({
   orgaoId: String(prova.orgao?.id || ''),
   orgaoSigla: prova.orgao?.sigla || '',
   orgaoNome: prova.orgao?.nome || prova.orgao?.name || '',
+  files: prova.files || prova.examFiles || [],
   cargoDescricao: prova.cargo?.descricao || prova.cargo?.['descrição'] || '',
 });
 
@@ -76,6 +84,9 @@ export const createEmptyExamDraft = (): ExamDraftState => ({
   ano: '',
   nivel: '',
   index: '',
+  caderno: '',
+  tipoCaderno: '',
+  corCaderno: '',
   publishStatus: 'published',
   visibilityStatus: 'public',
   scheduledAt: '',
@@ -85,6 +96,7 @@ export const createEmptyExamDraft = (): ExamDraftState => ({
   orgaoId: '',
   orgaoSigla: '',
   orgaoNome: '',
+  files: [],
   cargoDescricao: '',
 });
 
@@ -176,6 +188,18 @@ export const useAdminExamBankWorkflow = ({
       ano: examDraft.ano,
       nivel: examDraft.nivel,
       index: examDraft.index,
+      caderno: examDraft.caderno,
+      tipoCaderno: examDraft.tipoCaderno,
+      corCaderno: examDraft.corCaderno,
+      bookletType: examDraft.tipoCaderno,
+      bookletColor: examDraft.corCaderno,
+      files: examDraft.files,
+      examFiles: examDraft.files,
+      pdfUrl: examDraft.files.find((file) => file.kind === 'prova')?.url,
+      proofUrl: examDraft.files.find((file) => file.kind === 'prova')?.url,
+      editalUrl: examDraft.files.find((file) => file.kind === 'edital')?.url,
+      gabaritoUrl: examDraft.files.find((file) => file.kind === 'gabarito')?.url,
+      answerKeyUrl: examDraft.files.find((file) => file.kind === 'gabarito')?.url,
       banca: {
         id: examDraft.bancaId || undefined,
         sigla: examDraft.bancaSigla || examDraft.bancaNome,

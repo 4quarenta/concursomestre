@@ -9,15 +9,17 @@
 *
 */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Question, QuestionTaxonomyLabel, SystemSettings } from '@types';
 import { aiService, questionService, type PageExtractionResult } from '@services/questions';
+import { adminService } from '@services/admin/adminService';
 import {
   ENEM_FOCUS_NAME,
   ENEM_SUBJECT_AREA_DESCRIPTIONS,
   ENEM_SUBJECT_AREA_OPTIONS,
 } from '@services/filters';
 import { normalizeProvaRecord } from '../exams/examBankUtils';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDocumentProxy = Awaited<ReturnType<PdfJsModule['getDocument']>['promise']>;
@@ -35,6 +37,7 @@ interface ImportedQuestionDraft extends Partial<Question> {
   referenceText?: string;
   contextKey?: string;
   grupoQuestaoTempId?: string | number;
+  contextTempId?: string | number;
   contextTitle?: string;
   contextScope?: string;
   sourcePage?: number | string;
@@ -47,17 +50,30 @@ interface ImportedQuestionDraft extends Partial<Question> {
   optionFigureBoxes?: FigureBox[];
   supportImages?: ImportedQuestionImageDraft[];
   imageDescriptions?: string[];
-  modality?: 'multipla escolha' | 'certo ou errado';
+  modality?: ImportedQuestionType;
   expectedOptionsCount?: number | string;
   expected_options_count?: number | string;
   correctOptionIndex?: number;
   anulada?: boolean;
   isCanceled?: boolean;
+  isCancelled?: boolean;
+  isCanceledQuestion?: boolean;
+  isCancelledQuestion?: boolean;
+  is_cancelled?: boolean;
+  isAttributedToAll?: boolean;
+  attributedToAll?: boolean;
+  is_attributed_to_all?: boolean;
   subject?: string;
   topic?: string;
   specificSubject?: string;
   options?: string[];
   difficulty?: string;
+  raw?: string;
+  status?: 'ok' | 'incompleta' | 'revisar';
+  extractionStatus?: 'ok' | 'incompleta' | 'revisar';
+  questionType?: ImportedQuestionType;
+  statusReasons?: ImportedQuestionStatusReason[];
+  validationReasons?: ImportedQuestionStatusReason[];
 }
 
 interface ImportMetadata extends NonNullable<PageExtractionResult['metadata']> {
@@ -72,6 +88,9 @@ interface ImportMetadata extends NonNullable<PageExtractionResult['metadata']> {
   cargo?: string;
   roles?: string[];
   cargos?: string[];
+  source?: string;
+  sources?: string[];
+  orgaos?: unknown[];
   caderno?: string;
   booklet?: string;
   tipoCaderno?: string;
@@ -101,13 +120,26 @@ interface ImportedContextDraft {
   tempId: string;
   title: string;
   text: string;
+  referenceText?: string;
+  richText?: string;
   questionNumbers: number[];
   hasFigure: boolean;
   figureDescription: string;
   page: number;
+  sourcePage?: number;
   imageData?: string;
   pageImageData?: string;
   figureBox?: FigureBox;
+  figures?: Array<{
+    figureKey: string;
+    type?: string;
+    description?: string;
+    imageData?: string;
+    pageImageData?: string;
+    figureBox?: FigureBox;
+    page?: number;
+    order?: number;
+  }>;
   manualCropApplied?: boolean;
 }
 
@@ -250,6 +282,56 @@ const isLikelySupportTitleLine = (value: string) => {
   return letters.length >= 5 && uppercaseLetters.length / letters.length > 0.72;
 };
 
+const isLikelyAuthorLine = (value: string) => {
+  const clean = stripHtml(value).replace(/\s+/g, ' ').trim();
+  if (!clean || clean.length > 90 || /[.!?:;]$/.test(clean)) {
+    return false;
+  }
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 8) {
+    return false;
+  }
+
+  return words.every((word) => (
+    /^(?:de|da|do|das|dos|e)$/i.test(word)
+    || /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-zà-öø-ÿ]+(?:[-'][A-ZÁÉÍÓÚÂÊÔÃÕÇ]?[a-zà-öø-ÿ]+)?$/.test(word)
+  ));
+};
+
+const isLikelySupportSubtitleLine = (value: string) => {
+  const clean = stripHtml(value).replace(/\s+/g, ' ').trim();
+  if (!clean || clean.length > 90 || /[.!?:;]$/.test(clean)) {
+    return false;
+  }
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  return words.length <= 10 && /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ"“0-9]/.test(clean);
+};
+
+const isPipeTableBlock = (lines: string[]) => (
+  lines.length >= 2
+  && lines.every((line) => line.includes('|'))
+  && lines.every((line) => line.split('|').map((cell) => cell.trim()).filter(Boolean).length >= 2)
+);
+
+const formatPipeTableHtml = (lines: string[]) => {
+  const rows = lines.map((line) => line.split('|').map((cell) => cell.trim()).filter(Boolean));
+  const columnCount = Math.max(...rows.map((row) => row.length));
+  if (columnCount < 2 || rows.some((row) => row.length !== columnCount)) {
+    return '';
+  }
+
+  const header = rows[0];
+  const bodyRows = rows.slice(1).filter((row) => !row.every((cell) => /^:?-{2,}:?$/.test(cell)));
+  const renderCell = (tag: 'td' | 'th', value: string) => `<${tag}>${escapeStructuredTextPreservingInlineHtml(value)}</${tag}>`;
+  const headerHtml = `<thead><tr>${header.map((cell) => renderCell('th', cell)).join('')}</tr></thead>`;
+  const bodyHtml = `<tbody>${bodyRows.map((row) => `<tr>${row.map((cell) => renderCell('td', cell)).join('')}</tr>`).join('')}</tbody>`;
+  return `<table>${headerHtml}${bodyHtml}</table>`;
+};
+
+const isFigureMarkerLine = (value: string) => /^\[FIGURA:\s*[-\w]+\]$/i.test(String(value || '').trim());
+
 const formatStructuredSupportHtml = (value: string) => {
   const raw = String(value || '').trim();
   if (!raw || blockHtmlPattern.test(raw)) {
@@ -275,15 +357,40 @@ const formatStructuredSupportHtml = (value: string) => {
         return '';
       }
 
+      if (isPipeTableBlock(lines)) {
+        return formatPipeTableHtml(lines) || `<p>${lines.map(escapeStructuredTextPreservingInlineHtml).join('<br />')}</p>`;
+      }
+
       if (lines.length === 1) {
+        if (isFigureMarkerLine(lines[0])) {
+          return lines[0];
+        }
         const content = escapeStructuredTextPreservingInlineHtml(lines[0]);
         return isLikelySupportTitleLine(lines[0]) ? `<h4>${content}</h4>` : `<p>${content}</p>`;
       }
 
       const [firstLine, ...bodyLines] = lines;
-      const bodyHtml = bodyLines.map(escapeStructuredTextPreservingInlineHtml).join('<br />');
       if (isLikelySupportTitleLine(firstLine)) {
-        return `<h4>${escapeStructuredTextPreservingInlineHtml(firstLine)}</h4>${bodyHtml ? `<p>${bodyHtml}</p>` : ''}`;
+        const htmlParts = [`<h4>${escapeStructuredTextPreservingInlineHtml(firstLine)}</h4>`];
+        let textBodyLines = bodyLines;
+        const [possibleSubtitleLine, possibleAuthorLine, ...remainingAfterSubtitle] = bodyLines;
+        if (possibleSubtitleLine && possibleAuthorLine && isLikelySupportSubtitleLine(possibleSubtitleLine) && isLikelyAuthorLine(possibleAuthorLine)) {
+          htmlParts.push(`<p>${escapeStructuredTextPreservingInlineHtml(possibleSubtitleLine)}</p>`);
+          htmlParts.push(`<p><em>${escapeStructuredTextPreservingInlineHtml(possibleAuthorLine)}</em></p>`);
+          textBodyLines = remainingAfterSubtitle;
+        } else if (possibleSubtitleLine && isLikelyAuthorLine(possibleSubtitleLine)) {
+          htmlParts.push(`<p><em>${escapeStructuredTextPreservingInlineHtml(possibleSubtitleLine)}</em></p>`);
+          textBodyLines = bodyLines.slice(1);
+        }
+
+        const bodyHtml = textBodyLines
+          .map(escapeStructuredTextPreservingInlineHtml)
+          .filter(Boolean)
+          .join('<br />');
+        if (bodyHtml) {
+          htmlParts.push(`<p>${bodyHtml}</p>`);
+        }
+        return htmlParts.join('');
       }
 
       return `<p>${lines.map(escapeStructuredTextPreservingInlineHtml).join('<br />')}</p>`;
@@ -313,6 +420,497 @@ const normalizeComparisonText = (value: string) => String(value || '')
   .trim()
   .toLowerCase();
 
+type ExamParserProfileId =
+  | 'generic'
+  | 'ibfc'
+  | 'cebraspe'
+  | 'fgv'
+  | 'fcc'
+  | 'vunesp'
+  | 'instituto-aocp'
+  | 'idecan'
+  | 'quadrix'
+  | 'iades'
+  | 'fundatec'
+  | 'cetro'
+  | 'consulplan'
+  | 'instituto-mais'
+  | 'nc-ufpr'
+  | 'fumarc'
+  | 'fepese'
+  | 'funrio'
+  | 'ieses'
+  | 'instituto-access'
+  | 'instituto-consultec'
+  | 'instituto-selecon'
+  | 'avanca-sp'
+  | 'cetap'
+  | 'funcab'
+  | 'vunesp-militar'
+  | 'esaf'
+  | 'cesgranrio'
+  | 'vestibular'
+  | 'enem';
+
+type ImportedQuestionStatus = 'ok' | 'incompleta' | 'revisar';
+type ImportedQuestionStatusReason =
+  | 'sem_enunciado'
+  | 'sem_alternativas'
+  | 'alternativas_incompletas'
+  | 'numero_duplicado'
+  | 'possivel_texto_base_misturado'
+  | 'figura_sem_recorte'
+  | 'tipo_indefinido'
+  | 'questao_sem_enunciado'
+  | 'contexto_referenciado_nao_encontrado'
+  | 'estrutura_texto_achatada'
+  | 'tabela_corrompida'
+  | 'poema_corrompido'
+  | 'lei_corrompida'
+  | 'contexto_quebrado_entre_paginas'
+  | 'contexto_compartilhado_nao_vinculado';
+type ImportedQuestionType =
+  | 'multipla escolha'
+  | 'certo ou errado'
+  | 'verdadeiro/falso'
+  | 'multipla assertiva'
+  | 'somatorio'
+  | 'discursiva'
+  | 'redacao'
+  | 'estudo de caso'
+  | 'desconhecido';
+
+interface ParserMarkerPattern {
+  pattern: RegExp;
+  numberGroup?: number;
+  source: string;
+}
+
+interface ExamParserProfile {
+  id: ExamParserProfileId;
+  label: string;
+  signalPattern?: RegExp;
+  defaultMultipleChoiceOptions?: number;
+  questionMarkerPatterns: ParserMarkerPattern[];
+  optionMarkerPatterns: RegExp[];
+  pageHeaderPattern?: RegExp;
+  footerPattern?: RegExp;
+  contextStartPattern: RegExp;
+  trueFalseMode?: boolean;
+  certoErradoMode?: boolean;
+}
+
+const COMMON_QUESTION_MARKER_PATTERNS: ParserMarkerPattern[] = [
+  { pattern: /\b(?:quest[aã]o|questao)\s*(?:n[ºo]\s*)?0*(\d{1,3})\b/gi, numberGroup: 1, source: 'word' },
+  { pattern: /\bq\.?\s*0*(\d{1,3})\b/gi, numberGroup: 1, source: 'q' },
+  { pattern: /\bitem\s+0*(\d{1,3})\b/gi, numberGroup: 1, source: 'item' },
+  { pattern: /(^|\n)\s*0*(\d{1,3})\s*(?=\n\s*\S)/g, numberGroup: 2, source: 'line-number' },
+  { pattern: /(^|(?<=\s))0*(\d{1,3})\s*[.)]\s+(?=\S)/g, numberGroup: 2, source: 'numbered' },
+  { pattern: /(^|(?<=\s))0*(\d{1,3})\s*[-–—]\s+(?=\S)/g, numberGroup: 2, source: 'dash' },
+];
+
+const COMMON_OPTION_MARKER_PATTERNS = [
+  /(^|[\s([{;,:?!])(?:alternativa\s+)?\(?([A-E])\)?\s*[).:;\-–—]\s*/gi,
+  /(^|[\s([{;,:?!])alternativa\s+([A-E])\b\s*/gi,
+  /(^|[\s([{;,:?!])([A-E])\s+(?=\S)/gi,
+];
+
+const COMMON_PAGE_HEADER_PATTERN = /\b(?:caderno\s+de\s+quest[oõ]es|prova\s+objetiva|concurso\s+p[uú]blico|processo\s+seletivo|rascunho|assinatura\s+do\s+candidato)\b/i;
+const COMMON_FOOTER_PATTERN = /\b(?:www\.[\w.-]+|p[aá]gina\s+\d+|\d+\s*$|confira\s+seus\s+dados|cart[aã]o[- ]resposta)\b/i;
+const VISUAL_CONTEXT_TERMS_PATTERN = '(?:figura|imagem|fotografia|desenho|grafico|gr[aá]fico|tabela|mapa|charge|tirinha|cartum|quadrinho|fluxograma|organograma|circuito|planta|esquema|diagrama|infografico|infogr[aá]fico|quadro|tabela\\s+periodica|imagem\\s+historica|desenho\\s+geometrico|esquema\\s+quimico)';
+const COMMON_CONTEXT_START_PATTERN = new RegExp(`\\b(?:textos?\\s+(?:[ivxlc]+|\\d+)|leia\\s+os?\\s+textos?|leia\\s+o\\s+texto\\s+abaixo|considere\\s+o\\s+texto|considere\\s+as\\s+(?:(?:\\w+)\\s+){0,4}passagens|com\\s+base\\s+no\\s+texto|para\\s+responder(?:\\s+[aà]s?)?\\s+(?:quest(?:[oõ]es|oes)|itens?)|texto\\s+para\\s+(?:(?:responder|os?|as?)\\s+)*(?:quest(?:[oõ]es|oes)|itens?)|(?:quest(?:[oõ]es|oes)|itens?)\\s+(?:de(?:\\s+n[uú]meros?)?\\s+)?\\d{1,3}\\s*(?:a|ate|-)\\s*\\d{1,3}|aten[cç][aã]o\\s*:\\s*para\\s+responder|observe\\s+(?:a|o)\\s+${VISUAL_CONTEXT_TERMS_PATTERN}|analise\\s+a\\s+tabela|no\\s+trecho\\s+destacado|na\\s+(?:figura|tabela)|fragmento|${VISUAL_CONTEXT_TERMS_PATTERN}\\s*\\d*)\\b`, 'i');
+
+const GENERIC_EXAM_PARSER_PROFILE: ExamParserProfile = {
+  id: 'generic',
+  label: 'Generico',
+  defaultMultipleChoiceOptions: 0,
+  questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+  optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+  pageHeaderPattern: COMMON_PAGE_HEADER_PATTERN,
+  footerPattern: COMMON_FOOTER_PATTERN,
+  contextStartPattern: COMMON_CONTEXT_START_PATTERN,
+};
+
+const createStandardExamParserProfile = ({
+  id,
+  label,
+  signalPattern,
+  defaultMultipleChoiceOptions = 0,
+  pageHeaderPattern,
+  footerPattern = COMMON_FOOTER_PATTERN,
+  contextStartPattern = COMMON_CONTEXT_START_PATTERN,
+  trueFalseMode = false,
+  certoErradoMode = false,
+}: Pick<ExamParserProfile, 'id' | 'label' | 'signalPattern'> & Partial<ExamParserProfile>): ExamParserProfile => ({
+  id,
+  label,
+  signalPattern,
+  defaultMultipleChoiceOptions,
+  questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+  optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+  pageHeaderPattern: pageHeaderPattern || signalPattern || COMMON_PAGE_HEADER_PATTERN,
+  footerPattern,
+  contextStartPattern,
+  trueFalseMode,
+  certoErradoMode,
+});
+
+const EXAM_PARSER_PROFILES: ExamParserProfile[] = [
+  {
+    id: 'enem',
+    label: 'ENEM / INEP',
+    signalPattern: /\b(?:enem|inep|exame\s+nacional\s+do\s+ensino\s+m[eé]dio)\b/i,
+    defaultMultipleChoiceOptions: 5,
+    questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+    optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+    pageHeaderPattern: /\b(?:enem|inep|caderno\s+\d+|prova\s+(?:azul|amarela|branca|rosa|cinza)|ci[eê]ncias|linguagens|matem[aá]tica)\b/i,
+    footerPattern: COMMON_FOOTER_PATTERN,
+    contextStartPattern: COMMON_CONTEXT_START_PATTERN,
+  },
+  {
+    id: 'ibfc',
+    label: 'IBFC',
+    signalPattern: /\bibfc\b/i,
+    defaultMultipleChoiceOptions: 4,
+    questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+    optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+    pageHeaderPattern: /\bibfc\s*\d{0,3}\b|\bvers[aã]o\s+[a-z]\b/i,
+    footerPattern: /\bibfc[_\s-]*\d+|\bvers[aã]o\s+[a-z]\b|\bwww\.pciconcursos\.com\.br\b|\b\d+\s*$/i,
+    contextStartPattern: COMMON_CONTEXT_START_PATTERN,
+  },
+  {
+    id: 'cebraspe',
+    label: 'CEBRASPE / CESPE',
+    signalPattern: /\b(?:cebraspe|cespe|unb)\b/i,
+    defaultMultipleChoiceOptions: 2,
+    questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+    optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+    pageHeaderPattern: /\b(?:cebraspe|cespe|unb|certo|errado)\b/i,
+    footerPattern: COMMON_FOOTER_PATTERN,
+    contextStartPattern: COMMON_CONTEXT_START_PATTERN,
+    trueFalseMode: true,
+    certoErradoMode: true,
+  },
+  {
+    id: 'fgv',
+    label: 'FGV',
+    signalPattern: /\b(?:fgv|funda[cç][aã]o\s+getulio\s+vargas|get[úu]lio\s+vargas)\b/i,
+    defaultMultipleChoiceOptions: 5,
+    questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+    optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+    pageHeaderPattern: /\b(?:fgv|funda[cç][aã]o\s+getulio\s+vargas|get[úu]lio\s+vargas)\b/i,
+    footerPattern: COMMON_FOOTER_PATTERN,
+    contextStartPattern: COMMON_CONTEXT_START_PATTERN,
+  },
+  {
+    id: 'fcc',
+    label: 'FCC',
+    signalPattern: /\b(?:fcc|funda[cç][aã]o\s+carlos\s+chagas)\b/i,
+    defaultMultipleChoiceOptions: 5,
+    questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+    optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+    pageHeaderPattern: /\b(?:fcc|funda[cç][aã]o\s+carlos\s+chagas)\b/i,
+    footerPattern: COMMON_FOOTER_PATTERN,
+    contextStartPattern: COMMON_CONTEXT_START_PATTERN,
+  },
+  {
+    id: 'vunesp',
+    label: 'VUNESP',
+    signalPattern: /\b(?:vunesp|fundacao\s+vunesp)\b(?![\s\S]{0,120}\b(?:militar|policia\s+militar|pm\b|soldado|oficial)\b)/i,
+    defaultMultipleChoiceOptions: 5,
+    questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+    optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+    pageHeaderPattern: /\b(?:vunesp|funda[cç][aã]o\s+vunesp)\b/i,
+    footerPattern: COMMON_FOOTER_PATTERN,
+    contextStartPattern: COMMON_CONTEXT_START_PATTERN,
+  },
+  createStandardExamParserProfile({
+    id: 'vunesp-militar',
+    label: 'VUNESP Militar',
+    signalPattern: /\b(?:vunesp\s+militar|vunesp.*(?:policia\s+militar|pm\b|soldado|oficial)|(?:policia\s+militar|pm\b|soldado|oficial).*vunesp)\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  {
+    id: 'instituto-aocp',
+    label: 'Instituto AOCP',
+    signalPattern: /\b(?:instituto\s+aocp|aocp)\b/i,
+    defaultMultipleChoiceOptions: 0,
+    questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+    optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+    pageHeaderPattern: /\b(?:instituto\s+aocp|aocp)\b/i,
+    footerPattern: COMMON_FOOTER_PATTERN,
+    contextStartPattern: COMMON_CONTEXT_START_PATTERN,
+  },
+  {
+    id: 'idecan',
+    label: 'IDECAN',
+    signalPattern: /\bidecan\b/i,
+    defaultMultipleChoiceOptions: 0,
+    questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+    optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+    pageHeaderPattern: /\bidecan\b/i,
+    footerPattern: COMMON_FOOTER_PATTERN,
+    contextStartPattern: COMMON_CONTEXT_START_PATTERN,
+  },
+  {
+    id: 'quadrix',
+    label: 'Quadrix',
+    signalPattern: /\bquadrix\b/i,
+    defaultMultipleChoiceOptions: 0,
+    questionMarkerPatterns: COMMON_QUESTION_MARKER_PATTERNS,
+    optionMarkerPatterns: COMMON_OPTION_MARKER_PATTERNS,
+    pageHeaderPattern: /\bquadrix\b/i,
+    footerPattern: COMMON_FOOTER_PATTERN,
+    contextStartPattern: COMMON_CONTEXT_START_PATTERN,
+  },
+  createStandardExamParserProfile({
+    id: 'iades',
+    label: 'IADES',
+    signalPattern: /\biades\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'fundatec',
+    label: 'FUNDATEC',
+    signalPattern: /\bfundatec\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'cetro',
+    label: 'CETRO',
+    signalPattern: /\bcetro\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'consulplan',
+    label: 'CONSULPLAN',
+    signalPattern: /\bconsulplan\b/i,
+    defaultMultipleChoiceOptions: 4,
+  }),
+  createStandardExamParserProfile({
+    id: 'instituto-mais',
+    label: 'Instituto Mais',
+    signalPattern: /\b(?:instituto\s+mais|mais\s+organizacao|mais\s+organizacoes)\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'nc-ufpr',
+    label: 'NC-UFPR',
+    signalPattern: /\b(?:nc\s*[-/]?\s*ufpr|nucleo\s+de\s+concursos\s+da\s+ufpr|ufpr)\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'fumarc',
+    label: 'FUMARC',
+    signalPattern: /\bfumarc\b/i,
+    defaultMultipleChoiceOptions: 4,
+  }),
+  createStandardExamParserProfile({
+    id: 'fepese',
+    label: 'FEPESE',
+    signalPattern: /\bfepese\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'funrio',
+    label: 'FUNRIO',
+    signalPattern: /\bfunrio\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'ieses',
+    label: 'IESES',
+    signalPattern: /\bieses\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'instituto-access',
+    label: 'Instituto ACCESS',
+    signalPattern: /\b(?:instituto\s+access|access)\b/i,
+    defaultMultipleChoiceOptions: 4,
+  }),
+  createStandardExamParserProfile({
+    id: 'instituto-consultec',
+    label: 'Instituto Consultec',
+    signalPattern: /\b(?:instituto\s+consultec|consultec)\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'instituto-selecon',
+    label: 'Instituto Selecon',
+    signalPattern: /\b(?:instituto\s+selecon|selecon)\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'avanca-sp',
+    label: 'Avanca SP',
+    signalPattern: /\b(?:avanca\s+sp|avança\s+sp|avancasp)\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'cetap',
+    label: 'CETAP',
+    signalPattern: /\bcetap\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'funcab',
+    label: 'FUNCAB',
+    signalPattern: /\bfuncab\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'esaf',
+    label: 'ESAF',
+    signalPattern: /\b(?:esaf|escola\s+de\s+administracao\s+fazendaria)\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'cesgranrio',
+    label: 'CESGRANRIO',
+    signalPattern: /\b(?:cesgranrio|fundacao\s+cesgranrio)\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+  createStandardExamParserProfile({
+    id: 'vestibular',
+    label: 'Vestibulares tradicionais',
+    signalPattern: /\b(?:vestibular|fuvest|unicamp|unesp|uerj|ita|ime|comvest)\b/i,
+    defaultMultipleChoiceOptions: 5,
+  }),
+];
+
+const resolveExamParserProfile = (...signals: unknown[]): ExamParserProfile => {
+  const normalizedSignal = normalizeComparisonText(signals.map((signal) => String(signal || '')).join(' '));
+  return EXAM_PARSER_PROFILES.find((profile) => (
+    profile.signalPattern?.test(normalizedSignal)
+  )) || GENERIC_EXAM_PARSER_PROFILE;
+};
+
+const cloneGlobalPattern = (pattern: RegExp) => new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
+
+const normalizePdfTextForParsing = (
+  value: string,
+  parserProfile: ExamParserProfile = GENERIC_EXAM_PARSER_PROFILE,
+) => {
+  const headerPattern = parserProfile.pageHeaderPattern || COMMON_PAGE_HEADER_PATTERN;
+  const footerPattern = parserProfile.footerPattern || COMMON_FOOTER_PATTERN;
+  const rawLines = String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00A0/g, ' ')
+    .replace(/([A-Za-zÀ-ÖØ-öø-ÿ])-\s*\n\s*([a-zà-öø-ÿ])/g, '$1$2')
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim());
+
+  const lines = rawLines.reduce<string[]>((keptLines, line, lineIndex, list) => {
+    const clean = line.replace(/\s+/g, ' ').trim();
+    if (!clean) {
+      if (keptLines[keptLines.length - 1] !== '') {
+        keptLines.push('');
+      }
+      return keptLines;
+    }
+
+      if (/^\d{1,3}$/.test(clean)) {
+        const nextLine = list.slice(lineIndex + 1).find((candidate) => candidate.replace(/\s+/g, ' ').trim()) || '';
+        const cleanNextLine = nextLine.replace(/\s+/g, ' ').trim();
+        const likelyStandaloneQuestionNumber = cleanNextLine.length >= 10
+          && !headerPattern.test(cleanNextLine)
+          && !footerPattern.test(cleanNextLine)
+          && !isLikelyInstructionText(cleanNextLine);
+        if (likelyStandaloneQuestionNumber) {
+          keptLines.push(`${Number(clean)})`);
+        }
+        return keptLines;
+      }
+      if (/^(?:rascunho|assinatura\s+do\s+candidato|caderno\s+de\s+quest[oõ]es)$/i.test(clean)) {
+        return keptLines;
+      }
+      if (headerPattern.test(clean) && clean.length < 120 && !isLikelySupportTitleLine(clean) && !questionCommandPattern.test(clean)) {
+        return keptLines;
+      }
+      if (
+        footerPattern.test(clean)
+        && clean.length < 120
+        && !parserProfile.contextStartPattern.test(clean)
+        && !supportContextSignalPattern.test(clean)
+        && !/\b(?:fonte|dispon[ií]vel|acesso|adaptad[ao])\b/i.test(clean)
+      ) {
+        return keptLines;
+      }
+      keptLines.push(clean);
+      return keptLines;
+    }, [])
+    .filter((line, index, list) => line || (index > 0 && index < list.length - 1));
+
+  return normalizeStructuredText(lines.join('\n'));
+};
+
+const DISCIPLINE_TITLE_PATTERNS: RegExp[] = [
+  /\bL[ií]ngua\s+Portuguesa\b/gi,
+  /\bLiteratura\b/gi,
+  /\bMatem[aá]tica\b/gi,
+  /\bRacioc[ií]nio\s+L[oó]gico\b/gi,
+  /\bDireito\s+Constitucional\b/gi,
+  /\bDireito\s+Administrativo\b/gi,
+  /\bDireito\s+Penal\b/gi,
+  /\bDireito\s+Processual\s+Penal\b/gi,
+  /\bDireito\s+Civil\b/gi,
+  /\bInform[aá]tica\b/gi,
+  /\bF[ií]sica\b/gi,
+  /\bQu[ií]mica\b/gi,
+  /\bBiologia\b/gi,
+  /\bAtualidades\b/gi,
+  /\bHist[oó]ria\b/gi,
+  /\bGeografia\b/gi,
+  /\bDireitos\s+Humanos\b/gi,
+  /\bLegisla[cç][aã]o\s+Especial\b/gi,
+  /\bEstat[ií]stica\b/gi,
+  /\bContabilidade\b/gi,
+  /\bAdministra[cç][aã]o\b/gi,
+  /\bMedicina\b/gi,
+  /\bEnfermagem\b/gi,
+  /\bConhecimentos\s+Gerais\b/gi,
+  /\bConhecimentos\s+Espec[ií]ficos\b/gi,
+  /\bNo[cç][oõ]es\s+de\s+Direito\b/gi,
+  /\bLegisla[cç][aã]o\b/gi,
+];
+
+const normalizeDisciplineTitle = (value: string) => String(value || '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .replace(/\b([A-ZÀ-ÖØ-Þ])([A-ZÀ-ÖØ-Þ]+)\b/g, (match) => (
+    match.charAt(0).toUpperCase() + match.slice(1).toLowerCase()
+  ));
+
+const inferDisciplineFromTextBefore = (value: string) => {
+  const prefix = String(value || '').slice(-2500);
+  const candidates: Array<{ index: number; title: string }> = [];
+  DISCIPLINE_TITLE_PATTERNS.forEach((pattern) => {
+    for (const match of prefix.matchAll(cloneGlobalPattern(pattern))) {
+      candidates.push({ index: match.index ?? 0, title: normalizeDisciplineTitle(match[0]) });
+    }
+  });
+
+  const lines = prefix.split(/\n| {2,}/).map((line) => line.trim()).filter(Boolean);
+  lines.forEach((line, lineIndex) => {
+    const clean = stripHtml(line).replace(/\s+/g, ' ').trim();
+    const letters = clean.replace(/[^\p{L}]/gu, '');
+    const uppercaseLetters = letters.replace(/[^\p{Lu}]/gu, '');
+    if (
+      clean.length >= 6
+      && clean.length <= 90
+      && uppercaseLetters.length >= 5
+      && uppercaseLetters.length / Math.max(1, letters.length) > 0.72
+      && !isLikelyInstructionText(clean)
+      && !isLikelySupportContextStartLine(clean)
+    ) {
+      candidates.push({ index: prefix.length - lines.length + lineIndex, title: normalizeDisciplineTitle(clean) });
+    }
+  });
+
+  return candidates.sort((left, right) => right.index - left.index)[0]?.title || '';
+};
+
 const ROLE_START_PATTERN = /^(?:soldado|cabo|sargento|tenente|oficial|professor|analista|t[eé]cnico|tecnico|agente|assistente|auditor|fiscal|escriv[aã]o|delegado|m[eé]dico|medico|enfermeiro|engenheiro|combatente)\b/i;
 const ROLE_SIGNAL_PATTERN = /\b(?:cargo|prova|soldado|cabo|sargento|tenente|oficial|professor|analista|t[eé]cnico|tecnico|agente|assistente|auditor|fiscal|escriv[aã]o|delegado|m[eé]dico|medico|enfermeiro|engenheiro|combatentes?|pol[ií]cia|policia|bombeiro|pm|bm|qpc|qbmp)\b/i;
 
@@ -322,6 +920,55 @@ const cleanRoleCandidate = (value: unknown) => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
+const readExamEntityLabel = (value: unknown): string => {
+  if (!value || typeof value !== 'object') {
+    return String(value || '').trim();
+  }
+
+  const record = value as Record<string, unknown>;
+  return String(record.name || record.nome || record.sigla || record.descricao || record['descrição'] || record.slug || '').trim();
+};
+
+const cleanOrganizationCandidate = (value: unknown) => readExamEntityLabel(value)
+  .replace(/^[\s:;,\-–—]+/, '')
+  .replace(/\b(?:[oó]rg[aã]o|orgao|fonte|institui[cç][aã]o)\s*[:\-–—]\s*/i, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const splitOrganizationCandidate = (value: unknown) => {
+  const clean = cleanOrganizationCandidate(value);
+  if (!clean) {
+    return [];
+  }
+
+  return clean
+    .split(/(?:\r?\n|;|,|\s*\/\s*|\s+\|\s+)/)
+    .map(cleanOrganizationCandidate)
+    .filter((item) => item.length >= 2 && item.length <= 120);
+};
+
+const normalizeOrganizationList = (...values: unknown[]) => {
+  const organizations = values
+    .flatMap((value) => {
+      if (Array.isArray(value)) {
+        return value.flatMap((item) => splitOrganizationCandidate(item));
+      }
+
+      return splitOrganizationCandidate(value);
+    })
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  return organizations.filter((organization) => {
+    const key = normalizeComparisonText(organization);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
 const splitRoleCandidate = (value: unknown, requireSignal = false) => {
   const clean = cleanRoleCandidate(value);
   if (!clean) {
@@ -329,7 +976,7 @@ const splitRoleCandidate = (value: unknown, requireSignal = false) => {
   }
 
   return clean
-    .split(/(?:\r?\n|;|\s+\/\s+|\s+\|\s+|\s+(?=(?:Soldado|Cabo|Sargento|Tenente|Oficial|Professor|Analista|T[eé]cnico|Tecnico|Agente|Assistente|Auditor|Fiscal|Escriv[aã]o|Delegado|M[eé]dico|Medico|Enfermeiro|Engenheiro)\b))/i)
+    .split(/(?:\r?\n|;|\s*\/\s*|\s+\|\s+|\s+(?=(?:Soldado|Cabo|Sargento|Tenente|Oficial|Professor|Analista|T[eé]cnico|Tecnico|Agente|Assistente|Auditor|Fiscal|Escriv[aã]o|Delegado|M[eé]dico|Medico|Enfermeiro|Engenheiro)\b))/i)
     .map(cleanRoleCandidate)
     .filter((item) => item.length >= 3 && item.length <= 140)
     .filter((item) => !requireSignal || ROLE_SIGNAL_PATTERN.test(item));
@@ -359,6 +1006,10 @@ const normalizeRoleList = (...values: unknown[]) => {
 
 const summarizeRoleList = (roles: string[], fallback = '') => (
   roles.length > 0 ? roles.join(' / ') : String(fallback || '').trim()
+);
+
+const summarizeExamTitleList = (items: string[], fallback = '') => (
+  items.length > 0 ? items.join('/') : String(fallback || '').trim()
 );
 
 const inferRolesFromText = (value: string, fileName = '') => {
@@ -584,6 +1235,95 @@ const normalizeQuestionNumber = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const readImportBooleanFlag = (value: unknown) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value === 1;
+  }
+
+  const normalized = String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+  if (['', '0', 'false', 'no', 'n', 'nao', 'null', 'undefined'].includes(normalized)) {
+    return false;
+  }
+  if (['1', 'true', 'yes', 'y', 'sim', 's'].includes(normalized)) {
+    return true;
+  }
+
+  return Boolean(value);
+};
+
+const isImportedQuestionMarkedCanceled = (question: Question | ImportedQuestionDraft) => {
+  const draft = question as ImportedQuestionDraft;
+  return readImportBooleanFlag(draft.anulada)
+    || readImportBooleanFlag(draft.isCanceled)
+    || readImportBooleanFlag(draft.isCancelled)
+    || readImportBooleanFlag(draft.isCanceledQuestion)
+    || readImportBooleanFlag(draft.isCancelledQuestion)
+    || readImportBooleanFlag(draft.is_cancelled);
+};
+
+const isImportedQuestionAttributedToAll = (question: Question | ImportedQuestionDraft) => {
+  const draft = question as ImportedQuestionDraft;
+  return readImportBooleanFlag(draft.isAttributedToAll)
+    || readImportBooleanFlag(draft.attributedToAll)
+    || readImportBooleanFlag(draft.is_attributed_to_all);
+};
+
+const normalizeCanceledImportedQuestion = (
+  question: Question,
+  canceledOverride?: boolean,
+  attributedToAllOverride?: boolean,
+): Question => {
+  const inferredCanceled = isImportedQuestionMarkedCanceled(question);
+  const isCanceled = canceledOverride ?? inferredCanceled;
+  const inferredAttributedToAll = isImportedQuestionAttributedToAll(question);
+  const isAttributedToAll = attributedToAllOverride ?? inferredAttributedToAll;
+
+  if (!isCanceled && !isAttributedToAll) {
+    return question;
+  }
+
+  const firstOptionId = Array.isArray(question.itens) && question.itens.length > 0
+    ? Number(question.itens[0].id || 1)
+    : 1;
+  const currentAnswer = Number(question.resposta);
+  const resposta = Number.isFinite(currentAnswer) && currentAnswer > 0
+    ? currentAnswer
+    : Number.isFinite(firstOptionId) && firstOptionId > 0
+      ? firstOptionId
+      : 1;
+
+  return {
+    ...question,
+    ...(isCanceled
+      ? {
+          anulada: true,
+          isCanceled: true,
+          isCancelled: true,
+          isCanceledQuestion: true,
+          isCancelledQuestion: true,
+          is_cancelled: true,
+        }
+      : {}),
+    ...(isAttributedToAll
+      ? {
+          isAttributedToAll: true,
+          attributedToAll: true,
+          is_attributed_to_all: true,
+        }
+      : {}),
+    correctOptionIndex: 0,
+    resposta,
+  } as unknown as Question;
+};
+
 const instructionPattern = /\b(instru[cç][oõ]es|cart[aã]o[- ]resposta|prova objetiva|rascunho|transcreva|assine|dura[cç][aã]o|caderno de quest[oõ]es|aten[cç][aã]o|folha de respostas)\b/i;
 const questionCommandPattern = /\b(quest[aã]o|assinale|julgue|considere|responda|marque|com base|de acordo|nesse contexto|neste contexto|nesse sentido|neste sentido|infere-se|no que se refere|observe|analise|a partir|segundo|qual|quais|acerca|em rela[cç][aã]o|sobre|o texto|a figura|o gr[aá]fico|o esquema|a tabela)\b/i;
 
@@ -607,9 +1347,59 @@ const normalizeContextClassifierText = (value: string) => stripHtml(String(value
   .toUpperCase();
 
 const pageBookletHeaderPattern = /\b(CIENCIAS DA NATUREZA E SUAS TECNOLOGIAS|CIENCIAS HUMANAS E SUAS TECNOLOGIAS|LINGUAGENS(?: CODIGOS)? E SUAS TECNOLOGIAS|MATEMATICA E SUAS TECNOLOGIAS|CADERNO\s+\d+|QUESTOES?\s+DE\s+\d+\s+A\s+\d+|[12]\s*DIA|AMAREL[OA]|AZUL|ROSA|BRANC[OA]|CINZA|PROVA\s+(?:AMAREL[OA]|AZUL|ROSA|BRANC[OA]|CINZA))\b/i;
-const supportContextSignalPattern = /\b(TEXTOS?\s+(?:[IVXLC]+|\d+)|fragmento|adaptad[ao]|disponivel em|acesso em|fonte|figura|imagem|tirinha|charge|grafico|tabela|mapa|cartum|esquema|diagrama|infografico|quadro)\b/i;
-const supportContextStartPattern = /\b(TEXTOS?\s+(?:[IVXLC]+|\d+)|figura|imagem|tirinha|charge|gr[aá]fico|tabela|mapa|cartum|esquema|diagrama|infogr[aá]fico|quadro)\b/i;
+const supportContextSignalPattern = new RegExp(`\\b(TEXTOS?\\s+(?:[IVXLC]+|\\d+)|leia\\s+os?\\s+textos?|leia\\s+o\\s+texto\\s+abaixo|considere\\s+o\\s+texto|considere\\s+as\\s+(?:(?:\\w+)\\s+){0,4}passagens|para\\s+responder(?:\\s+[aà]s?)?\\s+(?:quest(?:[oõ]es|oes)|itens?)|texto\\s+para\\s+(?:(?:responder|os?|as?)\\s+)*(?:quest(?:[oõ]es|oes)|itens?)|(?:quest(?:[oõ]es|oes)|itens?)\\s+(?:de(?:\\s+n[uú]meros?)?\\s+)?\\d{1,3}\\s*(?:a|ate|-)\\s*\\d{1,3}|aten[cç][aã]o\\s*:\\s*para\\s+responder|com\\s+base\\s+no\\s+texto|no\\s+trecho\\s+destacado|na\\s+figura|na\\s+tabela|fragmento|adaptad[ao]|dispon[ií]vel em|acesso em|fonte|${VISUAL_CONTEXT_TERMS_PATTERN})\\b`, 'i');
+const supportContextStartPattern = new RegExp(`\\b(TEXTOS?\\s+(?:[IVXLC]+|\\d+)|leia\\s+os?\\s+textos?|leia\\s+o\\s+texto\\s+abaixo|considere\\s+o\\s+texto|considere\\s+as\\s+(?:(?:\\w+)\\s+){0,4}passagens|para\\s+responder(?:\\s+[aà]s?)?\\s+(?:quest(?:[oõ]es|oes)|itens?)|texto\\s+para\\s+(?:(?:responder|os?|as?)\\s+)*(?:quest(?:[oõ]es|oes)|itens?)|(?:quest(?:[oõ]es|oes)|itens?)\\s+(?:de(?:\\s+n[uú]meros?)?\\s+)?\\d{1,3}\\s*(?:a|ate|-)\\s*\\d{1,3}|aten[cç][aã]o\\s*:\\s*para\\s+responder|observe\\s+(?:a|o)\\s+${VISUAL_CONTEXT_TERMS_PATTERN}|analise\\s+a\\s+tabela|${VISUAL_CONTEXT_TERMS_PATTERN})\\b`, 'i');
 const visualOptionPlaceholderPattern = /^Alternativa visual\b/i;
+
+const isLikelyNamedTextTitleLine = (value: string, nextLine = '') => {
+  const clean = stripHtml(value).replace(/\s+/g, ' ').trim();
+  const nextClean = stripHtml(nextLine).replace(/\s+/g, ' ').trim();
+  if (!clean) {
+    return false;
+  }
+
+  if (/^texto$/i.test(clean)) {
+    return Boolean(nextClean)
+      && nextClean.length <= 120
+      && !questionCommandPattern.test(nextClean)
+      && !instructionPattern.test(nextClean);
+  }
+
+  const match = clean.match(/^texto\s+(.{2,120})$/i);
+  if (!match) {
+    return false;
+  }
+
+  const title = match[1].trim();
+  if (/^(?:de|do|da|dos|das|para|com|em|no|na|nos|nas|assume|possui|apresenta|trata|aborda|se|a|o|as|os)\b/i.test(title)) {
+    return false;
+  }
+
+  return /^[A-Z0-9ÁÉÍÓÚÂÊÔÃÕÇ"“]/.test(title);
+};
+
+const isLikelySupportContextStartLine = (value: string, nextLine = '') => {
+  const clean = stripHtml(value).replace(/\s+/g, ' ').trim();
+  return supportContextStartPattern.test(clean)
+    || isLikelyNamedTextTitleLine(clean, nextLine);
+};
+
+const findSupportContextStartIndex = (value: string) => {
+  const structured = normalizeStructuredText(value);
+  let cursor = 0;
+  const lines = structured.split('\n');
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] || '';
+    const nextLine = lines[index + 1] || '';
+    if (isLikelySupportContextStartLine(line, nextLine)) {
+      return cursor;
+    }
+    cursor += line.length + 1;
+  }
+
+  const fallbackMatch = structured.match(/\bTEXTOS?\s+(?:[IVXLC]+|\d+)\b/i);
+  return fallbackMatch?.index ?? -1;
+};
 
 const isLikelyPageBookletHeader = (value: string) => {
   const normalized = normalizeContextClassifierText(value);
@@ -618,6 +1408,8 @@ const isLikelyPageBookletHeader = (value: string) => {
   }
 
   const hasHeaderSignal = pageBookletHeaderPattern.test(normalized);
+  const parserProfile = resolveExamParserProfile(normalized, value);
+  const hasProfileHeaderSignal = Boolean(parserProfile.pageHeaderPattern?.test(normalized));
   const hasSupportSignal = supportContextSignalPattern.test(normalized);
   const hasQuestionCommand = questionCommandPattern.test(value);
   const mostlyHeaderTokens = [
@@ -633,17 +1425,25 @@ const isLikelyPageBookletHeader = (value: string) => {
     'CINZA',
   ].filter((token) => normalized.includes(token)).length >= 3;
 
-  return hasHeaderSignal && mostlyHeaderTokens && !hasSupportSignal && !hasQuestionCommand;
+  return ((hasHeaderSignal && mostlyHeaderTokens) || (hasProfileHeaderSignal && normalized.length < 180))
+    && !hasSupportSignal
+    && !hasQuestionCommand;
 };
 
 const trimBookletHeaderFromContext = (value: string) => {
   const structured = normalizeStructuredText(value);
-  const lines = structured.split('\n').map((line) => line.trim()).filter(Boolean);
-  const supportLineIndex = lines.findIndex((line) => supportContextStartPattern.test(stripHtml(line)));
+  const lines = structured.split('\n').map((line) => line.trim());
+  const supportLineIndex = lines.findIndex((line, index) => (
+    Boolean(line)
+    && isLikelySupportContextStartLine(line, lines.slice(index + 1).find(Boolean) || '')
+  ));
 
   if (supportLineIndex > 0) {
-    const possibleHeader = lines.slice(0, supportLineIndex).join(' ');
-    if (isLikelyPageBookletHeader(possibleHeader)) {
+    const possibleHeader = lines.slice(0, supportLineIndex).filter(Boolean).join(' ');
+    const looksLikeHeaderPrefix = isLikelyPageBookletHeader(possibleHeader)
+      || isLikelyInstructionText(possibleHeader)
+      || possibleHeader.length < 220;
+    if (looksLikeHeaderPrefix) {
       return lines.slice(supportLineIndex).join('\n').trim();
     }
   }
@@ -672,9 +1472,16 @@ const sanitizeSupportContextText = (value: string) => {
     .replace(/\b(?:CESPE|CEBRASPE)\s*[-|]\s*[^.]{0,180}?(?=\bTexto\s+[A-Z0-9]{4,}\b|\bTEXTOS?\s+[IVXLC]+\b|$)/i, '')
     .trim();
 
-  const textMarker = clean.search(/\bTexto\s+[A-Z0-9]{4,}\b/i);
-  if (textMarker > 0) {
-    clean = clean.slice(textMarker).trim();
+  const textMarkerMatch = clean.match(/\bTexto\s+(?!abaixo\b|acima\b|base\b|apresentado\b|seguinte\b)(?:[A-Z0-9_]{4,}|[IVXLC]+|\d+)\b/);
+  const textMarker = textMarkerMatch?.index ?? -1;
+  const supportStartIndex = findSupportContextStartIndex(clean);
+  if (supportStartIndex > 0 || textMarker > 0) {
+    const safeStart = [supportStartIndex, textMarker]
+      .filter((index) => index > 0)
+      .sort((left, right) => left - right)[0] ?? -1;
+    if (safeStart > 0) {
+      clean = clean.slice(safeStart).trim();
+    }
   }
 
   clean = clean
@@ -733,6 +1540,7 @@ const collectReferenceSpans = (clean: string) => {
     const tail = clean.slice(start);
     const adaptedMatch = tail.match(/\((?:fragmento|adaptad[ao])\)\.?/i);
     const accessMatch = tail.match(/Acesso em\s*:[\s\S]{0,160}?\d{4}\.?/i);
+    const lineEndMatch = tail.match(/^[^\n]{12,260}(?:\.|$)/);
     const endpoint = [adaptedMatch, accessMatch]
       .map((endpointMatch) => (
         endpointMatch && endpointMatch.index !== undefined
@@ -744,6 +1552,8 @@ const collectReferenceSpans = (clean: string) => {
 
     if (endpoint) {
       pushSpan(start, start + endpoint);
+    } else if (lineEndMatch) {
+      pushSpan(start, start + lineEndMatch[0].length);
     }
   }
 
@@ -854,45 +1664,330 @@ const normalizeAiRepairedOptions = (options: unknown, expectedOptionsCount: numb
 
 const shouldPromoteAsSupportContext = (value: string) => {
   const clean = sanitizeSupportContextText(value);
-  if (clean.length <= 120) {
+  const hasSupportSignal = supportContextSignalPattern.test(clean)
+    || extractExplicitContextQuestionNumbers(clean).length > 0;
+  if (
+    (isLikelyInstructionText(clean) && !hasSupportSignal)
+    || isLikelyPageBookletHeader(clean)
+  ) {
     return false;
   }
-  if (isLikelyInstructionText(clean) || isLikelyPageBookletHeader(clean)) {
-    return false;
+  if (clean.length <= 120) {
+    const lines = normalizeStructuredText(clean).split('\n').filter(Boolean);
+    return clean.length >= 40 && (
+      hasSupportSignal
+      || isLikelySupportContextStartLine(lines[0] || '', lines[1] || '')
+    );
   }
   return true;
 };
 
-const extractQuestionNumbersFromText = (value: string) => {
+const textNeedsExternalSupportContext = (...values: string[]) => {
+  const text = normalizeComparisonText(stripHtml(values.join(' ')));
+  return /\b(?:texto|fragmento|trecho|passagem|paragrafo|narrador|autor|termo destacado|expressao destacada|palavra destacada|passagens destacadas|figura|imagem|grafico|tabela|tirinha|charge)\b/.test(text)
+    || /\b(?:1o|2o|3o|4o|5o)\s*(?:paragrafo|§)\b/.test(text);
+};
+
+const isCarryoverEligibleTextContext = (context: ImportedContextDraft) => (
+  Boolean(context.text)
+  && !context.hasFigure
+  && !context.figureDescription
+  && !context.imageData
+  && !isLikelyPageBookletHeader(context.text)
+  && (
+    /^pag-\d+-contexto-textual$/.test(context.tempId)
+    || context.questionNumbers.length >= 6
+  )
+);
+
+const findCarryoverTextContextForQuestion = (
+  questionNumber: number,
+  questionPage: number,
+  contexts: ImportedContextDraft[],
+) => {
+  if (!Number.isFinite(questionNumber) || questionNumber <= 0) {
+    return null;
+  }
+
+  return contexts
+    .filter(isCarryoverEligibleTextContext)
+    .filter((context) => {
+      const contextQuestionNumbers = Array.from(new Set(context.questionNumbers.filter((number) => number > 0)));
+      if (contextQuestionNumbers.length === 0) {
+        return false;
+      }
+
+      const lastQuestionNumber = Math.max(...contextQuestionNumbers);
+      const contextPage = Number(context.page || 0);
+      return lastQuestionNumber < questionNumber
+        && questionNumber - lastQuestionNumber <= 24
+        && (!questionPage || !contextPage || contextPage <= questionPage);
+    })
+    .sort((left, right) => {
+      const leftLastQuestion = Math.max(...left.questionNumbers.filter((number) => number > 0));
+      const rightLastQuestion = Math.max(...right.questionNumbers.filter((number) => number > 0));
+      if (leftLastQuestion !== rightLastQuestion) {
+        return rightLastQuestion - leftLastQuestion;
+      }
+
+      return Number(right.page || 0) - Number(left.page || 0);
+    })[0] || null;
+};
+
+const isInlineQuestionNumberReference = (text: string, markerIndex: number) => {
+  const before = text.slice(Math.max(0, markerIndex - 24), markerIndex);
+  if (/[.)!?]$/.test(before.trimEnd())) {
+    return false;
+  }
+  const broadBefore = text.slice(Math.max(0, markerIndex - 90), markerIndex)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+  if (/\b(?:quest(?:ao|oes)|itens?)\s+(?:de(?:\s+(?:numero|numeros|n[ou]?\.?))?\s+|(?:numero|numeros|n[ou]?\.?)\s+)?(?:\d{1,3}\s*(?:,|;|e|a|ate|-|ao)\s*){0,12}$/i.test(broadBefore)) {
+    return true;
+  }
+  return /\b(?:quest[aã]o|questao|item|itens?|q\.?|da|de|do|das|dos|na|no|nas|nos|nesta|neste|nessa|nesse|desta|deste|dessa|desse)\s+$/i.test(before);
+};
+
+const parseContextQuestionNumbers = (value: string, fallbackNumber = 0) => {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const scopeWindow = normalized.match(/\b(?:quest(?:ao|oes)|itens?)\b.{0,160}/i)?.[0] || '';
+  const scopedRangeMatch = scopeWindow.match(/0*(\d{1,3})\s*(?:a|ate|ao|-)\s*0*(\d{1,3})\b/i);
+  if (scopedRangeMatch) {
+    const start = Number(scopedRangeMatch[1]);
+    const end = Number(scopedRangeMatch[2]);
+    if (Number.isFinite(start) && Number.isFinite(end) && start > 0 && end >= start && end - start <= 120) {
+      return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+    }
+  }
+
+  const scopeNounPattern = String.raw`(?:quest(?:ao|oes)|itens?)`;
+  const scopeNumberQualifierPattern = String.raw`(?:\s+de(?:\s+(?:numero|numeros|n[ou]?\.?))?|\s+(?:numero|numeros|n[ou]?\.?))?`;
+  const rangeMatch = normalized.match(new RegExp(String.raw`\b${scopeNounPattern}${scopeNumberQualifierPattern}\s*0*(\d{1,3})\s*(?:a|ate|ao|-)\s*0*(\d{1,3})\b`, 'i'));
+  const looseRangeMatch = rangeMatch || normalized.match(/\b(?:quest(?:ao|oes)|itens?)\D{0,32}?0*(\d{1,3})\s*(?:a|ate|ao|-)\s*0*(\d{1,3})\b/i);
+  if (looseRangeMatch) {
+    const start = Number(looseRangeMatch[1]);
+    const end = Number(looseRangeMatch[2]);
+    if (Number.isFinite(start) && Number.isFinite(end) && start > 0 && end >= start && end - start <= 120) {
+      return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+    }
+  }
+
+  const listMatch = normalized.match(new RegExp(String.raw`\b${scopeNounPattern}${scopeNumberQualifierPattern}\s+((?:0*\d{1,3}\s*(?:,|e|;)?\s*){1,20})(?:seguintes?|a seguir|abaixo)?\b`, 'i'));
+  const explicitNumbers = listMatch
+    ? Array.from(listMatch[1].matchAll(/\d{1,3}/g)).map((match) => Number(match[0]))
+    : [];
+  const numbers = explicitNumbers
+    .filter((number) => Number.isFinite(number) && number > 0 && number < 500)
+    .filter((number, index, list) => list.indexOf(number) === index);
+
+  if (numbers.length > 0) {
+    return numbers;
+  }
+
+  return fallbackNumber > 0 ? [fallbackNumber] : [];
+};
+
+const extractExplicitContextQuestionNumbers = (...values: unknown[]) => {
+  const text = values.map((value) => stripHtml(String(value || ''))).filter(Boolean).join(' ');
+  const normalized = text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!/\b(?:quest(?:ao|oes)|itens?)\b/i.test(normalized)) {
+    return [];
+  }
+
+  return parseContextQuestionNumbers(normalized, 0);
+};
+
+const resolveScopedContextQuestionNumbers = (
+  declaredQuestionNumbers: number[],
+  ...contextSignals: unknown[]
+) => {
+  const explicitQuestionNumbers = extractExplicitContextQuestionNumbers(...contextSignals);
+  if (explicitQuestionNumbers.length > 0) {
+    return explicitQuestionNumbers;
+  }
+
+  return declaredQuestionNumbers
+    .filter((number) => Number.isFinite(number) && number > 0)
+    .filter((number, index, list) => list.indexOf(number) === index);
+};
+
+const extractInterQuestionSupportContexts = (
+  normalizedText: string,
+  markers: Array<{ number: number; index: number; raw: string }>,
+  pageIndex: number,
+  parserProfile: ExamParserProfile = GENERIC_EXAM_PARSER_PROFILE,
+): NonNullable<PageExtractionResult['pageContexts']> => {
+  const contexts: NonNullable<PageExtractionResult['pageContexts']> = [];
+  const contextStartPattern = new RegExp(parserProfile.contextStartPattern.source, 'gi');
+
+  markers.forEach((marker, markerIndex) => {
+    if (markerIndex === 0) {
+      return;
+    }
+
+    const previous = markers[markerIndex - 1];
+    const gap = normalizedText.slice(previous.index + previous.raw.length, marker.index).trim();
+    if (
+      gap.length < 40
+      || !/\b(?:para\s+responder|texto\s+para\s+as?\s+quest(?:ao|[oõ]es)|quest(?:ao|[oõ]es)|seguintes?|abaixo|a\s+seguir|leia\s+os?\s+textos?|considere\s+o\s+texto|considere\s+as\s+passagens|observe\s+(?:a|o)\s+(?:figura|imagem|gr[aá]fico|tabela|mapa)|analise\s+a\s+tabela|com\s+base\s+no\s+texto|no\s+trecho\s+destacado|na\s+(?:figura|tabela))\b/i.test(gap)
+    ) {
+      return;
+    }
+
+    let startIndex = -1;
+    for (const match of gap.matchAll(contextStartPattern)) {
+      startIndex = match.index ?? startIndex;
+      break;
+    }
+    if (startIndex < 0) {
+      return;
+    }
+    const optionMarkers = readOptionMarkers(gap, parserProfile);
+    if (
+      optionMarkers.length >= 2
+      && startIndex < Math.min(optionMarkers[0]?.index ?? 0, 120)
+      && questionCommandPattern.test(gap.slice(0, Math.min(gap.length, 260)))
+    ) {
+      return;
+    }
+
+    const contextParts = splitQuestionSupportReference(gap.slice(startIndex));
+    const contextText = sanitizeSupportContextText(contextParts.supportText || gap.slice(startIndex));
+    const cleanContextText = stripHtml(contextText).replace(/\s+/g, ' ').trim();
+    if (cleanContextText.length < 40 || isLikelyInstructionText(cleanContextText) || isLikelyPageBookletHeader(cleanContextText)) {
+      return;
+    }
+
+    const questionNumbers = parseContextQuestionNumbers(cleanContextText, marker.number);
+    if (!questionNumbers.includes(marker.number)) {
+      return;
+    }
+
+    const firstNumber = questionNumbers[0] || marker.number;
+    const lastNumber = questionNumbers[questionNumbers.length - 1] || marker.number;
+    contexts.push({
+      contextKey: `pag-${pageIndex}-contexto-q-${firstNumber}-${lastNumber}`,
+      title: questionNumbers.length > 1
+        ? `Texto de apoio - questoes ${questionNumbers.join(', ')}`
+        : `Texto de apoio - questao ${marker.number}`,
+      text: contextText,
+      referenceText: contextParts.referenceText,
+      sourcePage: pageIndex,
+      appliesToQuestionNumbers: questionNumbers,
+      hasFigure: false,
+      figureDescription: '',
+    });
+  });
+
+  return contexts;
+};
+
+const splitNamedSupportContexts = (
+  contextText: string,
+  questionNumbers: number[],
+  pageIndex: number,
+): NonNullable<PageExtractionResult['pageContexts']> => {
+  const structured = normalizeStructuredText(contextText);
+  if (!structured || questionNumbers.length === 0) {
+    return [];
+  }
+
+  const lines = structured.split('\n');
+  const starts: Array<{ lineIndex: number; title: string }> = [];
+  lines.forEach((line, lineIndex) => {
+    const clean = stripHtml(line).replace(/\s+/g, ' ').trim();
+    if (/^Texto\s+(?:[IVXLC]+|\d+)\b/i.test(clean)) {
+      starts.push({ lineIndex, title: clean });
+    }
+  });
+
+  if (starts.length < 2) {
+    return [];
+  }
+
+  return starts
+    .map((start, index) => {
+      const nextStart = starts[index + 1];
+      const block = lines.slice(start.lineIndex, nextStart?.lineIndex ?? lines.length).join('\n').trim();
+      const blockParts = splitQuestionSupportReference(block);
+      const text = sanitizeSupportContextText(blockParts.supportText || block);
+      if (stripHtml(text).replace(/\s+/g, ' ').trim().length < 20) {
+        return null;
+      }
+
+      return {
+        contextKey: `pag-${pageIndex}-contexto-${slugify(start.title)}`,
+        title: start.title,
+        text,
+        referenceText: blockParts.referenceText,
+        sourcePage: pageIndex,
+        appliesToQuestionNumbers: questionNumbers,
+        hasFigure: pageLikelyHasFigure(text),
+        figureDescription: '',
+      };
+    })
+    .filter(Boolean) as NonNullable<PageExtractionResult['pageContexts']>;
+};
+
+const collectQuestionMarkersFromPatterns = (
+  value: string,
+  parserProfile: ExamParserProfile = resolveExamParserProfile(value),
+) => {
   const text = normalizeQuestionMarkerText(value);
-  const matches = [
-    ...Array.from(text.matchAll(/\b(?:quest[aã]o|questao|q\.?)\s*(?:n[ºo]\s*)?(\d{1,3})\b/gi))
-      .map((match) => ({ number: Number(match[1]), index: match.index ?? 0, source: 'word' })),
-    ...Array.from(text.matchAll(/(^|\s)(\d{1,3})\s*\)\s/g))
-      .map((match) => ({ number: Number(match[2]), index: (match.index ?? 0) + match[1].length, source: 'numbered' })),
+  const profileMarkers = parserProfile.questionMarkerPatterns.flatMap((markerPattern) => (
+    Array.from(text.matchAll(cloneGlobalPattern(markerPattern.pattern)))
+      .map((match) => {
+        const raw = match[0] || '';
+        const leading = match[1] && /^\s+$/.test(match[1]) ? String(match[1]) : '';
+        return {
+          number: Number(match[markerPattern.numberGroup || 1]),
+          index: (match.index ?? 0) + leading.length,
+          raw: raw.slice(leading.length),
+          source: markerPattern.source,
+        };
+      })
+  ));
+
+  return [
+    ...profileMarkers,
     ...(isTrueFalseExamText(text)
-      ? findPlainTrueFalseMarkers(text).map((marker) => ({ number: marker.number, index: marker.index, source: marker.source }))
+      ? findPlainTrueFalseMarkers(text)
       : []),
   ]
     .filter((marker) => Number.isFinite(marker.number) && marker.number > 0 && marker.number < 500)
+    .filter((marker) => !['word', 'numbered', 'dash'].includes(marker.source) || !isInlineQuestionNumberReference(text, marker.index))
     .sort((left, right) => left.index - right.index)
-    .filter((marker, index, list) => list.findIndex((item) => item.number === marker.number) === index)
-    .filter((marker, index, list) => (
-      marker.source === 'word'
-      || marker.source === 'plain-true-false'
-      || index === 0
-      || marker.number > list.slice(0, index).reduce((highest, item) => Math.max(highest, item.number), 0)
-    ));
+    .filter((marker, index, list) => list.findIndex((item) => item.number === marker.number && Math.abs(item.index - marker.index) < 12) === index);
+};
+
+const extractQuestionNumbersFromText = (value: string, parserProfile: ExamParserProfile = resolveExamParserProfile(value)) => {
+  const matches = collectQuestionMarkersFromPatterns(value, parserProfile);
 
   return matches.map((marker) => marker.number);
 };
 
 const normalizeQuestionMarkerText = (value: string) => String(value || '')
-  .replace(/\bQ\s*U\s*E\s*S\s*T\s*\S\s*O\b/gi, 'Questao');
+  .replace(/\bQ\s*U\s*E\s*S\s*T\s*\S\s*O\b/gi, 'Questao')
+  .replace(/(^|[^\d])0*(\d{1,3})\s*[.)]\s*(?=(?:Relativamente|Ticio|Tício|Apresenta-se|Dentre|A\s+conduta|Leia|Como|Assinale|No\s+que|Em\s+relacao|Em\s+rela[cç][aã]o|De\s+acordo|Considerando|Com\s+base|Sobre|Qual|Quais|Julgue|Acerca|No\s+tocante|Quanto)\b)/gi, '$1$2) ');
 
 const isTrueFalseExamText = (value: string) => (
   /\b(cespe|cebraspe|julgue os itens|julgue os próximos itens|julgue os seguintes itens|item certo|item errado|código c|codigo c)\b/i.test(String(value || ''))
   || (/\bCERTO\b/i.test(String(value || '')) && /\bERRADO\b/i.test(String(value || '')))
+);
+
+const isVerdadeiroFalsoExamText = (value: string) => (
+  /\b(?:verdadeiro|falso|atribua\s+v|valores\s+de\s+verdadeiro|sequ[eê]ncia\s+correta\s+de\s+cima\s+para\s+baixo)\b/i.test(String(value || ''))
+  || /\(\s*\)\s+.{0,120}\b(?:v|f)\b/i.test(String(value || ''))
 );
 
 const findPlainTrueFalseMarkers = (text: string) => {
@@ -952,28 +2047,39 @@ const inferRoleFromFileName = (fileName = '') => {
 };
 
 const stripOptionLabel = (value: string) => String(value || '')
-  .replace(/^\s*(?:alternativa\s*)?\(?[A-E]\)?[\s.)\-–—:]+/i, '')
+  .replace(/^\s*(?:alternativa\s*)?\(?[A-E]\)?(?:\s*[\s.)\-–—:]+|\s+)/i, '')
   .trim();
 
-const readOptionMarkers = (text: string) => {
-  const markerPattern = /(?:^|[\s([{;,:.?!])(?:(\(?([A-E])\)?)|([a-e])(?=[).:\-–—]))(?=[\s.)\-–—:])/g;
-  return Array.from(text.matchAll(markerPattern))
-    .map((match) => {
-      const raw = match[1] || match[3] || '';
-      const index = (match.index ?? 0) + match[0].length - raw.length;
-      let end = index + raw.length;
-      const firstTrailingCharacter = text[end] || '';
-      while (end < text.length && /[\s.)\-–—:]/.test(text[end])) {
-        end += 1;
-      }
+const readOptionMarkers = (
+  text: string,
+  parserProfile: ExamParserProfile = resolveExamParserProfile(text),
+) => {
+  const markers = parserProfile.optionMarkerPatterns.flatMap((pattern) => (
+    Array.from(text.matchAll(cloneGlobalPattern(pattern)))
+      .map((match) => {
+        const leading = match[1] || '';
+        const label = String(match[2] || match[3] || '').toUpperCase();
+        const raw = match[0].slice(String(leading).length);
+        const index = (match.index ?? 0) + String(leading).length;
+        const end = index + raw.length;
+        return {
+          label,
+          index,
+          end,
+          structured: Boolean(label) && (
+            /(?:alternativa\s+)?\(?[A-E]\)?\s*[).:;\-–—]/i.test(raw)
+            || /alternativa\s+[A-E]/i.test(raw)
+          ),
+        };
+      })
+  ));
 
-      return {
-        label: String(match[2] || match[3] || '').toUpperCase(),
-        index,
-        end,
-        structured: /[).:;\-–—]/.test(firstTrailingCharacter) || raw.startsWith('(') || raw.includes(')'),
-      };
-    });
+  return markers
+    .filter((marker) => /^[A-E]$/.test(marker.label))
+    .sort((left, right) => left.index - right.index)
+    .filter((marker, index, list) => (
+      list.findIndex((item) => item.label === marker.label && Math.abs(item.index - marker.index) < 8) === index
+    ));
 };
 
 const looksLikeOptionCueBefore = (text: string, index: number) => {
@@ -983,6 +2089,7 @@ const looksLikeOptionCueBefore = (text: string, index: number) => {
 };
 
 const trimExtractedOptionText = (value: string) => String(value || '')
+  .replace(/\s+(?:Considere|Leia|Observe|Analise)\s+[\s\S]{0,900}?\bpara\s+responder\b[\s\S]*$/i, '')
   .replace(/\s+(?:TEXTO\s+[IVXLC]+:?|MATEM[ÁA]TICA\b|RACIOC[IÍ]NIO\b|CONHECIMENTOS\b|www\.pciconcursos\.com\.br\b|\*?(?=[A-Z0-9]*\d)[A-Z0-9]{6,}\*?.*$|ENEM\d{4}.*$).*$/i, '')
   .trim();
 
@@ -993,18 +2100,26 @@ const stripTrailingExamNoise = (value: string) => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const extractOptionFragmentsFromText = (value: string) => {
+const extractOptionFragmentsFromText = (
+  value: string,
+  expectedOptionsCount?: unknown,
+  parserProfile: ExamParserProfile = resolveExamParserProfile(value),
+) => {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
-  const candidates = readOptionMarkers(text);
+  const candidates = readOptionMarkers(text, parserProfile);
   const firstStructuredIndex = candidates.findIndex((candidate) => candidate.structured);
   if (firstStructuredIndex < 0) {
     return { statement: text, optionsByLabel: new Map<string, string>() };
   }
 
+  const labels = ['A', 'B', 'C', 'D', 'E'].slice(0, getExpectedOptionsCount('multipla escolha', expectedOptionsCount));
   const markers = [];
   const seen = new Set<string>();
   for (let index = firstStructuredIndex; index < candidates.length; index += 1) {
     const candidate = candidates[index];
+    if (!labels.includes(candidate.label)) {
+      continue;
+    }
     if (seen.has(candidate.label)) {
       if (!candidate.structured) {
         continue;
@@ -1032,13 +2147,17 @@ const extractOptionFragmentsFromText = (value: string) => {
   return { statement, optionsByLabel };
 };
 
-const extractOptionsFromText = (value: string) => {
+const extractOptionsFromText = (
+  value: string,
+  expectedOptionsCount?: unknown,
+  parserProfile: ExamParserProfile = resolveExamParserProfile(value),
+) => {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   const textWithoutTrailingNoise = stripTrailingExamNoise(text);
   const effectiveTextLength = Math.max(1, textWithoutTrailingNoise.length || text.length);
-  const candidates = readOptionMarkers(text);
+  const candidates = readOptionMarkers(text, parserProfile);
 
-  const labels = ['A', 'B', 'C', 'D', 'E'];
+  const labels = ['A', 'B', 'C', 'D', 'E'].slice(0, getExpectedOptionsCount('multipla escolha', expectedOptionsCount));
   const visualAlternativesMatch = text.match(/^(.*?)(?:^|\s)A\s+B\s+C\s+D\s+E(?:\s+(?:\*?[A-Z0-9]{6,}\*?.*|ENEM\d{4}.*))?$/i)
     || textWithoutTrailingNoise.match(/^(.*?)(?:^|\s)A\s+B\s+C\s+D\s+E$/i);
   if (visualAlternativesMatch) {
@@ -1057,6 +2176,9 @@ const extractOptionsFromText = (value: string) => {
       const group = [];
       for (let index = startIndex; index < candidates.length && group.length < labels.length; index += 1) {
         const candidate = candidates[index];
+        if (!labels.includes(candidate.label)) {
+          continue;
+        }
         if (seen.has(candidate.label)) {
           if (!candidate.structured) {
             continue;
@@ -1114,7 +2236,7 @@ const extractOptionsFromText = (value: string) => {
 
   const markers = groups.sort((left, right) => rankGroup(right) - rankGroup(left))[0] || [];
   if (markers.length < 2) {
-    const fragments = extractOptionFragmentsFromText(text);
+    const fragments = extractOptionFragmentsFromText(text, expectedOptionsCount, parserProfile);
     if (fragments.optionsByLabel.size > 1) {
       return {
         statement: fragments.statement,
@@ -1185,10 +2307,17 @@ const shouldUseExtractedStatement = (rawText: string, extractedStatement: string
     || readOptionMarkers(text).length >= 2;
 };
 
-const normalizeImportedOptions = (rawOptions: unknown, rawText: string, modality?: string) => {
-  const extracted = extractOptionsFromText(rawText);
+const normalizeImportedOptions = (
+  rawOptions: unknown,
+  rawText: string,
+  modality?: string,
+  expectedOptionsCount?: unknown,
+  parserProfile: ExamParserProfile = resolveExamParserProfile(rawText),
+) => {
+  const expectedCount = getExpectedOptionsCount(modality || 'multipla escolha', expectedOptionsCount);
+  const extracted = extractOptionsFromText(rawText, expectedCount, parserProfile);
   const options = Array.isArray(rawOptions)
-    ? normalizeVisualOptions(rawOptions.map((option) => stripOptionLabel(String(option))).filter(Boolean))
+    ? normalizeVisualOptions(rawOptions.map((option) => stripOptionLabel(String(option))).filter(Boolean)).slice(0, expectedCount)
     : [];
   if (options.length >= 2) {
     return {
@@ -1311,8 +2440,9 @@ const inferExpectedOptionsCountFromText = (...values: unknown[]) => {
     return 0;
   }
 
-  if (normalized.includes('IBFC')) {
-    return 4;
+  const parserProfile = resolveExamParserProfile(text);
+  if (parserProfile.defaultMultipleChoiceOptions) {
+    return parserProfile.defaultMultipleChoiceOptions;
   }
 
   const labels = new Set(readOptionMarkers(text).map((marker) => marker.label));
@@ -1326,7 +2456,11 @@ const inferExpectedOptionsCountFromText = (...values: unknown[]) => {
   return 0;
 };
 
-const getExpectedOptionsCount = (modality?: unknown, explicitCount?: unknown) => {
+const getExpectedOptionsCount = (
+  modality?: unknown,
+  explicitCount?: unknown,
+  parserProfile: ExamParserProfile = GENERIC_EXAM_PARSER_PROFILE,
+) => {
   const explicit = normalizeExpectedOptionsCount(explicitCount);
   if (explicit) {
     return explicit;
@@ -1336,8 +2470,210 @@ const getExpectedOptionsCount = (modality?: unknown, explicitCount?: unknown) =>
   if (modalityText.includes('certo')) {
     return 2;
   }
+  if (modalityText.includes('verdadeiro') || modalityText.includes('falso')) {
+    return 2;
+  }
+  if (modalityText.includes('discursiva') || modalityText.includes('redacao') || modalityText.includes('redação') || modalityText.includes('estudo de caso')) {
+    return 0;
+  }
 
-  return normalizeExpectedOptionsCount(modalityText) || 5;
+  return normalizeExpectedOptionsCount(modalityText)
+    || parserProfile.defaultMultipleChoiceOptions
+    || 5;
+};
+
+const inferQuestionType = (
+  rawText: string,
+  options: string[],
+  parserProfile: ExamParserProfile,
+): ImportedQuestionType => {
+  const clean = stripHtml(rawText).replace(/\s+/g, ' ').trim();
+  if (parserProfile.certoErradoMode || isTrueFalseExamText(clean)) {
+    return 'certo ou errado';
+  }
+  if (isVerdadeiroFalsoExamText(clean)) {
+    return 'verdadeiro/falso';
+  }
+  if (/\b(?:somat[oó]rio|some\s+os\s+itens|soma\s+das\s+alternativas|valor\s+da\s+soma)\b/i.test(clean)) {
+    return 'somatorio';
+  }
+  if (/\b(?:assertivas?|afirma[cç][oõ]es?|itens?\s+[ivxlcdm]+|i\s*,?\s*ii\s*,?\s*iii|est[aã]o\s+corretas?)\b/i.test(clean)) {
+    return 'multipla assertiva';
+  }
+  if (/\b(?:reda[cç][aã]o|texto\s+dissertativo[- ]argumentativo|produza\s+um\s+texto)\b/i.test(clean)) {
+    return 'redacao';
+  }
+  if (/\b(?:estudo\s+de\s+caso|caso\s+cl[ií]nico|situa[cç][aã]o[- ]problema)\b/i.test(clean)) {
+    return 'estudo de caso';
+  }
+  if (options.length >= 2) {
+    return 'multipla escolha';
+  }
+  if (/\b(?:discursiva|redija|discorra|responda\s+em|texto\s+dissertativo|quest[aã]o\s+aberta)\b/i.test(clean)) {
+    return 'discursiva';
+  }
+  return 'desconhecido';
+};
+
+const looksLikeFlattenedStructuredText = (value: string) => {
+  const raw = String(value || '').trim();
+  const clean = stripHtml(raw).replace(/\s+/g, ' ').trim();
+  if (clean.length < 360) {
+    return false;
+  }
+  if (blockHtmlPattern.test(raw) || /<br\s*\/?>|\n{2,}/i.test(raw)) {
+    return false;
+  }
+
+  const hasSupportSignal = /\b(?:texto\s+[ivxlc]+|leia\s+o\s+texto|considere\s+o\s+texto|poema|versos?|fonte\s*:|dispon[ií]vel\s+em|acesso\s+em|adaptad[ao]|figura|tabela|gr[aá]fico)\b/i
+    .test(clean);
+  const sentenceBreaks = (clean.match(/[.!?]\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ"“]/g) || []).length;
+  return hasSupportSignal && sentenceBreaks >= 3;
+};
+
+const hasPreservedTextBreaks = (value: string) => (
+  /<br\s*\/?>|\n|<\/(?:p|tr|li|h[1-6])>/i.test(String(value || ''))
+);
+
+const looksLikeCorruptedTableText = (...values: string[]) => {
+  const raw = values.map((value) => String(value || '')).join(' ').trim();
+  const clean = stripHtml(raw).replace(/\s+/g, ' ').trim();
+  if (!clean) {
+    return false;
+  }
+  if (/<table\b/i.test(raw) || (raw.includes('|') && hasPreservedTextBreaks(raw))) {
+    return false;
+  }
+
+  const hasTableSignal = /\b(?:tabela|quadro|planilha|coluna|linha|dados|ano|popula[cç][aã]o|percentual|valor)\b/i.test(clean);
+  const numericTokens = (clean.match(/\b\d+(?:[.,]\d+)?%?\b/g) || []).length;
+  const hasCollapsedRows = /\b(?:ano|popula[cç][aã]o|valor|percentual)\b.{0,80}\b\d{2,4}\b.{0,80}\b\d+(?:[.,]\d+)?%?\b.{0,80}\b\d{2,4}\b.{0,80}\b\d+(?:[.,]\d+)?%?\b/i
+    .test(clean);
+  return hasTableSignal && !hasPreservedTextBreaks(raw) && (numericTokens >= 3 || hasCollapsedRows);
+};
+
+const looksLikeCorruptedPoemText = (...values: string[]) => {
+  const raw = values.map((value) => String(value || '')).join(' ').trim();
+  const clean = stripHtml(raw).replace(/\s+/g, ' ').trim();
+  if (!clean || hasPreservedTextBreaks(raw)) {
+    return false;
+  }
+
+  const hasPoemSignal = /\b(?:poema|verso|estrofe|soneto|eu\s+l[ií]rico|minha\s+terra|as\s+aves|gorjeiam)\b/i.test(clean);
+  const likelyVerseFragments = (clean.match(/\b(?:onde|que|quando|enquanto|n[aã]o|minha|meu|minhas|teus|suas)\b/gi) || []).length;
+  return hasPoemSignal && clean.length >= 90 && likelyVerseFragments >= 3;
+};
+
+const looksLikeCorruptedLawText = (...values: string[]) => {
+  const raw = values.map((value) => String(value || '')).join(' ').trim();
+  const clean = stripHtml(raw).replace(/\s+/g, ' ').trim();
+  if (!clean || hasPreservedTextBreaks(raw)) {
+    return false;
+  }
+
+  const hasLawArticle = /\b(?:art\.?|artigo)\s*\d+[ºo]?\b/i.test(clean);
+  const romanIncisos = (clean.match(/\b[IVXLCDM]{1,6}\s*[-–—]/g) || []).length;
+  const paragraphs = (clean.match(/§\s*\d+[ºo]?/g) || []).length;
+  const alineas = (clean.match(/\b[a-z]\)\s+/gi) || []).length;
+  return clean.length >= 120 && hasLawArticle && romanIncisos + paragraphs + alineas >= 2;
+};
+
+const mentionsSharedContextWithoutLink = (value: string, contextKey?: string) => (
+  !String(contextKey || '').trim()
+  && /\b(?:quest(?:[oõ]es|oes)|itens?)\s+\d{1,3}\s*(?:a|ate|e|,|-)\s*\d{1,3}\b/i.test(stripHtml(value))
+);
+
+const looksLikeBrokenCrossPageContext = (value: string, contextKey?: string) => (
+  !String(contextKey || '').trim()
+  && /\b(?:continua[cç][aã]o\s+do\s+texto|texto\s+da\s+p[aá]gina\s+anterior|continua\s+na\s+p[aá]gina|p[aá]gina\s+anterior|parte\s+2\s+do\s+texto)\b/i.test(stripHtml(value))
+);
+
+const validateExtractedQuestionDraft = ({
+  statement,
+  options,
+  expectedOptionsCount,
+  questionType,
+  rawText,
+  hasFigure,
+  figureBox,
+  contextKey,
+  supportText,
+}: {
+  statement: string;
+  options: string[];
+  expectedOptionsCount: number;
+  questionType: ImportedQuestionType;
+  rawText: string;
+  hasFigure?: boolean;
+  figureBox?: FigureBox;
+  contextKey?: string;
+  supportText?: string;
+}): { status: ImportedQuestionStatus; reasons: ImportedQuestionStatusReason[] } => {
+  const reasons: ImportedQuestionStatusReason[] = [];
+  const cleanStatement = stripHtml(statement).replace(/\s+/g, ' ').trim();
+  const cleanRaw = stripHtml(rawText).replace(/\s+/g, ' ').trim();
+  const cleanSupportText = stripHtml(supportText || '').replace(/\s+/g, ' ').trim();
+
+  if (cleanStatement.length < 12) {
+    reasons.push('sem_enunciado');
+    reasons.push('questao_sem_enunciado');
+  }
+  if (
+    ['multipla escolha', 'multipla assertiva', 'somatorio'].includes(questionType)
+    || (expectedOptionsCount > 0 && !['certo ou errado', 'verdadeiro/falso', 'discursiva', 'redacao', 'estudo de caso'].includes(questionType))
+  ) {
+    if (options.length === 0) {
+      reasons.push('sem_alternativas');
+    } else if (options.length < expectedOptionsCount) {
+      reasons.push('alternativas_incompletas');
+    }
+  }
+  if (questionType === 'desconhecido') {
+    reasons.push('tipo_indefinido');
+  }
+  if (
+    cleanStatement.length > 650
+    && /\b(?:texto\s+[ivxlc]+|leia\s+o\s+texto|considere\s+o\s+texto|para\s+responder|fonte\s*:|dispon[ií]vel\s+em)\b/i.test(cleanStatement)
+  ) {
+    reasons.push('possivel_texto_base_misturado');
+  }
+  if ((hasFigure || pageLikelyHasFigure(cleanRaw)) && !figureBox) {
+    reasons.push('figura_sem_recorte');
+  }
+  if (
+    textNeedsExternalSupportContext(cleanStatement, cleanRaw)
+    && !String(contextKey || '').trim()
+    && cleanSupportText.length < 40
+  ) {
+    reasons.push('contexto_referenciado_nao_encontrado');
+  }
+  if (looksLikeFlattenedStructuredText(supportText || '') || looksLikeFlattenedStructuredText(statement)) {
+    reasons.push('estrutura_texto_achatada');
+  }
+  if (looksLikeCorruptedTableText(statement, supportText || '', rawText)) {
+    reasons.push('tabela_corrompida');
+  }
+  if (looksLikeCorruptedPoemText(statement, supportText || '', rawText)) {
+    reasons.push('poema_corrompido');
+  }
+  if (looksLikeCorruptedLawText(statement, supportText || '', rawText)) {
+    reasons.push('lei_corrompida');
+  }
+  if (mentionsSharedContextWithoutLink(rawText, contextKey)) {
+    reasons.push('contexto_compartilhado_nao_vinculado');
+  }
+  if (looksLikeBrokenCrossPageContext(rawText, contextKey)) {
+    reasons.push('contexto_quebrado_entre_paginas');
+  }
+
+  const uniqueReasons = Array.from(new Set(reasons));
+  const status: ImportedQuestionStatus = uniqueReasons.length === 0
+    ? 'ok'
+    : uniqueReasons.some((reason) => ['sem_enunciado', 'questao_sem_enunciado', 'sem_alternativas', 'alternativas_incompletas'].includes(reason))
+      ? 'incompleta'
+      : 'revisar';
+
+  return { status, reasons: uniqueReasons };
 };
 
 const getQuestionExpectedOptionsCount = (question: Question) => {
@@ -1346,8 +2682,18 @@ const getQuestionExpectedOptionsCount = (question: Question) => {
     modality?: unknown;
     expectedOptionsCount?: unknown;
     expected_options_count?: unknown;
+    bancas?: unknown[];
+    banca?: unknown;
   };
-  return getExpectedOptionsCount(record.tipo || record.modality, record.expectedOptionsCount ?? record.expected_options_count);
+  const agencySignal = [
+    ...(Array.isArray(record.bancas) ? record.bancas : []),
+    record.banca,
+  ].map((item) => getTaxonomyText(item as QuestionTaxonomyLabel)).join(' ');
+  return getExpectedOptionsCount(
+    record.tipo || record.modality,
+    record.expectedOptionsCount ?? record.expected_options_count,
+    resolveExamParserProfile(agencySignal),
+  );
 };
 
 const getQuestionIntroText = (question: Question) => {
@@ -1429,8 +2775,37 @@ const shouldRunFinalQuestionPartsReview = (question: Question) => {
 
 const getImportedQuestionNumber = (question: Question, fallback: number): number => {
   const draft = question as unknown as ImportedQuestionDraft;
-  const rawNumber = draft.questionNumber ?? draft.number ?? (question as unknown as { question_number?: unknown }).question_number;
+  const record = question as unknown as Record<string, unknown>;
+  const rawNumber = draft.questionNumber
+    ?? draft.number
+    ?? record.question_number
+    ?? record.sourceQuestionNumber
+    ?? record.source_question_number;
   const numericNumber = Number(rawNumber);
+  return Number.isFinite(numericNumber) && numericNumber > 0 ? numericNumber : fallback;
+};
+
+const getPublishedExamId = (exam: Record<string, unknown> | null | undefined) => (
+  exam?.id
+  ?? exam?.provaId
+  ?? exam?.prova_id
+  ?? exam?.exam_id
+  ?? exam?.publishedExamId
+  ?? exam?.published_exam_id
+);
+
+const getPublishedQuestionNumberFromRecord = (value: unknown, fallback = 0) => {
+  const record = toLooseRecord(value);
+  if (!record) {
+    return fallback;
+  }
+
+  const rawNumber = record.questionNumber
+    ?? record.question_number
+    ?? record.number
+    ?? record.sourceQuestionNumber
+    ?? record.source_question_number;
+  const numericNumber = Number(String(rawNumber ?? '').match(/\d+/)?.[0] || 0);
   return Number.isFinite(numericNumber) && numericNumber > 0 ? numericNumber : fallback;
 };
 
@@ -1441,7 +2816,7 @@ const completeQuestionOptionsFromPrefix = (question: Question, prefixText: strin
     return null;
   }
 
-  const fragments = extractOptionFragmentsFromText(prefixText);
+  const fragments = extractOptionFragmentsFromText(prefixText, expectedOptionsCount);
   if (fragments.optionsByLabel.size === 0) {
     return null;
   }
@@ -1527,7 +2902,7 @@ const pickAnswerKeySection = (text: string, targetRole: string | string[] = '') 
     const next = cargoMatches[index + 1];
     const end = next?.index ?? text.length;
     const section = text.slice(start, end);
-    const firstAnswer = section.search(/\b\d{1,3}\s*(?:[A-E]|\*|ANULAD[OA])\b/i);
+    const firstAnswer = section.search(new RegExp(`\\b\\d{1,3}\\s*(?:${ANSWER_KEY_TOKEN_PATTERN_SOURCE})`, 'i'));
     const title = firstAnswer > 0 ? section.slice(0, firstAnswer) : section.slice(0, 140);
     return { title, section };
   });
@@ -1604,10 +2979,30 @@ const shouldUseAnswerKeyPage = (text: string, targetRole: string | string[] = ''
   return !normalized.includes('GABARITOS OFICIAIS');
 };
 
+const ATTRIBUTED_TO_ALL_ANSWER_INDEX = -2;
+const CANCELED_ANSWER_INDEX = -1;
+const ANSWER_KEY_TOKEN_PATTERN_SOURCE = String.raw`ATRIBU[IÍ]D[AO]S?\s+A\s+TODOS|QUEST[AÃ]O\s+ANULAD[AO]|QUEST[AÃ]O\s+CANCELAD[AO]|ANULAD[OA]|CANCELAD[OA]|\b(?:TODOS|[A-E]|X|T)\b|\*`;
+
 const convertAnswerTokenToIndex = (value: string, trueFalseMode: boolean) => {
-  const rawAnswer = String(value || '').toUpperCase();
-  if (rawAnswer === '*' || rawAnswer.startsWith('ANULAD')) {
-    return -1;
+  const rawAnswer = String(value || '').toUpperCase().replace(/\s+/g, ' ').trim();
+  const normalizedAnswer = normalizeComparisonText(rawAnswer);
+  if (
+    normalizedAnswer === 't'
+    || normalizedAnswer === 'todos'
+    || normalizedAnswer.includes('atribuida a todos')
+    || normalizedAnswer.includes('atribuidos a todos')
+  ) {
+    return ATTRIBUTED_TO_ALL_ANSWER_INDEX;
+  }
+  if (
+    rawAnswer === '*'
+    || rawAnswer === 'X'
+    || normalizedAnswer.startsWith('anulad')
+    || normalizedAnswer.startsWith('questao anulad')
+    || normalizedAnswer.startsWith('cancelad')
+    || normalizedAnswer.startsWith('questao cancelad')
+  ) {
+    return CANCELED_ANSWER_INDEX;
   }
   if (trueFalseMode) {
     if (rawAnswer === 'C') return 0;
@@ -1619,11 +3014,12 @@ const convertAnswerTokenToIndex = (value: string, trueFalseMode: boolean) => {
 
 const parseAnswerEntries = (text: string) => {
   const normalizedText = text
-    .replace(/\b(\d{2})\s+(\d)\s+(?=[A-E]|\*|Anulad)/gi, '$1$2 ');
-  const directEntries = Array.from(normalizedText.matchAll(/(?:quest[aã]o\s*)?(\d{1,3})\s*(?:[-.:)]\s*)?([A-E]|ANULAD[OA]|\*)(?=\s|$)/gi))
-    .map((entry) => ({ number: Number(entry[1]), answer: String(entry[2] || '').toUpperCase() }));
+    .replace(new RegExp(`\\b(\\d{2})\\s+(\\d)\\s+(?=${ANSWER_KEY_TOKEN_PATTERN_SOURCE})`, 'gi'), '$1$2 ');
+  const directEntries = Array.from(normalizedText.matchAll(new RegExp(`(?:quest[aã]o\\s*)?(\\d{1,3})\\s*(?:[-.:)]\\s*)?(${ANSWER_KEY_TOKEN_PATTERN_SOURCE})(?=\\s|$)`, 'gi')))
+    .map((entry) => ({ number: Number(entry[1]), answer: String(entry[2] || '').toUpperCase().replace(/\s+/g, ' ').trim() }));
 
-  const tokens = Array.from(normalizedText.matchAll(/\d{1,3}|ANULAD[OA]|\*|[A-E]/gi)).map((match) => String(match[0]).toUpperCase());
+  const tokens = Array.from(normalizedText.matchAll(new RegExp(`\\d{1,3}|${ANSWER_KEY_TOKEN_PATTERN_SOURCE}`, 'gi')))
+    .map((match) => String(match[0]).toUpperCase().replace(/\s+/g, ' ').trim());
   const tableEntries: Array<{ number: number; answer: string }> = [];
 
   for (let index = 0; index < tokens.length; index += 1) {
@@ -1648,7 +3044,7 @@ const parseAnswerEntries = (text: string) => {
     }
 
     const answers: string[] = [];
-    while (cursor < tokens.length && answers.length < numbers.length && /^(?:[A-E]|\*|ANULAD[OA])$/i.test(tokens[cursor])) {
+    while (cursor < tokens.length && answers.length < numbers.length && new RegExp(`^(?:${ANSWER_KEY_TOKEN_PATTERN_SOURCE})$`, 'i').test(tokens[cursor])) {
       answers.push(tokens[cursor]);
       cursor += 1;
     }
@@ -1669,7 +3065,10 @@ const parseAnswerKeyFromText = (value: string, targetRole: string | string[] = '
   const text = pickAnswerKeySection(String(value || '').replace(/\s+/g, ' ').trim(), targetRole);
   const entries = parseAnswerEntries(text);
   const trueFalseMode = entries.length >= 20
-    && entries.every((entry) => ['C', 'E', '*', 'ANULADA', 'ANULADO'].includes(entry.answer));
+    && entries.every((entry) => (
+      ['C', 'E', 'X', '*', 'T', 'TODOS', 'ANULADA', 'ANULADO', 'CANCELADA', 'CANCELADO'].includes(entry.answer)
+      || normalizeComparisonText(entry.answer).includes('atribuida a todos')
+    ));
   const result: Record<number, number> = {};
 
   entries.forEach((entry) => {
@@ -1803,6 +3202,7 @@ const inferMetadataFromText = (value: string, fileName = ''): ImportMetadata => 
   };
 
   if (lower.includes('enem') || lower.includes('exame nacional do ensino medio') || lower.includes('inep')) {
+    const enemTitle = year ? `INEP - ${year} - INEP - ENEM` : 'INEP - INEP - ENEM';
     return {
       agency: 'INEP',
       source: 'INEP',
@@ -1811,8 +3211,8 @@ const inferMetadataFromText = (value: string, fileName = ''): ImportMetadata => 
       level: 'Superior',
       examType: 'ENEM',
       ...bookletMetadata,
-      title: year ? `ENEM - INEP (${year})` : 'ENEM - INEP',
-      examTitle: year ? `ENEM - INEP (${year})` : 'ENEM - INEP',
+      title: enemTitle,
+      examTitle: enemTitle,
     };
   }
 
@@ -1824,7 +3224,10 @@ const inferMetadataFromText = (value: string, fileName = ''): ImportMetadata => 
   const level = readField(['Nivel', 'Escolaridade'])
     || (lower.includes('nivel superior') || lower.includes('nível superior') || lower.includes('tenente') ? 'Superior' : '')
     || (lower.includes('nivel medio') || lower.includes('nível médio') || lower.includes('soldado') ? 'Médio' : '');
-  const inferredAgency = agency || (lower.includes('ibfc') ? 'IBFC' : lower.includes('cebraspe') ? 'CEBRASPE' : lower.includes('cespe') ? 'CESPE' : '');
+  const detectedAgencyProfile = resolveExamParserProfile(fileName, normalized);
+  const inferredAgency = agency
+    || (detectedAgencyProfile.id !== 'generic' ? detectedAgencyProfile.label : '')
+    || (lower.includes('ibfc') ? 'IBFC' : lower.includes('cebraspe') ? 'CEBRASPE' : lower.includes('cespe') ? 'CESPE' : '');
   const inferredSource = source
     || (lower.includes('policia militar') && lower.includes('corpo de bombeiros') && lower.includes('paraiba') ? 'PM/PB / CBM/PB' : '')
     || (lower.includes('pm/pb') || lower.includes('policia militar da paraiba') || lower.includes('polícia militar da paraíba') ? 'PM/PB' : '')
@@ -1842,40 +3245,84 @@ const inferMetadataFromText = (value: string, fileName = ''): ImportMetadata => 
   };
 };
 
-const extractMechanicalOptionsFromText = (value: string) => {
-  return extractOptionsFromText(value);
+const extractMechanicalOptionsFromText = (
+  value: string,
+  expectedOptionsCount?: unknown,
+  parserProfile: ExamParserProfile = resolveExamParserProfile(value),
+) => {
+  return extractOptionsFromText(value, expectedOptionsCount, parserProfile);
 };
 
-const findQuestionMarkers = (value: string) => {
-  const text = normalizeQuestionMarkerText(value);
-  const wordMarkers = Array.from(text.matchAll(/\b(?:quest[aã]o|questao|q\.?)\s*(?:n[ºo]\s*)?(\d{1,3})\b/gi))
-    .map((match) => ({
-      number: Number(match[1]),
-      index: match.index ?? 0,
-      raw: match[0],
-      source: 'word',
-    }));
-  const numberedMarkers = Array.from(text.matchAll(/(^|\s)(\d{1,3})\s*\)\s/g))
-    .map((match) => ({
-      number: Number(match[2]),
-      index: (match.index ?? 0) + match[1].length,
-      raw: match[0].slice(match[1].length),
-      source: 'numbered',
-    }));
-  const plainTrueFalseMarkers = isTrueFalseExamText(text) ? findPlainTrueFalseMarkers(text) : [];
+const findQuestionMarkers = (
+  value: string,
+  parserProfile: ExamParserProfile = resolveExamParserProfile(value),
+) => collectQuestionMarkersFromPatterns(value, parserProfile);
 
-  return [...wordMarkers, ...numberedMarkers, ...plainTrueFalseMarkers]
-    .filter((marker) => Number.isFinite(marker.number) && marker.number > 0 && marker.number < 500)
-    .sort((left, right) => left.index - right.index)
-    .filter((marker, index, list) => (
-      list.findIndex((item) => item.number === marker.number && Math.abs(item.index - marker.index) < 12) === index
-    ))
-    .filter((marker, index, list) => (
-      marker.source === 'word'
-      || marker.source === 'plain-true-false'
-      || index === 0
-      || marker.number > list.slice(0, index).reduce((highest, item) => Math.max(highest, item.number), 0)
-    ));
+const extractStructuredPrefixBeforeFirstQuestion = (
+  value: string,
+  parserProfile: ExamParserProfile = resolveExamParserProfile(value),
+) => {
+  const text = normalizeQuestionMarkerText(value);
+  const markers = findQuestionMarkers(text, parserProfile);
+  return markers[0] ? text.slice(0, markers[0].index).trim() : '';
+};
+
+type MechanicalQuestionSegment = {
+  marker: { number: number; index: number; raw: string };
+  segment: string;
+  subject: string;
+  hasSpecificContext: boolean;
+};
+
+const contextHasPluralQuestionDirective = (value: string) => {
+  const normalized = String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return /\b(?:para\s+responder(?:\s+(?:as?|aos?))?\s+(?:quest(?:ao|oes)|itens?)|texto\s+para\s+(?:(?:responder|os?|as?)\s+)*(?:quest(?:ao|oes)|itens?)|atencao\s*:\s*para\s+responder|quest(?:ao|oes)\s+seguintes?|itens?\s+(?:seguintes?|a\s+seguir)|com\s+base\s+no\s+texto\s+acima\s*,?\s*responda\s+(?:as?|aos?)\s+(?:quest(?:ao|oes)|itens?)|quest(?:ao|oes)\s+que\s+(?:tratam|abordam|versam)\b)/i
+    .test(normalized);
+};
+
+const inferContextQuestionNumbersFromUsage = (
+  contextText: string,
+  segments: MechanicalQuestionSegment[],
+) => {
+  const dependentNumbers = segments
+    .filter((segment) => !segment.hasSpecificContext)
+    .filter((segment) => textNeedsExternalSupportContext(segment.segment))
+    .map((segment) => segment.marker.number)
+    .filter((number, index, list) => list.indexOf(number) === index);
+
+  if (dependentNumbers.length > 0) {
+    return dependentNumbers;
+  }
+
+  const hasNamedTextBlock = /^Texto\s+(?:[IVXLC]+|\d+)\b/im.test(stripHtml(contextText));
+  if (!contextHasPluralQuestionDirective(contextText) && !hasNamedTextBlock) {
+    return [];
+  }
+
+  const firstSubject = segments.find((segment) => !segment.hasSpecificContext)?.subject || '';
+  const inferred: number[] = [];
+  for (const segment of segments) {
+    if (segment.hasSpecificContext) {
+      inferred.push(segment.marker.number);
+      continue;
+    }
+    if (
+      firstSubject
+      && segment.subject
+      && normalizeComparisonText(segment.subject) !== normalizeComparisonText(firstSubject)
+      && inferred.length > 0
+    ) {
+      break;
+    }
+    inferred.push(segment.marker.number);
+  }
+
+  return inferred.filter((number, index, list) => number > 0 && list.indexOf(number) === index);
 };
 
 const createMechanicalExtractionFromText = (
@@ -1883,40 +3330,143 @@ const createMechanicalExtractionFromText = (
   pageIndex: number,
   fileName: string,
 ): PageExtractionResult => {
-  const normalizedText = normalizeQuestionMarkerText(pageText).replace(/\s+/g, ' ').trim();
-  const markers = findQuestionMarkers(normalizedText);
-  const metadata = inferMetadataFromText(normalizedText, fileName);
-  const trueFalseMode = isTrueFalseExamText(normalizedText);
+  const firstPassText = normalizePdfTextForParsing(pageText);
+  const initialMetadata = inferMetadataFromText(firstPassText || pageText, fileName);
+  const initialParserProfile = resolveExamParserProfile(fileName, firstPassText, initialMetadata.agency);
+  const cleanedPageText = normalizePdfTextForParsing(pageText, initialParserProfile);
+  const normalizedText = normalizeQuestionMarkerText(cleanedPageText || pageText)
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+  const inferredMetadata = inferMetadataFromText(normalizedText, fileName);
+  const profileAgency = initialParserProfile.id !== 'generic' ? initialParserProfile.label : '';
+  const metadata = {
+    ...inferredMetadata,
+    agency: inferredMetadata.agency || initialMetadata.agency || profileAgency,
+  };
+  const parserProfile = resolveExamParserProfile(fileName, normalizedText, metadata.agency);
+  const markers = findQuestionMarkers(normalizedText, parserProfile);
+  const trueFalseMode = Boolean(parserProfile.certoErradoMode || parserProfile.trueFalseMode || isTrueFalseExamText(normalizedText));
   if (markers.length === 0) {
     return { metadata, pageContexts: [], questions: [] };
   }
 
-  const contextPrefix = sanitizeSupportContextText(normalizedText.slice(0, markers[0].index).trim());
-  const hasContinuationOptions = extractOptionFragmentsFromText(contextPrefix).optionsByLabel.size >= 2;
-  const hasSharedContext = shouldPromoteAsSupportContext(contextPrefix) && !hasContinuationOptions;
-  const contextKey = hasSharedContext ? `pag-${pageIndex}-contexto-textual` : '';
-  const questions = markers.map((marker, index) => {
+  const structuredPrefix = extractStructuredPrefixBeforeFirstQuestion(cleanedPageText || pageText, parserProfile);
+  const contextPrefixParts = splitQuestionSupportReference(structuredPrefix || normalizedText.slice(0, markers[0].index).trim());
+  const contextPrefix = sanitizeSupportContextText(
+    contextPrefixParts.supportText || structuredPrefix || normalizedText.slice(0, markers[0].index).trim(),
+  );
+  const hasContinuationOptions = extractOptionFragmentsFromText(
+    contextPrefix,
+    inferExpectedOptionsCountFromText(contextPrefix, normalizedText, fileName),
+    parserProfile,
+  ).optionsByLabel.size >= 2
+    && readOptionMarkers(contextPrefix, parserProfile).filter((marker) => marker.structured).length >= 2;
+  const explicitPrefixQuestionNumbers = extractExplicitContextQuestionNumbers(
+    structuredPrefix,
+    contextPrefix,
+    contextPrefixParts.referenceText,
+  );
+  const hasExplicitSharedPrefixScope = explicitPrefixQuestionNumbers.length >= 2;
+  const hasSharedContext = (
+    shouldPromoteAsSupportContext(contextPrefix)
+    || hasExplicitSharedPrefixScope
+    || contextHasPluralQuestionDirective(contextPrefix)
+  ) && stripHtml(contextPrefix).replace(/\s+/g, ' ').trim().length >= 40
+    && (!hasContinuationOptions || hasExplicitSharedPrefixScope);
+  const interQuestionContexts = extractInterQuestionSupportContexts(normalizedText, markers, pageIndex, parserProfile);
+  const interContextQuestionNumbers = new Set(
+    interQuestionContexts.flatMap((context) => context.appliesToQuestionNumbers || []),
+  );
+  const questionSegments: MechanicalQuestionSegment[] = markers.map((marker, index) => {
     const next = markers[index + 1];
     const segment = normalizedText.slice(marker.index + marker.raw.length, next?.index ?? normalizedText.length).trim();
-    const { statement, options } = extractMechanicalOptionsFromText(segment);
-    const expectedOptionsCount = trueFalseMode
+    return {
+      marker,
+      segment,
+      subject: inferDisciplineFromTextBefore(normalizedText.slice(0, marker.index)),
+      hasSpecificContext: interContextQuestionNumbers.has(marker.number),
+    };
+  });
+  const prefixQuestionNumbers = explicitPrefixQuestionNumbers.length > 0
+    ? explicitPrefixQuestionNumbers
+    : inferContextQuestionNumbersFromUsage(contextPrefix, questionSegments);
+  const hasSharedPrefixContext = hasSharedContext && prefixQuestionNumbers.length >= 2;
+  const singlePrefixSupportQuestionNumber = hasSharedContext && prefixQuestionNumbers.length === 1
+    ? prefixQuestionNumbers[0]
+    : 0;
+  const namedPrefixContexts = hasSharedPrefixContext
+    ? splitNamedSupportContexts(contextPrefix, prefixQuestionNumbers, pageIndex)
+    : [];
+  const contextKey = hasSharedPrefixContext
+    ? namedPrefixContexts[0]?.contextKey || `pag-${pageIndex}-contexto-textual`
+    : '';
+  const prefixContextAppliesToQuestion = (questionNumber: number) => (
+    Boolean(contextKey)
+    && prefixQuestionNumbers.includes(questionNumber)
+  );
+  const questions = questionSegments.map(({ marker, segment, subject }) => {
+    const initialExpectedOptionsCount = trueFalseMode
       ? 2
-      : inferExpectedOptionsCountFromText(segment, normalizedText, fileName) || getExpectedOptionsCount('multipla escolha');
-    const modality: ImportedQuestionDraft['modality'] = trueFalseMode ? 'certo ou errado' : 'multipla escolha';
-    const questionOptions = trueFalseMode ? ['Certo', 'Errado'] : options;
+      : inferExpectedOptionsCountFromText(segment, normalizedText, fileName, metadata.agency)
+        || getExpectedOptionsCount('multipla escolha', undefined, parserProfile);
+    const extracted = trueFalseMode
+      ? { statement: segment, options: ['Certo', 'Errado'] }
+      : extractMechanicalOptionsFromText(segment, initialExpectedOptionsCount, parserProfile);
+    let questionType = inferQuestionType(segment, extracted.options, parserProfile);
+    let questionOptions = extracted.options;
+    if (trueFalseMode) {
+      questionType = 'certo ou errado';
+      questionOptions = ['Certo', 'Errado'];
+    } else if (questionType === 'verdadeiro/falso') {
+      questionOptions = ['Verdadeiro', 'Falso'];
+    }
+    const expectedOptionsCount = questionType === 'certo ou errado' || questionType === 'verdadeiro/falso'
+      ? 2
+      : ['discursiva', 'redacao', 'estudo de caso'].includes(questionType)
+        ? 0
+        : initialExpectedOptionsCount;
+    const modality: ImportedQuestionDraft['modality'] = questionType;
+    const specificContextKey = interQuestionContexts.find((context) => (
+      Array.isArray(context.appliesToQuestionNumbers)
+      && context.appliesToQuestionNumbers.includes(marker.number)
+    ))?.contextKey || '';
+    const linkedContextKey = specificContextKey || (prefixContextAppliesToQuestion(marker.number) ? contextKey : '');
+    const statement = extracted.statement || (questionOptions.length > 0 ? '' : segment);
+    const validation = validateExtractedQuestionDraft({
+      statement,
+      options: questionOptions,
+      expectedOptionsCount,
+      questionType,
+      rawText: segment,
+      hasFigure: pageLikelyHasFigure(segment),
+      contextKey: linkedContextKey,
+      supportText: singlePrefixSupportQuestionNumber === marker.number ? contextPrefix : '',
+    });
+    const individualPrefixSupportText = singlePrefixSupportQuestionNumber === marker.number ? contextPrefix : '';
+    const individualPrefixReferenceText = individualPrefixSupportText ? contextPrefixParts.referenceText : '';
 
     return {
       number: String(marker.number),
       questionNumber: marker.number,
       isQuestion: true,
-      text: trueFalseMode ? segment : statement || (options.length > 0 ? '' : segment),
+      text: trueFalseMode ? segment : statement,
       options: questionOptions,
       expectedOptionsCount,
       expected_options_count: expectedOptionsCount,
-      contextKey,
-      contextTitle: contextKey ? `Texto de apoio - pagina ${pageIndex}` : '',
+      contextKey: linkedContextKey,
+      contextTitle: specificContextKey
+        ? `Texto de apoio - questao ${marker.number}`
+        : linkedContextKey ? `Texto de apoio - pagina ${pageIndex}` : '',
+      supportText: individualPrefixSupportText,
+      referenceText: individualPrefixReferenceText,
       modality,
-      subject: '',
+      questionType,
+      raw: segment,
+      status: validation.status,
+      extractionStatus: validation.status,
+      statusReasons: validation.reasons,
+      validationReasons: validation.reasons,
+      subject,
       topic: '',
       specificSubject: '',
       level: metadata.level || 'Superior',
@@ -1924,24 +3474,60 @@ const createMechanicalExtractionFromText = (
       page: pageIndex,
     };
   });
+  const questionNumberCounts = questions.reduce<Map<number, number>>((counts, question) => {
+    const number = Number(question.questionNumber || question.number);
+    if (Number.isFinite(number) && number > 0) {
+      counts.set(number, (counts.get(number) || 0) + 1);
+    }
+    return counts;
+  }, new Map<number, number>());
+  const questionsWithDuplicateStatus = questions.map((question) => {
+    const number = Number(question.questionNumber || question.number);
+    if (!Number.isFinite(number) || (questionNumberCounts.get(number) || 0) <= 1) {
+      return question;
+    }
+
+    const reasons = Array.from(new Set([
+      ...(question.statusReasons || []),
+      'numero_duplicado' as ImportedQuestionStatusReason,
+    ]));
+    const duplicateStatus: ImportedQuestionStatus = question.status === 'incompleta' ? 'incompleta' : 'revisar';
+    return {
+      ...question,
+      status: duplicateStatus,
+      extractionStatus: duplicateStatus,
+      statusReasons: reasons,
+      validationReasons: reasons,
+    };
+  });
 
   return {
     metadata,
-    pageContexts: contextKey
-      ? [{
+    pageContexts: [
+      ...(contextKey
+        ? namedPrefixContexts.length > 0
+          ? namedPrefixContexts
+          : [{
         contextKey,
         title: `Texto de apoio - pagina ${pageIndex}`,
         text: contextPrefix,
-        appliesToQuestionNumbers: markers.map((marker) => marker.number),
+        referenceText: contextPrefixParts.referenceText,
+        sourcePage: pageIndex,
+        appliesToQuestionNumbers: prefixQuestionNumbers,
         hasFigure: false,
         figureDescription: '',
       }]
-      : [],
-    questions,
+        : []),
+      ...interQuestionContexts,
+    ],
+    questions: questionsWithDuplicateStatus,
   };
 };
 
-const pageLikelyHasFigure = (value: string) => /\b(figura|imagem|gr[aá]fico|tabela|tirinha|charge|mapa|cartum|esquema|diagrama|ilustra[cç][aã]o|infogr[aá]fico)\b/i.test(value);
+const pageLikelyHasFigure = (value: string) => (
+  new RegExp(`\\b(?:${VISUAL_CONTEXT_TERMS_PATTERN}|ilustra[cç][aã]o|fotografia|desenho\\s+geometrico|circuito\\s+eletrico|planta|esquema\\s+quimico|tabela\\s+periodica)\\b`, 'i')
+    .test(value)
+);
 
 const questionLikelyHasVisualAlternatives = (
   rawText: string,
@@ -1961,12 +3547,176 @@ const questionLikelyHasVisualAlternatives = (
   return pageHasVisualMaterial && (hasChoiceCue || hasLooseVisualLabels);
 };
 
+const getExtractionQuestionText = (question: PageExtractionResult['questions'][number]) => {
+  const draft = question as ImportedQuestionDraft & { raw?: string };
+  return [
+    draft.text,
+    (question as Question).enunciado,
+    draft.raw,
+    Array.isArray(draft.options) ? draft.options.join(' ') : '',
+  ].map((value) => String(value || '').trim()).filter(Boolean).join(' ');
+};
+
+const getExtractionQuestionSupportText = (question: PageExtractionResult['questions'][number]) => {
+  const draft = question as ImportedQuestionDraft & { intro_text?: string };
+  return String(draft.supportText || draft.introText || draft.intro_text || '').trim();
+};
+
+const getExtractionQuestionContextKey = (question: PageExtractionResult['questions'][number]) => {
+  const draft = question as ImportedQuestionDraft & {
+    contextTempId?: string | number;
+    grupoQuestaoTempId?: string | number;
+  };
+  return String(draft.contextKey || draft.contextTempId || draft.grupoQuestaoTempId || '').trim();
+};
+
+const extractionQuestionHasSupportPayload = (question: PageExtractionResult['questions'][number]) => {
+  const draft = question as ImportedQuestionDraft;
+  return Boolean(
+    stripHtml(getExtractionQuestionSupportText(question)).replace(/\s+/g, ' ').trim().length >= 40
+    || draft.supportFigureBox
+    || (Array.isArray(draft.supportFigureBoxes) && draft.supportFigureBoxes.length > 0)
+    || (Array.isArray(draft.supportImages) && draft.supportImages.length > 0)
+  );
+};
+
+const extractionContextHasPayload = (context: NonNullable<PageExtractionResult['pageContexts']>[number]) => (
+  stripHtml(String(context.text || context.richText || '')).replace(/\s+/g, ' ').trim().length >= 40
+  || Boolean(context.hasFigure || context.figureBox || context.figureDescription)
+  || (Array.isArray(context.figures) && context.figures.length > 0)
+);
+
+const extractionQuestionNeedsContextFallback = (question: PageExtractionResult['questions'][number]) => (
+  textNeedsExternalSupportContext(getExtractionQuestionText(question))
+  && !getExtractionQuestionContextKey(question)
+  && !extractionQuestionHasSupportPayload(question)
+);
+
+const pageHasLikelySupportContext = (
+  pageText: string,
+  parserProfile: ExamParserProfile,
+) => {
+  const clean = stripHtml(pageText).replace(/\s+/g, ' ').trim();
+  if (clean.length < 80 || isLikelyInstructionText(clean)) {
+    return false;
+  }
+
+  const normalizedText = normalizeQuestionMarkerText(normalizePdfTextForParsing(pageText, parserProfile) || pageText)
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+  const markers = findQuestionMarkers(normalizedText, parserProfile);
+  const prefix = markers[0]
+    ? sanitizeSupportContextText(extractStructuredPrefixBeforeFirstQuestion(pageText, parserProfile) || normalizedText.slice(0, markers[0].index))
+    : '';
+  const hasPromotablePrefix = prefix.length >= 40 && shouldPromoteAsSupportContext(prefix);
+  const hasExplicitSharedScope = extractExplicitContextQuestionNumbers(clean).length >= 2;
+  const hasContextStart = findSupportContextStartIndex(pageText) >= 0 || supportContextSignalPattern.test(clean);
+  const hasVisualContextCue = pageLikelyHasFigure(clean) && /\b(?:observe|analise|considere|com\s+base|quest(?:[oõ]es|oes)|itens?)\b/i.test(clean);
+
+  return Boolean(
+    hasPromotablePrefix
+    || hasExplicitSharedScope
+    || (hasContextStart && (markers.length > 0 || questionCommandPattern.test(clean)))
+    || hasVisualContextCue
+  );
+};
+
+const extractionLikelyNeedsSupportContextFallback = (
+  pageText: string,
+  extraction: PageExtractionResult,
+  parserProfile: ExamParserProfile,
+) => {
+  const pageLooksContextual = pageHasLikelySupportContext(pageText, parserProfile);
+  const questions = extraction.questions || [];
+  const contexts = extraction.pageContexts || [];
+  const linkedContextKeys = new Set(
+    questions
+      .map((question) => getExtractionQuestionContextKey(question))
+      .filter(Boolean),
+  );
+  const hasContextPayload = contexts.some(extractionContextHasPayload);
+  const hasQuestionSupportPayload = questions.some(extractionQuestionHasSupportPayload);
+  const unresolvedContextQuestion = questions.some(extractionQuestionNeedsContextFallback);
+
+  if (unresolvedContextQuestion) {
+    return true;
+  }
+
+  if (!pageLooksContextual) {
+    return false;
+  }
+
+  if (!hasContextPayload && !hasQuestionSupportPayload) {
+    return true;
+  }
+
+  const explicitQuestionNumbers = extractExplicitContextQuestionNumbers(pageText);
+  if (explicitQuestionNumbers.length >= 2) {
+    const explicitSet = new Set(explicitQuestionNumbers);
+    const linkedByContextScope = new Set(
+      contexts.flatMap((context) => (
+        extractionContextHasPayload(context)
+          ? resolveScopedContextQuestionNumbers(
+            Array.isArray(context.appliesToQuestionNumbers)
+              ? context.appliesToQuestionNumbers.map((value) => normalizeQuestionNumber(value, 0)).filter(Boolean)
+              : [],
+            context.text,
+            context.referenceText,
+            context.title,
+          )
+          : []
+      )),
+    );
+    const questionNumbersWithoutContext = questions
+      .map((question, index) => ({
+        number: normalizeQuestionNumber(
+          (question as ImportedQuestionDraft).questionNumber || question.number,
+          index + 1,
+        ),
+        hasContext: Boolean(getExtractionQuestionContextKey(question)) || extractionQuestionHasSupportPayload(question),
+      }))
+      .filter((item) => explicitSet.has(item.number) && !item.hasContext && !linkedByContextScope.has(item.number));
+
+    if (questionNumbersWithoutContext.length > 0) {
+      return true;
+    }
+  }
+
+  return contexts.some((context) => (
+    extractionContextHasPayload(context)
+    && String(context.contextKey || '').trim()
+    && !linkedContextKeys.has(String(context.contextKey || '').trim())
+    && (!Array.isArray(context.appliesToQuestionNumbers) || context.appliesToQuestionNumbers.length === 0)
+  ));
+};
+
 const extractionNeedsAi = (
   pageText: string,
   extraction: PageExtractionResult,
   includeTeacherComment: boolean,
   hasPageHighlights = false,
 ) => {
+  const parserProfile = resolveExamParserProfile(pageText);
+  const pageQuestionNumbers = extractQuestionNumbersFromText(pageText, parserProfile);
+  const extractedQuestionNumbers = (extraction.questions || [])
+    .map((question, index) => normalizeQuestionNumber(
+      (question as ImportedQuestionDraft).questionNumber || (question as ImportedQuestionDraft).number,
+      index + 1,
+    ))
+    .filter((number, index, list) => number > 0 && list.indexOf(number) === index);
+  const pageLooksLikeQuestionContent = () => {
+    const clean = stripHtml(pageText).replace(/\s+/g, ' ').trim();
+    if (clean.length < 40) {
+      return false;
+    }
+    const optionMarkers = readOptionMarkers(clean, parserProfile);
+    return (
+      questionCommandPattern.test(clean)
+      && (optionMarkers.length >= 2 || /\b(?:assinale|julgue|marque|responda|correta|incorreta|exceto)\b/i.test(clean))
+      && !isLikelyInstructionText(clean)
+    );
+  };
+
   if (!pageText || stripHtml(pageText).replace(/\s+/g, ' ').trim().length < 40) {
     return true;
   }
@@ -1976,7 +3726,13 @@ const extractionNeedsAi = (
   if (hasPageHighlights) {
     return true;
   }
-  if (!extraction.questions.length && extractQuestionNumbersFromText(pageText).length > 0) {
+  if (pageQuestionNumbers.length > extractedQuestionNumbers.length) {
+    return true;
+  }
+  if (!extraction.questions.length && (pageQuestionNumbers.length > 0 || pageLooksLikeQuestionContent())) {
+    return true;
+  }
+  if (extractionLikelyNeedsSupportContextFallback(pageText, extraction, parserProfile)) {
     return true;
   }
   const questionsMissingOptions = extraction.questions.filter((question) => {
@@ -1984,7 +3740,7 @@ const extractionNeedsAi = (
     const questionText = String(draft.text || question.enunciado || '');
     const expectedOptionsCount = inferExpectedOptionsCountFromText(questionText, pageText)
       || getExpectedOptionsCount(draft.modality, draft.expectedOptionsCount ?? draft.expected_options_count);
-    return normalizeImportedOptions(draft.options, questionText, draft.modality).options.length < expectedOptionsCount;
+    return normalizeImportedOptions(draft.options, questionText, draft.modality, expectedOptionsCount).options.length < expectedOptionsCount;
   });
   if (questionsMissingOptions.length > 0) {
     const lastQuestion = extraction.questions[extraction.questions.length - 1] as ImportedQuestionDraft | undefined;
@@ -2074,22 +3830,40 @@ const mergeQuestionExtractionDraft = (
 ): PageExtractionResult['questions'][number] => {
   const previousDraft = previous as ImportedQuestionDraft;
   const nextDraft = next as ImportedQuestionDraft;
+  const previousText = String(previousDraft.text || previous.enunciado || '');
+  const nextText = String(nextDraft.text || next.enunciado || '');
+  const previousExpectedOptionsCount = inferExpectedOptionsCountFromText(previousText)
+    || getExpectedOptionsCount(
+      previousDraft.modality,
+      previousDraft.expectedOptionsCount ?? previousDraft.expected_options_count,
+    );
+  const nextExpectedOptionsCount = inferExpectedOptionsCountFromText(nextText)
+    || getExpectedOptionsCount(
+      nextDraft.modality,
+      nextDraft.expectedOptionsCount ?? nextDraft.expected_options_count,
+    );
   const previousNormalized = normalizeImportedOptions(
     previousDraft.options,
-    String(previousDraft.text || previous.enunciado || ''),
+    previousText,
     previousDraft.modality,
+    previousExpectedOptionsCount,
   );
   const nextNormalized = normalizeImportedOptions(
     nextDraft.options,
-    String(nextDraft.text || next.enunciado || ''),
+    nextText,
     nextDraft.modality,
+    nextExpectedOptionsCount,
   );
   const previousOptionsCount = previousNormalized.options.length;
   const nextOptionsCount = nextNormalized.options.length;
-  const preferNextCore = nextOptionsCount > previousOptionsCount
+  const previousIsComplete = previousOptionsCount >= previousExpectedOptionsCount;
+  const nextIsComplete = nextOptionsCount >= nextExpectedOptionsCount;
+  const preferNextCore = (nextIsComplete && !previousIsComplete)
+    || (!previousIsComplete && !nextIsComplete && nextOptionsCount > previousOptionsCount)
     || (
-      nextOptionsCount === previousOptionsCount
-      && String(nextDraft.text || next.enunciado || '').length > String(previousDraft.text || previous.enunciado || '').length
+      nextIsComplete === previousIsComplete
+      && nextOptionsCount === previousOptionsCount
+      && nextText.length > previousText.length
       && nextOptionsCount > 0
     );
   const base = preferNextCore ? next : previous;
@@ -2109,6 +3883,12 @@ const mergeQuestionExtractionDraft = (
     specificSubject: baseDraft.specificSubject || supplementDraft.specificSubject,
     difficulty: baseDraft.difficulty || supplementDraft.difficulty,
     level: baseDraft.level || supplementDraft.level,
+    expectedOptionsCount: normalizeExpectedOptionsCount(baseDraft.expectedOptionsCount ?? baseDraft.expected_options_count)
+      || normalizeExpectedOptionsCount(supplementDraft.expectedOptionsCount ?? supplementDraft.expected_options_count)
+      || inferExpectedOptionsCountFromText(baseDraft.text || (base as Question).enunciado, supplementDraft.text || (supplement as Question).enunciado),
+    expected_options_count: normalizeExpectedOptionsCount(baseDraft.expectedOptionsCount ?? baseDraft.expected_options_count)
+      || normalizeExpectedOptionsCount(supplementDraft.expectedOptionsCount ?? supplementDraft.expected_options_count)
+      || inferExpectedOptionsCountFromText(baseDraft.text || (base as Question).enunciado, supplementDraft.text || (supplement as Question).enunciado),
     teacherComment: (base as { teacherComment?: string }).teacherComment || (supplement as { teacherComment?: string }).teacherComment,
     detailedComment: (base as { detailedComment?: string }).detailedComment || (supplement as { detailedComment?: string }).detailedComment,
     contextKey: baseDraft.contextKey || supplementDraft.contextKey,
@@ -2165,9 +3945,24 @@ const mergePageExtractionResults = (
 
     const previousDraft = previous as ImportedQuestionDraft;
     const nextDraft = question as ImportedQuestionDraft;
-    const previousOptions = normalizeImportedOptions(previousDraft.options, String(previousDraft.text || previous.enunciado || ''), previousDraft.modality).options.length;
-    const nextOptions = normalizeImportedOptions(nextDraft.options, String(nextDraft.text || question.enunciado || ''), nextDraft.modality).options.length;
+    const previousText = String(previousDraft.text || previous.enunciado || '');
+    const nextText = String(nextDraft.text || question.enunciado || '');
+    const previousExpectedOptionsCount = inferExpectedOptionsCountFromText(previousText)
+      || getExpectedOptionsCount(
+        previousDraft.modality,
+        previousDraft.expectedOptionsCount ?? previousDraft.expected_options_count,
+      );
+    const nextExpectedOptionsCount = inferExpectedOptionsCountFromText(nextText)
+      || getExpectedOptionsCount(
+        nextDraft.modality,
+        nextDraft.expectedOptionsCount ?? nextDraft.expected_options_count,
+      );
+    const previousOptions = normalizeImportedOptions(previousDraft.options, previousText, previousDraft.modality, previousExpectedOptionsCount).options.length;
+    const nextOptions = normalizeImportedOptions(nextDraft.options, nextText, nextDraft.modality, nextExpectedOptionsCount).options.length;
+    const previousComplete = previousOptions >= previousExpectedOptionsCount;
+    const nextComplete = nextOptions >= nextExpectedOptionsCount;
     byNumber.set(number, nextOptions >= previousOptions
+      && (nextComplete || !previousComplete)
       ? mergeQuestionExtractionDraft(previous, question)
       : mergeQuestionExtractionDraft(question, previous));
   });
@@ -2264,24 +4059,80 @@ const getExtractedQuestionNumber = (question: Question, fallback: number) => {
   const record = question as Question & {
     questionNumber?: number | string;
     question_number?: number | string;
+    number?: number | string;
   };
-  return normalizeQuestionNumber(record.questionNumber ?? record.question_number, fallback);
+  return normalizeQuestionNumber(record.questionNumber ?? record.question_number ?? record.number, fallback);
 };
 
-const appendExamYear = (title: string, year: string | number | undefined | null) => {
-  const cleanTitle = String(title || '').replace(/\s*\(\d{4}\)\s*$/, '').trim();
-  const cleanYear = String(year || '').match(/\d{4}/)?.[0] || '';
-  return cleanYear ? `${cleanTitle} (${cleanYear})` : cleanTitle;
+const cleanExamTitlePart = (value: unknown) => String(value || '')
+  .replace(/\s+/g, ' ')
+  .replace(/\s*\(\d{4}\)\s*$/, '')
+  .trim();
+
+const cleanExplicitExamTitle = (value: unknown) => String(value || '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const readExamYear = (...values: unknown[]) => (
+  values.map((value) => String(value || '').match(/\b(19\d{2}|20\d{2})\b/)?.[0]).find(Boolean) || ''
+);
+
+const joinExamTitleParts = (...parts: unknown[]) => parts.map(cleanExamTitlePart).filter(Boolean).join(' - ');
+
+const buildStandardExamTitle = (metadata: ImportMetadata | null) => {
+  const roles = normalizeRoleList(metadata?.roles, metadata?.cargos, metadata?.role || metadata?.cargo);
+  const role = summarizeExamTitleList(
+    roles,
+    cleanExamTitlePart(metadata?.role || metadata?.cargo || metadata?.examName || metadata?.contestName),
+  );
+  const organizations = normalizeOrganizationList(metadata?.sources, metadata?.orgaos, metadata?.source);
+  const agency = cleanExamTitlePart(metadata?.agency);
+  const source = summarizeExamTitleList(organizations, cleanExamTitlePart(metadata?.source));
+  const year = readExamYear(metadata?.year, metadata?.ano);
+  return joinExamTitleParts(agency, year, source, role);
 };
 
 const buildExamTitle = (metadata: ImportMetadata | null, fallback = 'Prova importada') => {
-  const explicitTitle = String(metadata?.title || metadata?.examTitle || metadata?.name || metadata?.nome || '').trim();
-  const roles = normalizeRoleList(metadata?.roles, metadata?.cargos, metadata?.role);
-  const role = summarizeRoleList(roles, String(metadata?.role || metadata?.examName || metadata?.contestName || '').trim());
-  const source = String(metadata?.source || metadata?.agency || '').trim();
-  const year = metadata?.year || metadata?.ano || new Date().getFullYear();
-  const baseTitle = explicitTitle || (role && source ? `${role} - ${source}` : fallback);
-  return appendExamYear(baseTitle, year) || fallback;
+  const standardTitle = buildStandardExamTitle(metadata);
+  const explicitTitle = cleanExplicitExamTitle(metadata?.title || metadata?.examTitle || metadata?.name || metadata?.nome);
+  return explicitTitle || standardTitle || fallback;
+};
+
+const buildImportExamTaxonomyMetadata = (metadata: ImportMetadata | null) => {
+  const roleLabels = normalizeRoleList(metadata?.roles, metadata?.cargos, metadata?.role || metadata?.cargo);
+  const organizationLabels = normalizeOrganizationList(metadata?.sources, metadata?.orgaos, metadata?.source);
+  const roleSummary = summarizeExamTitleList(
+    roleLabels,
+    String(metadata?.role || metadata?.cargo || metadata?.examName || metadata?.contestName || '').trim(),
+  );
+  const sourceSummary = summarizeExamTitleList(organizationLabels, String(metadata?.source || '').trim());
+  const agencyLabel = String(metadata?.agency || '').trim();
+  const bankTaxonomy = agencyLabel ? createTaxonomyLabel(agencyLabel, { sigla: agencyLabel }) : undefined;
+  const organizationTaxonomies = organizationLabels.map((organization) => createTaxonomyLabel(organization));
+  const roleTaxonomies = roleLabels.map((role) => createTaxonomyLabel(role, { descricao: role }));
+
+  return {
+    agencyLabel,
+    organizationLabels,
+    organizationTaxonomies,
+    roleLabels,
+    roleTaxonomies,
+    roleSummary,
+    sourceSummary,
+    payload: {
+      agency: agencyLabel,
+      source: sourceSummary,
+      sources: organizationLabels,
+      banca: bankTaxonomy,
+      bancas: bankTaxonomy ? [bankTaxonomy] : [],
+      orgao: organizationTaxonomies[0],
+      orgaos: organizationTaxonomies,
+      cargo: roleTaxonomies[0],
+      role: roleSummary,
+      roles: roleLabels,
+      cargos: roleTaxonomies,
+    },
+  };
 };
 
 const broaderTopicForSpecificSubject = (specificSubject: string, subject: string, fallbackTopic = '') => {
@@ -2420,9 +4271,10 @@ const applySharedExamMetadataToQuestion = (
   }
 
   if (field === 'source') {
+    const organizations = normalizeOrganizationList(value);
     return {
       ...question,
-      orgaos: value ? [createTaxonomyLabel(value)] : [],
+      orgaos: organizations.map((organization) => createTaxonomyLabel(organization)),
     } as Question;
   }
 
@@ -2439,7 +4291,9 @@ const applySharedExamMetadataToQuestion = (
     return {
       ...question,
       anos: Number.isFinite(parsedYear) && parsedYear > 0 ? [parsedYear] : [],
-    } as Question;
+      year: Number.isFinite(parsedYear) && parsedYear > 0 ? parsedYear : undefined,
+      ano: Number.isFinite(parsedYear) && parsedYear > 0 ? parsedYear : undefined,
+    } as Question & { year?: number; ano?: number };
   }
 
   if (field === 'level') {
@@ -2461,12 +4315,22 @@ const applySharedExamMetadataToQuestion = (
   return question;
 };
 
+const applyExamYearToQuestion = (
+  question: Question,
+  metadata?: ImportMetadata | null,
+): Question => {
+  const parsedYear = Number(readExamYear(metadata?.year, metadata?.ano));
+  if (!Number.isFinite(parsedYear) || parsedYear <= 0) {
+    return question;
+  }
+
+  return applySharedExamMetadataToQuestion(question, 'year', String(parsedYear));
+};
+
 export const useAdminImportWorkflow = ({
   systemSettings,
   addToast,
   onImportedQuestionsSaved,
-  updateSystemSettings,
-  saveSystemSettingsNow,
 }: UseAdminImportWorkflowOptions) => {
   const [qFile, setQFile] = useState<File | null>(null);
   const [kFile, setKFile] = useState<File | null>(null);
@@ -2493,9 +4357,27 @@ export const useAdminImportWorkflow = ({
   const [publishedExam, setPublishedExam] = useState<Record<string, unknown> | null>(null);
   const [publishedQuestionNumbers, setPublishedQuestionNumbers] = useState<number[]>([]);
   const [publishingAction, setPublishingAction] = useState<ImportPublishAction | null>(null);
+  const publishingActionRef = useRef<ImportPublishAction | null>(null);
 
   const addLog = (message: string) => {
     setLogs((previous) => [`> ${message}`, ...previous].slice(0, 50));
+  };
+
+  const beginPublishingAction = (action: ImportPublishAction) => {
+    if (publishingActionRef.current) {
+      return false;
+    }
+
+    publishingActionRef.current = action;
+    setPublishingAction(action);
+    return true;
+  };
+
+  const finishPublishingAction = (action?: ImportPublishAction) => {
+    if (!action || publishingActionRef.current === action) {
+      publishingActionRef.current = null;
+      setPublishingAction(null);
+    }
   };
 
   const resolveSelectedFocus = (): QuestionTaxonomyLabel | null => {
@@ -2871,6 +4753,7 @@ export const useAdminImportWorkflow = ({
           statement: getQuestionStatementText(question),
           options: getQuestionOptionTexts(question),
           modality: String((question as unknown as { modality?: unknown }).modality || question.tipo || ''),
+          expectedOptionsCount,
         });
         const confidence = Number(repairedParts.confidence ?? 0);
         const repairedOptions = normalizeAiRepairedOptions(repairedParts.options, expectedOptionsCount);
@@ -3035,12 +4918,16 @@ export const useAdminImportWorkflow = ({
       ),
     } as ImportMetadata;
     const roles = normalizeRoleList(current?.roles, current?.cargos, current?.role, normalizedNext.roles, normalizedNext.cargos, normalizedNext.role);
-    const role = summarizeRoleList(roles, merged.role || merged.examName || merged.contestName || '');
+    const organizations = normalizeOrganizationList(current?.sources, current?.orgaos, current?.source, normalizedNext.sources, normalizedNext.orgaos, normalizedNext.source);
+    const role = summarizeExamTitleList(roles, merged.role || merged.examName || merged.contestName || '');
+    const source = summarizeExamTitleList(organizations, merged.source || '');
 
     return {
       ...merged,
       ...(role ? { role } : {}),
       ...(roles.length > 0 ? { roles, cargos: roles } : {}),
+      ...(source ? { source } : {}),
+      ...(organizations.length > 0 ? { sources: organizations } : {}),
       ...buildBookletMetadata(merged),
     } as ImportMetadata;
   };
@@ -3091,6 +4978,65 @@ export const useAdminImportWorkflow = ({
     return kept.join('\n\n');
   };
 
+  const mergeContextFigures = (
+    tempId: string,
+    previous?: ImportedContextDraft,
+    context?: Partial<ImportedContextDraft>,
+  ) => {
+    const figures = new Map<string, NonNullable<ImportedContextDraft['figures']>[number]>();
+    (previous?.figures || []).forEach((figure) => {
+      if (figure.figureKey) {
+        figures.set(figure.figureKey, figure);
+      }
+    });
+
+    (context?.figures || []).forEach((figure, index) => {
+      const figureKey = String(figure.figureKey || `${tempId}-fig-${String(index + 1).padStart(2, '0')}`);
+      figures.set(figureKey, {
+        ...figure,
+        figureKey,
+        imageData: figure.imageData || (index === 0 ? context?.imageData : undefined),
+        pageImageData: figure.pageImageData || context?.pageImageData,
+        page: Number(figure.page || context?.page || previous?.page || 0) || undefined,
+        order: Number(figure.order || index + 1),
+      });
+    });
+
+    if (context?.hasFigure && context.figureBox && !Array.from(figures.values()).some((figure) => figure.figureBox === context.figureBox)) {
+      const figureKey = `${tempId}-fig-01`;
+      figures.set(figureKey, {
+        figureKey,
+        type: 'figure',
+        description: context.figureDescription || previous?.figureDescription || '',
+        imageData: context.imageData || previous?.imageData,
+        pageImageData: context.pageImageData || previous?.pageImageData,
+        figureBox: context.figureBox,
+        page: Number(context.page || previous?.page || 0) || undefined,
+        order: 1,
+      });
+    }
+
+    return Array.from(figures.values()).sort((left, right) => Number(left.order || 0) - Number(right.order || 0));
+  };
+
+  const insertMissingContextFigureMarkers = (
+    value: string,
+    figures: NonNullable<ImportedContextDraft['figures']>,
+  ) => {
+    if (!figures.length) {
+      return value;
+    }
+
+    const missingMarkers = figures
+      .map((figure) => `[FIGURA: ${figure.figureKey}]`)
+      .filter((marker) => !String(value || '').includes(marker));
+    if (!missingMarkers.length) {
+      return value;
+    }
+
+    return [value, ...missingMarkers].filter(Boolean).join('\n\n');
+  };
+
   const removeContainedPartialContextsForQuestion = (
     contextMap: Map<string, ImportedContextDraft>,
     questionNumber: number,
@@ -3122,6 +5068,7 @@ export const useAdminImportWorkflow = ({
     && !context.hasFigure
     && !context.figureDescription
     && !context.imageData
+    && !(Array.isArray(context.figures) && context.figures.length > 0)
   );
 
   const clearQuestionContextLink = (question: Question, contextTempId: string) => {
@@ -3151,24 +5098,330 @@ export const useAdminImportWorkflow = ({
     } as Question;
   };
 
-  const attachQuestionContextLink = (question: Question, contextTempId: string) => ({
+  const attachQuestionContextLink = (question: Question, contextTempId: string, contextTitle = '') => ({
     ...question,
     introText: '',
     intro_text: '',
     contextKey: contextTempId,
+    contextTitle: contextTitle || (question as unknown as ImportedQuestionDraft).contextTitle || '',
     grupoQuestaoTempId: contextTempId,
     contextTempId,
   } as Question);
+
+  const getQuestionContextTempId = (question: Question) => {
+    const draft = question as unknown as ImportedQuestionDraft & { contextTempId?: string | number };
+    return String(draft.contextKey || draft.grupoQuestaoTempId || draft.contextTempId || '').trim();
+  };
+
+  const getQuestionSourcePage = (question: Question) => {
+    const draft = question as unknown as ImportedQuestionDraft & { source_page?: number | string };
+    const page = Number(draft.sourcePage || draft.source_page || 0);
+    return Number.isFinite(page) && page > 0 ? page : 0;
+  };
+
+  const questionHasSupportPayload = (question: Question) => {
+    const draft = question as unknown as ImportedQuestionDraft;
+    return Boolean(
+      stripHtml(getQuestionIntroText(question)).replace(/\s+/g, ' ').trim().length >= 40
+      || (Array.isArray(draft.supportImages) && draft.supportImages.length > 0)
+    );
+  };
+
+  const contextHasSupportPayload = (context: ImportedContextDraft) => (
+    stripHtml(String(context.text || context.richText || '')).replace(/\s+/g, ' ').trim().length > 0
+    || Boolean(context.referenceText)
+    || Boolean(context.hasFigure || context.figureDescription || context.imageData || context.pageImageData || context.figureBox)
+    || (Array.isArray(context.figures) && context.figures.length > 0)
+  );
+
+  const buildSupportImagesFromContext = (
+    context: ImportedContextDraft,
+    questionNumber: number,
+  ): ImportedQuestionImageDraft[] => {
+    const images: ImportedQuestionImageDraft[] = [];
+    const pushImage = (image: ImportedQuestionImageDraft) => {
+      const signature = [
+        image.tempId,
+        image.imageData,
+        image.pageImageData,
+        image.figureBox ? `${image.figureBox.x}:${image.figureBox.y}:${image.figureBox.width}:${image.figureBox.height}` : '',
+      ].filter(Boolean).join('|');
+      if (
+        images.some((existing) => [
+          existing.tempId,
+          existing.imageData,
+          existing.pageImageData,
+          existing.figureBox ? `${existing.figureBox.x}:${existing.figureBox.y}:${existing.figureBox.width}:${existing.figureBox.height}` : '',
+        ].filter(Boolean).join('|') === signature)
+      ) {
+        return;
+      }
+      images.push(image);
+    };
+
+    if (context.imageData || context.pageImageData || context.figureBox) {
+      pushImage({
+        tempId: `${context.tempId}-q-${questionNumber}-support-fig-01`,
+        title: context.figureDescription || context.title || `Figura de apoio da questao ${questionNumber}`,
+        description: context.figureDescription,
+        imageData: context.imageData,
+        pageImageData: context.pageImageData,
+        figureBox: context.figureBox,
+        page: context.sourcePage || context.page,
+        manualCropApplied: context.manualCropApplied,
+      });
+    }
+
+    (context.figures || []).forEach((figure, index) => {
+      pushImage({
+        tempId: figure.figureKey || `${context.tempId}-q-${questionNumber}-support-fig-${index + 1}`,
+        title: figure.description || context.title || `Figura de apoio da questao ${questionNumber}`,
+        description: figure.description,
+        figureBox: figure.figureBox,
+        page: figure.page || context.sourcePage || context.page,
+      });
+    });
+
+    return images;
+  };
+
+  const mergeQuestionSupportImages = (
+    question: Question,
+    incomingImages: ImportedQuestionImageDraft[],
+  ) => {
+    const draft = question as unknown as ImportedQuestionDraft;
+    const existingImages = Array.isArray(draft.supportImages) ? draft.supportImages : [];
+    const seen = new Set<string>();
+    return [...existingImages, ...incomingImages].filter((image) => {
+      const signature = [
+        image.tempId,
+        image.imageData,
+        image.pageImageData,
+        image.figureBox ? `${image.figureBox.x}:${image.figureBox.y}:${image.figureBox.width}:${image.figureBox.height}` : '',
+      ].filter(Boolean).join('|');
+      if (!signature || seen.has(signature)) {
+        return false;
+      }
+      seen.add(signature);
+      return true;
+    });
+  };
+
+  const questionNeedsExternalTextContext = (question: Question) => (
+    textNeedsExternalSupportContext(
+      getQuestionStatementText(question),
+      getQuestionOptionTexts(question).join(' '),
+    )
+  );
+
+  const questionUsesGeneralTextReference = (question: Question) => {
+    const text = normalizeComparisonText(stripHtml([
+      getQuestionStatementText(question),
+      getQuestionOptionTexts(question).join(' '),
+    ].join(' ')));
+    return /\b(?:o texto|do texto|no texto|ao texto|esse texto|este texto|sentido global do texto|carater memorialistico|caracter memorialistico|narrador|autor)\b/.test(text);
+  };
+
+  const addQuestionNumberToContext = (
+    contextMap: Map<string, ImportedContextDraft>,
+    contextTempId: string,
+    questionNumber: number,
+  ) => {
+    const context = contextMap.get(contextTempId);
+    if (!context || !Number.isFinite(questionNumber) || questionNumber <= 0) {
+      return;
+    }
+    const explicitQuestionNumbers = extractExplicitContextQuestionNumbers(context.text, context.referenceText, context.title);
+    if (explicitQuestionNumbers.length > 0 && !explicitQuestionNumbers.includes(questionNumber)) {
+      context.questionNumbers = explicitQuestionNumbers;
+      contextMap.set(contextTempId, context);
+      return;
+    }
+    context.questionNumbers = Array.from(new Set([...context.questionNumbers, questionNumber])).sort((a, b) => a - b);
+    contextMap.set(contextTempId, context);
+  };
+
+  const findBestContextForQuestion = (
+    question: Question,
+    questionNumber: number,
+    contextMap: Map<string, ImportedContextDraft>,
+  ) => {
+    const questionPage = getQuestionSourcePage(question);
+    const candidates = Array.from(contextMap.values()).filter((context) => (
+      (stripHtml(context.text).replace(/\s+/g, ' ').trim().length >= 40 || context.hasFigure || context.figureDescription)
+      && !isLikelyPageBookletHeader(context.text)
+    ));
+
+    const exactMatches = candidates.filter((context) => context.questionNumbers.includes(questionNumber));
+    if (exactMatches.length > 0) {
+      return exactMatches
+        .sort((left, right) => left.questionNumbers.length - right.questionNumbers.length)[0];
+    }
+
+    if (!questionPage) {
+      return null;
+    }
+
+    const samePageContext = candidates
+      .filter((context) => (
+        context.page === questionPage
+        && (
+          context.questionNumbers.length === 0
+          || (
+            questionNumber >= Math.min(...context.questionNumbers)
+            && questionNumber <= Math.max(...context.questionNumbers)
+          )
+        )
+      ))
+      .sort((left, right) => {
+        const leftSpecificity = left.questionNumbers.length || 999;
+        const rightSpecificity = right.questionNumbers.length || 999;
+        return leftSpecificity - rightSpecificity;
+      })[0] || null;
+
+    if (samePageContext) {
+      return samePageContext;
+    }
+
+    const carryoverContext = findCarryoverTextContextForQuestion(questionNumber, questionPage, candidates);
+    if (carryoverContext) {
+      return carryoverContext;
+    }
+
+    if (!questionUsesGeneralTextReference(question)) {
+      return null;
+    }
+
+    const broadTextContext = candidates
+      .filter((context) => {
+        if (!isTextOnlyContextDraft(context)) {
+          return false;
+        }
+        const cleanText = stripHtml(context.text).replace(/\s+/g, ' ').trim();
+        if (cleanText.length < 140) {
+          return false;
+        }
+        const contextPage = Number(context.page || context.sourcePage || 0);
+        if (questionPage && contextPage && contextPage > questionPage) {
+          return false;
+        }
+
+        const contextQuestionNumbers = Array.from(new Set(context.questionNumbers.filter((number) => number > 0)));
+        const lastQuestionNumber = contextQuestionNumbers.length > 0 ? Math.max(...contextQuestionNumbers) : 0;
+        const firstQuestionNumber = contextQuestionNumbers.length > 0 ? Math.min(...contextQuestionNumbers) : 0;
+        const looksSpecificFragment = /\b(?:fragmento|trecho\s+abaixo|passagens?\s+destacadas?|considere\s+as\s+passagens)\b/i.test(stripHtml(context.text))
+          && contextQuestionNumbers.length > 0
+          && contextQuestionNumbers.length <= 3
+          && !/^Texto\s+(?:[IVXLC]+|\d+)/i.test(context.title || '');
+        if (looksSpecificFragment) {
+          return false;
+        }
+        if (contextQuestionNumbers.length === 0) {
+          return !questionPage || !contextPage || questionPage - contextPage <= 2;
+        }
+
+        return questionNumber >= Math.max(1, firstQuestionNumber - 1)
+          && questionNumber <= lastQuestionNumber + 12;
+      })
+      .sort((left, right) => {
+        const leftPage = Number(left.page || left.sourcePage || 0);
+        const rightPage = Number(right.page || right.sourcePage || 0);
+        if (leftPage !== rightPage) {
+          return rightPage - leftPage;
+        }
+        const leftLastQuestion = Math.max(0, ...left.questionNumbers.filter((number) => number > 0));
+        const rightLastQuestion = Math.max(0, ...right.questionNumbers.filter((number) => number > 0));
+        return rightLastQuestion - leftLastQuestion;
+      })[0] || null;
+
+    return broadTextContext;
+  };
+
+  const restoreMissingQuestionContextLinks = (
+    questions: Question[],
+    contextMap: Map<string, ImportedContextDraft>,
+  ) => questions.map((question, index) => {
+    const questionNumber = getExtractedQuestionNumber(question, index + 1);
+    const linkedContextTempId = getQuestionContextTempId(question);
+    if (linkedContextTempId && contextMap.has(linkedContextTempId)) {
+      const linkedContext = contextMap.get(linkedContextTempId);
+      const explicitQuestionNumbers = extractExplicitContextQuestionNumbers(
+        linkedContext?.text,
+        linkedContext?.referenceText,
+        linkedContext?.title,
+      );
+      if (explicitQuestionNumbers.length > 0 && !explicitQuestionNumbers.includes(questionNumber)) {
+        return clearQuestionContextLink(question, linkedContextTempId);
+      }
+      addQuestionNumberToContext(contextMap, linkedContextTempId, questionNumber);
+      return question;
+    }
+
+    if (questionHasSupportPayload(question) || !questionNeedsExternalTextContext(question)) {
+      return question;
+    }
+
+    const context = findBestContextForQuestion(question, questionNumber, contextMap);
+    if (!context) {
+      return question;
+    }
+
+    addQuestionNumberToContext(contextMap, context.tempId, questionNumber);
+    return attachQuestionContextLink(question, context.tempId, context.title);
+  });
 
   const normalizeQuestionContextUsage = (
     questions: Question[],
     contextMap: Map<string, ImportedContextDraft>,
   ) => {
-    let nextQuestions = questions.map((question) => ({ ...question }));
+    let nextQuestions = restoreMissingQuestionContextLinks(
+      questions.map((question) => ({ ...question })),
+      contextMap,
+    );
+
+    const normalizedContextEntries = Array.from(contextMap.entries()).map(([tempId, context]) => {
+      const scopedQuestionNumbers = resolveScopedContextQuestionNumbers(
+        Array.from(new Set(context.questionNumbers.filter((number) => number > 0))),
+        context.text,
+        context.referenceText,
+        context.title,
+      );
+      const nextContext = {
+        ...context,
+        questionNumbers: scopedQuestionNumbers,
+      };
+      contextMap.set(tempId, nextContext);
+      return [tempId, nextContext] as const;
+    });
+
+    const contextTempIdByQuestionNumber = new Map<number, string>();
+    normalizedContextEntries
+      .sort((left, right) => right[1].questionNumbers.length - left[1].questionNumbers.length)
+      .forEach(([tempId, context]) => {
+        context.questionNumbers.forEach((questionNumber) => {
+          if (questionNumber > 0 && !contextTempIdByQuestionNumber.has(questionNumber)) {
+            contextTempIdByQuestionNumber.set(questionNumber, tempId);
+          }
+        });
+      });
+
+    nextQuestions = nextQuestions.map((question, index) => {
+      const questionNumber = getExtractedQuestionNumber(question, index + 1);
+      const linkedContextTempId = getQuestionContextTempId(question);
+      const selectedContextTempId = contextTempIdByQuestionNumber.get(questionNumber) || '';
+      if (selectedContextTempId) {
+        const selectedContext = contextMap.get(selectedContextTempId);
+        return attachQuestionContextLink(question, selectedContextTempId, selectedContext?.title || '');
+      }
+      if (linkedContextTempId && contextMap.has(linkedContextTempId)) {
+        return clearQuestionContextLink(question, linkedContextTempId);
+      }
+      return question;
+    });
 
     Array.from(contextMap.entries()).forEach(([tempId, context]) => {
       const questionNumbers = Array.from(new Set(context.questionNumbers.filter((number) => number > 0)));
-      if (questionNumbers.length !== 1 || !isTextOnlyContextDraft(context)) {
+      if (questionNumbers.length !== 1 || !contextHasSupportPayload(context)) {
         return;
       }
 
@@ -3178,11 +5431,31 @@ export const useAdminImportWorkflow = ({
           return question;
         }
 
-        const mergedIntroText = mergeContextText((question as { introText?: string }).introText, context.text);
+        const baseQuestion = clearQuestionContextLink(question, tempId) as Question & {
+          introText?: string;
+          intro_text?: string;
+          referenceText?: string;
+          reference_text?: string;
+          needsImportReview?: boolean;
+        };
+        const mergedIntroText = mergeContextText(
+          baseQuestion.introText || baseQuestion.intro_text,
+          context.text,
+          context.figureDescription ? `Figura/Imagem: ${context.figureDescription}` : '',
+        );
+        const mergedReferenceText = mergeReferenceText(baseQuestion.referenceText, baseQuestion.reference_text, context.referenceText);
+        const supportImages = mergeQuestionSupportImages(
+          baseQuestion,
+          buildSupportImagesFromContext(context, questionNumber),
+        );
         return {
-          ...clearQuestionContextLink(question, tempId),
+          ...baseQuestion,
           introText: mergedIntroText,
           intro_text: mergedIntroText,
+          referenceText: mergedReferenceText,
+          reference_text: mergedReferenceText,
+          supportImages,
+          needsImportReview: true,
         } as Question;
       });
       contextMap.delete(tempId);
@@ -3259,7 +5532,9 @@ export const useAdminImportWorkflow = ({
       return '';
     }
 
-    const incomingText = sanitizeSupportContextText(context.text || '');
+    const incomingParts = splitQuestionSupportReference(context.text || '');
+    const incomingText = sanitizeSupportContextText(incomingParts.supportText || context.text || '');
+    const incomingReferenceText = mergeReferenceText(context.referenceText, incomingParts.referenceText);
     const signature = getContextFigureSignature(context);
     const matchingContext = signature
       ? Array.from(contextMap.values()).find((item) => getContextFigureSignature(item) === signature)
@@ -3274,22 +5549,39 @@ export const useAdminImportWorkflow = ({
       return '';
     }
 
-    const questionNumbers = [
+    const declaredQuestionNumbers = [
       ...(previous?.questionNumbers || []),
       ...(context.questionNumbers || []),
     ].filter((value, index, list) => list.indexOf(value) === index);
+    const figures = mergeContextFigures(targetTempId, previous, context);
+    const mergedText = insertMissingContextFigureMarkers(
+      mergeContextText(previous?.text, incomingText),
+      figures,
+    );
+    const questionNumbers = resolveScopedContextQuestionNumbers(
+      declaredQuestionNumbers,
+      mergedText,
+      incomingReferenceText,
+      previous?.referenceText,
+      context.title,
+      previous?.title,
+    );
 
     contextMap.set(targetTempId, {
       tempId: targetTempId,
       title: context.title || previous?.title || 'Contexto da prova',
-      text: mergeContextText(previous?.text, incomingText),
+      text: mergedText,
+      referenceText: mergeReferenceText(previous?.referenceText, incomingReferenceText),
+      richText: context.richText || previous?.richText,
       questionNumbers,
       hasFigure: Boolean(previous?.hasFigure || context.hasFigure),
       figureDescription: mergeContextText(previous?.figureDescription, context.figureDescription),
       page: context.page || previous?.page || 0,
+      sourcePage: context.sourcePage || context.page || previous?.sourcePage,
       imageData: context.imageData || previous?.imageData,
       pageImageData: context.pageImageData || previous?.pageImageData,
       figureBox: context.figureBox || previous?.figureBox,
+      figures,
       manualCropApplied: Boolean(previous?.manualCropApplied || context.manualCropApplied),
     });
     return targetTempId;
@@ -3409,6 +5701,56 @@ export const useAdminImportWorkflow = ({
       description ? `<figcaption>${description}</figcaption>` : '',
       '</figure>',
     ].filter(Boolean).join('');
+  };
+
+  const buildContextPublishContent = (context: ImportedContextDraft) => {
+    const sourceText = String(context.text || '').trim();
+    const existingFigures = Array.isArray(context.figures) ? context.figures : [];
+    const publishedFigures = existingFigures.map((figure, index) => {
+      const metadata = { ...figure };
+      delete metadata.imageData;
+      delete metadata.pageImageData;
+      return {
+        ...metadata,
+        figureKey: String(figure.figureKey || `${context.tempId}-fig-${String(index + 1).padStart(2, '0')}`),
+      };
+    });
+    const extractedImages: string[] = [];
+    const ensurePublishedFigure = (figureKey: string, order: number) => {
+      if (publishedFigures.some((figure) => figure.figureKey === figureKey)) {
+        return;
+      }
+
+      publishedFigures.push({
+        figureKey,
+        type: 'figure',
+        description: context.figureDescription || context.title || 'Figura vinculada ao contexto',
+        figureBox: order === 1 ? context.figureBox : undefined,
+        page: context.page,
+        order,
+      });
+    };
+    const replaceInlineFigure = (html: string) => {
+      const inlineImageData = extractFirstInlineImageData(html);
+      const order = extractedImages.length + 1;
+      const figureKey = existingFigures[order - 1]?.figureKey || `${context.tempId}-fig-${String(order).padStart(2, '0')}`;
+      if (inlineImageData) {
+        extractedImages.push(inlineImageData);
+      }
+      ensurePublishedFigure(figureKey, order);
+      return `[FIGURA: ${figureKey}]`;
+    };
+    const textWithoutInlineImages = sourceText
+      .replace(/<figure\b[^>]*>[\s\S]*?<img\b[^>]*\bsrc\s*=\s*["']data:image\/[^"']+["'][^>]*>[\s\S]*?<\/figure>/gi, replaceInlineFigure)
+      .replace(/<img\b[^>]*\bsrc\s*=\s*["']data:image\/[^"']+["'][^>]*>/gi, replaceInlineFigure);
+    const figureImageData = existingFigures.map((figure) => figure.imageData).find(Boolean) || '';
+    const imageData = context.imageData || figureImageData || extractedImages[0] || '';
+
+    return {
+      text: textWithoutInlineImages,
+      imageData,
+      figures: publishedFigures,
+    };
   };
 
   const buildIntroTextWithSupportImages = (question: Question) => {
@@ -3615,6 +5957,64 @@ export const useAdminImportWorkflow = ({
     }));
   };
 
+  const shouldReplaceImportedQuestionBackup = (current: Question | undefined, candidate: Question) => {
+    if (!current) {
+      return true;
+    }
+
+    const currentOptions = getQuestionOptionTexts(current).length;
+    const candidateOptions = getQuestionOptionTexts(candidate).length;
+    if (candidateOptions !== currentOptions) {
+      return candidateOptions > currentOptions;
+    }
+
+    const currentSupportLength = stripHtml(getQuestionIntroText(current)).length + stripHtml(getQuestionReferenceText(current)).length;
+    const candidateSupportLength = stripHtml(getQuestionIntroText(candidate)).length + stripHtml(getQuestionReferenceText(candidate)).length;
+    if (candidateSupportLength !== currentSupportLength) {
+      return candidateSupportLength > currentSupportLength;
+    }
+
+    return stripHtml(getQuestionStatementText(candidate)).length > stripHtml(getQuestionStatementText(current)).length;
+  };
+
+  const rememberImportedQuestionBackup = (
+    backups: Map<number, Question>,
+    question: Question,
+    fallbackIndex: number,
+  ) => {
+    const questionNumber = getExtractedQuestionNumber(question, fallbackIndex);
+    if (!Number.isFinite(questionNumber) || questionNumber <= 0) {
+      return;
+    }
+    if (shouldReplaceImportedQuestionBackup(backups.get(questionNumber), question)) {
+      backups.set(questionNumber, question);
+    }
+  };
+
+  const restoreMissingQuestionsFromBackups = (
+    questions: Question[],
+    expectedQuestionNumbers: number[],
+    backups: Map<number, Question>,
+  ) => {
+    const presentNumbers = new Set(
+      questions.map((question, index) => getExtractedQuestionNumber(question, index + 1)),
+    );
+    const recoveredNumbers = expectedQuestionNumbers.filter((number) => !presentNumbers.has(number) && backups.has(number));
+    if (recoveredNumbers.length === 0) {
+      return { questions, recoveredNumbers };
+    }
+
+    const recoveredQuestions = recoveredNumbers
+      .map((number) => backups.get(number))
+      .filter(Boolean) as Question[];
+    const mergedQuestions = [...questions, ...recoveredQuestions]
+      .sort((left, right) => (
+        getExtractedQuestionNumber(left, 0) - getExtractedQuestionNumber(right, 0)
+      ));
+
+    return { questions: mergedQuestions, recoveredNumbers };
+  };
+
   const inferRetryPagesForMissingQuestions = (
     missingNumbers: number[],
     pagesCount: number,
@@ -3668,149 +6068,265 @@ export const useAdminImportWorkflow = ({
       .sort((left, right) => left.pageIndex - right.pageIndex);
   };
 
-  const mapRetriedAiQuestions = ({
+  const mapTextExtractionQuestions = ({
     result,
     pageIndex,
     pageRichText,
     pageText,
-    targetNumbers,
     keyMap,
     selectedFocus,
+    contextMap,
+    targetNumbers,
+    metadata,
+    fileName = '',
+    logPrefix = 'Texto',
   }: {
     result: PageExtractionResult;
     pageIndex: number;
     pageRichText: PdfPageRichText;
     pageText: string;
-    targetNumbers: number[];
     keyMap: Record<number, number>;
     selectedFocus: QuestionTaxonomyLabel;
+    contextMap: Map<string, ImportedContextDraft>;
+    targetNumbers?: number[];
+    metadata?: ImportMetadata | null;
+    fileName?: string;
+    logPrefix?: string;
   }) => {
-    const targetSet = new Set(targetNumbers);
-    const nextMetadata = mergeMetadata(importMetadata, result.metadata);
-    const contextByKey = new Map<string, NonNullable<PageExtractionResult['pageContexts']>[number]>();
-    (result.pageContexts || []).forEach((context) => {
-      const key = String(context.contextKey || '').trim();
-      if (key) {
-        contextByKey.set(key, context);
+    const targetSet = targetNumbers && targetNumbers.length > 0 ? new Set(targetNumbers) : null;
+    const nextMetadata = mergeMetadata(metadata ?? importMetadata, result.metadata);
+
+    for (let contextIndex = 0; contextIndex < (result.pageContexts || []).length; contextIndex += 1) {
+      const context = (result.pageContexts || [])[contextIndex];
+      const tempId = String(context.contextKey || `texto-${pageIndex}-contexto-${contextIndex + 1}`);
+      const contextQuestionNumbers = Array.isArray(context.appliesToQuestionNumbers)
+        ? context.appliesToQuestionNumbers.map((value) => normalizeQuestionNumber(value, 0)).filter(Boolean)
+        : [];
+      const scopedContextQuestionNumbers = resolveScopedContextQuestionNumbers(
+        contextQuestionNumbers,
+        context.text,
+        context.referenceText,
+        context.title,
+      );
+      const questionNumbers = targetSet
+        ? scopedContextQuestionNumbers.filter((number) => targetSet.has(number))
+        : scopedContextQuestionNumbers;
+      if (targetSet && scopedContextQuestionNumbers.length > 0 && questionNumbers.length === 0) {
+        continue;
       }
+
+      upsertContextDraft(contextMap, {
+        tempId,
+        title: context.title || `Texto de apoio - ${logPrefix.toLowerCase()} ${pageIndex}`,
+        text: formatStructuredSupportHtml(applyPdfHighlightsToHtml(context.text || '', pageRichText.highlights)),
+        referenceText: applyPdfHighlightsToHtml(context.referenceText || '', pageRichText.highlights),
+        richText: context.richText,
+        questionNumbers,
+        hasFigure: Boolean(context.hasFigure),
+        figureDescription: context.figureDescription || '',
+        page: pageIndex,
+        sourcePage: context.sourcePage || pageIndex,
+        figureBox: context.figureBox,
+        figures: (context.figures || []).map((figure, figureIndex) => ({
+          ...figure,
+          figureKey: String(figure.figureKey || `${tempId}-fig-${String(figureIndex + 1).padStart(2, '0')}`),
+        })),
+      });
+    }
+
+    const mappedQuestions: Question[] = [];
+    (result.questions || []).forEach((question, questionIndex) => {
+      const rawQuestion = toImportedQuestionDraft(question);
+      const inferredQuestionNumber = rawQuestion.number || rawQuestion.questionNumber;
+      const questionNumber = normalizeQuestionNumber(inferredQuestionNumber, questionIndex + 1);
+      if (targetSet && !targetSet.has(questionNumber)) {
+        return;
+      }
+
+      const rawText = String(rawQuestion.text || question.enunciado || '').trim();
+      const parserProfile = resolveExamParserProfile(fileName, pageText, nextMetadata?.agency);
+      const expectedOptionsCount = inferExpectedOptionsCountFromText(rawText, pageText, fileName, nextMetadata?.agency)
+        || getExpectedOptionsCount(
+          rawQuestion.modality || question.tipo,
+          rawQuestion.expectedOptionsCount ?? rawQuestion.expected_options_count,
+          parserProfile,
+        );
+      const normalizedOptions = normalizeImportedOptions(
+        rawQuestion.options,
+        rawText,
+        rawQuestion.modality,
+        expectedOptionsCount,
+      );
+      const options = normalizedOptions.options;
+      const questionTextForSignals = normalizedOptions.statement || rawText;
+      const cleanQuestionSignalText = stripHtml(questionTextForSignals).replace(/\s+/g, ' ').trim();
+      const hasNumberedDraft = Boolean(String(inferredQuestionNumber || '').trim()) && cleanQuestionSignalText.length >= 8;
+      const isQuestion = (
+        rawQuestion.isQuestion !== false
+        || hasNumberedDraft
+      )
+        && (!isLikelyInstructionText(questionTextForSignals) || hasNumberedDraft)
+        && (
+          options.length >= 1
+          || hasNumberedDraft
+        );
+
+      if (!isQuestion) {
+        return;
+      }
+
+      const correctIndex = keyMap[questionNumber] !== undefined
+        ? keyMap[questionNumber]
+        : Number.isInteger(rawQuestion.correctOptionIndex)
+          ? Number(rawQuestion.correctOptionIndex)
+          : 0;
+      const isAttributedToAllQuestion = correctIndex === ATTRIBUTED_TO_ALL_ANSWER_INDEX || isImportedQuestionAttributedToAll(rawQuestion);
+      const isCanceledQuestion = (
+        correctIndex === CANCELED_ANSWER_INDEX
+        || (correctIndex < 0 && correctIndex !== ATTRIBUTED_TO_ALL_ANSWER_INDEX)
+        || isImportedQuestionMarkedCanceled(rawQuestion)
+      );
+      const splitStatement = splitSupportContextFromStatement(normalizedOptions.statement || rawText);
+      const rawExplicitSupportText = sanitizeSupportContextText(String(rawQuestion.supportText || rawQuestion.introText || '').trim());
+      const rawExplicitSupportParts = splitQuestionSupportReference(rawExplicitSupportText);
+      const rawExplicitSupportBody = rawExplicitSupportParts.supportText || rawExplicitSupportText;
+      const inlineSplitStatement = splitInlineSupportContextFromStatement(splitStatement.statement);
+      let questionText = inlineSplitStatement.statement || splitStatement.statement || normalizedOptions.statement || rawText;
+      const supportText = rawExplicitSupportBody || mergeContextText(splitStatement.supportText, inlineSplitStatement.supportText);
+      const referenceText = mergeReferenceText(
+        String(rawQuestion.referenceText || '').trim(),
+        rawExplicitSupportParts.referenceText,
+        'referenceText' in inlineSplitStatement ? String(inlineSplitStatement.referenceText || '').trim() : '',
+        'referenceText' in splitStatement ? String(splitStatement.referenceText || '').trim() : '',
+      );
+      const referencedContextKey = String(rawQuestion.contextKey || '').trim();
+      const referencedContext = referencedContextKey ? contextMap.get(referencedContextKey) : undefined;
+      const referencedContextIsShared = Boolean(referencedContext && referencedContext.questionNumbers.length > 1);
+      const hasOnlyHeaderSupportText = Boolean(supportText) && isLikelyPageBookletHeader(supportText);
+      const shouldStoreSupportAsIntroText = Boolean(supportText)
+        && !hasOnlyHeaderSupportText
+        && !referencedContextIsShared;
+      const linkedContextKey = shouldStoreSupportAsIntroText ? '' : referencedContextKey;
+      const roleLabels = normalizeRoleList(
+        nextMetadata?.roles,
+        nextMetadata?.cargos,
+        nextMetadata?.role,
+        result.metadata?.roles,
+        result.metadata?.cargos,
+        result.metadata?.role,
+      );
+      const agencyLabel = String(nextMetadata?.agency || result.metadata?.agency || '').trim();
+      const organizationLabels = normalizeOrganizationList(
+        nextMetadata?.sources,
+        nextMetadata?.orgaos,
+        nextMetadata?.source,
+        result.metadata?.source,
+      );
+      const levelLabel = String(rawQuestion.level || nextMetadata?.level || result.metadata?.level || '').trim();
+      const optionsForItems = options.map((option) => (
+        /<img\b|data:image\//i.test(option)
+          ? option
+          : applyPdfHighlightsToHtml(option, pageRichText.highlights)
+      ));
+
+      questionText = applyPdfHighlightsToHtml(questionText, pageRichText.highlights);
+      const introText = shouldStoreSupportAsIntroText
+        ? formatStructuredSupportHtml(applyPdfHighlightsToHtml(supportText, pageRichText.highlights))
+        : '';
+      const formattedReferenceText = applyPdfHighlightsToHtml(referenceText, pageRichText.highlights);
+      const taxonomy = normalizeTaxonomyForCurrentImport(
+        String(rawQuestion.subject || '').trim(),
+        String(rawQuestion.topic || '').trim(),
+        String(rawQuestion.specificSubject || '').trim(),
+        [
+          rawText,
+          questionText,
+          supportText,
+          referenceText,
+          ...options,
+          pageText,
+        ],
+      );
+      const validation = validateExtractedQuestionDraft({
+        statement: questionText,
+        options: optionsForItems,
+        expectedOptionsCount,
+        questionType: inferQuestionType(rawText, optionsForItems, parserProfile),
+        rawText,
+        hasFigure: rawQuestion.hasFigure,
+        figureBox: rawQuestion.figureBox || rawQuestion.supportFigureBox || rawQuestion.optionFigureBox,
+        contextKey: linkedContextKey,
+        supportText: introText,
+      });
+      const validationReasons = Array.from(new Set([
+        ...(rawQuestion.statusReasons || []),
+        ...(rawQuestion.validationReasons || []),
+        ...validation.reasons,
+      ]));
+      const extractionStatus = validation.status !== 'ok'
+        ? validation.status
+        : rawQuestion.extractionStatus || rawQuestion.status || 'ok';
+      const rejectionReason = rawQuestion.rejectionReason || validationReasons[0] || '';
+
+      const mappedQuestion = normalizeCanceledImportedQuestion({
+        ...question,
+        questionNumber,
+        question_number: questionNumber,
+        sourcePage: pageIndex,
+        source_page: pageIndex,
+        contextKey: linkedContextKey,
+        grupoQuestaoTempId: linkedContextKey || undefined,
+        introText,
+        intro_text: introText,
+        referenceText: formattedReferenceText,
+        reference_text: formattedReferenceText,
+        enunciado: questionText,
+        enunciado_clean: stripHtml(questionText),
+        bancas: agencyLabel
+          ? [{ sigla: agencyLabel, name: agencyLabel, id: null, slug: slugify(agencyLabel) }]
+          : [],
+        orgaos: organizationLabels.map((organizationLabel) => createTaxonomyLabel(organizationLabel)),
+        cargos: roleLabels.map((roleLabel) => createTaxonomyLabel(roleLabel, { descricao: roleLabel })),
+        assuntos: buildResolvedSubjectTaxonomies(question as Question, taxonomy),
+        carreiras: [selectedFocus],
+        anos: nextMetadata?.year ? [Number(nextMetadata.year)] : [new Date().getFullYear()],
+        niveis: levelLabel ? [createTaxonomyLabel(levelLabel)] : [],
+        tiposProva: nextMetadata?.examType ? [createTaxonomyLabel(nextMetadata.examType)] : [],
+        expectedOptionsCount,
+        expected_options_count: expectedOptionsCount,
+        tipo: optionsForItems.length === 2 ? 'certo ou errado' : 'multipla escolha',
+        dificuldade: normalizeDifficulty(rawQuestion.difficulty),
+        correctOptionIndex: isCanceledQuestion || isAttributedToAllQuestion ? 0 : correctIndex,
+        anulada: isCanceledQuestion,
+        isCanceled: isCanceledQuestion,
+        isCancelled: isCanceledQuestion,
+        isAttributedToAll: isAttributedToAllQuestion,
+        attributedToAll: isAttributedToAllQuestion,
+        is_attributed_to_all: isAttributedToAllQuestion,
+        status: extractionStatus,
+        extractionStatus,
+        statusReasons: validationReasons,
+        validationReasons,
+        rejectionReason,
+        needsImportReview: optionsForItems.length < expectedOptionsCount || extractionStatus !== 'ok',
+        itens: optionsForItems.map((option, optionIndex) => ({
+          id: optionIndex + 1,
+          ordem: optionIndex + 1,
+          rotulo: String.fromCharCode(65 + optionIndex),
+          corpo: option,
+          corpo_clean: stripHtml(option).trim(),
+        })),
+        resposta: isCanceledQuestion || isAttributedToAllQuestion ? 1 : correctIndex + 1,
+        questionOrigin: 'exam',
+        question_origin: 'exam',
+        stats: { totalAttempts: 0, correctCount: 0, wrongCount: 0 },
+        comments: [],
+      } as unknown as Question, isCanceledQuestion, isAttributedToAllQuestion);
+
+      mappedQuestions.push(mappedQuestion);
     });
 
-    return (result.questions || [])
-      .map((question) => {
-        const rawQuestion = toImportedQuestionDraft(question);
-        const questionNumber = normalizeQuestionNumber(rawQuestion.number || rawQuestion.questionNumber, 0);
-        if (!targetSet.has(questionNumber)) {
-          return null;
-        }
-
-        const rawText = String(rawQuestion.text || question.enunciado || '').trim();
-        const normalizedOptions = normalizeImportedOptions(rawQuestion.options, rawText, rawQuestion.modality);
-        const context = rawQuestion.contextKey ? contextByKey.get(String(rawQuestion.contextKey)) : undefined;
-        const rawSupport = String(
-          rawQuestion.supportText
-          || (rawQuestion as ImportedQuestionDraft & { introText?: string; intro_text?: string }).introText
-          || (rawQuestion as ImportedQuestionDraft & { intro_text?: string }).intro_text
-          || context?.text
-          || '',
-        ).trim();
-        const splitStatement = splitSupportContextFromStatement(normalizedOptions.statement || rawText);
-        const rawSupportParts = splitQuestionSupportReference(sanitizeSupportContextText(rawSupport));
-        const supportText = formatStructuredSupportHtml(applyPdfHighlightsToHtml(
-          rawSupportParts.supportText || splitStatement.supportText || rawSupport,
-          pageRichText.highlights,
-        ));
-        const questionText = applyPdfHighlightsToHtml(
-          splitStatement.statement || normalizedOptions.statement || rawText,
-          pageRichText.highlights,
-        );
-        const referenceText = applyPdfHighlightsToHtml(mergeReferenceText(
-          String((rawQuestion as ImportedQuestionDraft & { reference_text?: string }).referenceText || '').trim(),
-          String((rawQuestion as ImportedQuestionDraft & { reference_text?: string }).reference_text || '').trim(),
-          rawSupportParts.referenceText,
-        ), pageRichText.highlights);
-        const optionsForItems = normalizedOptions.options.map((option) => (
-          /<img\b|data:image\//i.test(option)
-            ? option
-            : applyPdfHighlightsToHtml(option, pageRichText.highlights)
-        ));
-        const expectedOptionsCount = inferExpectedOptionsCountFromText(rawText, pageText)
-          || getExpectedOptionsCount(
-            rawQuestion.modality || question.tipo,
-            rawQuestion.expectedOptionsCount ?? rawQuestion.expected_options_count,
-          );
-        const correctIndex = keyMap[questionNumber] !== undefined
-          ? keyMap[questionNumber]
-          : Number.isInteger(rawQuestion.correctOptionIndex)
-            ? Number(rawQuestion.correctOptionIndex)
-            : 0;
-        const isCanceledQuestion = correctIndex < 0 || Boolean(rawQuestion.anulada || rawQuestion.isCanceled);
-        const agencyLabel = String(nextMetadata?.agency || result.metadata?.agency || '').trim();
-        const organizationLabel = String(nextMetadata?.source || result.metadata?.source || '').trim();
-        const roleLabels = normalizeRoleList(
-          nextMetadata?.roles,
-          nextMetadata?.cargos,
-          nextMetadata?.role,
-          result.metadata?.roles,
-          result.metadata?.cargos,
-          result.metadata?.role,
-        );
-        const levelLabel = String(rawQuestion.level || nextMetadata?.level || result.metadata?.level || '').trim();
-        const taxonomy = normalizeTaxonomyForCurrentImport(
-          String(rawQuestion.subject || '').trim(),
-          String(rawQuestion.topic || '').trim(),
-          String(rawQuestion.specificSubject || '').trim(),
-          [rawText, questionText, supportText, referenceText, ...optionsForItems, pageText],
-        );
-        const mappedQuestion = {
-          ...question,
-          questionNumber,
-          question_number: questionNumber,
-          sourcePage: pageIndex,
-          source_page: pageIndex,
-          introText: supportText,
-          intro_text: supportText,
-          referenceText,
-          reference_text: referenceText,
-          enunciado: questionText,
-          enunciado_clean: stripHtml(questionText),
-          bancas: agencyLabel
-            ? [{ sigla: agencyLabel, name: agencyLabel, id: null, slug: slugify(agencyLabel) }]
-            : [],
-          orgaos: organizationLabel
-            ? [{ name: organizationLabel, id: null, slug: slugify(organizationLabel) }]
-            : [],
-          cargos: roleLabels.map((roleLabel) => createTaxonomyLabel(roleLabel, { descricao: roleLabel })),
-          assuntos: buildResolvedSubjectTaxonomies(question as Question, taxonomy),
-          carreiras: [selectedFocus],
-          anos: nextMetadata?.year ? [Number(nextMetadata.year)] : [new Date().getFullYear()],
-          niveis: levelLabel ? [createTaxonomyLabel(levelLabel)] : [],
-          tiposProva: nextMetadata?.examType ? [createTaxonomyLabel(nextMetadata.examType)] : [],
-          expectedOptionsCount,
-          expected_options_count: expectedOptionsCount,
-          tipo: optionsForItems.length === 2 ? 'certo ou errado' : 'multipla escolha',
-          dificuldade: normalizeDifficulty(rawQuestion.difficulty),
-          correctOptionIndex: isCanceledQuestion ? 0 : correctIndex,
-          anulada: isCanceledQuestion,
-          isCanceled: isCanceledQuestion,
-          needsImportReview: optionsForItems.length < expectedOptionsCount,
-          itens: optionsForItems.map((option, optionIndex) => ({
-            id: optionIndex + 1,
-            ordem: optionIndex + 1,
-            rotulo: String.fromCharCode(65 + optionIndex),
-            corpo: option,
-            corpo_clean: stripHtml(option).trim(),
-          })),
-          resposta: isCanceledQuestion ? 0 : correctIndex + 1,
-          questionOrigin: 'exam',
-          question_origin: 'exam',
-          stats: { totalAttempts: 0, correctCount: 0, wrongCount: 0 },
-          comments: [],
-        } as unknown as Question;
-
-        addLog(`Questao #${questionNumber}: recuperada na tentativa focada pela pag ${pageIndex}.`);
-        return mappedQuestion;
-      })
-      .filter(Boolean) as Question[];
+    return { questions: mappedQuestions, metadata: nextMetadata };
   };
 
   const handleImportProcess = async () => {
@@ -3830,7 +6346,7 @@ export const useAdminImportWorkflow = ({
     setExtractedContexts([]);
     setPublishedExam(null);
     setPublishedQuestionNumbers([]);
-    setPublishingAction(null);
+    finishPublishingAction();
     setImportDiagnostics({
       expectedQuestionNumbers: [],
       extractedQuestionNumbers: [],
@@ -3903,14 +6419,32 @@ export const useAdminImportWorkflow = ({
       let currentMetadata: ImportMetadata | null = initialMetadata;
       const expectedQuestionSet = new Set<number>(expectedQuestionNumbers);
       const contextMap = new Map<string, ImportedContextDraft>();
+      const importedQuestionBackups = new Map<number, Question>();
+      const processedPageNumbers = new Set<number>();
+      const pagesWithoutNativeText = new Set<number>();
+      const pagesWithoutQuestionDrafts = new Set<number>();
+      const pagesWithAiFallback = new Set<number>();
+      const failedPageReads = new Map<number, string>();
+      let pendingCarryoverContext: {
+        text: string;
+        referenceText: string;
+        title: string;
+        startPage: number;
+      } | null = null;
 
       for (let pageIndex = 1; pageIndex <= pagesCount; pageIndex += 1) {
         addLog(`Lendo pag ${pageIndex}/${pagesCount}...`);
+        try {
 
         const pageRichText = await pdfPageToRichText(questionPdf, pageIndex);
         const pageText = pageRichText.plainText;
+        const cleanPageTextLength = stripHtml(pageText).replace(/\s+/g, ' ').trim().length;
+        if (cleanPageTextLength < 40) {
+          pagesWithoutNativeText.add(pageIndex);
+        }
         const normalizedPageText = normalizeQuestionMarkerText(pageText).replace(/\s+/g, ' ').trim();
         const currentPageMarkers = findQuestionMarkers(normalizedPageText);
+        addLog(`Pag ${pageIndex}: texto nativo ${cleanPageTextLength} caractere(s), ${currentPageMarkers.length} marcador(es) de questao detectado(s).`);
         const pagePrefix = currentPageMarkers[0]
           ? normalizedPageText.slice(0, currentPageMarkers[0].index).trim()
           : '';
@@ -3927,10 +6461,57 @@ export const useAdminImportWorkflow = ({
           }
         }
         const pageQuestionNumbers = extractQuestionNumbersFromText(pageText);
-        if (expectedQuestionNumbers.length === 0) {
-          pageQuestionNumbers.forEach((number) => expectedQuestionSet.add(number));
+        pageQuestionNumbers.forEach((number) => expectedQuestionSet.add(number));
+        const structuredPagePrefix = extractStructuredPrefixBeforeFirstQuestion(pageText);
+        const pageSupportCandidate = pageQuestionNumbers.length > 0
+          ? structuredPagePrefix || pagePrefix
+          : normalizePdfTextForParsing(pageText, resolveExamParserProfile(qFile.name, pageText, currentMetadata?.agency));
+        const pagePrefixParts = splitQuestionSupportReference(pageSupportCandidate);
+        const pagePrefixSupportText = sanitizeSupportContextText(pagePrefixParts.supportText || pageSupportCandidate);
+        if (
+          pageQuestionNumbers.length === 0
+          && shouldPromoteAsSupportContext(pagePrefixSupportText)
+        ) {
+          pendingCarryoverContext = {
+            text: pendingCarryoverContext
+              ? mergeContextText(pendingCarryoverContext.text, pagePrefixSupportText)
+              : pagePrefixSupportText,
+            referenceText: mergeReferenceText(pendingCarryoverContext?.referenceText, pagePrefixParts.referenceText),
+            title: pendingCarryoverContext?.title || `Texto de apoio - pagina ${pageIndex}`,
+            startPage: pendingCarryoverContext?.startPage || pageIndex,
+          };
+          addLog(`Pag ${pageIndex}: texto-base sem questoes guardado para vinculo com a proxima pagina.`);
         }
-        if (expectedQuestionNumbers.length === 0 && pageQuestionNumbers.length > 0) {
+        if (
+          pageQuestionNumbers.length > 0
+          && shouldPromoteAsSupportContext(mergeContextText(pendingCarryoverContext?.text, pagePrefixSupportText))
+        ) {
+          const mergedSupportText = mergeContextText(pendingCarryoverContext?.text, pagePrefixSupportText);
+          const mergedReferenceText = mergeReferenceText(pendingCarryoverContext?.referenceText, pagePrefixParts.referenceText);
+          const sourcePage = pendingCarryoverContext?.startPage || pageIndex;
+          const scopedQuestionNumbers = resolveScopedContextQuestionNumbers(
+            pageQuestionNumbers,
+            mergedSupportText,
+            mergedReferenceText,
+            pendingCarryoverContext?.title,
+          );
+          upsertContextDraft(contextMap, {
+            tempId: sourcePage === pageIndex
+              ? `pag-${pageIndex}-contexto-textual`
+              : `pag-${sourcePage}-${pageIndex}-contexto-textual`,
+            title: pendingCarryoverContext?.title || `Texto de apoio - pagina ${pageIndex}`,
+            text: formatStructuredSupportHtml(applyPdfHighlightsToHtml(mergedSupportText, pageRichText.highlights)),
+            referenceText: applyPdfHighlightsToHtml(mergedReferenceText, pageRichText.highlights),
+            questionNumbers: scopedQuestionNumbers,
+            hasFigure: false,
+            figureDescription: '',
+            page: pageIndex,
+            sourcePage,
+          });
+          addLog(`Pag ${pageIndex}: texto de apoio vinculado as questoes ${scopedQuestionNumbers.join(', ')}.`);
+          pendingCarryoverContext = null;
+        }
+        if (pageQuestionNumbers.length > 0) {
           const expectedFromPdf = Array.from(expectedQuestionSet).sort((a, b) => a - b);
           setImportDiagnostics((previous) => ({
             expectedQuestionNumbers: expectedFromPdf.length > previous.expectedQuestionNumbers.length
@@ -3955,15 +6536,19 @@ export const useAdminImportWorkflow = ({
           addLog(`Pag ${pageIndex}: ${mechanicalResult.questions.length} questao(oes) extraida(s) mecanicamente.`);
         }
 
-        if (extractionNeedsAi(pageText, mechanicalResult, extractWithComment, pageRichText.hasHighlights)) {
+        const shouldUseAiForPage = extractionNeedsAi(pageText, mechanicalResult, extractWithComment, pageRichText.hasHighlights);
+        if (shouldUseAiForPage) {
+          pagesWithAiFallback.add(pageIndex);
           try {
             const pageImageBase64 = await ensurePageImage();
+            const pageParserProfile = resolveExamParserProfile(qFile.name, pageText, currentMetadata?.agency);
             const aiResult = await aiService.extractQuestionsFromPage(
               pageImageBase64,
               extractWithComment,
               pageText,
               pageQuestionNumbers,
               pageRichText.richText,
+              pageParserProfile,
             );
             result = mergePageExtractionResults(mechanicalResult, aiResult);
             addLog(`Pag ${pageIndex}: IA usada apenas como complemento/fallback.`);
@@ -3980,9 +6565,15 @@ export const useAdminImportWorkflow = ({
         for (let contextIndex = 0; contextIndex < (result.pageContexts || []).length; contextIndex += 1) {
           const context = (result.pageContexts || [])[contextIndex];
           const tempId = String(context.contextKey || `pag-${pageIndex}-contexto-${contextIndex + 1}`);
-          const questionNumbers = Array.isArray(context.appliesToQuestionNumbers)
+          const declaredQuestionNumbers = Array.isArray(context.appliesToQuestionNumbers)
             ? context.appliesToQuestionNumbers.map((value) => normalizeQuestionNumber(value, 0)).filter(Boolean)
             : [];
+          const questionNumbers = resolveScopedContextQuestionNumbers(
+            declaredQuestionNumbers,
+            context.text,
+            context.referenceText,
+            context.title,
+          );
           const contextPageImage = context.hasFigure ? await ensurePageImage() : undefined;
           const croppedImageData = context.hasFigure
             ? await cropFigureImage(contextPageImage || '', context.figureBox)
@@ -3994,13 +6585,20 @@ export const useAdminImportWorkflow = ({
             tempId,
             title: context.title || `Texto de apoio - pagina ${pageIndex}`,
             text: formatStructuredSupportHtml(applyPdfHighlightsToHtml(context.text || '', pageRichText.highlights)),
+            referenceText: applyPdfHighlightsToHtml(context.referenceText || '', pageRichText.highlights),
+            richText: context.richText,
             questionNumbers,
             hasFigure: Boolean(context.hasFigure),
             figureDescription: context.figureDescription || '',
             page: pageIndex,
+            sourcePage: context.sourcePage || pageIndex,
             imageData: croppedImageData,
             pageImageData: contextPageImage,
             figureBox: context.figureBox,
+            figures: (context.figures || []).map((figure, figureIndex) => ({
+              ...figure,
+              figureKey: String(figure.figureKey || `${tempId}-fig-${String(figureIndex + 1).padStart(2, '0')}`),
+            })),
           });
         }
 
@@ -4014,16 +6612,31 @@ export const useAdminImportWorkflow = ({
               allFoundQuestions.length + questionIndex + 1,
             );
             const rawText = String(rawQuestion.text || question.enunciado || '').trim();
-            const { statement, options } = normalizeImportedOptions(rawQuestion.options, rawText, rawQuestion.modality);
+            const parserProfile = resolveExamParserProfile(qFile.name, pageText, extractionMetadata?.agency);
+            const expectedOptionsCount = inferExpectedOptionsCountFromText(rawText, pageText, qFile.name)
+              || getExpectedOptionsCount(
+                rawQuestion.modality || question.tipo,
+                rawQuestion.expectedOptionsCount ?? rawQuestion.expected_options_count,
+                parserProfile,
+              );
+            const { statement, options } = normalizeImportedOptions(
+              rawQuestion.options,
+              rawText,
+              rawQuestion.modality,
+              expectedOptionsCount,
+            );
             const questionTextForSignals = statement || rawText;
+            const cleanQuestionSignalText = stripHtml(questionTextForSignals).replace(/\s+/g, ' ').trim();
             const hasQuestionShape = hasOriginalNumber
               && questionCommandPattern.test(questionTextForSignals);
             const looksLikeNumberedQuestion = hasOriginalNumber
-              && rawQuestion.isQuestion === true
-              && stripHtml(questionTextForSignals).replace(/\s+/g, ' ').trim().length >= 20;
-            const isQuestion = rawQuestion.isQuestion !== false
-              && !isLikelyInstructionText(questionTextForSignals)
-              && (options.length >= 2 || hasQuestionShape || looksLikeNumberedQuestion);
+              && cleanQuestionSignalText.length >= 8;
+            const isQuestion = (
+              rawQuestion.isQuestion !== false
+              || looksLikeNumberedQuestion
+            )
+              && (!isLikelyInstructionText(questionTextForSignals) || looksLikeNumberedQuestion)
+              && (options.length >= 1 || hasQuestionShape || looksLikeNumberedQuestion);
 
             if (!isQuestion) {
               addLog(`Ignorado na pag ${pageIndex}: trecho sem formato de questao real${questionNumber ? ` (#${questionNumber})` : ''}.`);
@@ -4045,7 +6658,14 @@ export const useAdminImportWorkflow = ({
               allFoundQuestions.length + questionIndex + 1,
             );
             const rawText = String(rawQuestion.text || question.enunciado || '').trim();
-            const normalizedOptions = normalizeImportedOptions(rawQuestion.options, rawText, rawQuestion.modality);
+            const parserProfile = resolveExamParserProfile(qFile.name, pageText, extractionMetadata?.agency);
+            const expectedOptionsCount = inferExpectedOptionsCountFromText(rawText, pageText, qFile.name)
+              || getExpectedOptionsCount(
+                rawQuestion.modality || question.tipo,
+                rawQuestion.expectedOptionsCount ?? rawQuestion.expected_options_count,
+                parserProfile,
+              );
+            const normalizedOptions = normalizeImportedOptions(rawQuestion.options, rawText, rawQuestion.modality, expectedOptionsCount);
             let options = normalizedOptions.options;
             const correctIndex = keyMap[questionNumber] !== undefined
               ? keyMap[questionNumber]
@@ -4066,11 +6686,6 @@ export const useAdminImportWorkflow = ({
               pageText,
               rawQuestion.modality,
             );
-            const expectedOptionsCount = inferExpectedOptionsCountFromText(rawText, pageText, qFile.name)
-              || getExpectedOptionsCount(
-                rawQuestion.modality || question.tipo,
-                rawQuestion.expectedOptionsCount ?? rawQuestion.expected_options_count,
-              );
             const expectedOptionsForVisualChoice = expectedOptionsCount;
             let hasVisualOptions = options.some((option) => visualOptionPlaceholderPattern.test(option))
               || Boolean(optionFigureBox && optionFigureBoxes.length > 0)
@@ -4115,7 +6730,12 @@ export const useAdminImportWorkflow = ({
                   createVisualOptionHtml(String.fromCharCode(65 + optionIndex), visualOptionImages[optionIndex].imageData)
                 ))
               : options;
-            const isCanceledQuestion = correctIndex < 0 || Boolean(rawQuestion.anulada || rawQuestion.isCanceled);
+            const isAttributedToAllQuestion = correctIndex === ATTRIBUTED_TO_ALL_ANSWER_INDEX || isImportedQuestionAttributedToAll(rawQuestion);
+            const isCanceledQuestion = (
+              correctIndex === CANCELED_ANSWER_INDEX
+              || (correctIndex < 0 && correctIndex !== ATTRIBUTED_TO_ALL_ANSWER_INDEX)
+              || isImportedQuestionMarkedCanceled(rawQuestion)
+            );
             const splitStatement = splitSupportContextFromStatement(normalizedOptions.statement || rawText);
             const rawExplicitSupportText = sanitizeSupportContextText(String(rawQuestion.supportText || rawQuestion.introText || '').trim());
             const rawExplicitSupportParts = splitQuestionSupportReference(rawExplicitSupportText);
@@ -4148,7 +6768,12 @@ export const useAdminImportWorkflow = ({
               result.metadata?.role,
             );
             const agencyLabel = String(extractionMetadata?.agency || result.metadata?.agency || '').trim();
-            const organizationLabel = String(extractionMetadata?.source || result.metadata?.source || '').trim();
+            const organizationLabels = normalizeOrganizationList(
+              extractionMetadata?.sources,
+              extractionMetadata?.orgaos,
+              extractionMetadata?.source,
+              result.metadata?.source,
+            );
             const levelLabel = String(rawQuestion.level || extractionMetadata?.level || result.metadata?.level || '').trim();
             const explicitSupportText = combinedSplitStatement.supportText ? '' : rawExplicitSupportBody;
             const splitSupportText = mergeContextText(splitStatement.supportText, inlineSplitStatement.supportText);
@@ -4169,6 +6794,7 @@ export const useAdminImportWorkflow = ({
                   statement: questionText,
                   options,
                   modality: rawQuestion.modality || question.tipo,
+                  expectedOptionsCount,
                 });
                 const repairedSupportText = sanitizeSupportContextText(String(repairedParts.supportText || '').trim());
                 const repairedReferenceText = String(repairedParts.referenceText || '').trim();
@@ -4264,10 +6890,12 @@ export const useAdminImportWorkflow = ({
                 tempId: contextKey,
                 title: rawQuestion.contextTitle || `Texto de apoio da questao ${questionNumber}`,
                 text: formatStructuredSupportHtml(applyPdfHighlightsToHtml(supportText, pageRichText.highlights)),
+                referenceText,
                 questionNumbers: [questionNumber],
                 hasFigure: Boolean(hasQuestionFigureContext || contextFigureDescription),
                 figureDescription: contextFigureDescription,
                 page: pageIndex,
+                sourcePage: pageIndex,
                 imageData: croppedImageData,
                 pageImageData: questionPageImage,
                 figureBox: contextFigureBox,
@@ -4307,8 +6935,28 @@ export const useAdminImportWorkflow = ({
                 ? option
                 : applyPdfHighlightsToHtml(option, pageRichText.highlights)
             ));
+            const validation = validateExtractedQuestionDraft({
+              statement: questionText,
+              options: optionsForItems,
+              expectedOptionsCount,
+              questionType: inferQuestionType(rawText, optionsForItems, parserProfile),
+              rawText,
+              hasFigure: rawQuestion.hasFigure || hasQuestionFigureContext || hasSupportFigurePayload || hasVisualOptions,
+              figureBox: rawQuestion.figureBox || supportFigureBox || contextFigureBox || optionFigureBox,
+              contextKey: linkedContextKey,
+              supportText: shouldStoreSupportAsIntroText ? supportText : '',
+            });
+            const validationReasons = Array.from(new Set([
+              ...(rawQuestion.statusReasons || []),
+              ...(rawQuestion.validationReasons || []),
+              ...validation.reasons,
+            ]));
+            const extractionStatus = validation.status !== 'ok'
+              ? validation.status
+              : rawQuestion.extractionStatus || rawQuestion.status || 'ok';
+            const rejectionReason = rawQuestion.rejectionReason || validationReasons[0] || '';
 
-            const mappedQuestion = {
+            const mappedQuestion = normalizeCanceledImportedQuestion({
               ...question,
               hashId: extractionMetadata?.hash_id,
               questionNumber,
@@ -4328,9 +6976,7 @@ export const useAdminImportWorkflow = ({
               bancas: agencyLabel
                 ? [{ sigla: agencyLabel, name: agencyLabel, id: null, slug: agencyLabel.toLowerCase() }]
                 : [],
-              orgaos: organizationLabel
-                ? [{ name: organizationLabel, id: null, slug: organizationLabel.toLowerCase() }]
-                : [],
+              orgaos: organizationLabels.map((organizationLabel) => createTaxonomyLabel(organizationLabel)),
               cargos: roleLabels.map((roleLabel) => ({
                 id: null,
                 slug: slugify(roleLabel),
@@ -4345,10 +6991,19 @@ export const useAdminImportWorkflow = ({
               expected_options_count: expectedOptionsCount,
               tipo: optionsForItems.length === 2 ? 'certo ou errado' : 'multipla escolha',
               dificuldade: normalizeDifficulty(rawQuestion.difficulty),
-              correctOptionIndex: isCanceledQuestion ? 0 : correctIndex,
+              correctOptionIndex: isCanceledQuestion || isAttributedToAllQuestion ? 0 : correctIndex,
               anulada: isCanceledQuestion,
               isCanceled: isCanceledQuestion,
-              needsImportReview: optionsForItems.length < expectedOptionsCount || hasUnresolvedVisualOptions,
+              isCancelled: isCanceledQuestion,
+              isAttributedToAll: isAttributedToAllQuestion,
+              attributedToAll: isAttributedToAllQuestion,
+              is_attributed_to_all: isAttributedToAllQuestion,
+              status: extractionStatus,
+              extractionStatus,
+              statusReasons: validationReasons,
+              validationReasons,
+              rejectionReason,
+              needsImportReview: optionsForItems.length < expectedOptionsCount || hasUnresolvedVisualOptions || extractionStatus !== 'ok',
               hasImageItens: (visualOptionImages.length > 0 && visualOptionImages.length === options.length) || (hasUnresolvedVisualOptions && Boolean(visualOptionPageImage)),
               itens: optionsForItems.map((option, optionIndex) => {
                 const optionLabel = String.fromCharCode(65 + optionIndex);
@@ -4365,12 +7020,19 @@ export const useAdminImportWorkflow = ({
                   figureBox: visualOptionImage?.figureBox || (hasUnresolvedVisualOptions ? optionFigureBox : undefined),
                 };
               }),
-              resposta: isCanceledQuestion ? 0 : correctIndex + 1,
+              resposta: isCanceledQuestion || isAttributedToAllQuestion ? 1 : correctIndex + 1,
               questionOrigin: 'exam',
               question_origin: 'exam',
               stats: { totalAttempts: 0, correctCount: 0, wrongCount: 0 },
               comments: [],
-            } as unknown as Question;
+            } as unknown as Question, isCanceledQuestion, isAttributedToAllQuestion);
+            if (isCanceledQuestion) {
+              addLog(`Questao #${questionNumber}: gabarito oficial indica anulada; extraida normalmente e marcada como anulada.`);
+            }
+            if (isAttributedToAllQuestion) {
+              addLog(`Questao #${questionNumber}: gabarito oficial indica atribuida a todos; extraida normalmente e marcada para pontuacao a todos.`);
+            }
+            rememberImportedQuestionBackup(importedQuestionBackups, mappedQuestion, questionNumber);
             mappedQuestions.push(mappedQuestion);
           }
 
@@ -4394,14 +7056,47 @@ export const useAdminImportWorkflow = ({
             missingQuestionNumbers: previous.expectedQuestionNumbers.filter((number) => !extractedQuestionNumbers.includes(number)),
           }));
         }
+        if (!result.questions || result.questions.length === 0) {
+          pagesWithoutQuestionDrafts.add(pageIndex);
+          addLog(`Pag ${pageIndex}: nenhuma questao extraida; pagina registrada como lida para auditoria.`);
+        }
+        } catch (error) {
+          failedPageReads.set(pageIndex, readErrorMessage(error));
+          addLog(`Pag ${pageIndex}: falha ao processar pagina (${readErrorMessage(error)}). Continuando leitura das demais paginas.`);
+        } finally {
+          processedPageNumbers.add(pageIndex);
+          setExamProgress(Math.round((pageIndex / pagesCount) * 100));
+        }
+      }
 
-        setExamProgress(Math.round((pageIndex / pagesCount) * 100));
+      addLog(`Auditoria do PDF: ${processedPageNumbers.size}/${pagesCount} pagina(s) percorrida(s).`);
+      if (pagesWithoutNativeText.size > 0) {
+        addLog(`Auditoria do PDF: pagina(s) sem texto nativo suficiente: ${Array.from(pagesWithoutNativeText).join(', ')}.`);
+      }
+      if (pagesWithAiFallback.size > 0) {
+        addLog(`Auditoria do PDF: fallback por imagem/IA acionado na(s) pagina(s): ${Array.from(pagesWithAiFallback).join(', ')}.`);
+      }
+      if (pagesWithoutQuestionDrafts.size > 0) {
+        addLog(`Auditoria do PDF: pagina(s) lida(s) sem rascunho de questao: ${Array.from(pagesWithoutQuestionDrafts).join(', ')}.`);
+      }
+      if (failedPageReads.size > 0) {
+        addLog(`Auditoria do PDF: pagina(s) com falha de processamento: ${Array.from(failedPageReads.entries()).map(([page, message]) => `${page} (${message})`).join(', ')}.`);
       }
 
       let normalizedImportState = normalizeQuestionContextUsage(allFoundQuestions, contextMap);
       allFoundQuestions = normalizedImportState.questions;
       allFoundQuestions = await reviewQuestionPartsAfterExtraction(allFoundQuestions);
       allFoundQuestions = await classifyMissingQuestionSubjects(allFoundQuestions, 'Revisao final');
+      const finalExpectedQuestionNumbers = Array.from(expectedQuestionSet).sort((a, b) => a - b);
+      const restoredMissing = restoreMissingQuestionsFromBackups(
+        allFoundQuestions,
+        finalExpectedQuestionNumbers,
+        importedQuestionBackups,
+      );
+      if (restoredMissing.recoveredNumbers.length > 0) {
+        allFoundQuestions = restoredMissing.questions;
+        addLog(`Recuperacao mecanica final: questao(oes) ${restoredMissing.recoveredNumbers.join(', ')} reinserida(s) antes da revisao.`);
+      }
       normalizedImportState = normalizeQuestionContextUsage(allFoundQuestions, contextMap);
       allFoundQuestions = normalizedImportState.questions;
       setExtractedQuestions([...allFoundQuestions]);
@@ -4414,7 +7109,6 @@ export const useAdminImportWorkflow = ({
         .map((question, extractedIndex) => getExtractedQuestionNumber(question, extractedIndex + 1))
         .filter((number, extractedIndex, list) => list.indexOf(number) === extractedIndex)
         .sort((a, b) => a - b);
-      const finalExpectedQuestionNumbers = Array.from(expectedQuestionSet).sort((a, b) => a - b);
       setImportDiagnostics((previous) => ({
         expectedQuestionNumbers: finalExpectedQuestionNumbers.length > previous.expectedQuestionNumbers.length
           ? finalExpectedQuestionNumbers
@@ -4468,11 +7162,6 @@ export const useAdminImportWorkflow = ({
       return;
     }
 
-    if (!isAiConfigured()) {
-      addToast('Configure uma IA antes de tentar recuperar as questoes faltantes.', 'error');
-      return;
-    }
-
     if (isProcessing || isBulkGenerating || isRetryingMissingQuestions) {
       addToast('Aguarde o processamento atual terminar antes de tentar novamente.', 'info');
       return;
@@ -4515,6 +7204,10 @@ export const useAdminImportWorkflow = ({
       const remainingNumbers = new Set(missingNumbers);
       const recoveredQuestions: Question[] = [];
       let retryMetadata = importMetadata;
+      const retryContextMap = new Map<string, ImportedContextDraft>();
+      extractedContexts.forEach((context) => {
+        retryContextMap.set(context.tempId, { ...context });
+      });
 
       for (let planIndex = 0; planIndex < retryPlan.length; planIndex += 1) {
         const { pageIndex, targets } = retryPlan[planIndex];
@@ -4526,26 +7219,76 @@ export const useAdminImportWorkflow = ({
 
         const pageRichText = pageRichTextByPage.get(pageIndex) || await pdfPageToRichText(questionPdf, pageIndex);
         const pageText = pageRichText.plainText;
+        const mechanicalResult = createMechanicalExtractionFromText(pageText, pageIndex, qFile.name);
+        const mechanicalMapped = mapTextExtractionQuestions({
+          result: mechanicalResult,
+          pageIndex,
+          pageRichText,
+          pageText,
+          targetNumbers: activeTargets,
+          keyMap,
+          selectedFocus,
+          contextMap: retryContextMap,
+          metadata: retryMetadata,
+          fileName: qFile.name,
+          logPrefix: `Pag ${pageIndex}`,
+        });
+        retryMetadata = mechanicalMapped.metadata;
+        const mechanicalUsefulQuestions = mechanicalMapped.questions.filter((question) => {
+          const questionNumber = getExtractedQuestionNumber(question, 0);
+          return remainingNumbers.has(questionNumber);
+        });
+
+        mechanicalUsefulQuestions.forEach((question) => {
+          const questionNumber = getExtractedQuestionNumber(question, 0);
+          remainingNumbers.delete(questionNumber);
+          recoveredQuestions.push(question);
+        });
+
+        if (mechanicalUsefulQuestions.length > 0) {
+          addLog(`Pag ${pageIndex}: parser local recuperou ${mechanicalUsefulQuestions.length} faltante(s) (${mechanicalUsefulQuestions.map((question) => getExtractedQuestionNumber(question, 0)).join(', ')}).`);
+        }
+
+        const aiTargets = activeTargets.filter((questionNumber) => remainingNumbers.has(questionNumber));
+        if (aiTargets.length === 0) {
+          setBulkProgress(Math.round(((planIndex + 1) / retryPlan.length) * 100));
+          continue;
+        }
+
+        if (!isAiConfigured()) {
+          addLog(`Pag ${pageIndex}: ${aiTargets.join(', ')} ainda faltante(s), mas IA nao esta configurada para complementar.`);
+          setBulkProgress(Math.round(((planIndex + 1) / retryPlan.length) * 100));
+          continue;
+        }
+
         const pageImageBase64 = await pdfToImage(questionPdf, pageIndex);
 
         try {
+          const pageParserProfile = resolveExamParserProfile(qFile.name, pageText, retryMetadata?.agency);
           const aiResult = await aiService.extractQuestionsFromPage(
             pageImageBase64,
             extractWithComment,
             pageText,
-            activeTargets,
+            aiTargets,
             pageRichText.richText,
+            pageParserProfile,
           );
           retryMetadata = mergeMetadata(retryMetadata, aiResult.metadata);
-          const mappedQuestions = mapRetriedAiQuestions({
+          const mapped = mapTextExtractionQuestions({
             result: aiResult,
             pageIndex,
             pageRichText,
             pageText,
-            targetNumbers: activeTargets,
+            targetNumbers: aiTargets,
             keyMap,
             selectedFocus,
+            contextMap: retryContextMap,
+            metadata: retryMetadata,
+            fileName: qFile.name,
+            logPrefix: `Pag ${pageIndex}`,
           });
+          retryMetadata = mapped.metadata;
+          const mappedQuestions = mapped.questions;
           const usefulQuestions = mappedQuestions.filter((question) => {
             const questionNumber = getExtractedQuestionNumber(question, 0);
             return remainingNumbers.has(questionNumber);
@@ -4558,7 +7301,7 @@ export const useAdminImportWorkflow = ({
           });
 
           if (usefulQuestions.length === 0) {
-            addLog(`Pag ${pageIndex}: IA nao recuperou nenhuma das faltantes (${activeTargets.join(', ')}).`);
+            addLog(`Pag ${pageIndex}: IA nao recuperou nenhuma das faltantes (${aiTargets.join(', ')}).`);
           }
         } catch (error) {
           addLog(`Pag ${pageIndex}: tentativa focada falhou (${readErrorMessage(error)}).`);
@@ -4589,12 +7332,7 @@ export const useAdminImportWorkflow = ({
         .map(([, question]) => question);
       nextQuestions = await reviewQuestionPartsAfterExtraction(nextQuestions);
       nextQuestions = await classifyMissingQuestionSubjects(nextQuestions, 'Tentativa faltantes');
-
-      const contextMap = new Map<string, ImportedContextDraft>();
-      extractedContexts.forEach((context) => {
-        contextMap.set(context.tempId, { ...context });
-      });
-      const normalizedImportState = normalizeQuestionContextUsage(nextQuestions, contextMap);
+      const normalizedImportState = normalizeQuestionContextUsage(nextQuestions, retryContextMap);
       nextQuestions = normalizedImportState.questions;
 
       setExtractedQuestions(nextQuestions);
@@ -4619,6 +7357,130 @@ export const useAdminImportWorkflow = ({
     } finally {
       setIsRetryingMissingQuestions(false);
       setBulkProgress(0);
+    }
+  };
+
+  const handleParseQuestionsFromText = async (sourceText: string) => {
+    const text = String(sourceText || '').trim();
+    if (!text) {
+      addToast('Cole o texto da questao antes de gerar.', 'error');
+      return;
+    }
+
+    const selectedFocus = resolveSelectedFocus();
+    if (!selectedFocus) {
+      addToast('Selecione ou crie um foco antes de gerar questoes por texto.', 'error');
+      return;
+    }
+
+    if (isProcessing || isBulkGenerating || isRetryingMissingQuestions) {
+      addToast('Aguarde o processamento atual terminar antes de gerar por texto.', 'info');
+      return;
+    }
+
+    try {
+      const pageIndex = Math.max(
+        0,
+        ...extractedQuestions.map((question) => Number((question as unknown as ImportedQuestionDraft).sourcePage || 0)),
+      ) + 1;
+      const fileName = qFile?.name || `${String(importMetadata?.agency || 'manual')}-texto-colado.txt`;
+      const textAnswerKey = parseAnswerKeyFromText(text, buildTargetAnswerKeySignal(importMetadata));
+      let keyMap: Record<number, number> = {};
+      if (kFile) {
+        try {
+          const pdfjs = await loadPdfJsModule();
+          keyMap = await readCurrentAnswerKeyMap(pdfjs);
+        } catch (error) {
+          addLog(`Texto colado: nao foi possivel reler o gabarito oficial (${readErrorMessage(error)}).`);
+        }
+      }
+      keyMap = { ...keyMap, ...textAnswerKey };
+
+      const result = createMechanicalExtractionFromText(text, pageIndex, fileName);
+      if (!result.questions.length) {
+        addToast('Nao encontrei questoes numeradas no texto colado.', 'warning');
+        addLog('Texto colado: nenhum marcador de questao reconhecido.');
+        return;
+      }
+
+      const contextMap = new Map<string, ImportedContextDraft>();
+      extractedContexts.forEach((context) => {
+        contextMap.set(context.tempId, { ...context });
+      });
+
+      const mapped = mapTextExtractionQuestions({
+        result,
+        pageIndex,
+        pageRichText: {
+          plainText: text,
+          richText: text,
+          highlights: [],
+          hasHighlights: false,
+        },
+        pageText: text,
+        keyMap,
+        selectedFocus,
+        contextMap,
+        metadata: importMetadata,
+        fileName,
+        logPrefix: 'Texto colado',
+      });
+
+      if (!mapped.questions.length) {
+        addToast('O texto foi lido, mas nenhuma questao valida ficou pronta para revisao.', 'warning');
+        addLog('Texto colado: os trechos detectados nao tinham formato minimo de questao.');
+        return;
+      }
+
+      const questionsByNumber = new Map<number, Question>();
+      extractedQuestions.forEach((question, index) => {
+        questionsByNumber.set(getExtractedQuestionNumber(question, index + 1), question);
+      });
+
+      let addedCount = 0;
+      let updatedCount = 0;
+      mapped.questions.forEach((question) => {
+        const questionNumber = getExtractedQuestionNumber(question, 0);
+        if (!questionNumber) {
+          return;
+        }
+
+        const previous = questionsByNumber.get(questionNumber);
+        if (!previous) {
+          addedCount += 1;
+          questionsByNumber.set(questionNumber, question);
+          return;
+        }
+
+        updatedCount += 1;
+        questionsByNumber.set(
+          questionNumber,
+          shouldReplaceImportedQuestionBackup(previous, question) ? question : previous,
+        );
+      });
+
+      let nextQuestions = Array.from(questionsByNumber.entries())
+        .sort(([leftNumber], [rightNumber]) => leftNumber - rightNumber)
+        .map(([, question]) => question);
+      nextQuestions = await reviewQuestionPartsAfterExtraction(nextQuestions);
+      nextQuestions = await classifyMissingQuestionSubjects(nextQuestions, 'Texto colado');
+
+      const normalizedImportState = normalizeQuestionContextUsage(nextQuestions, contextMap);
+      nextQuestions = normalizedImportState.questions;
+      const nextMetadata = {
+        ...(mapped.metadata || importMetadata || {}),
+        subjects: deriveQuestionSubjects(nextQuestions),
+      } as ImportMetadata;
+
+      setExtractedQuestions(nextQuestions);
+      setExtractedContexts(normalizedImportState.contexts);
+      setImportMetadata(nextMetadata);
+      updateDiagnosticsForQuestionList(nextQuestions);
+      addLog(`Texto colado: ${mapped.questions.length} questao(oes) processada(s), ${addedCount} adicionada(s), ${updatedCount} atualizada(s).`);
+      addToast(`${mapped.questions.length} questao(oes) gerada(s) pelo texto colado.`, 'success');
+    } catch (error) {
+      addToast(`Erro ao gerar questoes pelo texto: ${readErrorMessage(error)}`, 'error');
+      addLog(`Texto colado: falha ao processar (${readErrorMessage(error)}).`);
     }
   };
 
@@ -4695,18 +7557,19 @@ export const useAdminImportWorkflow = ({
   };
 
   const readRequiredExamMetadata = () => {
-    const roles = normalizeRoleList(importMetadata?.roles, importMetadata?.cargos, importMetadata?.role);
-    const role = summarizeRoleList(roles, String(importMetadata?.role || importMetadata?.examName || importMetadata?.contestName || '').trim());
-    const source = String(importMetadata?.source || importMetadata?.agency || '').trim();
+    const roles = normalizeRoleList(importMetadata?.roles, importMetadata?.cargos, importMetadata?.role || importMetadata?.cargo);
+    const organizations = normalizeOrganizationList(importMetadata?.sources, importMetadata?.orgaos, importMetadata?.source);
+    const role = summarizeExamTitleList(roles, String(importMetadata?.role || importMetadata?.cargo || importMetadata?.examName || importMetadata?.contestName || '').trim());
+    const agency = String(importMetadata?.agency || '').trim();
+    const source = summarizeExamTitleList(organizations, String(importMetadata?.source || '').trim());
     const year = String(importMetadata?.year || importMetadata?.ano || '').trim();
 
-    return { role, roles, source, year };
+    return { agency, organizations, role, roles, source, year };
   };
 
   const buildImportExamPayload = (questionsForSubjects: Question[]) => {
     const examName = buildExamTitle(importMetadata, qFile?.name?.replace(/\.pdf$/i, '') || 'Prova importada');
-    const roleLabels = normalizeRoleList(importMetadata?.roles, importMetadata?.cargos, importMetadata?.role);
-    const roleSummary = summarizeRoleList(roleLabels, importMetadata?.role || '');
+    const examTaxonomyMetadata = buildImportExamTaxonomyMetadata(importMetadata);
     const metadataSubjects = Array.isArray(importMetadata?.subjects) && importMetadata.subjects.length > 0
       ? importMetadata.subjects
       : deriveQuestionSubjects(questionsForSubjects.length > 0 ? questionsForSubjects : extractedQuestions);
@@ -4722,11 +7585,7 @@ export const useAdminImportWorkflow = ({
         examTitle: examName,
         name: examName,
         nome: examName,
-        agency: importMetadata?.agency || '',
-        source: importMetadata?.source || '',
-        role: roleSummary,
-        roles: roleLabels,
-        cargos: roleLabels,
+        ...examTaxonomyMetadata.payload,
         year: importMetadata?.year || new Date().getFullYear(),
         level: importMetadata?.level || '',
         examType: importMetadata?.examType || 'Concurso',
@@ -4738,13 +7597,34 @@ export const useAdminImportWorkflow = ({
     const examRecord: Record<string, unknown> = exam && typeof exam === 'object' ? exam : {};
     const bookletMetadata = buildBookletMetadata(importMetadata, qFile?.name, examName);
     const roleLabels = normalizeRoleList(importMetadata?.roles, importMetadata?.cargos, importMetadata?.role);
+    const organizationLabels = normalizeOrganizationList(importMetadata?.sources, importMetadata?.orgaos, importMetadata?.source);
+    const sourceSummary = summarizeExamTitleList(organizationLabels, importMetadata?.source || '');
     const primaryRole = roleLabels[0] || importMetadata?.role || '';
+    const primarySource = organizationLabels[0] || sourceSummary || importMetadata?.source || '';
+    const responseBanca = toLooseRecord(examRecord.banca);
+    const responseOrgao = toLooseRecord(examRecord.orgao);
+    const responseCargo = toLooseRecord(examRecord.cargo);
+    const responseOrgaos = Array.isArray(examRecord.orgaos)
+      ? examRecord.orgaos.filter((item): item is Record<string, unknown> => Boolean(toLooseRecord(item))).map((item) => toLooseRecord(item) as Record<string, unknown>)
+      : [];
+    const responseCargos = Array.isArray(examRecord.cargos)
+      ? examRecord.cargos.filter((item): item is Record<string, unknown> => Boolean(toLooseRecord(item))).map((item) => toLooseRecord(item) as Record<string, unknown>)
+      : [];
+    const agencyLabel = String(responseBanca?.sigla || responseBanca?.nome || responseBanca?.name || importMetadata?.agency || '').trim();
+    const orgaoTaxonomies = responseOrgaos.length > 0
+      ? responseOrgaos
+      : organizationLabels.map((organization) => createTaxonomyLabel(organization));
+    const cargoTaxonomies = responseCargos.length > 0
+      ? responseCargos
+      : roleLabels.map((role) => createTaxonomyLabel(role, { descricao: role }));
     const normalizedExam = normalizeProvaRecord({
       ...examRecord,
       ...bookletMetadata,
       roles: roleLabels,
-      cargos: roleLabels,
-      id: examRecord.id ?? examRecord.provaId ?? examRecord.prova_id ?? examRecord.exam_id ?? examRecord.publishedExamId,
+      cargos: cargoTaxonomies,
+      sources: organizationLabels,
+      orgaos: orgaoTaxonomies,
+      id: getPublishedExamId(examRecord),
       nome: String(examRecord.nome || examRecord.name || examRecord.title || examRecord.examTitle || examName),
       slug: String(examRecord.slug || slugify(examName)),
       ano: Number(examRecord.ano || examRecord.year || importMetadata?.year || new Date().getFullYear()),
@@ -4753,22 +7633,22 @@ export const useAdminImportWorkflow = ({
       nivel: String(examRecord.nivel || examRecord.level || importMetadata?.level || ''),
       examType: importMetadata?.examType || examRecord.examType || examRecord.exam_type || 'Concurso',
       banca: {
-        id: Number(((examRecord as { banca?: { id?: unknown } }).banca?.id) || 0),
-        sigla: importMetadata?.agency || '',
-        nome: importMetadata?.agency || '',
-        slug: slugify(importMetadata?.agency || 'banca'),
+        id: Number(responseBanca?.id || 0),
+        sigla: String(responseBanca?.sigla || agencyLabel),
+        nome: String(responseBanca?.nome || responseBanca?.name || agencyLabel),
+        slug: String(responseBanca?.slug || slugify(agencyLabel || 'banca')),
       },
       orgao: {
-        id: Number(((examRecord as { orgao?: { id?: unknown } }).orgao?.id) || 0),
-        sigla: importMetadata?.source || '',
-        nome: importMetadata?.source || '',
-        slug: slugify(importMetadata?.source || 'orgao'),
+        id: Number(responseOrgao?.id || orgaoTaxonomies[0]?.id || 0),
+        sigla: String(responseOrgao?.sigla || responseOrgao?.nome || responseOrgao?.name || primarySource),
+        nome: String(responseOrgao?.nome || responseOrgao?.name || responseOrgao?.sigla || primarySource),
+        slug: String(responseOrgao?.slug || orgaoTaxonomies[0]?.slug || slugify(primarySource || 'orgao')),
       },
       cargo: {
-        id: Number(((examRecord as { cargo?: { id?: unknown } }).cargo?.id) || 0),
-        descricao: primaryRole,
-        ['descrição']: primaryRole,
-        slug: slugify(primaryRole || 'cargo'),
+        id: Number(responseCargo?.id || cargoTaxonomies[0]?.id || 0),
+        descricao: String(responseCargo?.descricao || responseCargo?.['descrição'] || responseCargo?.name || primaryRole),
+        ['descrição']: String(responseCargo?.['descrição'] || responseCargo?.descricao || responseCargo?.name || primaryRole),
+        slug: String(responseCargo?.slug || cargoTaxonomies[0]?.slug || slugify(primaryRole || 'cargo')),
       },
     });
     const savedExam = normalizedExam
@@ -4776,7 +7656,7 @@ export const useAdminImportWorkflow = ({
       : { ...examRecord, ...bookletMetadata, nome: examName, title: examName, examTitle: examName };
     setPublishedExam(savedExam as Record<string, unknown>);
 
-    if (!normalizedExam || !updateSystemSettings || !saveSystemSettingsNow) {
+    if (!normalizedExam) {
       return normalizedExam;
     }
 
@@ -4788,14 +7668,36 @@ export const useAdminImportWorkflow = ({
         ...previousExamBank.filter((item) => String(item.id) !== String(normalizedExam.id)),
       ],
     };
-    updateSystemSettings(nextSettings);
-    await saveSystemSettingsNow(nextSettings);
+    try {
+      useAppConfigStore.getState().replaceSystemSettings(nextSettings);
+      await adminService.saveSystemSettings(nextSettings);
+    } catch (error) {
+      useAppConfigStore.getState().replaceSystemSettings(systemSettings);
+      addLog(`Prova publicada, mas a lista local de provas nao foi sincronizada agora (${readErrorMessage(error)}).`);
+    }
     return normalizedExam;
   };
 
   const buildQuestionPublishPayload = (entries: Array<{ question: Question; index: number }>) => {
+    const normalizedImportState = normalizeQuestionContextUsage(
+      extractedQuestions.map((question) => applyExamYearToQuestion(question, importMetadata)),
+      new Map(extractedContexts.map((context) => [context.tempId, { ...context }])),
+    );
+    const normalizedQuestionByNumber = new Map<number, Question>();
+    normalizedImportState.questions.forEach((question, index) => {
+      normalizedQuestionByNumber.set(getImportedQuestionNumber(question, index + 1), question);
+    });
+    const normalizedEntries = entries.map(({ question, index }) => {
+      const questionNumber = getImportedQuestionNumber(question, index + 1);
+      return {
+        index,
+        question: normalizedQuestionByNumber.get(questionNumber) || applyExamYearToQuestion(question, importMetadata),
+      };
+    });
+    const contextsForState = normalizedImportState.contexts;
+    const contextByTempId = new Map(contextsForState.map((context) => [context.tempId, context]));
     const contextTempIdByQuestionNumber = new Map<number, string>();
-    extractedContexts.forEach((context) => {
+    contextsForState.forEach((context) => {
       context.questionNumbers.forEach((questionNumber) => {
         if (Number.isFinite(questionNumber) && questionNumber > 0) {
           contextTempIdByQuestionNumber.set(questionNumber, context.tempId);
@@ -4803,11 +7705,16 @@ export const useAdminImportWorkflow = ({
       });
     });
 
-    const questionsForPublish = entries.map(({ question, index }) => {
+    const usedQuestionNumbersByContextTempId = new Map<string, Set<number>>();
+    const questionsForPublish = normalizedEntries.map(({ question, index }) => {
       const questionNumber = getImportedQuestionNumber(question, index + 1);
-      const contextTempId = contextTempIdByQuestionNumber.get(questionNumber);
-      const questionWithSupportImages = buildIntroTextWithSupportImages(question);
+      const questionWithSupportImages = normalizeCanceledImportedQuestion(buildIntroTextWithSupportImages(
+        applyExamYearToQuestion(question, importMetadata),
+      ));
       const draft = questionWithSupportImages as unknown as ImportedQuestionDraft;
+      const referencedContextTempId = String(draft.contextKey || draft.grupoQuestaoTempId || draft.contextTempId || '').trim();
+      const contextTempId = contextTempIdByQuestionNumber.get(questionNumber)
+        || (referencedContextTempId && contextByTempId.has(referencedContextTempId) ? referencedContextTempId : '');
 
       if (!contextTempId) {
         return {
@@ -4820,6 +7727,10 @@ export const useAdminImportWorkflow = ({
         } as Question;
       }
 
+      const usedQuestionNumbers = usedQuestionNumbersByContextTempId.get(contextTempId) || new Set<number>();
+      usedQuestionNumbers.add(questionNumber);
+      usedQuestionNumbersByContextTempId.set(contextTempId, usedQuestionNumbers);
+
       return {
         ...questionWithSupportImages,
         questionNumber,
@@ -4830,19 +7741,27 @@ export const useAdminImportWorkflow = ({
       } as Question;
     });
     const selectedQuestionNumbers = new Set(
-      questionsForPublish.map((question, index) => getImportedQuestionNumber(question, entries[index]?.index + 1)),
+      questionsForPublish.map((question, index) => getImportedQuestionNumber(question, normalizedEntries[index]?.index + 1)),
     );
-    const contextsForPublish = extractedContexts
+    const contextsForPublish = contextsForState
       .map((context) => ({
         ...context,
-        questionNumbers: context.questionNumbers.filter((questionNumber) => selectedQuestionNumbers.has(questionNumber)),
+        questionNumbers: Array.from(new Set([
+          ...context.questionNumbers.filter((questionNumber) => selectedQuestionNumbers.has(questionNumber)),
+          ...Array.from(usedQuestionNumbersByContextTempId.get(context.tempId) || []),
+        ])).sort((left, right) => left - right),
       }))
-      .filter((context) => context.questionNumbers.length > 0);
+      .filter((context) => (
+        context.questionNumbers.length > 0
+        || usedQuestionNumbersByContextTempId.has(context.tempId)
+      ));
 
     return {
       questionsForPublish,
       contextsForPublish,
       questionNumbers: Array.from(selectedQuestionNumbers),
+      normalizedQuestions: normalizedImportState.questions,
+      normalizedContexts: normalizedImportState.contexts,
     };
   };
 
@@ -4853,9 +7772,9 @@ export const useAdminImportWorkflow = ({
       return null;
     }
 
-    const { role, source, year } = readRequiredExamMetadata();
-    if (!role || !source || !year) {
-      addToast('Preencha Cargo/Prova, Orgao/Fonte e Ano antes de publicar a prova.', 'error');
+    const { agency, role, source, year } = readRequiredExamMetadata();
+    if (!agency || !year || !source || !role) {
+      addToast('Preencha Banca, Ano, Orgao e Cargo/Prova antes de publicar a prova.', 'error');
       return null;
     }
 
@@ -4863,11 +7782,18 @@ export const useAdminImportWorkflow = ({
   };
 
   const handlePublishExamOnly = async () => {
+    if (publishingActionRef.current) {
+      return;
+    }
+
     const selectedFocus = validateExamBeforePublish();
     if (!selectedFocus) {
       return;
     }
-    setPublishingAction('exam');
+    if (!beginPublishingAction('exam')) {
+      return;
+    }
+
     try {
       const { examName, exam } = buildImportExamPayload(extractedQuestions);
       const response = await questionService.createImportedExam({
@@ -4887,7 +7813,7 @@ export const useAdminImportWorkflow = ({
     } catch (error) {
       addToast(`Erro ao publicar prova: ${readErrorMessage(error)}`, 'error');
     } finally {
-      setPublishingAction(null);
+      finishPublishingAction('exam');
     }
   };
 
@@ -4895,6 +7821,10 @@ export const useAdminImportWorkflow = ({
     entries: Array<{ question: Question; index: number }>,
     action: ImportPublishAction,
   ) => {
+    if (publishingActionRef.current) {
+      return;
+    }
+
     const selectedFocus = validateExamBeforePublish();
     if (!selectedFocus) {
       return;
@@ -4903,7 +7833,7 @@ export const useAdminImportWorkflow = ({
       addToast('Publique a prova antes de publicar questoes.', 'error');
       return;
     }
-    const publishedExamId = publishedExam.id ?? publishedExam.provaId ?? publishedExam.prova_id ?? publishedExam.exam_id ?? publishedExam.publishedExamId;
+    const publishedExamId = getPublishedExamId(publishedExam);
     if (!publishedExamId) {
       addToast('A prova publicada nao retornou ID valido. Publique a prova novamente antes das questoes.', 'error');
       return;
@@ -4924,9 +7854,18 @@ export const useAdminImportWorkflow = ({
       return;
     }
 
-    setPublishingAction(action);
+    if (!beginPublishingAction(action)) {
+      return;
+    }
+
     try {
-      const { questionsForPublish, contextsForPublish, questionNumbers } = buildQuestionPublishPayload(entries);
+      const {
+        questionsForPublish,
+        contextsForPublish,
+        questionNumbers,
+        normalizedQuestions,
+        normalizedContexts,
+      } = buildQuestionPublishPayload(entries);
       const { examName, exam } = buildImportExamPayload(questionsForPublish);
       const response = await questionService.createImportedQuestionBatch({
         exam: {
@@ -4936,17 +7875,29 @@ export const useAdminImportWorkflow = ({
           prova_id: publishedExamId,
         },
         focus: selectedFocus as Record<string, unknown>,
-        contexts: contextsForPublish.map((context) => ({
-          tempId: context.tempId,
-          contextKey: context.tempId,
-          statement: context.title,
-          text: formatStructuredSupportHtml([
-            context.text,
-            context.figureDescription ? `Figura/Imagem: ${context.figureDescription}` : '',
-          ].filter(Boolean).join('\n\n')),
-          questionNumbers: context.questionNumbers,
-          imageData: context.imageData,
-        })),
+        contexts: contextsForPublish.map((context) => {
+          const publishContent = buildContextPublishContent(context);
+          const textFallback = !publishContent.imageData && context.figureDescription
+            ? [publishContent.text, `Figura/Imagem: ${context.figureDescription}`].filter(Boolean).join('\n\n')
+            : publishContent.text;
+
+          return {
+            tempId: context.tempId,
+            contextKey: context.tempId,
+            statement: context.title,
+            enunciado: context.title,
+            text: textFallback,
+            texto: textFallback,
+            referenceText: context.referenceText || '',
+            reference_text: context.referenceText || '',
+            richText: context.richText || '',
+            questionNumbers: context.questionNumbers,
+            imageData: publishContent.imageData,
+            sourcePage: context.sourcePage || context.page,
+            figureBox: context.figureBox,
+            figures: publishContent.figures,
+          };
+        }),
         questions: questionsForPublish,
         requireExistingExam: true,
       }, null);
@@ -4956,14 +7907,42 @@ export const useAdminImportWorkflow = ({
       }
 
       await syncPublishedExam((response.exam || publishedExam) as Record<string, unknown>, examName);
+      setExtractedQuestions(normalizedQuestions);
+      setExtractedContexts(normalizedContexts);
       if (response.created && response.created.length > 0) {
         onImportedQuestionsSaved?.(response.created);
       }
-      setPublishedQuestionNumbers((previous) => (
-        Array.from(new Set([...previous, ...questionNumbers])).sort((left, right) => left - right)
-      ));
+      const createdQuestionNumbers = (response.created || [])
+        .map((question) => getPublishedQuestionNumberFromRecord(question))
+        .filter((number) => number > 0);
+      const alreadyExistingQuestionNumbers = (response.duplicatesSkipped || [])
+        .filter((duplicate) => String(duplicate.reason || '') === 'already_exists')
+        .map((duplicate) => getPublishedQuestionNumberFromRecord(duplicate))
+        .filter((number) => number > 0);
+      const confirmedQuestionNumbers = Array.from(new Set([
+        ...createdQuestionNumbers,
+        ...alreadyExistingQuestionNumbers,
+      ]));
+      const confirmedOrCountFallbackNumbers = confirmedQuestionNumbers.length > 0
+        ? confirmedQuestionNumbers
+        : Number(response.count || 0) > 0
+          ? questionNumbers.slice(0, Number(response.count || 0))
+          : [];
+
+      if (entries.length > 0 && confirmedOrCountFallbackNumbers.length === 0 && !response.skippedDuplicateCount) {
+        throw new Error('O backend respondeu com sucesso, mas nao confirmou nenhum item criado. A lista foi mantida para nova tentativa.');
+      }
+
+      if (confirmedOrCountFallbackNumbers.length > 0) {
+        setPublishedQuestionNumbers((previous) => (
+          Array.from(new Set([...previous, ...confirmedOrCountFallbackNumbers])).sort((left, right) => left - right)
+        ));
+      }
 
       let message = entries.length === 1 ? 'Questao publicada.' : `${entries.length} questao(oes) enviadas para publicacao.`;
+      if (confirmedOrCountFallbackNumbers.length > 0 && confirmedOrCountFallbackNumbers.length < entries.length) {
+        message += `\n\n${confirmedOrCountFallbackNumbers.length}/${entries.length} item(ns) confirmado(s) pelo backend. Os demais continuam pendentes na lista.`;
+      }
       if (response.skippedDuplicateCount && response.skippedDuplicateCount > 0) {
         message += `\n\n${response.skippedDuplicateCount} questao(oes) duplicada(s) ignorada(s).`;
       }
@@ -4981,7 +7960,7 @@ export const useAdminImportWorkflow = ({
     } catch (error) {
       addToast(`Erro ao publicar questoes: ${readErrorMessage(error)}`, 'error');
     } finally {
-      setPublishingAction(null);
+      finishPublishingAction(action);
     }
   };
 
@@ -5031,10 +8010,22 @@ export const useAdminImportWorkflow = ({
           cargos: normalizeRoleList(value),
         }
         : {};
+      const sourceListPatch = field === 'source'
+        ? {
+          sources: normalizeOrganizationList(value),
+        }
+        : {};
+      const titlePatch = field === 'title'
+        ? { examTitle: value }
+        : field === 'examTitle'
+          ? { title: value }
+          : {};
       const nextMetadata = {
         ...(previous || {}),
         [field]: metadataValue,
         ...roleListPatch,
+        ...sourceListPatch,
+        ...titlePatch,
       } as ImportMetadata;
 
       return {
@@ -5085,9 +8076,10 @@ export const useAdminImportWorkflow = ({
       }
 
       if (field === 'organization') {
+        const organizations = normalizeOrganizationList(value);
         next[index] = {
           ...question,
-          orgaos: value ? [createTaxonomyLabel(value)] : [],
+          orgaos: organizations.map((organization) => createTaxonomyLabel(organization)),
         } as Question;
         return next;
       }
@@ -5106,7 +8098,9 @@ export const useAdminImportWorkflow = ({
         next[index] = {
           ...question,
           anos: Number.isFinite(parsedYear) && parsedYear > 0 ? [parsedYear] : [],
-        } as Question;
+          year: Number.isFinite(parsedYear) && parsedYear > 0 ? parsedYear : undefined,
+          ano: Number.isFinite(parsedYear) && parsedYear > 0 ? parsedYear : undefined,
+        } as Question & { year?: number; ano?: number };
         return next;
       }
 
@@ -5386,33 +8380,93 @@ export const useAdminImportWorkflow = ({
         .map((number) => Number(number))
         .filter((number) => Number.isFinite(number) && number > 0),
     )).sort((a, b) => a - b);
-
-    setExtractedContexts((previous) => previous.map((context) => (
+    const nextContexts = extractedContexts.map((context) => (
       context.tempId === tempId
         ? {
           ...context,
           questionNumbers: uniqueNumbers,
         }
         : context
-    )));
+    ));
+    const targetContext = nextContexts.find((context) => context.tempId === tempId);
+    const questionsWithUpdatedLinks = extractedQuestions.map((question, index) => {
+      const questionNumber = getExtractedQuestionNumber(question, index + 1);
+      const currentContextTempId = getQuestionContextTempId(question);
+      if (targetContext && uniqueNumbers.includes(questionNumber)) {
+        return attachQuestionContextLink(question, tempId, targetContext.title);
+      }
+      if (currentContextTempId === tempId) {
+        return clearQuestionContextLink(question, tempId);
+      }
+      return question;
+    });
+    const normalizedState = normalizeQuestionContextUsage(
+      questionsWithUpdatedLinks,
+      new Map(nextContexts.map((context) => [context.tempId, { ...context }])),
+    );
+    setExtractedQuestions(normalizedState.questions);
+    setExtractedContexts(normalizedState.contexts);
   };
 
   const updateExtractedContextImage = (tempId: string, imageData: string, fileName = '') => {
     const cleanImageData = imageData.includes(',') ? imageData.split(',').pop() || imageData : imageData;
     setExtractedContexts((previous) => previous.map((context) => (
       context.tempId === tempId
-        ? {
+        ? (() => {
+          const figureKey = context.figures?.[0]?.figureKey || `${tempId}-fig-01`;
+          const hasInlineImage = /<img\b/i.test(context.text || '');
+          const hasFigureMarker = new RegExp(`\\[FIGURA:\\s*${escapeRegExp(figureKey)}\\]`, 'i').test(context.text || '')
+            || /\[FIGURA:\s*[-\w]+\]/i.test(context.text || '');
+          const nextText = hasInlineImage || hasFigureMarker
+            ? context.text
+            : [context.text, `[FIGURA: ${figureKey}]`].filter(Boolean).join('\n\n');
+
+          return {
           ...context,
+          text: nextText,
           hasFigure: true,
           figureDescription: context.figureDescription || fileName || context.title || 'Figura vinculada ao contexto',
           imageData: cleanImageData,
           pageImageData: cleanImageData,
           figureBox: { x: 0, y: 0, width: 1000, height: 1000 },
+          figures: [
+            {
+              figureKey,
+              type: 'figure',
+              description: context.figureDescription || fileName || context.title || 'Figura vinculada ao contexto',
+              imageData: cleanImageData,
+              pageImageData: cleanImageData,
+              figureBox: { x: 0, y: 0, width: 1000, height: 1000 },
+              page: context.page,
+              order: 1,
+            },
+            ...(context.figures || []).filter((figure) => figure.figureKey !== figureKey),
+          ],
           manualCropApplied: true,
-        }
+          };
+        })()
         : context
     )));
     addToast('Figura adicionada ao contexto.', 'success');
+  };
+
+  const addExtractedContext = () => {
+    const tempId = `manual-context-${Date.now()}`;
+    setExtractedContexts((previous) => [
+      ...previous,
+      {
+        tempId,
+        title: `Novo contexto ${previous.length + 1}`,
+        text: '',
+        referenceText: '',
+        richText: '',
+        questionNumbers: [],
+        hasFigure: false,
+        figureDescription: '',
+        page: 0,
+      },
+    ]);
+    addToast('Contexto criado. Vincule as questoes que devem usa-lo.', 'success');
   };
 
   const addExtractedContextForQuestion = (questionIndex: number) => {
@@ -5642,13 +8696,37 @@ export const useAdminImportWorkflow = ({
 
     setExtractedContexts((previous) => previous.map((item) => (
       item.tempId === tempId
-        ? {
+        ? (() => {
+          const figureKey = item.figures?.[0]?.figureKey || `${tempId}-fig-01`;
+          const hasInlineImage = /<img\b/i.test(item.text || '');
+          const hasFigureMarker = new RegExp(`\\[FIGURA:\\s*${escapeRegExp(figureKey)}\\]`, 'i').test(item.text || '')
+            || /\[FIGURA:\s*[-\w]+\]/i.test(item.text || '');
+          const nextText = hasInlineImage || hasFigureMarker
+            ? item.text
+            : [item.text, `[FIGURA: ${figureKey}]`].filter(Boolean).join('\n\n');
+
+          return {
           ...item,
+          text: nextText,
           imageData,
           figureBox: normalizedBox,
           hasFigure: true,
+          figures: [
+            {
+              figureKey,
+              type: 'figure',
+              description: item.figureDescription || item.title || 'Figura vinculada ao contexto',
+              imageData,
+              pageImageData: item.pageImageData,
+              figureBox: normalizedBox,
+              page: item.page,
+              order: 1,
+            },
+            ...(item.figures || []).filter((figure) => figure.figureKey !== figureKey),
+          ],
           manualCropApplied: true,
-        }
+          };
+        })()
         : item
     )));
     addLog(`Recorte da figura "${context.title}" atualizado manualmente.`);
@@ -5687,6 +8765,7 @@ export const useAdminImportWorkflow = ({
     handleBulkGenerateDetailed,
     handleBulkGenerateTeacher,
     handleRetryMissingQuestions,
+    handleParseQuestionsFromText,
     handleGenerateSpecific,
     handlePublishExamOnly,
     handlePublishAllQuestions,
@@ -5701,6 +8780,7 @@ export const useAdminImportWorkflow = ({
     removeExtractedQuestionOption,
     addExtractedQuestionSupportImage,
     updateExtractedQuestionOptionImage,
+    addExtractedContext,
     addExtractedContextForQuestion,
     removeExtractedContext,
     updateExtractedContextContent,
@@ -5714,5 +8794,22 @@ export const useAdminImportWorkflow = ({
     removeExtractedQuestion,
     updateContextFigureCrop,
   };
+};
+
+export const __examImportParserTestApi = {
+  buildExamTitle,
+  buildImportExamTaxonomyMetadata,
+  createMechanicalExtractionFromText,
+  extractionLikelyNeedsSupportContextFallback,
+  extractionNeedsAi,
+  extractQuestionNumbersFromText,
+  findCarryoverTextContextForQuestion,
+  findQuestionMarkers,
+  formatStructuredSupportHtml,
+  getExtractedQuestionNumber,
+  inferExpectedOptionsCountFromText,
+  parseAnswerKeyFromText,
+  resolveExamParserProfile,
+  textNeedsExternalSupportContext,
 };
 

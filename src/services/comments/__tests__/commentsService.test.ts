@@ -132,6 +132,8 @@ describe('commentService', () => {
       content: 'Novo comentário',
       parent_id: undefined,
       targetType: 'question',
+      gamification_event: 'comment_submitted',
+      notification_event: 'comment_published',
     });
     expect(comment.id).toBe('com-9');
   });
@@ -147,8 +149,48 @@ describe('commentService', () => {
       action: 'like',
       commentId: 'com-10',
       userId: 'user-1',
+      gamification_event: 'comment_like_received',
+      notification_event: 'comment_like_received',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('toggles local comment likes without double-counting', () => {
+    const comments = [
+      {
+        id: 'com-1',
+        userId: 'user-1',
+        userName: 'Teste',
+        text: 'Comentario',
+        date: 'Agora',
+        likes: 1,
+        isLiked: false,
+        replies: [
+          {
+            id: 'reply-1',
+            userId: 'user-2',
+            userName: 'Outro',
+            text: 'Resposta',
+            date: 'Agora',
+            likes: 2,
+            isLiked: true,
+            replies: [],
+          },
+        ],
+      },
+    ];
+
+    const liked = commentService.likeCommentInTree(comments, 'com-1');
+    expect(liked[0]).toEqual(expect.objectContaining({
+      likes: 2,
+      isLiked: true,
+    }));
+
+    const unlikedReply = commentService.likeCommentInTree(liked, 'reply-1');
+    expect(unlikedReply[0].replies[0]).toEqual(expect.objectContaining({
+      likes: 1,
+      isLiked: false,
+    }));
   });
 
   it('deletes a comment through commentsHandle', async () => {

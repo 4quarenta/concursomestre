@@ -14,11 +14,11 @@ import Image from 'next/image';
 import type { Assunto, Material, Question, Transaction, UserAnswer, ErrorReport, UserNote, QuestionStats, RelatedQuestionLawMatch, UserProfile } from '@types';
 import {
   CheckCircle2, XCircle, Flag, BookOpen, GraduationCap,
-  Eye, EyeOff, Building2, Calendar, Briefcase, MessageSquare, BarChart3, AlertTriangle, Share2, Lock, StickyNote, Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Layers, Tag, History, PlusCircle, MinusCircle, FileText, Loader2
+  Eye, EyeOff, Building2, Calendar, Briefcase, MessageSquare, BarChart3, AlertTriangle, Share2, Lock, StickyNote, Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Layers, Tag, History, PlusCircle, MinusCircle, FileText, Loader2, ThumbsUp, ThumbsDown
 } from 'lucide-react';
 import { getAssetUrl } from '@services/api';
 import { legalCommentaryApiService } from '@services/legal-commentary';
-import { isPlatformOriginalQuestion, isQuestionCanceled, questionService } from '@services/questions';
+import { isPlatformOriginalQuestion, isQuestionCanceled, questionService, type QuestionEditorialFeedbackKind, type QuestionEditorialFeedbackSnapshot, type QuestionEditorialFeedbackValue } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import MathRichText from '@/components/shared/math/MathRichText';
 import { commentService } from '@services/comments';
@@ -30,7 +30,7 @@ const fixHtmlImages = (html: string) => {
   // This regex finds <img> tags and captures the src attribute
   // It replaces relative paths like 'uploads/questions/...' with absolute ones using getAssetUrl
   return normalizedHtml.replace(/<img[^>]+src=(['"])([^'"]+)\1[^>]*>/gi, (match, quote, src) => {
-    if (src.startsWith('http')) return match;
+    if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:')) return match;
     const absoluteUrl = getAssetUrl(src);
     return match.replace(src, absoluteUrl);
   });
@@ -144,6 +144,96 @@ const getMaterialSubjectText = (material: Pick<Material, 'subject' | 'subjectTex
 };
 
 const getQuestionSourceMetadata = (question: Question): QuestionSourceMetadata => question as QuestionSourceMetadata;
+
+type EditorialFeedbackState = QuestionEditorialFeedbackSnapshot['feedback'];
+type EditorialFeedbackCountsState = QuestionEditorialFeedbackSnapshot['counts'];
+type EditorialFeedbackLoadingState = Record<QuestionEditorialFeedbackKind, boolean>;
+
+const createEmptyEditorialFeedback = (): EditorialFeedbackState => ({
+  teacher: null,
+  detailed: null,
+});
+
+const createEmptyEditorialFeedbackCounts = (): EditorialFeedbackCountsState => ({
+  teacher: {
+    likes: 0,
+    dislikes: 0,
+  },
+  detailed: {
+    likes: 0,
+    dislikes: 0,
+  },
+});
+
+const getQuestionEditorialFeedbackId = (question: Question): string => (
+  String(question.id || question.hashId || question.hash || '').trim()
+);
+
+const getEditorialFeedbackStorageKey = (questionId: string, userId?: string) => (
+  `cm:question-editorial-feedback:${userId || 'guest'}:${questionId}`
+);
+
+const readStoredEditorialFeedback = (questionId: string, userId?: string): EditorialFeedbackState | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(getEditorialFeedbackStorageKey(questionId, userId));
+    if (!rawValue) {
+      return null;
+    }
+
+    const parsed = JSON.parse(rawValue) as Partial<Record<QuestionEditorialFeedbackKind, unknown>>;
+    return {
+      teacher: parsed.teacher === 'like' || parsed.teacher === 'dislike' ? parsed.teacher : null,
+      detailed: parsed.detailed === 'like' || parsed.detailed === 'dislike' ? parsed.detailed : null,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const persistStoredEditorialFeedback = (questionId: string, userId: string | undefined, feedback: EditorialFeedbackState) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(getEditorialFeedbackStorageKey(questionId, userId), JSON.stringify(feedback));
+  } catch {
+    // Local persistence is only a convenience fallback.
+  }
+};
+
+const applyEditorialFeedbackCountChange = (
+  counts: EditorialFeedbackCountsState,
+  kind: QuestionEditorialFeedbackKind,
+  previousValue: QuestionEditorialFeedbackValue | null,
+  nextValue: QuestionEditorialFeedbackValue | null,
+): EditorialFeedbackCountsState => {
+  const nextCounts = {
+    teacher: { ...counts.teacher },
+    detailed: { ...counts.detailed },
+  };
+  const target = nextCounts[kind];
+
+  if (previousValue === 'like') {
+    target.likes = Math.max(0, target.likes - 1);
+  }
+  if (previousValue === 'dislike') {
+    target.dislikes = Math.max(0, target.dislikes - 1);
+  }
+  if (nextValue === 'like') {
+    target.likes += 1;
+  }
+  if (nextValue === 'dislike') {
+    target.dislikes += 1;
+  }
+
+  return nextCounts;
+};
+
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import CommentsSection from '../../../components/shared/feedback/CommentsSection';
@@ -163,7 +253,7 @@ interface QuestionCardProps {
   onAnswerSubmit: (answer: UserAnswer) => void;
   onReportError?: (report: Omit<ErrorReport, 'id' | 'status' | 'timestamp'>) => void;
   onAddComment?: (qId: string, text: string, parentId?: string) => void;
-  onLikeComment?: (qId: string, cId: string) => void;
+  onLikeComment?: (qId: string, cId: string) => void | Promise<void>;
   indexDisplay: number;
   isAlreadyReported?: boolean;
   userPlan?: 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
@@ -211,13 +301,50 @@ const isCorrectQuestionOption = (question: Question, index: number) => (
   resolveCorrectOption(question)?.index === index
 );
 
+type QuestionCardTaxonomyLike = {
+  sigla?: string;
+  nome?: string;
+  name?: string;
+  descricao?: string;
+  descrição?: string;
+} | null | undefined;
+
+const getQuestionCardTaxonomyLabel = (item: QuestionCardTaxonomyLike): string => String(
+  item?.sigla
+  || item?.nome
+  || item?.name
+  || item?.descricao
+  || item?.descrição
+  || '',
+).trim();
+
+const getQuestionCardExamLabel = (exam: NonNullable<Question['provas']>[number]): string => {
+  const role = getQuestionCardTaxonomyLabel(exam?.cargo)
+    || (Array.isArray(exam?.cargos) ? exam.cargos.map(getQuestionCardTaxonomyLabel).find(Boolean) : '');
+  const organization = getQuestionCardTaxonomyLabel(exam?.orgao)
+    || (Array.isArray(exam?.orgaos) ? exam.orgaos.map(getQuestionCardTaxonomyLabel).find(Boolean) : '');
+  const compactTitle = [role, organization].filter(Boolean).join(' - ');
+
+  return compactTitle || String(exam?.nome || '').trim();
+};
+
+const getQuestionCardExamText = (question: Question): string => {
+  const labels = Array.from(new Set(
+    (question.provas || [])
+      .map(getQuestionCardExamLabel)
+      .filter(Boolean),
+  ));
+
+  return labels.join(' / ');
+};
+
 const QuestionCard: React.FC<QuestionCardProps> = ({
   question, existingAnswer, onAnswerSubmit, onReportError, onAddComment, onLikeComment, indexDisplay,
   isAlreadyReported = false, existingNote, onSaveNote, onOpenNote, onToggleSave, isSaved = false,
   mode = 'practice', hideFeedback = false, currentUserId, currentUserName, onGuestAction, isHighlighted = false
 }) => {
   const router = useRouter();
-  const { currentUser } = useAuth();
+  const { currentUser, updateUser } = useAuth();
   const { addToast } = useToast();
   const authenticatedUserId = currentUser?.id;
   const systemSettings = useAppConfigStore((store) => store.systemSettings);
@@ -264,6 +391,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const canQuestionUseAnnotatedLaws = isQuestionEligibleForAnnotatedLaws(question);
   const annotatedLawScopeKey = buildQuestionAnnotatedLawScopeKey(question);
+  const editorialFeedbackQuestionId = getQuestionEditorialFeedbackId(question);
+  const questionExamText = React.useMemo(() => getQuestionCardExamText(question), [question]);
   const annotatedLawLookupQuestion = React.useMemo(() => (
     {
       id: question.id,
@@ -339,11 +468,56 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   const [showTeacherComment, setShowTeacherComment] = useState(false);
   const [showDetailedComment, setShowDetailedComment] = useState(false);
+  const [editorialFeedback, setEditorialFeedback] = useState<EditorialFeedbackState>(() => createEmptyEditorialFeedback());
+  const [editorialFeedbackCounts, setEditorialFeedbackCounts] = useState<EditorialFeedbackCountsState>(() => createEmptyEditorialFeedbackCounts());
+  const [editorialFeedbackLoading, setEditorialFeedbackLoading] = useState<EditorialFeedbackLoadingState>({
+    teacher: false,
+    detailed: false,
+  });
   const [showFilters, setShowFilters] = useState(false);
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [isPreparingNoteModal, setIsPreparingNoteModal] = useState(false);
   // Modal de upgrade de plano
   const [planUpgradeModal, setPlanUpgradeModal] = useState<{ featureName: string; requiredPlan: string; planLabel: string } | null>(null);
+
+  useEffect(() => {
+    if (!editorialFeedbackQuestionId) {
+      const resetFrame = window.requestAnimationFrame(() => {
+        setEditorialFeedback(createEmptyEditorialFeedback());
+        setEditorialFeedbackCounts(createEmptyEditorialFeedbackCounts());
+      });
+
+      return () => window.cancelAnimationFrame(resetFrame);
+    }
+
+    const storedFeedback = readStoredEditorialFeedback(editorialFeedbackQuestionId, authenticatedUserId);
+    const initialFrame = window.requestAnimationFrame(() => {
+      setEditorialFeedback(storedFeedback || createEmptyEditorialFeedback());
+      setEditorialFeedbackCounts(createEmptyEditorialFeedbackCounts());
+    });
+
+    let isMounted = true;
+    questionService.getEditorialFeedback(editorialFeedbackQuestionId)
+      .then((snapshot) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setEditorialFeedback(snapshot.feedback);
+        setEditorialFeedbackCounts(snapshot.counts);
+        if (authenticatedUserId) {
+          persistStoredEditorialFeedback(editorialFeedbackQuestionId, authenticatedUserId, snapshot.feedback);
+        }
+      })
+      .catch((error) => {
+        clientLog.warn('[QuestionCard] Failed to load editorial feedback:', error);
+      });
+
+    return () => {
+      isMounted = false;
+      window.cancelAnimationFrame(initialFrame);
+    };
+  }, [authenticatedUserId, editorialFeedbackQuestionId]);
 
   // Auto-expand comments when question is highlighted OR when there's a comment hash
   useEffect(() => {
@@ -395,15 +569,24 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     }
 
     try {
-      await commentService.reportComment(commentId, reason, details, authenticatedUserId);
-      addToast('Denuncia enviada com sucesso.', 'success');
+      const result = await commentService.reportComment(commentId, reason, details, authenticatedUserId);
+      if (result.newXp !== undefined || result.newLevel !== undefined) {
+        void updateUser({
+          ...(result.newXp !== undefined ? { xp: result.newXp } : {}),
+          ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
+        });
+      }
+      addToast(
+        result.xpGain ? `Denuncia enviada com sucesso. +${result.xpGain} XP.` : 'Denuncia enviada com sucesso.',
+        'success',
+      );
       return true;
     } catch (error) {
       clientLog.warn('[QuestionCard] Failed to report comment:', error);
       addToast('Erro de conexão ao enviar denúncia.', 'error');
       return false;
     }
-  }, [addToast, authenticatedUserId]);
+  }, [addToast, authenticatedUserId, updateUser]);
 
   const deleteComment = React.useCallback(async (questionId: number, commentId: string) => {
     if (!authenticatedUserId) return;
@@ -732,7 +915,83 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   };
 
   const isImageOption = (text: string) => {
-    return text.startsWith('blob:') || text.startsWith('http') && (text.match(/\.(jpeg|jpg|gif|png)$/) != null || text.includes('images'));
+    return text.startsWith('blob:')
+      || text.startsWith('data:image/')
+      || text.startsWith('http') && (text.match(/\.(jpeg|jpg|gif|png)$/) != null || text.includes('images'));
+  };
+
+  const handleEditorialFeedbackToggle = React.useCallback(async (
+    kind: QuestionEditorialFeedbackKind,
+    value: QuestionEditorialFeedbackValue,
+  ) => {
+    if (!editorialFeedbackQuestionId) {
+      return;
+    }
+
+    if (!authenticatedUserId) {
+      onGuestAction?.('editorial_feedback');
+      return;
+    }
+
+    const previousValue = editorialFeedback[kind];
+    const nextValue = previousValue === value ? null : value;
+    const nextFeedback = {
+      ...editorialFeedback,
+      [kind]: nextValue,
+    };
+
+    setEditorialFeedback(nextFeedback);
+    setEditorialFeedbackCounts((previousCounts) => applyEditorialFeedbackCountChange(previousCounts, kind, previousValue, nextValue));
+    setEditorialFeedbackLoading((previousLoading) => ({ ...previousLoading, [kind]: true }));
+    persistStoredEditorialFeedback(editorialFeedbackQuestionId, authenticatedUserId, nextFeedback);
+
+    try {
+      const snapshot = await questionService.setEditorialFeedback(editorialFeedbackQuestionId, kind, nextValue);
+      setEditorialFeedback(snapshot.feedback);
+      setEditorialFeedbackCounts(snapshot.counts);
+      persistStoredEditorialFeedback(editorialFeedbackQuestionId, authenticatedUserId, snapshot.feedback);
+    } catch (error) {
+      clientLog.warn('[QuestionCard] Failed to persist editorial feedback:', error);
+      addToast('Nao foi possivel sincronizar sua avaliacao agora. Mantive neste dispositivo.', 'warning');
+    } finally {
+      setEditorialFeedbackLoading((previousLoading) => ({ ...previousLoading, [kind]: false }));
+    }
+  }, [addToast, authenticatedUserId, editorialFeedback, editorialFeedbackQuestionId, onGuestAction]);
+
+  const renderEditorialFeedbackControls = (kind: QuestionEditorialFeedbackKind) => {
+    const selectedValue = editorialFeedback[kind];
+    const counts = editorialFeedbackCounts[kind];
+    const isLoading = editorialFeedbackLoading[kind];
+    const likeActive = selectedValue === 'like';
+    const dislikeActive = selectedValue === 'dislike';
+
+    return (
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+        <span>Avalie este conteudo</span>
+        <button
+          type="button"
+          onClick={() => handleEditorialFeedbackToggle(kind, 'like')}
+          disabled={isLoading}
+          aria-pressed={likeActive}
+          title="Gostei"
+          className={`inline-flex h-8 min-w-14 items-center justify-center gap-1 rounded-lg border px-2.5 transition-all disabled:cursor-wait disabled:opacity-70 ${likeActive ? 'border-emerald-300 bg-emerald-50 text-emerald-700 shadow-sm dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-slate-200 bg-white text-slate-500 hover:border-emerald-200 hover:text-emerald-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-emerald-800 dark:hover:text-emerald-300'}`}
+        >
+          <ThumbsUp size={13} />
+          <span>{counts.likes}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleEditorialFeedbackToggle(kind, 'dislike')}
+          disabled={isLoading}
+          aria-pressed={dislikeActive}
+          title="Nao gostei"
+          className={`inline-flex h-8 min-w-14 items-center justify-center gap-1 rounded-lg border px-2.5 transition-all disabled:cursor-wait disabled:opacity-70 ${dislikeActive ? 'border-red-300 bg-red-50 text-red-700 shadow-sm dark:border-red-800 dark:bg-red-950/40 dark:text-red-300' : 'border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-red-800 dark:hover:text-red-300'}`}
+        >
+          <ThumbsDown size={13} />
+          <span>{counts.dislikes}</span>
+        </button>
+      </div>
+    );
   };
 
   const cardContent = (
@@ -809,7 +1068,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         </div>
 
         {showFilters && (
-          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-3 animate-slide-down">
+          <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 animate-slide-down dark:border-slate-800 sm:grid-cols-3 xl:grid-cols-6">
             <div className="space-y-0.5">
               <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Banca</span>
               <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Building2 size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.bancas?.map(b => b.sigla).join(' / ') || '---'}</div>
@@ -824,7 +1083,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             </div>
             <div className="space-y-0.5">
               <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Cargo</span>
-              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Briefcase size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.cargos?.map(c => c.descrição).join(', ') || 'Geral'}</div>
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate"><Briefcase size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {question.cargos?.map(getQuestionCardTaxonomyLabel).filter(Boolean).join(', ') || 'Geral'}</div>
+            </div>
+            <div className="space-y-0.5">
+              <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Prova</span>
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate" title={questionExamText || undefined}><FileText size={10} className="text-indigo-300 dark:text-indigo-600 flex-shrink-0" /> {questionExamText || '---'}</div>
             </div>
             <div className="space-y-0.5">
               <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter">Assunto</span>
@@ -882,7 +1145,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           </div>
         )}
 
-        {(question.grupoQuestao || question.introText) && (
+        {(question.grupoQuestao || question.introText || question.referenceText || question.reference_text) && (
           <div className="mb-4">
             <button
               onClick={() => setIsContextExpanded(!isContextExpanded)}
@@ -928,9 +1191,20 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
             {question.introText && (
               <div className="bg-slate-50 dark:bg-slate-800/50 border-l-2 border-indigo-200 dark:border-indigo-800 p-4 rounded-r-xl mb-6">
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed italic whitespace-pre-wrap font-medium">
-                  {question.introText}
-                </p>
+                <div
+                  className="question-rich-html text-xs text-slate-500 dark:text-slate-400 leading-relaxed italic font-medium [&_img]:mx-auto [&_img]:my-3 [&_img]:max-h-[420px] [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-lg [&_img]:border [&_img]:border-slate-200 [&_img]:bg-white [&_img]:p-1 dark:[&_img]:border-slate-700 dark:[&_img]:bg-slate-900"
+                  dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.introText) }}
+                />
+              </div>
+            )}
+
+            {(question.referenceText || question.reference_text) && (
+              <div className="mb-6 rounded-r-xl border-l-2 border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+                <div className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Referência</div>
+                <div
+                  className="question-rich-html text-xs font-semibold leading-relaxed text-amber-900 dark:text-amber-100"
+                  dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.referenceText || question.reference_text || '') }}
+                />
               </div>
             )}
           </div>
@@ -1228,10 +1502,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <GraduationCap size={14} /> Comentário do Professor
                 </div>
                 {question.teacherComment ? (
-                  <MathRichText
-                    content={question.teacherComment}
-                    className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-amber-100/50 dark:border-amber-900/30 shadow-sm text-sm text-slate-700 dark:text-slate-300 leading-relaxed"
-                  />
+                  <>
+                    <MathRichText
+                      content={question.teacherComment}
+                      className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-amber-100/50 dark:border-amber-900/30 shadow-sm text-sm text-slate-700 dark:text-slate-300 leading-relaxed"
+                    />
+                    {renderEditorialFeedbackControls('teacher')}
+                  </>
                 ) : (
                   <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-dashed border-amber-200 dark:border-amber-900/30 text-center">
                     <GraduationCap size={24} className="text-amber-300 dark:text-amber-700 mx-auto mb-2" />
@@ -1247,10 +1524,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <BookOpen size={14} /> Análise Detalhada
                 </div>
                 {question.detailedComment ? (
-                  <MathRichText
-                    content={question.detailedComment}
-                    className="prose prose-indigo prose-sm max-w-none text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/30 shadow-sm"
-                  />
+                  <>
+                    <MathRichText
+                      content={question.detailedComment}
+                      disableCallouts
+                      className="prose prose-indigo prose-sm max-w-none text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 p-6 rounded-xl border border-indigo-100/50 dark:border-indigo-900/30 shadow-sm"
+                    />
+                    {renderEditorialFeedbackControls('detailed')}
+                  </>
                 ) : (
                   <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/30 text-center">
                     <BookOpen size={24} className="text-indigo-300 dark:text-indigo-700 mx-auto mb-2" />

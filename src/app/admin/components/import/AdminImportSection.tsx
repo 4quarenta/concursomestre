@@ -13,6 +13,7 @@ import React from 'react';
 import Image from 'next/image';
 import type { Question, SystemSettings } from '@types';
 import MathRichText from '@/components/shared/math/MathRichText';
+import RichTextEditor from '@/components/shared/ui/RichTextEditor';
 import {
   AlertTriangle,
   BookOpen,
@@ -29,6 +30,7 @@ import {
   Layers,
   Loader2,
   PlayCircle,
+  Plus,
   RefreshCw,
   Save,
   Sparkles,
@@ -65,6 +67,7 @@ type ExtractedQuestionPreview = Question & {
   correctOptionIndex?: number;
   questionNumber?: number | string;
   question_number?: number | string;
+  number?: number | string;
   sourcePage?: number | string;
   needsImportReview?: boolean;
   contextKey?: string;
@@ -120,6 +123,21 @@ type ExtractedContextPreview = {
     width?: number | string;
     height?: number | string;
   };
+  figures?: Array<{
+    figureKey?: string;
+    type?: string;
+    description?: string;
+    imageData?: string;
+    pageImageData?: string;
+    figureBox?: {
+      x?: number | string;
+      y?: number | string;
+      width?: number | string;
+      height?: number | string;
+    };
+    page?: number;
+    order?: number;
+  }>;
   manualCropApplied?: boolean;
 };
 
@@ -145,22 +163,53 @@ const asText = (value: unknown) => String(value ?? '').trim();
 const asTextList = (value: unknown) => (
   Array.isArray(value)
     ? value.map((item) => asText(item)).filter(Boolean)
-    : asText(value).split(/\s+\/\s+|[,;\n]/).map((item) => item.trim()).filter(Boolean)
+    : asText(value).split(/\s*\/\s*|[,;\n]/).map((item) => item.trim()).filter(Boolean)
 );
 
-const appendExamYear = (title: string, year: unknown) => {
-  const cleanTitle = asText(title).replace(/\s*\(\d{4}\)\s*$/, '').trim();
-  const cleanYear = asText(year).match(/\d{4}/)?.[0] || '';
-  return cleanYear ? `${cleanTitle} (${cleanYear})` : cleanTitle;
+const dedupeTextList = (items: string[]) => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
+const cleanExamTitlePart = (value: unknown) => asText(value)
+  .replace(/\s+/g, ' ')
+  .replace(/\s*\(\d{4}\)\s*$/, '')
+  .trim();
+
+const cleanExplicitExamTitle = (value: unknown) => asText(value)
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const readExamYear = (...values: unknown[]) => (
+  values.map((value) => asText(value).match(/\b(19\d{2}|20\d{2})\b/)?.[0]).find(Boolean) || ''
+);
+
+const joinExamTitleParts = (...parts: unknown[]) => parts.map(cleanExamTitlePart).filter(Boolean).join(' - ');
+const joinExamTitleList = (items: string[], fallback: unknown = '') => (
+  items.length > 0 ? items.join('/') : cleanExamTitlePart(fallback)
+);
+
+const buildStandardExamTitlePreview = (metadata: Record<string, unknown>) => {
+  const roleList = dedupeTextList([...asTextList(metadata.roles), ...asTextList(metadata.cargos)]);
+  const sourceList = dedupeTextList([...asTextList(metadata.sources), ...asTextList(metadata.source)]);
+  const role = joinExamTitleList(roleList, metadata.role || metadata.cargo || metadata.examName || metadata.contestName);
+  const agency = cleanExamTitlePart(metadata.agency);
+  const year = readExamYear(metadata.year, metadata.ano);
+  const source = joinExamTitleList(sourceList, metadata.source);
+  return joinExamTitleParts(agency, year, source, role);
 };
 
 const buildExamTitlePreview = (metadata: Record<string, unknown>) => {
-  const explicitTitle = asText(metadata.title || metadata.examTitle || metadata.name || metadata.nome);
-  const roleList = asTextList(metadata.roles || metadata.cargos);
-  const role = roleList.length > 0 ? roleList.join(' / ') : asText(metadata.role || metadata.examName || metadata.contestName);
-  const source = asText(metadata.source || metadata.agency);
-  const baseTitle = explicitTitle || (role && source ? `${role} - ${source}` : '');
-  return baseTitle ? appendExamYear(baseTitle, metadata.year || metadata.ano) : '';
+  const standardTitle = buildStandardExamTitlePreview(metadata);
+  const explicitTitle = cleanExplicitExamTitle(metadata.title || metadata.examTitle || metadata.name || metadata.nome);
+  return explicitTitle || standardTitle;
 };
 
 const getTaxonomyLabel = (item: unknown) => {
@@ -170,7 +219,7 @@ const getTaxonomyLabel = (item: unknown) => {
 };
 
 const getQuestionNumber = (question: ExtractedQuestionPreview, fallback: number) => {
-  const match = asText(question.questionNumber ?? question.question_number ?? question.id ?? fallback).match(/\d+/);
+  const match = asText(question.questionNumber ?? question.question_number ?? question.number ?? question.id ?? fallback).match(/\d+/);
   return match ? Number(match[0]) : fallback;
 };
 
@@ -224,7 +273,16 @@ const getQuestionExpectedOptionsCount = (question: Question) => {
     modality?: unknown;
     expectedOptionsCount?: unknown;
     expected_options_count?: unknown;
+    bancas?: unknown[];
+    banca?: unknown;
   };
+  const agencySignal = [
+    ...(Array.isArray(record.bancas) ? record.bancas : []),
+    record.banca,
+  ].map(getTaxonomyLabel).join(' ');
+  if (/\bIBFC\b/i.test(agencySignal)) {
+    return 4;
+  }
   const explicitCount = Number(asText(record.expectedOptionsCount ?? record.expected_options_count).match(/[2-5]/)?.[0] || 0);
   if (Number.isFinite(explicitCount) && explicitCount >= 2 && explicitCount <= 5) {
     return explicitCount;
@@ -250,6 +308,80 @@ const getImageDataUri = (imageData?: string) => {
   if (!value) return '';
   return value.startsWith('data:') ? value : `data:image/jpeg;base64,${value}`;
 };
+
+const escapeHtmlAttribute = (value: unknown) => asText(value)
+  .replace(/&/g, '&amp;')
+  .replace(/"/g, '&quot;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;');
+
+const figureMarkerPattern = /\[FIGURA:\s*([-\w]+)\]/gi;
+
+const createContextInlineFigureHtml = (
+  context: ExtractedContextPreview,
+  figureKey: string,
+  imageData?: string,
+  description?: string,
+) => {
+  const imageUri = getImageDataUri(imageData);
+  const caption = asText(description || context.figureDescription);
+  if (!imageUri) {
+    return [
+      '<figure class="question-support-figure cm-import-context-figure cm-import-context-figure--missing">',
+      `<figcaption>Figura ${escapeHtmlAttribute(figureKey)} ainda sem recorte. Use "Ajustar recorte da figura" antes de publicar.</figcaption>`,
+      '</figure>',
+    ].join('');
+  }
+
+  return [
+    '<figure class="question-support-figure cm-import-context-figure">',
+    `<img src="${escapeHtmlAttribute(imageUri)}" alt="${escapeHtmlAttribute(caption || context.title || 'Figura do contexto')}" loading="lazy" />`,
+    caption ? `<figcaption>${escapeHtmlAttribute(caption)}</figcaption>` : '',
+    '</figure>',
+  ].filter(Boolean).join('');
+};
+
+const renderContextTextWithInlineFigures = (context: ExtractedContextPreview) => {
+  const rawText = asText(context.text);
+  if (!rawText) {
+    return context.imageData
+      ? createContextInlineFigureHtml(context, `${context.tempId}-fig-01`, context.imageData)
+      : '';
+  }
+
+  if (/<img\b/i.test(rawText)) {
+    return rawText;
+  }
+
+  const figures = Array.isArray(context.figures) ? context.figures : [];
+  const figureByKey = new Map(figures.map((figure, index) => [
+    asText(figure.figureKey || `${context.tempId}-fig-${String(index + 1).padStart(2, '0')}`),
+    figure,
+  ]));
+  let consumedPrimaryImage = false;
+  const replaced = rawText.replace(figureMarkerPattern, (_marker, rawFigureKey) => {
+    const figureKey = asText(rawFigureKey);
+    const figure = figureByKey.get(figureKey);
+    const figureImageData = figure?.imageData || (!consumedPrimaryImage ? context.imageData : '');
+    consumedPrimaryImage = consumedPrimaryImage || Boolean(figureImageData);
+    return createContextInlineFigureHtml(
+      context,
+      figureKey,
+      figureImageData,
+      figure?.description || context.figureDescription,
+    );
+  });
+
+  if (replaced !== rawText) {
+    return replaced;
+  }
+
+  return context.imageData
+    ? [rawText, createContextInlineFigureHtml(context, `${context.tempId}-fig-01`, context.imageData)].join('\n\n')
+    : rawText;
+};
+
+const contextHasInlineFigureHtml = (context: ExtractedContextPreview) => /<img\b|cm-import-context-figure/i.test(renderContextTextWithInlineFigures(context));
 
 const getFirstEmbeddedImageData = (html?: string) => {
   const match = asText(html).match(/<img\b[^>]*\bsrc\s*=\s*["'](data:image\/[^"']+)["'][^>]*>/i);
@@ -557,6 +689,7 @@ interface AdminImportSectionProps {
   onGenerateTeacherAll: () => void;
   onGenerateDetailedAll: () => void;
   onRetryMissingQuestions: () => void | Promise<void>;
+  onParseQuestionsFromText: (text: string) => void | Promise<void>;
   onPublishExam: () => void | Promise<void>;
   onPublishAllQuestions: () => void | Promise<void>;
   onPublishQuestion: (index: number) => void | Promise<void>;
@@ -573,6 +706,7 @@ interface AdminImportSectionProps {
   onExtractedQuestionSupportImageAdd: (questionIndex: number, imageData: string, fileName?: string) => void;
   onExtractedQuestionOptionImageChange: (questionIndex: number, optionIndex: number, imageData: string) => void;
   onExtractedQuestionContextAdd: (questionIndex: number) => void;
+  onExtractedContextAdd: () => void;
   onExtractedContextRemove: (tempId: string) => void;
   onExtractedContextContentChange: (tempId: string, value: string) => void;
   onExtractedContextFieldChange: (tempId: string, field: 'title' | 'text' | 'figureDescription', value: string) => void;
@@ -629,6 +763,7 @@ const AdminImportSection = ({
   onGenerateTeacherAll,
   onGenerateDetailedAll,
   onRetryMissingQuestions,
+  onParseQuestionsFromText,
   onPublishExam,
   onPublishAllQuestions,
   onPublishQuestion,
@@ -645,6 +780,7 @@ const AdminImportSection = ({
   onExtractedQuestionSupportImageAdd,
   onExtractedQuestionOptionImageChange,
   onExtractedQuestionContextAdd,
+  onExtractedContextAdd,
   onExtractedContextRemove,
   onExtractedContextContentChange,
   onExtractedContextFieldChange,
@@ -666,12 +802,20 @@ const AdminImportSection = ({
   const [editingStatementIndex, setEditingStatementIndex] = React.useState<number | null>(null);
   const [editingOptionKey, setEditingOptionKey] = React.useState<string | null>(null);
   const [activeOptionCropKey, setActiveOptionCropKey] = React.useState<string | null>(null);
+  const [manualQuestionText, setManualQuestionText] = React.useState('');
+  const [isParsingManualQuestionText, setIsParsingManualQuestionText] = React.useState(false);
   const metadata = importMetadata || {};
-  const metadataRoleList = asTextList(metadata.roles || metadata.cargos);
-  const metadataRole = metadataRoleList.length > 0 ? metadataRoleList.join(' / ') : asText(metadata.role || metadata.examName || metadata.contestName);
-  const metadataSource = asText(metadata.source || metadata.agency);
+  const metadataRoleList = dedupeTextList([...asTextList(metadata.roles), ...asTextList(metadata.cargos)]);
+  const metadataRole = metadataRoleList.length > 0 ? metadataRoleList.join('/') : asText(metadata.role || metadata.cargo || metadata.examName || metadata.contestName);
+  const metadataAgency = asText(metadata.agency);
+  const metadataSourceList = dedupeTextList([...asTextList((metadata as Record<string, unknown>).sources), ...asTextList(metadata.source)]);
+  const metadataSource = metadataSourceList.length > 0 ? metadataSourceList.join('/') : asText(metadata.source);
   const metadataYear = asText(metadata.year || metadata.ano);
-  const metadataTitle = asText(metadata.title || metadata.examTitle);
+  const hasManualMetadataTitle = Object.prototype.hasOwnProperty.call(metadata, 'title')
+    || Object.prototype.hasOwnProperty.call(metadata, 'examTitle');
+  const metadataTitle = Object.prototype.hasOwnProperty.call(metadata, 'title')
+    ? asText(metadata.title)
+    : asText(metadata.examTitle);
   const examTitlePreview = buildExamTitlePreview(metadata);
   const missingAlternativesCount = extractedQuestions.filter((question) => getFilledQuestionOptionsCount(question) < getQuestionExpectedOptionsCount(question)).length;
   const effectiveReviewTab = activeReviewTab === 'pending' && missingAlternativesCount === 0 ? 'questions' : activeReviewTab;
@@ -701,8 +845,13 @@ const AdminImportSection = ({
   ), [extractedQuestions]);
   const isPublishing = Boolean(publishingAction);
   const importActionBusy = isBulkGenerating || isRetryingMissingQuestions;
+  const manualTextParseBlocked = isProcessing
+    || importActionBusy
+    || isParsingManualQuestionText
+    || !manualQuestionText.trim()
+    || (!selectedFocusId && !manualFocusName.trim());
   const retryMissingBlocked = isProcessing || importActionBusy || missingByQuantity === 0 || !qFile;
-  const examPublishBlocked = isProcessing || importActionBusy || isPublishing || !metadataRole || !metadataSource || !metadataYear || (!selectedFocusId && !manualFocusName.trim());
+  const examPublishBlocked = isProcessing || importActionBusy || isPublishing || !metadataAgency || !metadataYear || !metadataSource || !metadataRole || (!selectedFocusId && !manualFocusName.trim());
   const questionsPublishBlocked = isProcessing || importActionBusy || isPublishing || !publishedExam || missingAlternativesCount > 0 || unpublishedQuestionCount === 0;
   const metadataSubjects = Array.isArray(metadata.subjects)
     ? metadata.subjects.map((subject) => asText(subject)).filter(Boolean)
@@ -846,6 +995,36 @@ const AdminImportSection = ({
 
     const imageData = await readLocalImageFile(file);
     onExtractedContextImageChange(contextId, imageData, file.name);
+  };
+  const handleRemoveExtractedContext = (context: ExtractedContextPreview) => {
+    const linkedCount = context.questionNumbers.length;
+    const contextTitle = context.title || 'Texto de apoio';
+    const confirmed = typeof window === 'undefined' || window.confirm(
+      `Excluir o contexto "${contextTitle}"?${linkedCount > 0 ? ` Ele sera desvinculado de ${linkedCount} questao(oes).` : ''}`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setContextCropDrafts((previous) => {
+      const next = { ...previous };
+      delete next[context.tempId];
+      return next;
+    });
+    setEditingContextId((current) => (current === context.tempId ? null : current));
+    onExtractedContextRemove(context.tempId);
+  };
+  const handleParseManualQuestionText = async () => {
+    if (manualTextParseBlocked) {
+      return;
+    }
+
+    setIsParsingManualQuestionText(true);
+    try {
+      await onParseQuestionsFromText(manualQuestionText);
+    } finally {
+      setIsParsingManualQuestionText(false);
+    }
   };
 
   return (
@@ -999,6 +1178,44 @@ const AdminImportSection = ({
               </div>
             </div>
 
+            <div className={`space-y-3 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label htmlFor="manual-question-parser-text" className="flex min-w-0 items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                  <FileQuestion size={13} className="shrink-0 text-sky-700 dark:text-sky-300" />
+                  <span className="truncate">Gerar por texto</span>
+                </label>
+                <span className="shrink-0 rounded-sm border border-slate-200 bg-white px-2 py-1 text-[8px] font-black uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                  Parser local
+                </span>
+              </div>
+              <textarea
+                id="manual-question-parser-text"
+                value={manualQuestionText}
+                onChange={(event) => setManualQuestionText(event.target.value)}
+                placeholder={'8) Enunciado da questao...\na) Alternativa A.\nb) Alternativa B.\nc) Alternativa C.\nd) Alternativa D.'}
+                className={`h-auto min-h-52 w-full resize-y py-3 text-xs font-semibold leading-relaxed placeholder:text-slate-400 dark:placeholder:text-slate-600 ${ADMIN_FIELD_CLASS}`}
+              />
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                <button
+                  type="button"
+                  onClick={handleParseManualQuestionText}
+                  disabled={manualTextParseBlocked}
+                  className="flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-sm border border-sky-700 bg-sky-700 px-3 py-2.5 text-[10px] font-black uppercase tracking-wide text-white transition-colors hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-700/60 disabled:opacity-60"
+                >
+                  {isParsingManualQuestionText ? <Loader2 className="animate-spin" size={14} /> : <FileQuestion size={14} />}
+                  <span className="truncate">Gerar questao</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualQuestionText('')}
+                  disabled={isParsingManualQuestionText || !manualQuestionText.trim()}
+                  className={`${ADMIN_SECONDARY_BUTTON_CLASS} min-h-11 justify-center px-4 text-[10px] font-black uppercase tracking-wide disabled:opacity-50`}
+                >
+                  Limpar
+                </button>
+              </div>
+            </div>
+
             {isProcessing ? (
               <div className="space-y-4">
                 <div>
@@ -1046,73 +1263,88 @@ const AdminImportSection = ({
         <div className="flex flex-col gap-6 lg:col-span-8">
           {extractedQuestions.length > 0 ? (
             <div className="flex flex-1 flex-col space-y-4 animate-slide-up">
-              <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-col justify-between gap-4 p-5 xl:flex-row xl:items-center`}>
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2 rounded-sm border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
-                    <CheckCircle2 size={16} /> {expectedTotal > 0 ? `${extractedUniqueTotal}/${expectedTotal}` : extractedQuestions.length} Questoes Extraidas
-                  </div>
-                  {missingByQuantity > 0 && (
-                    <div className="flex items-center gap-2 rounded-sm border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-black uppercase text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300">
-                      <AlertTriangle size={16} /> Faltam {missingByQuantity}
+              <div className={`${ADMIN_PAGE_PANEL_CLASS} space-y-4 p-5`}>
+                <div className="flex flex-wrap items-start gap-4">
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <div className="flex min-h-14 min-w-[13rem] items-center gap-3 rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
+                      <CheckCircle2 size={17} className="shrink-0" />
+                      <span className="flex min-w-0 items-baseline gap-2 leading-tight">
+                        <span className="shrink-0 text-base font-black">{expectedTotal > 0 ? `${extractedUniqueTotal}/${expectedTotal}` : extractedQuestions.length}</span>
+                        <span className="whitespace-nowrap text-[10px] font-black uppercase tracking-wide">Questoes extraidas</span>
+                      </span>
                     </div>
-                  )}
-                </div>
-                <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:grid-cols-5">
-                  <button
-                    type="button"
-                    onClick={onGenerateTeacherAll}
-                    disabled={importActionBusy || isProcessing}
-                    className="flex min-w-0 items-center justify-center gap-2 rounded-sm border border-amber-300 bg-amber-50 px-4 py-2.5 text-[10px] font-black uppercase text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30"
-                  >
-                    {isBulkGenerating ? <Loader2 className="animate-spin" size={14} /> : <GraduationCap size={14} />} Gerar Professor (Todos)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onGenerateDetailedAll}
-                    disabled={importActionBusy || isProcessing}
-                    className="flex min-w-0 items-center justify-center gap-2 rounded-sm border border-sky-300 bg-sky-50 px-4 py-2.5 text-[10px] font-black uppercase text-sky-700 transition-colors hover:bg-sky-100 disabled:opacity-50 dark:border-sky-900/30 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/30"
-                  >
-                    {isBulkGenerating ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />} Gerar Analise Detalhada (Todas)
-                  </button>
-                  {missingByQuantity > 0 && (
+                    {missingByQuantity > 0 && (
+                      <div className="flex min-h-14 min-w-[10rem] items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300">
+                        <AlertTriangle size={17} className="shrink-0" />
+                        <span className="flex min-w-0 items-baseline gap-2 leading-tight">
+                          <span className="shrink-0 text-base font-black">{missingByQuantity}</span>
+                          <span className="whitespace-nowrap text-[10px] font-black uppercase tracking-wide">Faltantes</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className={`grid min-w-[min(100%,34rem)] flex-1 gap-2 sm:grid-cols-2 ${missingByQuantity > 0 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
                     <button
                       type="button"
-                      onClick={onRetryMissingQuestions}
-                      disabled={retryMissingBlocked}
-                      className="flex min-w-0 items-center justify-center gap-2 rounded-sm border border-amber-500 bg-amber-600 px-4 py-2.5 text-[10px] font-black uppercase text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-600/60 disabled:opacity-60"
+                      onClick={onGenerateTeacherAll}
+                      disabled={importActionBusy || isProcessing}
+                      className="flex min-h-14 min-w-0 items-center justify-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-3 text-center text-[10px] font-black uppercase leading-tight tracking-wide text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/30"
                     >
-                      {isRetryingMissingQuestions ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
-                      Tentar Faltantes
+                      {isBulkGenerating ? <Loader2 className="shrink-0 animate-spin" size={15} /> : <GraduationCap className="shrink-0" size={15} />}
+                      <span className="min-w-0">Gerar Professor</span>
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={onPublishExam}
-                    disabled={examPublishBlocked}
-                    className="flex min-w-0 items-center justify-center gap-2 rounded-sm border border-sky-700 bg-sky-700 px-4 py-2.5 text-[10px] font-black uppercase text-white transition-colors hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-700/60 disabled:opacity-60"
-                  >
-                    {publishingAction === 'exam' ? <Loader2 className="animate-spin" size={14} /> : <FileCheck size={14} />}
-                    {publishedExam ? 'Atualizar Prova' : 'Publicar Prova'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onPublishAllQuestions}
-                    disabled={questionsPublishBlocked}
-                    className="flex min-w-0 items-center justify-center gap-2 rounded-sm border border-emerald-700 bg-emerald-700 px-4 py-2.5 text-[10px] font-black uppercase text-white transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-emerald-700/60 disabled:opacity-60"
-                  >
-                    {publishingAction === 'questions' ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
-                    Publicar Todas
-                  </button>
+                    <button
+                      type="button"
+                      onClick={onGenerateDetailedAll}
+                      disabled={importActionBusy || isProcessing}
+                      className="flex min-h-14 min-w-0 items-center justify-center gap-2 rounded-md border border-sky-300 bg-sky-50 px-3 py-3 text-center text-[10px] font-black uppercase leading-tight tracking-wide text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-900/30 dark:bg-sky-900/20 dark:text-sky-300 dark:hover:bg-sky-900/30"
+                    >
+                      {isBulkGenerating ? <Loader2 className="shrink-0 animate-spin" size={15} /> : <Sparkles className="shrink-0" size={15} />}
+                      <span className="min-w-0">Analise Detalhada</span>
+                    </button>
+                    {missingByQuantity > 0 && (
+                      <button
+                        type="button"
+                        onClick={onRetryMissingQuestions}
+                        disabled={retryMissingBlocked}
+                        className="flex min-h-14 min-w-0 items-center justify-center gap-2 rounded-md border border-amber-600 bg-amber-600 px-3 py-3 text-center text-[10px] font-black uppercase leading-tight tracking-wide text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-600/60 disabled:opacity-60"
+                      >
+                        {isRetryingMissingQuestions ? <Loader2 className="shrink-0 animate-spin" size={15} /> : <RefreshCw className="shrink-0" size={15} />}
+                        <span className="min-w-0">Tentar Faltantes</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={onPublishExam}
+                      disabled={examPublishBlocked}
+                      className="flex min-h-14 min-w-0 items-center justify-center gap-2 rounded-md border border-sky-700 bg-sky-700 px-3 py-3 text-center text-[10px] font-black uppercase leading-tight tracking-wide text-white transition-colors hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-700/60 disabled:opacity-60"
+                    >
+                      {publishingAction === 'exam' ? <Loader2 className="shrink-0 animate-spin" size={15} /> : <FileCheck className="shrink-0" size={15} />}
+                      <span className="min-w-0">{publishedExam ? 'Atualizar Prova' : 'Publicar Prova'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onPublishAllQuestions}
+                      disabled={questionsPublishBlocked}
+                      className="flex min-h-14 min-w-0 items-center justify-center gap-2 rounded-md border border-emerald-700 bg-emerald-700 px-3 py-3 text-center text-[10px] font-black uppercase leading-tight tracking-wide text-white transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-emerald-700/60 disabled:opacity-60"
+                    >
+                      {publishingAction === 'questions' ? <Loader2 className="shrink-0 animate-spin" size={15} /> : <CheckCircle2 className="shrink-0" size={15} />}
+                      <span className="min-w-0">Publicar Todas</span>
+                    </button>
+                  </div>
                 </div>
-                {(!metadataRole || !metadataSource || !metadataYear || !publishedExam || missingAlternativesCount > 0 || missingByQuantity > 0) && (
-                  <div className="w-full rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold leading-relaxed text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
-                    {!metadataRole || !metadataSource || !metadataYear
-                      ? 'Para publicar, preencha Cargo/Prova, Orgao/Fonte e Ano para formar o titulo Cargo/Prova - Orgao/Fonte (ano).'
-                      : !publishedExam
-                        ? 'Publique a prova primeiro. Depois publique todas as questoes ou apenas uma questao especifica.'
-                        : missingAlternativesCount > 0
-                          ? `${missingAlternativesCount} questao(oes) precisam de alternativas antes da publicacao.`
-                          : `${missingByQuantity} questao(oes) ainda nao apareceram pela quantidade esperada do gabarito. Voce pode publicar apenas o lote revisado ou tentar reprocessar o PDF.`}
+                {(!metadataAgency || !metadataYear || !metadataSource || !metadataRole || !publishedExam || missingAlternativesCount > 0 || missingByQuantity > 0) && (
+                  <div className="flex w-full items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] font-semibold leading-relaxed text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    <span>
+                      {!metadataAgency || !metadataYear || !metadataSource || !metadataRole
+                        ? 'Para publicar, preencha Banca, Ano, Orgao e Cargo/Prova para formar o titulo Banca - Ano - Orgao - Cargo/Prova.'
+                        : !publishedExam
+                          ? 'Publique a prova primeiro. Depois publique todas as questoes ou apenas uma questao especifica.'
+                          : missingAlternativesCount > 0
+                            ? `${missingAlternativesCount} questao(oes) precisam de alternativas antes da publicacao.`
+                            : `${missingByQuantity} questao(oes) ainda nao apareceram pela quantidade esperada do gabarito. Voce pode publicar apenas o lote revisado ou tentar reprocessar o PDF.`}
+                    </span>
                   </div>
                 )}
               </div>
@@ -1156,32 +1388,32 @@ const AdminImportSection = ({
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Metadados da prova</p>
                     <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                      A prova e salva primeiro no banco; depois as questoes sao vinculadas a ela. O titulo deve seguir <strong>Cargo/Prova - Orgao/Fonte (ano)</strong>.
+                      A prova e salva primeiro no banco; depois as questoes sao vinculadas a ela. O titulo deve seguir <strong>Banca - Ano - Orgao - Cargo/Prova</strong>.
                     </p>
                   </div>
                   <span className="rounded-sm bg-slate-100 px-2 py-1 text-[9px] font-black uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                    {examTitlePreview || 'Titulo pendente'}
+                    {metadataTitle || examTitlePreview || 'Titulo pendente'}
                   </span>
                 </div>
                 <label className="block space-y-1">
                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Titulo da prova</span>
                   <input
                     type="text"
-                    value={metadataTitle || examTitlePreview}
+                    value={hasManualMetadataTitle ? metadataTitle : examTitlePreview}
                     onChange={(event) => onImportMetadataChange('title', event.target.value)}
-                    placeholder="Ex.: ENEM - INEP (2025)"
+                    placeholder="Ex.: EXATUS - 2014 - PM-RJ - Soldado da Policia Militar"
                     className={`h-10 text-xs font-bold ${ADMIN_FIELD_CLASS}`}
                   />
                   <span className="block text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                    Se ficar em branco, o sistema usa automaticamente Cargo/Prova - Orgao/Fonte (ano).
+                    Se ficar em branco, o sistema usa automaticamente Banca - Ano - Orgao - Cargo/Prova.
                   </span>
                 </label>
                 <div className="grid gap-3 md:grid-cols-3">
                   {([
-                    ['role', 'Cargo/Prova', 'Ex.: ENEM, Analista Judiciario'],
-                    ['source', 'Orgao/Fonte', 'Ex.: INEP, TJ-SP'],
-                    ['agency', 'Banca', 'Ex.: INEP, FGV'],
+                    ['agency', 'Banca', 'Ex.: EXATUS, IBADE, FGV'],
                     ['year', 'Ano', 'Ex.: 2025'],
+                    ['source', 'Orgao', 'Ex.: PM-RJ ou PM-PB/CBM-PB'],
+                    ['role', 'Cargo/Prova', 'Ex.: Soldado ou Soldado/Oficial'],
                     ['level', 'Nivel', 'Ex.: Medio, Superior'],
                     ['examType', 'Categoria', 'Concurso ou ENEM'],
                     ['bookletType', 'Tipo/Caderno', 'Ex.: Tipo B, Caderno 1'],
@@ -1231,13 +1463,28 @@ const AdminImportSection = ({
 
               {effectiveReviewTab === 'contexts' && (
                 <div className={`${ADMIN_PAGE_PANEL_CLASS} space-y-3 p-4`}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                      Contextos e figuras extraidos
-                    </p>
-                    <span className="rounded-sm bg-violet-100 px-2 py-1 text-[9px] font-black uppercase text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
-                      {figureContexts.length} figura(s)
-                    </span>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                        Contextos e figuras extraidos
+                      </p>
+                      <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                        Crie textos de apoio compartilhados e vincule as questoes corretas.
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <span className="rounded-sm bg-violet-100 px-2 py-1 text-[9px] font-black uppercase text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                        {figureContexts.length} figura(s)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={onExtractedContextAdd}
+                        className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-sky-600 bg-sky-600 px-3 text-[9px] font-black uppercase tracking-widest text-white transition-colors hover:bg-sky-700 dark:border-sky-500 dark:bg-sky-600 dark:hover:bg-sky-500"
+                      >
+                        <Plus size={13} />
+                        Adicionar contexto
+                      </button>
+                    </div>
                   </div>
                   <div className="grid gap-3">
                     {extractedContexts.map((context) => (
@@ -1275,16 +1522,25 @@ const AdminImportSection = ({
                                 }}
                               />
                             </label>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExtractedContext(context)}
+                              className="inline-flex items-center justify-center gap-1 rounded-sm border border-red-200 bg-white px-2 py-1 text-[8px] font-black uppercase tracking-widest text-red-600 transition-colors hover:bg-red-50 dark:border-red-900/50 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950/30"
+                              aria-label={`Excluir contexto ${context.title || context.tempId}`}
+                            >
+                              <Trash2 size={11} />
+                              Excluir contexto
+                            </button>
                           </div>
                         </div>
                         <label className="mt-3 block space-y-1">
                           <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Texto do contexto</span>
-                          <textarea
-                            value={context.text || ''}
-                            onChange={(event) => onExtractedContextFieldChange(context.tempId, 'text', event.target.value)}
-                            rows={Math.min(12, Math.max(4, Math.ceil(String(context.text || '').length / 130)))}
+                          <RichTextEditor
+                            initialValue={renderContextTextWithInlineFigures(context)}
+                            onChange={(html) => onExtractedContextFieldChange(context.tempId, 'text', html)}
                             placeholder="Texto de apoio, comando compartilhado ou descricao complementar."
-                            className={`${ADMIN_FIELD_CLASS} min-h-28 w-full resize-y whitespace-pre-wrap text-[11px] font-medium leading-relaxed`}
+                            allowImages
+                            contentClassName="min-h-36 max-h-96 text-[11px] font-medium leading-relaxed"
                           />
                         </label>
                         <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
@@ -1340,7 +1596,7 @@ const AdminImportSection = ({
                             />
                           </label>
                         )}
-                        {getImageDataUri(context.imageData) && (
+                        {getImageDataUri(context.imageData) && !contextHasInlineFigureHtml(context) && (
                           <div className="relative mt-3 h-48 w-full overflow-hidden rounded-sm border border-slate-200 dark:border-slate-800">
                             <Image
                               key={`${context.tempId}-${String(context.imageData || '').slice(0, 32)}`}
@@ -1676,11 +1932,12 @@ const AdminImportSection = ({
                           </div>
                         </div>
                         {editingIntroTextIndex === index ? (
-                          <textarea
-                            value={introText}
-                            onChange={(event) => onExtractedQuestionIntroTextChange(index, event.target.value)}
-                            rows={Math.min(12, Math.max(4, Math.ceil(introText.length / 110)))}
-                            className={`${ADMIN_FIELD_CLASS} min-h-28 w-full resize-y text-sm font-medium leading-relaxed text-slate-700 dark:text-slate-200`}
+                          <RichTextEditor
+                            initialValue={introText}
+                            onChange={(html) => onExtractedQuestionIntroTextChange(index, html)}
+                            placeholder="Texto de apoio da questao. Use a barra para formatar e inserir imagens entre os paragrafos."
+                            allowImages
+                            contentClassName="min-h-40 max-h-[28rem] text-sm font-medium leading-relaxed"
                           />
                         ) : (
                           introText ? (
@@ -1797,11 +2054,11 @@ const AdminImportSection = ({
                                 type="button"
                                 onClick={(event) => {
                                   event.preventDefault();
-                                  onExtractedContextRemove(context.tempId);
+                                  handleRemoveExtractedContext(context);
                                 }}
                                 className="rounded-sm border border-red-200 bg-white px-2 py-1 text-[8px] font-black uppercase tracking-widest text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:bg-slate-950 dark:text-red-300"
                               >
-                                Excluir
+                                Excluir contexto
                               </button>
                             </summary>
                             {(
@@ -1819,16 +2076,18 @@ const AdminImportSection = ({
                                   </button>
                                 </div>
                                 {editingContextId === context.tempId ? (
-                                  <textarea
-                                    value={context.text}
-                                    onChange={(event) => onExtractedContextContentChange(context.tempId, event.target.value)}
-                                    rows={Math.min(14, Math.max(5, Math.ceil(context.text.length / 120)))}
-                                    className={`${ADMIN_FIELD_CLASS} min-h-36 w-full resize-y whitespace-pre-wrap text-[11px] font-medium leading-relaxed`}
+                                  <RichTextEditor
+                                    initialValue={renderContextTextWithInlineFigures(context)}
+                                    onChange={(html) => onExtractedContextContentChange(context.tempId, html)}
+                                    placeholder="Texto de apoio ou contexto compartilhado."
+                                    allowImages
+                                    contentClassName="min-h-40 max-h-[28rem] text-[11px] font-medium leading-relaxed"
                                   />
                                 ) : (
-                                  <p className="max-h-80 overflow-y-auto whitespace-pre-line rounded-sm border border-sky-100 bg-white p-3 text-[11px] font-medium leading-relaxed text-slate-600 dark:border-sky-900/30 dark:bg-slate-900 dark:text-slate-300">
-                                    {context.text}
-                                  </p>
+                                  <MathRichText
+                                    content={renderContextTextWithInlineFigures(context)}
+                                    className="max-h-80 overflow-y-auto rounded-sm border border-sky-100 bg-white p-3 text-[11px] font-medium leading-relaxed text-slate-600 dark:border-sky-900/30 dark:bg-slate-900 dark:text-slate-300"
+                                  />
                                 )}
                               </div>
                             )}
@@ -1837,7 +2096,7 @@ const AdminImportSection = ({
                                 {context.figureDescription}
                               </p>
                             )}
-                            {getImageDataUri(context.imageData) && (
+                            {getImageDataUri(context.imageData) && !contextHasInlineFigureHtml(context) && (
                               <div className="relative mt-3 h-64 w-full overflow-hidden rounded-sm border border-slate-200 dark:border-slate-800">
                                 <Image
                                   src={getImageDataUri(context.imageData)}

@@ -1,0 +1,36 @@
+name: Frontend CI
+
+on:
+  push:
+    branches:
+      - main
+      - '4quarenta/**'
+  pull_request:
+    branches:
+      - main
+      - '4quarenta/**'
+
+jobs:
+  quality:
+    name: Frontend quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run production readiness without backend
+        run: npm run check:production-local -- --skip-backend --with-build

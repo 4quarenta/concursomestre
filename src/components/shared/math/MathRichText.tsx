@@ -16,6 +16,7 @@ import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanit
 interface MathRichTextProps {
   content?: string | null;
   className?: string;
+  disableCallouts?: boolean;
 }
 
 const escapeHtml = (value: string) => value
@@ -89,6 +90,85 @@ const renderInlineMarkdown = (value: string) => value
   .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')
   .replace(/\*([^*]+?)\*/g, '<em>$1</em>');
 
+const splitMarkdownTableRow = (line: string) => line
+  .trim()
+  .replace(/^\|/, '')
+  .replace(/\|$/, '')
+  .split('|')
+  .map((cell) => cell.trim());
+
+const isMarkdownTableSeparator = (line: string) => {
+  const cells = splitMarkdownTableRow(line);
+  return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+};
+
+const isMarkdownTable = (lines: string[]) => (
+  lines.length >= 2
+  && lines[0].includes('|')
+  && isMarkdownTableSeparator(lines[1])
+);
+
+const renderMarkdownTable = (lines: string[]) => {
+  const headers = splitMarkdownTableRow(lines[0]);
+  const rows = lines.slice(2)
+    .filter((line) => line.includes('|'))
+    .map(splitMarkdownTableRow)
+    .filter((cells) => cells.some(Boolean));
+
+  if (headers.length < 2 || rows.length === 0) {
+    return '';
+  }
+
+  return [
+    '<div class="cm-rich-table-wrap"><table>',
+    `<thead><tr>${headers.map((header) => `<th>${renderInlineMarkdown(header)}</th>`).join('')}</tr></thead>`,
+    `<tbody>${rows.map((row) => `<tr>${headers.map((_header, index) => `<td>${renderInlineMarkdown(row[index] || '')}</td>`).join('')}</tr>`).join('')}</tbody>`,
+    '</table></div>',
+  ].join('');
+};
+
+const CALLOUT_META: Record<string, { label: string; className: string }> = {
+  ATENCAO: { label: 'Atencao de prova', className: 'cm-callout-warning' },
+  ATENÇÃO: { label: 'Atencao de prova', className: 'cm-callout-warning' },
+  CUIDADO: { label: 'Cuidado', className: 'cm-callout-warning' },
+  DICA: { label: 'Dica do professor', className: 'cm-callout-tip' },
+  ERRO: { label: 'Erro comum', className: 'cm-callout-danger' },
+  GABARITO: { label: 'Gabarito comentado', className: 'cm-callout-success' },
+  MACETE: { label: 'Macete', className: 'cm-callout-purple' },
+  PROVA: { label: 'Como cai em prova', className: 'cm-callout-info' },
+};
+
+const normalizeCalloutKey = (value: string) => value
+  .trim()
+  .toUpperCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '');
+
+const renderCalloutBlock = (lines: string[]) => {
+  const firstLine = lines[0] || '';
+  const match = firstLine.match(/^&gt;\s*\[!([A-ZÀ-Ú]+)\]\s*(.*)$/i);
+  if (!match) {
+    return '';
+  }
+
+  const meta = CALLOUT_META[normalizeCalloutKey(match[1])] || CALLOUT_META.DICA;
+  const bodyLines = [
+    match[2],
+    ...lines.slice(1).map((line) => line.replace(/^&gt;\s?/, '')),
+  ].map((line) => line.trim()).filter(Boolean);
+
+  if (bodyLines.length === 0) {
+    return '';
+  }
+
+  return [
+    `<div class="cm-callout ${meta.className}">`,
+    `<div class="cm-callout-title">${meta.label}</div>`,
+    `<div class="cm-callout-body">${renderInlineMarkdown(bodyLines.join('<br />'))}</div>`,
+    '</div>',
+  ].join('');
+};
+
 const normalizeSafeInlineTag = (tag: string) => {
   const normalized = tag.toLowerCase().replace(/\s+/g, '');
   if (/^<br\/?>$/.test(normalized)) return '<br />';
@@ -121,7 +201,21 @@ const restoreMath = (value: string, tokens: string[], html: string[]) => tokens.
   value,
 );
 
-export const renderMathMarkdownToHtml = (content: string | null | undefined): string => {
+const looksLikeHtml = (value: string) => /<\/?[a-z][\s\S]*>/i.test(value);
+
+const renderSafeHtmlWithMath = (content: string): string => {
+  const { output, tokens, html } = protectMath(content);
+  return restoreMath(normalizeQuestionRichHtml(output), tokens, html);
+};
+
+interface RenderMathMarkdownOptions {
+  disableCallouts?: boolean;
+}
+
+export const renderMathMarkdownToHtml = (
+  content: string | null | undefined,
+  options: RenderMathMarkdownOptions = {},
+): string => {
   const raw = stripControlChars(String(content || '').trim());
   if (!raw) {
     return '';
@@ -131,6 +225,11 @@ export const renderMathMarkdownToHtml = (content: string | null | undefined): st
     .replace(/^```(?:markdown|md)?\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();
+
+  if (looksLikeHtml(withoutFence)) {
+    return renderSafeHtmlWithMath(withoutFence);
+  }
+
   const normalizedLegacyHtml = normalizeLegacyHtmlToMarkdown(withoutFence);
   const { output, tokens, html } = protectMath(normalizedLegacyHtml);
   const safeHtml = protectSafeInlineHtml(output);
@@ -146,6 +245,15 @@ export const renderMathMarkdownToHtml = (content: string | null | undefined): st
     const heading = lines[0].match(/^(#{1,4})\s+(.+)$/);
     if (heading && lines.length === 1) {
       return `<h4>${renderInlineMarkdown(heading[2])}</h4>`;
+    }
+
+    if (isMarkdownTable(lines)) {
+      return renderMarkdownTable(lines);
+    }
+
+    const callout = options.disableCallouts ? '' : renderCalloutBlock(lines);
+    if (callout) {
+      return callout;
     }
 
     if (lines.every((line) => /^[-*]\s+/.test(line))) {
@@ -166,8 +274,11 @@ export const renderMathMarkdownToHtml = (content: string | null | undefined): st
   ));
 };
 
-export const MathRichText = ({ content, className = '' }: MathRichTextProps) => {
-  const sanitizedHtml = React.useMemo(() => renderMathMarkdownToHtml(content), [content]);
+export const MathRichText = ({ content, className = '', disableCallouts = false }: MathRichTextProps) => {
+  const sanitizedHtml = React.useMemo(
+    () => renderMathMarkdownToHtml(content, { disableCallouts }),
+    [content, disableCallouts],
+  );
 
   if (!sanitizedHtml) {
     return null;

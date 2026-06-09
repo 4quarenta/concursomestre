@@ -34,8 +34,7 @@ const ROUTES_WITHOUT_PLATFORM_SHELL = [
 ];
 
 const isWithoutPlatformShell = (pathname: string) => (
-  pathname === '/profile'
-  || ROUTES_WITHOUT_PLATFORM_SHELL.some((path) => pathname === path || pathname.startsWith(`${path}/`))
+  ROUTES_WITHOUT_PLATFORM_SHELL.some((path) => pathname === path || pathname.startsWith(`${path}/`))
   || pathname.startsWith('/l/')
 );
 

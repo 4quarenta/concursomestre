@@ -15,6 +15,7 @@ type Theme = 'light' | 'dark';
 
 interface ThemeContextType {
   theme: Theme;
+  setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
 }
 
@@ -40,7 +41,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
    * Resolve o tema inicial a partir do storage ou da preferencia do sistema.
    * @since 1.0.0
    */
-  const [theme, setTheme] = useState<Theme>(() => {
+  const [theme, setThemeState] = useState<Theme>(() => {
     return 'light';
   });
 
@@ -52,12 +53,12 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const frameId = window.requestAnimationFrame(() => {
       const saved = localStorage.getItem('theme');
       if (saved === 'light' || saved === 'dark') {
-        setTheme(saved);
+        setThemeState(saved);
         setIsHydrated(true);
         return;
       }
 
-      setTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      setThemeState(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
       setIsHydrated(true);
     });
 
@@ -82,11 +83,17 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
    * Alterna entre os dois modos suportados pela plataforma.
    * @since 1.0.0
    */
+  const setTheme = useCallback((nextTheme: Theme) => {
+    setIsHydrated(true);
+    setThemeState(nextTheme);
+    applyThemeToDocument(nextTheme);
+  }, [applyThemeToDocument]);
+
   const toggleTheme = useCallback(() => {
     const root = window.document.documentElement;
     root.classList.add('theme-switching');
 
-    setTheme((prev) => {
+    setThemeState((prev) => {
       const nextTheme = prev === 'light' ? 'dark' : 'light';
       applyThemeToDocument(nextTheme);
       return nextTheme;
@@ -99,8 +106,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, [applyThemeToDocument]);
 
+  const visibleTheme = isHydrated ? theme : 'light';
+
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme: visibleTheme, setTheme, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );

@@ -16,3 +16,4 @@ export type { GeneratedOriginalQuestion, OriginalQuestionModality, PageExtractio
 export { aiService } from './aiService';
 export { isPlatformOriginalQuestion, isQuestionCanceled, readQuestionBooleanFlag } from './questionFlags';
 export { questionService } from './questionService';
+export type { QuestionEditorialFeedbackKind, QuestionEditorialFeedbackSnapshot, QuestionEditorialFeedbackValue } from './questionService';

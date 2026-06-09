@@ -270,6 +270,21 @@ const AdminExamEditPage = () => {
     }
   }, [addToast, ensureExamTaxonomy]);
 
+  const uploadExamFileFromEditor = React.useCallback(async (
+    file: File,
+    kind: Parameters<typeof questionService.uploadExamFile>[1],
+  ) => {
+    try {
+      const uploaded = await questionService.uploadExamFile(file, kind);
+      addToast('Arquivo anexado a prova.', 'success');
+      return uploaded;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Nao foi possivel anexar o arquivo.';
+      addToast(message, 'error');
+      throw error;
+    }
+  }, [addToast]);
+
   const persistExam = React.useCallback(async () => {
     if (!draft) {
       return;
@@ -291,6 +306,18 @@ const AdminExamEditPage = () => {
       ano: draft.ano,
       nivel: draft.nivel,
       index: draft.index,
+      caderno: draft.caderno,
+      tipoCaderno: draft.tipoCaderno,
+      corCaderno: draft.corCaderno,
+      bookletType: draft.tipoCaderno,
+      bookletColor: draft.corCaderno,
+      files: draft.files,
+      examFiles: draft.files,
+      pdfUrl: draft.files.find((file) => file.kind === 'prova')?.url,
+      proofUrl: draft.files.find((file) => file.kind === 'prova')?.url,
+      editalUrl: draft.files.find((file) => file.kind === 'edital')?.url,
+      gabaritoUrl: draft.files.find((file) => file.kind === 'gabarito')?.url,
+      answerKeyUrl: draft.files.find((file) => file.kind === 'gabarito')?.url,
       publishStatus: draft.publishStatus,
       visibilityStatus: draft.visibilityStatus,
       scheduledAt: draft.scheduledAt,
@@ -482,6 +509,7 @@ const AdminExamEditPage = () => {
       isDeleting={isDeleting}
       onCreateAgency={createAgencyFromEditor}
       onCreateOrganization={createOrganizationFromEditor}
+      onUploadExamFile={uploadExamFileFromEditor}
       onSave={() => void persistExam()}
       onDelete={!isNew ? () => void handleDelete() : undefined}
       onClose={closeEditor}

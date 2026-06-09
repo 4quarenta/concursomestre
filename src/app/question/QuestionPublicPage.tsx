@@ -304,6 +304,21 @@ const QuestionPublicPage: React.FC<QuestionPublicPageProps> = ({ initialQuestion
                 <FileQuestion size={14} />
                 Questão #{question.id}
               </div>
+              {question.introText && (
+                <div
+                  className="prose prose-slate max-w-none rounded-2xl border-l-2 border-indigo-200 bg-slate-50 p-4 text-sm italic leading-7 dark:prose-invert dark:border-indigo-800 dark:bg-slate-950 [&_img]:mx-auto [&_img]:my-3 [&_img]:max-h-[420px] [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-lg [&_img]:border [&_img]:border-slate-200 [&_img]:bg-white [&_img]:p-1 dark:[&_img]:border-slate-700 dark:[&_img]:bg-slate-900"
+                  dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(question.introText) }}
+                />
+              )}
+              {(question.referenceText || question.reference_text) && (
+                <div className="rounded-2xl border-l-2 border-amber-300 bg-amber-50 p-4 text-sm leading-7 dark:border-amber-800 dark:bg-amber-950/30">
+                  <div className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Referência</div>
+                  <div
+                    className="prose prose-amber max-w-none text-sm font-semibold leading-7 text-amber-900 dark:prose-invert dark:text-amber-100"
+                    dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(question.referenceText || question.reference_text || '') }}
+                  />
+                </div>
+              )}
               <div
                 className="prose prose-slate max-w-none text-sm leading-7 dark:prose-invert"
                 dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(question.enunciado || question.enunciado_clean || '') }}

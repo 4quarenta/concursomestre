@@ -116,6 +116,7 @@ export const subscriptionsService = {
    * @since 1.0.0
    */
   async runAutomationNow(): Promise<SubscriptionApiPayload> {
+    automationHelperCache = null;
     const response = await apiClient.post<SubscriptionApiPayload>(
       `${ENDPOINTS.subscriptions.automationHelper}?action=run_now`,
       {},
@@ -125,6 +126,7 @@ export const subscriptionsService = {
       'Nao foi possivel executar a rotina de automacao.',
     );
 
+    automationHelperCache = null;
     return mergeResponsePayload(response, {});
   },
 

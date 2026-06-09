@@ -52,6 +52,13 @@ describe('frontend security headers', () => {
     expect(csp).toContain('http://127.0.0.1');
   });
 
+  it('allows profile and uploaded assets from the configured API origin', () => {
+    const csp = buildFrontendContentSecurityPolicy('http://localhost/questao-pro-backend/api/');
+
+    expect(csp).toContain("img-src 'self' data: blob: https: http://localhost");
+    expect(csp).toContain("media-src 'self' data: blob: https: http://localhost");
+  });
+
   it('removes development-only script privileges and local API origins in production', () => {
     vi.stubEnv('NODE_ENV', 'production');
 

@@ -26,7 +26,7 @@ import {
    ShieldCheck, Bell, Info, Users, LogOut, Crown,
    Package, ExternalLink, BookOpen, Download, Trash2,
    AlertTriangle, XCircle, ArrowRight, CheckCircle2, Gift,
-   Share2, Copy, Camera, AlertCircle, RotateCcw,
+   Share2, Copy, Camera, AlertCircle, RotateCcw, Send,
    Loader2, ShieldAlert, MousePointer2, Wallet, MessageSquare,
    BookmarkCheck,
    type LucideIcon,
@@ -36,6 +36,7 @@ import {
 } from 'recharts';
 import StableResponsiveContainer from '@/components/shared/charts/StableResponsiveContainer';
 import { useAuth } from '@providers/AuthProvider';
+import { useTheme } from '@providers/ThemeProvider';
 import { useToast } from '@providers/ToastProvider';
 import { useConfirm } from '@providers/ModalProvider';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
@@ -51,6 +52,7 @@ import {
     buildMaterialDownloadEndpoint,
     downloadAuthenticatedFile,
     getAssetUrl,
+    getVersionedAssetUrl,
 } from '@services/api';
 import {
     listLegalCommentaryNotesForUser,
@@ -61,6 +63,7 @@ import { readerService } from '@services/materials';
 import { cardsService, formatMaskedCardLabelAscii, type SavedCard } from '@services/billing';
 import { marketplaceService } from '@services/marketplace';
 import { profileService, type ReferralStats } from '@services/profile';
+import { supportService, type SupportReply, type SupportThread } from '@services/support';
 import { questionService } from '@services/questions';
 import { transactionsService } from '@services/transactions';
 import { planService } from '@services/plans';
@@ -109,6 +112,69 @@ const stripHtml = (value: string) => value.replace(/<[^>]+>/g, ' ').replace(/\s+
 const truncateText = (value: string, maxLength: number) => (
     value.length > maxLength ? `${value.slice(0, maxLength).trimEnd()}...` : value
 );
+
+const PROFILE_PHOTO_CROP_SIZE = 512;
+
+type ProfilePhotoCropDraft = {
+    file: File;
+    previewUrl: string;
+    zoom: number;
+    offsetX: number;
+    offsetY: number;
+};
+
+const loadImageForCrop = (src: string): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Nao foi possivel carregar a imagem selecionada.'));
+    image.src = src;
+});
+
+const buildCircularProfilePhotoFile = async (draft: ProfilePhotoCropDraft): Promise<File> => {
+    const image = await loadImageForCrop(draft.previewUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = PROFILE_PHOTO_CROP_SIZE;
+    canvas.height = PROFILE_PHOTO_CROP_SIZE;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        throw new Error('Nao foi possivel preparar o recorte da foto.');
+    }
+
+    const center = PROFILE_PHOTO_CROP_SIZE / 2;
+    const baseScale = Math.max(
+        PROFILE_PHOTO_CROP_SIZE / image.naturalWidth,
+        PROFILE_PHOTO_CROP_SIZE / image.naturalHeight,
+    );
+    const scale = baseScale * Math.max(1, draft.zoom);
+    const drawWidth = image.naturalWidth * scale;
+    const drawHeight = image.naturalHeight * scale;
+    const maxOffsetX = Math.max(0, (drawWidth - PROFILE_PHOTO_CROP_SIZE) / 2);
+    const maxOffsetY = Math.max(0, (drawHeight - PROFILE_PHOTO_CROP_SIZE) / 2);
+    const drawX = (PROFILE_PHOTO_CROP_SIZE - drawWidth) / 2 + ((draft.offsetX / 100) * maxOffsetX);
+    const drawY = (PROFILE_PHOTO_CROP_SIZE - drawHeight) / 2 + ((draft.offsetY / 100) * maxOffsetY);
+
+    ctx.clearRect(0, 0, PROFILE_PHOTO_CROP_SIZE, PROFILE_PHOTO_CROP_SIZE);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(center, center, center, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+    ctx.restore();
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((nextBlob) => {
+            if (nextBlob) {
+                resolve(nextBlob);
+                return;
+            }
+
+            reject(new Error('Nao foi possivel gerar a foto recortada.'));
+        }, 'image/png', 0.94);
+    });
+
+    return new File([blob], 'profile-photo.png', { type: 'image/png' });
+};
 
 const resolveProfileMaterialPurchasedAt = (material: ProfileMaterial): string => (
     material.purchasedAt
@@ -249,6 +315,34 @@ type ProfileSidebarItem = {
     onSelect?: () => void;
 };
 
+const isPlatformRatingThread = (thread: SupportThread) => (
+    String(thread.reason || '').toLowerCase().includes('avaliar plataforma')
+    || Number(thread.public_rating || 0) > 0
+    || ['platform-rating', 'platform_rating', 'testimonial', 'rating'].includes(String(thread.type || ''))
+);
+
+const PROFILE_SUPPORT_STATUS_META: Record<SupportThread['status'], { label: string; className: string }> = {
+    new: {
+        label: 'Aberto',
+        className: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
+    },
+    read: {
+        label: 'Em análise',
+        className: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
+    },
+    resolved: {
+        label: 'Resolvido',
+        className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
+    },
+};
+
+const PROFILE_SUPPORT_TYPE_LABELS: Record<string, string> = {
+    bug: 'Problema',
+    support: 'Ajuda',
+    suggestion: 'Sugestão',
+    feedback: 'Feedback',
+};
+
 const PROFILE_FALLBACK_FOCUS_AREAS = [
     'Policial',
     'Fiscal',
@@ -269,6 +363,7 @@ const PROFILE_EXAM_AREAS = [
 
 const Profile: React.FC = () => {
     const { currentUser, logout, refreshUser, updateUser, toggleSavedQuestion } = useAuth();
+    const { setTheme } = useTheme();
     const systemSettings = useAppConfigStore((store) => store.systemSettings);
     const { questions, ensureQuestionsLoaded } = useQuestionBankActions();
     const { userNotes, userAnswers, saveNote, ensureUserProgressLoaded } = useUserProgressActions();
@@ -320,17 +415,40 @@ const Profile: React.FC = () => {
     const [isAddingCard, setIsAddingCard] = useState(false);
     const [isSavingCard, setIsSavingCard] = useState(false);
     const [isRemovingProfilePhoto, setIsRemovingProfilePhoto] = useState(false);
-    const [failedProfilePhotoUrl, setFailedProfilePhotoUrl] = useState<string | null>(null);
+    const [isSavingProfilePhoto, setIsSavingProfilePhoto] = useState(false);
+    const [profilePhotoCropDraft, setProfilePhotoCropDraft] = useState<ProfilePhotoCropDraft | null>(null);
     const [testimonialRating, setTestimonialRating] = useState(5);
     const [testimonialText, setTestimonialText] = useState('');
     const [testimonialDisplayName, setTestimonialDisplayName] = useState('');
     const [testimonialHeadline, setTestimonialHeadline] = useState('');
     const [isSubmittingTestimonial, setIsSubmittingTestimonial] = useState(false);
     const [showTestimonialModal, setShowTestimonialModal] = useState(false);
+    const [userPlatformRatings, setUserPlatformRatings] = useState<SupportThread[]>([]);
+    const [isLoadingPlatformRatings, setIsLoadingPlatformRatings] = useState(false);
+    const [supportHistoryThreads, setSupportHistoryThreads] = useState<SupportThread[]>([]);
+    const [isLoadingSupportHistory, setIsLoadingSupportHistory] = useState(false);
+    const [expandedSupportThreadId, setExpandedSupportThreadId] = useState<number | null>(null);
+    const [supportReplies, setSupportReplies] = useState<Record<number, SupportReply[]>>({});
+    const [loadingSupportReplies, setLoadingSupportReplies] = useState<number | null>(null);
+    const [supportReplyDrafts, setSupportReplyDrafts] = useState<Record<number, string>>({});
+    const [sendingSupportReplyId, setSendingSupportReplyId] = useState<number | null>(null);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
     const [cancelDetails, setCancelDetails] = useState('');
     const [cancelCaptchaToken, setCancelCaptchaToken] = useState<string | null>(null);
+    const [accountDeletionReason, setAccountDeletionReason] = useState('');
+    const [accountDeletionCaptchaToken, setAccountDeletionCaptchaToken] = useState<string | null>(null);
+    const [isRequestingAccountDeletion, setIsRequestingAccountDeletion] = useState(false);
+    const [privacyPreferencesDraft, setPrivacyPreferencesDraft] = useState({
+        isPublic: true,
+        notifications: true,
+        shareData: true,
+        showProfilePhoto: true,
+        defaultTheme: 'system' as 'system' | 'light' | 'dark',
+        defaultPracticeView: 'card' as 'card' | 'list',
+        defaultSimulationView: 'list' as 'focus' | 'list',
+    });
+    const [isSavingPrivacyPreferences, setIsSavingPrivacyPreferences] = useState(false);
     const [confirmOutstandingDebtCharge, setConfirmOutstandingDebtCharge] = useState(false);
     const [isCancelingSubscription, setIsCancelingSubscription] = useState(false);
     const [isUpdatingRenewal, setIsUpdatingRenewal] = useState(false);
@@ -370,6 +488,34 @@ const Profile: React.FC = () => {
     }, []);
 
     React.useEffect(() => {
+        const previewUrl = profilePhotoCropDraft?.previewUrl;
+        return () => {
+            if (previewUrl) {
+                URL.revokeObjectURL(previewUrl);
+            }
+        };
+    }, [profilePhotoCropDraft?.previewUrl]);
+
+    React.useEffect(() => {
+        const preferences = (currentUser?.preferences || {}) as Partial<UserProfile['preferences']>;
+        const frameId = window.requestAnimationFrame(() => {
+            setPrivacyPreferencesDraft({
+                isPublic: preferences.isPublic !== false,
+                notifications: preferences.notifications !== false,
+                shareData: preferences.shareData !== false,
+                showProfilePhoto: preferences.showProfilePhoto !== false,
+                defaultTheme: preferences.defaultTheme === 'light' || preferences.defaultTheme === 'dark'
+                    ? preferences.defaultTheme
+                    : 'system',
+                defaultPracticeView: preferences.defaultPracticeView === 'list' ? 'list' : 'card',
+                defaultSimulationView: preferences.defaultSimulationView === 'focus' ? 'focus' : 'list',
+            });
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [currentUser?.preferences]);
+
+    React.useEffect(() => {
         lastBillingSyncAtRef.current = 0;
         billingSyncRequestInFlightRef.current = false;
 
@@ -389,8 +535,10 @@ const Profile: React.FC = () => {
         return userCards.find((card) => Number(card.is_default) === 1) || userCards[0] || null;
     }, [userCards]);
 
-    const profilePhotoUrl = useMemo(() => getAssetUrl(currentUser?.photoUrl || ''), [currentUser?.photoUrl]);
-    const photoLoadFailed = Boolean(profilePhotoUrl && failedProfilePhotoUrl === profilePhotoUrl);
+    const profilePhotoUrl = useMemo(
+        () => getVersionedAssetUrl(currentUser?.photoUrl || '', currentUser?.photoUrl || currentUser?.id || ''),
+        [currentUser?.id, currentUser?.photoUrl]
+    );
 
     const defaultTestimonialDisplayName = React.useMemo(
         () => buildDefaultTestimonialName(currentUser?.name, currentUser?.email),
@@ -809,6 +957,176 @@ const Profile: React.FC = () => {
         setShowTestimonialModal(true);
     }, [prepareTestimonialModal]);
 
+    React.useEffect(() => {
+        if (!showTestimonialModal || !currentUser?.id) {
+            return;
+        }
+
+        let isMounted = true;
+        const frameId = window.requestAnimationFrame(() => {
+            setIsLoadingPlatformRatings(true);
+            supportService.listThreads()
+                .then((threads) => {
+                    if (!isMounted) return;
+                    setUserPlatformRatings(threads.filter(isPlatformRatingThread));
+                })
+                .catch((error) => {
+                    clientLog.warn('Failed to load platform ratings', error);
+                    if (isMounted) {
+                        setUserPlatformRatings([]);
+                    }
+                })
+                .finally(() => {
+                    if (isMounted) {
+                        setIsLoadingPlatformRatings(false);
+                    }
+                });
+        });
+
+        return () => {
+            isMounted = false;
+            window.cancelAnimationFrame(frameId);
+        };
+    }, [currentUser?.id, showTestimonialModal]);
+
+    const fetchSupportHistory = React.useCallback(async (notifyOnError = false) => {
+        if (!currentUser?.id) {
+            setSupportHistoryThreads([]);
+            return;
+        }
+
+        setIsLoadingSupportHistory(true);
+
+        try {
+            const threads = await supportService.listThreads();
+            setSupportHistoryThreads(threads.filter((thread) => !isPlatformRatingThread(thread)));
+        } catch (error) {
+            clientLog.warn('Failed to load support history', error);
+            if (notifyOnError) {
+                addToast(readApiErrorMessage(error, 'Não foi possível carregar seu histórico de suporte.'), 'error');
+            }
+        } finally {
+            setIsLoadingSupportHistory(false);
+        }
+    }, [addToast, currentUser?.id]);
+
+    const toggleSupportHistoryThread = React.useCallback(async (threadId: number) => {
+        if (expandedSupportThreadId === threadId) {
+            setExpandedSupportThreadId(null);
+            return;
+        }
+
+        setExpandedSupportThreadId(threadId);
+
+        if (supportReplies[threadId]) {
+            return;
+        }
+
+        setLoadingSupportReplies(threadId);
+
+        try {
+            const threadReplies = await supportService.listReplies(threadId);
+            setSupportReplies((currentReplies) => ({ ...currentReplies, [threadId]: threadReplies }));
+        } catch (error) {
+            clientLog.warn('Failed to load support replies in profile', error);
+            addToast(readApiErrorMessage(error, 'Não foi possível carregar a conversa completa.'), 'error');
+        } finally {
+            setLoadingSupportReplies(null);
+        }
+    }, [addToast, expandedSupportThreadId, supportReplies]);
+
+    const handleSupportHistoryReplySubmit = React.useCallback(async (thread: SupportThread) => {
+        const draft = (supportReplyDrafts[thread.id] || '').trim();
+
+        if (!draft) {
+            addToast('Escreva uma resposta antes de enviar.', 'warning');
+            return;
+        }
+
+        setSendingSupportReplyId(thread.id);
+
+        try {
+            await supportService.replyToThread(thread.id, thread.type, draft);
+            const threadReplies = await supportService.listReplies(thread.id);
+            setSupportReplies((currentReplies) => ({ ...currentReplies, [thread.id]: threadReplies }));
+            setSupportReplyDrafts((currentDrafts) => ({ ...currentDrafts, [thread.id]: '' }));
+            await fetchSupportHistory(false);
+            addToast('Resposta enviada com sucesso.', 'success');
+        } catch (error) {
+            clientLog.warn('Failed to reply support thread in profile', error);
+            addToast(readApiErrorMessage(error, 'Não foi possível enviar sua resposta.'), 'error');
+        } finally {
+            setSendingSupportReplyId(null);
+        }
+    }, [addToast, fetchSupportHistory, supportReplyDrafts]);
+
+    const closeProfilePhotoCrop = React.useCallback(() => {
+        setProfilePhotoCropDraft(null);
+    }, []);
+
+    const openProfilePhotoPicker = React.useCallback(() => {
+        if (isSavingProfilePhoto) return;
+
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLInputElement)) return;
+
+            const file = target.files?.[0];
+            if (!file) return;
+
+            setProfilePhotoCropDraft({
+                file,
+                previewUrl: URL.createObjectURL(file),
+                zoom: 1.12,
+                offsetX: 0,
+                offsetY: 0,
+            });
+        };
+        input.click();
+    }, [isSavingProfilePhoto]);
+
+    const updateProfilePhotoCrop = React.useCallback((patch: Partial<Pick<ProfilePhotoCropDraft, 'zoom' | 'offsetX' | 'offsetY'>>) => {
+        setProfilePhotoCropDraft((currentDraft) => (
+            currentDraft ? { ...currentDraft, ...patch } : currentDraft
+        ));
+    }, []);
+
+    const handleSaveProfilePhotoCrop = React.useCallback(async () => {
+        if (!profilePhotoCropDraft || isSavingProfilePhoto) return;
+
+        setIsSavingProfilePhoto(true);
+        try {
+            const croppedFile = await buildCircularProfilePhotoFile(profilePhotoCropDraft);
+            const res = await profileService.uploadProfilePhoto(croppedFile);
+            const uploadedPhotoUrl = res.photoUrl || '';
+
+            if (!uploadedPhotoUrl) {
+                throw new Error('A foto foi enviada, mas o servidor nao retornou a URL da imagem.');
+            }
+
+            await updateUser({ photoUrl: uploadedPhotoUrl });
+            await refreshUser();
+            await updateUser({
+                photoUrl: uploadedPhotoUrl,
+                ...(res.newXp !== undefined ? { xp: res.newXp } : {}),
+                ...(res.newLevel !== undefined ? { level: res.newLevel } : {}),
+            });
+
+            setProfilePhotoCropDraft(null);
+            addToast(
+                res.xpGain ? `${res.message || 'Foto de perfil atualizada!'} +${res.xpGain} XP.` : res.message || 'Foto de perfil atualizada!',
+                'success',
+            );
+        } catch (err: unknown) {
+            addToast(readApiErrorMessage(err, 'Erro ao enviar foto.'), 'error');
+        } finally {
+            setIsSavingProfilePhoto(false);
+        }
+    }, [addToast, isSavingProfilePhoto, profilePhotoCropDraft, refreshUser, updateUser]);
+
     const handleRemoveProfilePhoto = async () => {
         if (isRemovingProfilePhoto) return;
         const confirmed = await confirm({
@@ -825,7 +1143,6 @@ const Profile: React.FC = () => {
             const res = await profileService.removeProfilePhoto();
             addToast(res.message || 'Foto de perfil removida!', 'success');
             await refreshUser();
-            setFailedProfilePhotoUrl(null);
         } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Erro ao remover foto.'), 'error');
         } finally {
@@ -867,12 +1184,32 @@ const Profile: React.FC = () => {
                 planName: effectivePlanDisplayName,
             });
 
-            addToast(result.message, 'success');
+            if (result.newXp !== undefined || result.newLevel !== undefined) {
+                await updateUser({
+                    ...(result.newXp !== undefined ? { xp: result.newXp } : {}),
+                    ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
+                });
+            }
+
+            addToast(result.xpGain ? `${result.message} +${result.xpGain} XP.` : result.message, 'success');
+            setUserPlatformRatings((currentRatings) => [
+                {
+                    id: result.id || Date.now(),
+                    type: 'platform-rating',
+                    reason: 'Avaliar plataforma',
+                    details: testimonial,
+                    status: 'new',
+                    created_at: new Date().toISOString(),
+                    public_rating: testimonialRating,
+                    public_display_name: publicDisplayName,
+                    public_headline: publicHeadline,
+                },
+                ...currentRatings,
+            ]);
             setTestimonialRating(5);
             setTestimonialText('');
             setTestimonialDisplayName(defaultTestimonialDisplayName);
             setTestimonialHeadline(defaultTestimonialHeadline);
-            setShowTestimonialModal(false);
         } catch (err: unknown) {
             addToast(readApiErrorMessage(err, 'Não foi possível enviar seu depoimento agora.'), 'error');
         } finally {
@@ -963,6 +1300,67 @@ const Profile: React.FC = () => {
         setShowCancelModal(false);
         setCancelCaptchaToken(null);
         setConfirmOutstandingDebtCharge(false);
+    };
+
+    const handleSavePrivacyPreferences = async () => {
+        if (!currentUser?.id || isSavingPrivacyPreferences) return;
+
+        setIsSavingPrivacyPreferences(true);
+        try {
+            const nextPreferences = {
+                ...currentUser.preferences,
+                ...privacyPreferencesDraft,
+            };
+
+            if (privacyPreferencesDraft.defaultTheme === 'light' || privacyPreferencesDraft.defaultTheme === 'dark') {
+                setTheme(privacyPreferencesDraft.defaultTheme);
+            } else if (typeof window !== 'undefined') {
+                const preferredTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                setTheme(preferredTheme);
+            }
+
+            await updateUser({ preferences: nextPreferences });
+        } catch (error: unknown) {
+            addToast(readApiErrorMessage(error, 'Nao foi possivel salvar suas preferencias.'), 'error');
+        } finally {
+            setIsSavingPrivacyPreferences(false);
+        }
+    };
+
+    const handleRequestAccountDeletion = async () => {
+        if (!currentUser?.id || isRequestingAccountDeletion) return;
+
+        const reason = accountDeletionReason.trim();
+        if (reason.length < 10) {
+            addToast('Informe um motivo com pelo menos 10 caracteres para confirmar a exclusao.', 'warning');
+            return;
+        }
+
+        if (recaptchaEnabled && !accountDeletionCaptchaToken) {
+            addToast('Confirme o reCAPTCHA antes de solicitar a exclusao da conta.', 'warning');
+            return;
+        }
+
+        const confirmed = await confirm({
+            title: 'Excluir conta',
+            description: 'Sua conta sera marcada para exclusao e voce sera desconectado. Esta acao exige tratamento interno e nao deve ser usada para pausar assinatura.',
+            confirmText: 'Solicitar exclusao',
+            cancelText: 'Cancelar',
+            type: 'danger',
+        });
+
+        if (!confirmed) return;
+
+        setIsRequestingAccountDeletion(true);
+        try {
+            const result = await profileService.requestAccountDeletion(reason, accountDeletionCaptchaToken);
+            addToast(result.message || 'Solicitacao de exclusao registrada.', 'success');
+            await logout();
+        } catch (error: unknown) {
+            addToast(readApiErrorMessage(error, 'Nao foi possivel solicitar a exclusao da conta.'), 'error');
+        } finally {
+            setIsRequestingAccountDeletion(false);
+        }
     };
 
     const handleRenewalToggle = async () => {
@@ -1330,6 +1728,11 @@ const Profile: React.FC = () => {
                 : 'A renovação esta desligada e o acesso termina no fim deste ciclo.'))
         : 'Ative um plano pago para controlar a renovação automática por aqui.';
     const normalizedSubscriptionStatus = String(activeSubscription?.status || '').toLowerCase();
+    const hasBlockingPaymentIssue = Boolean(
+        currentUser?.paymentIssue?.interactionLock
+        || activeSubscription?.payment_blocking
+        || normalizedSubscriptionStatus === 'past_due'
+    );
     const hasSubscriptionRecord = Boolean(activeSubscription?.id);
     const hasScheduledCancellation = Boolean(activeSubscription?.cancel_at_period_end);
     const isCanceledStatus = normalizedSubscriptionStatus === 'canceled' || normalizedSubscriptionStatus === 'cancelled';
@@ -1573,12 +1976,14 @@ const Profile: React.FC = () => {
                         <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Status</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
-                                {hasPendingRefundRequest ? 'Reembolso em análise' : hasActiveSubscription ? 'Acesso liberado' : 'Assinatura inativa'}
+                                {hasPendingRefundRequest ? 'Reembolso em análise' : hasBlockingPaymentIssue ? 'Acesso bloqueado' : hasActiveSubscription ? 'Acesso liberado' : 'Assinatura inativa'}
                             </p>
                             <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                 {hasPendingRefundRequest
                                     ? 'Sua solicitacao esta em andamento e atualizaremos o histórico assim que houver retorno do gateway.'
-                                    : hasActiveSubscription
+                                    : hasBlockingPaymentIssue
+                                        ? 'Regularize a forma de pagamento para desbloquear novamente os recursos premium.'
+                                        : hasActiveSubscription
                                         ? 'Seu acesso premium esta liberado e o ciclo atual segue normalmente.'
                                         : 'Sua assinatura não esta ativa no momento.'}
                             </p>
@@ -1903,6 +2308,179 @@ const Profile: React.FC = () => {
         );
     };
 
+    const renderSupportHistoryTab = () => {
+        const supportStats = {
+            total: supportHistoryThreads.length,
+            open: supportHistoryThreads.filter((thread) => thread.status === 'new').length,
+            inProgress: supportHistoryThreads.filter((thread) => thread.status === 'read').length,
+            resolved: supportHistoryThreads.filter((thread) => thread.status === 'resolved').length,
+        };
+
+        return (
+            <div className="space-y-6">
+                <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                    <div className="space-y-1">
+                        <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Suporte</p>
+                        <h2 className="text-2xl font-black leading-none text-slate-900 dark:text-slate-100">Histórico de conversas</h2>
+                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                            Acompanhe chamados, sugestões, respostas do suporte e continue conversas abertas.
+                        </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                        <button
+                            type="button"
+                            onClick={() => void fetchSupportHistory(true)}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                            <RotateCcw size={14} />
+                            Atualizar
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => router.push('/support?category=info')}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-indigo-700"
+                        >
+                            <MessageSquare size={14} />
+                            Novo chamado
+                        </button>
+                    </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                    {[
+                        { label: 'Abertos', value: supportStats.open, className: 'text-amber-600 dark:text-amber-300' },
+                        { label: 'Em análise', value: supportStats.inProgress, className: 'text-sky-600 dark:text-sky-300' },
+                        { label: 'Resolvidos', value: supportStats.resolved, className: 'text-emerald-600 dark:text-emerald-300' },
+                    ].map((item) => (
+                        <div key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{item.label}</p>
+                            <p className={`mt-2 text-2xl font-black ${item.className}`}>{item.value}</p>
+                        </div>
+                    ))}
+                </div>
+
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                        <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Conversas recentes</p>
+                            <h3 className="text-base font-black text-slate-900 dark:text-slate-100">{supportStats.total} item(ns)</h3>
+                        </div>
+                    </div>
+
+                    {isLoadingSupportHistory ? (
+                        <div className="flex items-center justify-center px-6 py-20">
+                            <Loader2 size={28} className="animate-spin text-indigo-500" />
+                        </div>
+                    ) : supportHistoryThreads.length === 0 ? (
+                        <div className="px-6 py-14 text-center">
+                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                                <MessageSquare size={24} />
+                            </div>
+                            <p className="mt-4 text-base font-black text-slate-900 dark:text-slate-100">Nenhuma conversa aberta ainda.</p>
+                            <p className="mt-2 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
+                                Quando você enviar um chamado ou sugestão, o acompanhamento aparecerá aqui.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {supportHistoryThreads.map((thread) => {
+                                const statusMeta = PROFILE_SUPPORT_STATUS_META[thread.status] || PROFILE_SUPPORT_STATUS_META.new;
+                                const isExpanded = expandedSupportThreadId === thread.id;
+                                const threadReplies = supportReplies[thread.id] || [];
+                                const typeLabel = PROFILE_SUPPORT_TYPE_LABELS[String(thread.type || '').toLowerCase()] || 'Suporte';
+                                const createdAt = thread.created_at ? new Date(thread.created_at).toLocaleString() : 'Sem data';
+
+                                return (
+                                    <article key={thread.id} className="bg-white dark:bg-slate-900">
+                                        <button
+                                            type="button"
+                                            onClick={() => void toggleSupportHistoryThread(thread.id)}
+                                            className="w-full px-5 py-5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/70"
+                                        >
+                                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${statusMeta.className}`}>
+                                                            {statusMeta.label}
+                                                        </span>
+                                                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                                                            {typeLabel}
+                                                        </span>
+                                                        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{createdAt}</span>
+                                                    </div>
+                                                    <p className="mt-3 text-base font-black text-slate-900 dark:text-slate-100">{thread.reason || 'Sem resumo'}</p>
+                                                    <p className="mt-2 line-clamp-2 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">{thread.details}</p>
+                                                </div>
+                                                <div className="shrink-0 text-left lg:text-right">
+                                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Respostas</p>
+                                                    <p className="mt-1 text-xl font-black text-slate-900 dark:text-slate-100">{thread.reply_count || 0}</p>
+                                                    <p className="mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-300">{isExpanded ? 'Ocultar conversa' : 'Abrir conversa'}</p>
+                                                </div>
+                                            </div>
+                                        </button>
+
+                                        {isExpanded ? (
+                                            <div className="border-t border-slate-100 bg-slate-50 px-5 py-5 dark:border-slate-800 dark:bg-slate-950/70">
+                                                <div className="space-y-3">
+                                                    {loadingSupportReplies === thread.id ? (
+                                                        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-center text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+                                                            Carregando respostas...
+                                                        </div>
+                                                    ) : threadReplies.length > 0 ? threadReplies.map((reply) => {
+                                                        const isUserReply = String(reply.user_id) === String(currentUser?.id);
+
+                                                        return (
+                                                            <div
+                                                                key={reply.id}
+                                                                className={`rounded-2xl border px-4 py-4 ${isUserReply ? 'ml-6 border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900' : 'mr-6 border-indigo-200 bg-indigo-50/80 dark:border-indigo-500/20 dark:bg-indigo-500/10'}`}
+                                                            >
+                                                                <div className="flex items-center justify-between gap-3">
+                                                                    <p className="text-sm font-black text-slate-900 dark:text-slate-100">{isUserReply ? 'Você' : 'Suporte'}</p>
+                                                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{new Date(reply.created_at).toLocaleString()}</p>
+                                                                </div>
+                                                                <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">{reply.details}</p>
+                                                            </div>
+                                                        );
+                                                    }) : (
+                                                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-center text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                                                            Nenhuma resposta ainda.
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="mt-4 rounded-[1.6rem] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Responder conversa</p>
+                                                    <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                                                        <input
+                                                            type="text"
+                                                            value={supportReplyDrafts[thread.id] || ''}
+                                                            onChange={(event) => setSupportReplyDrafts((currentDrafts) => ({ ...currentDrafts, [thread.id]: event.target.value }))}
+                                                            placeholder="Escreva sua resposta..."
+                                                            className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-colors focus:border-indigo-400 focus:bg-white dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-indigo-500 dark:focus:bg-slate-900"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => void handleSupportHistoryReplySubmit(thread)}
+                                                            disabled={sendingSupportReplyId === thread.id || !(supportReplyDrafts[thread.id] || '').trim()}
+                                                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+                                                        >
+                                                            <Send size={15} />
+                                                            {sendingSupportReplyId === thread.id ? 'Enviando...' : 'Responder'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </article>
+                                );
+                            })}
+                        </div>
+                    )}
+                </section>
+            </div>
+        );
+    };
+
     const renderBillingHistoryTab = () => (
         <div className="space-y-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -2059,6 +2637,134 @@ const Profile: React.FC = () => {
             </div>
         </div>
     );
+
+    const renderProfilePhotoCropModal = () => {
+        if (!profilePhotoCropDraft) return null;
+
+        return createPortal(
+            <AnimatePresence>
+                <div className="fixed inset-0 z-[999] flex items-start justify-center overflow-y-auto p-3 sm:items-center sm:p-4">
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => {
+                            if (!isSavingProfilePhoto) closeProfilePhotoCrop();
+                        }}
+                        className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm"
+                    />
+
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.96, y: 16 }}
+                        className="relative z-10 flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+                    >
+                        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 p-4 dark:border-slate-800 sm:p-5">
+                            <div>
+                                <span className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
+                                    <Camera size={12} />
+                                    Foto de perfil
+                                </span>
+                                <h3 className="mt-2 text-base font-black text-slate-900 dark:text-slate-100 sm:text-lg">Ajustar recorte circular</h3>
+                                <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+                                    Posicione o rosto dentro do círculo antes de salvar.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeProfilePhotoCrop}
+                                disabled={isSavingProfilePhoto}
+                                className="rounded-2xl border border-slate-200 bg-white/90 p-2 text-slate-400 transition-all hover:border-slate-300 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/80 dark:hover:text-slate-200"
+                                aria-label="Fechar recorte da foto"
+                            >
+                                <X size={18} />
+                            </button>
+                        </header>
+
+                        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5">
+                            <div className="mx-auto flex h-56 w-56 max-w-full items-center justify-center rounded-2xl bg-slate-100 p-4 dark:bg-slate-950 sm:h-64 sm:w-64">
+                                <div className="relative h-44 w-44 overflow-hidden rounded-full border-4 border-white bg-slate-200 shadow-2xl ring-2 ring-indigo-500/40 dark:border-slate-900 dark:bg-slate-800 sm:h-52 sm:w-52">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                        src={profilePhotoCropDraft.previewUrl}
+                                        alt="Prévia do recorte circular"
+                                        className="absolute inset-0 h-full w-full object-cover"
+                                        style={{
+                                            transform: `translate(${profilePhotoCropDraft.offsetX / 3}%, ${profilePhotoCropDraft.offsetY / 3}%) scale(${profilePhotoCropDraft.zoom})`,
+                                            transformOrigin: 'center',
+                                        }}
+                                    />
+                                    <div className="pointer-events-none absolute inset-0 rounded-full ring-4 ring-white/70 dark:ring-slate-950/70" />
+                                </div>
+                            </div>
+
+                            <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                                <label className="block space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Zoom</span>
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="2.4"
+                                        step="0.01"
+                                        value={profilePhotoCropDraft.zoom}
+                                        onChange={(event) => updateProfilePhotoCrop({ zoom: Number(event.target.value) })}
+                                        className="w-full accent-indigo-600"
+                                    />
+                                </label>
+                                <label className="block space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Horizontal</span>
+                                    <input
+                                        type="range"
+                                        min="-100"
+                                        max="100"
+                                        step="1"
+                                        value={profilePhotoCropDraft.offsetX}
+                                        onChange={(event) => updateProfilePhotoCrop({ offsetX: Number(event.target.value) })}
+                                        className="w-full accent-indigo-600"
+                                    />
+                                </label>
+                                <label className="block space-y-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vertical</span>
+                                    <input
+                                        type="range"
+                                        min="-100"
+                                        max="100"
+                                        step="1"
+                                        value={profilePhotoCropDraft.offsetY}
+                                        onChange={(event) => updateProfilePhotoCrop({ offsetY: Number(event.target.value) })}
+                                        className="w-full accent-indigo-600"
+                                    />
+                                </label>
+                            </div>
+
+                        </div>
+
+                        <footer className="grid shrink-0 grid-cols-1 gap-3 border-t border-slate-100 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-2">
+                            <button
+                                type="button"
+                                onClick={closeProfilePhotoCrop}
+                                disabled={isSavingProfilePhoto}
+                                className="h-11 rounded-2xl border border-slate-200 bg-white text-xs font-black uppercase tracking-widest text-slate-500 transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveProfilePhotoCrop}
+                                disabled={isSavingProfilePhoto}
+                                className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {isSavingProfilePhoto ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
+                                Salvar foto
+                            </button>
+                        </footer>
+                    </motion.div>
+                </div>
+            </AnimatePresence>,
+            document.body
+        );
+    };
 
     const renderCancelSubscriptionModal = () => {
         if (!showCancelModal || !activeSubscription) return null;
@@ -2254,9 +2960,9 @@ const Profile: React.FC = () => {
                         initial={{ opacity: 0, scale: 0.96, y: 16 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.96, y: 16 }}
-                        className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+                        className="relative z-10 my-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:max-h-[calc(100dvh-2rem)]"
                     >
-                        <header className="flex items-start justify-between gap-4 border-b border-slate-100 p-6 dark:border-slate-800">
+                        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 p-4 dark:border-slate-800 sm:p-6">
                             <div className="space-y-1">
                                 <span className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
                                     <MessageSquare size={12} />
@@ -2280,7 +2986,7 @@ const Profile: React.FC = () => {
                             </button>
                         </header>
 
-                        <form onSubmit={handleSubmitTestimonial} className="space-y-5 p-6">
+                        <form onSubmit={handleSubmitTestimonial} className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 sm:p-6">
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase text-slate-500 transition-colors dark:text-slate-400">
                                     Avaliação
@@ -2365,6 +3071,48 @@ const Profile: React.FC = () => {
                                 </div>
                             </div>
 
+                            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                                <div className="flex items-center justify-between gap-3">
+                                    <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                                        Suas avaliações
+                                    </h4>
+                                    {isLoadingPlatformRatings ? (
+                                        <Loader2 size={14} className="animate-spin text-slate-400" />
+                                    ) : (
+                                        <span className="rounded-full bg-white px-2 py-1 text-[9px] font-black uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+                                            {userPlatformRatings.length}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="mt-3 max-h-52 space-y-2 overflow-y-auto pr-1">
+                                    {userPlatformRatings.length > 0 ? userPlatformRatings.slice(0, 4).map((rating) => (
+                                        <article key={rating.id} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1 text-amber-500 dark:text-amber-300">
+                                                    {Array.from({ length: 5 }).map((_, index) => (
+                                                        <Star
+                                                            key={`${rating.id}-star-${index}`}
+                                                            size={13}
+                                                            className={index < Number(rating.public_rating || 0) ? 'fill-current' : 'text-slate-300 dark:text-slate-700'}
+                                                        />
+                                                    ))}
+                                                </div>
+                                                <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                                    {rating.status === 'resolved' ? 'Aprovada/respondida' : rating.status === 'read' ? 'Em análise' : 'Recebida'}
+                                                </span>
+                                            </div>
+                                            <p className="mt-2 line-clamp-3 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
+                                                {rating.details}
+                                            </p>
+                                        </article>
+                                    )) : (
+                                        <p className="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-xs font-semibold text-slate-400 dark:border-slate-800 dark:bg-slate-900">
+                                            Nenhuma avaliação enviada por você ainda.
+                                        </p>
+                                    )}
+                                </div>
+                            </section>
+
                             <footer className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-end">
                                 <button
                                     type="button"
@@ -2400,6 +3148,9 @@ const Profile: React.FC = () => {
                 setUserMaterials([]);
                 setMaterialNotes([]);
                 setFavoriteLaws([]);
+                setSupportHistoryThreads([]);
+                setSupportReplies({});
+                setExpandedSupportThreadId(null);
             });
 
             return () => window.cancelAnimationFrame(frameId);
@@ -2428,6 +3179,9 @@ const Profile: React.FC = () => {
             if (activeTab === 'referral' && canAccessReferralTab) {
                 void fetchReferralStats();
             }
+            if (activeTab === 'support-history') {
+                void fetchSupportHistory(false);
+            }
         });
 
         return () => window.cancelAnimationFrame(frameId);
@@ -2437,6 +3191,7 @@ const Profile: React.FC = () => {
         currentUser?.id,
         fetchReferralStats,
         fetchFavoriteLaws,
+        fetchSupportHistory,
         fetchUserCards,
         fetchUserMaterials,
         fetchUserTransactions,
@@ -2662,48 +3417,24 @@ const Profile: React.FC = () => {
                     <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 md:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col items-center text-center space-y-3 transition-colors">
                         <div 
                             className="relative group cursor-pointer"
-                            onClick={() => {
-                                const input = document.createElement('input');
-                                input.type = 'file';
-                                input.accept = 'image/*';
-                                input.onchange = async (event) => {
-                                    const target = event.target;
-                                    if (!(target instanceof HTMLInputElement)) return;
-
-                                    const file = target.files?.[0];
-                                    if (file) {
-                                        try {
-                                            const res = await profileService.uploadProfilePhoto(file);
-                                            addToast(res.message || 'Foto de perfil atualizada!', 'success');
-                                            await refreshUser();
-                                            setFailedProfilePhotoUrl(null);
-                                        } catch (err: unknown) {
-                                            addToast(readApiErrorMessage(err, 'Erro ao enviar foto.'), 'error');
-                                        }
-                                    }
-                                };
-                                input.click();
-                            }}
+                            onClick={openProfilePhotoPicker}
                         >
                             <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 transition-colors overflow-hidden relative">
-                                {currentUser.photoUrl && !photoLoadFailed ? (
-                                    <Image
+                                {profilePhotoUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
                                         src={profilePhotoUrl}
                                         alt={currentUser.name || 'Foto de perfil'}
-                                        fill
-                                        sizes="80px"
-                                        unoptimized
-                                        className="object-cover"
-                                        onError={() => setFailedProfilePhotoUrl(profilePhotoUrl)}
+                                        className="absolute inset-0 h-full w-full object-cover"
                                     />
                                 ) : (
                                     <span className="text-2xl font-black">{currentUser.name?.charAt(0) || 'U'}</span>
                                 )}
                                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Camera size={20} className="text-white" />
+                                    {isSavingProfilePhoto ? <Loader2 size={20} className="animate-spin text-white" /> : <Camera size={20} className="text-white" />}
                                 </div>
                             </div>
-                            {currentUser.photoUrl ? (
+                            {profilePhotoUrl ? (
                                 <button
                                     type="button"
                                     onClick={async (event) => {
@@ -2746,6 +3477,7 @@ const Profile: React.FC = () => {
                         <div className="px-4 py-2 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Conta</div>
                         {renderSidebarItem({ id: 'personal', label: 'Dados Pessoais', icon: User })}
                         {renderSidebarItem({ id: 'testimonial', label: 'Avaliar plataforma', icon: Star, onSelect: openTestimonialModal })}
+                        {renderSidebarItem({ id: 'support-history', label: 'Histórico de suporte', icon: MessageSquare })}
                         {renderSidebarItem({ id: 'billing', label: 'Assinatura', icon: CreditCard })}
                         {renderSidebarItem({ id: 'billing-history', label: 'Transações', icon: BarChart3 })}
                         {canAccessReferralTab && renderSidebarItem({ id: 'referral', label: 'Indique e Ganhe', icon: Gift })}
@@ -3744,6 +4476,8 @@ const Profile: React.FC = () => {
                   </div>
                )}
 
+               {activeTab === 'support-history' && renderSupportHistoryTab()}
+
                {activeTab === 'billing' && renderBillingTab()}
 
                {false && activeTab === 'billing' && (
@@ -4374,15 +5108,23 @@ const Profile: React.FC = () => {
 
                       {/* Preferências de Privacidade */}
                       <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                         <div className="flex justify-between items-center mb-6">
+                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
                              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 transition-colors">Privacidade e Preferências</h2>
-                             <button onClick={() => addToast('Preferências salvas!', 'success')} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline">Salvar Tudo</button>
+                             <button
+                                onClick={handleSavePrivacyPreferences}
+                                disabled={isSavingPrivacyPreferences}
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                             >
+                                {isSavingPrivacyPreferences ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                Salvar Tudo
+                             </button>
                          </div>
                          <div className="divide-y divide-slate-100 dark:divide-slate-800">
                             {[
-                               { id: 'isPublic', label: 'Perfil Público (Ranking)', desc: 'Permite que seu nome apareça nos rankings de simulados.', checked: currentUser.preferences?.isPublic, icon: Users },
-                               { id: 'notifications', label: 'Notificações por Email', desc: 'Receba alertas sobre novos simulados e promoções.', checked: currentUser.preferences?.notifications, icon: Bell },
-                               { id: 'shareData', label: 'Compartilhar Dados de Estudo', desc: 'Sua atividade ajuda a IA a melhorar as recomendações (Anônimo).', checked: currentUser.preferences?.shareData, icon: Zap }
+                               { id: 'isPublic', label: 'Perfil publico no ranking de XP', desc: 'Permite que seu nome apareca no ranking de nivel, sem afetar rankings pos-prova.', checked: privacyPreferencesDraft.isPublic, icon: Users },
+                               { id: 'showProfilePhoto', label: 'Mostrar foto no ranking de XP', desc: 'Quando desligado, o ranking usa apenas a inicial do seu nome.', checked: privacyPreferencesDraft.showProfilePhoto, icon: Camera },
+                               { id: 'notifications', label: 'Notificacoes por email', desc: 'Receba alertas sobre novidades, cobrancas e atividades importantes.', checked: privacyPreferencesDraft.notifications, icon: Bell },
+                               { id: 'shareData', label: 'Compartilhar dados de estudo', desc: 'Usa sua atividade para melhorar recomendacoes e estatisticas internas.', checked: privacyPreferencesDraft.shareData, icon: Zap }
                             ].map((item, i) => (
                                <div key={i} className="flex items-center justify-between py-5 group">
                                   <div className="flex items-start gap-4">
@@ -4393,7 +5135,7 @@ const Profile: React.FC = () => {
                                      </div>
                                   </div>
                                   <div 
-                                    onClick={() => updateUser({ preferences: { ...currentUser.preferences, [item.id]: !item.checked } })}
+                                    onClick={() => setPrivacyPreferencesDraft((current) => ({ ...current, [item.id]: !item.checked }))}
                                     className={`w-11 h-6 rounded-full relative cursor-pointer transition-all duration-300 ${item.checked ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-800'}`}
                                   >
                                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${item.checked ? 'right-1' : 'left-1'} shadow-sm`} />
@@ -4401,14 +5143,75 @@ const Profile: React.FC = () => {
                                </div>
                             ))}
                          </div>
+
+                         <div className="mt-6 grid gap-4 md:grid-cols-3">
+                            <label className="space-y-2">
+                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Tema padrao</span>
+                               <select
+                                  value={privacyPreferencesDraft.defaultTheme}
+                                  onChange={(event) => setPrivacyPreferencesDraft((current) => ({ ...current, defaultTheme: event.target.value as 'system' | 'light' | 'dark' }))}
+                                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-400 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                               >
+                                  <option value="system">Sistema</option>
+                                  <option value="light">Claro</option>
+                                  <option value="dark">Escuro</option>
+                               </select>
+                            </label>
+                            <label className="space-y-2">
+                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Questões por padrao</span>
+                               <select
+                                  value={privacyPreferencesDraft.defaultPracticeView}
+                                  onChange={(event) => setPrivacyPreferencesDraft((current) => ({ ...current, defaultPracticeView: event.target.value as 'card' | 'list' }))}
+                                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-400 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                               >
+                                  <option value="card">Cartao</option>
+                                  <option value="list">Lista</option>
+                               </select>
+                            </label>
+                            <label className="space-y-2">
+                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Simulado por padrao</span>
+                               <select
+                                  value={privacyPreferencesDraft.defaultSimulationView}
+                                  onChange={(event) => setPrivacyPreferencesDraft((current) => ({ ...current, defaultSimulationView: event.target.value as 'focus' | 'list' }))}
+                                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-400 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                               >
+                                  <option value="list">Lista</option>
+                                  <option value="focus">Foco</option>
+                               </select>
+                            </label>
+                         </div>
                       </div>
 
                       {/* Zona de Perigo */}
                       <div className="bg-rose-50/50 dark:bg-rose-950/10 p-8 rounded-2xl border border-rose-100 dark:border-rose-900/30 transition-colors">
                           <h3 className="text-sm font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest mb-2">Excluir Conta</h3>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-4">Esta ação é irreversível e excluirá todos os seus materiais, progresso e dados permanentemente.</p>
-                          <button className="text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest flex items-center gap-2 hover:bg-rose-600 hover:text-white px-4 py-2 rounded-xl border border-rose-200 dark:border-rose-900/50 transition-all">
-                              <LogOut size={14} /> Solicitar Exclusão
+                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-4">Esta acao registra uma solicitacao real de exclusao, marca sua conta para tratamento interno e desconecta a sessao.</p>
+                          <div className="space-y-4">
+                            <textarea
+                              value={accountDeletionReason}
+                              onChange={(event) => setAccountDeletionReason(event.target.value)}
+                              rows={3}
+                              placeholder="Explique rapidamente por que deseja excluir sua conta."
+                              className="w-full rounded-2xl border border-rose-100 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-500/10 dark:border-rose-900/40 dark:bg-slate-900 dark:text-slate-100"
+                            />
+                            {recaptchaEnabled ? (
+                              <div className="rounded-2xl border border-rose-100 bg-white px-4 py-4 dark:border-rose-900/40 dark:bg-slate-900">
+                                <div className="flex justify-center">
+                                  <ReCAPTCHA
+                                    sitekey={systemSettings?.recaptchaSiteKey || ''}
+                                    onChange={setAccountDeletionCaptchaToken}
+                                    theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'}
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                          <button
+                            onClick={handleRequestAccountDeletion}
+                            disabled={isRequestingAccountDeletion}
+                            className="mt-4 text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest flex items-center gap-2 hover:bg-rose-600 hover:text-white px-4 py-2 rounded-xl border border-rose-200 dark:border-rose-900/50 transition-all disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                              {isRequestingAccountDeletion ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />} Solicitar Exclusão
                           </button>
                       </div>
                   </div>
@@ -4463,6 +5266,7 @@ const Profile: React.FC = () => {
             </div>
          )}
 
+         {renderProfilePhotoCropModal()}
          {renderCancelSubscriptionModal()}
          {renderTestimonialModal()}
       </div>

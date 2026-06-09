@@ -11,7 +11,7 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
 import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
-import type { Question, QuestionStats, UserAnswer } from 'types';
+import type { ExamFileAttachment, ExamFileKind, Question, QuestionStats, UserAnswer } from 'types';
 import { isQuestionPubliclyVisible, withQuestionPublicationAliases } from './questionPublication';
 
 type QuestionListResult = {
@@ -31,8 +31,62 @@ type QuestionCreateResponse = {
   id?: string | number;
 };
 
+type ImportedQuestionBatchPayload = {
+  exam: Record<string, unknown>;
+  focus: Record<string, unknown>;
+  contexts: Array<Record<string, unknown>>;
+  questions: Question[];
+  requireExistingExam?: boolean;
+  require_existing_exam?: boolean;
+};
+
+type ImportedExamPayload = {
+  exam: Record<string, unknown>;
+  focus: Record<string, unknown>;
+};
+
+type ImportedQuestionBatchResponse = {
+  exam?: Record<string, unknown>;
+  prova?: Record<string, unknown>;
+  count?: number;
+  created?: Question[];
+  duplicatesSkipped?: Array<Record<string, unknown>>;
+  duplicates_skipped?: Array<Record<string, unknown>>;
+  skippedDuplicateCount?: number;
+  skipped_duplicate_count?: number;
+  newTaxonomies?: Array<Record<string, unknown>>;
+};
+
 type ToggleSavedQuestionResponse = {
   isSaved?: boolean;
+  is_saved?: boolean;
+  message?: string;
+  xpGain?: number;
+  xp_gain?: number;
+  newXp?: number;
+  new_xp?: number;
+  newLevel?: number;
+  new_level?: number;
+};
+
+type ToggleSavedQuestionResult = {
+  success: boolean;
+  isSaved?: boolean;
+  message?: string;
+  xpGain?: number;
+  newXp?: number;
+  newLevel?: number;
+};
+
+export type QuestionEditorialFeedbackKind = 'teacher' | 'detailed';
+export type QuestionEditorialFeedbackValue = 'like' | 'dislike';
+
+export type QuestionEditorialFeedbackSnapshot = {
+  feedback: Record<QuestionEditorialFeedbackKind, QuestionEditorialFeedbackValue | null>;
+  counts: Record<QuestionEditorialFeedbackKind, {
+    likes: number;
+    dislikes: number;
+  }>;
 };
 
 type QuestionFilters = Record<string, string | number | boolean | undefined | null>;
@@ -54,6 +108,157 @@ const getUserAnswerUserId = (answer: UserAnswer): string | null => {
 
   const userId = answer.userId;
   return typeof userId === 'string' && userId.trim() ? userId : null;
+};
+
+const toRecord = (value: unknown): Record<string, unknown> | null => (
+  value && typeof value === 'object' ? value as Record<string, unknown> : null
+);
+
+const EMPTY_EDITORIAL_FEEDBACK_SNAPSHOT: QuestionEditorialFeedbackSnapshot = {
+  feedback: {
+    teacher: null,
+    detailed: null,
+  },
+  counts: {
+    teacher: {
+      likes: 0,
+      dislikes: 0,
+    },
+    detailed: {
+      likes: 0,
+      dislikes: 0,
+    },
+  },
+};
+
+const normalizeEditorialFeedbackValue = (value: unknown): QuestionEditorialFeedbackValue | null => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'like' || normalized === 'dislike' ? normalized : null;
+};
+
+const readEditorialFeedbackCounts = (value: unknown) => {
+  const record = toRecord(value) || {};
+  return {
+    likes: Number(record.likes || 0) || 0,
+    dislikes: Number(record.dislikes || 0) || 0,
+  };
+};
+
+const normalizeEditorialFeedbackSnapshot = (value: unknown): QuestionEditorialFeedbackSnapshot => {
+  const record = toRecord(value) || {};
+  const feedbackRecord = toRecord(record.feedback) || {};
+  const countsRecord = toRecord(record.counts) || {};
+
+  return {
+    feedback: {
+      teacher: normalizeEditorialFeedbackValue(feedbackRecord.teacher),
+      detailed: normalizeEditorialFeedbackValue(feedbackRecord.detailed),
+    },
+    counts: {
+      teacher: readEditorialFeedbackCounts(countsRecord.teacher),
+      detailed: readEditorialFeedbackCounts(countsRecord.detailed),
+    },
+  };
+};
+
+const readImportedExamRecord = (payload: unknown): Record<string, unknown> | undefined => {
+  const record = toRecord(payload);
+  if (!record) {
+    return undefined;
+  }
+
+  const directExam = [
+    record.exam,
+    record.prova,
+    record.importedExam,
+    record.imported_exam,
+    record.createdExam,
+    record.created_exam,
+    record.publishedExam,
+    record.published_exam,
+  ]
+    .map(toRecord)
+    .find(Boolean);
+  if (directExam) {
+    return directExam;
+  }
+
+  const nestedContainers = [
+    record.data,
+    record.result,
+    record.payload,
+    record.item,
+    record.record,
+    record.row,
+  ];
+  for (const nestedContainer of nestedContainers) {
+    const nestedRecord = toRecord(nestedContainer);
+    if (nestedRecord && nestedRecord !== record) {
+      const nestedExam = readImportedExamRecord(nestedRecord);
+      if (nestedExam) {
+        return nestedExam;
+      }
+    }
+  }
+
+  const hasExamShape = [
+    'id',
+    'exam_id',
+    'prova_id',
+    'publishedExamId',
+    'published_exam_id',
+    'nome',
+    'name',
+    'title',
+    'examTitle',
+    'exam_title',
+    'ano',
+    'year',
+    'caderno',
+    'tipoCaderno',
+    'bookletType',
+    'corCaderno',
+    'bookletColor',
+  ]
+    .some((key) => record[key] !== undefined && record[key] !== null && String(record[key]).trim() !== '');
+
+  return hasExamShape ? record : undefined;
+};
+
+const withImportedQuestionAliases = (question: Question): Question => {
+  const normalizedQuestion = withQuestionPublicationAliases(question);
+  const record = normalizedQuestion as Question & Record<string, unknown>;
+  const sourceQuestionNumber = record.questionNumber
+    ?? record.question_number
+    ?? record.number
+    ?? record.sourceQuestionNumber
+    ?? record.source_question_number;
+
+  if (sourceQuestionNumber === undefined || sourceQuestionNumber === null || String(sourceQuestionNumber).trim() === '') {
+    return normalizedQuestion;
+  }
+
+  return {
+    ...normalizedQuestion,
+    questionNumber: sourceQuestionNumber,
+    question_number: sourceQuestionNumber,
+    number: sourceQuestionNumber,
+    sourceQuestionNumber: sourceQuestionNumber,
+    source_question_number: sourceQuestionNumber,
+  } as Question;
+};
+
+const readExamFileAttachment = (value: unknown, fallbackKind: ExamFileKind): ExamFileAttachment => {
+  const record = toRecord(value) || {};
+  return {
+    kind: String(record.kind || fallbackKind) as ExamFileKind,
+    label: String(record.label || ''),
+    name: String(record.name || record.fileName || record.file_name || ''),
+    url: String(record.url || record.fileUrl || record.file_url || ''),
+    mimeType: String(record.mimeType || record.mime_type || ''),
+    size: Number(record.size || 0) || undefined,
+    uploadedAt: String(record.uploadedAt || record.uploaded_at || ''),
+  };
 };
 
 /**
@@ -144,6 +349,7 @@ export const questionService = {
             params: {
               id: normalizedQuestionId,
             },
+            timeout: 15000,
           },
         );
 
@@ -261,6 +467,49 @@ export const questionService = {
   },
 
   /**
+   * Carrega likes/dislikes editoriais do comentario do professor e da analise detalhada.
+   * @since v1.0.0
+   */
+  async getEditorialFeedback(questionId: string | number): Promise<QuestionEditorialFeedbackSnapshot> {
+    try {
+      const response = await apiClient.get<QuestionEditorialFeedbackSnapshot>(
+        ENDPOINTS.questions.editorialFeedback,
+        {
+          params: {
+            question_id: String(questionId),
+          },
+        },
+      );
+
+      return normalizeEditorialFeedbackSnapshot(readApiData<QuestionEditorialFeedbackSnapshot>(response, EMPTY_EDITORIAL_FEEDBACK_SNAPSHOT));
+    } catch {
+      return EMPTY_EDITORIAL_FEEDBACK_SNAPSHOT;
+    }
+  },
+
+  /**
+   * Persiste o like/dislike editorial do usuario autenticado.
+   * @since v1.0.0
+   */
+  async setEditorialFeedback(
+    questionId: string | number,
+    contentType: QuestionEditorialFeedbackKind,
+    value: QuestionEditorialFeedbackValue | null,
+  ): Promise<QuestionEditorialFeedbackSnapshot> {
+    const response = await apiClient.post<QuestionEditorialFeedbackSnapshot>(
+      ENDPOINTS.questions.editorialFeedback,
+      {
+        question_id: String(questionId),
+        content_type: contentType,
+        value,
+      },
+    );
+
+    assertApiSuccess(response, 'Nao foi possivel registrar sua avaliacao.');
+    return normalizeEditorialFeedbackSnapshot(readApiData<QuestionEditorialFeedbackSnapshot>(response, EMPTY_EDITORIAL_FEEDBACK_SNAPSHOT));
+  },
+
+  /**
    * Bridge legado para usos antigos do servico.
    * @since v1.0.0
    */
@@ -329,6 +578,129 @@ export const questionService = {
   },
 
   /**
+   * Envia edital, gabarito ou prova para armazenamento persistente.
+   * @since v1.0.0
+   */
+  async uploadExamFile(file: File, kind: ExamFileKind): Promise<ExamFileAttachment> {
+    const formData = new FormData();
+    formData.append('kind', kind);
+    formData.append('file', file, file.name);
+
+    const response = await apiClient.post<{ file?: ExamFileAttachment }>(
+      ENDPOINTS.questions.examFiles,
+      formData,
+      { timeout: 120000 },
+    );
+    const envelope = assertApiSuccess<{ file?: ExamFileAttachment }>(response, 'Nao foi possivel enviar o arquivo da prova.');
+    const data = readApiData<{ file?: ExamFileAttachment } | ExamFileAttachment>(response, {});
+    const uploaded = toRecord(data) && 'file' in (data as Record<string, unknown>)
+      ? (data as { file?: ExamFileAttachment }).file
+      : data || envelope.raw.file;
+    const attachment = readExamFileAttachment(uploaded, kind);
+
+    if (!attachment.url) {
+      throw new Error('O backend nao retornou a URL do arquivo.');
+    }
+
+    return attachment;
+  },
+
+  /**
+   * Persiste uma importacao oficial de PDF com prova, contextos e questoes vinculadas.
+   * @since v1.0.0
+   */
+  async createImportedExam(
+    payload: ImportedExamPayload,
+  ): Promise<{ success: boolean; message?: string; exam?: Record<string, unknown> }> {
+    try {
+      const response = await apiClient.post<{ exam?: Record<string, unknown> }>(
+        ENDPOINTS.questions.examImport,
+        payload,
+        { timeout: 30000 },
+      );
+
+      const envelope = assertApiSuccess<{ exam?: Record<string, unknown> }>(response, 'Nao foi possivel salvar a prova.');
+      const data = readApiData<{ exam?: Record<string, unknown>; prova?: Record<string, unknown> } | Record<string, unknown>>(response, {});
+      const exam = readImportedExamRecord(data) || readImportedExamRecord(envelope.raw);
+
+      return {
+        success: true,
+        message: envelope.message,
+        exam,
+      };
+    } catch (error: unknown) {
+      return {
+        success: false,
+        message: readApiErrorMessage(error, 'Nao foi possivel salvar a prova.'),
+      };
+    }
+  },
+
+  /**
+   * Persiste uma importacao oficial de PDF com prova, contextos e questoes vinculadas.
+   * @since v1.0.0
+   */
+  async createImportedQuestionBatch(
+    payload: ImportedQuestionBatchPayload,
+    proofPdf?: File | null,
+  ): Promise<{
+    success: boolean;
+    message?: string;
+    count?: number;
+    created?: Question[];
+    exam?: Record<string, unknown>;
+    duplicatesSkipped?: Array<Record<string, unknown>>;
+    skippedDuplicateCount?: number;
+    newTaxonomies?: Array<Record<string, unknown>>;
+  }> {
+    try {
+      const formData = new FormData();
+      formData.append('payload', JSON.stringify(payload));
+      if (proofPdf) {
+        formData.append('proof_pdf', proofPdf, proofPdf.name);
+      }
+
+      const response = await apiClient.post<ImportedQuestionBatchResponse>(
+        ENDPOINTS.questions.bulkImport,
+        formData,
+        { timeout: 300000 },
+      );
+
+      const envelope = assertApiSuccess<ImportedQuestionBatchResponse>(response, 'Nao foi possivel importar a prova.');
+      const raw = envelope.raw as ImportedQuestionBatchResponse;
+      const data = readApiData<ImportedQuestionBatchResponse>(response, {} as ImportedQuestionBatchResponse);
+      const created = Array.isArray(data.created)
+        ? data.created.map((question) => withImportedQuestionAliases(question))
+        : [];
+
+      return {
+        success: true,
+        count: Number(data.count ?? raw.count ?? created.length),
+        created,
+        exam: readImportedExamRecord(data) || readImportedExamRecord(raw),
+        duplicatesSkipped: data.duplicatesSkipped ?? data.duplicates_skipped ?? raw.duplicatesSkipped ?? raw.duplicates_skipped ?? [],
+        skippedDuplicateCount: Number(data.skippedDuplicateCount ?? data.skipped_duplicate_count ?? raw.skippedDuplicateCount ?? raw.skipped_duplicate_count ?? 0),
+        newTaxonomies: data.newTaxonomies ?? raw.newTaxonomies,
+      };
+    } catch (error: unknown) {
+      const message = error instanceof Error && error.message === 'Network Error'
+        ? 'O servidor interrompeu a importacao antes de responder. Verifique o limite de upload/tempo do PHP ou reduza imagens muito grandes no lote.'
+        : readApiErrorMessage(error, 'Nao foi possivel importar a prova.');
+
+      return {
+        success: false,
+        message,
+        count: 0,
+        created: [],
+        duplicatesSkipped: [],
+        skippedDuplicateCount: 0,
+        newTaxonomies: [],
+        exam: undefined,
+      };
+    }
+  },
+
+  /**
    * Atualiza uma questao usando o endpoint oficial de update.
    * @since v1.0.0
    */
@@ -375,7 +747,7 @@ export const questionService = {
    * Alterna o estado salvo de uma questao para o usuario atual.
    * @since v1.0.0
    */
-  async toggleSavedQuestion(userId: string, questionId: string | number): Promise<{ success: boolean; isSaved?: boolean; message?: string }> {
+  async toggleSavedQuestion(userId: string, questionId: string | number): Promise<ToggleSavedQuestionResult> {
     try {
       const response = await apiClient.post<ToggleSavedQuestionResponse>(
         ENDPOINTS.questions.toggleSave,
@@ -387,12 +759,19 @@ export const questionService = {
 
       const envelope = assertApiSuccess<ToggleSavedQuestionResponse>(response, 'Nao foi possivel atualizar os salvos.');
       const payload = readApiData<ToggleSavedQuestionResponse>(response, {});
-      const resolvedSaved = payload.isSaved ?? envelope.raw.isSaved;
+      const raw = toRecord(envelope.raw) || {};
+      const resolvedSaved = payload.isSaved ?? payload.is_saved ?? raw.isSaved ?? raw.is_saved;
+      const xpGain = Number(payload.xpGain ?? payload.xp_gain ?? raw.xpGain ?? raw.xp_gain);
+      const newXp = Number(payload.newXp ?? payload.new_xp ?? raw.newXp ?? raw.new_xp);
+      const newLevel = Number(payload.newLevel ?? payload.new_level ?? raw.newLevel ?? raw.new_level);
 
       return {
         success: true,
         isSaved: typeof resolvedSaved === 'boolean' ? resolvedSaved : undefined,
-        message: envelope.message,
+        message: payload.message || envelope.message,
+        xpGain: Number.isFinite(xpGain) ? xpGain : undefined,
+        newXp: Number.isFinite(newXp) ? newXp : undefined,
+        newLevel: Number.isFinite(newLevel) ? newLevel : undefined,
       };
     } catch (error: unknown) {
       return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel atualizar os salvos.') };

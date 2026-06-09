@@ -37,7 +37,12 @@ const DevModeBanner: React.FC = () => {
   if (systemSettings?.appMode === 'production' || dismissed) return null;
 
   const smtpConfigured = !!(systemSettings?.smtpHost && systemSettings?.smtpUser);
-  const apiKeySet = !!(systemSettings?.hasGeminiApiKeyConfigured || systemSettings?.geminiApiKey);
+  const apiKeySet = !!(
+    systemSettings?.hasGeminiApiKeyConfigured
+    || systemSettings?.geminiApiKey
+    || systemSettings?.hasOpenAiApiKeyConfigured
+    || systemSettings?.openaiApiKey
+  );
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[9998] pointer-events-none">
@@ -55,7 +60,7 @@ const DevModeBanner: React.FC = () => {
                   SMTP: {smtpConfigured ? 'configurado' : 'nao configurado'}
                 </span>
                 <span className={`rounded-full px-2 py-0.5 font-mono text-[10px] ${apiKeySet ? 'bg-emerald-200/60' : 'bg-red-200/60'}`}>
-                  Gemini AI: {apiKeySet ? 'ativo' : 'sem chave'}
+                  IA: {apiKeySet ? 'ativa' : 'sem chave'}
                 </span>
               </span>
             </div>
@@ -94,7 +99,7 @@ const DevModeBanner: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Zap size={12} />
-                  <span>Gemini: {apiKeySet ? 'ok' : 'sem chave'}</span>
+                  <span>IA: {apiKeySet ? 'ok' : 'sem chave'}</span>
                 </div>
               </div>
             </div>

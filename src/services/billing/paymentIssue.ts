@@ -24,6 +24,17 @@ const PAST_DUE_PAYMENT_ISSUE: ResolvedPaymentIssue = {
   blockingReason: 'past_due',
 };
 
+const EXPIRED_CARD_PAYMENT_ISSUE: ResolvedPaymentIssue = {
+  type: 'expired_card',
+  code: 'card_expired',
+  severity: 'blocking',
+  interactionLock: true,
+  actionLabel: 'Atualizar cartao',
+  actionTarget: '/profile/personal#saved-cards-personal-section',
+  message: 'O cartao da sua assinatura expirou. Atualize seus dados para desbloquear novamente os recursos premium.',
+  blockingReason: 'expired_card',
+};
+
 const hasBlockingCycle = (user: UserProfile): boolean => {
   const billingCycle = String(user.billing?.billingCycle || '').toLowerCase();
   const intervalUnit = String(user.subscription?.plan?.interval_unit || '').toLowerCase();
@@ -51,6 +62,16 @@ export const resolveUserPaymentIssue = (user?: UserProfile | null): ResolvedPaym
   }
 
   if (user.paymentIssue) {
+    if (user.paymentIssue.type === 'expired_card' || user.paymentIssue.code === 'card_expired') {
+      return {
+        ...EXPIRED_CARD_PAYMENT_ISSUE,
+        ...user.paymentIssue,
+        severity: 'blocking',
+        interactionLock: true,
+        blockingReason: user.paymentIssue.blockingReason || 'expired_card',
+      };
+    }
+
     return {
       ...DEFAULT_PAYMENT_ISSUE,
       ...user.paymentIssue,

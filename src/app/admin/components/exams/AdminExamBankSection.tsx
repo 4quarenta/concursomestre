@@ -109,6 +109,11 @@ const AdminExamBankSection = ({
                       <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
                         #{exam.id} {exam.ano ? `- ${exam.ano}` : ''} {exam.nivel ? `- ${exam.nivel}` : ''}
                       </span>
+                      {(exam.caderno || exam.tipoCaderno || exam.corCaderno || exam.bookletType || exam.bookletColor) ? (
+                        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
+                          {exam.caderno || [exam.tipoCaderno || exam.bookletType, exam.corCaderno || exam.bookletColor].filter(Boolean).join(' - ')}
+                        </span>
+                      ) : null}
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                         <Link
                           href={buildAdminExamEditPath(exam.id)}

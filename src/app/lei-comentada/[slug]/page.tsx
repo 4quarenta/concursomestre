@@ -18,6 +18,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
+  Bookmark,
   BookOpen,
   Bold,
   ChevronDown,
@@ -25,11 +26,14 @@ import {
   CheckCircle2,
   Crown,
   Eraser,
+  ExternalLink,
   Eye,
+  EyeOff,
   FileText,
   Flag,
   Highlighter,
   Italic,
+  Lightbulb,
   Loader2,
   MessageSquare,
   Minus,
@@ -38,8 +42,11 @@ import {
   Save,
   Search,
   Share2,
+  Scale,
   Star,
   Table,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   Underline,
   Zap,
@@ -55,10 +62,12 @@ import {
   PLATFORM_SURFACE_CARD_CLASS,
 } from '@constants/layout';
 import { legalCommentaryApiService } from '@services/legal-commentary';
+import { supportService } from '@services/support';
 import { reportsService } from '@services/reports';
 import { questionService } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 import type {
+  ArticleExamTip,
   ArticleJurisprudence,
   LegalRichContentBlock,
   LegalUserComment,
@@ -66,6 +75,7 @@ import type {
   LawDetail,
   LawSection,
   LawSectionEditorial,
+  LegalTargetedText,
   Question,
   TeacherComment,
 } from '@types';
@@ -82,10 +92,10 @@ type CurrentUserLike = {
   photoUrl?: string;
 } | null;
 
-type ReadingTab = 'comments' | 'law' | 'questions';
+type ReadingTab = 'comments' | 'law' | 'analysis' | 'questions';
 type CalloutTone = 'teacher' | 'doctrine' | 'juris' | 'tip' | 'question';
 type LawSectionSummary = LawSection & {
-  sectionKey?: string;
+  sectionSlug?: string;
   fromArticle: string;
   toArticle: string;
   articles: number;
@@ -100,6 +110,8 @@ type RenderableBlock = {
   label: string;
   text: string;
   isCaput: boolean;
+  isLegalNote: boolean;
+  indentLevel: number;
 };
 
 type InlineLegalNote = {
@@ -108,6 +120,11 @@ type InlineLegalNote = {
   title: string;
   body: string;
   referenceText: string;
+  reactionKey?: string;
+  likes?: number;
+  dislikes?: number;
+  userReaction?: 'like' | 'dislike' | null;
+  targetBlockId?: string;
   blocks?: LegalRichContentBlock[];
 };
 
@@ -118,6 +135,14 @@ type RelatedQuestionsState = {
   error?: string;
 };
 
+type SectionSupportActionMode = 'report' | 'teacher_request' | 'analysis_request';
+
+type SectionTargetOption = {
+  id: string;
+  label: string;
+  details: string;
+};
+
 const getUserId = (user: CurrentUserLike) => user?.id || user?.userId || user?.email || null;
 
 const normalizeText = (value: unknown) => String(value || '')
@@ -125,6 +150,10 @@ const normalizeText = (value: unknown) => String(value || '')
   .replace(/[\u0300-\u036f]/g, '')
   .toLowerCase()
   .trim();
+
+const normalizeStorageKeyPart = (value: unknown) => normalizeText(value)
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
 
 const normalizeReferenceText = (value: unknown) => normalizeText(value)
   .replace(/[ºª]/g, '')
@@ -149,6 +178,65 @@ const getSignificantTokens = (value: unknown) => normalizeReferenceText(value)
     'doutrina',
     'sumula',
   ].includes(token));
+
+const escapeLegalAnalysisHtml = (value: unknown) => String(value || '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const hasLegalRichBlockContent = (block?: LegalRichContentBlock | null) => Boolean(
+  String(block?.content || '').trim()
+  || (Array.isArray(block?.items) && block.items.some((item) => String(item || '').trim()))
+  || (Array.isArray(block?.rows) && block.rows.some((row) => Array.isArray(row) && row.some((cell) => String(cell || '').trim()))),
+);
+
+const legalRichBlockToSingleAnalysisHtml = (block: LegalRichContentBlock) => {
+  const title = String(block.title || '').trim();
+  const content = String(block.content || '').trim();
+  const parts: string[] = [];
+
+  if (title) {
+    parts.push(`<h3>${escapeLegalAnalysisHtml(title)}</h3>`);
+  }
+
+  if (block.type === 'table' && Array.isArray(block.rows) && block.rows.length > 0) {
+    const headers = (block.headers || []).map((header) => `<th>${escapeLegalAnalysisHtml(header)}</th>`).join('');
+    const rows = block.rows
+      .filter((row) => Array.isArray(row) && row.some((cell) => String(cell || '').trim()))
+      .map((row) => `<tr>${row.map((cell) => `<td>${escapeLegalAnalysisHtml(cell)}</td>`).join('')}</tr>`)
+      .join('');
+    parts.push(`<table>${headers ? `<thead><tr>${headers}</tr></thead>` : ''}<tbody>${rows}</tbody></table>`);
+  } else if (content) {
+    parts.push(content);
+  }
+
+  const items = (block.items || []).map((item) => String(item || '').trim()).filter(Boolean);
+  if (items.length > 0) {
+    parts.push(`<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`);
+  }
+
+  return parts.join('');
+};
+
+const buildSingleSectionAnalysisHtml = (editorial?: LawSectionEditorial | null) => {
+  if (!editorial) {
+    return '';
+  }
+
+  const blockHtml = (editorial.blocks || [])
+    .filter(hasLegalRichBlockContent)
+    .map(legalRichBlockToSingleAnalysisHtml)
+    .filter(Boolean)
+    .join('');
+
+  if (blockHtml.trim()) {
+    return blockHtml;
+  }
+
+  return String(editorial.summary || '').trim();
+};
 
 const formatDate = (iso?: string | null) => {
   if (!iso) return 'Sem registro';
@@ -181,15 +269,28 @@ const stripRichText = (value: unknown) => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
+const cleanLegalNoteText = (value: unknown) => String(value || '')
+  .replace(/\s*\[(?:caput|par[aá]grafo(?:\s+u[nú]nico)?|inciso\s+[ivxlcdm]+|al[ií]nea\s+[a-z]|item\s+[a-z0-9]+)\]\s*/giu, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const cleanLegalNoteTitle = (value: unknown) => cleanLegalNoteText(value)
+  .replace(/^nota:\s*/iu, '')
+  .trim();
+
 const truncateText = (value: unknown, maxLength = 220) => {
   const text = stripRichText(value);
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}…` : text;
 };
 
-type SectionReadingState = Record<string, { startedAt?: string; completedAt?: string }>;
+type SectionReadingEntry = { startedAt?: string; completedAt?: string; restartedAt?: string };
+type SectionReadingState = Record<string, SectionReadingEntry>;
 
 const getSectionReadingStorageKey = (userKey: string, lawId: string) => `cm:legal-commentary:section-reading:${userKey}:${lawId}`;
 const getSectionFavoriteStorageKey = (userKey: string, lawId: string) => `cm:legal-commentary:favorite-sections:${userKey}:${lawId}`;
+const getTeacherCommentRequestStorageKey = (userKey: string, lawId: string) => (
+  `cm:legal-commentary:teacher-comment-requests:${userKey}:${lawId}`
+);
 const getReaderMarkupStorageKey = (userKey: string, lawId: string, sectionId: string) => (
   `cm:legal-commentary:reader-markup:${userKey || 'guest'}:${lawId}:${sectionId}`
 );
@@ -210,6 +311,30 @@ const hexToRgb = (hexColor: string) => {
   const green = Number.parseInt(normalized.slice(2, 4), 16);
   const blue = Number.parseInt(normalized.slice(4, 6), 16);
   return `rgb(${red}, ${green}, ${blue})`;
+};
+
+const matchesReaderCommandElement = (element: HTMLElement, command: 'bold' | 'italic' | 'underline') => {
+  const tagName = element.tagName.toLowerCase();
+  const readerStyle = String(element.dataset.readerStyle || '').toLowerCase();
+  if (readerStyle === command) {
+    return true;
+  }
+
+  if (command === 'bold') {
+    const rawWeight = element.style.fontWeight;
+    const numericWeight = Number.parseInt(rawWeight, 10);
+    return tagName === 'b'
+      || tagName === 'strong'
+      || rawWeight === 'bold'
+      || rawWeight === 'bolder'
+      || (Number.isFinite(numericWeight) && numericWeight >= 600);
+  }
+
+  if (command === 'italic') {
+    return tagName === 'i' || tagName === 'em' || element.style.fontStyle === 'italic';
+  }
+
+  return tagName === 'u' || element.style.textDecoration.includes('underline');
 };
 
 const readReaderMarkupHtml = (storageKey: string) => {
@@ -251,6 +376,15 @@ const getSectionReadingEntry = (
   section: Pick<LawSectionSummary, 'id' | 'fromArticle' | 'toArticle'>,
 ) => state[buildSectionReadingKey(section)] || state[String(section.id || '')];
 
+const getDateTimeValue = (value?: string) => {
+  const timestamp = value ? Date.parse(value) : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const isSectionReadingRestartPending = (entry?: SectionReadingEntry) => (
+  getDateTimeValue(entry?.restartedAt) > getDateTimeValue(entry?.completedAt)
+);
+
 const readFavoriteSectionIds = (userKey: string, lawId: string) => {
   if (typeof window === 'undefined' || !userKey || !lawId) return new Set<string>();
   try {
@@ -264,6 +398,21 @@ const readFavoriteSectionIds = (userKey: string, lawId: string) => {
 const saveFavoriteSectionIds = (userKey: string, lawId: string, ids: Set<string>) => {
   if (typeof window === 'undefined' || !userKey || !lawId) return;
   window.localStorage.setItem(getSectionFavoriteStorageKey(userKey, lawId), JSON.stringify(Array.from(ids)));
+};
+
+const readTeacherCommentRequestKeys = (userKey: string, lawId: string) => {
+  if (typeof window === 'undefined' || !userKey || !lawId) return new Set<string>();
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(getTeacherCommentRequestStorageKey(userKey, lawId)) || '[]');
+    return new Set(Array.isArray(parsed) ? parsed.map((item) => String(item)).filter(Boolean) : []);
+  } catch {
+    return new Set<string>();
+  }
+};
+
+const saveTeacherCommentRequestKeys = (userKey: string, lawId: string, ids: Set<string>) => {
+  if (typeof window === 'undefined' || !userKey || !lawId) return;
+  window.localStorage.setItem(getTeacherCommentRequestStorageKey(userKey, lawId), JSON.stringify(Array.from(ids)));
 };
 
 const getArticleNumber = (article: LawArticle) => String(article.number || article.numero || '').trim();
@@ -318,32 +467,93 @@ const resolveArticleJurisprudence = (law: LawDetail, article: LawArticle): Artic
     .filter((entry) => String(entry.articleId) === String(article.id));
 };
 
+const normalizeLegalHeadingText = (value: string): string => value
+  .replace(/\s+/g, ' ')
+  .replace(/^capitulo\b/i, 'Capítulo')
+  .replace(/^se[cç][aã]o\b/i, 'Seção')
+  .replace(/^subse[cç][aã]o\b/i, 'Subseção')
+  .trim();
+
+const joinLegalHeadingParts = (...parts: Array<unknown>) => (
+  parts
+    .map((part) => normalizeLegalHeadingText(String(part || '').trim()))
+    .filter(Boolean)
+    .join(' - ')
+);
+
+const isArticleHeadingText = (value: string): boolean => /^\s*art\.?\s*\d/i.test(value);
+
 const getSectionHeaderText = (article: LawArticle): string => {
   const raw = String(article.title || article.titulo || '').trim();
+  if (!raw || isArticleHeadingText(raw)) return '';
+
+  return normalizeLegalHeadingText(raw
+    .replace(/^(?:T[IÍ]TULO|CAP[IÍ]TULO|SE[CÇ][AÃ]O|SUBSE[CÇ][AÃ]O|LIVRO|PARTE)\s+[IVXLCDM0-9]+(?:\s*[---]\s*|\s+)/i, '')
+    .trim());
+};
+
+const getReadableSectionTitle = (section?: LawSectionSummary | null): string => {
+  const raw = joinLegalHeadingParts(
+    joinLegalHeadingParts(section?.chapterLabel, section?.chapterName),
+    joinLegalHeadingParts(section?.titleLabel, section?.titleName),
+  ) || String(section?.displayTitle || section?.title || '').trim();
   if (!raw) return '';
 
-  return raw
-    .replace(/^(?:T[IÍ]TULO|CAP[IÍ]TULO|SE[CÇ][AÃ]O|SUBSE[CÇ][AÃ]O|LIVRO|PARTE)\s+[IVXLCDM0-9]+(?:\s*[---]\s*|\s+)/i, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return normalizeLegalHeadingText(raw);
 };
 
 const getTitleMarker = (article: LawArticle): string => {
-  return String(article.title || article.titulo || '').trim();
+  const raw = String(article.title || article.titulo || '').trim();
+  return raw && !isArticleHeadingText(raw) ? raw : '';
+};
+
+const isLegalTextNoteBlock = (kind: RenderableBlock['kind'], label: string, text: string): boolean => {
+  if (kind === 'note') {
+    return true;
+  }
+
+  const normalized = normalizeText(`${label} ${text}`).replace(/\s+/g, ' ').trim();
+  return /^nota(?:\s|\()/i.test(normalized);
+};
+
+const getLegalBlockIndentLevel = (kind: RenderableBlock['kind'], isLegalNote: boolean): number => {
+  if (isLegalNote) return 1;
+  if (kind === 'paragraph') return 1;
+  if (kind === 'inciso') return 2;
+  if (kind === 'alinea') return 3;
+  if (kind === 'item') return 4;
+  return 0;
+};
+
+const getLegalBlockIndentClass = (indentLevel: number): string => {
+  if (indentLevel >= 4) return 'ml-12 sm:ml-20';
+  if (indentLevel === 3) return 'ml-9 sm:ml-16';
+  if (indentLevel === 2) return 'ml-6 sm:ml-10';
+  if (indentLevel === 1) return 'ml-3 sm:ml-6';
+  return '';
 };
 
 const buildArticleBlocks = (article: LawArticle): RenderableBlock[] => {
   const blocks = Array.isArray(article.blocks) ? article.blocks : [];
   if (blocks.length > 0) {
     return blocks
-      .map((block, index) => ({
-        id: `${article.id}-block-${index}`,
-        sourceId: block.id,
-        kind: block.kind || 'caput',
-        label: String(block.label || '').trim(),
-        text: String(block.text || '').trim(),
-        isCaput: String(block.kind || '') === 'caput',
-      }))
+      .map((block, index) => {
+        const kind = block.kind || 'caput';
+        const label = String(block.label || '').trim();
+        const text = String(block.text || '').trim();
+        const isLegalNote = isLegalTextNoteBlock(kind, label, text);
+
+        return {
+          id: `${article.id}-block-${index}`,
+          sourceId: block.id,
+          kind,
+          label,
+          text,
+          isCaput: String(kind || '') === 'caput',
+          isLegalNote,
+          indentLevel: getLegalBlockIndentLevel(kind, isLegalNote),
+        };
+      })
       .filter((block) => block.text);
   }
 
@@ -358,6 +568,8 @@ const buildArticleBlocks = (article: LawArticle): RenderableBlock[] => {
       label: `Art. ${getArticleNumber(article) || '-'}`,
       text: fallbackText,
       isCaput: true,
+      isLegalNote: false,
+      indentLevel: 0,
     });
   }
 
@@ -370,6 +582,8 @@ const buildArticleBlocks = (article: LawArticle): RenderableBlock[] => {
       label: String(paragraph.number || '').trim(),
       text,
       isCaput: false,
+      isLegalNote: false,
+      indentLevel: 1,
     });
   });
 
@@ -439,6 +653,13 @@ const resolveNoteBlockId = (blocks: RenderableBlock[], note: InlineLegalNote) =>
     return '';
   }
 
+  if (note.targetBlockId) {
+    const directMatch = blocks.find((block) => block.sourceId === note.targetBlockId || block.id === note.targetBlockId);
+    if (directMatch) {
+      return directMatch.id;
+    }
+  }
+
   const noteText = `${note.title} ${note.body} ${note.referenceText}`;
   const rankedBlocks = blocks
     .map((block) => ({
@@ -453,6 +674,21 @@ const resolveNoteBlockId = (blocks: RenderableBlock[], note: InlineLegalNote) =>
 
   return blocks.find((block) => block.isCaput)?.id || blocks[0].id;
 };
+
+const formatLegalTargetReference = (target?: LegalRichContentBlock['target']) => {
+  if (!target) return '';
+  return [target.kind, target.label, target.blockId].filter(Boolean).join(' ');
+};
+
+const getTargetedTextBody = (item: string | LegalTargetedText) => (
+  typeof item === 'string'
+    ? item
+    : String(item.body || item.text || '').trim()
+);
+
+const getTargetedTextTarget = (item: string | LegalTargetedText) => (
+  typeof item === 'string' ? undefined : item.target
+);
 
 const groupInlineNotesByBlock = (blocks: RenderableBlock[], notes: InlineLegalNote[]) => {
   const grouped = new Map<string, InlineLegalNote[]>();
@@ -471,18 +707,31 @@ const buildInlineLegalNotes = ({
   article,
   teacherComments,
   doctrine,
+  jurisprudenceNotes,
   jurisprudence,
   sumulas,
-  examTip,
+  examTips,
+  fallbackExamTip,
 }: {
   article: LawArticle;
   teacherComments: TeacherComment[];
-  doctrine: string[];
+  doctrine: Array<string | LegalTargetedText>;
+  jurisprudenceNotes: Array<string | LegalTargetedText>;
   jurisprudence: ArticleJurisprudence[];
   sumulas: NonNullable<LawArticle['sumulas']>;
-  examTip: string;
+  examTips: ArticleExamTip[];
+  fallbackExamTip: string;
 }): InlineLegalNote[] => {
   const articleNumber = getArticleNumber(article);
+  const resolvedExamTips = examTips.length > 0
+    ? examTips
+    : (fallbackExamTip ? [{
+      id: `tip-${article.id}-${articleNumber || 'article'}`,
+      articleId: article.id,
+      title: 'Macete',
+      body: fallbackExamTip,
+      tags: [],
+    }] : []);
 
   return [
     ...teacherComments.map((comment) => ({
@@ -490,6 +739,10 @@ const buildInlineLegalNotes = ({
       tone: 'teacher' as const,
       title: comment.title || 'Comentário do professor',
       body: String(comment.body || comment.texto || '').trim(),
+      reactionKey: comment.reactionKey || `inline-note:teacher-${comment.id}`,
+      likes: Number(comment.likes || 0),
+      dislikes: Number(comment.dislikes || 0),
+      userReaction: comment.userReaction,
       referenceText: [
         comment.title,
         comment.body,
@@ -501,35 +754,62 @@ const buildInlineLegalNotes = ({
       blocks: Array.isArray(comment.richBlocks) && comment.richBlocks.length > 0
         ? comment.richBlocks
         : (Array.isArray(comment.blocks) ? comment.blocks : []),
+      targetBlockId: (Array.isArray(comment.richBlocks) ? comment.richBlocks : comment.blocks || [])
+        .map((block) => block.target?.blockId)
+        .find(Boolean),
     })),
     ...doctrine.map((text, index) => ({
       id: `doctrine-${article.id}-${index}`,
       tone: 'doctrine' as const,
       title: 'Doutrina',
-      body: String(text || '').trim(),
-      referenceText: text,
+      body: getTargetedTextBody(text),
+      referenceText: [formatLegalTargetReference(getTargetedTextTarget(text)), getTargetedTextBody(text)].join(' '),
+      targetBlockId: getTargetedTextTarget(text)?.blockId,
+    })),
+    ...jurisprudenceNotes.map((text, index) => ({
+      id: `juris-note-${article.id}-${index}`,
+      tone: 'juris' as const,
+      title: 'Jurisprudência',
+      body: getTargetedTextBody(text),
+      referenceText: [formatLegalTargetReference(getTargetedTextTarget(text)), getTargetedTextBody(text)].join(' '),
+      targetBlockId: getTargetedTextTarget(text)?.blockId,
     })),
     ...jurisprudence.map((entry, index) => ({
       id: `juris-${entry.id || `${article.id}-${index}`}`,
       tone: 'juris' as const,
       title: entry.title ? `Jurisprudência: ${entry.title}` : 'Jurisprudência',
       body: String(entry.summary || entry.texto || entry.examImpact || '').trim(),
-      referenceText: [entry.title, entry.summary, entry.texto, entry.examImpact, entry.court, entry.precedentType].join(' '),
+      reactionKey: entry.reactionKey || (entry.id ? `inline-note:juris-${entry.id}` : `inline-note:juris-${article.id}-${index}`),
+      likes: Number(entry.likes || 0),
+      dislikes: Number(entry.dislikes || 0),
+      userReaction: entry.userReaction,
+      referenceText: [formatLegalTargetReference(entry.target), entry.title, entry.summary, entry.texto, entry.examImpact, entry.court, entry.precedentType].join(' '),
+      targetBlockId: entry.target?.blockId,
     })),
     ...sumulas.map((sumula, index) => ({
       id: `sumula-${sumula.id || `${article.id}-${index}`}`,
       tone: 'juris' as const,
       title: sumula.number ? `Súmula ${sumula.number}` : 'Súmula',
       body: String(sumula.text || sumula.texto || '').trim(),
-      referenceText: [sumula.number, sumula.numero, sumula.text, sumula.texto, sumula.court, sumula.tribunal].join(' '),
+      reactionKey: sumula.reactionKey || (sumula.id ? `inline-note:sumula-${sumula.id}` : `inline-note:sumula-${article.id}-${index}`),
+      likes: Number(sumula.likes || 0),
+      dislikes: Number(sumula.dislikes || 0),
+      userReaction: sumula.userReaction,
+      referenceText: [formatLegalTargetReference(sumula.target), sumula.number, sumula.numero, sumula.text, sumula.texto, sumula.court, sumula.tribunal].join(' '),
+      targetBlockId: sumula.target?.blockId,
     })),
-    ...(examTip ? [{
-      id: `tip-${article.id}-${articleNumber || 'article'}`,
+    ...resolvedExamTips.map((tip, index) => ({
+      id: `tip-${tip.id || `${article.id}-${index}`}`,
       tone: 'tip' as const,
-      title: 'Macete',
-      body: examTip,
-      referenceText: examTip,
-    }] : []),
+      title: tip.title || 'Macete',
+      body: String(tip.body || tip.texto || '').trim(),
+      reactionKey: tip.reactionKey || (tip.id ? `inline-note:tip-${tip.id}` : `inline-note:tip-${article.id}-${index}`),
+      likes: Number(tip.likes || 0),
+      dislikes: Number(tip.dislikes || 0),
+      userReaction: tip.userReaction,
+      referenceText: [formatLegalTargetReference(tip.target), tip.body, tip.texto, ...(Array.isArray(tip.tags) ? tip.tags : [])].join(' '),
+      targetBlockId: tip.target?.blockId,
+    })),
   ].filter((note) => note.body);
 };
 
@@ -632,6 +912,134 @@ const LegalCommentPlanBadge: React.FC<{ plan?: string }> = ({ plan }) => {
   }
 };
 
+const ReactionControls: React.FC<{
+  storageKey: string;
+  initialLikes?: number;
+  initialDislikes?: number;
+  initialReaction?: 'like' | 'dislike' | null;
+}> = ({ storageKey, initialLikes = 0, initialDislikes = 0, initialReaction }) => {
+  const [reaction, setReaction] = React.useState<'like' | 'dislike' | null>(null);
+  const [counts, setCounts] = React.useState(() => ({
+    likes: Math.max(0, Number(initialLikes || 0)),
+    dislikes: Math.max(0, Number(initialDislikes || 0)),
+  }));
+  const [isSavingReaction, setIsSavingReaction] = React.useState(false);
+  const reactionRequestInFlightRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const storedReaction = window.localStorage.getItem(`cm:legal-reaction:${storageKey}`);
+      setCounts({
+        likes: Math.max(0, Number(initialLikes || 0)),
+        dislikes: Math.max(0, Number(initialDislikes || 0)),
+      });
+      if (typeof initialReaction !== 'undefined') {
+        setReaction(initialReaction === 'like' || initialReaction === 'dislike' ? initialReaction : null);
+        return;
+      }
+      setReaction(storedReaction === 'like' || storedReaction === 'dislike' ? storedReaction : null);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [initialDislikes, initialLikes, initialReaction, storageKey]);
+
+  const updateReaction = (nextReaction: 'like' | 'dislike') => {
+    if (reactionRequestInFlightRef.current) {
+      return;
+    }
+
+    const previousReaction = reaction;
+    const previousCounts = counts;
+    const resolvedReaction = previousReaction === nextReaction ? null : nextReaction;
+    const optimisticCounts = {
+      likes: Math.max(0, previousCounts.likes - (previousReaction === 'like' ? 1 : 0) + (resolvedReaction === 'like' ? 1 : 0)),
+      dislikes: Math.max(0, previousCounts.dislikes - (previousReaction === 'dislike' ? 1 : 0) + (resolvedReaction === 'dislike' ? 1 : 0)),
+    };
+    const storageReactionKey = `cm:legal-reaction:${storageKey}`;
+
+    reactionRequestInFlightRef.current = true;
+    setIsSavingReaction(true);
+    setReaction(resolvedReaction);
+    setCounts(optimisticCounts);
+    if (typeof window !== 'undefined') {
+      if (resolvedReaction) {
+        window.localStorage.setItem(storageReactionKey, resolvedReaction);
+      } else {
+        window.localStorage.removeItem(storageReactionKey);
+      }
+    }
+
+    void Promise.resolve()
+      .then(() => legalCommentaryApiService.setContentReaction(storageKey, resolvedReaction))
+      .then((result) => {
+        setCounts({
+          likes: Math.max(0, Number(result.likes || 0)),
+          dislikes: Math.max(0, Number(result.dislikes || 0)),
+        });
+        setReaction(result.userReaction);
+        if (typeof window !== 'undefined') {
+          if (result.userReaction) {
+            window.localStorage.setItem(storageReactionKey, result.userReaction);
+          } else {
+            window.localStorage.removeItem(storageReactionKey);
+          }
+        }
+      })
+      .catch(() => {
+        setCounts(previousCounts);
+        setReaction(previousReaction);
+        if (typeof window !== 'undefined') {
+          if (previousReaction) {
+            window.localStorage.setItem(storageReactionKey, previousReaction);
+          } else {
+            window.localStorage.removeItem(storageReactionKey);
+          }
+        }
+      })
+      .finally(() => {
+        reactionRequestInFlightRef.current = false;
+        setIsSavingReaction(false);
+      });
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => updateReaction('like')}
+        disabled={isSavingReaction}
+        className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[10px] font-black transition-colors ${
+          reaction === 'like'
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+            : 'border-slate-200 bg-white/70 text-slate-500 hover:border-emerald-200 hover:text-emerald-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300'
+        } disabled:cursor-wait disabled:opacity-70`}
+        aria-label="Curtir"
+      >
+        <ThumbsUp size={12} />
+        {counts.likes}
+      </button>
+      <button
+        type="button"
+        onClick={() => updateReaction('dislike')}
+        disabled={isSavingReaction}
+        className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[10px] font-black transition-colors ${
+          reaction === 'dislike'
+            ? 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
+            : 'border-slate-200 bg-white/70 text-slate-500 hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300'
+        } disabled:cursor-wait disabled:opacity-70`}
+        aria-label="Não curtir"
+      >
+        <ThumbsDown size={12} />
+        {counts.dislikes}
+      </button>
+    </div>
+  );
+};
+
 const RelatedQuestionPreviewCard: React.FC<{ question: Question; index: number }> = ({ question, index }) => {
   const subjectNames = (question.assuntos || [])
     .filter((item) => item?.materia)
@@ -644,7 +1052,7 @@ const RelatedQuestionPreviewCard: React.FC<{ question: Question; index: number }
   const questionId = String(question.id || question.hashId || question.hash || '');
 
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-[#615fff]/35 dark:border-slate-700 dark:bg-slate-900">
+    <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#615fff]">
@@ -761,7 +1169,14 @@ const LegalCommentsPanel: React.FC<{
 
           <MathRichText content={normalizeQuestionRichHtml(comment.body)} className="mt-3 text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300" />
 
-          <div className="mt-3 flex gap-3">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <ReactionControls
+              storageKey={`comment:${comment.id}`}
+              initialLikes={Number(comment.likes || 0)}
+              initialDislikes={Number(comment.dislikes || 0)}
+              initialReaction={comment.userReaction}
+            />
+            <div className="flex items-center gap-3">
             {comment.userId !== currentUserId ? (
               <button
                 type="button"
@@ -781,6 +1196,7 @@ const LegalCommentsPanel: React.FC<{
                 Deletar
               </button>
             )}
+            </div>
           </div>
         </article>
       )) : (
@@ -804,25 +1220,45 @@ const RichLegalContentBlocks: React.FC<{ blocks?: LegalRichContentBlock[] }> = (
     return null;
   }
 
+  const getBlockSurfaceClass = (type: LegalRichContentBlock['type']) => {
+    const classes: Record<LegalRichContentBlock['type'], string> = {
+      paragraph: 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-200',
+      bullet_list: 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-200',
+      table: 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-200',
+      summary: 'border-indigo-200 bg-indigo-50/60 text-slate-800 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-50',
+      tip: 'border-emerald-200 bg-emerald-50/65 text-emerald-950 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-50',
+      macete: 'border-violet-200 bg-violet-50/65 text-violet-950 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-50',
+      warning: 'border-amber-200 bg-amber-50/70 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-50',
+      jurisprudence: 'border-sky-200 bg-sky-50/65 text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-50',
+      example: 'border-fuchsia-200 bg-fuchsia-50/65 text-fuchsia-950 dark:border-fuchsia-500/30 dark:bg-fuchsia-500/10 dark:text-fuchsia-50',
+      comparison: 'border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-900/85 dark:text-slate-100',
+    };
+
+    return classes[type] || classes.paragraph;
+  };
+
   return (
-    <div className="mt-2 space-y-3">
+    <div className="mt-3 space-y-4">
       {visibleBlocks.map((block, index) => {
-        const title = String(block.title || '').trim();
-        const content = String(block.content || '').trim();
-        const items = (block.items || []).map((item) => String(item || '').trim()).filter(Boolean);
+        const title = cleanLegalNoteTitle(block.title);
+        const content = cleanLegalNoteText(block.content);
+        const items = (block.items || []).map(cleanLegalNoteText).filter(Boolean);
         const headers = (block.headers || []).map((item) => String(item || '').trim()).filter(Boolean);
-        const rows = (block.rows || []).filter((row) => Array.isArray(row) && row.some((cell) => String(cell || '').trim()));
+        const rows = (block.rows || [])
+          .filter((row) => Array.isArray(row) && row.some((cell) => String(cell || '').trim()))
+          .map((row) => row.map(cleanLegalNoteText));
+        const surfaceClass = getBlockSurfaceClass(block.type);
 
         if (block.type === 'table' && rows.length > 0) {
           return (
-            <div key={`${block.type}-${index}`} className="overflow-hidden rounded-lg border border-current/15">
-              {title ? <p className="px-3 py-2 text-xs font-black uppercase tracking-[0.12em]">{title}</p> : null}
-              <table className="w-full border-collapse text-left text-xs">
+            <div key={`${block.type}-${index}`} className={`overflow-hidden rounded-xl border shadow-sm ${surfaceClass}`}>
+              {title ? <p className="border-b border-current/10 px-4 py-3 text-[11px] font-black uppercase tracking-[0.12em]">{title}</p> : null}
+              <table className="w-full border-collapse text-left text-sm">
                 {headers.length > 0 ? (
-                  <thead className="bg-white/45 dark:bg-slate-950/25">
+                  <thead className="bg-white/55 dark:bg-slate-950/25">
                     <tr>
                       {headers.map((header, headerIndex) => (
-                        <th key={`${header}-${headerIndex}`} className="border-t border-current/10 px-3 py-2 font-black">
+                        <th key={`${header}-${headerIndex}`} className="border-t border-current/10 px-4 py-3 text-xs font-black uppercase tracking-[0.08em]">
                           {header}
                         </th>
                       ))}
@@ -833,8 +1269,8 @@ const RichLegalContentBlocks: React.FC<{ blocks?: LegalRichContentBlock[] }> = (
                   {rows.map((row, rowIndex) => (
                     <tr key={`row-${rowIndex}`}>
                       {row.map((cell, cellIndex) => (
-                        <td key={`cell-${cellIndex}`} className="border-t border-current/10 px-3 py-2 align-top font-semibold">
-                          <MathRichText content={String(cell || '')} className="text-xs leading-5" />
+                        <td key={`cell-${cellIndex}`} className="border-t border-current/10 px-4 py-3 align-top">
+                          <MathRichText content={String(cell || '')} className="text-sm font-medium leading-6" />
                         </td>
                       ))}
                     </tr>
@@ -846,14 +1282,98 @@ const RichLegalContentBlocks: React.FC<{ blocks?: LegalRichContentBlock[] }> = (
         }
 
         return (
-          <div key={`${block.type}-${index}`} className="rounded-lg border border-current/10 bg-white/35 px-3 py-2 dark:bg-slate-950/20">
-            {title ? <p className="text-[10px] font-black uppercase tracking-[0.12em]">{title}</p> : null}
-            {content ? <MathRichText content={content} className="mt-1 text-sm font-semibold leading-6" /> : null}
+          <div key={`${block.type}-${index}`} className={`rounded-xl border px-4 py-3 shadow-sm ${surfaceClass}`}>
+            {title ? <p className="text-[11px] font-black uppercase tracking-[0.14em] opacity-80">{title}</p> : null}
+            {content ? (
+              <MathRichText
+                content={content}
+                className="mt-2 text-sm font-medium leading-7 [&_mark]:rounded [&_mark]:bg-yellow-200/80 [&_mark]:px-1 [&_strong]:font-black"
+              />
+            ) : null}
             {items.length > 0 ? (
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold leading-6">
+              <ul className="mt-3 list-disc space-y-2 pl-5 text-sm font-medium leading-7">
                 {items.map((item, itemIndex) => (
                   <li key={`${item}-${itemIndex}`}>
-                    <MathRichText content={item} className="text-sm font-semibold leading-6" />
+                    <MathRichText content={item} className="text-sm font-medium leading-7 [&_mark]:rounded [&_mark]:bg-yellow-200/80 [&_mark]:px-1 [&_strong]:font-black" />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const InlineLegalContentBlocks: React.FC<{ blocks?: LegalRichContentBlock[] }> = ({ blocks }) => {
+  const visibleBlocks = (blocks || []).filter((block) => (
+    String(block.content || '').trim()
+    || (Array.isArray(block.items) && block.items.length > 0)
+    || (Array.isArray(block.rows) && block.rows.length > 0)
+  ));
+
+  if (visibleBlocks.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 space-y-3">
+      {visibleBlocks.map((block, index) => {
+        const title = cleanLegalNoteTitle(block.title);
+        const content = cleanLegalNoteText(block.content);
+        const items = (block.items || []).map(cleanLegalNoteText).filter(Boolean);
+        const headers = (block.headers || []).map((item) => String(item || '').trim()).filter(Boolean);
+        const rows = (block.rows || [])
+          .filter((row) => Array.isArray(row) && row.some((cell) => String(cell || '').trim()))
+          .map((row) => row.map(cleanLegalNoteText));
+
+        if (block.type === 'table' && rows.length > 0) {
+          return (
+            <div key={`${block.type}-${index}`} className="overflow-x-auto">
+              {title ? <p className="mb-2 text-[10px] font-black uppercase tracking-[0.12em] opacity-80">{title}</p> : null}
+              <table className="w-full min-w-[420px] border-collapse overflow-hidden rounded-lg text-left text-xs">
+                {headers.length > 0 ? (
+                  <thead>
+                    <tr>
+                      {headers.map((header, headerIndex) => (
+                        <th key={`${header}-${headerIndex}`} className="border border-current/15 bg-white/40 px-3 py-2 font-black uppercase tracking-[0.08em] dark:bg-slate-950/20">
+                          {header}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                ) : null}
+                <tbody>
+                  {rows.map((row, rowIndex) => (
+                    <tr key={`inline-row-${rowIndex}`}>
+                      {row.map((cell, cellIndex) => (
+                        <td key={`inline-cell-${cellIndex}`} className="border border-current/15 bg-white/25 px-3 py-2 align-top dark:bg-slate-950/10">
+                          <MathRichText content={String(cell || '')} className="text-xs font-semibold leading-5" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        return (
+          <div key={`${block.type}-${index}`}>
+            {title ? <p className="text-[10px] font-black uppercase tracking-[0.12em] opacity-80">{title}</p> : null}
+            {content ? (
+              <MathRichText
+                content={content}
+                className="mt-1 text-sm font-semibold leading-6 [&_mark]:rounded [&_mark]:bg-yellow-200/80 [&_mark]:px-1 [&_strong]:font-black"
+              />
+            ) : null}
+            {items.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm font-semibold leading-6">
+                {items.map((item, itemIndex) => (
+                  <li key={`${item}-${itemIndex}`}>
+                    <MathRichText content={item} className="text-sm font-semibold leading-6 [&_mark]:rounded [&_mark]:bg-yellow-200/80 [&_mark]:px-1 [&_strong]:font-black" />
                   </li>
                 ))}
               </ul>
@@ -871,7 +1391,11 @@ const CalloutBlock: React.FC<{
   body: string;
   blocks?: LegalRichContentBlock[];
   actionLabel?: string;
-}> = ({ tone, title, body, blocks, actionLabel }) => {
+  reactionKey?: string;
+  initialLikes?: number;
+  initialDislikes?: number;
+  initialReaction?: 'like' | 'dislike' | null;
+}> = ({ tone, title, body, blocks, actionLabel, reactionKey, initialLikes = 0, initialDislikes = 0, initialReaction }) => {
   const toneClass: Record<CalloutTone, string> = {
     teacher: 'border-indigo-200 bg-indigo-50/75 text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100',
     doctrine: 'border-amber-200 bg-amber-50/75 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100',
@@ -879,19 +1403,51 @@ const CalloutBlock: React.FC<{
     tip: 'border-emerald-200 bg-emerald-50/75 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100',
     question: 'border-fuchsia-200 bg-fuchsia-50/75 text-fuchsia-900 dark:border-fuchsia-500/30 dark:bg-fuchsia-500/10 dark:text-fuchsia-100',
   };
+  const cleanTitle = cleanLegalNoteTitle(title);
+  const cleanBody = cleanLegalNoteText(body);
+  const hasRichBlocks = (blocks || []).some((block) => (
+    String(block.content || '').trim()
+    || (Array.isArray(block.items) && block.items.length > 0)
+    || (Array.isArray(block.rows) && block.rows.length > 0)
+  ));
+  const shouldFlattenBlocks = tone === 'teacher' || tone === 'tip';
+  const titleKey = normalizeText(cleanTitle);
+  const icon = titleKey.includes('sumula')
+    ? <Scale size={14} aria-hidden="true" />
+    : ({
+      teacher: <MessageSquare size={14} aria-hidden="true" />,
+      doctrine: <BookOpen size={14} aria-hidden="true" />,
+      juris: <Scale size={14} aria-hidden="true" />,
+      tip: <Lightbulb size={14} aria-hidden="true" />,
+      question: <FileText size={14} aria-hidden="true" />,
+    } satisfies Record<CalloutTone, React.ReactNode>)[tone];
 
   return (
     <aside className={`ml-4 rounded-xl border px-4 py-3 ${toneClass[tone]}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] font-black uppercase tracking-[0.14em]">Nota: {title}</p>
+        <p className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em]">
+          {icon}
+          <span>{cleanTitle}</span>
+        </p>
         {actionLabel ? (
           <span className="text-xs font-bold">{actionLabel} <ArrowRight size={12} className="inline-block" /></span>
         ) : null}
       </div>
-      <RichLegalContentBlocks blocks={blocks} />
-      {(!blocks || blocks.length === 0) && body ? (
-        <MathRichText content={body} className="mt-2 text-sm font-semibold leading-6" />
+      {hasRichBlocks && shouldFlattenBlocks ? (
+        <InlineLegalContentBlocks blocks={blocks} />
+      ) : hasRichBlocks ? (
+        <RichLegalContentBlocks blocks={blocks} />
+      ) : cleanBody ? (
+        <MathRichText content={cleanBody} className="mt-2 text-sm font-semibold leading-6" />
       ) : null}
+      <div className="mt-3 flex justify-end">
+        <ReactionControls
+          storageKey={reactionKey || `callout:${normalizeStorageKeyPart(cleanTitle)}:${normalizeStorageKeyPart(cleanBody).slice(0, 48)}`}
+          initialLikes={initialLikes}
+          initialDislikes={initialDislikes}
+          initialReaction={initialReaction}
+        />
+      </div>
     </aside>
   );
 };
@@ -900,7 +1456,7 @@ const LawDetailPage: React.FC = () => {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { currentUser } = useAuth();
+  const { currentUser, updateUser } = useAuth();
   const { addToast } = useToast();
   const readerEditorRef = React.useRef<HTMLDivElement>(null);
   const readingContentSectionRef = React.useRef<HTMLElement>(null);
@@ -910,6 +1466,16 @@ const LawDetailPage: React.FC = () => {
 
   const slug = String(params?.slug || '').trim();
   const userId = React.useMemo(() => String(getUserId((currentUser as CurrentUserLike) || null) || ''), [currentUser]);
+  const applyUserProgressMutation = React.useCallback((progress?: { newXp?: number; newLevel?: number }) => {
+    if (!progress || (progress.newXp === undefined && progress.newLevel === undefined)) {
+      return;
+    }
+
+    void updateUser({
+      ...(progress.newXp !== undefined ? { xp: progress.newXp } : {}),
+      ...(progress.newLevel !== undefined ? { level: progress.newLevel } : {}),
+    });
+  }, [updateUser]);
 
   const sectionFrom = String(searchParams.get('from') || '').trim();
   const sectionTo = String(searchParams.get('to') || '').trim();
@@ -924,16 +1490,23 @@ const LawDetailPage: React.FC = () => {
   const [activeTab, setActiveTab] = React.useState<ReadingTab>('law');
   const [isSummaryOpen, setIsSummaryOpen] = React.useState(false);
   const [isFocusMode, setIsFocusMode] = React.useState(false);
+  const [showLegalTextNotes, setShowLegalTextNotes] = React.useState(false);
+  const [showEditorialAnnotations, setShowEditorialAnnotations] = React.useState(true);
+  const [isScrollToolbarHidden, setIsScrollToolbarHidden] = React.useState(false);
   const [isTogglingFavorite, setIsTogglingFavorite] = React.useState(false);
   const [isDeepAnalysisOpen, setIsDeepAnalysisOpen] = React.useState(true);
   const [favoriteSectionIds, setFavoriteSectionIds] = React.useState<Set<string>>(() => new Set());
   const [sectionReadingState, setSectionReadingState] = React.useState<SectionReadingState>({});
   const [isReportingSection, setIsReportingSection] = React.useState(false);
   const [sectionReportModalOpen, setSectionReportModalOpen] = React.useState(false);
+  const [sectionSupportActionMode, setSectionSupportActionMode] = React.useState<SectionSupportActionMode>('report');
+  const [sectionReportTitle, setSectionReportTitle] = React.useState('Problema nesta seção');
   const [sectionReportReason, setSectionReportReason] = React.useState('Erro no texto da lei');
   const [sectionReportDetails, setSectionReportDetails] = React.useState('');
+  const [sectionSupportTargetId, setSectionSupportTargetId] = React.useState('section');
   const [commentBody, setCommentBody] = React.useState('');
   const [isSubmittingComment, setIsSubmittingComment] = React.useState(false);
+  const [requestedTeacherCommentKeys, setRequestedTeacherCommentKeys] = React.useState<Set<string>>(() => new Set());
   const [savedReaderMarkupHtml, setSavedReaderMarkupHtml] = React.useState('');
   const [readerMarkupVersion, setReaderMarkupVersion] = React.useState(0);
   const [readerActiveCommands, setReaderActiveCommands] = React.useState({
@@ -1080,16 +1653,37 @@ const LawDetailPage: React.FC = () => {
       articlesBySection.set(sectionId, collection);
     });
 
-    return (law.sections || []).map((section): LawSectionSummary => {
+    const lawSections = Array.isArray(law.sections) ? law.sections : [];
+    if (lawSections.length === 0 && Array.isArray(law.articles) && law.articles.length > 0) {
+      const firstArticle = law.articles[0];
+      const lastArticle = law.articles[law.articles.length - 1];
+      const articleIds = law.articles.map((article) => String(article.id));
+
+      return [{
+        id: `law-${law.id}-all`,
+        lawId: String(law.id),
+        title: 'Capitulo unico',
+        displayTitle: 'Capitulo unico',
+        sectionSlug: `law-${law.id}-all`,
+        fromArticle: String(firstArticle.number || firstArticle.numero || ''),
+        toArticle: String(lastArticle.number || lastArticle.numero || ''),
+        articles: law.articles.length,
+        primaryArticleId: articleIds[0] || '',
+        articleIds,
+        articleCount: law.articles.length,
+      }];
+    }
+
+    return lawSections.map((section): LawSectionSummary => {
       const sectionArticles = articlesBySection.get(String(section.id)) || [];
       const articleIds = sectionArticles.map((article) => String(article.id));
       return {
         ...section,
         id: String(section.id),
         lawId: String(section.lawId || law.id),
-        title: String(section.displayTitle || section.title || 'Secao da lei'),
-        displayTitle: String(section.displayTitle || section.title || 'Secao da lei'),
-        sectionKey: String(section.slug || section.id),
+        title: String(section.displayTitle || section.title || 'Capitulo da lei'),
+        displayTitle: String(section.displayTitle || section.title || 'Capitulo da lei'),
+        sectionSlug: String(section.slug || section.id),
         fromArticle: String(section.fromArticle || sectionArticles[0]?.number || ''),
         toArticle: String(section.toArticle || sectionArticles[sectionArticles.length - 1]?.number || ''),
         articles: Number(section.articleCount || sectionArticles.length),
@@ -1104,7 +1698,7 @@ const LawDetailPage: React.FC = () => {
     if (!law || sections.length === 0) return null;
 
     if (sectionQueryId) {
-      const byId = sections.find((section) => String(section.id) === sectionQueryId || String(section.sectionKey || '') === sectionQueryId);
+      const byId = sections.find((section) => String(section.id) === sectionQueryId || String(section.sectionSlug || '') === sectionQueryId);
       if (byId) return byId;
     }
 
@@ -1136,6 +1730,14 @@ const LawDetailPage: React.FC = () => {
     return () => window.cancelAnimationFrame(frame);
   }, [readerMarkupKey]);
 
+  const sanitizedHtml = React.useMemo(
+    () => (savedReaderMarkupHtml ? normalizeQuestionRichHtml(savedReaderMarkupHtml) : ''),
+    [savedReaderMarkupHtml],
+  );
+  const normalizedSearchTerm = React.useMemo(() => normalizeText(searchTerm), [searchTerm]);
+  const isSearchingLegalContent = Boolean(normalizedSearchTerm);
+  const shouldRenderSavedReaderMarkup = Boolean(sanitizedHtml && !isSearchingLegalContent);
+
   const activeSectionArticles = React.useMemo(() => {
     if (!law || !activeSection) return [];
 
@@ -1166,11 +1768,17 @@ const LawDetailPage: React.FC = () => {
 
   const completedSectionKeys = React.useMemo(() => new Set(sections
     .filter((section) => {
-      if (backendProgressPercent >= 100) {
+      const readingEntry = getSectionReadingEntry(sectionReadingState, section);
+
+      if (isSectionReadingRestartPending(readingEntry)) {
+        return false;
+      }
+
+      if (readingEntry?.completedAt) {
         return true;
       }
 
-      if (getSectionReadingEntry(sectionReadingState, section)?.completedAt) {
+      if (backendProgressPercent >= 100) {
         return true;
       }
 
@@ -1178,6 +1786,39 @@ const LawDetailPage: React.FC = () => {
       return articleIds.length > 0 && articleIds.every((id) => backendViewedArticleIds.has(id));
     })
     .map((section) => buildSectionReadingKey(section))), [backendProgressPercent, backendViewedArticleIds, sectionReadingState, sections]);
+
+  const completedArticleIds = React.useMemo(() => {
+    const articleIds = new Set(backendViewedArticleIds);
+
+    sections.forEach((section) => {
+      const sectionArticleIds = (section.articleIds || [])
+        .map((articleId) => String(articleId || '').trim())
+        .filter(Boolean);
+
+      if (isSectionReadingRestartPending(getSectionReadingEntry(sectionReadingState, section))) {
+        sectionArticleIds.forEach((articleId) => articleIds.delete(articleId));
+        return;
+      }
+
+      if (!completedSectionKeys.has(buildSectionReadingKey(section))) {
+        return;
+      }
+
+      sectionArticleIds.forEach((articleId) => articleIds.add(articleId));
+    });
+
+    return articleIds;
+  }, [backendViewedArticleIds, completedSectionKeys, sectionReadingState, sections]);
+
+  const articleProgressPercent = React.useMemo(() => {
+    const totalArticles = Array.isArray(law?.articles) ? law.articles.length : 0;
+    if (totalArticles <= 0) {
+      return null;
+    }
+
+    const visibleCompletedArticles = (law?.articles || []).filter((article) => completedArticleIds.has(String(article.id))).length;
+    return Math.round((visibleCompletedArticles / totalArticles) * 100);
+  }, [completedArticleIds, law]);
 
   const sectionProgressPercent = sections.length > 0
     ? Math.round((completedSectionKeys.size / sections.length) * 100)
@@ -1188,7 +1829,7 @@ const LawDetailPage: React.FC = () => {
   const activeSectionActionLabel = isActiveSectionCompleted
     ? 'Ler novamente'
     : activeSectionReading?.startedAt
-      ? 'Continuar lendo'
+      ? 'Marcar como lido'
       : 'Começar leitura';
 
   const sectionUserComments = React.useMemo(() => {
@@ -1223,49 +1864,29 @@ const LawDetailPage: React.FC = () => {
   }, [activeSection?.title, activeSectionArticles, law]);
 
   const readingStorageLawId = law ? (requestedLawId || law.id) : '';
+  const backendFavoriteSectionIds = React.useMemo(() => new Set((law?.sections || [])
+    .filter((section) => section.isFavorite)
+    .map((section) => String(section.id))), [law?.sections]);
 
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       if (!readingStorageLawId || !userId) {
         setFavoriteSectionIds(new Set());
         setSectionReadingState({});
+        setRequestedTeacherCommentKeys(new Set());
         return;
       }
 
-      setFavoriteSectionIds(readFavoriteSectionIds(userId, readingStorageLawId));
+      const nextFavorites = readFavoriteSectionIds(userId, readingStorageLawId);
+      backendFavoriteSectionIds.forEach((sectionId) => nextFavorites.add(sectionId));
+      setFavoriteSectionIds(nextFavorites);
+      saveFavoriteSectionIds(userId, readingStorageLawId, nextFavorites);
       setSectionReadingState(readSectionReadingState(userId, readingStorageLawId));
+      setRequestedTeacherCommentKeys(readTeacherCommentRequestKeys(userId, readingStorageLawId));
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [readingStorageLawId, userId]);
-
-  React.useEffect(() => {
-    if (!law || !activeSection || !activeSectionReadingKey || !readingStorageLawId || !userId) return;
-
-    const frameId = window.requestAnimationFrame(() => {
-      setSectionReadingState((current) => {
-        if (getSectionReadingEntry(current, activeSection)?.startedAt) {
-          return current;
-        }
-
-        const next = {
-          ...current,
-          [activeSectionReadingKey]: {
-            ...current[activeSectionReadingKey],
-            startedAt: new Date().toISOString(),
-          },
-          [activeSection.id]: {
-            ...current[activeSection.id],
-            startedAt: new Date().toISOString(),
-          },
-        };
-        saveSectionReadingState(userId, readingStorageLawId, next);
-        return next;
-      });
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [activeSection, activeSectionReadingKey, law, readingStorageLawId, userId]);
+  }, [backendFavoriteSectionIds, readingStorageLawId, userId]);
 
   React.useEffect(() => {
     if (activeTab !== 'questions' || !law) {
@@ -1315,25 +1936,122 @@ const LawDetailPage: React.FC = () => {
     };
   }, [activeTab, law, relatedQuestionScope]);
 
+  const practiceSectionHref = React.useMemo(() => {
+    const params = new URLSearchParams();
+    params.set('source', 'lei-comentada');
+
+    if (law?.id) {
+      params.set('lawId', String(law.id));
+    }
+
+    if (activeSection) {
+      params.set('sectionId', String(activeSection.id));
+      params.set('from', String(activeSection.fromArticle || ''));
+      params.set('to', String(activeSection.toArticle || activeSection.fromArticle || ''));
+    }
+
+    const questionIds = Array.from(new Set((relatedQuestionsState.rows || [])
+      .map((question) => String(question.id || '').trim())
+      .filter((id) => /^\d+$/.test(id))));
+
+    if (questionIds.length > 0) {
+      params.set('questionIds', questionIds.join(','));
+    } else {
+      if (relatedQuestionScope.subject) {
+        params.set('subject', relatedQuestionScope.subject);
+      }
+      const topicFilter = relatedQuestionScope.topics.slice(0, 4).join(',');
+      if (topicFilter) {
+        params.set('topic', topicFilter);
+      }
+    }
+
+    return `/practice?${params.toString()}`;
+  }, [activeSection, law, relatedQuestionScope, relatedQuestionsState.rows]);
+
   const visibleArticles = React.useMemo(() => {
     if (!law) return [];
-    const normalizedTerm = normalizeText(searchTerm);
-    return activeSectionArticles.filter((article) => {
-      if (!normalizedTerm) return true;
+    const sourceArticles = normalizedSearchTerm
+      ? (Array.isArray(law.articles) ? law.articles : [])
+      : activeSectionArticles;
+
+    return sourceArticles.filter((article) => {
+      if (!normalizedSearchTerm) return true;
+      const syllabi = [...(article.syllabi || []), ...(article.sumulas || [])];
+      const doctrine = [...(article.doctrine || []), ...(article.doutrina || [])];
 
       const textHaystack = normalizeText([
         article.number,
         article.title,
+        article.titulo,
         article.text,
         article.texto,
         ...getArticleTextLines(article),
-        ...resolveArticleTeacherComments(law, article).map((entry) => entry.body || entry.texto),
-        ...resolveArticleJurisprudence(law, article).map((entry) => entry.summary || entry.texto),
+        article.examTip,
+        article.macete,
+        ...syllabi.flatMap((entry) => [
+          entry.court,
+          entry.tribunal,
+          entry.number,
+          entry.numero,
+          entry.text,
+          entry.texto,
+        ]),
+        ...doctrine.flatMap((entry) => (
+          typeof entry === 'string'
+            ? [entry]
+            : [entry.title, entry.body, entry.text, entry.author]
+        )),
+        ...resolveArticleTeacherComments(law, article).flatMap((entry) => [entry.title, entry.body, entry.texto, entry.authorName, entry.autor]),
+        ...resolveArticleJurisprudence(law, article).flatMap((entry) => [
+          entry.title,
+          entry.summary,
+          entry.texto,
+          entry.court,
+          entry.tribunal,
+          entry.precedentType,
+          entry.examImpact,
+        ]),
       ].join(' '));
 
-      return textHaystack.includes(normalizedTerm);
+      return textHaystack.includes(normalizedSearchTerm);
     });
-  }, [activeSectionArticles, law, searchTerm]);
+  }, [activeSectionArticles, law, normalizedSearchTerm]);
+
+  const sectionTargetOptions = React.useMemo<SectionTargetOption[]>(() => {
+    const sectionLabel = activeSection
+      ? (activeSection.fromArticle === activeSection.toArticle
+        ? `Artigo ${activeSection.fromArticle}`
+        : `Artigos ${activeSection.fromArticle} a ${activeSection.toArticle}`)
+      : 'Faixa completa';
+    const options: SectionTargetOption[] = [{
+      id: 'section',
+      label: activeSection ? `Seção inteira - ${sectionLabel}` : 'Seção inteira',
+      details: '',
+    }];
+
+    visibleArticles.forEach((article) => {
+      const articleNumber = getArticleNumber(article) || article.number || '-';
+      buildArticleBlocks(article)
+        .filter((block) => !block.isLegalNote)
+        .forEach((block) => {
+          const blockLabel = String(block.label || (block.isCaput ? 'caput' : block.kind) || 'trecho').trim();
+          const blockText = stripRichText(block.text || '').slice(0, 900);
+          options.push({
+            id: `${article.id}:${block.id}`,
+            label: `Art. ${articleNumber} - ${blockLabel}`,
+            details: [
+              `Artigo: Art. ${articleNumber}`,
+              `Trecho: ${blockLabel}`,
+              '',
+              blockText,
+            ].filter(Boolean).join('\n'),
+          });
+        });
+    });
+
+    return options;
+  }, [activeSection, visibleArticles]);
 
   const sectionEditorial = React.useMemo<LawSectionEditorial | null>(() => {
     if (!law || !activeSection) {
@@ -1341,14 +2059,12 @@ const LawDetailPage: React.FC = () => {
     }
 
     const currentSectionId = String(activeSection.id || '');
-    const currentSectionKey = normalizeText(activeSection.sectionKey || activeSection.id || activeSection.title);
     const currentRangeLabel = activeSection.fromArticle === activeSection.toArticle
       ? `Art. ${activeSection.fromArticle}`
       : `Art. ${activeSection.fromArticle} a Art. ${activeSection.toArticle}`;
     const persistedEditorial = Array.isArray(law.sectionEditorials)
       ? law.sectionEditorials.find((item) => (
         (item.sectionId && String(item.sectionId) === currentSectionId)
-        || normalizeText(item.sectionKey) === currentSectionKey
         || (
           normalizeText(item.rangeLabel) === normalizeText(currentRangeLabel)
           && normalizeText(item.sectionTitle) === normalizeText(activeSection.title)
@@ -1396,17 +2112,13 @@ const LawDetailPage: React.FC = () => {
     )),
     [sectionEditorial],
   );
-  const sectionRichBlocks = React.useMemo(
-    () => (sectionEditorial?.blocks || []).filter((block) => (
-      String(block.content || '').trim()
-      || (Array.isArray(block.items) && block.items.length > 0)
-      || (Array.isArray(block.rows) && block.rows.length > 0)
-    )),
+  const sectionAnalysisContent = React.useMemo(
+    () => buildSingleSectionAnalysisHtml(sectionEditorial),
     [sectionEditorial],
   );
+  const showLegacySectionAnalysisDetails = false;
   const hasSectionDeepAnalysis = Boolean(
-    sectionSummary
-    || sectionRichBlocks.length
+    sectionAnalysisContent
     || sectionExamFocus.length
     || sectionMacetes.length
     || sectionDoctrine.length
@@ -1415,10 +2127,9 @@ const LawDetailPage: React.FC = () => {
     || sectionSumulas.length,
   );
 
-  const progressPercent = Math.max(
-    sectionProgressPercent,
-    backendProgressPercent,
-  );
+  const progressPercent = articleProgressPercent ?? (sections.length > 0
+    ? sectionProgressPercent
+    : backendProgressPercent);
 
   const currentSectionIndex = React.useMemo(() => {
     if (!activeSection) return -1;
@@ -1437,10 +2148,12 @@ const LawDetailPage: React.FC = () => {
 
     const query = new URLSearchParams(searchParams.toString());
     query.set('lawId', law.id);
+    query.set('sectionId', String(section.id));
     query.set('from', section.fromArticle);
     query.set('to', section.toArticle);
     query.set('view', 'pdf');
     query.delete('section');
+    query.delete('articleId');
     router.push(`/lei-comentada/${encodeURIComponent(law.slug)}?${query.toString()}`);
   }, [law, router, searchParams, sections]);
 
@@ -1465,7 +2178,8 @@ const LawDetailPage: React.FC = () => {
     });
 
     try {
-      const result = await legalCommentaryApiService.toggleFavorite('article', activeSection.id);
+      const result = await legalCommentaryApiService.toggleFavorite('section', activeSection.id);
+      applyUserProgressMutation(result);
       setFavoriteSectionIds((current) => {
         const next = new Set(current);
         if (result.isFavorite) {
@@ -1476,7 +2190,12 @@ const LawDetailPage: React.FC = () => {
         saveFavoriteSectionIds(userId, law.id, next);
         return next;
       });
-      addToast(result.isFavorite ? 'Seção adicionada aos favoritos.' : 'Seção removida dos favoritos.', 'success');
+      addToast(
+        result.isFavorite && result.xpGain
+          ? `Seção adicionada aos favoritos. +${result.xpGain} XP.`
+          : result.isFavorite ? 'Seção adicionada aos favoritos.' : 'Seção removida dos favoritos.',
+        'success',
+      );
     } catch {
       setFavoriteSectionIds((current) => {
         const next = new Set(current);
@@ -1492,7 +2211,7 @@ const LawDetailPage: React.FC = () => {
     } finally {
       setIsTogglingFavorite(false);
     }
-  }, [activeSection, addToast, favoriteSectionIds, isTogglingFavorite, law, userId]);
+  }, [activeSection, addToast, applyUserProgressMutation, favoriteSectionIds, isTogglingFavorite, law, userId]);
 
   const copyLawLink = React.useCallback(async () => {
     if (typeof window === 'undefined') return;
@@ -1520,30 +2239,109 @@ const LawDetailPage: React.FC = () => {
     await copyLawLink();
   }, [copyLawLink, law]);
 
+  const openSectionReportModal = React.useCallback(() => {
+    setSectionSupportActionMode('report');
+    setSectionReportTitle('Problema nesta seção');
+    setSectionReportReason('Erro no texto da lei');
+    setSectionReportDetails('');
+    setSectionSupportTargetId('section');
+    setSectionReportModalOpen(true);
+  }, []);
+
+  const openTeacherCommentRequestModal = React.useCallback(() => {
+    setSectionSupportActionMode('teacher_request');
+    setSectionReportTitle('Solicitar comentário do professor');
+    setSectionReportReason('Solicitar comentário do professor');
+    setSectionReportDetails('');
+    setSectionSupportTargetId('section');
+    setSectionReportModalOpen(true);
+  }, []);
+
+  const openDetailedAnalysisRequestModal = React.useCallback(() => {
+    setSectionSupportActionMode('analysis_request');
+    setSectionReportTitle('Solicitar análise detalhada');
+    setSectionReportReason('Solicitar análise detalhada');
+    setSectionReportDetails('');
+    setSectionSupportTargetId('section');
+    setSectionReportModalOpen(true);
+  }, []);
+
   const submitSectionReport = React.useCallback(async () => {
     if (!law || !activeSection || isReportingSection) return;
     if (!userId) {
-      addToast('Entre na sua conta para reportar erro.', 'warning');
+      addToast(
+        sectionSupportActionMode === 'report'
+          ? 'Entre na sua conta para reportar erro.'
+          : 'Entre na sua conta para abrir este chamado.',
+        'warning',
+      );
       return;
     }
 
     const details = sectionReportDetails.trim();
-    if (!details) {
+    if (sectionSupportActionMode === 'report' && !details) {
       addToast('Descreva rapidamente o erro encontrado.', 'warning');
+      return;
+    }
+
+    const selectedTarget = sectionTargetOptions.find((item) => item.id === sectionSupportTargetId) || sectionTargetOptions[0];
+    const scopedLawId = readingStorageLawId || law.id;
+    const actionRequestKey = `${sectionSupportActionMode}:${scopedLawId}:${activeSection.id}:${selectedTarget?.id || 'section'}`;
+
+    if (sectionSupportActionMode !== 'report' && requestedTeacherCommentKeys.has(actionRequestKey)) {
+      addToast('Você já abriu uma solicitação para este item.', 'info');
       return;
     }
 
     setIsReportingSection(true);
     try {
+      if (sectionSupportActionMode !== 'report') {
+        const result = await supportService.createThread({
+          type: 'support',
+          reason: sectionReportReason,
+          details: [
+            `Codigo do pedido: ${actionRequestKey}`,
+            `Lei: ${law.title || law.shortTitle || slug}`,
+            `Seção: ${activeSection.title} (${activeSection.fromArticle}-${activeSection.toArticle})`,
+            selectedTarget && selectedTarget.id !== 'section' ? `Item vinculado: ${selectedTarget.label}` : 'Item vinculado: seção inteira',
+            selectedTarget?.details || '',
+            details ? `Observações do aluno:\n${details}` : '',
+          ].filter(Boolean).join('\n'),
+          gamificationEvent: 'support_feedback_submitted',
+          notificationEvent: 'support_opened',
+        });
+
+        applyUserProgressMutation(result);
+        setRequestedTeacherCommentKeys((current) => {
+          const next = new Set(current);
+          next.add(actionRequestKey);
+          saveTeacherCommentRequestKeys(userId, scopedLawId, next);
+          return next;
+        });
+        addToast(
+          result.xpGain
+            ? `Solicitação enviada ao suporte. +${result.xpGain} XP.`
+            : 'Solicitação enviada ao suporte.',
+          'success',
+        );
+        setSectionReportModalOpen(false);
+        setSectionReportDetails('');
+        return;
+      }
+
       const result = await reportsService.createReport({
         reporterId: userId,
         targetType: 'law_section',
-        targetId: activeSection.id,
+        targetId: selectedTarget?.id && selectedTarget.id !== 'section'
+          ? `${activeSection.id}:${selectedTarget.id}`
+          : activeSection.id,
         reason: sectionReportReason,
         details: [
           details,
           `Lei: ${law.shortTitle || law.title}`,
           `Seção: ${activeSection.title} (${activeSection.fromArticle}-${activeSection.toArticle})`,
+          selectedTarget && selectedTarget.id !== 'section' ? `Item vinculado: ${selectedTarget.label}` : '',
+          selectedTarget?.details || '',
         ].join('\n'),
         evidenceUrl: typeof window !== 'undefined' ? window.location.href : undefined,
       });
@@ -1551,7 +2349,11 @@ const LawDetailPage: React.FC = () => {
       if (result.duplicate) {
         addToast(result.message || 'Já existe um reporte pendente para esta seção.', 'warning');
       } else {
-        addToast('Erro reportado para moderação.', 'success');
+        applyUserProgressMutation(result);
+        addToast(
+          result.xpGain ? `Erro reportado para moderação. +${result.xpGain} XP.` : 'Erro reportado para moderação.',
+          'success',
+        );
       }
       setSectionReportModalOpen(false);
       setSectionReportDetails('');
@@ -1560,16 +2362,68 @@ const LawDetailPage: React.FC = () => {
     } finally {
       setIsReportingSection(false);
     }
-  }, [activeSection, addToast, isReportingSection, law, sectionReportDetails, sectionReportReason, userId]);
+  }, [
+    activeSection,
+    addToast,
+    applyUserProgressMutation,
+    isReportingSection,
+    law,
+    readingStorageLawId,
+    requestedTeacherCommentKeys,
+    sectionReportDetails,
+    sectionReportReason,
+    sectionSupportActionMode,
+    sectionSupportTargetId,
+    sectionTargetOptions,
+    slug,
+    userId,
+  ]);
 
   const openOfficialPdf = React.useCallback(() => {
     if (typeof window === 'undefined') return;
-    if (law?.officialUrl) {
-      window.open(law.officialUrl, '_blank', 'noopener,noreferrer');
+    const officialUrl = String(law?.officialUrl || law?.urlPlanalto || '').trim();
+    if (officialUrl) {
+      window.open(officialUrl, '_blank', 'noopener,noreferrer');
       return;
     }
-    window.print();
-  }, [law]);
+    addToast('URL oficial do Planalto não cadastrada para esta lei.', 'info');
+  }, [addToast, law]);
+
+  const startSectionReading = React.useCallback(() => {
+    if (!activeSection || !activeSectionReadingKey || !readingStorageLawId) return;
+    if (!userId) {
+      addToast('Entre na sua conta para iniciar a leitura.', 'warning');
+      return;
+    }
+
+    const startedAt = new Date().toISOString();
+    const sectionId = String(activeSection.id || activeSectionReadingKey);
+
+    setSectionReadingState((current) => {
+      const currentEntry = getSectionReadingEntry(current, activeSection);
+      if (currentEntry?.startedAt && !isSectionReadingRestartPending(currentEntry)) {
+        return current;
+      }
+
+      const next = {
+        ...current,
+        [activeSectionReadingKey]: {
+          ...current[activeSectionReadingKey],
+          startedAt,
+          completedAt: undefined,
+        },
+        [sectionId]: {
+          ...current[sectionId],
+          startedAt,
+          completedAt: undefined,
+        },
+      };
+      saveSectionReadingState(userId, readingStorageLawId, next);
+      return next;
+    });
+
+    addToast('Leitura iniciada. Quando terminar, marque a seção como lida.', 'success');
+  }, [activeSection, activeSectionReadingKey, addToast, readingStorageLawId, userId]);
 
   const saveReadingProgress = React.useCallback(async (options?: { silent?: boolean }) => {
     if (!law || !activeSection || !activeSectionReadingKey || !readingStorageLawId) return;
@@ -1588,10 +2442,16 @@ const LawDetailPage: React.FC = () => {
 
     try {
       const articleIds = activeSectionArticles.map((article) => String(article.id || '')).filter(Boolean);
-      if (articleIds.length > 0) {
-        await Promise.all(articleIds.map((articleId) => legalCommentaryApiService.recordArticleView(law.id, articleId)));
-      } else {
-        await legalCommentaryApiService.recordLawView(law.id);
+      const progressResults = articleIds.length > 0
+        ? await Promise.all(articleIds.map((articleId) => legalCommentaryApiService.recordArticleView(law.id, articleId)))
+        : [await legalCommentaryApiService.recordLawView(law.id)];
+      const latestProgress = [...progressResults].reverse().find((progress) => (
+        progress.newXp !== undefined || progress.newLevel !== undefined
+      ));
+      const totalXpGain = progressResults.reduce((total, progress) => total + Number(progress.xpGain || 0), 0);
+
+      if (latestProgress) {
+        applyUserProgressMutation(latestProgress);
       }
 
       setSectionReadingState((current) => {
@@ -1612,7 +2472,10 @@ const LawDetailPage: React.FC = () => {
         return next;
       });
       if (!options?.silent) {
-        addToast('Seção marcada como lida.', 'success');
+        addToast(
+          totalXpGain > 0 ? `Seção marcada como lida. +${totalXpGain} XP.` : 'Seção marcada como lida.',
+          'success',
+        );
       }
     } catch {
       if (!options?.silent) {
@@ -1621,7 +2484,54 @@ const LawDetailPage: React.FC = () => {
     } finally {
       progressCompletionInFlightRef.current = false;
     }
-  }, [activeSection, activeSectionArticles, activeSectionReadingKey, addToast, law, readingStorageLawId, userId]);
+  }, [activeSection, activeSectionArticles, activeSectionReadingKey, addToast, applyUserProgressMutation, law, readingStorageLawId, userId]);
+
+  const restartSectionReading = React.useCallback(() => {
+    if (!activeSection || !activeSectionReadingKey || !readingStorageLawId) return;
+    if (!userId) {
+      addToast('Entre na sua conta para reiniciar a leitura.', 'warning');
+      return;
+    }
+
+    const restartedAt = new Date().toISOString();
+    const sectionId = String(activeSection.id || activeSectionReadingKey);
+
+    setSectionReadingState((current) => {
+      const next = {
+        ...current,
+        [activeSectionReadingKey]: {
+          ...current[activeSectionReadingKey],
+          startedAt: restartedAt,
+          completedAt: undefined,
+          restartedAt,
+        },
+        [sectionId]: {
+          ...current[sectionId],
+          startedAt: restartedAt,
+          completedAt: undefined,
+          restartedAt,
+        },
+      };
+      saveSectionReadingState(userId, readingStorageLawId, next);
+      return next;
+    });
+
+    addToast('Leitura reiniciada. Use "Marcar como lido" quando concluir novamente.', 'info');
+  }, [activeSection, activeSectionReadingKey, addToast, readingStorageLawId, userId]);
+
+  const handleSectionReadingAction = React.useCallback(() => {
+    if (isActiveSectionCompleted) {
+      restartSectionReading();
+      return;
+    }
+
+    if (activeSectionReading?.startedAt) {
+      void saveReadingProgress();
+      return;
+    }
+
+    startSectionReading();
+  }, [activeSectionReading?.startedAt, isActiveSectionCompleted, restartSectionReading, saveReadingProgress, startSectionReading]);
 
   const submitLegalComment = React.useCallback(async () => {
     if (!law || isSubmittingComment) return;
@@ -1640,6 +2550,7 @@ const LawDetailPage: React.FC = () => {
         articleId: targetArticleId,
         body,
       });
+      applyUserProgressMutation(result);
       const createdComment: LegalUserComment = result.comment || {
         id: result.id || `legal-comment-${Date.now()}`,
         articleId: targetArticleId,
@@ -1662,7 +2573,9 @@ const LawDetailPage: React.FC = () => {
       } : current);
       setCommentBody('');
       addToast(
-        result.requiresModeration ? 'Comentário enviado para moderação.' : 'Comentário publicado.',
+        result.xpGain
+          ? `${result.requiresModeration ? 'Comentário enviado para moderação.' : 'Comentário publicado.'} +${result.xpGain} XP.`
+          : result.requiresModeration ? 'Comentário enviado para moderação.' : 'Comentário publicado.',
         'success',
       );
     } catch {
@@ -1670,7 +2583,7 @@ const LawDetailPage: React.FC = () => {
     } finally {
       setIsSubmittingComment(false);
     }
-  }, [activeSection, activeSectionArticles, addToast, commentBody, currentUser, isSubmittingComment, law, userId]);
+  }, [activeSection, activeSectionArticles, addToast, applyUserProgressMutation, commentBody, currentUser, isSubmittingComment, law, userId]);
 
   const reportLegalComment = React.useCallback(async (commentId: string) => {
     if (!userId) {
@@ -1679,12 +2592,16 @@ const LawDetailPage: React.FC = () => {
     }
 
     try {
-      await legalCommentaryApiService.reportUserComment(commentId);
-      addToast('Comentário reportado para moderação.', 'success');
+      const result = await legalCommentaryApiService.reportUserComment(commentId);
+      applyUserProgressMutation(result);
+      addToast(
+        result.xpGain ? `Comentário reportado para moderação. +${result.xpGain} XP.` : 'Comentário reportado para moderação.',
+        'success',
+      );
     } catch {
       addToast('Não foi possível reportar o comentário agora.', 'error');
     }
-  }, [addToast, userId]);
+  }, [addToast, applyUserProgressMutation, userId]);
 
   const deleteLegalComment = React.useCallback(async (commentId: string) => {
     try {
@@ -1724,20 +2641,73 @@ const LawDetailPage: React.FC = () => {
     }
 
     const container = range.commonAncestorContainer;
-    const element = container instanceof Element ? container : container.parentElement;
+    const element = container instanceof HTMLElement ? container : container.parentElement;
     if (!element) {
       return;
     }
 
     const computedStyle = window.getComputedStyle(element);
-    const fontWeight = Number.parseInt(computedStyle.fontWeight, 10);
-    const textColor = READER_TEXT_COLORS.find((colorOption) => hexToRgb(colorOption) === computedStyle.color) || '';
-    const highlightColor = READER_HIGHLIGHT_COLORS.find((colorOption) => hexToRgb(colorOption) === computedStyle.backgroundColor) || '';
+    const ancestorElements: HTMLElement[] = [];
+    let currentElement: HTMLElement | null = element;
+    const editor = readerEditorRef.current;
+    while (currentElement && currentElement !== editor && (!editor || editor.contains(currentElement))) {
+      ancestorElements.push(currentElement);
+      currentElement = currentElement.parentElement;
+    }
+
+    const hasActiveCommand = (command: 'bold' | 'italic' | 'underline') => {
+      if (ancestorElements.some((ancestor) => matchesReaderCommandElement(ancestor, command))) {
+        return true;
+      }
+
+      if (command === 'bold') {
+        const fontWeight = Number.parseInt(computedStyle.fontWeight, 10);
+        return Number.isNaN(fontWeight)
+          ? ['bold', 'bolder'].includes(computedStyle.fontWeight)
+          : fontWeight >= 600;
+      }
+
+      if (command === 'italic') {
+        return computedStyle.fontStyle === 'italic';
+      }
+
+      return computedStyle.textDecorationLine.includes('underline')
+        || ancestorElements.some((ancestor) => window.getComputedStyle(ancestor).textDecorationLine.includes('underline'));
+    };
+
+    const getActiveInlineColor = (
+      styleName: 'color' | 'backgroundColor',
+      colorOptions: string[],
+    ) => {
+      const expectedReaderStyle = styleName === 'color' ? 'text-color' : 'highlight';
+      const styledAncestor = ancestorElements.find((ancestor) => {
+        const readerStyle = String(ancestor.dataset.readerStyle || '').toLowerCase();
+        const inlineValue = styleName === 'color' ? ancestor.style.color : ancestor.style.backgroundColor;
+        return readerStyle === expectedReaderStyle
+          || Boolean(inlineValue)
+          || (styleName === 'backgroundColor' && ancestor.dataset.readerHighlight === 'true');
+      });
+
+      if (!styledAncestor) {
+        return '';
+      }
+
+      const inlineValue = styleName === 'color' ? styledAncestor.style.color : styledAncestor.style.backgroundColor;
+      const resolvedValue = inlineValue || window.getComputedStyle(styledAncestor)[styleName];
+      const normalizedValue = resolvedValue.toLowerCase();
+      return colorOptions.find((colorOption) => {
+        const normalizedOption = colorOption.toLowerCase();
+        return normalizedValue === normalizedOption || normalizedValue === hexToRgb(colorOption);
+      }) || '';
+    };
+
+    const textColor = getActiveInlineColor('color', READER_TEXT_COLORS);
+    const highlightColor = getActiveInlineColor('backgroundColor', READER_HIGHLIGHT_COLORS);
 
     setReaderActiveCommands({
-      bold: Number.isNaN(fontWeight) ? ['bold', 'bolder'].includes(computedStyle.fontWeight) : fontWeight >= 600,
-      italic: computedStyle.fontStyle === 'italic',
-      underline: computedStyle.textDecorationLine.includes('underline'),
+      bold: hasActiveCommand('bold'),
+      italic: hasActiveCommand('italic'),
+      underline: hasActiveCommand('underline'),
     });
     setReaderActiveTextColor(textColor);
     setReaderActiveHighlightColor(highlightColor);
@@ -1802,10 +2772,92 @@ const LawDetailPage: React.FC = () => {
     return firstWrapper;
   }, []);
 
-  const unwrapReaderMarkupInRange = React.useCallback((range: Range) => {
+  const isReaderEditableMarkupElement = React.useCallback((element: HTMLElement) => {
+    const tagName = element.tagName.toLowerCase();
+    return element.dataset.readerMarkup === 'true'
+      || Boolean(element.getAttribute('style'))
+      || ['b', 'strong', 'em', 'i', 'u', 'mark', 'span'].includes(tagName);
+  }, []);
+
+  const unwrapReaderMarkupElements = React.useCallback((elements: HTMLElement[]) => {
+    const editor = readerEditorRef.current;
+    if (!editor) {
+      return 0;
+    }
+
+    const uniqueElements = Array.from(new Set(elements))
+      .filter((element) => element !== editor && editor.contains(element));
+    uniqueElements.forEach((element) => {
+      element.replaceWith(...Array.from(element.childNodes));
+    });
+
+    return uniqueElements.length;
+  }, []);
+
+  const createReaderCommandMatcher = React.useCallback((command: 'bold' | 'italic' | 'underline') => (
+    (element: HTMLElement) => matchesReaderCommandElement(element, command)
+  ), []);
+
+  const createReaderInlineStyleMatcher = React.useCallback((
+    styleName: 'color' | 'backgroundColor',
+    value?: string,
+  ) => (
+    (element: HTMLElement) => {
+      const readerStyle = String(element.dataset.readerStyle || '').toLowerCase();
+      const expectedReaderStyle = styleName === 'color' ? 'text-color' : 'highlight';
+      const inlineValue = styleName === 'color' ? element.style.color : element.style.backgroundColor;
+      const hasStyleType = readerStyle === expectedReaderStyle
+        || inlineValue !== ''
+        || (styleName === 'backgroundColor' && element.dataset.readerHighlight === 'true');
+      if (!hasStyleType) {
+        return false;
+      }
+
+      if (!value) {
+        return true;
+      }
+
+      const normalizedTarget = hexToRgb(value) || value.toLowerCase();
+      return inlineValue.toLowerCase() === value.toLowerCase()
+        || inlineValue === normalizedTarget;
+    }
+  ), []);
+
+  const findReaderMarkupAncestors = React.useCallback((
+    range: Range,
+    matcher: (element: HTMLElement) => boolean = isReaderEditableMarkupElement,
+  ) => {
+    const editor = readerEditorRef.current;
+    if (!editor) {
+      return [];
+    }
+
+    const startElement = range.startContainer instanceof HTMLElement
+      ? range.startContainer
+      : range.startContainer.parentElement;
+    const elements: HTMLElement[] = [];
+    let current: HTMLElement | null = startElement;
+    while (current && current !== editor && editor.contains(current)) {
+      if (matcher(current)) {
+        elements.push(current);
+      }
+      current = current.parentElement;
+    }
+
+    return elements;
+  }, [isReaderEditableMarkupElement]);
+
+  const unwrapReaderMarkupInRange = React.useCallback((
+    range: Range,
+    matcher: (element: HTMLElement) => boolean = isReaderEditableMarkupElement,
+  ) => {
     const editor = readerEditorRef.current;
     if (!editor || typeof document === 'undefined' || typeof NodeFilter === 'undefined') {
-      return;
+      return 0;
+    }
+
+    if (range.collapsed) {
+      return unwrapReaderMarkupElements(findReaderMarkupAncestors(range, matcher));
     }
 
     const walker = document.createTreeWalker(
@@ -1817,7 +2869,7 @@ const LawDetailPage: React.FC = () => {
             return NodeFilter.FILTER_REJECT;
           }
 
-          return node.dataset.readerMarkup === 'true'
+          return matcher(node)
             ? NodeFilter.FILTER_ACCEPT
             : NodeFilter.FILTER_SKIP;
         },
@@ -1831,10 +2883,8 @@ const LawDetailPage: React.FC = () => {
       currentNode = walker.nextNode();
     }
 
-    wrappers.reverse().forEach((wrapper) => {
-      wrapper.replaceWith(...Array.from(wrapper.childNodes));
-    });
-  }, []);
+    return unwrapReaderMarkupElements(wrappers.reverse());
+  }, [findReaderMarkupAncestors, isReaderEditableMarkupElement, unwrapReaderMarkupElements]);
 
   const ensureReaderSelection = React.useCallback((requiresSelectedText = false) => {
     if (activeTab !== 'law') {
@@ -1854,34 +2904,75 @@ const LawDetailPage: React.FC = () => {
   }, [activeTab, addToast, getReaderSelectionRange]);
 
   const applyReaderCommand = React.useCallback((command: 'bold' | 'italic' | 'underline' | 'removeFormat') => {
-    const range = ensureReaderSelection(true);
-    if (!range || range.collapsed || typeof document === 'undefined') return;
+    const range = ensureReaderSelection(command !== 'removeFormat');
+    if (!range || typeof document === 'undefined') return;
 
     if (command === 'removeFormat') {
-      unwrapReaderMarkupInRange(range);
+      const removedCount = unwrapReaderMarkupInRange(range);
+      if (removedCount === 0) {
+        addToast('Nenhuma marcação encontrada nesse trecho.', 'info');
+      }
+      setReaderActiveCommands({ bold: false, italic: false, underline: false });
       setReaderActiveTextColor('');
       setReaderActiveHighlightColor('');
     } else {
-      wrapReaderRangeTextNodes(range, () => {
-        const span = document.createElement('span');
-        if (command === 'bold') span.style.fontWeight = '700';
-        if (command === 'italic') span.style.fontStyle = 'italic';
-        if (command === 'underline') span.style.textDecoration = 'underline';
-        return span;
-      });
+      const matcher = createReaderCommandMatcher(command);
+      const shouldRemoveExistingFormat = unwrapReaderMarkupInRange(range, matcher) > 0;
+      let wrapper: HTMLElement | null = null;
+      if (!shouldRemoveExistingFormat) {
+        wrapper = wrapReaderRangeTextNodes(range, () => {
+          const span = document.createElement('span');
+          span.dataset.readerStyle = command;
+          if (command === 'bold') span.style.fontWeight = '950';
+          if (command === 'italic') span.style.fontStyle = 'italic';
+          if (command === 'underline') span.style.textDecoration = 'underline';
+          return span;
+        });
+      }
+
+      const selection = window.getSelection();
+      if (wrapper && selection) {
+        selection.removeAllRanges();
+        const nextRange = document.createRange();
+        nextRange.selectNodeContents(wrapper);
+        selection.addRange(nextRange);
+      }
+
+      setReaderActiveCommands((current) => ({
+        ...current,
+        [command]: !shouldRemoveExistingFormat,
+      }));
     }
 
     syncReaderMarkupFromDom();
     window.requestAnimationFrame(refreshReaderToolbarState);
-  }, [ensureReaderSelection, refreshReaderToolbarState, syncReaderMarkupFromDom, unwrapReaderMarkupInRange, wrapReaderRangeTextNodes]);
+  }, [addToast, createReaderCommandMatcher, ensureReaderSelection, refreshReaderToolbarState, syncReaderMarkupFromDom, unwrapReaderMarkupInRange, wrapReaderRangeTextNodes]);
 
   const applyReaderInlineStyle = React.useCallback((styleName: 'color' | 'backgroundColor', value: string) => {
     const range = ensureReaderSelection(true);
     if (!range || typeof document === 'undefined') return;
 
+    const sameStyleMatcher = createReaderInlineStyleMatcher(styleName, value);
+    if (unwrapReaderMarkupInRange(range, sameStyleMatcher) > 0) {
+      if (styleName === 'color') {
+        setReaderActiveTextColor('');
+      } else {
+        setReaderActiveHighlightColor('');
+      }
+      syncReaderMarkupFromDom();
+      window.requestAnimationFrame(refreshReaderToolbarState);
+      return;
+    }
+
+    unwrapReaderMarkupInRange(range, createReaderInlineStyleMatcher(styleName));
+
     const wrapper = wrapReaderRangeTextNodes(range, () => {
       const span = document.createElement('span');
+      span.dataset.readerStyle = styleName === 'color' ? 'text-color' : 'highlight';
       span.style[styleName] = value;
+      if (styleName === 'backgroundColor') {
+        span.dataset.readerHighlight = 'true';
+      }
       return span;
     });
 
@@ -1898,7 +2989,8 @@ const LawDetailPage: React.FC = () => {
     } else {
       setReaderActiveHighlightColor(value);
     }
-  }, [ensureReaderSelection, syncReaderMarkupFromDom, wrapReaderRangeTextNodes]);
+    window.requestAnimationFrame(refreshReaderToolbarState);
+  }, [createReaderInlineStyleMatcher, ensureReaderSelection, refreshReaderToolbarState, syncReaderMarkupFromDom, unwrapReaderMarkupInRange, wrapReaderRangeTextNodes]);
 
   React.useEffect(() => {
     if (typeof document === 'undefined') {
@@ -1980,6 +3072,11 @@ const LawDetailPage: React.FC = () => {
   const firstSectionArticle = activeSectionArticles[0] || visibleArticles[0] || null;
   const titleMarker = firstSectionArticle ? getTitleMarker(firstSectionArticle) : '';
   const sectionName = firstSectionArticle ? getSectionHeaderText(firstSectionArticle) : '';
+  const readableActiveSectionTitle = getReadableSectionTitle(activeSection);
+  const contentHeaderTitle = sectionName || readableActiveSectionTitle;
+  const contentHeaderMarker = titleMarker && normalizeText(titleMarker) !== normalizeText(contentHeaderTitle)
+    ? titleMarker
+    : '';
   const activeSectionLabel = activeSection
     ? (activeSection.fromArticle === activeSection.toArticle
       ? `Artigo ${activeSection.fromArticle}`
@@ -1988,6 +3085,7 @@ const LawDetailPage: React.FC = () => {
   const fontSizeStyle: React.CSSProperties = {
     fontSize: `${Math.max(13, Math.min(18, Math.round(fontScale / 7.2)))}px`,
   };
+  const isReaderToolbarCollapsed = isScrollToolbarHidden;
 
   return (
     <div className="space-y-4 pb-10">
@@ -2013,10 +3111,16 @@ const LawDetailPage: React.FC = () => {
             <p className={`${PLATFORM_PAGE_DESCRIPTION_CLASS} mt-1`}>{law.shortTitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <ToolbarButton icon={<Star size={14} />} label="Favoritar seção" onClick={toggleSectionFavorite} active={isActiveSectionFavorite} />
-            <ToolbarButton icon={<Save size={14} />} label={activeSectionActionLabel} onClick={() => void saveReadingProgress()} active={isActiveSectionCompleted} />
+            <ToolbarButton icon={<Bookmark size={14} className={isActiveSectionFavorite ? 'fill-current' : ''} />} label="Favoritar seção" onClick={toggleSectionFavorite} active={isActiveSectionFavorite} />
+            <ToolbarButton
+              icon={isActiveSectionCompleted ? <RotateCcw size={14} /> : activeSectionReading?.startedAt ? <CheckCircle2 size={14} /> : <Save size={14} />}
+              label={activeSectionActionLabel}
+              onClick={handleSectionReadingAction}
+              active={isActiveSectionCompleted}
+            />
             <ToolbarButton icon={<Share2 size={14} />} label="Compartilhar" onClick={shareLaw} />
-            <ToolbarButton icon={<Flag size={14} />} label="Reportar erro" onClick={() => setSectionReportModalOpen(true)} />
+            <ToolbarButton icon={<MessageSquare size={14} />} label="Solicitar comentário" onClick={openTeacherCommentRequestModal} />
+            <ToolbarButton icon={<Flag size={14} />} label="Reportar erro" onClick={openSectionReportModal} />
           </div>
         </div>
 
@@ -2067,6 +3171,19 @@ const LawDetailPage: React.FC = () => {
           width: readerFloatingToolbar.width,
         } : undefined}
       >
+        {isReaderToolbarCollapsed ? (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setIsScrollToolbarHidden(false)}
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 shadow-sm transition-colors hover:border-[#615fff]/30 hover:text-[#514dff] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            >
+              <Eye size={14} />
+              Mostrar barra
+            </button>
+          </div>
+        ) : (
+        <>
         <div className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-nowrap items-center gap-1 overflow-x-auto px-2 py-1.5 sm:flex-wrap sm:gap-2 sm:px-3 sm:py-2`}>
           <ToolbarButton
             icon={<Table size={14} />}
@@ -2099,8 +3216,26 @@ const LawDetailPage: React.FC = () => {
             active={isFocusMode}
             onClick={() => setIsFocusMode((state) => !state)}
           />
-          <ToolbarButton icon={<Star size={14} />} label="Favoritar seção" onClick={toggleSectionFavorite} active={isActiveSectionFavorite} />
-          <ToolbarButton icon={<FileText size={14} />} label="PDF" onClick={openOfficialPdf} />
+          <ToolbarButton icon={<Bookmark size={14} className={isActiveSectionFavorite ? 'fill-current' : ''} />} label="Favoritar seção" onClick={toggleSectionFavorite} active={isActiveSectionFavorite} />
+          <ToolbarButton icon={<ExternalLink size={14} />} label="Planalto" onClick={openOfficialPdf} />
+          <ToolbarButton
+            icon={showLegalTextNotes ? <EyeOff size={14} /> : <FileText size={14} />}
+            label={showLegalTextNotes ? 'Ocultar notas da lei' : 'Mostrar notas da lei'}
+            active={showLegalTextNotes}
+            onClick={() => setShowLegalTextNotes((state) => !state)}
+          />
+          <ToolbarButton
+            icon={showEditorialAnnotations ? <EyeOff size={14} /> : <MessageSquare size={14} />}
+            label={showEditorialAnnotations ? 'Ocultar comentários' : 'Mostrar comentários'}
+            active={showEditorialAnnotations}
+            onClick={() => setShowEditorialAnnotations((state) => !state)}
+          />
+          <ToolbarButton
+            icon={<EyeOff size={14} />}
+            label="Ocultar barra"
+            disabled={!readerFloatingToolbar?.active}
+            onClick={() => setIsScrollToolbarHidden(true)}
+          />
         </div>
         {isSummaryOpen ? (
           <div className={`${PLATFORM_SURFACE_CARD_CLASS} max-h-[320px] overflow-y-auto p-2`}>
@@ -2131,23 +3266,33 @@ const LawDetailPage: React.FC = () => {
           </div>
         ) : null}
         <div className={`${PLATFORM_SURFACE_CARD_CLASS} p-1`}>
-          <div className="grid grid-cols-3 gap-1">
+          <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
             {([
               { key: 'comments', label: 'Comentários' },
               { key: 'law', label: 'Conteúdo da lei' },
+              { key: 'analysis', label: 'Análise detalhada' },
               { key: 'questions', label: 'Questões' },
             ] as const).map((tab) => (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`h-9 rounded-lg text-[11px] font-bold transition-colors sm:h-10 sm:rounded-xl sm:text-sm ${
+                className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg px-2 text-[11px] font-bold transition-colors sm:h-10 sm:rounded-xl sm:text-sm ${
                   activeTab === tab.key
                     ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
                     : 'text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
                 }`}
               >
-                {tab.label}
+                <span>{tab.label}</span>
+                {tab.key === 'comments' && sectionUserComments.length > 0 ? (
+                  <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-black ${
+                    activeTab === tab.key
+                      ? 'bg-white/20 text-current dark:bg-slate-900/20'
+                      : 'bg-[#615fff]/10 text-[#514dff] dark:bg-[#615fff]/20 dark:text-indigo-200'
+                  }`}>
+                    {sectionUserComments.length}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -2201,6 +3346,8 @@ const LawDetailPage: React.FC = () => {
             </button>
           </div>
         ) : null}
+        </>
+        )}
       </section>
       </div>
 
@@ -2214,7 +3361,7 @@ const LawDetailPage: React.FC = () => {
               </p>
             </div>
             <Link
-              href={`/practice?lawId=${encodeURIComponent(law.id)}${activeSection ? `&from=${encodeURIComponent(activeSection.fromArticle)}&to=${encodeURIComponent(activeSection.toArticle)}` : ''}`}
+              href={practiceSectionHref}
               className="inline-flex h-10 items-center justify-center rounded-xl bg-[#615fff] px-4 text-sm font-black text-white transition-colors hover:bg-[#514dff]"
             >
               Resolver no modo prática
@@ -2263,57 +3410,87 @@ const LawDetailPage: React.FC = () => {
           onDelete={deleteLegalComment}
           currentUserId={userId}
         />
+      ) : activeTab === 'analysis' ? (
+        null
       ) : (
         <section ref={readingContentSectionRef} className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
           <div className="border-b border-slate-200 px-5 py-3 text-xs font-bold text-slate-500 dark:border-slate-700 dark:text-slate-300">
             Última sincronização: {formatDate(law.lastSyncedAt)}
           </div>
 
+          {isSearchingLegalContent ? (
+            <div className="border-b border-indigo-100 bg-indigo-50/70 px-5 py-3 text-sm font-semibold text-indigo-900 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-100">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  Busca em toda a lei: {visibleArticles.length} artigo(s) encontrado(s) para &quot;{searchTerm.trim()}&quot;.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="inline-flex h-8 items-center justify-center rounded-lg border border-indigo-200 bg-white px-3 text-xs font-black uppercase tracking-[0.12em] text-[#615fff] transition-colors hover:bg-indigo-50 dark:border-indigo-500/30 dark:bg-slate-900 dark:text-indigo-100 dark:hover:bg-indigo-500/10"
+                >
+                  Limpar busca
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {visibleArticles.length === 0 ? (
             <div className="p-6 text-sm font-semibold text-slate-500 dark:text-slate-300">
-              Nenhum artigo encontrado com os filtros atuais.
+              {isSearchingLegalContent
+                ? 'Nenhum artigo, comentário, súmula, doutrina ou jurisprudência encontrado com esse termo.'
+                : 'Nenhum artigo encontrado com os filtros atuais.'}
             </div>
           ) : (
             <div className="bg-slate-100/70 p-4 dark:bg-slate-950/50">
-              <div
-                key={`${readerMarkupKey}:${readerMarkupVersion}:${savedReaderMarkupHtml ? 'saved' : 'source'}`}
-                ref={readerEditorRef}
-                tabIndex={-1}
-                onMouseUp={refreshReaderToolbarState}
-                className="mx-auto max-w-[980px] rounded-xl border border-slate-200 bg-white p-6 shadow-sm outline-none transition-shadow focus:ring-2 focus:ring-[#615fff]/20 dark:border-slate-700 dark:bg-slate-900 md:p-9"
-                {...(savedReaderMarkupHtml ? { dangerouslySetInnerHTML: { __html: savedReaderMarkupHtml } } : {})}
-              >
-                {savedReaderMarkupHtml ? null : (
-                  <>
+              <div className="mx-auto max-w-[980px] rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-9">
                 <header className="mb-7 text-center">
-                  {titleMarker ? (
+                  {contentHeaderMarker ? (
                     <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#615fff]">
-                      {titleMarker}
+                      {contentHeaderMarker}
                     </p>
                   ) : null}
-                  {sectionName ? (
+                  {contentHeaderTitle ? (
                     <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">
-                      {sectionName}
+                      {contentHeaderTitle}
                     </h2>
                   ) : null}
                 </header>
 
+                <div
+                  key={`${readerMarkupKey}:${readerMarkupVersion}:${savedReaderMarkupHtml ? 'saved' : 'source'}`}
+                  ref={readerEditorRef}
+                  tabIndex={-1}
+                  onMouseUp={refreshReaderToolbarState}
+                  className="legal-reader-content outline-none"
+                  {...(shouldRenderSavedReaderMarkup ? { dangerouslySetInnerHTML: { __html: sanitizedHtml } } : {})}
+                >
+                  {shouldRenderSavedReaderMarkup ? null : (
                 <div className="space-y-6">
                   {visibleArticles.map((article) => {
                     const blocks = buildArticleBlocks(article);
+                    const displayBlocks = showLegalTextNotes
+                      ? blocks
+                      : blocks.filter((block) => !block.isLegalNote);
                     const teacherComments = resolveArticleTeacherComments(law, article);
                     const jurisprudence = resolveArticleJurisprudence(law, article);
                     const doctrine = Array.isArray(article.doutrina) ? article.doutrina : (Array.isArray(article.doctrine) ? article.doctrine : []);
+                    const jurisprudenceNotes = Array.isArray(article.jurisprudenceNotes) ? article.jurisprudenceNotes : [];
                     const sumulas = Array.isArray(article.sumulas) ? article.sumulas : [];
+                    const examTips = Array.isArray(law.examTips)
+                      ? law.examTips.filter((tip) => String(tip.articleId || '') === String(article.id))
+                      : [];
                     const examTip = String(article.examTip || article.macete || '').trim();
-                    const inlineNotesByBlock = activeTab === 'law'
-                      ? groupInlineNotesByBlock(blocks, buildInlineLegalNotes({
+                    const inlineNotesByBlock = activeTab === 'law' && showEditorialAnnotations
+                      ? groupInlineNotesByBlock(displayBlocks, buildInlineLegalNotes({
                         article,
                         teacherComments,
                         doctrine,
+                        jurisprudenceNotes,
                         jurisprudence,
                         sumulas,
-                        examTip,
+                        examTips,
+                        fallbackExamTip: examTip,
                       }))
                       : new Map<string, InlineLegalNote[]>();
 
@@ -2329,17 +3506,35 @@ const LawDetailPage: React.FC = () => {
                         </div>
 
                         <div className="space-y-3 font-medium leading-7 text-slate-800 dark:text-slate-100">
-                          {blocks.map((block) => {
+                          {displayBlocks.map((block) => {
                             const blockNotes = inlineNotesByBlock.get(block.id) || [];
+                            const blockIndentClass = getLegalBlockIndentClass(block.indentLevel);
 
                             return (
                               <React.Fragment key={block.id}>
-                                <p>
-                                  <strong className="font-black text-slate-900 dark:text-slate-100">
-                                    {block.label}
-                                  </strong>
-                                  {block.text ? ` ${block.text}` : ''}
-                                </p>
+                                <div className={`group rounded-xl border border-transparent p-2 transition-colors hover:bg-indigo-50/40 dark:hover:bg-indigo-500/10 ${blockIndentClass}`}>
+                                  <div className="flex flex-col gap-2">
+                                    {block.isLegalNote ? (
+                                      <small className="block min-w-0 w-full text-justify text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                                        {block.label ? (
+                                          <strong className="font-black text-slate-600 dark:text-slate-300">
+                                            {block.label}
+                                          </strong>
+                                        ) : null}
+                                        {block.text ? `${block.label ? ' ' : ''}${block.text}` : ''}
+                                      </small>
+                                    ) : (
+                                      <p className="min-w-0 w-full text-justify">
+                                        {block.label ? (
+                                          <strong className="font-black text-slate-900 dark:text-slate-100">
+                                            {block.label}
+                                          </strong>
+                                        ) : null}
+                                        {block.text ? `${block.label ? ' ' : ''}${block.text}` : ''}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
 
                                 {blockNotes.length ? (
                                   <div className="space-y-2">
@@ -2350,6 +3545,10 @@ const LawDetailPage: React.FC = () => {
                                         title={note.title}
                                         body={note.body}
                                         blocks={note.blocks}
+                                        reactionKey={note.reactionKey || `inline-note:${note.id}`}
+                                        initialLikes={Number(note.likes || 0)}
+                                        initialDislikes={Number(note.dislikes || 0)}
+                                        initialReaction={note.userReaction}
                                       />
                                     ))}
                                   </div>
@@ -2362,15 +3561,16 @@ const LawDetailPage: React.FC = () => {
                     );
                   })}
                 </div>
-                  </>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           )}
         </section>
       )}
 
-      {activeTab === 'law' && hasSectionDeepAnalysis ? (
+      {activeTab === 'analysis' ? (
+        hasSectionDeepAnalysis ? (
         <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
           <button
             type="button"
@@ -2421,13 +3621,16 @@ const LawDetailPage: React.FC = () => {
                 </div>
               </div>
 
-              {sectionRichBlocks.length ? (
+              {sectionAnalysisContent ? (
                 <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                  <RichLegalContentBlocks blocks={sectionRichBlocks} />
+                  <MathRichText
+                    content={sectionAnalysisContent}
+                    className="text-sm font-medium leading-7 text-slate-700 dark:text-slate-200"
+                  />
                 </div>
               ) : null}
 
-              {!sectionRichBlocks.length ? (
+              {showLegacySectionAnalysisDetails ? (
               <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.85fr)]">
                 <div className="space-y-4">
                   {sectionSummary ? (
@@ -2447,6 +3650,9 @@ const LawDetailPage: React.FC = () => {
                         {sectionExamFocus.map((item, index) => (
                           <div key={`section-exam-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium leading-6 text-slate-700 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200">
                             <MathRichText content={item} className="text-sm font-medium leading-6 text-slate-700 dark:text-slate-200" />
+                            <div className="mt-2 flex justify-end">
+                              <ReactionControls storageKey={`section-exam:${activeSection?.id || 'section'}:${index}`} />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2470,6 +3676,9 @@ const LawDetailPage: React.FC = () => {
                             {item.excerpt ? (
                               <MathRichText content={item.excerpt} className="mt-1 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300" />
                             ) : null}
+                            <div className="mt-2 flex justify-end">
+                              <ReactionControls storageKey={`section-highlight:${activeSection?.id || 'section'}:${item.articleId || index}`} />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2485,6 +3694,9 @@ const LawDetailPage: React.FC = () => {
                         {sectionMacetes.map((item, index) => (
                           <div key={`section-macete-${index}`} className="rounded-lg border border-[#615fff]/15 bg-[#615fff]/5 px-3 py-2 text-sm font-medium leading-6 text-slate-700 dark:border-[#615fff]/25 dark:bg-[#615fff]/10 dark:text-slate-100">
                             <MathRichText content={item} className="text-sm font-medium leading-6 text-slate-700 dark:text-slate-100" />
+                            <div className="mt-2 flex justify-end">
+                              <ReactionControls storageKey={`section-macete:${activeSection?.id || 'section'}:${index}`} />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2498,6 +3710,9 @@ const LawDetailPage: React.FC = () => {
                         {sectionDoctrine.map((item, index) => (
                           <div key={`section-doctrine-${index}`} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium leading-6 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
                             <MathRichText content={item} className="text-sm font-medium leading-6 text-amber-900 dark:text-amber-100" />
+                            <div className="mt-2 flex justify-end">
+                              <ReactionControls storageKey={`section-doctrine:${activeSection?.id || 'section'}:${index}`} />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2517,6 +3732,9 @@ const LawDetailPage: React.FC = () => {
                                   <span className="font-black">{entry.court}</span>
                                   {entry.title ? ` • ${entry.title}` : ''}
                                   {entry.summary || entry.texto ? ` — ${entry.summary || entry.texto}` : ''}
+                                  <div className="mt-2 flex justify-end">
+                                    <ReactionControls storageKey={`section-juris:${activeSection?.id || 'section'}:${entry.id || index}`} />
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -2532,6 +3750,9 @@ const LawDetailPage: React.FC = () => {
                                   <span className="font-black">{entry.court}</span>
                                   {entry.number || entry.numero ? ` • ${entry.number || entry.numero}` : ''}
                                   {entry.text || entry.texto ? ` — ${entry.text || entry.texto}` : ''}
+                                  <div className="mt-2 flex justify-end">
+                                    <ReactionControls storageKey={`section-sumula:${activeSection?.id || 'section'}:${entry.id || index}`} />
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -2546,6 +3767,23 @@ const LawDetailPage: React.FC = () => {
             </div>
           ) : null}
         </section>
+        ) : (
+          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6 text-center`}>
+            <BookOpen size={28} className="mx-auto text-slate-300 dark:text-slate-600" />
+            <h2 className="mt-3 text-lg font-black text-slate-900 dark:text-slate-100">Análise detalhada indisponível</h2>
+            <p className="mx-auto mt-2 max-w-xl text-sm font-medium text-slate-500 dark:text-slate-300">
+              Esta seção ainda não possui análise detalhada publicada.
+            </p>
+            <button
+              type="button"
+              onClick={openDetailedAnalysisRequestModal}
+              className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#615fff] px-4 text-sm font-black text-white transition-colors hover:bg-[#514dff]"
+            >
+              <MessageSquare size={14} />
+              Solicitar análise detalhada
+            </button>
+          </section>
+        )
       ) : null}
 
       <section className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-wrap items-center justify-between gap-2 px-4 py-3`}>
@@ -2557,7 +3795,7 @@ const LawDetailPage: React.FC = () => {
             className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
           >
             <ArrowLeft size={12} />
-            Artigo anterior
+            Capítulo anterior
           </button>
           <button
             type="button"
@@ -2573,7 +3811,7 @@ const LawDetailPage: React.FC = () => {
           onClick={() => nextSection && changeSection(nextSection.id)}
           className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
         >
-          Próximo artigo
+          Próximo capítulo
           <ArrowRight size={12} />
         </button>
       </section>
@@ -2583,10 +3821,16 @@ const LawDetailPage: React.FC = () => {
           <div className={`${PLATFORM_SURFACE_CARD_CLASS} w-full max-w-lg p-5`}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-500">Reportar erro</p>
-                <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">Problema nesta seção</h2>
+                <p className={`text-[10px] font-black uppercase tracking-[0.18em] ${
+                  sectionSupportActionMode === 'report' ? 'text-red-500' : 'text-[#615fff]'
+                }`}>
+                  {sectionSupportActionMode === 'report' ? 'Reportar erro' : 'Suporte'}
+                </p>
+                <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{sectionReportTitle}</h2>
                 <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-300">
-                  Informe o ponto que precisa ser revisado pela moderação.
+                  {sectionSupportActionMode === 'report'
+                    ? 'Informe o ponto que precisa ser revisado pela moderação.'
+                    : 'Vincule ao item desejado quando a solicitação for sobre um artigo, inciso, parágrafo ou alínea.'}
                 </p>
               </div>
               <button
@@ -2600,26 +3844,60 @@ const LawDetailPage: React.FC = () => {
             </div>
             <div className="mt-4 space-y-3">
               <label className="block">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Tipo de erro</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Vincular ao item</span>
+                <select
+                  value={sectionSupportTargetId}
+                  onChange={(event) => setSectionSupportTargetId(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-[#615fff]/45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  {sectionTargetOptions.map((target) => (
+                    <option key={target.id} value={target.id}>{target.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  {sectionSupportActionMode === 'report' ? 'Tipo de erro' : 'Tipo de solicitação'}
+                </span>
                 <select
                   value={sectionReportReason}
                   onChange={(event) => setSectionReportReason(event.target.value)}
                   className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-[#615fff]/45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 >
-                  <option>Erro no texto da lei</option>
-                  <option>Comentário incorreto</option>
-                  <option>Jurisprudência ou súmula incorreta</option>
-                  <option>Problema de formatação</option>
-                  <option>Outro</option>
+                  {sectionSupportActionMode === 'report' ? (
+                    <>
+                      <option>Erro no texto da lei</option>
+                      <option>Comentário incorreto</option>
+                      <option>Jurisprudência ou súmula incorreta</option>
+                      <option>Problema de formatação</option>
+                      <option>Outro</option>
+                    </>
+                  ) : sectionSupportActionMode === 'analysis_request' ? (
+                    <>
+                      <option>Solicitar análise detalhada</option>
+                      <option>Solicitar análise de jurisprudência</option>
+                      <option>Solicitar análise de incidência em prova</option>
+                    </>
+                  ) : (
+                    <>
+                      <option>Solicitar comentário do professor</option>
+                      <option>Solicitar comentário no artigo</option>
+                      <option>Solicitar comentário no inciso/parágrafo/alínea</option>
+                    </>
+                  )}
                 </select>
               </label>
               <label className="block">
-                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Detalhes</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  {sectionSupportActionMode === 'report' ? 'Detalhes' : 'Observações'}
+                </span>
                 <textarea
                   value={sectionReportDetails}
                   onChange={(event) => setSectionReportDetails(event.target.value)}
                   rows={5}
-                  placeholder="Ex.: o inciso II está duplicado, há erro de digitação ou o comentário não corresponde ao artigo."
+                  placeholder={sectionSupportActionMode === 'report'
+                    ? 'Ex.: o inciso II está duplicado, há erro de digitação ou o comentário não corresponde ao artigo.'
+                    : 'Opcional: explique o ponto que você quer que a equipe analise.'}
                   className="mt-1 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-[#615fff]/45 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                 />
               </label>
@@ -2635,11 +3913,21 @@ const LawDetailPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => void submitSectionReport()}
-                disabled={isReportingSection || !sectionReportDetails.trim()}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-red-600 px-4 text-xs font-black text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isReportingSection || (sectionSupportActionMode === 'report' && !sectionReportDetails.trim())}
+                className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-black text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  sectionSupportActionMode === 'report'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-[#615fff] hover:bg-[#514dff]'
+                }`}
               >
-                {isReportingSection ? <Loader2 size={14} className="animate-spin" /> : <Flag size={14} />}
-                Enviar reporte
+                {isReportingSection ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : sectionSupportActionMode === 'report' ? (
+                  <Flag size={14} />
+                ) : (
+                  <MessageSquare size={14} />
+                )}
+                {sectionSupportActionMode === 'report' ? 'Enviar reporte' : 'Enviar solicitação'}
               </button>
             </div>
           </div>

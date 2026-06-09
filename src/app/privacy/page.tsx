@@ -14,9 +14,11 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, Eye, Database, UserCheck, ChevronLeft, ArrowRight, Server, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 const PrivacyPolicy: React.FC = () => {
   const router = useRouter();
+  const privacyContactEmail = useAppConfigStore((state) => state.systemSettings.privacyContactEmail || 'dpo@concursomestre.ai');
   const [activeTab, setActiveTab] = useState('coleta');
 
   // Highlighting intersection observer logic for scroll-spy
@@ -265,8 +267,8 @@ const PrivacyPolicy: React.FC = () => {
                 <div className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-center md:text-left">
                   Fale com o DPO (Data Protection Officer)
                 </div>
-                <a href="mailto:dpo@concursomestre.ai" className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:opacity-90 transition-all flex items-center gap-2">
-                  dpo@concursomestre.ai <ArrowRight size={14} />
+                <a href={`mailto:${privacyContactEmail}`} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:opacity-90 transition-all flex items-center gap-2">
+                  {privacyContactEmail} <ArrowRight size={14} />
                 </a>
               </div>
 

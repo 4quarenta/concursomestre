@@ -30,6 +30,66 @@ type ChangelogListPayload = {
   versions?: ChangelogVersion[];
 };
 
+const BASELINE_1_0_0_CHANGELOG: ChangelogVersion = {
+  id: 100000,
+  version: '1.0.0',
+  release_date: '2026-06-05',
+  title: 'ConcursoMestre 1.0.0',
+  description: 'Baseline publica da plataforma com pratica de questoes, simulados, lei comentada, marketplace, suporte, assinaturas, gamificacao e painel administrativo operacional.',
+  content_json: [
+    {
+      title: 'Estudo e pratica',
+      icon: 'BookOpen',
+      items: [
+        'Banco de questoes com filtros por materia, assunto, banca, orgao, cargo, ano, prova, dificuldade e historico de acerto.',
+        'Comentarios do professor, analise detalhada e suporte a feedback editorial nas questoes.',
+        'Simulados em modo lista ou foco, com revisao, tempo, desempenho e ranking pos-prova separado.',
+        'Lei comentada com leitura, destaques, progresso, comentarios e solicitacao de explicacao por dispositivo.',
+      ],
+    },
+    {
+      title: 'Analise e desempenho',
+      icon: 'BarChart2',
+      items: [
+        'Dashboard com evolucao de desempenho, sequencia semanal, materias e estatisticas de estudo.',
+        'Raio-X da banca com leitura por materia, assuntos recorrentes, dificuldade, contexto e recomendacao estrategica.',
+        'Ranking de XP e nivel do usuario separado dos rankings pos-prova.',
+        'Historico de respostas, anotacoes e questoes salvas no perfil do aluno.',
+      ],
+    },
+    {
+      title: 'Comunidade e suporte',
+      icon: 'Trophy',
+      items: [
+        'Suporte com categorias de problema, sugestao e ajuda.',
+        'Sugestoes publicas dos alunos com votos de like e dislike.',
+        'Comentarios em questoes com perfil, plano, foto e moderacao.',
+        'Avaliacoes da plataforma separadas de sugestoes no painel administrativo.',
+      ],
+    },
+    {
+      title: 'Conta e operacao',
+      icon: 'Shield',
+      items: [
+        'Perfil com dados pessoais, privacidade, preferencias, seguranca, assinatura e historico financeiro.',
+        'Checkout e assinaturas com Stripe, cartoes salvos, renovacao, cancelamento e auditoria operacional.',
+        'Painel admin para configuracoes, taxonomias, provas, importador, usuarios, suporte, email, cache e financeiro.',
+        'Paginas publicas de FAQ, termos, privacidade, changelog, planos e landing comercial.',
+      ],
+    },
+  ],
+};
+
+const withBaselineChangelog = (versions: ChangelogVersion[]) => {
+  const publicVersions = versions.filter((version) => {
+    const text = `${version.version} ${version.title} ${version.description}`.toLowerCase();
+    return !text.includes('[dev]') && !text.includes('(dev)');
+  });
+
+  const hasBaseline = publicVersions.some((version) => version.version === BASELINE_1_0_0_CHANGELOG.version);
+  return hasBaseline ? publicVersions : [BASELINE_1_0_0_CHANGELOG, ...publicVersions];
+};
+
 /**
  * Centraliza a leitura do changelog público da plataforma.
  * @since 1.0.0
@@ -44,14 +104,14 @@ export const changelogService = {
     const payload = readApiData<ChangelogVersion[] | ChangelogListPayload>(response, []);
 
     if (Array.isArray(payload)) {
-      return payload;
+      return withBaselineChangelog(payload);
     }
 
     if (Array.isArray(payload?.versions)) {
-      return payload.versions;
+      return withBaselineChangelog(payload.versions);
     }
 
-    return [];
+    return [BASELINE_1_0_0_CHANGELOG];
   },
 };
 

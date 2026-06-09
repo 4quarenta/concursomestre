@@ -1,157 +1,124 @@
-# Lei Comentada - arquitetura do módulo
+# Lei Comentada - arquitetura normalizada
+
+Atualizado em: `2026-05-25`
 
 ## Objetivo
 
-Criar um Vade Mecum inteligente dentro da plataforma, com legislação oficial do Portal do Planalto, comentários editoriais voltados para concursos, jurisprudência, macetes, favoritos, comentários de usuários, progresso e monitoramento diário de alterações.
+O modulo de Lei Comentada deve funcionar como um acervo juridico estudavel, nao como uma lista simples de normas. A estrutura oficial do Planalto e importada, normalizada e enriquecida com comentarios, doutrina, jurisprudencia, sumulas, macetes, analise de capitulo, progresso e favoritos.
 
-## Rotas de produto
+## Regra de taxonomia
 
-- `/lei-comentada`
-  - Página principal.
-  - Busca global.
-  - Atalhos para mais acessadas.
-  - Filtros simples por área, seguindo o raciocínio visual do protótipo Lovable.
-  - Listagem agrupada por área do direito.
-  - UI integrada ao shell da plataforma, com cabeçalho, cards e largura de desktop consistentes com as demais páginas internas.
+A regra oficial do modulo e unica:
 
-- `/lei-comentada/[slug]`
-  - Detalhe da lei.
-  - Cabeçalho da lei, fonte oficial, status de atualização e progresso.
-  - Índice lateral de artigos.
-  - Busca interna por artigo.
-  - Texto legal estruturado.
-  - Conteúdos complementares em sanfonas: comentário do professor, doutrina, jurisprudência, súmulas, macete, anotações e comentários da comunidade.
-  - Atualizações da Lei.
-  - Alternância entre modo `Lei seca` e modo `Comentada`.
+- **Lei:** possui `materia/disciplina` e `topico`.
+- **Capitulo da lei:** pertence a uma lei, herda materia/topico e define `subtopico` quando houver Titulo na norma.
+- **Artigo:** pertence a um capitulo e nao possui taxonomia independente. Ele herda materia/topico da lei, herda subtopico/estrutura da secao e recebe como `assunto` o nome do Capitulo da secao.
+- Quando a lei nao possui Titulo, o capitulo pode ficar sem subtopico.
+- Quando a lei nao possui Capitulo, os artigos ficam ligados diretamente ao topico da lei, sem criar assunto artificial.
+- `PARTE`, `LIVRO`, `SECAO` e `SUBSECAO` sao contexto estrutural do Planalto, mas nao substituem a taxonomia principal usada pela plataforma.
 
-## Modos de leitura
+## Banco de dados
 
-- `Lei seca`
-  - Mostra apenas o texto oficial estruturado por artigo, parágrafo, inciso, alínea e item.
-  - Usa maior respiro tipográfico para leitura literal e revisão rápida.
-  - Mantém favoritos e progresso, mas oculta blocos editoriais e comunidade durante a leitura.
+Fonte de verdade:
 
-- `Comentada`
-  - Mantém a experiência completa de estudo para concursos.
-  - Exibe comentários de professores, doutrina, jurisprudência, súmulas, macetes, anotações, comentários dos alunos e questões relacionadas.
-  - É o modo padrão ao abrir uma lei.
+- `laws`: dados da lei, URL oficial, materia e topico da lei.
+- `law_sections`: capitulos/blocos de estudo da lei, com titulo, capitulo, intervalo de artigos, ordem, subtopico e assunto.
+- `law_articles`: artigos vinculados por `section_id`, com numero, titulo interno, texto oficial, ordem e `assunto_filter_id` sincronizado a partir da secao/capitulo.
+- `law_article_blocks`: caput, paragrafos, incisos, alineas, itens e notas oficiais separados do texto bruto.
+- `law_section_editorials`: analise detalhada propria do capitulo por `section_id`.
+- Tabelas editoriais por artigo: comentario do professor, sumula, doutrina, jurisprudencia e macete.
 
-## Serviços e domínio
+Nao usar mais como fonte de verdade:
 
-- O contrato editorial segue o formato do protótipo Lovable:
-  - `AreaDireito`: `id`, `nome`, `cor`, `icone`, `totalLeis`, `leis`.
-  - `Lei`: `id`, `sigla`, `nome`, `numero`, `ano`, `descricao`, `ementa`, `totalArtigos`, `artigosComentados`, `urlPlanalto`, `artigos`.
-  - `Artigo`: `numero`, `titulo`, `texto`, `paragrafos`, `comentarios`, `jurisprudencia`, `sumulas`, `doutrina`, `macete`, `questoesRelacionadas`.
-  - No banco relacional, esse contrato é preservado em colunas explícitas em português e complementado por IDs internos, versionamento e índices.
+- `hierarchy_json`.
+- `section_key`.
+- `subject_filter_id`/`topic_filter_id` em artigo.
+- Fallbacks que inferem capitulos a partir de dados antigos.
 
-- `src/types/legalCommentary.ts`
-  - Tipos do domínio: áreas, leis, versões, artigos, comentários, jurisprudência, favoritos, progresso, updates e logs.
-  - Inclui campos compatíveis com `leis.ts`, como `acronym`, `year`, `description`, `paragraphs`, `syllabi`, `doctrine`, `examTip` e `relatedQuestionCount`.
+## Importador Planalto
 
-- `src/services/legal-commentary/legalCommentaryData.ts`
-  - Base inicial de leis prioritárias para concursos.
-  - Dados editoriais iniciais para validar a experiência.
-  - Links oficiais do Planalto preservados em cada lei.
+O parser deve:
 
-- `src/services/legal-commentary/legalCommentaryService.ts`
-  - Fachada de produto usada pelo frontend.
-  - Gera snapshot da home.
-  - Executa busca global.
-  - Carrega detalhe da lei.
-  - Controla favoritos, comentários de usuário e progresso em `localStorage` no modo preview.
-  - As mesmas operações viram chamadas HTTP quando o backend relacional entrar.
+1. Buscar HTML oficial apenas de hosts permitidos do Planalto.
+2. Extrair metadados da lei, ementa completa e preambulo quando existir.
+3. Classificar materia e topico da lei por regras conhecidas e heuristica segura.
+4. Reconhecer `PARTE`, `LIVRO`, `TITULO`, `CAPITULO`, `SECAO` e `SUBSECAO`.
+5. Agrupar a arvore de estudo por Titulo/Capitulo, priorizando Capitulo como bloco exibido ao aluno.
+6. Separar cada artigo em blocos (`caput`, `paragraph`, `inciso`, `alinea`, `item`, `note`).
+7. Preencher `law_sections` diretamente, sem depender de `hierarchy_json`.
+8. Vincular cada artigo ao `section_id` do capitulo correspondente e sincronizar o assunto do artigo a partir do capitulo, nunca por campo manual solto.
 
-- `src/services/legal-commentary/planaltoSyncService.ts`
-  - Base de sincronização oficial.
-  - Aceita apenas hosts do Planalto.
-  - Busca HTML oficial.
-  - Estrutura artigos.
-  - Compara hashes de dispositivos.
-  - Gera logs de inserted/changed/revoked.
+Leis de regressao obrigatoria:
 
-## Endpoints Next
+- Constituicao Federal.
+- Codigo Penal.
+- Codigo de Processo Penal.
+- Codigo Civil.
+- Lei Maria da Penha.
+- Lei 9.784.
+- Lei 9.455.
+- Lei 13.869.
 
-- `GET /api/lei-comentada`
-  - Lista snapshot principal.
-  - Query params:
-    - `q`: busca por lei, artigo, termo, comentário ou jurisprudência.
-    - `updated=1`: filtra leis atualizadas.
-    - `userId`: aplica favoritos/progresso quando houver backend.
+## Admin
 
-- `GET /api/lei-comentada/[slug]`
-  - Retorna detalhe completo da lei.
+A tela de add/edit Lei Comentada segue o padrao WordPress Admin:
 
-- `GET /api/lei-comentada/articles/[articleId]/comments`
-  - Lista comentários do artigo.
-  - Hoje usa armazenamento volátil de preview.
+- Box `Importar Lei do Planalto`.
+- Box `Classificacao da Lei`, com apenas `Disciplina/Materia` e `Topico/Nome da lei`.
+- Box `Estrutura da Lei`, com arvore de capitulos e artigos.
+- Cada capitulo permite editar:
+  - Nome exibido.
+  - Subtopico.
+  - Assunto.
+  - Artigos pertencentes.
+  - Analise detalhada propria.
+- Cada artigo permite editar apenas dados proprios:
+  - Numero.
+  - Titulo interno.
+  - Texto oficial.
+  - Blocos legais.
+  - Conteudos editoriais por artigo.
+- A classificacao exibida no artigo e herdada: materia/topico da lei, subtopico da secao e assunto do capitulo.
+- O painel lateral contem Publicar, Agendar, Atualizacoes da Lei e IA.
 
-- `POST /api/lei-comentada/articles/[articleId]/comments`
-  - Cria comentário no contrato esperado.
-  - Em produção deve persistir em `user_comments`.
+## Aluno
 
-- `GET /api/lei-comentada/sync?limit=6`
-  - Executa preview de sincronização.
-  - Usado pelo cron diário.
+A pagina `/lei-comentada`:
 
-- `POST /api/lei-comentada/sync`
-  - Permite reprocessamento manual pelo admin.
+- Lista leis por materia.
+- Abre capitulos/artigos sem loader infinito.
+- Usa favoritos por capitulo, nao pela lei inteira quando a acao estiver dentro da arvore.
+- Mostra progresso de leitura por capitulo/artigo.
 
-## Cron diário
+A pagina `/lei-comentada/[slug]`:
 
-`vercel.json` agenda:
+- Usa o mesmo formato normalizado do admin.
+- Renderiza a leitura em modo foco, com toolbar funcional.
+- Exibe comentarios de usuarios na aba `Comentarios`.
+- Exibe conteudo legal na aba `Conteudo da lei`.
+- Exibe questoes relacionadas pelos filtros do capitulo/artigo.
+- Mostra `Analise detalhada` apenas quando existir `law_section_editorials` para o capitulo ativo.
 
-- Caminho: `/api/lei-comentada/sync?limit=6`
-- Horário: 08:00 UTC diariamente
+## Validacoes atuais
 
-Em produção, esse job deve:
+Comandos usados nesta etapa:
 
-1. Carregar leis monitoradas.
-2. Buscar HTML oficial no Planalto.
-3. Extrair artigos/dispositivos.
-4. Gerar hash normalizado por dispositivo.
-5. Comparar contra a versão atual.
-6. Criar `law_versions` e `law_article_versions`.
-7. Criar entradas em `law_updates`.
-8. Atualizar `laws.last_synced_at`.
-9. Marcar dispositivos alterados como recentes pelo período configurável.
-10. Criar `sync_logs`.
+- `npm run typecheck`
+- `npm run check:text-encoding`
+- `php -l` nos arquivos PHP do modulo.
+- `validate-planalto-parser.php --only=CF88,LMP,ABUSO,TORTURA,CC,PA,CP,CPP`
+- `validate-planalto-parser.php --save-check=PA`
+- `validate-planalto-parser.php --save-check=CP`
 
-## Regras de negócio
+Resultado local:
 
-- Toda lei deve manter `official_url` do Planalto.
-- Toda lei também deve manter `url_planalto` no contrato editorial, para compatibilidade com o catálogo importado.
-- Conteúdo principal é HTML/texto estruturado dentro da plataforma, nunca PDF como experiência principal.
-- Leis são exibidas agrupadas por área.
-- Mais acessadas usam métrica real de visualização.
-- Usuário autenticado pode favoritar leis, artigos, jurisprudências e comentários editoriais.
-- Usuário autenticado pode comentar em artigo.
-- Usuário só edita ou exclui o próprio comentário.
-- Comentários de professores são conteúdo editorial e não se misturam visualmente com comentários da comunidade.
-- Apenas admin/editor cadastra comentário de professor, jurisprudência e macetes.
-- Alterações recentes exibem selo e destaque no dispositivo.
-- Histórico de versão nunca é sobrescrito; toda alteração cria versão.
+- Parser critico aprovado para as 8 leis-alvo.
+- `save-check` aprovou importacao, salvamento, recarregamento e limpeza temporaria para Lei 9.784 e Codigo Penal.
+- A validacao visual logada no navegador ficou bloqueada pela tela de login local, mas o fluxo de servico e persistencia passou.
 
-## Admin necessário
+## Pendencias de homologacao
 
-O painel administrativo deve expor:
-
-- Cadastro/edição de leis.
-- Associação de lei com área.
-- Gestão de monitoramento Planalto.
-- Cadastro de comentários de professores.
-- Cadastro de jurisprudência.
-- Cadastro de macetes.
-- Moderação de comentários de usuários.
-- Fila de dispositivos alterados recentemente.
-- Logs de sincronização.
-- Botão de reprocessar sincronização.
-
-## Próximas camadas
-
-- Persistir dados no PostgreSQL conforme `docs/examples/lei-comentada-schema.sql`.
-- Criar importador que receba o DTO `areasDireito` e alimente `legal_areas`, `laws`, `law_articles`, `teacher_comments`, `article_sumulas`, `article_doutrina`, `article_jurisprudence` e `article_exam_tips`.
-- Substituir `localStorage` por endpoints autenticados.
-- Indexar busca com PostgreSQL full-text ou Meilisearch/OpenSearch quando o volume crescer.
-- Adicionar highlights e notas privadas por trecho.
-- Criar telas administrativas completas.
-- Adicionar fila Redis/BullMQ se a sincronização passar de poucas dezenas de leis.
+- Validar visualmente o admin logado em `/admin/operation/lei-comentada/new/edit`.
+- Reimportar as leis reais depois da migracao destrutiva/limpeza do formato antigo.
+- Executar smoke de leitura do aluno com leis reimportadas.
+- Rodar o parser completo sobre o catalogo ampliado quando o Planalto estiver estavel.

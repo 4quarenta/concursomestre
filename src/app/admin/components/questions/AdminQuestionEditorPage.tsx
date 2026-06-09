@@ -376,8 +376,12 @@ const AdminQuestionEditorPage = ({
   const isMountedRef = React.useRef(true);
   const hasLoadedGroupsRef = React.useRef(false);
   const groupsRequestRef = React.useRef<Promise<void> | null>(null);
-  React.useEffect(() => () => {
-    isMountedRef.current = false;
+  React.useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
   const MULTIPLE_CHOICE_LABEL = 'Múltipla Escolha';
   const MID_LEVEL_LABEL = 'Médio';
@@ -1116,6 +1120,7 @@ const AdminQuestionEditorPage = ({
                 {manualQ.detailedComment ? (
                   <MathRichText
                     content={manualQ.detailedComment}
+                    disableCallouts
                     className="rounded-sm border border-indigo-200 bg-indigo-50/40 p-3 text-sm leading-7 text-slate-700 dark:border-indigo-900/40 dark:bg-indigo-950/20 dark:text-slate-200"
                   />
                 ) : null}

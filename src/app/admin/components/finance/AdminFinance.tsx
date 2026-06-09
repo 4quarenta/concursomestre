@@ -180,6 +180,8 @@ type AutomationHelperData = {
   [key: string]: unknown;
 };
 
+type AutomationHealthRecord = Record<string, unknown>;
+
 type StripeTestingMatrixCase = Record<string, unknown>;
 type StripeTestingSource = {
   url?: string;
@@ -336,6 +338,9 @@ const EMPTY_REVENUE_PROJECTION: AdminRevenueProjectionPayload = {
   totalRemainingInstallments: 0,
   activeContracts: 0,
   atRiskProjectedAmount: 0,
+  overduePaymentCount: 0,
+  overduePaymentAmount: 0,
+  overduePayments: [],
   breakdownByCycle: [],
   breakdownByMonth: [],
   items: [],
@@ -379,6 +384,43 @@ const getSellerStatusBadgeClass = (value: unknown) => {
   return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300';
 };
 
+const readAutomationHealthRecord = (
+  payload: AutomationHelperData | null | undefined,
+  key: 'cron_health' | 'webhook_health',
+): AutomationHealthRecord | null => {
+  const value = payload?.[key];
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as AutomationHealthRecord
+    : null;
+};
+
+const formatAutomationHealthDate = (value: unknown, fallback: string) => {
+  const date = typeof value === 'string' && value.trim() !== '' ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime())
+    ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(date)
+    : fallback;
+};
+
+const getAutomationHealthCardClass = (tone: 'emerald' | 'amber' | 'rose' | 'slate') => {
+  if (tone === 'emerald') {
+    return 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10';
+  }
+  if (tone === 'amber') {
+    return 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10';
+  }
+  if (tone === 'rose') {
+    return 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10';
+  }
+  return 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40';
+};
+
+const getAutomationHealthTextClass = (tone: 'emerald' | 'amber' | 'rose' | 'slate') => {
+  if (tone === 'emerald') return 'text-emerald-700 dark:text-emerald-300';
+  if (tone === 'amber') return 'text-amber-700 dark:text-amber-300';
+  if (tone === 'rose') return 'text-rose-700 dark:text-rose-300';
+  return 'text-slate-700 dark:text-slate-300';
+};
+
 const parseProjectionTimestamp = (value?: string | null) => {
   if (!value) {
     return Date.now();
@@ -419,6 +461,17 @@ const resolveTransactionDisplayTimestamp = (transaction: Partial<AdminFinanceTra
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : fallbackTimestamp;
 };
 
+const getProjectionMonthKeyFromTimestamp = (timestamp: number) => {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const isProjectionTimestampOverdue = (timestamp: number, referenceTimestamp: number = Date.now()) => (
+  Number.isFinite(timestamp)
+  && timestamp > 0
+  && timestamp < referenceTimestamp
+);
+
 const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload): ProjectionTransactionRow[] => (
   (projection.items || []).flatMap((item) => {
     const remaining = Math.max(0, Number(item.remainingInstallments || 0));
@@ -434,10 +487,13 @@ const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload
       const dueTimestamp = addProjectionInterval(
         baseTimestamp,
         index,
-        item.intervalUnit || 'month',
-        Number(item.intervalCount || 1),
+        item.chargeIntervalUnit || item.intervalUnit || 'month',
+        Number(item.chargeIntervalCount || item.intervalCount || 1),
       );
       const isAutoRenewProjection = item.projectionMode === 'auto_renew';
+      if (isProjectionTimestampOverdue(dueTimestamp)) {
+        return null;
+      }
 
       return {
         id: `projection-${item.subscriptionId || item.userId}-${installmentNumber}`,
@@ -471,7 +527,7 @@ const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload
         installmentCount: isAutoRenewProjection ? remaining : item.totalInstallments,
         isRevenueProjection: true,
       };
-    });
+    }).filter(Boolean) as ProjectionTransactionRow[];
   })
 );
 
@@ -493,7 +549,7 @@ const buildProjectionMonthBreakdownFromRows = (rows: ProjectionTransactionRow[])
     }
 
     const date = new Date(timestamp);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const key = getProjectionMonthKeyFromTimestamp(timestamp);
     const current = groups.get(key) || {
       key,
       label: date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
@@ -571,6 +627,7 @@ const AdminFinance = ({
   const [stripeTestingRunScenario, setStripeTestingRunScenario] = useState<StripeTestingMatrixCase | null>(null);
   const [revenueProjection, setRevenueProjection] = useState<AdminRevenueProjectionPayload>(EMPTY_REVENUE_PROJECTION);
   const [isRevenueProjectionLoading, setIsRevenueProjectionLoading] = useState(false);
+  const [expandedProjectionMonthKey, setExpandedProjectionMonthKey] = useState<string | null>(null);
   const [stripeTestingRunForm, setStripeTestingRunForm] = useState({
     execution_result: 'passed' as 'passed' | 'failed' | 'blocked',
     payment_intent_id: '',
@@ -627,6 +684,22 @@ const AdminFinance = ({
   const automationHelperUnavailable = automationHelperRequested && !automationHelperLoading && !automationHelper;
   const automationCronUrlLabel = automationCronUrl || (automationHelperUnavailable ? 'URL oficial indisponivel no momento.' : 'Carregando URL oficial...');
   const automationCronCommandLabel = automationCronCommand || (automationHelperUnavailable ? 'Comando oficial indisponivel no momento.' : 'Carregando comando oficial...');
+  const automationCronHealth = readAutomationHealthRecord(automationHelper, 'cron_health');
+  const automationWebhookHealth = readAutomationHealthRecord(automationHelper, 'webhook_health');
+  const automationCronStatus = String(automationCronHealth?.status || (automationHelper?.configured ? 'unknown' : 'error')).toLowerCase();
+  const automationWebhookStatus = String(automationWebhookHealth?.status || 'unknown').toLowerCase();
+  const automationCronTone = automationCronStatus === 'ok'
+    ? 'emerald'
+    : ['warning', 'stale', 'unknown'].includes(automationCronStatus)
+      ? 'amber'
+      : 'rose';
+  const automationWebhookTone = ['processed', 'ignored', 'duplicate'].includes(automationWebhookStatus)
+    ? 'emerald'
+    : automationWebhookStatus === 'unknown'
+      ? 'amber'
+      : 'rose';
+  const automationCronLastRunLabel = formatAutomationHealthDate(automationCronHealth?.last_run_at, 'Nunca executado');
+  const automationWebhookLastEventLabel = formatAutomationHealthDate(automationWebhookHealth?.last_event_at, 'Nunca recebido');
   const stripeTestingCases = Array.isArray(stripeTestingMatrix?.cases) ? stripeTestingMatrix.cases : [];
   const stripeTestingSummary: StripeTestingMatrixSummary = {
     total: Number(stripeTestingMatrix?.summary?.total || 0),
@@ -1003,24 +1076,59 @@ const AdminFinance = ({
     [revenueProjection],
   );
 
-  const projectionMonthRows = useMemo(() => {
-    const apiRows = (revenueProjection.breakdownByMonth || [])
-      .filter((month) => Number(month.amount || 0) > 0)
-      .map((month) => ({
-        ...month,
-        amount: Number(month.amount || 0),
-        atRiskAmount: Number(month.atRiskAmount || 0),
-        installments: Number(month.installments || 0),
-      }));
+  const futureProjectedTransactionRows = useMemo(
+    () => projectedTransactionRows,
+    [projectedTransactionRows],
+  );
 
-    return apiRows.length > 0
-      ? apiRows
-      : buildProjectionMonthBreakdownFromRows(projectedTransactionRows);
-  }, [projectedTransactionRows, revenueProjection.breakdownByMonth]);
+  const futureProjectedAmount = useMemo(
+    () => futureProjectedTransactionRows.reduce((total, row) => total + readTransactionAmount(row), 0),
+    [futureProjectedTransactionRows],
+  );
+
+  const overduePaymentRows = useMemo(
+    () => Array.isArray(revenueProjection.overduePayments) ? revenueProjection.overduePayments : [],
+    [revenueProjection.overduePayments],
+  );
+
+  const overduePaymentAmount = useMemo(
+    () => {
+      const payloadAmount = Number(revenueProjection.overduePaymentAmount || 0);
+      return payloadAmount > 0
+        ? payloadAmount
+        : overduePaymentRows.reduce((total, row) => total + Number(row.amount || 0), 0);
+    },
+    [overduePaymentRows, revenueProjection.overduePaymentAmount],
+  );
+
+  const projectionMonthRows = useMemo(() => {
+    return buildProjectionMonthBreakdownFromRows(futureProjectedTransactionRows);
+  }, [futureProjectedTransactionRows]);
 
   const maxProjectionMonthAmount = useMemo(
     () => Math.max(1, ...projectionMonthRows.map((month) => Number(month.amount || 0))),
     [projectionMonthRows],
+  );
+
+  const projectionRowsByMonth = useMemo(() => futureProjectedTransactionRows.reduce<Record<string, ProjectionTransactionRow[]>>((acc, row) => {
+    const timestamp = Number(row.timestamp || 0);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) {
+      return acc;
+    }
+
+    const key = getProjectionMonthKeyFromTimestamp(timestamp);
+    acc[key] = [...(acc[key] || []), row];
+    return acc;
+  }, {}), [futureProjectedTransactionRows]);
+
+  const expandedProjectionMonth = useMemo(
+    () => projectionMonthRows.find((month) => month.key === expandedProjectionMonthKey) || null,
+    [expandedProjectionMonthKey, projectionMonthRows],
+  );
+
+  const expandedProjectionRows = useMemo(
+    () => expandedProjectionMonthKey ? (projectionRowsByMonth[expandedProjectionMonthKey] || []) : [],
+    [expandedProjectionMonthKey, projectionRowsByMonth],
   );
 
   const financeTransactionRows = useMemo<AdminFinanceTransaction[]>(
@@ -1638,6 +1746,8 @@ const AdminFinance = ({
       const nestedData = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : null;
       const summary = payload.summary ?? nestedData?.summary ?? payload;
       setAutomationRunResult(summary);
+      const refreshedHelper = await subscriptionsService.getAutomationHelperInfo();
+      setAutomationHelper(refreshedHelper);
       addToast(typeof payload.message === 'string' ? payload.message : 'Rotina de automacao executada com sucesso.', 'success');
     } catch (error: unknown) {
       const message = readApiErrorMessage(error, 'Nao foi possivel executar a rotina de automacao.');
@@ -2572,13 +2682,75 @@ const AdminFinance = ({
             <div className={`${ADMIN_SURFACE_CLASS} p-5`}>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Receita projetada</p>
               <p className="mt-3 text-2xl font-black text-violet-700 dark:text-violet-300">
-                {isRevenueProjectionLoading ? '...' : formatAdminMoney(revenueProjection.totalProjectedAmount)}
+                {isRevenueProjectionLoading ? '...' : formatAdminMoney(futureProjectedAmount)}
               </p>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                {revenueProjection.totalRemainingInstallments} parcelas restantes em {revenueProjection.activeContracts} contrato(s), listadas como pre-aprovadas abaixo.
+                {futureProjectedTransactionRows.length} parcela(s) futura(s) em {revenueProjection.activeContracts} contrato(s).
               </p>
             </div>
           </div>
+
+          {overduePaymentRows.length > 0 ? (
+            <div className="overflow-hidden rounded-sm border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-900/15">
+              <div className="flex flex-col gap-2 border-b border-amber-200 px-4 py-3 dark:border-amber-900/40 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="flex items-center gap-2 text-sm font-black text-amber-900 dark:text-amber-100">
+                    <AlertTriangle size={16} />
+                    Pagamentos em atraso para averiguar
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-amber-800/80 dark:text-amber-200/80">
+                    Parcelas que deveriam ter virado transacao real e nao podem permanecer como projecao futura.
+                  </p>
+                </div>
+                <span className="inline-flex items-center justify-center rounded-sm border border-amber-300 bg-white px-3 py-1 text-xs font-black text-amber-800 dark:border-amber-800 dark:bg-slate-950/40 dark:text-amber-200">
+                  {overduePaymentRows.length} pendencia(s) - {formatAdminMoney(overduePaymentAmount)}
+                </span>
+              </div>
+              <div className="max-h-[300px] overflow-auto">
+                <table className="w-full min-w-[860px] text-left">
+                  <thead className="sticky top-0 z-10 bg-amber-100 dark:bg-amber-950">
+                    <tr className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-900 dark:text-amber-100">
+                      <th className="px-4 py-3">Vencimento</th>
+                      <th className="px-4 py-3">Aluno</th>
+                      <th className="px-4 py-3">Plano</th>
+                      <th className="px-4 py-3">Parcela</th>
+                      <th className="px-4 py-3">Motivo</th>
+                      <th className="px-4 py-3 text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-amber-100 bg-white/70 dark:divide-amber-900/40 dark:bg-slate-950/20">
+                    {overduePaymentRows.map((row, index) => {
+                      const dueDate = row.dueAt ? new Date(row.dueAt) : null;
+                      const dueLabel = dueDate && !Number.isNaN(dueDate.getTime())
+                        ? dueDate.toLocaleString('pt-BR')
+                        : row.dueAt || '-';
+
+                      return (
+                        <tr key={`${row.subscriptionId}-${row.installmentNumber}-${index}`}>
+                          <td className="px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200">
+                            {dueLabel}
+                            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 dark:text-amber-300">
+                              {Number(row.daysOverdue || 0)} dia(s) em atraso
+                            </p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="text-xs font-black text-slate-900 dark:text-slate-100">{row.userName || '-'}</p>
+                            <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">{row.userEmail || '-'}</p>
+                          </td>
+                          <td className="px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200">{row.planName || '-'}</td>
+                          <td className="px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200">
+                            {row.installmentNumber ? `${row.installmentNumber}/${row.installmentCount || '-'}` : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-xs font-semibold text-slate-600 dark:text-slate-300">{row.reason || 'Pagamento em atraso'}</td>
+                          <td className="px-4 py-3 text-right text-xs font-black text-amber-800 dark:text-amber-200">{formatAdminMoney(Number(row.amount || 0))}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
 
           {projectionMonthRows.length > 0 ? (
             <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
@@ -2594,13 +2766,22 @@ const AdminFinance = ({
                 </span>
               </div>
               <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
-                {projectionMonthRows.slice(0, 12).map((month) => {
+                {projectionMonthRows.map((month) => {
                   const amount = Number(month.amount || 0);
                   const atRiskAmount = Number(month.atRiskAmount || 0);
                   const barWidth = Math.max(8, Math.round((amount / maxProjectionMonthAmount) * 100));
+                  const isExpanded = expandedProjectionMonthKey === month.key;
+                  const monthRowsCount = projectionRowsByMonth[month.key]?.length || 0;
 
                   return (
-                    <div key={month.key} className="rounded-sm border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                    <div
+                      key={month.key}
+                      className={`rounded-sm border p-3 transition-colors ${
+                        isExpanded
+                          ? 'border-violet-300 bg-violet-50 dark:border-violet-500/40 dark:bg-violet-500/10'
+                          : 'border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40'
+                      }`}
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm font-black capitalize text-slate-900 dark:text-slate-100">{month.label}</p>
@@ -2620,10 +2801,84 @@ const AdminFinance = ({
                           Em risco: {formatAdminMoney(atRiskAmount)}
                         </p>
                       ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedProjectionMonthKey((current) => (current === month.key ? null : month.key))}
+                        disabled={monthRowsCount === 0}
+                        className="mt-3 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-sm border border-violet-200 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-violet-700 transition-colors hover:bg-violet-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 dark:border-violet-500/30 dark:bg-slate-950 dark:text-violet-300 dark:hover:bg-violet-500/10 dark:disabled:border-slate-800 dark:disabled:text-slate-600"
+                      >
+                        {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        {isExpanded ? 'Ocultar composicao' : 'Ver composicao'}
+                      </button>
                     </div>
                   );
                 })}
               </div>
+              {expandedProjectionMonth && expandedProjectionRows.length > 0 ? (
+                <div className="border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-black capitalize text-slate-900 dark:text-slate-100">
+                        Composicao de {expandedProjectionMonth.label}
+                      </p>
+                      <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {expandedProjectionRows.length} cobranca(s) previstas somando {formatAdminMoney(Number(expandedProjectionMonth.amount || 0))}.
+                      </p>
+                    </div>
+                    {Number(expandedProjectionMonth.atRiskAmount || 0) > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300">
+                        <AlertTriangle size={12} />
+                        {formatAdminMoney(Number(expandedProjectionMonth.atRiskAmount || 0))} em risco
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="overflow-hidden rounded-sm border border-slate-200 dark:border-slate-800">
+                    <div className="max-h-[360px] overflow-auto">
+                      <table className="w-full min-w-[900px] text-left">
+                        <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800">
+                          <tr className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-300">
+                            <th className="px-4 py-3">Data prevista</th>
+                            <th className="px-4 py-3">Aluno</th>
+                            <th className="px-4 py-3">Plano</th>
+                            <th className="px-4 py-3">Parcela</th>
+                            <th className="px-4 py-3">Origem</th>
+                            <th className="px-4 py-3 text-right">Valor</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {expandedProjectionRows
+                            .slice()
+                            .sort((left, right) => Number(left.timestamp || 0) - Number(right.timestamp || 0))
+                            .map((row) => (
+                              <tr key={row.id} className="align-top">
+                                <td className="px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-300">
+                                  {row.dateTimeFormatted || new Date(row.timestamp).toLocaleString('pt-BR')}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <p className="text-xs font-black text-slate-900 dark:text-slate-100">{row.buyerName || '-'}</p>
+                                  <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">{row.buyerEmail || '-'}</p>
+                                </td>
+                                <td className="px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-300">
+                                  {row.planName || '-'}
+                                </td>
+                                <td className="px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-300">
+                                  {row.installmentNumber ? `${row.installmentNumber}/${row.installmentCount || '-'}` : '-'}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">{row.scheduleLabel || formatTransactionStatusLabel(row.status || '')}</p>
+                                  <p className="mt-1 font-mono text-[10px] text-slate-400 dark:text-slate-500">{row.referenceId || row.providerTransactionId || row.internalId}</p>
+                                </td>
+                                <td className="px-4 py-3 text-right text-xs font-black text-violet-700 dark:text-violet-300">
+                                  {formatAdminMoney(readTransactionAmount(row))}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -3534,7 +3789,7 @@ const AdminFinance = ({
               </div>
               <div className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-2 p-4`}>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Frequência recomendada</p>
-                <p className="text-lg font-black text-slate-900 dark:text-slate-100">1 vez por hora</p>
+                <p className="text-lg font-black text-slate-900 dark:text-slate-100">A cada 15 minutos</p>
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
                   Essa cadência reduz divergências de renovação, conciliação e feedback operacional no financeiro.
                 </p>
@@ -3557,6 +3812,67 @@ const AdminFinance = ({
                 {String(automationHelper.warning)}
               </div>
             )}
+
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className={`rounded-sm border p-4 ${getAutomationHealthCardClass(automationCronTone)}`}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Cron de reconciliacao</p>
+                    <p className={`mt-2 text-lg font-black ${getAutomationHealthTextClass(automationCronTone)}`}>
+                      {automationCronLastRunLabel}
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                      {String(automationCronHealth?.message || 'Sem heartbeat registrado pelo backend.')}
+                    </p>
+                  </div>
+                  <span className={`inline-flex items-center gap-1 rounded-sm border bg-white/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${getAutomationHealthTextClass(automationCronTone)} dark:bg-slate-950/40`}>
+                    {automationCronTone === 'emerald' ? <CheckCircle2 size={12} /> : automationCronTone === 'rose' ? <XCircle size={12} /> : <AlertTriangle size={12} />}
+                    {automationCronStatus}
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    ['Assinaturas', automationCronHealth?.checked ?? 0],
+                    ['Issues', automationCronHealth?.issues ?? 0],
+                    ['Invoices', automationCronHealth?.materialized_invoices ?? 0],
+                    ['Periodos', automationCronHealth?.synced_periods ?? 0],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="rounded-sm border border-white/70 bg-white/60 px-3 py-2 dark:border-slate-800/70 dark:bg-slate-950/30">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{String(label)}</p>
+                      <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{String(value)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className={`rounded-sm border p-4 ${getAutomationHealthCardClass(automationWebhookTone)}`}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Webhook Stripe</p>
+                    <p className={`mt-2 text-lg font-black ${getAutomationHealthTextClass(automationWebhookTone)}`}>
+                      {automationWebhookLastEventLabel}
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+                      {String(automationWebhookHealth?.message || 'Nenhum evento Stripe confirmado ainda.')}
+                    </p>
+                  </div>
+                  <span className={`inline-flex items-center gap-1 rounded-sm border bg-white/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${getAutomationHealthTextClass(automationWebhookTone)} dark:bg-slate-950/40`}>
+                    {automationWebhookTone === 'emerald' ? <CheckCircle2 size={12} /> : automationWebhookTone === 'rose' ? <XCircle size={12} /> : <AlertTriangle size={12} />}
+                    {automationWebhookStatus}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-sm border border-white/70 bg-white/60 px-3 py-2 dark:border-slate-800/70 dark:bg-slate-950/30">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Evento</p>
+                    <p className="mt-1 break-all text-xs font-black text-slate-900 dark:text-slate-100">{String(automationWebhookHealth?.event_type || 'NAO COMPROVADO')}</p>
+                  </div>
+                  <div className="rounded-sm border border-white/70 bg-white/60 px-3 py-2 dark:border-slate-800/70 dark:bg-slate-950/30">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Objeto Stripe</p>
+                    <p className="mt-1 break-all font-mono text-xs font-black text-slate-900 dark:text-slate-100">{String(automationWebhookHealth?.object_id || automationWebhookHealth?.event_id || 'NAO COMPROVADO')}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {stripeTestingMatrixLoading && (
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400">

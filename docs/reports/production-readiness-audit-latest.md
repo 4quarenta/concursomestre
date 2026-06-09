@@ -4,6 +4,155 @@ Data: `2026-05-05`
 
 Veredito: `Nao pronto para go-live final; pronto localmente para homologacao controlada em VPS/staging`
 
+## Atualizacao incremental (`2026-05-30` - Gate operacional VPS)
+
+- Macroetapa **Operacao real de VPS**: **pacote local concluido; execucao real pendente de VPS**.
+- Criado `scripts/tasks/vps_operations_gate.php` no backend como portao unico para a etapa operacional do servidor. Ele roda, em ordem bloqueante:
+  - `production_preflight.php`;
+  - `operational_log_maintenance.php`;
+  - `production_log_audit.php`;
+  - `operational_log_alerts.php`;
+  - `backup_restore_rehearsal.php`.
+- O gate aceita `--dry-run=true` para gerar o plano sem executar rotinas, grava evidencia JSON privada em `OPERATIONS_GATE_REPORT_FILE`/`--report-file`, rejeita relatorio dentro de `api/` e falha se houver erro critico recente, alerta operacional novo ou restore dry-run invalido.
+- Criado `tests/VpsOperationsGateWiringTest.php` e incluido em `scripts/tasks/ci_wiring_checks.php`, para impedir que o portao deixe de exigir preflight, logs, alertas e backup/restore.
+- Evidencias locais:
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\scripts\tasks\vps_operations_gate.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\VpsOperationsGateWiringTest.php`: **ok**.
+  - `vps_operations_gate.php --profile=production --dry-run=true --restore-target-db=concursomestre_restore_test`: **ok**, gerando plano com preflight, manutencao de logs, auditoria, alertas e ensaio de restore.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\scripts\tasks\ci_wiring_checks.php`: **ok**, com lint PHP em 557 arquivos e 24 testes criticos.
+  - `production_readiness_suite.php --profile=local --web-base-url= --api-base-url=http://localhost/questao-pro-backend/api --db-connections=1 --timeout=12 --with-backup-rehearsal=true --log-fail-on=none --log-require-files=false`: **ok**.
+- Status: **preparacao local pronta**. O go-live continua **nao pronto** sem executar esse gate na VPS real apos configurar `.env`, crons, SMTP, Stripe webhook, backup MySQL e dominio HTTPS publico.
+- Criado `docs/reports/production-go-live-open-items-latest.md` como lista curta das pendencias P0/P1/P2 que ainda dependem de VPS/staging real.
+- Ajuste de seguranca operacional: `vps_operations_gate.php` e `staging_homologation_gate.php` agora nao gravam relatorio quando o caminho informado esta bloqueado por precheck, evitando gerar artefato em `api/` mesmo em cenarios de erro.
+
+## Atualizacao incremental (`2026-05-30` - Suite operacional)
+
+- Etapa **Suite operacional de readiness**: **Pronta localmente; aguardando VPS/staging**.
+- Como preparacao sem VPS, foram adicionados templates em `config/deploy/` para Nginx, systemd, cron e logrotate. Eles reduzem risco de configuracao manual, mas ainda precisam ser aplicados e validados em staging real.
+- Foi criado `scripts/checks/release-repositories-status.mjs` para confirmar frontend e backend como repositorios separados, com `origin` configurado e sem arquivos operacionais sensiveis rastreados. Em modo normal ele alerta worktree suja; em modo `--strict`, deve bloquear release com alteracoes nao commitadas ou branch fora do upstream.
+- Foi adicionada CI basica nos dois repositorios: frontend com `.github/workflows/frontend-ci.yml` e backend com `.github/workflows/backend-ci.yml`. O backend ganhou `scripts/tasks/ci_wiring_checks.php` para lint PHP e testes criticos de wiring sem depender de ambiente publico.
+- Foi criado `scripts/tasks/production_readiness_suite.php` para gerar uma evidencia unica de release no backend, orquestrando:
+  - `production_preflight.php`;
+  - `production_smoke.php`;
+  - `production_log_audit.php`;
+  - `backup_restore_rehearsal.php`.
+- O perfil `local` roda sem exigir VPS, credencial admin ou preflight de producao. Os perfis `staging` e `production` devem ser usados no servidor final com auth/admin obrigatorios, log recente, preflight verde e ensaio de restore.
+- A suite nao muda o veredito final: sem VPS, HTTPS real, SMTP, OAuth/reCAPTCHA reais, Stripe webhook publico, cron real, backup/restore em banco temporario e smoke browser do build final, o go-live continua **nao pronto**.
+- Evidencias locais:
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_readiness_suite.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionReadinessSuiteWiringTest.php`: **ok**.
+  - `production_readiness_suite.php --profile=local --web-base-url= --api-base-url=http://localhost/questao-pro-backend/api --db-connections=1 --timeout=12 --with-backup-rehearsal=true`: **ok**, com `production_smoke`, `production_log_audit` e `backup_restore_rehearsal`; `production_preflight` ficou corretamente ignorado no perfil local.
+  - `.gitignore` do backend passou a ignorar `storage/backups/`, impedindo que dumps reais gerados pela rotina de backup aparecam como arquivos candidatos a commit.
+- Integracao frontend/backend: `scripts/checks/production-readiness-local.mjs` agora executa o wiring da suite operacional junto das suites PHP criticas quando o backend existe e aceita `--with-backend-readiness` para chamar a suite operacional completa a partir do comando `npm run check:production-local`.
+- Evidencia da integracao:
+  - `npm run check:production-local -- --with-backend-readiness --api-base-url=http://localhost/questao-pro-backend/api --web-base-url= --db-connections=1 --timeout=12`: **ok**, incluindo typecheck, checks criticos frontend, suites PHP e `production_readiness_suite.php` em perfil local.
+  - `npm run check:production-local -- --with-build --with-backend-readiness --api-base-url=http://localhost/questao-pro-backend/api --web-base-url= --db-connections=1 --timeout=12`: **ok**, incluindo build Next/Turbopack de producao.
+  - `npm run check:production-local -- --with-backend-readiness --api-base-url=http://localhost/questao-pro-backend/api --web-base-url= --db-connections=1 --timeout=12 --backend-readiness-report=.tmp/backend-readiness-suite-latest.json`: **ok**, com JSON gravado em `.tmp/backend-readiness-suite-latest.json`.
+  - `npm run check:release-repos -- --report-file=.tmp/release-repos-status-latest.json`: **ok**, com alerta esperado de worktree local pendente nos dois repositorios.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\scripts\tasks\ci_wiring_checks.php --report-file=C:/dev/concursomestre/.tmp/backend-ci-wiring-latest.json`: **ok**, com lint PHP em 549 arquivos e 19 testes criticos.
+  - `npm run check:production-local -- --skip-backend`: **ok**, simulando a parte principal da CI frontend sem backend local.
+  - `package.json` ganhou o atalho `npm run check:release-local` para repetir esse readiness local completo sem memorizar flags e gravar `.tmp/release-repos-status-latest.json` e `.tmp/backend-readiness-suite-latest.json` como evidencias locais ignoradas pelo Git.
+- Evidencia persistivel: `production_readiness_suite.php` passou a aceitar `READINESS_REPORT_FILE`/`--report-file=...`, e o wrapper local aceita `--backend-readiness-report=...`. Isso permite anexar o JSON da homologacao sem depender do console.
+
+## Atualizacao incremental (`2026-05-29` - P0.1 Homologacao/staging)
+
+- Etapa **Preparacao de homologacao VPS/staging**: **Pronta localmente; bloqueada por ambiente real**.
+- Rodada executada localmente para separar falha de codigo de falha de configuracao de deploy.
+- Evidencias locais:
+  - `npm run check:production-local`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_smoke.php`: **ok**, incluindo `plans`, `questionsList`, `legal_commentary_list`, `legal_commentary_outline`, `settings`, rotas web e MySQL.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_preflight.php`: **falhou como esperado no ambiente local**, porque o `.env` ainda esta em desenvolvimento.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_log_audit.php`: **falhou em modo bloqueante** por historico local de Apache/XAMPP. O default legado que procurava `api/subscriptions/subscription_cron.log` foi corrigido para `storage/logs/subscriptions/subscription_cron.log`; em `--fail-on=none`, a analise foi gerada com sucesso para inspecao e sem arquivos ausentes.
+- Validacao adicional da correcao de logs:
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_log_audit.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionLogAuditWiringTest.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\SubscriptionsCronWiringTest.php`: **ok**.
+- Correcao local de estabilidade CLI: o `php.ini` do XAMPP tinha `openssl` carregado duas vezes (`extension=openssl` e `extension=php_openssl.dll`); a entrada duplicada antiga foi comentada para scripts CLI voltarem a emitir JSON limpo.
+- Correcao de IA/Lei Comentada: os criticos recentes do Apache apontavam `Maximum execution time of 180 seconds exceeded` em `modules/ai/services/AiService.php` durante geracoes longas. O gateway de IA agora aceita `requestTimeoutSeconds` com limite, resolve timeout por tamanho de geracao, aplica `CURLOPT_TIMEOUT` dinamico e reseta `set_time_limit` por tentativa. A analise detalhada de capitulo passa a usar timeout explicito de 240s.
+- Correcao de settings/admin: `storage/logs/settings.log` apontava `CRITICAL ERROR: There is no active transaction` apos salvamento de configuracoes e sincronizacao de precos Stripe. O commit do fluxo administrativo agora verifica o estado real da transacao, registra estado ja encerrado como nao fatal e evita que uma configuracao salva retorne erro falso ao painel.
+- Reforco de backup/restore: `production_preflight.php` agora tambem valida `MYSQLDUMP_AVAILABLE`, `MYSQL_RESTORE_CLIENT_AVAILABLE` e `MYSQL_BACKUP_HEALTH_RECENT`. Em producao, o deploy reprova se `MYSQLDUMP_PATH`/`MYSQL_PATH` nao apontarem para binarios disponiveis ou se nao houver backup MySQL recente com dump e checksum presentes, evitando descobrir no incidente que o servidor nao consegue gerar ou restaurar backup.
+- Ensaio de rollback: `scripts/tasks/backup_restore_rehearsal.php` valida o backup mais recente pelo heartbeat/diretorio, executa `verify_mysql_backup.php` e chama `restore_mysql_backup.php` em dry-run contra `RESTORE_TARGET_DB`, sem tocar no banco atual. A prova destrutiva continua restrita ao banco temporario da VPS/staging.
+- Evidencia local do ensaio de backup/restore:
+  - `backup_mysql.php --mysqldump=C:\xampp\mysql\bin\mysqldump.exe`: **ok**, gerando dump com checksum.
+  - `backup_restore_rehearsal.php --target-db=concursomestre_restore_test --php=C:\xampp\php\php.exe`: **ok**, validando checksum/formato e restore dry-run.
+- Reforco do smoke autenticado/admin: `production_smoke.php` agora aceita `SMOKE_AUTH_EMAIL`, `SMOKE_AUTH_PASSWORD`, `SMOKE_AUTH_CAPTCHA_TOKEN`, `SMOKE_AUTH_REQUIRED` e `SMOKE_ADMIN_REQUIRED`. Quando credenciais sao configuradas, o smoke faz login real em `/auth/login.php`, usa o bearer token retornado e valida `/auth/me.php` e `/notifications/list.php`; com admin/staff, tambem valida `/admin/stats.php?period=today`, `/admin/settings.php` e `/admin/comments_moderation.php`. Em staging, `--auth-required=true --admin-required=true` torna esse fluxo obrigatorio.
+- Validacao adicional da correcao de IA:
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\ai\services\AiService.php`: **ok**.
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\ai\validators\AiValidator.php`: **ok**.
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\legal_commentary\services\LegalCommentaryAiGenerationService.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\AiModuleWiringTest.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\LegalCommentaryAdminWiringTest.php`: **ok**.
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\admin\services\AdminSettingsService.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\AdminSettingsWiringTest.php`: **ok**.
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\config\production_preflight.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionPreflightWiringTest.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionPreflightBehaviorTest.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\BackupMysqlWiringTest.php`: **ok**.
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_smoke.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionSmokeWiringTest.php`: **ok**.
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_smoke.php`: **ok** apos as correcoes.
+  - `npm run check:text-encoding`: **ok**.
+- Falhas de preflight que devem ser resolvidas somente na VPS/staging:
+  - `DB_PASSWORD`: obrigatorio.
+  - `APP_ENV_PRODUCTION`: usar `APP_ENV=production`.
+  - `APP_URL_HTTPS`: `APP_URL` deve ser HTTPS.
+  - `APP_URL_NOT_LOCALHOST`: remover `localhost`.
+  - `CORS_ORIGINS_HTTPS`: CORS apenas HTTPS.
+  - `CORS_NO_LOCALHOST`: remover `localhost/127.0.0.1` de CORS.
+  - `APP_DEBUG_FALSE`: `APP_DEBUG=false`.
+  - `DB_USER_NOT_ROOT`: usuario MySQL dedicado, sem `root`.
+- Observacao operacional: o aviso local `Module "openssl" is already loaded` foi corrigido no XAMPP desta maquina. Se aparecer na VPS, remover a duplicidade equivalente na configuracao PHP final.
+- Proximo passo P0: repetir os mesmos comandos em staging/VPS com dominio HTTPS, `.env` real, SMTP configurado, cron Stripe executado ao menos uma vez e webhook Stripe com heartbeat recente.
+
+## Atualizacao incremental (`2026-05-29`)
+
+- Etapa **Smoke publico de Lei Comentada**: **Pronta localmente**.
+- O smoke de producao passou a validar `/api/legal-commentary/list.php`, cruzando `totals.laws/totals.articles` com leis navegaveis em `lawsByArea` e contadores `articleCount/totalArtigos`. Isso reduz o risco de voltar o bug em que a tela do aluno exibe spinner infinito mesmo com leis/artigos cadastrados.
+- O mesmo smoke agora abre dinamicamente a primeira lei publica retornada e valida `/api/legal-commentary/detail.php?outline=1`, exigindo secoes e artigos no outline que alimenta a tela do aluno.
+- Evidencias locais:
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_smoke.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_smoke.php --api-base-url=http://localhost/questao-pro-backend/api --web-base-url=http://localhost:3000 --timeout=12`: **ok**, incluindo `legal_commentary_list` e `legal_commentary_outline` para `lei-maria-da-penha-2006`.
+- Observacao operacional: o aviso local `Module "openssl" is already loaded` foi corrigido no XAMPP desta maquina; validar que a VPS tambem nao carrega extensoes duplicadas.
+
+## Atualizacao incremental (`2026-05-28`)
+
+- Etapa **Lei Comentada/admin - publicacao, agendamento e IA sem auto-save**: **Pronta localmente**.
+- O editor admin de Lei Comentada voltou a compilar e aceitar edicao apos alinhar o contrato `publishedAt/published_at` no frontend.
+- `published_at` da tabela `laws` passou a ser tratado como `DATETIME`; migracao local promove colunas antigas `DATE` para `DATETIME`, e leis agendadas so ficam publicas quando `published_at <= NOW()`.
+- O box `Publicar` concentra rascunho, status, data/hora, exclusao e publicar/agendar; publicar sem agendamento usa a data/hora atual.
+- Geracao de analise/comentarios por IA no editor admin passou a usar `previewOnly`; o backend agora faz `previewOnly` prevalecer inclusive se algum fluxo legado tentar enviar `persist`, evitando salvamento automatico do post.
+- Atualizacoes oficiais da lei ficaram menos ambiguas: verificar sincroniza/aplica diferencas oficiais de artigos, caput, paragrafos, incisos e alineas; detalhes das alteracoes sao consultados separadamente.
+- Etapa **Editor admin de questoes**: **Pronta localmente** no recorte corrigido. O carregamento nao reexecuta indefinidamente apos erro e a tela aguarda o modal interno abrir antes de mostrar falha, reduzindo o caso "Carregando editor da questao..." preso ou falso erro.
+- Evidencias locais:
+  - `npm run typecheck`: **ok**
+  - `npx eslint src/app/admin/operation/lei-comentada/[lawId]/edit/page.tsx src/types/legalCommentary.ts`: **ok**
+  - `npx eslint src/app/admin/operation/questions/[questionId]/edit/page.tsx src/services/questions/questionService.ts`: **ok**
+  - `npm run check:text-encoding`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\legal_commentary\repositories\LegalCommentaryRepository.php`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\legal_commentary\services\LegalCommentaryService.php`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\legal_commentary\services\LegalCommentaryAiGenerationService.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\LegalCommentaryAdminWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\QuestionsModuleWiringTest.php`: **ok**
+- Observacao operacional: smoke visual logado ainda precisa ser repetido com uma sessao admin real; no navegador interno local a sessao estava como usuario comum e redirecionou para `/dashboard`.
+
+## Atualizacao incremental (`2026-05-27`)
+
+- Etapa **Gateway de IA multiprovedor**: **Pronta localmente**.
+- O backend deixou de depender exclusivamente do Gemini no gateway oficial e agora aceita `aiProvider` configuravel: `gemini`, `openai` ou `auto`.
+- `OpenAI / ChatGPT` foi adicionado ao painel admin em **Configuracoes > Integracoes**, com campo para `OpenAI API key`, modelo OpenAI e diagnostico de chave configurada. As chaves continuam mascaradas no frontend.
+- Lei Comentada, geracao de questoes e demais fluxos que usam `/api/ai/generate.php` ou o service compartilhado passam a respeitar o provedor definido no backend, sem duplicar chamadas no frontend.
+- Evidencias locais:
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\ai\services\AiService.php`: **ok**
+  - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\modules\admin\services\AdminSettingsService.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\AiModuleWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\LegalCommentaryAdminWiringTest.php`: **ok**
+  - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_smoke.php --only=legal_commentary --web-base-url= --api-base-url=http://localhost/questao-pro-backend/api --db-connections=1`: **ok**
+  - Smoke PHP inline: roteamento `aiProvider=openai` falhou de forma esperada quando a chave OpenAI nao existe, retornando erro configuravel em vez de cair no Gemini: **ok**
+  - `npm run typecheck`: **ok**
+  - `npm run check:text-encoding`: **ok**
+  - `npx eslint src/app/admin/components/settings/AdminSettings.tsx src/types/global.ts src/state/app-config/systemSettings.ts src/components/shared/feedback/DevModeBanner.tsx src/constants/index.ts src/services/legal-commentary/legalCommentaryApiService.ts`: **ok**
+- Observacao operacional: para homologar geracao real com ChatGPT, configurar `OPENAI_API_KEY` ou salvar a chave no painel, escolher `OpenAI / ChatGPT` como provedor e testar uma geracao de Lei Comentada em sandbox/local com rede externa liberada para `api.openai.com`.
+
 ## Atualizacao incremental (`2026-05-23`)
 
 - Etapa **Assinaturas parceladas - termo contratado e cancelamento com saldo pendente**: **Pronta localmente**.
@@ -48,12 +197,12 @@ Veredito: `Nao pronto para go-live final; pronto localmente para homologacao con
   - `SubscriptionsPlanSyncWiringTest.php`: **ok**
   - `SubscriptionsRenewalReminderPolicyTest.php`: **ok**
 - `git diff --check`: **ok**; apenas avisos LF/CRLF do Git no Windows, sem erro de whitespace.
-- Etapa **Smoke externo de staging/VPS**: **Pronta para execucao em staging**. `scripts/tasks/production_smoke.php` agora captura headers reais, falha se host publico estiver em HTTP, valida headers minimos (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`) e continua cobrindo `plans`, `questionsList`, `settings`, rotas web e MySQL.
+- Etapa **Smoke externo de staging/VPS**: **Pronta para execucao em staging**. `scripts/tasks/production_smoke.php` agora captura headers reais, falha se host publico estiver em HTTP, valida headers minimos (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`) e continua cobrindo `plans`, `questionsList`, `settings`, rotas web, MySQL, login/perfil, notificacoes e endpoints administrativos essenciais quando `SMOKE_ADMIN_REQUIRED=true`.
 - Evidencias do smoke:
   - `C:\xampp\php\php.exe -l C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_smoke.php`: **ok**
   - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\tests\ProductionSmokeWiringTest.php`: **ok**
   - `C:\xampp\php\php.exe C:\xampp\htdocs\questao-pro-backend\scripts\tasks\production_smoke.php --web-base-url= --api-base-url=http://localhost/questao-pro-backend/api --db-connections=1`: **ok**, com `plans`, `questionsList`, `settings`, headers de API, MySQL e transporte local aprovados.
-- Observacao operacional: o PHP local ainda emite o warning `Module "openssl" is already loaded`, causado por configuracao duplicada de extensao no ambiente XAMPP. O warning nao quebrou os testes, mas deve ser limpo na imagem/servidor final para reduzir ruido.
+- Observacao operacional: o warning local `Module "openssl" is already loaded` foi corrigido em `C:\xampp\php\php.ini`; manter a mesma limpeza na imagem/servidor final para reduzir ruido.
 - Veredito desta etapa: **pronta localmente**. Veredito de go-live permanece **nao pronto** ate repetir a mesma matriz em VPS/staging com dominio HTTPS, SMTP real, OAuth real, Stripe webhook publico, cron real, backup/restore e smoke externo.
 
 ## Atualizacao incremental (`2026-05-16`)
@@ -302,7 +451,7 @@ Veredito: `Nao pronto para go-live final; pronto localmente para homologacao con
 - `src/app/admin/components/import/useAdminImportWorkflow.ts`, `src/app/admin/components/questions/AdminQuestionEditorPage.tsx`, `src/app/admin/components/questions/ManualQuestionModal.tsx`, `src/app/practice/page.tsx` e `docs/reports/production-fix-backlog-latest.md`: textos com mojibake foram normalizados, e `npm run check:text-encoding` voltou a passar.
 - `src/app/practice/page.tsx`: removida duplicidade de alias textual (`descricao`/`descricao com acento`) e callbacks sensiveis foram estabilizados com chaves primitivas (`currentUserId`/`currentUserName`), preservando typecheck/lint/build no recorte.
 - `scripts/tasks/production_preflight.php`: reexecutado em ambiente local de desenvolvimento; resultado esperado `fail` para requisitos de deploy publico (APP_ENV=production, APP_URL HTTPS publico, CORS sem localhost, credenciais/segredos de producao e usuario DB dedicado).
-- `scripts/tasks/production_log_audit.php`: reexecutado; sem bloqueio operacional nesta rodada (`fail_on=none`), mas com alta repeticao de logs informativos de auth (`refresh_rotated`/`auth_session_created`) e ausencia esperada do arquivo legado `api/subscriptions/subscription_cron.log`.
+- `scripts/tasks/production_log_audit.php`: reexecutado; sem bloqueio operacional em modo de inspecao (`fail_on=none`), agora lendo `storage/logs/subscriptions/subscription_cron.log` como default e sem depender do arquivo legado em `api/subscriptions`. O modo bloqueante ainda reprova o ambiente local por historico critico no `error.log` do Apache/XAMPP.
 - `scripts/tasks/production_smoke.php`: reexecutado com sucesso apos as mudancas, cobrindo API/web/DB localmente sem regressao funcional.
 - Baseline tecnico (`docs/reports/artifacts/hard-refresh-baseline-latest.json`) confirmou ausencia de duplicatas e falhas em `GET`/`POST` XHR/fetch nas rotas criticas:
   - `/dashboard`
@@ -398,7 +547,7 @@ Backend PHP em `C:/xampp/htdocs/questao-pro-backend`:
 - `scripts/tasks/restore_mysql_backup.php`: adiciona restore operacional com dry-run por padrao, bloqueio contra restore acidental no banco atual, validacao de checksum/dump e recusa de dumps com `DROP DATABASE`, `CREATE DATABASE` ou `USE` de schemas de sistema.
 - `scripts/tasks/production_smoke.php`: valida endpoints publicos criticos da API e do frontend (`/`, `/auth`, `/practice`, `/questions`, `/question/[id]`), JSON de resposta e uma prova leve de conexoes MySQL com `Threads_connected`/`max_connections`.
 - `modules/admin/services/AdminSystemLogAnalyzer.php`: classifica logs por severidade/categoria e calcula repeticoes para o painel admin.
-- `scripts/tasks/production_log_audit.php`: permite auditoria CLI dos logs com janela configuravel, limiar de repeticao e falha em evento critico.
+- `scripts/tasks/production_log_audit.php`: permite auditoria CLI dos logs com janela configuravel por volume (`LOG_AUDIT_TAIL_LINES`) e por tempo recente (`LOG_AUDIT_SINCE_MINUTES`/`--since-minutes`), limiar de repeticao e falha em evento critico.
 - `src/config/securityHeaders.ts` e `next.config.ts`: aplicam headers de seguranca no frontend, incluindo CSP, bloqueio de framing, `nosniff`, referrer e permissions policy.
 - `src/services/system/useRecaptchaV3.ts`, `src/app/auth/components/Auth.tsx`, `src/app/reset-password/page.tsx`, `src/app/checkout/CheckoutPage.tsx`, `src/config/securityHeaders.ts`, `src/config/__tests__/securityHeaders.test.ts`, `modules/auth/routes.php`, `modules/auth/validators/AuthValidator.php` e `shared/security/Recaptcha.php`: login, cadastro e reset migraram para reCAPTCHA v3 invisivel, com validacao por `action` e `score`, carregamento do script liberado na CSP e loading visual no botao de autenticacao do checkout para evitar multiplos cliques.
 - `src/providers/ThemeProvider.tsx` e `modules/admin/services/AdminSettingsService.php`: a hidratacao inicial do tema ficou estavel entre SSR/cliente, reduzindo o reload apos a pagina pronta, e as settings publicas passaram a zerar `recaptchaSiteKey` quando o reCAPTCHA estiver desativado/incompleto para nao reativar o fluxo de captcha por engano no frontend.
@@ -529,8 +678,8 @@ Backend PHP em `C:/xampp/htdocs/questao-pro-backend`:
 | Notificacoes/gamificacao | Pronto local parcial | Nao pronto total | Comentarios moderados, curtidas sociais, feedback/suporte, denuncias aceitas, rankings com XP/reputacao/badges basicos, campanhas automaticas, compras/reembolsos de materiais com XP/reputacao/badges, streaks, badges basicos, `past_due` Stripe e reembolso pendente cobertos; UI de notificacoes passa ESLint sem avisos; falta prova gateway real e smoke de deep links |
 | Sanitizacao HTML | Pronto local | Nao pronto ate smoke/staging | Questoes, comentarios e textos/SEO de landings saneados; landing publica bloqueia HTML executavel e canonical sensivel por teste; JSON-LD publico usa serializacao segura; teste de arquitetura bloqueia `dangerouslySetInnerHTML` sem sanitizer conhecido. Se futuramente houver bloco de HTML bruto, deve nascer como feature separada com sandbox/review server-side |
 | Pagamentos/webhooks | Pronto local | Pronto com ressalvas ate homologacao VPS | Suite E2E Stripe em modo teste passou (`7 OK`): renovacao real por Test Clock, auto-renew, upgrade/pro-rata local, refund concorrente, webhook duplicado, fora de ordem e atrasado com reconciliacao. Alias/canonico, config publica, verify-payment autenticado e Stripe Connect seguem cobertos. Falta apenas homologar webhook publico/tunel e chaves finais na VPS antes do go-live |
-| Deploy VPS/backup/rollback | Pronto local parcial | Nao pronto | Backup, verificador e restore dry-run seguro passaram; falta executar restore real em banco temporario da VPS e rollback completo |
-| Logs/observabilidade | Pronto local parcial | Nao pronto | Scanner de logs e analise no endpoint admin prontos; falta rotacao/alerta real na VPS |
+| Deploy VPS/backup/rollback | Pronto local parcial | Nao pronto | Backup, verificador, restore dry-run seguro, heartbeat `MYSQL_BACKUP_HEALTH_RECENT` e preflight de `MYSQLDUMP_PATH`/`MYSQL_PATH` passaram; falta executar restore real em banco temporario da VPS e rollback completo |
+| Logs/observabilidade | Pronto local parcial | Nao pronto ate VPS | Scanner de logs, samples acionaveis, alerta operacional deduplicado, manutencao de logs privados, heartbeat e preflight prontos; falta configurar logrotate/cron/alertas reais do SO na VPS |
 | Headers de seguranca | Pronto local parcial | Nao pronto ate validar proxy HTTPS | Frontend/API com CSP, clickjacking e nosniff; frontend remove `unsafe-eval` em producao e API local confirmou headers; preflight exige `APP_ENV=production`, `APP_URL` publico, CORS HTTPS sem wildcard e reset DB desativado |
 | Uploads | Pronto local parcial | Nao pronto ate validar servidor final | Helper central e `.htaccess` prontos; falta regra equivalente em Nginx se aplicavel |
 | Rate limiting | Pronto local parcial | Nao pronto ate calibrar na VPS/proxy | Perfis aplicados em auth, suporte, comentarios, denuncias, uploads e analytics; falta medir falsos positivos e limites reais em staging |
@@ -613,7 +762,7 @@ Backend:
 | `restore_mysql_backup.php` dry-run local | Passou com dump minimo, checksum valido e destino `concursomestre_restore_test`; bloqueou restore no banco atual |
 | `restore_mysql_backup.php` dump destrutivo | Passou bloqueando `DROP DATABASE` |
 | `ProductionSmokeWiringTest.php` | Passou |
-| `production_smoke.php --api-base-url=http://localhost/questao-pro-backend/api --web-base-url=http://localhost:3000 --timeout=12` | Passou: API (`plans`, `questions_list`, `settings`) e web (`/`, `/auth`, `/practice`, `/questions`, `/question/48`) responderam sem `NEXT_REDIRECT`; MySQL `Threads_connected=3`, `max_connections=151` |
+| `production_smoke.php --api-base-url=http://localhost/questao-pro-backend/api --web-base-url=http://localhost:3000 --timeout=12` | Passou: API (`plans`, `questions_list`, `settings`), Lei Comentada, smoke autenticado opcional/skipped sem credenciais, web (`/`, `/auth`, `/practice`, `/questions`, `/question/48`) responderam sem `NEXT_REDIRECT`; MySQL `Threads_connected=3`, `max_connections=151` |
 | `ProductionLogAuditWiringTest.php` | Passou |
 | `production_log_audit.php --tail=500 --repeat-threshold=3 --fail-on=none` | Passou nos logs locais inspecionados; sem criticos, com repeticoes informativas em settings/Stripe |
 | `SecurityHeadersWiringTest.php` | Passou |
@@ -623,8 +772,8 @@ Backend:
 | `RateLimiterHardeningWiringTest.php` | Passou |
 | `AnalyticsTrackingSecurityTest.php` | Passou; tracking autenticado usa usuario da sessao, anonimo ignora `userId` do cliente e metadata grande e rejeitada |
 | `LegalCommentaryAdminWiringTest.php` | Passou; handlers admin exigem `requireAdminSessionContext($db)` e bridges delegam para as rotas protegidas |
-| `ProductionPreflightWiringTest.php` | Passou com checks `GOOGLE_CLIENT_ID_FORMAT`, `STRIPE_*_FORMAT`, `STRIPE_KEY_MODE_MATCH`, `RATE_LIMIT_RUNTIME_WRITABLE`, `API_PUBLIC_ARTIFACTS_CLEAN`, `SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT`, `STRIPE_WEBHOOK_HEALTH_RECENT` e SMTP/templates transacionais |
-| `ProductionPreflightBehaviorTest.php` | Passou; prova `APP_ENV=production`, `APP_URL` publico, CORS valido/HTTPS/sem wildcard, heartbeats recentes de cron/webhook Stripe, SMTP/remetente/templates essenciais e reprova `development`, localhost, HTTP, wildcard, heartbeat antigo, SMTP ausente e remetente invalido |
+| `ProductionPreflightWiringTest.php` | Passou com checks `GOOGLE_CLIENT_ID_FORMAT`, `STRIPE_*_FORMAT`, `STRIPE_KEY_MODE_MATCH`, `RATE_LIMIT_RUNTIME_WRITABLE`, `API_PUBLIC_ARTIFACTS_CLEAN`, `MYSQLDUMP_AVAILABLE`, `MYSQL_RESTORE_CLIENT_AVAILABLE`, `MYSQL_BACKUP_HEALTH_RECENT`, `SUBSCRIPTIONS_STRIPE_CRON_HEALTH_RECENT`, `STRIPE_WEBHOOK_HEALTH_RECENT` e SMTP/templates transacionais |
+| `ProductionPreflightBehaviorTest.php` | Passou; prova `APP_ENV=production`, `APP_URL` publico, CORS valido/HTTPS/sem wildcard, binarios de backup/restore disponiveis, heartbeat recente de backup MySQL, heartbeats recentes de cron/webhook Stripe, SMTP/remetente/templates essenciais e reprova `development`, localhost, HTTP, wildcard, binario ausente, backup antigo/sem arquivo, heartbeat antigo, SMTP ausente e remetente invalido |
 | `AdminDatabaseResetProductionGuardTest.php` | Passou; reset DB em producao fica bloqueado por padrao e exige confirmacao operacional |
 | `StripeConfigurationWiringTest.php` | Passou; runtime valida formato de secret, publishable e webhook secret Stripe |
 | `AdminSettingsValidatorStripeTest.php` | Passou; painel rejeita chaves Stripe invalidas e mistura `test`/`live` no mesmo save |
@@ -710,7 +859,7 @@ Backend:
 | Smoke HTTP `api/questionsList?page=1&limit=1` | `200` |
 | Smoke HTTP `api/settings.php` | `200` |
 
-Observacao: os testes PHP exibem o aviso conhecido `Module "openssl" is already loaded`; isso nao quebrou os testes, mas deve ser limpo na configuracao PHP da VPS.
+Observacao: o aviso conhecido `Module "openssl" is already loaded` foi corrigido no XAMPP local em 2026-05-29; confirmar ausencia da mesma duplicidade na configuracao PHP da VPS.
 
 - `src/providers/AppProviders.tsx`, `src/providers/NotificationsProvider.tsx`, `src/providers/NextRouteFrame.tsx`, `src/app/admin/components/support/AdminCommentsModerationSection.tsx` e `src/providers/DataProvider.tsx`: o `DataProvider` legado foi removido do runtime e do codigo-fonte; notificacoes agora rodam em bootstrap dedicado (query cache + polling controlado), a restauracao forcada de rota via `sessionStorage` foi removida (evita flash da landing em hard refresh) e a moderacao de comentarios ganhou trava de request em voo para bloquear rajadas de chamadas repetidas com os mesmos filtros.
 - `src/state/query/queryClient.ts`, `src/providers/QueryProvider.tsx` e `src/app/admin/components/support/AdminSupportSection.tsx`: o Query Client virou singleton no browser para sobreviver a remount de desenvolvimento e evitar segunda rodada de fetch no hard refresh (settings/plans/testimonials/notificacoes); no suporte admin, a pre-carga de contagem de comentarios pendentes deixou de rodar junto da aba de moderacao, reduzindo chamadas duplicadas para `comments_moderation`.
@@ -751,8 +900,92 @@ Observacao: os testes PHP exibem o aviso conhecido `Module "openssl" is already 
   - Admin financeiro/dashboard: projecoes passam a considerar assinaturas ativas com renovacao ativa e receitas separadas por bruto/disponivel/comissao/MRR.
   - `C:/xampp/htdocs/questao-pro-backend/modules/transactions/services/TransactionsService.php`: projecao de parcelas Stripe futuras ignora assinaturas `past_due/incomplete` e avanca datas conforme slots financeiros ja ocupados, evitando acumulacao de pre-aprovadas na mesma data apos falha de pagamento.
   - `src/constants/layout.ts` e `src/app/admin/components/shared/adminPanelStyles.ts`: sombras dos boxes padronizadas em `shadow-sm` calibrado.
-- Validacao local: `npm run typecheck` passou; `php -l` passou nos arquivos backend alterados, com o aviso conhecido do XAMPP `Module "openssl" is already loaded`.
+- Validacao local: `npm run typecheck` passou; `php -l` passou nos arquivos backend alterados. O aviso conhecido do XAMPP `Module "openssl" is already loaded` foi corrigido posteriormente em 2026-05-29.
 - Estado: **pronto local para homologacao controlada**. Nao muda o veredito de producao porque pagamento/webhook/cron/SMTP/OAuth ainda precisam prova real em VPS/staging.
+
+## Atualizacao incremental (`2026-05-25`)
+
+- Lei Comentada normalizada: **pronta localmente no recorte de parser/persistencia**.
+- A arquitetura documentada em `docs/reports/lei-comentada-architecture.md` foi atualizada para o modelo unico sem legado: `laws`, `law_sections`, `law_articles`, `law_article_blocks` e `law_section_editorials` como fonte de verdade.
+- O importador do Planalto passou a priorizar capitulos como blocos de estudo exibidos, usando Titulos como subtopico e Capitulos como assunto dos artigos; `section_key`, `hierarchy_json` e filtros ambiguos de artigo deixaram de participar do fluxo ativo.
+- O editor admin de Lei Comentada foi ajustado para criar lei nova sem materia predefinida indevida, tratar o bloco como `Capitulo`, editar classificacao do capitulo dentro da arvore e gerar analise detalhada por `section_id`.
+- O script `scripts/maintenance/validate-planalto-parser.php` ganhou recursos de auditoria: `--only`, `--dump-sections`, `--dump-classification` e `--save-check`, permitindo provar parse, salvamento, recarregamento e limpeza temporaria.
+- Validacao local executada:
+  - `npm run lint`: passou sem warnings.
+  - `npm run typecheck`: passou.
+  - `npm run check:text-encoding`: passou.
+  - `php -l` em repositorio, importador, IA, rotas e script de parser: passou.
+  - `validate-planalto-parser.php --only=CF88,LMP,ABUSO,TORTURA,CC,PA,CP,CPP`: passou apos repetir CP/CPP devido a falha transitoria de fetch do Planalto.
+  - `validate-planalto-parser.php --save-check=PA`: passou com `19` capitulos e `80` artigos persistidos/recarregados.
+  - `validate-planalto-parser.php --save-check=CP`: passou com `64` capitulos e `421` artigos persistidos/recarregados.
+  - `npm run check:production-local`: passou, incluindo encoding, typecheck, artefatos gerados, convencao `proxy`, budget de hard refresh, arquitetura frontend, SEO, XSS/sanitizacao, charts, CSP, marketplace e suites PHP criticas de billing.
+  - `npm run check:production-local -- --with-build`: passou, incluindo `next build` de producao com Turbopack.
+- Correcao extra da trava local: removido `window.confirm` nativo na exclusao de artigo do admin de Lei Comentada e sanitizado o HTML salvo no leitor antes de renderizar.
+- Ajuste de taxonomia dos artigos: artigos agora herdam materia/topico da lei e subtopico/assunto da secao; o backend grava o `assunto_filter_id` do artigo a partir do capitulo e o validador `--save-check` acusa divergencias por `taxonomy_mismatches`.
+- Ressalva: a validacao visual logada no navegador ficou bloqueada pela tela de login local. A prova funcional foi feita no nivel de servico/banco; falta smoke logado do admin e do aluno apos reimportacao das leis reais.
+
+## Atualizacao incremental (`2026-05-27`)
+
+- IA/Gemini no backend: **pronta localmente no recorte de conectividade e tratamento de erro**. `AiService` agora usa base configuravel por `GEMINI_API_BASE_URL`, prefere IPv4 no cURL do XAMPP/VPS, aplica retry curto para falhas transitórias de DNS/conexao e devolve diagnostico operacional claro quando `generativelanguage.googleapis.com` fica indisponivel. Rotas de IA e Lei Comentada passam a responder `503 ai_unavailable` para dependencia externa, em vez de tratar como `500` interno.
+- Lei Comentada/admin: o frontend passou a normalizar falhas de DNS/conexao com Gemini para mensagem orientada ao admin, mantendo timeout de geracao editorial em `180s`.
+- Alias `/questions`: deixou de reexportar/renderizar `/practice` diretamente. Agora ha redirect configurado em `next.config.ts` para `/practice`, com fallback leve na pagina, removendo o carregamento pesado que fazia o smoke estourar tempo.
+- Validacao local executada: `npm run typecheck`, `npm run check:text-encoding`, ESLint direcionado para `src/app/questions/page.tsx`, `next.config.ts` e `legalCommentaryApiService.ts`; `php -l` nos arquivos PHP alterados; `LegalCommentaryAdminWiringTest.php`; `production_smoke.php --only=legal_commentary` passou. O aviso `Module "openssl" is already loaded` foi corrigido posteriormente em 2026-05-29.
+
+## Atualizacao incremental (`2026-05-30`)
+
+- Lei Comentada/admin - conteudos editoriais por artigo: **pronta localmente no recorte de coexistencia**.
+- O editor admin deixou de substituir todos os conteudos do artigo ao gerar apenas um escopo. Gerar macete nao remove comentario do professor; gerar comentario nao remove macetes, doutrina, jurisprudencia ou sumulas; e itens direcionados substituem apenas o mesmo caput/paragrafo/inciso/alinea/item.
+- O backend de IA agora mescla `teacherComments` e `examTips` por `target`/`blockId`, reaproveita conteudo existente vindo do banco quando o payload do frontend estiver parcial e aceita retorno com varios macetes vinculados aos blocos relevantes para prova.
+- O prompt/schema de macetes passou a permitir 1 a 4 itens por artigo, sempre com `target` real, evitando concentrar tudo no caput quando incisos, paragrafos, alineas ou itens forem os trechos cobraveis.
+- A revisao no admin agora exibe as notas direcionadas dentro do comentario do professor, com edicao de titulo, conteudo, alvo e remocao por nota. Assim o admin consegue revisar comentarios gerados para caput, paragrafos, incisos, alineas e itens sem perder o material principal do artigo.
+- Validacao local executada:
+  - `npx tsc --noEmit --pretty false --incremental false`: passou.
+  - `npm run check:text-encoding`: passou.
+  - `C:\xampp\php\php.exe -l modules/legal_commentary/services/LegalCommentaryAiGenerationService.php`: passou.
+  - `C:\xampp\php\php.exe tests/LegalCommentaryAdminWiringTest.php`: passou, incluindo regressao de coexistencia por alvo para comentarios e macetes.
+  - `git diff --check` no recorte frontend/backend alterado: passou.
+- Falta validar visualmente com usuario admin logado e Gemini disponivel: gerar comentario e macete em sequencia no mesmo artigo, confirmar que os dois aparecem juntos e salvar manualmente a lei.
+- Rodada ampliada de release local apos a correcao:
+  - `npm run lint`: passou sem erros.
+  - `C:\xampp\php\php.exe scripts/tasks/ci_wiring_checks.php`: passou com `PHP lint: OK (549 arquivos)` e `Critical tests: OK (19 testes)` na rodada de IA editorial; apos a manutencao de logs, passou com `PHP lint: OK (551 arquivos)` e `Critical tests: OK (21 testes)`.
+  - `npm run check:production-local`: passou.
+  - `npm run check:production-local -- --with-build --with-backend-readiness`: passou, incluindo smoke local de API, Lei Comentada (`list` + `outline`), banco com `Threads_connected=1/max_connections=151`, suite operacional backend e `next build`.
+- Observabilidade de logs recentes: **pronta localmente no recorte de auditoria**.
+  - `AdminSystemLogAnalyzer` passou a classificar `MySQL server has gone away`/`SQLSTATE[HY000]` como falha critica de banco, nao apenas erro generico.
+  - O payload de analise agora inclui `samples` por severidade (`critical`, `error`, `warning`) para apontar a linha exata que bloqueou a release, alem de contadores e repeticoes.
+  - `ProductionLogAuditWiringTest.php` passou a executar o script real com fixture temporario, provando que `--since-minutes=60` ignora erro historico fora da janela e bloqueia erro critico recente.
+  - Validacao: `C:\xampp\php\php.exe tests/ProductionLogAuditWiringTest.php`: passou.
+  - Validacao: `production_log_audit.php --since-minutes=15 --fail-on=critical --require-files=false`: passou sem eventos recentes.
+  - Validacao intencionalmente bloqueante: `production_log_audit.php --since-minutes=60 --fail-on=critical --require-files=false`: falhou corretamente por evento local recente em `C:/xampp/apache/logs/error.log` (`[admin_settings_route] SQLSTATE[HY000]: General error: 2006 MySQL server has gone away`). Esse resultado confirma que a auditoria estrita esta sensivel a erro real recente; na VPS, o mesmo check deve estar verde antes do go-live.
+- Observacao: o perfil local continua permissivo para historico antigo de XAMPP, mas o perfil staging/producao deve usar janela recente e politica bloqueante. Se um erro de banco aparecer nos ultimos minutos, a release deve parar ate investigar conexao, MySQL e rota afetada.
+- Manutencao de logs privados: **pronta localmente no recorte operacional**.
+  - Criado `scripts/tasks/operational_log_maintenance.php` para rotacionar logs privados da aplicacao por tamanho, preservar arquivo rotacionado em `storage/logs/archive`, truncar a origem com `LOCK_EX`, limpar rotacionados antigos por retencao e gravar heartbeat privado em `storage/logs/operations/log_maintenance_health.json`.
+  - O script possui `--dry-run`, `--files`, `--archive-dir`, `--rotate-max-bytes`, `--retention-days`, `--require-files` e `--health-path`. Tambem bloqueia manutencao de logs dentro de `api/`, mantendo a superficie publica limpa.
+  - `production_preflight.php` ganhou `LOG_MAINTENANCE_HEALTH_RECENT`: em producao, reprova heartbeat ausente, invalido, antigo, com erro ou gerado em `dry-run`.
+  - `PRODUCTION_RELEASE_RUNBOOK.md` passou a documentar variaveis e cron diario para `operational_log_maintenance.php`, deixando claro que Apache/Nginx/PHP-FPM/MySQL devem usar `logrotate` do sistema.
+  - Validacao: `OperationalLogMaintenanceWiringTest.php`, `ProductionPreflightWiringTest.php` e `ProductionPreflightBehaviorTest.php`: passaram.
+  - Validacao operacional local: `operational_log_maintenance.php --dry-run=true --require-files=false`: passou, encontrou 3 logs privados e nao rotacionou nada por estarem abaixo de `10 MB`.
+  - Validacao consolidada backend: `ci_wiring_checks.php`: passou com `PHP lint: OK (551 arquivos)` e `Critical tests: OK (21 testes)`.
+  - Validacao da suite operacional: `production_readiness_suite.php --profile=local --log-fail-on=none --log-since-minutes=60 --log-require-files=false`: passou.
+- Alertas operacionais de logs: **prontos localmente no recorte de notificacao/deduplicacao**.
+  - Criado `scripts/tasks/operational_log_alerts.php`, que reutiliza `production_log_audit.php`, coleta amostras criticas/erro/alerta conforme `LOG_ALERT_ON`, gera fingerprints normalizados, grava ledger privado `storage/logs/operations/log_alerts.ndjson` e heartbeat `storage/logs/operations/log_alert_health.json`.
+  - O job suporta `--notify-admins=true`; em producao, isso cria notificacao administrativa unica por rodada para novos alertas, sem repetir a mesma assinatura de erro dentro de `LOG_ALERT_DEDUPE_MINUTES`.
+  - O `PRODUCTION_RELEASE_RUNBOOK.md` passou a documentar variaveis e cron dedicado para o alerta, separado da auditoria bloqueante e da manutencao/rotacao.
+  - Validacao: `OperationalLogAlertsWiringTest.php`: passou com fixture real de erro recente `SQLSTATE[HY000] [2006] MySQL server has gone away`, comprovando alerta novo na primeira execucao, deduplicacao na segunda e falha intencional quando `--fail-on-alert=true`.
+- Macroetapa **Homologacao VPS/staging**: **pacote local concluido; execucao real bloqueada por ausencia de VPS**.
+  - Criado `scripts/tasks/staging_homologation_gate.php` como portao unico da homologacao controlada. Ele rejeita `localhost`, HTTP e caminhos de relatorio dentro de `api/`, exige URLs HTTPS publicas, força `production_readiness_suite.php` com `profile=staging|production`, `auth-required=true`, `admin-required=true`, `with-preflight=true`, `with-backup-rehearsal=true`, `log-fail-on=critical`, `log-require-files=true` e ainda roda `operational_log_alerts.php` em modo bloqueante.
+  - O gate grava evidencia privada em `HOMOLOGATION_REPORT_FILE` e tambem pode gerar plano de execucao com `--dry-run=true`, sem fazer chamadas externas.
+  - Validacao: `StagingHomologationGateWiringTest.php`: passou, comprovando bloqueio de URLs locais/HTTP e plano valido para URLs HTTPS publicas.
+  - Status da macroetapa: **nao pode ser marcada como homologada de verdade sem servidor**, mas agora existe um comando unico e bloqueante para concluir a homologacao assim que houver VPS/staging.
+- Macroetapa **Smoke visual logado admin/aluno**: **pacote local concluido; execucao real pendente de dominio/sessoes de staging**.
+  - Criado `scripts/checks/visual-auth-smoke.mjs` no frontend. O script usa Playwright, autentica perfis aluno/admin, abre rotas criticas, gera screenshots em `.tmp/visual-auth-smoke`, grava relatorio JSON e falha em erros de console, `pageerror`, request failed, redirecionamento para `/auth`, texto curto demais ou mensagens de loader/erro conhecidas.
+  - Adicionado atalho `npm run check:visual-smoke` e opcao `--with-visual-smoke` no `scripts/checks/production-readiness-local.mjs` para acoplar o smoke visual ao pacote local quando houver servidor e credenciais.
+  - O runbook passou a documentar `CM_BASE_URL`, credenciais de smoke de aluno/admin, caminho de relatorio e comando `npm run check:visual-smoke -- --strict=true --base-url=https://staging.seu-dominio.com`.
+  - Status da macroetapa: **nao pode ser marcada como executada visualmente sem URL real e credenciais**, mas o mecanismo bloqueante e a coleta de evidencia ja estao prontos.
+- Macroetapa **Operacao real de VPS**: **pacote local concluido; execucao real pendente de servidor**.
+  - Criado `scripts/tasks/vps_operations_gate.php`, que consolida preflight de producao, manutencao de logs, auditoria bloqueante, alerta operacional deduplicado e ensaio de restore do backup mais recente.
+  - O gate gera plano com `--dry-run=true`, grava evidencia em caminho privado e rejeita relatorio dentro de `api/`.
+  - Status da macroetapa: **localmente pronta**, mas a liberacao final ainda exige executar o gate real na VPS depois que crons, backup, SMTP, Stripe webhook e HTTPS estiverem configurados.
 
 ## Bloqueios para producao
 
@@ -761,14 +994,14 @@ Observacao: os testes PHP exibem o aviso conhecido `Module "openssl" is already 
 - Homologacao final de pagamentos na VPS: a prova local com Stripe em modo teste esta verde, mas antes de vender precisa repetir checkout Stripe, webhook publico, cron de reconciliacao, renovacao, `past_due`, cancelamento e reembolso no dominio final/tunel de staging com as chaves corretas.
 - Banco/operacao sem prova de carga: houve historico de `Too many connections`; as travas de cron foram implementadas, mas ainda precisa provar limites de conexao e queries principais em ambiente parecido com a VPS.
 - Checklist de segredos e ambiente ainda precisa ser validado no ambiente final: o preflight agora barra `APP_ENV` incorreto, `APP_URL` local, CORS inseguro, Stripe/Google malformados e segredos fracos, mas ele precisa ser executado na VPS antes do go live.
-- Backup/restore ainda sem ensaio real na VPS: scripts de backup, verificacao e restore seguro existem, mas o restore precisa ser executado em banco temporario e seguido de smoke antes do go live.
+- Backup/restore ainda sem ensaio real na VPS: scripts de backup, verificacao, restore seguro, heartbeat de backup e preflight de binarios existem, mas o restore precisa ser executado em banco temporario e seguido de smoke antes do go live.
 
 ### P1
 
 - Lint raiz esta verde: `0` warnings e `0` errors em `npm run lint`. O recorte recente deixou runtime e testes de `src` sem avisos agregados, incluindo painel principal, marketing, redes sociais da homepage, ranking, checkout, comentarios, Lei Comentada publica, privacidade, landing de planos, rotas publicas secundarias, layout global com `next/font` e mocks de servicos tipados.
 - Notificacoes e gamificacao ainda nao possuem motor unico geral de regras nem testes E2E evento-a-evento para ranking real e todos os webhooks financeiros reais; marketplace/social/rankings ja possuem ledger idempotente local para XP/reputacao/badges.
 - Landing pages/campanhas com textos e SEO administraveis ja saneiam markup/URLs perigosas, incluindo canonical sensivel e protocolo relativo. Se o editor passar a aceitar codigo HTML bruto, ainda sera obrigatorio aplicar sandbox/sanitizador dedicado antes de publicar.
-- Logs agora possuem scanner local e analise no endpoint admin, mas ainda faltam rotacao/retencao/alerta real configurados na VPS.
+- Logs agora possuem scanner local, analise no endpoint admin, alerta operacional deduplicado, manutencao de logs privados, heartbeat e preflight. Ainda faltam configurar `logrotate`/alertas reais do sistema operacional na VPS e comprovar os crons no ambiente final.
 - SEO publico esta bem encaminhado, mas ainda precisa Search Console, dominio real, sitemap publicado e auditoria de canonical/OG em deploy.
 - Rate limiting esta aplicado localmente nos fluxos sensiveis e em analytics, mas os limites finais precisam ser calibrados em staging para evitar falso positivo em turmas, NAT corporativo e campanhas.
 

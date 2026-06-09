@@ -25,7 +25,7 @@ import AdBanner from '../feedback/AdBanner';
 import { useToast } from '@providers/ToastProvider';
 import { apiClient } from '@services/api';
 import { ENDPOINTS } from '@services/api';
-import { getAssetUrl } from '@services/api';
+import { getVersionedAssetUrl } from '@services/api';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 import { canAccessAdminPanel } from '@services/auth';
 import LogoutConfirmButton from './LogoutConfirmButton';
@@ -55,6 +55,14 @@ type SidebarNavItem = {
   enabled: boolean;
   moduleEnabled?: boolean;
   badge?: number;
+};
+
+type ProfileQuickMenuItem = {
+  tab?: ProfileTab;
+  href?: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
 };
 
 type ResendConfirmationResponse = {
@@ -379,25 +387,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [userName]);
   const userInitials = userName.charAt(0);
   const userPhotoUrl = React.useMemo(
-    () => getAssetUrl(user?.photoUrl || ''),
-    [user?.photoUrl],
+    () => getVersionedAssetUrl(user?.photoUrl || '', user?.photoUrl || user?.id || ''),
+    [user?.id, user?.photoUrl],
   );
-  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
-  const canRenderUserPhoto = Boolean(userPhotoUrl && failedAvatarUrl !== userPhotoUrl);
+  const canRenderUserPhoto = Boolean(userPhotoUrl);
   const userLevel = user?.level || 0;
 
-  const profileQuickMenuItems = React.useMemo<Array<{
-    tab: ProfileTab;
-    label: string;
-    description: string;
-    icon: LucideIcon;
-  }>>(() => {
-    const items: Array<{
-      tab: ProfileTab;
-      label: string;
-      description: string;
-      icon: LucideIcon;
-    }> = [
+  const profileQuickMenuItems = React.useMemo<ProfileQuickMenuItem[]>(() => {
+    const items: ProfileQuickMenuItem[] = [
+      {
+        href: '/levels',
+        label: 'Níveis XP',
+        description: 'Regras de XP e ranking de estudo.',
+        icon: Crown,
+      },
       {
         tab: 'personal',
         label: 'Dados pessoais',
@@ -409,6 +412,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         label: 'Assinatura',
         description: 'Plano ativo, renovacao e cobrancas.',
         icon: CreditCard,
+      },
+      {
+        tab: 'support-history',
+        label: 'Historico de suporte',
+        description: 'Chamados, sugestoes e respostas.',
+        icon: MessageSquare,
       },
       {
         tab: 'billing-history',
@@ -507,9 +516,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     setIsProfileMenuOpen((current) => !current);
   };
 
-  const handleProfileMenuNavigate = (tab: ProfileTab) => {
+  const handleProfileQuickMenuNavigate = (item: ProfileQuickMenuItem) => {
     setIsProfileMenuOpen(false);
-    router.push(buildProfilePath(tab));
+    router.push(item.href || buildProfilePath(item.tab || 'personal'));
   };
 
   const isDashboardPage = location.pathname.startsWith('/admin') || location.pathname === '/partner-dashboard';
@@ -568,7 +577,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 onClick={toggleTheme}
                 className="p-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all font-black uppercase"
               >
-                {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+                <span className="inline-flex" aria-hidden="true">
+                  <Moon size={20} className="dark:hidden" />
+                  <Sun size={20} className="hidden dark:block" />
+                </span>
               </button>
               <div className="relative">
                 <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="p-1 relative">
@@ -618,14 +630,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
                 <div className="relative w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-400 overflow-hidden">
                   {canRenderUserPhoto ? (
-                    <Image
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
                       src={userPhotoUrl}
                       alt={userName || 'Foto de perfil'}
-                      fill
-                      sizes="40px"
-                      unoptimized
-                      className="object-cover"
-                      onError={() => setFailedAvatarUrl(userPhotoUrl)}
+                      className="absolute inset-0 h-full w-full object-cover"
                     />
                   ) : (
                     userInitials
@@ -758,7 +767,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all"
                 title={theme === 'light' ? 'Ativar Modo Escuro' : 'Ativar Modo Claro'}
               >
-                {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+                <span className="inline-flex" aria-hidden="true">
+                  <Moon size={20} className="dark:hidden" />
+                  <Sun size={20} className="hidden dark:block" />
+                </span>
               </button>
 
               <button
@@ -805,14 +817,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   </div>
                   <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white shadow-md transition-opacity group-hover:opacity-90 dark:bg-indigo-600 overflow-hidden">
                     {canRenderUserPhoto ? (
-                      <Image
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
                         src={userPhotoUrl}
                         alt={userName || 'Foto de perfil'}
-                        fill
-                        sizes="36px"
-                        unoptimized
-                        className="object-cover"
-                        onError={() => setFailedAvatarUrl(userPhotoUrl)}
+                        className="absolute inset-0 h-full w-full object-cover"
                       />
                     ) : (
                       userInitials
@@ -833,13 +842,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
                     <div className="p-2">
                       {profileQuickMenuItems.map((item) => {
-                        const isCurrent = location.pathname === buildProfilePath(item.tab);
+                        const itemPath = item.href || buildProfilePath(item.tab || 'personal');
+                        const isCurrent = location.pathname === itemPath;
 
                         return (
                           <button
-                            key={item.tab}
+                            key={item.href || item.tab || item.label}
                             type="button"
-                            onClick={() => handleProfileMenuNavigate(item.tab)}
+                            onClick={() => handleProfileQuickMenuNavigate(item)}
                             className={`flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-left transition-colors ${
                               isCurrent
                                 ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-200'
@@ -860,6 +870,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                           </button>
                         );
                       })}
+                    </div>
+
+                    <div className="border-t border-slate-100 p-2 dark:border-slate-800">
+                      <LogoutConfirmButton>
+                        {({ isLoggingOut, openConfirm }) => (
+                          <button
+                            type="button"
+                            onClick={openConfirm}
+                            disabled={isLoggingOut}
+                            className="flex w-full items-center justify-center gap-2 rounded-2xl px-3 py-3 text-xs font-black uppercase tracking-[0.16em] text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-70 dark:text-slate-400 dark:hover:bg-red-900/20 dark:hover:text-red-300"
+                          >
+                            <LogOut size={16} />
+                            {isLoggingOut ? 'Saindo...' : 'Sair'}
+                          </button>
+                        )}
+                      </LogoutConfirmButton>
                     </div>
 
                   </div>

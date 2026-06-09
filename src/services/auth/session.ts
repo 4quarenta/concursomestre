@@ -57,6 +57,12 @@ type SessionListener = (snapshot: AuthSessionSnapshot) => void;
 
 type AuthRawUserProfile = Partial<UserProfile> & {
     photo_url?: string | null;
+    profilePhotoUrl?: string | null;
+    profile_photo_url?: string | null;
+    userPhotoUrl?: string | null;
+    user_photo_url?: string | null;
+    avatarUrl?: string | null;
+    avatar_url?: string | null;
     email_verified?: boolean | number | string;
     comments_count?: number | string;
     target_exam?: string;
@@ -100,7 +106,17 @@ const normalizeAuthUserProfile = (rawUser: UserProfile | null | undefined): User
 
     const user = rawUser as AuthRawUserProfile;
     const role = normalizeUserRole(user.role);
-    const photoUrl = String(user.photoUrl || user.photo_url || '').trim() || undefined;
+    const photoUrl = String(
+        user.photoUrl
+        || user.photo_url
+        || user.profilePhotoUrl
+        || user.profile_photo_url
+        || user.userPhotoUrl
+        || user.user_photo_url
+        || user.avatarUrl
+        || user.avatar_url
+        || ''
+    ).trim() || undefined;
 
     const normalizedProfile = {
         ...user,
@@ -731,7 +747,7 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
         }
 
         try {
-            const includeUser = options.reason === 'bootstrap' && !currentUser;
+            const includeUser = options.reason === 'bootstrap' || !currentUser || !currentUser.photoUrl;
             const response = await authHttp.post('auth/refresh.php', {
                 includeUser,
             }, {

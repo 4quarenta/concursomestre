@@ -24,6 +24,14 @@ const eliteAnnualPlan: Plan = {
   canonical_name: 'Elite',
 };
 
+const eliteQuarterlyPlan: Plan = {
+  ...eliteAnnualPlan,
+  id: 3,
+  description: 'Plano Elite trimestral',
+  interval_count: 3,
+  interval_unit: 'month',
+};
+
 const buildSubscription = (overrides: Partial<UserSubscription> = {}): UserSubscription => ({
   id: 10,
   user_id: 'u-admin',
@@ -68,5 +76,25 @@ describe('resolveProfileSubscriptionTimeline', () => {
     expect(timeline.totalDays).toBe(365);
     expect(timeline.usedDays).toBe(20);
     expect(timeline.remainingDays).toBe(345);
+  });
+
+  it('keeps one remaining day while the quarterly cycle still has hours left', () => {
+    const timeline = resolveProfileSubscriptionTimeline({
+      now: new Date('2026-05-24T08:00:00-03:00'),
+      subscription: buildSubscription({
+        plan: eliteQuarterlyPlan,
+        current_period_start: '2026-02-24 09:00:00',
+        current_period_end: '2026-05-24 09:00:00',
+        created_at: '2026-02-24 09:00:00',
+        total_installments: 3,
+        paid_installments: 2,
+        recurring_amount: 33.27,
+      }),
+    });
+
+    expect(timeline.totalDays).toBe(89);
+    expect(timeline.usedDays).toBe(88);
+    expect(timeline.remainingDays).toBe(1);
+    expect(timeline.progressPercent).toBe(99);
   });
 });

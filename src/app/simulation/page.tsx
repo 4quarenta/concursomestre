@@ -366,10 +366,11 @@ const Simulation: React.FC = () => {
    const pathname = usePathname() || '/simulation';
    const router = useRouter();
 
-   const [viewMode, setViewMode] = useState<'focus' | 'list'>('focus');
+   const [viewMode, setViewMode] = useState<'focus' | 'list'>('list');
    const [simulationTab, setSimulationTab] = useState<SimulationTab>('ready');
    const [storedSimulations, setStoredSimulations] = useState<StoredSimulationSession[]>([]);
    const [referenceTimeMs, setReferenceTimeMs] = useState(0);
+   const hasAppliedPreferredViewRef = React.useRef(false);
 
    const allAgencies = useMemo(() => Array.from(new Set(questions.flatMap(q => q.bancas?.map(b => b.sigla || b.nome) || []).filter(Boolean))).sort() as string[], [questions]);
    const allOrgs = useMemo(() => Array.from(new Set(questions.flatMap(q => q.orgaos || []).map(o => o.sigla || o.nome).filter(Boolean))).sort(), [questions]);
@@ -377,6 +378,19 @@ const Simulation: React.FC = () => {
    const allLevels = useMemo(() => Array.from(new Set(questions.map(getQuestionLevelLabel).filter(Boolean))).sort(), [questions]);
 
    const [config, setConfig] = useState<SimulationConfig>(() => createSimulationConfig());
+
+   useEffect(() => {
+      if (!currentUser?.id || hasAppliedPreferredViewRef.current) {
+         return;
+      }
+
+      const preferredView = currentUser.preferences?.defaultSimulationView;
+      if (preferredView === 'focus' || preferredView === 'list') {
+         hasAppliedPreferredViewRef.current = true;
+         const frameId = window.requestAnimationFrame(() => setViewMode(preferredView));
+         return () => window.cancelAnimationFrame(frameId);
+      }
+   }, [currentUser?.id, currentUser?.preferences?.defaultSimulationView]);
 
    useEffect(() => {
       void ensureQuestionsLoaded();

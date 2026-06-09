@@ -53,16 +53,48 @@ Backend:
 - `MAIL_FROM_ADDRESS=no-reply@seu-dominio.com`
 - `MAIL_FROM_NAME=ConcursoMestre`
 - `MYSQLDUMP_PATH=/usr/bin/mysqldump`
+- `MYSQL_PATH=/usr/bin/mysql`
 - `BACKUP_DIR=/var/backups/concursomestre/mysql`
 - `BACKUP_RETENTION_DAYS=14`
+- `MYSQL_BACKUP_HEALTH_PATH=/var/www/questao-pro-backend/storage/logs/backups/mysql_backup_health.json`
+- `MYSQL_BACKUP_HEALTH_MAX_AGE_MINUTES=1560`
 - `SMOKE_API_BASE_URL=https://api.seu-dominio.com/api`
 - `SMOKE_WEB_BASE_URL=https://app.seu-dominio.com`
 - `SMOKE_TIMEOUT_SECONDS=8`
 - `SMOKE_DB_CONNECTIONS=3`
+- `SMOKE_AUTH_EMAIL=admin@seu-dominio.com`
+- `SMOKE_AUTH_PASSWORD=...`
+- `SMOKE_AUTH_CAPTCHA_TOKEN=...` (quando reCAPTCHA estiver exigindo token real no login)
+- `SMOKE_AUTH_REQUIRED=true`
+- `SMOKE_ADMIN_REQUIRED=true`
+- `CM_BASE_URL=https://app.seu-dominio.com`
+- `CM_STUDENT_EMAIL=aluno-smoke@seu-dominio.com`
+- `CM_STUDENT_PASSWORD=...`
+- `CM_ADMIN_EMAIL=admin-smoke@seu-dominio.com`
+- `CM_ADMIN_PASSWORD=...`
+- `CM_VISUAL_SMOKE_REPORT_FILE=/var/www/concursomestre/.tmp/visual-auth-smoke-latest.json`
+- `CM_VISUAL_SMOKE_SCREENSHOT_DIR=/var/www/concursomestre/.tmp/visual-auth-smoke`
+- `READINESS_PROFILE=production`
+- `READINESS_REPORT_FILE=/var/www/questao-pro-backend/storage/logs/readiness/production_readiness_latest.json`
+- `HOMOLOGATION_PROFILE=staging` em staging ou `production` no go-live final
+- `HOMOLOGATION_REPORT_FILE=/var/www/questao-pro-backend/storage/logs/readiness/staging_homologation_latest.json`
 - `LOG_AUDIT_FILES=/var/log/nginx/error.log,/var/log/php/error.log,/var/log/concursomestre/stripe-cron.log,/var/log/concursomestre/mysql-backup.log,/var/www/questao-pro-backend/storage/logs/subscriptions/subscription_cron.log`
 - `LOG_AUDIT_TAIL_LINES=5000`
+- `LOG_AUDIT_SINCE_MINUTES=60`
 - `LOG_AUDIT_REPEAT_THRESHOLD=5`
 - `LOG_AUDIT_FAIL_ON=critical`
+- `LOG_ALERT_ON=critical`
+- `LOG_ALERT_SINCE_MINUTES=60`
+- `LOG_ALERT_DEDUPE_MINUTES=360`
+- `LOG_ALERT_NOTIFY_ADMINS=true`
+- `LOG_ALERT_HEALTH_PATH=/var/www/questao-pro-backend/storage/logs/operations/log_alert_health.json`
+- `LOG_ALERT_LEDGER_PATH=/var/www/questao-pro-backend/storage/logs/operations/log_alerts.ndjson`
+- `LOG_MAINTENANCE_FILES=/var/www/questao-pro-backend/storage/logs/settings.log,/var/www/questao-pro-backend/storage/logs/subscriptions/subscription_cron.log`
+- `LOG_ROTATE_MAX_BYTES=10485760`
+- `LOG_RETENTION_DAYS=30`
+- `LOG_ROTATE_ARCHIVE_DIR=/var/www/questao-pro-backend/storage/logs/archive`
+- `LOG_MAINTENANCE_HEALTH_PATH=/var/www/questao-pro-backend/storage/logs/operations/log_maintenance_health.json`
+- `LOG_MAINTENANCE_HEALTH_MAX_AGE_MINUTES=1560`
 - `RATE_LIMIT_DIR=/var/lib/concursomestre/rate-limits`
 - `RATE_LIMIT_TRUST_PROXY_HEADERS=false`
 - `RATE_LIMIT_AUTH_LOGIN_MAX=10`
@@ -100,7 +132,28 @@ npm run lint
 ```
 
 O preflight consolidado executa encoding, typecheck, orcamento de hard refresh, suites criticas de arquitetura/SEO/XSS/charts e build quando `--with-build` for informado.
-Quando encontra o backend local, tambem executa suites PHP criticas de billing: checkout/webhook Stripe, cron, sync de planos e saldo de termo parcelado. Configure `PHP_BIN` e `BACKEND_ROOT` para caminhos diferentes; use `--skip-backend` somente quando o backend nao estiver disponivel naquele host.
+Quando encontra o backend local, tambem executa suites PHP criticas de billing e readiness wiring: checkout/webhook Stripe, cron, sync de planos, saldo de termo parcelado e contrato da suite operacional. Configure `PHP_BIN` e `BACKEND_ROOT` para caminhos diferentes; use `--skip-backend` somente quando o backend nao estiver disponivel naquele host.
+O atalho equivalente para a preparacao local completa e:
+
+```bash
+npm run check:release-local
+```
+
+Esse atalho tambem grava a evidencia operacional do backend em `.tmp/backend-readiness-suite-latest.json`, caminho local ignorado pelo Git e proprio para anexar a uma homologacao. Para incluir o ensaio de restore do backup no mesmo comando local, use:
+
+```bash
+npm run check:production-local -- --with-build --with-backend-readiness --with-backup-rehearsal --backend-readiness-report=.tmp/backend-readiness-suite-latest.json
+```
+
+Antes do readiness, o atalho executa `npm run check:release-repos` e grava `.tmp/release-repos-status-latest.json`, confirmando que frontend e backend sao repositorios separados, possuem `origin` e nao rastreiam `.env`, logs ou dumps operacionais.
+
+Esse modo chama `production_readiness_suite.php` com `profile=local`. Em staging/producao, prefira rodar a suite diretamente com `--profile=staging` ou `--profile=production` e dominios reais.
+Para anexar uma evidencia JSON a uma homologacao local, informe:
+
+```bash
+npm run check:production-local -- --with-backend-readiness --backend-readiness-report=.tmp/backend-readiness-suite-latest.json
+```
+
 Se as credenciais de admin mudarem no ambiente local, exporte antes:
 
 ```bash
@@ -108,18 +161,35 @@ set CM_LOGIN_EMAIL=admin@seu-dominio.com
 set CM_LOGIN_PASSWORD=SuaSenhaAtual
 set CM_LOGIN_PASSWORD_CANDIDATES=SuaSenhaAtual,OutraSenhaFallback
 ```
-6. Subir frontend com PM2/systemd.
-7. Configurar reverse proxy HTTPS.
+
+CI dos repositorios:
+
+- Frontend: `.github/workflows/frontend-ci.yml` roda `npm ci` e `npm run check:production-local -- --skip-backend --with-build` em push/PR.
+- Backend: `.github/workflows/backend-ci.yml` roda `composer install` e `php scripts/tasks/ci_wiring_checks.php`, que executa lint PHP e os testes criticos de wiring.
+- Antes de release, rode `npm run check:release-repos -- --strict` depois de commitar/pushar frontend e backend para bloquear worktree suja, branch sem upstream ou divergencia com o remoto.
+
+6. Subir frontend com PM2/systemd. Use `config/deploy/systemd.concursomestre-web.service.example` como base do servico Next.js.
+7. Configurar reverse proxy HTTPS. Use `config/deploy/nginx.concursomestre.conf.example` como base para Nginx + PHP-FPM, e `config/deploy/cron.concursomestre.example`/`config/deploy/logrotate.concursomestre.example` como base para crons e logs.
 8. Configurar CORS somente para dominios finais HTTPS, sem localhost, sem HTTP e sem wildcard.
 9. Executar smoke publico anonimo e logado:
 
 ```bash
 /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/production_preflight.php
-/usr/bin/php /var/www/questao-pro-backend/scripts/tasks/production_smoke.php --api-base-url=https://api.seu-dominio.com/api --web-base-url=https://app.seu-dominio.com --db-connections=3
+/usr/bin/php /var/www/questao-pro-backend/scripts/tasks/production_smoke.php --api-base-url=https://api.seu-dominio.com/api --web-base-url=https://app.seu-dominio.com --db-connections=3 --auth-required=true --admin-required=true
+/usr/bin/php /var/www/questao-pro-backend/scripts/tasks/production_readiness_suite.php --profile=production --api-base-url=https://api.seu-dominio.com/api --web-base-url=https://app.seu-dominio.com --with-backup-rehearsal=true
+/usr/bin/php /var/www/questao-pro-backend/scripts/tasks/staging_homologation_gate.php --profile=staging --api-base-url=https://api-staging.seu-dominio.com/api --web-base-url=https://staging.seu-dominio.com
+/usr/bin/php /var/www/questao-pro-backend/scripts/tasks/vps_operations_gate.php --profile=production --restore-target-db=concursomestre_restore_test --notify-admins=true
+cd /var/www/concursomestre && npm run check:visual-smoke -- --strict=true --base-url=https://staging.seu-dominio.com
 ```
 
-O preflight precisa retornar `success=true`. Ele deve reprovar `APP_ENV` diferente de `production`, `APP_URL` local, CORS invalido/HTTP/wildcard, reset administrativo de banco habilitado, usuario MySQL `root`, conexao persistente (`DB_PERSISTENT=true`), timeout de banco fora de 1-10s, segredos fracos, Stripe/Google malformados, SMTP transacional ausente, remetente invalido, modelos essenciais de e-mail desativados/incompletos, SDK/autoload legado de Mercado Pago, `BACKUP_DIR` dentro da raiz publica, backups historicos em `storage/backups/legacy-code`, artefatos operacionais publicados em `api/`, backups/dumps na raiz do backend, scripts de desenvolvimento dentro da arvore publica, heartbeat ausente/antigo da reconciliacao Stripe e heartbeat ausente/antigo do webhook Stripe.
-O smoke precisa retornar `success=true`. Ele valida endpoints publicos (`plans`, `questionsList`, `settings`), rotas web principais, conexoes MySQL, HTTPS em hosts publicos e headers minimos de seguranca (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`).
+O preflight precisa retornar `success=true`. Ele deve reprovar `APP_ENV` diferente de `production`, `APP_URL` local, CORS invalido/HTTP/wildcard, reset administrativo de banco habilitado, usuario MySQL `root`, conexao persistente (`DB_PERSISTENT=true`), timeout de banco fora de 1-10s, segredos fracos, Stripe/Google malformados, SMTP transacional ausente, remetente invalido, modelos essenciais de e-mail desativados/incompletos, SDK/autoload legado de Mercado Pago, `BACKUP_DIR` dentro da raiz publica, `MYSQLDUMP_PATH`/`MYSQL_PATH` ausentes ou invalidos, heartbeat ausente/antigo do backup MySQL, backups historicos em `storage/backups/legacy-code`, artefatos operacionais publicados em `api/`, backups/dumps na raiz do backend, scripts de desenvolvimento dentro da arvore publica, heartbeat ausente/antigo da reconciliacao Stripe e heartbeat ausente/antigo do webhook Stripe.
+O smoke precisa retornar `success=true`. Ele valida endpoints publicos (`plans`, `questionsList`, `settings`), rotas web principais, login real via `/auth/login.php`, perfil autenticado via `/auth/me.php`, notificacoes autenticadas, conexoes MySQL, HTTPS em hosts publicos e headers minimos de seguranca (`Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`). Com credencial `admin`/`staff`, tambem valida `/admin/stats.php?period=today`, `/admin/settings.php` e `/admin/comments_moderation.php` para pegar cedo quebra de permissao/401 no painel. Se `SMOKE_AUTH_REQUIRED=true`, a falta de credenciais ou falha de login derruba o smoke; se `SMOKE_ADMIN_REQUIRED=true`, a credencial precisa ser admin/staff e os endpoints administrativos tambem precisam passar.
+O `production_readiness_suite.php` consolida preflight, smoke, auditoria de logs recentes e ensaio de restore em um unico JSON. Use `--profile=local` durante desenvolvimento; use `--profile=staging` ou `--profile=production` para tornar os checks de ambiente, auth/admin e backup bloqueantes.
+Quando `READINESS_REPORT_FILE` ou `--report-file=...` estiver configurado, a suite grava o mesmo payload JSON em arquivo privado para auditoria/homologacao. Em producao, mantenha esse caminho em `storage/logs/readiness` ou outro diretorio privado fora da raiz publica.
+O `staging_homologation_gate.php` e o portao final da macroetapa de staging: ele rejeita URLs locais/HTTP, exige HTTPS publico, chama a suite com auth/admin obrigatorios, preflight, auditoria de logs, ensaio de restore e ainda roda `operational_log_alerts.php` em modo bloqueante. Use `--dry-run=true` apenas para conferir o plano antes de apontar para a VPS real.
+O `vps_operations_gate.php` e o portao operacional final da VPS. Ele nao substitui os crons permanentes, mas prova que o servidor esta operacionalmente pronto: roda `production_preflight.php`, executa manutencao de logs privados, audita logs recentes em modo bloqueante, dispara alertas deduplicados para erros criticos e ensaia restore do ultimo backup. Use `--dry-run=true` antes do go-live para conferir o plano sem executar passos; a execucao real deve gravar `OPERATIONS_GATE_REPORT_FILE` em `storage/logs/readiness` ou outro caminho privado fora de `api/`.
+
+O smoke visual logado fica no frontend em `scripts/checks/visual-auth-smoke.mjs` e deve ser executado depois que o build estiver publicado. Ele autentica como aluno e admin, abre rotas criticas, captura screenshots, falhas de request, erros de console, `pageerror`, redirecionamento indevido para `/auth` e textos que indicam loader preso. Em staging/producao, rode com `--strict=true` para exigir HTTPS publico e credenciais dos dois perfis.
 
 10. Executar teste de carga moderada em janela controlada e acompanhar MySQL/PHP logs.
 11. Conferir headers de seguranca no frontend e na API: CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` e HSTS em HTTPS.
@@ -129,13 +199,23 @@ O smoke precisa retornar `success=true`. Ele valida endpoints publicos (`plans`,
 15. Confirmar que `scripts/debug`, `scripts/manual-tests`, `scripts/setup`, `scripts/maintenance`, `scripts/seed`, `scripts/seeds`, checks temporarios e migracoes PHP fora do allowlist nao existem na arvore publica. O preflight falha em `BACKEND_DEV_SCRIPT_ARTIFACTS_CLEAN` se algum deles voltar. Em `scripts/migrations`, apenas `migrate_marketplace_schema_compatibility.php` pode existir.
 16. Confirmar que `vendor/mercadopago`, `MercadoPago\\` e `mercadopago/dx-php` nao existem no deploy. O produto esta Stripe-only; o preflight falha em `PAYMENT_LEGACY_MERCADOPAGO_SDK_REMOVED` se o SDK/autoload legado voltar.
 17. Confirmar `BACKUP_DIR` fora da raiz publica, existente e gravavel. O preflight falha em `BACKUP_DIR_OUTSIDE_PUBLIC_ROOT` se o backup apontar para `htdocs`, nao existir ou nao permitir escrita.
-18. Confirmar que `storage/backups/legacy-code` nao existe no deploy. Backups historicos de codigo devem ficar em arquivo privado fora de `htdocs`; o preflight falha em `LEGACY_CODE_BACKUPS_OUTSIDE_PUBLIC_ROOT` se essa pasta voltar.
+18. Confirmar que `MYSQLDUMP_PATH` aponta para `mysqldump` e `MYSQL_PATH` aponta para o cliente `mysql`. O preflight falha em `MYSQLDUMP_AVAILABLE` ou `MYSQL_RESTORE_CLIENT_AVAILABLE` se o servidor nao conseguir fazer dump/restore.
+19. Executar um backup real antes do go-live. O script grava `MYSQL_BACKUP_HEALTH_PATH`; o preflight falha em `MYSQL_BACKUP_HEALTH_RECENT` se o ultimo backup estiver ausente, antigo, com erro ou apontando para dump/checksum inexistente.
+20. Confirmar que `storage/backups/legacy-code` nao existe no deploy. Backups historicos de codigo devem ficar em arquivo privado fora de `htdocs`; o preflight falha em `LEGACY_CODE_BACKUPS_OUTSIDE_PUBLIC_ROOT` se essa pasta voltar.
 16. Validar depoimentos da home: com zero aprovados, a home deve exibir os mocks; depois, enviar uma avaliacao no perfil com nome publico/contexto, marcar como `resolved` no suporte/admin e confirmar que ela aparece na home; ao tirar de `resolved`, ela deve sair da home.
 17. Validar notificacoes de suporte/moderacao: usuario envia feedback, admin responde, usuario recebe notificacao in-app e o link `/support?threadId=<id>` abre a conversa correta; usuario cria denuncia, admin resolve e denunciante recebe notificacao de resultado.
 18. Validar rankings: usuario autenticado cria ranking, admin aprova/rejeita e o criador recebe notificacao; participante envia gabarito e recebe confirmacao; admin publica gabarito oficial e participantes recebem notificacao apontando para `/ranking/<id>`.
 19. Validar campanhas automaticas: executar primeiro `process_marketing_automations.php --dry-run=true --limit=20`, conferir elegiveis; depois executar em campanha controlada com `--execute=PROCESS_MARKETING_AUTOMATIONS --limit=20`, confirmar notificacao/e-mail e que uma segunda execucao nao duplica envios.
 20. Validar e-mail transacional: no painel admin, executar `Testar SMTP`; em `Modelos de e-mail`, abrir pelo menos um modelo de cada familia (auth, suporte, denuncia, transacao e assinatura) e usar `Enviar teste` no modal para validar assunto, HTML/texto e placeholders. Depois disparar cadastro/confirmacao, reset de senha, recibo de assinatura, falha de pagamento, lembrete de renovacao, resposta de suporte e reembolso controlado. O envio real precisa chegar na caixa de entrada, sem cair em `mail()` local.
 21. Validar webhook Stripe no dominio final: enviar evento real pelo painel da Stripe ou pelo Stripe CLI apontando para `api/subscriptions/stripe_webhook.php`; confirmar que `storage/logs/subscriptions/stripe_webhook_health.json` foi atualizado, que `Painel > Saude do billing > Ultimo webhook` mostra o evento e que `production_preflight.php` passa no check `STRIPE_WEBHOOK_HEALTH_RECENT`.
+22. Ensaiar backup/rollback antes do go-live:
+
+```bash
+/usr/bin/php /var/www/questao-pro-backend/scripts/tasks/backup_mysql.php
+/usr/bin/php /var/www/questao-pro-backend/scripts/tasks/backup_restore_rehearsal.php --target-db=concursomestre_restore_test
+```
+
+O ensaio valida checksum/formato do ultimo backup e executa `restore_mysql_backup.php` em dry-run. Para a prova real de rollback, restaure em um banco temporario com `--execute=RESTORE_BACKUP`, aponte o app/smoke para esse banco temporario e rode `production_smoke.php`; nunca restaure sobre o banco atual sem janela fechada, backup validado e token explicito `--allow-current-db=RESTORE_CURRENT_DATABASE`.
 
 ## Crons
 
@@ -144,7 +224,9 @@ Ativo:
 ```bash
 */15 * * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/reconcile_stripe_subscriptions.php >> /var/log/concursomestre/stripe-cron.log 2>&1
 0 3 * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/backup_mysql.php >> /var/log/concursomestre/mysql-backup.log 2>&1
-*/15 * * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/production_log_audit.php >> /var/log/concursomestre/log-audit.log 2>&1
+*/15 * * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/production_log_audit.php --since-minutes=60 >> /var/log/concursomestre/log-audit.log 2>&1
+*/15 * * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/operational_log_alerts.php --since-minutes=60 --notify-admins=true >> /var/log/concursomestre/log-alerts.log 2>&1
+20 0 * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/operational_log_maintenance.php >> /var/log/concursomestre/log-maintenance.log 2>&1
 */30 * * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/process_marketing_automations.php --execute=PROCESS_MARKETING_AUTOMATIONS --limit=100 >> /var/log/concursomestre/marketing-automation.log 2>&1
 0 8 * * * /usr/bin/php /var/www/questao-pro-backend/scripts/tasks/check_subscription_card_expiry.php >> /var/log/concursomestre/card-expiry.log 2>&1
 ```
@@ -199,11 +281,16 @@ Operacao minima:
 
 - Rotacao diaria.
 - Retencao de 14 a 30 dias.
+- Logs privados da aplicacao devem ser mantidos pelo cron `scripts/tasks/operational_log_maintenance.php`, com `LOG_ROTATE_MAX_BYTES`, `LOG_RETENTION_DAYS`, `LOG_ROTATE_ARCHIVE_DIR` e `LOG_MAINTENANCE_HEALTH_PATH`.
+- Logs do Apache/Nginx/PHP-FPM/MySQL devem usar `logrotate`/rotacao do sistema operacional; nao use o script da aplicacao para truncar arquivos gerenciados pelo servidor.
 - Alerta para `Too many connections`, `Fatal error`, `401 Unauthorized` repetido, falha de webhook e falha de cron.
 - Exportacao/limpeza pelo painel admin deve ser restrita a admin.
 - Nunca gravar logs dentro de `api/`; o preflight `API_PUBLIC_ARTIFACTS_CLEAN` deve reprovar qualquer `.log`, `.sql` ou `.txt` operacional publicado.
 - Smoke operacional apos deploy e apos rollback com `scripts/tasks/production_smoke.php`.
 - Auditoria de logs com `scripts/tasks/production_log_audit.php`; em producao, manter `LOG_AUDIT_FAIL_ON=critical`.
+- Alertas operacionais com `scripts/tasks/operational_log_alerts.php`; em producao, manter `LOG_ALERT_NOTIFY_ADMINS=true` para criar notificacao administrativa deduplicada quando houver erro critico recente. O ledger privado `LOG_ALERT_LEDGER_PATH` impede alerta repetido para a mesma assinatura de erro dentro de `LOG_ALERT_DEDUPE_MINUTES`.
+- Manutencao de logs com `scripts/tasks/operational_log_maintenance.php`; em producao, confirme que `storage/logs/operations/log_maintenance_health.json` fica recente e com `status=ok`.
+- `--dry-run=true` serve apenas para ensaio; o preflight de producao nao aceita heartbeat de manutencao gerado em dry-run.
 - O endpoint admin de logs retorna tambem `analysis` com severidade, categoria e repeticoes para destacar incidentes recorrentes no painel.
 
 ## Headers de seguranca

@@ -62,6 +62,42 @@ const BrandLogo: React.FC<BrandLogoProps> = ({
     className: `block h-auto w-full max-w-full ${imageClassName}`.trim(),
   };
 
+  if (surface === 'theme') {
+    const lightSurfaceSrc = effectiveVariant === 'full'
+      ? FULL_LIGHT_SURFACE_LOGO_SRC
+      : STANDARD_LIGHT_SURFACE_LOGO_SRC;
+    const darkSurfaceSrc = effectiveVariant === 'full'
+      ? FULL_DARK_SURFACE_LOGO_SRC
+      : STANDARD_DARK_SURFACE_LOGO_SRC;
+
+    return (
+      <span
+        className={`inline-flex shrink-0 items-center ${className}`.trim()}
+        style={{ width }}
+        aria-hidden={alt ? undefined : true}
+      >
+        <Image
+          src={lightSurfaceSrc}
+          alt={sharedProps.alt}
+          width={sharedProps.width}
+          height={sharedProps.height}
+          priority={priority}
+          unoptimized
+          className={`${sharedProps.className} dark:hidden`.trim()}
+        />
+        <Image
+          src={darkSurfaceSrc}
+          alt={sharedProps.alt}
+          width={sharedProps.width}
+          height={sharedProps.height}
+          priority={priority}
+          unoptimized
+          className={`${sharedProps.className} hidden dark:block`.trim()}
+        />
+      </span>
+    );
+  }
+
   return (
     <span
       className={`inline-flex shrink-0 items-center ${className}`.trim()}

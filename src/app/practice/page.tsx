@@ -67,6 +67,10 @@ const DEFAULT_FILTERS = {
   excludeCanceled: false,
   excludeOutdated: false,
   excludeAnswered: false,
+  excludeCorrect: false,
+  excludeWrong: false,
+  onlyCorrect: false,
+  onlyWrong: false,
 };
 
 type PracticeFilters = typeof DEFAULT_FILTERS;
@@ -130,7 +134,7 @@ type SearchableFilterGroup = {
 };
 
 const MULTI_FILTER_KEYS = ['subject', 'difficulty', 'agency', 'organization', 'year', 'level', 'topic', 'role', 'career', 'modality'] as const;
-const BOOLEAN_FILTER_KEYS = ['onlySaved', 'hasTeacherComment', 'hasDetailedComment', 'excludeCanceled', 'excludeOutdated', 'excludeAnswered'] as const;
+const BOOLEAN_FILTER_KEYS = ['onlySaved', 'hasTeacherComment', 'hasDetailedComment', 'excludeCanceled', 'excludeOutdated', 'excludeAnswered', 'excludeCorrect', 'excludeWrong', 'onlyCorrect', 'onlyWrong'] as const;
 
 const isMultiFilterKey = (key: string): key is typeof MULTI_FILTER_KEYS[number] => (
   (MULTI_FILTER_KEYS as readonly string[]).includes(key)
@@ -197,6 +201,16 @@ const buildPracticeQuestionQueryParams = (filters: PracticeFilters) => {
   }
 
   return params;
+};
+
+const readQuestionIdParams = (searchParams: Pick<URLSearchParams, 'get' | 'getAll'>) => {
+  const values = ['questionIds', 'question_ids', 'ids'].flatMap((name) => {
+    const repeatedValues = searchParams.getAll(name);
+    const rawValues = repeatedValues.length > 0 ? repeatedValues : [searchParams.get(name) || ''];
+    return rawValues.flatMap((item) => String(item || '').split(/[,\s;]+/));
+  });
+
+  return Array.from(new Set(values.map((item) => item.trim()).filter(Boolean)));
 };
 
 const normalizePracticeText = (value: unknown) => String(value || '')
@@ -613,7 +627,6 @@ const Practice: React.FC = () => {
   const {
     questions,
     totalQuestions,
-    isQuestionsLoaded,
     ensureQuestionsLoaded,
     fetchMoreQuestions,
   } = useQuestionBankActions();
@@ -701,6 +714,13 @@ const Practice: React.FC = () => {
         return;
       }
 
+      if (result.newXp !== undefined || result.newLevel !== undefined) {
+        void updateUser({
+          ...(result.newXp !== undefined ? { xp: result.newXp } : {}),
+          ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
+        });
+      }
+
       const reportId = result.id || `rep-${Date.now()}`;
       addLocalReport({
         ...report,
@@ -716,14 +736,22 @@ const Practice: React.FC = () => {
         `O usuario ${report.userName} reportou um problema.`,
         'warning',
         'moderation',
+        undefined,
+        undefined,
+        'report_received',
       );
 
-      addToast(result.message || 'Denuncia enviada com sucesso!', 'success');
+      addToast(
+        result.xpGain
+          ? `${result.message || 'Denuncia enviada com sucesso!'} +${result.xpGain} XP.`
+          : result.message || 'Denuncia enviada com sucesso!',
+        'success',
+      );
     }).catch((error) => {
       clientLog.warn('Failed to create report:', error);
       addToast((error as Error).message || 'Erro ao enviar denúncia.', 'error');
     });
-  }, [addLocalReport, addToast, currentUserId, reports]);
+  }, [addLocalReport, addToast, currentUserId, reports, updateUser]);
 
   const addComment = useCallback((questionId: number, comment: QuestaoComentario, parentId?: string) => {
     const now = Date.now();
@@ -738,6 +766,8 @@ const Practice: React.FC = () => {
       content: comment.text,
       userId: currentUserId || comment.userId,
       userName: currentUserName || comment.userName,
+      userAvatar: currentUser?.photoUrl,
+      userPlan: currentUser?.planDisplayName || currentUser?.plan,
       parentId,
       targetType: 'question',
     }).then((result) => {
@@ -752,27 +782,59 @@ const Practice: React.FC = () => {
           `${currentUserName || comment.userName || 'Usuário'} enviou comentário na questão #${questionId}.`,
           'warning',
           'moderation',
+          undefined,
+          undefined,
+          'comment_pending_admin',
         );
+      }
+
+      if (result.newXp !== undefined || result.newLevel !== undefined) {
+        void updateUser({
+          ...(result.newXp !== undefined ? { xp: result.newXp } : {}),
+          ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
+        });
+      }
+
+      if (result.xpGain) {
+        addToast(`Comentário registrado. +${result.xpGain} XP.`, 'success');
       }
     }).catch((error) => {
       clientLog.warn('Failed to save comment:', error);
       addToast((error as Error).message || 'Erro de conexão ao salvar comentário.', 'error');
     });
-  }, [addQuestionComment, addToast, currentUserId, currentUserName]);
+  }, [
+    addQuestionComment,
+    addToast,
+    currentUser?.photoUrl,
+    currentUser?.plan,
+    currentUser?.planDisplayName,
+    currentUserId,
+    currentUserName,
+    updateUser,
+  ]);
 
   const likeComment = useCallback((questionId: number, commentId: string) => {
     likeQuestionComment(questionId, commentId);
 
     if (!currentUserId) {
       addToast('Faça login para curtir.', 'warning');
-      return;
+      return Promise.resolve();
     }
 
-    commentService.likeComment(commentId, currentUserId).catch((error) => {
-      clientLog.warn('Failed to save like:', error);
-      addToast((error as Error).message || 'Erro de conexão ao curtir comentário.', 'error');
-    });
-  }, [addToast, currentUserId, likeQuestionComment]);
+    return commentService.likeComment(commentId, currentUserId)
+      .then((result) => {
+        if (result.newXp !== undefined || result.newLevel !== undefined) {
+          void updateUser({
+            ...(result.newXp !== undefined ? { xp: result.newXp } : {}),
+            ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
+          });
+        }
+      })
+      .catch((error) => {
+        clientLog.warn('Failed to save like:', error);
+        addToast((error as Error).message || 'Erro de conexão ao curtir comentário.', 'error');
+      });
+  }, [addToast, currentUserId, likeQuestionComment, updateUser]);
 
   // URL query parameter for highlighting specific question or setting filters
   const searchParams = useSearchParams();
@@ -786,6 +848,8 @@ const Practice: React.FC = () => {
     router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
   }, [pathname, router, searchParams]);
   const highlightedQuestionId = searchParams.get('questionId');
+  const scopedQuestionIds = useMemo(() => readQuestionIdParams(searchParams), [searchParams]);
+  const scopedQuestionIdSet = useMemo(() => new Set(scopedQuestionIds), [scopedQuestionIds]);
 
   const initialFilters = useMemo(() => {
     const readMultiParam = (names: string[], normalizer: (value: string) => string = (value) => value) => {
@@ -821,6 +885,10 @@ const Practice: React.FC = () => {
       excludeCanceled: searchParams.get('excludeCanceled') === 'true',
       excludeOutdated: searchParams.get('excludeOutdated') === 'true',
       excludeAnswered: searchParams.get('excludeAnswered') === 'true',
+      excludeCorrect: searchParams.get('excludeCorrect') === 'true',
+      excludeWrong: searchParams.get('excludeWrong') === 'true',
+      onlyCorrect: searchParams.get('onlyCorrect') === 'true',
+      onlyWrong: searchParams.get('onlyWrong') === 'true',
     };
   }, [searchParams]);
 
@@ -835,12 +903,26 @@ const Practice: React.FC = () => {
   const [authModalConfig, setAuthModalConfig] = useState({ title: '', description: '' });
   const [lastFetchedPage, setLastFetchedPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const hasBootstrappedQuestionsRef = useRef(false);
+  const hasBootstrappedQuestionsRef = useRef('');
+  const hasAppliedPreferredViewRef = useRef(false);
   const loaderRef = useRef<HTMLDivElement>(null);
   const pageRootRef = useRef<HTMLDivElement>(null);
   const focusQuestionRef = useRef<HTMLDivElement>(null);
   const scrollTargetRef = useRef<HTMLElement | Window | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+
+  useEffect(() => {
+    if (!currentUser?.id || hasAppliedPreferredViewRef.current) {
+      return;
+    }
+
+    const preferredView = currentUser.preferences?.defaultPracticeView;
+    if (preferredView === 'list' || preferredView === 'card') {
+      hasAppliedPreferredViewRef.current = true;
+      const frameId = window.requestAnimationFrame(() => setViewMode(preferredView));
+      return () => window.cancelAnimationFrame(frameId);
+    }
+  }, [currentUser?.id, currentUser?.preferences?.defaultPracticeView]);
 
   const handleOpenQuestionNote = useCallback(async (questionId: string) => {
     if (!currentUser?.id) {
@@ -864,7 +946,7 @@ const Practice: React.FC = () => {
   }, [currentUser?.id, ensureUserProgressLoaded]);
 
   useEffect(() => {
-    hasBootstrappedQuestionsRef.current = false;
+    hasBootstrappedQuestionsRef.current = '';
   }, [currentUser?.id]);
 
   const sanitizeFiltersForFocus = sanitizePracticeFiltersForFocus;
@@ -911,6 +993,10 @@ const Practice: React.FC = () => {
         || q.carreiras?.some(c => selectedNonEnemCareers.includes(normalizeCareerSelectorLabel(c?.nome)));
       const matchModality = isEnemFocus || filterMatchesAny(filters.modality, (modality) => q.tipo === (modality === 'Certo/Errado' ? 'certo ou errado' : 'multipla escolha'));
       const matchKeyword = !filters.keyword || (q.enunciado_clean || q.enunciado || '').toLowerCase().includes(filters.keyword.toLowerCase());
+      const matchScopedQuestion = scopedQuestionIdSet.size === 0
+        || scopedQuestionIdSet.has(String(q.id || ''))
+        || scopedQuestionIdSet.has(String(q.hashId || ''))
+        || scopedQuestionIdSet.has(String(q.hash || ''));
       const matchSaved = !filters.onlySaved || currentUser?.savedQuestionIds.includes(String(q.id));
 
       const matchTeacher = !filters.hasTeacherComment || !!q.hasTeacherComment || !!q.teacherComment;
@@ -918,24 +1004,33 @@ const Practice: React.FC = () => {
 
       const matchCanceled = !(q.anulada || q.isCanceled) || !filters.excludeCanceled;
       const matchOutdated = !(q.desatualizada || q.isOutdated) || !filters.excludeOutdated;
-      const matchExcludeAnswered = !filters.excludeAnswered || !userAnswers.some(a => Number(a.questionId) === Number(q.id));
+      const previousAnswer = userAnswers.find(a => Number(a.questionId) === Number(q.id));
+      const matchExcludeAnswered = !filters.excludeAnswered || !previousAnswer;
+      const matchExcludeCorrect = !filters.excludeCorrect || previousAnswer?.isCorrect !== true;
+      const matchExcludeWrong = !filters.excludeWrong || previousAnswer?.isCorrect !== false;
+      const matchOnlyCorrect = !filters.onlyCorrect || previousAnswer?.isCorrect === true;
+      const matchOnlyWrong = !filters.onlyWrong || previousAnswer?.isCorrect === false;
 
-      return matchSubject && matchDifficulty && matchKeyword && matchAgency && matchOrganization && matchYear && matchLevel && matchTopic && matchRoleMulti && matchCareerMulti && matchModality && matchSaved && matchTeacher && matchDetailed && matchCanceled && matchOutdated && matchExcludeAnswered;
+      return matchScopedQuestion && matchSubject && matchDifficulty && matchKeyword && matchAgency && matchOrganization && matchYear && matchLevel && matchTopic && matchRoleMulti && matchCareerMulti && matchModality && matchSaved && matchTeacher && matchDetailed && matchCanceled && matchOutdated && matchExcludeAnswered && matchExcludeCorrect && matchExcludeWrong && matchOnlyCorrect && matchOnlyWrong;
     });
 
     if (highlightedQuestionId) {
       filtered = filtered.filter(q => String(q.id) === highlightedQuestionId);
     }
 
-    if (!highlightedQuestionId && filtered.length === 0 && questions.length > 0 && !hasVisiblePracticeFilters(filters)) {
+    if (!highlightedQuestionId && scopedQuestionIdSet.size === 0 && filtered.length === 0 && questions.length > 0 && !hasVisiblePracticeFilters(filters)) {
       return questions;
     }
 
     return filtered;
-  }, [filters, questions, currentUser?.savedQuestionIds, userAnswers, highlightedQuestionId]);
+  }, [filters, questions, currentUser?.savedQuestionIds, userAnswers, highlightedQuestionId, scopedQuestionIdSet]);
 
-  const hasActiveFilters = useMemo(() => hasVisiblePracticeFilters(filters), [filters]);
-  const questionQueryParams = useMemo(() => buildPracticeQuestionQueryParams(filters), [filters]);
+  const hasActiveFilters = useMemo(() => hasVisiblePracticeFilters(filters) || scopedQuestionIds.length > 0, [filters, scopedQuestionIds.length]);
+  const questionQueryParams = useMemo(() => ({
+    ...buildPracticeQuestionQueryParams(filters),
+    ...(scopedQuestionIds.length > 0 ? { questionIds: scopedQuestionIds.join(',') } : {}),
+  }), [filters, scopedQuestionIds]);
+  const questionQueryKey = useMemo(() => JSON.stringify(questionQueryParams), [questionQueryParams]);
 
   const resolvedQuestions = useMemo(() => {
     if (highlightedQuestionId) {
@@ -950,12 +1045,16 @@ const Practice: React.FC = () => {
   }, [filteredQuestions, hasActiveFilters, highlightedQuestionId, questions]);
 
   const displayedQuestionTotal = useMemo(() => {
+    if (scopedQuestionIds.length > 0) {
+      return resolvedQuestions.length;
+    }
+
     if (!highlightedQuestionId) {
       return totalQuestions || resolvedQuestions.length;
     }
 
     return resolvedQuestions.length;
-  }, [highlightedQuestionId, resolvedQuestions.length, totalQuestions]);
+  }, [highlightedQuestionId, resolvedQuestions.length, scopedQuestionIds.length, totalQuestions]);
 
   const loadNextPage = useCallback(async () => {
     if (isLoadingMore || questions.length >= totalQuestions) return;
@@ -1020,7 +1119,11 @@ const Practice: React.FC = () => {
       return;
     }
 
-    const shouldLoadAnswersImmediately = filters.excludeAnswered;
+    const shouldLoadAnswersImmediately = filters.excludeAnswered
+      || filters.excludeCorrect
+      || filters.excludeWrong
+      || filters.onlyCorrect
+      || filters.onlyWrong;
     if (shouldLoadAnswersImmediately) {
       void ensureUserProgressLoaded(false, {
         includeAnswers: true,
@@ -1041,23 +1144,33 @@ const Practice: React.FC = () => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [currentUser?.id, ensureUserProgressLoaded, filters.excludeAnswered]);
+  }, [
+    currentUser?.id,
+    ensureUserProgressLoaded,
+    filters.excludeAnswered,
+    filters.excludeCorrect,
+    filters.excludeWrong,
+    filters.onlyCorrect,
+    filters.onlyWrong,
+  ]);
 
   useEffect(() => {
-    if (isQuestionsLoaded || isLoadingMore || hasBootstrappedQuestionsRef.current) {
+    if (isLoadingMore || hasBootstrappedQuestionsRef.current === questionQueryKey) {
       return;
     }
 
-    hasBootstrappedQuestionsRef.current = true;
+    hasBootstrappedQuestionsRef.current = questionQueryKey;
     let active = true;
 
     const bootstrapQuestions = async () => {
       setIsLoadingMore(true);
 
       try {
-        await ensureQuestionsLoaded(false, questionQueryParams);
+        await ensureQuestionsLoaded(true, questionQueryParams);
         if (active) {
           setLastFetchedPage(1);
+          setVisibleCount(PAGE_SIZE);
+          setCurrentQuestionIndex(0);
         }
       } finally {
         if (active) {
@@ -1071,7 +1184,7 @@ const Practice: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [ensureQuestionsLoaded, isLoadingMore, isQuestionsLoaded, questionQueryParams]);
+  }, [ensureQuestionsLoaded, isLoadingMore, questionQueryKey, questionQueryParams]);
 
   useEffect(() => {
     const resolveScrollableParent = (element: HTMLElement | null): HTMLElement | Window => {
@@ -1179,6 +1292,14 @@ const Practice: React.FC = () => {
 
       if (key === 'subject') {
         nextFilters = { ...nextFilters, topic: [] };
+      }
+
+      if (key === 'onlyCorrect' && value === true) {
+        nextFilters = { ...nextFilters, onlyWrong: false };
+      }
+
+      if (key === 'onlyWrong' && value === true) {
+        nextFilters = { ...nextFilters, onlyCorrect: false };
       }
 
       return nextFilters;
@@ -1509,7 +1630,11 @@ const Practice: React.FC = () => {
     hasDetailedComment: 'Análise detalhada',
     excludeCanceled: 'Ocultar Anuladas',
     excludeOutdated: 'Ocultar Desatualizadas',
-    excludeAnswered: 'Ocultar Resolvidas'
+    excludeAnswered: 'Ocultar Resolvidas',
+    excludeCorrect: 'Ocultar Acertei',
+    excludeWrong: 'Ocultar Errei',
+    onlyCorrect: 'Acertei',
+    onlyWrong: 'Errei',
   };
 
   return (
@@ -1614,13 +1739,13 @@ const Practice: React.FC = () => {
           </div>
 
           {isEnemPendingFocus ? (
-            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/80 p-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600">Mapa ENEM</p>
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/80 p-4 transition-colors dark:border-indigo-500/20 dark:bg-slate-900/80">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Mapa ENEM</p>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {ENEM_SUBJECT_AREA_OPTIONS.map((areaName) => (
-                  <div key={areaName} className="rounded-xl border border-indigo-100 bg-white/90 p-3">
-                    <p className="text-xs font-black text-slate-900">{areaName}</p>
-                    <p className="mt-2 text-[10px] font-medium leading-5 text-slate-500">
+                  <div key={areaName} className="rounded-xl border border-indigo-100 bg-white/90 p-3 transition-colors dark:border-slate-700 dark:bg-slate-800/80">
+                    <p className="text-xs font-black text-slate-900 dark:text-slate-100">{areaName}</p>
+                    <p className="mt-2 text-[10px] font-medium leading-5 text-slate-500 dark:text-slate-300">
                       {ENEM_SUBJECT_AREA_DESCRIPTIONS[areaName].join(', ')}
                     </p>
                   </div>
@@ -1656,6 +1781,20 @@ const Practice: React.FC = () => {
                   icon={CheckCircle}
                   colorClass="indigo"
                 />
+                <CheckboxFilter
+                  label="Acertei"
+                  checked={pendingFilters.excludeCorrect}
+                  onChange={(v: boolean) => handleFilterChange('excludeCorrect', v)}
+                  icon={CheckCircle}
+                  colorClass="emerald"
+                />
+                <CheckboxFilter
+                  label="Errei"
+                  checked={pendingFilters.excludeWrong}
+                  onChange={(v: boolean) => handleFilterChange('excludeWrong', v)}
+                  icon={X}
+                  colorClass="red"
+                />
               </div>
             </div>
 
@@ -1669,6 +1808,20 @@ const Practice: React.FC = () => {
                   onChange={(v: boolean) => handleFilterChange('onlySaved', v)}
                   icon={BookmarkCheck}
                   colorClass="emerald"
+                />
+                <CheckboxFilter
+                  label="Acertei"
+                  checked={pendingFilters.onlyCorrect}
+                  onChange={(v: boolean) => handleFilterChange('onlyCorrect', v)}
+                  icon={CheckCircle}
+                  colorClass="emerald"
+                />
+                <CheckboxFilter
+                  label="Errei"
+                  checked={pendingFilters.onlyWrong}
+                  onChange={(v: boolean) => handleFilterChange('onlyWrong', v)}
+                  icon={X}
+                  colorClass="red"
                 />
                 <CheckboxFilter
                   label="Comentário do Professor"

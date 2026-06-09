@@ -14,9 +14,11 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, FileText, Scale, AlertCircle, ChevronLeft, ArrowRight, CheckCircle2, BookOpen } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 const TermsOfUse: React.FC = () => {
   const router = useRouter();
+  const legalContactEmail = useAppConfigStore((state) => state.systemSettings.legalContactEmail || 'juridico@concursomestre.ai');
   const [activeTab, setActiveTab] = useState('aceite');
 
   // Highlighting intersection observer logic for beautiful scroll-spy
@@ -255,8 +257,8 @@ const TermsOfUse: React.FC = () => {
                 <div className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest text-center md:text-left">
                   Precisa de Suporte Jurídico?
                 </div>
-                <a href="mailto:juridico@concursomestre.ai" className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:opacity-90 transition-all flex items-center gap-2">
-                  juridico@concursomestre.ai <ArrowRight size={14} />
+                <a href={`mailto:${legalContactEmail}`} className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest hover:opacity-90 transition-all flex items-center gap-2">
+                  {legalContactEmail} <ArrowRight size={14} />
                 </a>
               </div>
 

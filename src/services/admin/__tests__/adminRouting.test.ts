@@ -51,4 +51,15 @@ describe('admin routing', () => {
       section: 'landing-pages',
     });
   });
+
+  it('routes gamification and notification settings sections', () => {
+    expect(resolveAdminRoute('settings', 'gamification')).toEqual({
+      tab: 'settings',
+      section: 'gamification',
+    });
+    expect(resolveAdminRoute('notificacoes')).toEqual({
+      tab: 'settings',
+      section: 'notifications',
+    });
+  });
 });

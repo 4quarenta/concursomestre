@@ -24,7 +24,7 @@ export type AdminMarketplaceSection = 'vendors' | 'materials' | 'blocked';
 export type AdminFinanceSection = 'transactions' | 'plans' | 'coupons' | 'automation' | 'analytics';
 export type AdminMarketingSection = 'landing-pages' | 'campaigns' | 'visual-themes' | 'social-links';
 export type AdminSupportSection = 'feedback' | 'threads' | 'reports' | 'rankings' | 'refunds' | 'comments';
-export type AdminSettingsSection = 'general' | 'modules' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
+export type AdminSettingsSection = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
 
 export type AdminNavigationTab = {
   key: AdminPageTab;
@@ -67,7 +67,7 @@ export const MARKETPLACE_SECTION_KEYS = ['vendors', 'materials', 'blocked'] as c
 export const FINANCE_SECTION_KEYS = ['transactions', 'plans', 'coupons', 'automation', 'analytics'] as const;
 export const MARKETING_SECTION_KEYS = ['landing-pages', 'campaigns', 'visual-themes', 'social-links'] as const;
 export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports', 'rankings', 'refunds', 'comments'] as const;
-export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'security', 'integrations', 'email', 'email-templates', 'ads', 'seo', 'performance', 'logs'] as const;
+export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'gamification', 'notifications', 'security', 'integrations', 'email', 'email-templates', 'ads', 'seo', 'performance', 'logs'] as const;
 
 /**
  * Valida a secao do grupo Painel.
@@ -188,6 +188,10 @@ export const LEGACY_TAB_MAP: Record<string, { tab: AdminPageTab; section?: strin
   settings: { tab: 'settings', section: 'general' },
   general: { tab: 'settings', section: 'general' },
   modules: { tab: 'settings', section: 'modules' },
+  gamification: { tab: 'settings', section: 'gamification' },
+  gamificacao: { tab: 'settings', section: 'gamification' },
+  notifications: { tab: 'settings', section: 'notifications' },
+  notificacoes: { tab: 'settings', section: 'notifications' },
   security: { tab: 'settings', section: 'security' },
   integrations: { tab: 'settings', section: 'integrations' },
   email: { tab: 'settings', section: 'email' },
@@ -248,6 +252,8 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
   settings: [
     { key: 'general', label: 'Geral' },
     { key: 'modules', label: 'Modulos' },
+    { key: 'gamification', label: 'Gamificacao' },
+    { key: 'notifications', label: 'Notificacoes' },
     { key: 'security', label: 'Seguranca' },
     { key: 'integrations', label: 'Integracoes' },
     { key: 'email', label: 'Email' },

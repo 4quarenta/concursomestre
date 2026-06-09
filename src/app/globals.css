@@ -107,6 +107,52 @@
     overflow-y: hidden;
   }
 
+  .question-rich-html img {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    max-height: min(28rem, 70vh);
+    margin: 0.75rem auto;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 0.5rem;
+    background: white;
+    object-fit: contain;
+  }
+
+  .dark .question-rich-html img {
+    border-color: rgb(51 65 85);
+    background: rgb(15 23 42);
+  }
+
+  .question-rich-html figure {
+    margin: 0.9rem auto;
+    max-width: 100%;
+  }
+
+  .question-rich-html figcaption {
+    margin-top: 0.35rem;
+    text-align: center;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: rgb(100 116 139);
+  }
+
+  .dark .question-rich-html figcaption {
+    color: rgb(148 163 184);
+  }
+
+  .question-rich-html .cm-import-context-figure--missing {
+    border: 1px dashed rgb(245 158 11);
+    border-radius: 0.5rem;
+    background: rgb(255 251 235);
+    padding: 0.75rem;
+  }
+
+  .dark .question-rich-html .cm-import-context-figure--missing {
+    border-color: rgb(180 83 9);
+    background: rgba(120, 53, 15, 0.18);
+  }
+
   .question-comment-math {
     overflow-wrap: anywhere;
   }
@@ -127,6 +173,177 @@
 
   .question-comment-math li {
     margin: 0.35rem 0;
+  }
+
+  .question-comment-math table {
+    width: 100%;
+    margin: 1rem 0;
+    border-collapse: collapse;
+    border: 1px solid rgb(203 213 225);
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  .question-comment-math .cm-rich-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .question-comment-math th,
+  .question-comment-math td {
+    border: 1px solid rgb(203 213 225);
+    padding: 0.6rem 0.75rem;
+    vertical-align: top;
+    text-align: left;
+  }
+
+  .question-comment-math th {
+    background: rgb(248 250 252);
+    color: rgb(15 23 42);
+    font-weight: 800;
+  }
+
+  .question-comment-math .cm-callout {
+    margin: 1rem 0;
+    border: 1px solid rgb(203 213 225);
+    border-left-width: 4px;
+    border-radius: 0.5rem;
+    padding: 0.85rem 1rem;
+    background: rgb(248 250 252);
+    color: rgb(30 41 59);
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  }
+
+  .question-comment-math .cm-callout-title {
+    margin-bottom: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .question-comment-math .cm-callout-body {
+    font-size: 0.95em;
+    line-height: 1.65;
+  }
+
+  .question-comment-math .cm-callout-success {
+    border-color: rgb(16 185 129);
+    background: rgb(236 253 245);
+  }
+
+  .question-comment-math .cm-callout-success .cm-callout-title {
+    color: rgb(4 120 87);
+  }
+
+  .question-comment-math .cm-callout-warning {
+    border-color: rgb(245 158 11);
+    background: rgb(255 251 235);
+  }
+
+  .question-comment-math .cm-callout-warning .cm-callout-title {
+    color: rgb(180 83 9);
+  }
+
+  .question-comment-math .cm-callout-danger {
+    border-color: rgb(239 68 68);
+    background: rgb(254 242 242);
+  }
+
+  .question-comment-math .cm-callout-danger .cm-callout-title {
+    color: rgb(185 28 28);
+  }
+
+  .question-comment-math .cm-callout-tip {
+    border-color: rgb(14 165 233);
+    background: rgb(240 249 255);
+  }
+
+  .question-comment-math .cm-callout-tip .cm-callout-title {
+    color: rgb(3 105 161);
+  }
+
+  .question-comment-math .cm-callout-info {
+    border-color: rgb(59 130 246);
+    background: rgb(239 246 255);
+  }
+
+  .question-comment-math .cm-callout-info .cm-callout-title {
+    color: rgb(29 78 216);
+  }
+
+  .question-comment-math .cm-callout-purple {
+    border-color: rgb(139 92 246);
+    background: rgb(245 243 255);
+  }
+
+  .question-comment-math .cm-callout-purple .cm-callout-title {
+    color: rgb(109 40 217);
+  }
+
+  .dark .question-comment-math table,
+  .dark .question-comment-math th,
+  .dark .question-comment-math td {
+    border-color: rgb(51 65 85);
+  }
+
+  .dark .question-comment-math th {
+    background: rgb(15 23 42);
+    color: rgb(226 232 240);
+  }
+
+  .dark .question-comment-math .cm-callout {
+    color: rgb(226 232 240);
+    box-shadow: none;
+  }
+
+  .dark .question-comment-math .cm-callout-success {
+    background: rgb(6 78 59 / 0.22);
+  }
+
+  .dark .question-comment-math .cm-callout-warning {
+    background: rgb(120 53 15 / 0.24);
+  }
+
+  .dark .question-comment-math .cm-callout-danger {
+    background: rgb(127 29 29 / 0.24);
+  }
+
+  .dark .question-comment-math .cm-callout-tip {
+    background: rgb(12 74 110 / 0.24);
+  }
+
+  .dark .question-comment-math .cm-callout-info {
+    background: rgb(30 58 138 / 0.24);
+  }
+
+  .dark .question-comment-math .cm-callout-purple {
+    background: rgb(76 29 149 / 0.24);
+  }
+
+  .dark .legal-reader-content mark,
+  .dark .legal-reader-content [data-reader-highlight='true'],
+  .dark .legal-reader-content [style*='background-color'],
+  .dark .legal-reader-content [style*='backgroundColor'] {
+    color: rgb(15 23 42) !important;
+    text-shadow: none !important;
+  }
+
+  .legal-reader-content strong,
+  .legal-reader-content b,
+  .legal-reader-content [data-reader-style='bold'],
+  .legal-reader-content span[style*='font-weight'] {
+    color: rgb(2 6 23);
+    font-weight: 950 !important;
+    -webkit-text-stroke: 0.012em currentColor;
+    text-shadow: 0 0 0 currentColor;
+  }
+
+  .dark .legal-reader-content strong,
+  .dark .legal-reader-content b,
+  .dark .legal-reader-content [data-reader-style='bold'],
+  .dark .legal-reader-content span[style*='font-weight'] {
+    color: rgb(248 250 252);
   }
 
   .question-comment-math h4 {

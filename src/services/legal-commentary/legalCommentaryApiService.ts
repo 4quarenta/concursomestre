@@ -23,6 +23,7 @@ import type {
   LegalArea,
   LegalArticleEditorialSnapshot,
   LegalArticleSyllabus,
+  LegalTargetedText,
   LegalRichContentBlock,
   LegalRichContentBlockType,
   LegalEditorialBatchRun,
@@ -107,9 +108,47 @@ export interface LegalEditorialGenerationInput {
   existingEditorial?: Partial<LegalArticleEditorialSnapshot>;
   previewOnly?: boolean;
   batchRunId?: string;
+  target?: LegalRichContentBlock['target'] | null;
 }
 
 const unwrap = <T>(response: unknown, fallback: T): T => readApiData<T>(response, fallback);
+
+type LegalMutationProgress = {
+  xpGain?: number;
+  newXp?: number;
+  newLevel?: number;
+};
+
+const toOptionalNumber = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const readLegalMutationProgress = (...sources: unknown[]): LegalMutationProgress => {
+  const queue = sources
+    .filter((source): source is Record<string, unknown> => Boolean(source && typeof source === 'object'))
+    .map((source) => source as Record<string, unknown>);
+
+  while (queue.length > 0) {
+    const record = queue.shift()!;
+    const xpGain = toOptionalNumber(record.xpGain ?? record.xp_gain);
+    const newXp = toOptionalNumber(record.newXp ?? record.new_xp);
+    const newLevel = toOptionalNumber(record.newLevel ?? record.new_level);
+
+    if (xpGain !== undefined || newXp !== undefined || newLevel !== undefined) {
+      return { xpGain, newXp, newLevel };
+    }
+
+    ['data', 'payload', 'progress'].forEach((key) => {
+      const nested = record[key];
+      if (nested && typeof nested === 'object') {
+        queue.push(nested as Record<string, unknown>);
+      }
+    });
+  }
+
+  return {};
+};
 const lawDetailCache = new Map<string, LawDetail | null>();
 const lawDetailPromiseCache = new Map<string, Promise<LawDetail | null>>();
 const lawOutlineCache = new Map<string, LawDetail | null>();
@@ -225,6 +264,15 @@ const normalizeAiGenerationErrorMessage = (message: string): string => {
   const normalized = message.toLowerCase();
 
   if (
+    normalized.includes('openai sem cota')
+    || normalized.includes('insufficient_quota')
+    || normalized.includes('exceeded your current quota')
+    || normalized.includes('check your plan and billing')
+  ) {
+    return 'A chave OpenAI/ChatGPT configurada esta sem cota ou faturamento ativo. Ative billing/quota na OpenAI, use outra chave ou altere o provedor para Automatico/Gemini nas configuracoes.';
+  }
+
+  if (
     normalized.includes('quota exceeded')
     || normalized.includes('resource_exhausted')
     || normalized.includes('current quota')
@@ -237,12 +285,32 @@ const normalizeAiGenerationErrorMessage = (message: string): string => {
     return 'A Gemini API Key ainda nao está configurada no backend. Salve a chave nas configuracoes do sistema e tente novamente.';
   }
 
+  if (normalized.includes('openai api key nao esta configurada')) {
+    return 'A OpenAI API Key ainda nao esta configurada no backend. Salve a chave nas configuracoes do sistema e tente novamente.';
+  }
+
+  if (normalized.includes('openai indisponivel por falha de rede')) {
+    return 'O backend nao conseguiu se conectar a OpenAI API. Verifique conectividade externa, DNS e regras de firewall do servidor.';
+  }
+
   if (
     normalized.includes('erro de conexao com o gemini api')
+    || normalized.includes('gemini indisponivel por falha de rede')
+    || normalized.includes('openai indisponivel por falha de rede')
+    || normalized.includes('could not resolve host')
+    || normalized.includes("couldn't resolve host")
     || normalized.includes('failed to connect')
     || normalized.includes('connection refused')
   ) {
     return 'O backend não conseguiu se conectar à Gemini API. Verifique conectividade externa e regras de firewall do servidor.';
+  }
+
+  if (
+    normalized.includes('timeout of')
+    || normalized.includes('econnaborted')
+    || normalized.includes('timeout exceeded')
+  ) {
+    return 'A geracao demorou mais que o esperado. A analise de capitulo e mais pesada; tente novamente em instantes.';
   }
 
   if (
@@ -268,6 +336,7 @@ const getUserScopedCacheKey = () => {
 
 const buildLawDetailCacheKey = (slug: string) => `${getUserScopedCacheKey()}:${slug}`;
 const OUTLINE_REQUEST_TIMEOUT_MS = 12_000;
+const LEGAL_AI_GENERATION_TIMEOUT_MS = 600_000;
 
 type PublicReadRequestConfig = AxiosRequestConfig & { _skipRefreshHandling: true };
 
@@ -293,8 +362,8 @@ const normalizeEditorialSnapshot = (payload: unknown): LegalArticleEditorialSnap
     articleNumber: record.articleNumber ? String(record.articleNumber) : undefined,
     teacherComments: ensureArray<TeacherComment>(record.teacherComments),
     examTips: ensureArray<ArticleExamTip>(record.examTips),
-    doctrine: ensureArray<string>(record.doctrine).map((item) => String(item || '')).filter(Boolean),
-    jurisprudenceNotes: ensureArray<string>(record.jurisprudenceNotes).map((item) => String(item || '')).filter(Boolean),
+    doctrine: ensureArray<unknown>(record.doctrine).map(normalizeTargetedText).filter(hasTargetedTextBody),
+    jurisprudenceNotes: ensureArray<unknown>(record.jurisprudenceNotes).map(normalizeTargetedText).filter(hasTargetedTextBody),
     jurisprudence: ensureArray<ArticleJurisprudence>(record.jurisprudence),
     sumulas: ensureArray<LegalArticleSyllabus>(record.sumulas),
   };
@@ -351,6 +420,37 @@ const normalizeRichBlocks = (payload: unknown): LegalRichContentBlock[] => ensur
     };
   });
 
+const normalizeTargetedText = (payload: unknown): string | LegalTargetedText => {
+  if (!payload || typeof payload !== 'object') {
+    return String(payload || '').trim();
+  }
+
+  const record = asRecord(payload);
+  const target = asRecord(record.target);
+  const body = String(record.body || record.text || record.content || '').trim();
+
+  return {
+    id: record.id ? String(record.id) : undefined,
+    title: record.title ? String(record.title) : undefined,
+    body,
+    text: record.text ? String(record.text) : undefined,
+    author: record.author ? String(record.author) : undefined,
+    target: record.target && typeof record.target === 'object'
+      ? {
+        kind: normalizeRichTargetKind(target.kind),
+        label: target.label ? String(target.label) : undefined,
+        blockId: target.blockId ? String(target.blockId) : undefined,
+      }
+      : undefined,
+  };
+};
+
+const hasTargetedTextBody = (payload: string | LegalTargetedText): boolean => (
+  typeof payload === 'string'
+    ? payload.trim().length > 0
+    : String(payload.body || payload.text || '').trim().length > 0
+);
+
 const normalizeSectionEditorial = (payload: unknown): LawSectionEditorial | undefined => {
   if (!payload || typeof payload !== 'object') {
     return undefined;
@@ -362,7 +462,6 @@ const normalizeSectionEditorial = (payload: unknown): LawSectionEditorial | unde
     id: record.id ? String(record.id) : undefined,
     lawId: record.lawId ? String(record.lawId) : undefined,
     sectionId: record.sectionId ? String(record.sectionId) : null,
-    sectionKey: String(record.sectionKey || ''),
     sectionTitle: String(record.sectionTitle || ''),
     rangeLabel: String(record.rangeLabel || ''),
     articleCount: Number(record.articleCount || 0),
@@ -613,7 +712,7 @@ export const legalCommentaryApiService = {
               const articleMatchedSubjects = new Set<string>(summary.matchedSubjectNames);
               const articleMatchedTopics = new Set<string>(summary.matchedTopicNames);
 
-              const articleAssuntoId = String(article.assuntoFilterId || article.topicFilterId || '');
+              const articleAssuntoId = String(article.assuntoFilterId || '');
               if (articleAssuntoId && topicIds.has(articleAssuntoId)) {
                 score += 18;
                 const topicName = topics.find((item) => item.id === articleAssuntoId)?.name;
@@ -688,28 +787,49 @@ export const legalCommentaryApiService = {
     return results;
   },
 
-  async toggleFavorite(type: LegalFavoriteType, targetId: string): Promise<{ isFavorite: boolean }> {
-    const response = await apiClient.post(ENDPOINTS.legalCommentary.favorite, { type, targetId });
+  async toggleFavorite(type: LegalFavoriteType, targetId: string): Promise<{ isFavorite: boolean } & LegalMutationProgress> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.favorite, {
+      type,
+      targetId,
+      gamification_event: 'legal_favorite_added',
+      notification_event: 'legal_favorite',
+    });
     const envelope = assertApiSuccess<{ isFavorite: boolean }>(response, 'Nao foi possivel atualizar o favorito.');
     const payload = unwrap(envelope.raw, { isFavorite: false });
     invalidateLegalUserStateCaches();
-    return payload;
+    return {
+      ...payload,
+      ...readLegalMutationProgress(payload, envelope.raw),
+    };
   },
 
-  async recordLawView(lawId: string): Promise<void> {
-    await apiClient.post(ENDPOINTS.legalCommentary.progress, { lawId });
+  async recordLawView(lawId: string): Promise<LegalMutationProgress> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.progress, {
+      lawId,
+      gamification_event: 'legal_article_read',
+      notification_event: 'legal_progress',
+    });
     invalidateLegalUserStateCaches();
+    return readLegalMutationProgress(response);
   },
 
-  async recordArticleView(lawId: string, articleId: string): Promise<void> {
-    await apiClient.post(ENDPOINTS.legalCommentary.progress, { lawId, articleId });
+  async recordArticleView(lawId: string, articleId: string): Promise<LegalMutationProgress> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.progress, {
+      lawId,
+      articleId,
+      gamification_event: 'legal_article_read',
+      notification_event: 'legal_progress',
+    });
     invalidateLegalUserStateCaches();
+    return readLegalMutationProgress(response);
   },
 
   async addUserComment(input: { articleId: string; body: string }): Promise<LegalUserCommentSubmissionResult> {
     const response = await apiClient.post(ENDPOINTS.legalCommentary.comment, {
       action: 'create',
       ...input,
+      gamification_event: 'legal_comment_submitted',
+      notification_event: 'legal_comment',
     });
     const envelope = assertApiSuccess<LegalUserCommentSubmissionResult>(response, 'Nao foi possivel criar o comentario.');
     const payload = unwrap<LegalUserCommentSubmissionResult>(envelope.raw, {
@@ -718,7 +838,10 @@ export const legalCommentaryApiService = {
       requiresModeration: true,
     });
     invalidateLegalUserStateCaches();
-    return payload;
+    return {
+      ...payload,
+      ...readLegalMutationProgress(payload, envelope.raw),
+    };
   },
 
   async updateUserComment(commentId: string, body: string): Promise<LegalUserComment> {
@@ -742,12 +865,36 @@ export const legalCommentaryApiService = {
     invalidateLegalUserStateCaches();
   },
 
-  async reportUserComment(commentId: string): Promise<void> {
+  async reportUserComment(commentId: string): Promise<LegalMutationProgress> {
     const response = await apiClient.post(ENDPOINTS.legalCommentary.comment, {
       action: 'report',
       commentId,
+      gamification_event: 'report_submitted',
+      notification_event: 'report_received',
     });
     assertApiSuccess(response, 'Nao foi possivel denunciar o comentario.');
+    return readLegalMutationProgress(response);
+  },
+
+  async setContentReaction(
+    targetKey: string,
+    value: 'like' | 'dislike' | null,
+  ): Promise<{ targetKey: string; likes: number; dislikes: number; userReaction: 'like' | 'dislike' | null }> {
+    const response = await apiClient.post(ENDPOINTS.legalCommentary.comment, {
+      action: 'react',
+      targetKey,
+      value,
+    });
+    const envelope = assertApiSuccess<{ targetKey: string; likes: number; dislikes: number; userReaction: 'like' | 'dislike' | null }>(
+      response,
+      'Nao foi possivel registrar a reacao.',
+    );
+    return unwrap(envelope.raw, {
+      targetKey,
+      likes: 0,
+      dislikes: 0,
+      userReaction: value,
+    });
   },
 
   async getAdminList(query = ''): Promise<LegalAdminListPayload> {
@@ -856,6 +1003,8 @@ export const legalCommentaryApiService = {
           jurisprudence: input.existingEditorial.jurisprudence || [],
           sumulas: input.existingEditorial.sumulas || [],
         } : undefined,
+      }, {
+        timeout: LEGAL_AI_GENERATION_TIMEOUT_MS,
       });
       const envelope = assertApiSuccess<LegalEditorialGenerationResult>(response, 'Nao foi possivel gerar o conteudo com IA.');
       const payload = unwrap<LegalEditorialGenerationResult>(envelope.raw, {} as LegalEditorialGenerationResult);

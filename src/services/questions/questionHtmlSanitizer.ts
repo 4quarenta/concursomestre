@@ -35,7 +35,13 @@ const SAFE_ATTRIBUTES = new Set([
   'style', 'target', 'title', 'width',
 ]);
 const UNSAFE_STYLE_PATTERN = /(expression\s*\(|url\s*\(|javascript\s*:|vbscript\s*:|behavior\s*:|-moz-binding\s*:)/i;
+const SAFE_DATA_IMAGE_URI_PATTERN = /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i;
 const SAFE_URI_PATTERN = /^(https?:|mailto:|tel:|\/|#|uploads\/|assets\/|images\/|_next\/)/i;
+
+const isSafeUriValue = (attributeName: string, value: string) => (
+  SAFE_URI_PATTERN.test(value)
+  || (attributeName === 'src' && SAFE_DATA_IMAGE_URI_PATTERN.test(value))
+);
 
 const stripDecorativeChars = (value: string): string => (
   value
@@ -61,7 +67,17 @@ const stripUnsafeHtmlByRegex = (inputHtml: string): string => (
     .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
     .replace(/<\/?(?:iframe|object|embed|link|meta|form|input|button|textarea|select|option|video|audio|canvas)\b[^>]*>/gi, '')
     .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/\s+(href|src|xlink:href)\s*=\s*(["'])\s*(?:javascript|vbscript|data):[^"']*\2/gi, ' $1="#"')
+    .replace(/\s+(href|src|xlink:href)\s*=\s*(["'])([^"']*)\2/gi, (match, attributeName, quote, rawValue) => {
+      const normalizedAttribute = String(attributeName || '').toLowerCase();
+      const uri = String(rawValue || '').trim();
+      if (/^(?:javascript|vbscript):/i.test(uri)) {
+        return ` ${attributeName}="#"`;
+      }
+      if (/^data:/i.test(uri) && !isSafeUriValue(normalizedAttribute, uri)) {
+        return ` ${attributeName}="#"`;
+      }
+      return match;
+    })
     .replace(/\s+srcset\s*=\s*(["'])[^"']*(?:javascript|vbscript|data):[^"']*\1/gi, '')
     .replace(/\s+style\s*=\s*(["'])[^"']*(?:expression\s*\(|javascript\s*:|vbscript\s*:|behavior\s*:|-moz-binding\s*:)[^"']*\1/gi, '')
 );
@@ -91,7 +107,7 @@ const sanitizeUriAttribute = (element: HTMLElement, attributeName: string): void
     return;
   }
 
-  if (!SAFE_URI_PATTERN.test(value)) {
+  if (!isSafeUriValue(attributeName.toLowerCase(), value)) {
     element.removeAttribute(attributeName);
   }
 };

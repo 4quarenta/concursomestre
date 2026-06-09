@@ -31,6 +31,7 @@ vi.mock('@services/api', () => ({
     feedback: {
       list: 'feedback/list.php',
       create: 'feedback/create.php',
+      vote: 'feedback/vote.php',
     },
   },
   assertApiSuccess: (response: MockApiResponse) => {
@@ -103,8 +104,44 @@ describe('supportService', () => {
       type: 'support',
       reason: 'Ajuda',
       details: 'Preciso de ajuda',
+      gamification_event: 'support_feedback_submitted',
+      notification_event: 'support_opened',
     });
     expect(result).toEqual({ id: 9, type: 'support', parent_id: null });
+  });
+
+  it('lists and votes public suggestions through the official endpoints', async () => {
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        suggestions: [
+          { id: 31, type: 'suggestion', reason: 'Filtro novo', likes: 4, dislikes: 1, score: 3 },
+        ],
+      },
+    });
+
+    const suggestions = await supportService.listPublicSuggestions();
+
+    expect(mockGet).toHaveBeenCalledWith('feedback/list.php?public_suggestions=1');
+    expect(suggestions[0].id).toBe(31);
+
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      data: {
+        suggestion: { id: 31, likes: 5, dislikes: 1, score: 4, user_vote: 'like' },
+      },
+    });
+
+    const voted = await supportService.votePublicSuggestion(31, 'like');
+
+    expect(mockPost).toHaveBeenCalledWith('feedback/vote.php', {
+      feedback_id: 31,
+      value: 'like',
+      gamification_event: 'public_suggestion_vote',
+      notification_event: 'suggestion_vote',
+    });
+    expect(voted?.user_vote).toBe('like');
+    expect(voted?.likes).toBe(5);
   });
 
   it('replies to an existing support thread through the official endpoint', async () => {
@@ -120,6 +157,8 @@ describe('supportService', () => {
       type: 'bug',
       reason: 'Resposta do usuario',
       details: 'Tenho mais contexto para esse caso.',
+      gamification_event: 'support_thread_reply',
+      notification_event: 'support_reply',
     });
     expect(result).toEqual({ id: 22, type: 'bug', parent_id: 12 });
   });

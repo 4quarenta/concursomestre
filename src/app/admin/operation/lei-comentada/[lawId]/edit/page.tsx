@@ -20,7 +20,6 @@ import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import {
   AlertCircle,
   BookOpen,
-  CalendarDays,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -41,8 +40,11 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
+import { useConfirm } from '@providers/ModalProvider';
 import { useToast } from '@providers/ToastProvider';
 import { canAccessAdminPanel } from '@services/auth';
+import MathRichText from '@/components/shared/math/MathRichText';
+import RichTextEditor from '@/components/shared/ui/RichTextEditor';
 import { filtersService } from '@services/filters';
 import { legalCommentaryApiService } from '@services/legal-commentary';
 import type {
@@ -55,10 +57,12 @@ import type {
   LawUpdate,
   LegalArticleBlock,
   LegalArticleEditorialSnapshot,
+  LegalArticleSyllabus,
+  LegalTargetedText,
   LegalArea,
-  LegalEditorialBatchRun,
   LegalEditorialGenerationResult,
   LegalEditorialGenerationScope,
+  LegalRichContentBlock,
   LegalSyncLog,
   TeacherComment,
 } from '@types';
@@ -69,7 +73,6 @@ import {
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
   ADMIN_SURFACE_CLASS,
-  ADMIN_SURFACE_HEADER_CLASS,
   ADMIN_FIELD_CLASS,
   ADMIN_TEXTAREA_CLASS,
 } from '../../../../components/shared/adminPanelStyles';
@@ -79,16 +82,12 @@ import { buildAdminLawEditPath } from '../../../../config/adminPageNavigationCon
 type AdminLawDraft = Partial<LawDetail> & {
   areaId?: string;
   legalAreaId?: string;
-  sumulas?: Array<{
-    id?: string;
-    articleId?: string;
-    court: string;
-    number: string;
-    text: string;
-    sourceUrl?: string;
-    priority?: string;
-  }>;
+  sumulas?: LegalArticleSyllabus[];
+  publishedAt?: string;
+  published_at?: string;
 };
+
+type GeneratedArticleContentKind = 'teacher' | 'tip' | 'jurisprudence' | 'sumula' | 'doctrine' | 'jurisprudenceNote';
 
 interface TaxonomyOption {
   id: string | number;
@@ -105,13 +104,6 @@ type LawDetailAdminAliases = Partial<LawDetail> & {
   preamble?: unknown;
   area?: (Partial<LegalArea> & { legalAreaId?: unknown }) | null;
 };
-type EditableCollectionKey = 'teacherComments' | 'examTips' | 'jurisprudence' | 'sumulas';
-type EditableCollectionItem =
-  | TeacherComment
-  | ArticleExamTip
-  | ArticleJurisprudence
-  | NonNullable<AdminLawDraft['sumulas']>[number];
-
 type ArticleEditorialCounts = {
   teacher: number;
   tips: number;
@@ -122,7 +114,7 @@ type ArticleEditorialCounts = {
 };
 
 type AdminLawSectionOverview = LawSection & {
-  sectionKeyResolved: string;
+  resolvedSectionId: string;
   articleIds: string[];
   articles: number;
   primaryArticleId: string;
@@ -133,7 +125,31 @@ type AdminLawSectionOverview = LawSection & {
 };
 
 type LegalAiGenerationKind = 'teacher-comment' | 'exam-tip' | 'jurisprudence' | 'sumula' | 'doctrine' | 'bundle';
-type LegalEditorialSection = 'teacher' | 'tips' | 'jurisprudence' | 'sumulas' | 'doctrine' | 'section-analysis' | 'ai';
+
+type LegalArticleAiKind = Exclude<LegalAiGenerationKind, 'bundle'>;
+
+type LegalAiBulkTask =
+  | {
+    id: string;
+    type: 'section-analysis';
+    label: string;
+    section: AdminLawSectionOverview;
+  }
+  | {
+    id: string;
+    type: 'article-field';
+    label: string;
+    article: LawArticle;
+    kind: LegalArticleAiKind;
+  };
+
+type LegalAiBulkProgress = {
+  total: number;
+  completed: number;
+  failed: number;
+  currentLabel: string;
+  running: boolean;
+};
 
 const LEGAL_BLOCK_KINDS: Array<{ value: LegalArticleBlock['kind']; label: string }> = [
   { value: 'caput', label: 'Caput' },
@@ -143,6 +159,11 @@ const LEGAL_BLOCK_KINDS: Array<{ value: LegalArticleBlock['kind']; label: string
   { value: 'item', label: 'Item' },
   { value: 'note', label: 'Nota oficial' },
 ];
+
+const LEGAL_BLOCK_KIND_LABEL = LEGAL_BLOCK_KINDS.reduce<Record<string, string>>((labels, kind) => ({
+  ...labels,
+  [kind.value]: kind.label,
+}), {});
 
 const createTempId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -162,6 +183,82 @@ const getErrorMessage = (error: unknown, fallback: string) => (
     : fallback
 );
 
+const escapeLegalAnalysisHtml = (value: unknown) => String(value || '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const hasLegalRichBlockContent = (block?: LegalRichContentBlock | null) => Boolean(
+  String(block?.content || '').trim()
+  || (Array.isArray(block?.items) && block.items.some((item) => String(item || '').trim()))
+  || (Array.isArray(block?.rows) && block.rows.some((row) => Array.isArray(row) && row.some((cell) => String(cell || '').trim()))),
+);
+
+const legalRichBlockToSingleAnalysisHtml = (block: LegalRichContentBlock) => {
+  const title = String(block.title || '').trim();
+  const content = String(block.content || '').trim();
+  const parts: string[] = [];
+
+  if (title) {
+    parts.push(`<h3>${escapeLegalAnalysisHtml(title)}</h3>`);
+  }
+
+  if (block.type === 'table' && Array.isArray(block.rows) && block.rows.length > 0) {
+    const headers = (block.headers || []).map((header) => `<th>${escapeLegalAnalysisHtml(header)}</th>`).join('');
+    const rows = block.rows
+      .filter((row) => Array.isArray(row) && row.some((cell) => String(cell || '').trim()))
+      .map((row) => `<tr>${row.map((cell) => `<td>${escapeLegalAnalysisHtml(cell)}</td>`).join('')}</tr>`)
+      .join('');
+    parts.push(`<table>${headers ? `<thead><tr>${headers}</tr></thead>` : ''}<tbody>${rows}</tbody></table>`);
+  } else if (content) {
+    parts.push(content);
+  }
+
+  const items = (block.items || []).map((item) => String(item || '').trim()).filter(Boolean);
+  if (items.length > 0) {
+    parts.push(`<ul>${items.map((item) => `<li>${item}</li>`).join('')}</ul>`);
+  }
+
+  return parts.join('');
+};
+
+const buildSingleSectionAnalysisHtml = (editorial?: LawSectionEditorial | null) => {
+  if (!editorial) {
+    return '';
+  }
+
+  const blockHtml = (editorial.blocks || [])
+    .filter(hasLegalRichBlockContent)
+    .map(legalRichBlockToSingleAnalysisHtml)
+    .filter(Boolean)
+    .join('');
+
+  if (blockHtml.trim()) {
+    return blockHtml;
+  }
+
+  return String(editorial.summary || '').trim();
+};
+
+const buildSingleSectionAnalysisBlocks = (content: string): LegalRichContentBlock[] => {
+  const normalizedContent = String(content || '').trim();
+  if (!normalizedContent) {
+    return [];
+  }
+
+  return [{
+    type: 'summary',
+    title: 'Analise detalhada da secao',
+    content: normalizedContent,
+    items: [],
+    headers: [],
+    rows: [],
+    target: { kind: 'section' },
+  }];
+};
+
 const getLegalAreaId = (area: unknown): string => {
   if (!area || typeof area !== 'object' || !('legalAreaId' in area)) {
     return '';
@@ -169,13 +266,6 @@ const getLegalAreaId = (area: unknown): string => {
 
   const { legalAreaId } = area as { legalAreaId?: unknown };
   return String(legalAreaId || '');
-};
-
-const normalizeLawStatus = (value: string): NonNullable<LawDetail['status']> => {
-  const allowedStatuses: NonNullable<LawDetail['status']>[] = ['active', 'revoked', 'partially_revoked', 'monitoring'];
-  return allowedStatuses.includes(value as NonNullable<LawDetail['status']>)
-    ? value as NonNullable<LawDetail['status']>
-    : 'active';
 };
 
 const normalizeTaxonomyText = (value: unknown) => String(value || '')
@@ -370,6 +460,179 @@ const normalizeArticleForSave = (article: LawArticle): LawArticle => {
   };
 };
 
+const getTeacherCommentTarget = (comment: Partial<TeacherComment>): LegalRichContentBlock['target'] | undefined => (
+  comment.richBlocks?.find((block) => block.target)?.target
+  || comment.blocks?.find((block) => block.target)?.target
+);
+
+const getEditorialTargetKey = (target?: LegalRichContentBlock['target'] | null) => {
+  if (!target) return '';
+  const blockId = String(target.blockId || '').trim();
+  if (blockId) return `block:${blockId}`;
+
+  const kind = String(target.kind || '').trim().toLowerCase();
+  const label = normalizeTaxonomyText(target.label || '');
+  return kind || label ? `${kind}:${label}` : '';
+};
+
+const getArticleExamTipTarget = (tip: Partial<ArticleExamTip>): LegalRichContentBlock['target'] | undefined => (
+  tip.target
+);
+
+const mergeTeacherCommentsByTarget = (
+  existing: TeacherComment[],
+  generated: TeacherComment[],
+): TeacherComment[] => {
+  if (generated.length === 0) return existing;
+
+  const next = [...existing];
+  generated.forEach((comment) => {
+    const targetKey = getEditorialTargetKey(getTeacherCommentTarget(comment));
+    const generatedId = String(comment.id || '').trim();
+    const replaceIndex = next.findIndex((item) => {
+      if (generatedId && item.id === generatedId) return true;
+      const itemTargetKey = getEditorialTargetKey(getTeacherCommentTarget(item));
+      if (targetKey) return itemTargetKey === targetKey;
+      return !itemTargetKey;
+    });
+
+    if (replaceIndex >= 0) {
+      next[replaceIndex] = comment;
+    } else {
+      next.push(comment);
+    }
+  });
+
+  return next;
+};
+
+const mergeExamTipsByTarget = (
+  existing: ArticleExamTip[],
+  generated: ArticleExamTip[],
+): ArticleExamTip[] => {
+  if (generated.length === 0) return existing;
+
+  const next = [...existing];
+  generated.forEach((tip) => {
+    const targetKey = getEditorialTargetKey(getArticleExamTipTarget(tip));
+    const generatedId = String(tip.id || '').trim();
+    const bodySignature = normalizeTaxonomyText(`${tip.title || ''} ${tip.body || ''}`);
+    const replaceIndex = next.findIndex((item) => {
+      if (generatedId && item.id === generatedId) return true;
+      const itemTargetKey = getEditorialTargetKey(getArticleExamTipTarget(item));
+      if (targetKey) return itemTargetKey === targetKey;
+      return !itemTargetKey && bodySignature !== '' && normalizeTaxonomyText(`${item.title || ''} ${item.body || ''}`) === bodySignature;
+    });
+
+    if (replaceIndex >= 0) {
+      next[replaceIndex] = tip;
+    } else {
+      next.push(tip);
+    }
+  });
+
+  return next;
+};
+
+const getTargetedTextBody = (item: string | LegalTargetedText): string => (
+  typeof item === 'string'
+    ? item
+    : String(item.body || item.text || '').trim()
+);
+
+const getTargetedTextTarget = (item: string | LegalTargetedText): LegalRichContentBlock['target'] | undefined => (
+  typeof item === 'string' ? undefined : item.target
+);
+
+const updateTargetedTextItem = (
+  item: string | LegalTargetedText,
+  patch: Record<string, unknown>,
+): string | LegalTargetedText => {
+  const body = typeof patch.body === 'string' ? patch.body : getTargetedTextBody(item);
+  const hasTargetPatch = Object.prototype.hasOwnProperty.call(patch, 'target');
+  const target = hasTargetPatch ? patch.target as LegalRichContentBlock['target'] | undefined : getTargetedTextTarget(item);
+
+  if (typeof item === 'string' && !hasTargetPatch) {
+    return body;
+  }
+
+  return {
+    ...(typeof item === 'string' ? {} : item),
+    body,
+    text: body,
+    target,
+  };
+};
+
+const withTargetOnFirstRichBlock = (
+  blocks: LegalRichContentBlock[] | undefined,
+  fallbackTitle: string,
+  fallbackContent: string,
+  target?: LegalRichContentBlock['target'],
+): LegalRichContentBlock[] => {
+  const sourceBlocks = Array.isArray(blocks) && blocks.length > 0
+    ? blocks
+    : [{
+      type: 'paragraph' as const,
+      title: fallbackTitle,
+      content: fallbackContent,
+    }];
+
+  return sourceBlocks.map((block, index) => {
+    if (index !== 0) {
+      return block;
+    }
+
+    const nextBlock: LegalRichContentBlock = { ...block };
+    if (target?.label || target?.blockId) {
+      nextBlock.target = target;
+    } else {
+      delete nextBlock.target;
+    }
+    return nextBlock;
+  });
+};
+
+const updateTeacherCommentRichBody = (comment: TeacherComment, body: string): TeacherComment => {
+  const richBlocks = withTargetOnFirstRichBlock(
+    comment.richBlocks || comment.blocks,
+    comment.title || 'Comentario do professor',
+    body,
+    getTeacherCommentTarget(comment),
+  ).map((block, index) => (
+    index === 0
+      ? { ...block, content: body }
+      : block
+  ));
+
+  return {
+    ...comment,
+    body,
+    texto: body,
+    richBlocks,
+    blocks: richBlocks,
+  };
+};
+
+const updateTeacherCommentTarget = (
+  comment: TeacherComment,
+  target?: LegalRichContentBlock['target'],
+): TeacherComment => {
+  const body = String(comment.body || comment.texto || '').trim();
+  const richBlocks = withTargetOnFirstRichBlock(
+    comment.richBlocks || comment.blocks,
+    comment.title || 'Comentario do professor',
+    body,
+    target,
+  );
+
+  return {
+    ...comment,
+    richBlocks,
+    blocks: richBlocks,
+  };
+};
+
 const isLikelyEditoriallyIrrelevantArticle = (article: Partial<LawArticle>) => {
   const rawText = String(article.text || article.blocks?.map((block) => block.text).join(' ') || '');
   const normalizedText = normalizeTaxonomyText(rawText);
@@ -393,7 +656,11 @@ const isLikelyEditoriallyIrrelevantArticle = (article: Partial<LawArticle>) => {
 };
 
 const isEmptyJurisprudencePlaceholderText = (value: unknown) => {
-  const text = normalizeTaxonomyText(value);
+  const text = normalizeTaxonomyText(
+    value && typeof value === 'object'
+      ? getTargetedTextBody(value as LegalTargetedText)
+      : value,
+  );
   if (!text) return false;
 
   return [
@@ -534,7 +801,7 @@ const buildLegalAreaFromTaxonomy = (subject?: TaxonomyOption, fallback?: Partial
   };
 };
 
-const buildEmptyArticle = (lawId = 'new', sectionId?: string | null): LawArticle => {
+const buildEmptyArticle = (lawId = 'new', sectionId?: string | null, assuntoFilterId?: string | null): LawArticle => {
   const id = createTempId('article');
   return {
     id,
@@ -557,9 +824,7 @@ const buildEmptyArticle = (lawId = 'new', sectionId?: string | null): LawArticle
         text: '',
       },
     ],
-    assuntoFilterId: null,
-    subjectFilterId: null,
-    topicFilterId: null,
+    assuntoFilterId: assuntoFilterId || null,
   };
 };
 
@@ -580,7 +845,7 @@ const buildEmptyLaw = (): AdminLawDraft => {
   summary: '',
   preamble: '',
   ementa: '',
-  status: 'active',
+  status: 'draft',
   officialUrl: '',
   sourceName: 'Portal do Planalto',
   lastSyncedAt: '',
@@ -595,8 +860,8 @@ const buildEmptyLaw = (): AdminLawDraft => {
     id: sectionId,
     lawId: 'new',
     slug: sectionId,
-    title: 'Secao 1',
-    displayTitle: 'Secao 1',
+    title: 'CAPITULO UNICO',
+    displayTitle: 'CAPITULO UNICO',
     articleCount: 1,
     sortOrder: 0,
   }],
@@ -688,8 +953,8 @@ const hydrateDraftFromLaw = (
     id: String(section.id || createTempId(`section-${index + 1}`)),
     lawId: String(section.lawId || law.id || 'new'),
     slug: section.slug || `section-${index + 1}`,
-    title: String(section.displayTitle || section.title || `Secao ${index + 1}`),
-    displayTitle: String(section.displayTitle || section.title || `Secao ${index + 1}`),
+    title: String(section.displayTitle || section.title || `CAPITULO ${index + 1}`),
+    displayTitle: String(section.displayTitle || section.title || `CAPITULO ${index + 1}`),
     articleCount: Number(section.articleCount || 0),
     sortOrder: Number(section.sortOrder ?? index),
   }));
@@ -698,6 +963,8 @@ const hydrateDraftFromLaw = (
     const nextId = String(article.id || createTempId(`article-${index + 1}`));
     const originalId = String(article.id || '');
     const articleInternalTitle = String(article.title || '').trim();
+    const articleSectionId = article.sectionId || fallbackSectionId;
+    const articleSection = sections.find((section) => String(section.id) === String(articleSectionId));
     if (originalId) {
       articleIdMap.set(originalId, nextId);
     }
@@ -706,7 +973,7 @@ const hydrateDraftFromLaw = (
       ...article,
       id: nextId,
       lawId: String(article.lawId || law.id || 'new'),
-      sectionId: article.sectionId || fallbackSectionId,
+      sectionId: articleSectionId,
       slug: article.slug || `art-${index + 1}`,
       title: articleInternalTitle,
       blocks: (article.blocks || []).map((block, blockIndex) => ({
@@ -718,9 +985,7 @@ const hydrateDraftFromLaw = (
       syllabi: article.syllabi || [],
       doctrine: article.doctrine || [],
       relatedQuestionCount: article.relatedQuestionCount || 0,
-      assuntoFilterId: article.assuntoFilterId ?? article.topicFilterId ?? null,
-      subjectFilterId: null,
-      topicFilterId: article.topicFilterId ?? null,
+      assuntoFilterId: articleSection?.assuntoFilterId ?? null,
     };
 
     return {
@@ -749,6 +1014,8 @@ const hydrateDraftFromLaw = (
     number: law.number || '',
     year: law.year || '',
     date: law.date || '',
+    publishedAt: law.publishedAt || law.date || '',
+    published_at: law.published_at || law.publishedAt || law.date || '',
     slug: law.slug || '',
     description: law.description || '',
     summary: law.summary || '',
@@ -768,8 +1035,8 @@ const hydrateDraftFromLaw = (
       id: fallbackSectionId,
       lawId: String(law.id || 'new'),
       slug: fallbackSectionId,
-      title: 'Secao 1',
-      displayTitle: 'Secao 1',
+      title: 'CAPITULO UNICO',
+      displayTitle: 'CAPITULO UNICO',
       articleCount: articles.length,
       sortOrder: 0,
     }],
@@ -788,7 +1055,7 @@ const hydrateDraftFromLaw = (
     })),
     sectionEditorials: (law.sectionEditorials || []).map((item) => ({
       ...item,
-      sectionKey: String(item.sectionKey || ''),
+      sectionId: item.sectionId ? String(item.sectionId) : null,
       sectionTitle: String(item.sectionTitle || ''),
       rangeLabel: String(item.rangeLabel || ''),
       articleCount: Number(item.articleCount || 0),
@@ -823,7 +1090,11 @@ const hydrateDraftFromLaw = (
 const getArticleLabel = (article: LawArticle) =>
   article.number ? `Art. ${article.number}` : 'Artigo sem numero';
 
-const hasFilledText = (value: unknown) => String(value || '').trim().length > 0;
+const hasFilledText = (value: unknown) => (
+  value && typeof value === 'object'
+    ? getTargetedTextBody(value as LegalTargetedText).trim().length > 0
+    : String(value || '').trim().length > 0
+);
 
 const buildEmptyEditorialCounts = (): ArticleEditorialCounts => ({
   teacher: 0,
@@ -1054,35 +1325,83 @@ const formatLegalUpdateDate = (value?: string | null) => {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('pt-BR');
 };
 
+const withAdminLoadTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => (
+  new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error(message));
+    }, timeoutMs);
+
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeoutId));
+  })
+);
+
+const padDatePart = (value: number) => String(value).padStart(2, '0');
+
+const formatLocalDateTimeForApi = (date: Date) => (
+  `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())} ${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}:00`
+);
+
+const parseAdminPublicationDateTime = (value?: string | null): { date: string; time: string } => {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) {
+    return { date: '', time: '' };
+  }
+
+  const explicit = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  if (explicit) {
+    return {
+      date: `${explicit[3]}/${explicit[2]}/${explicit[1]}`,
+      time: explicit[4] && explicit[5] ? `${explicit[4]}:${explicit[5]}` : '',
+    };
+  }
+
+  const parsed = new Date(rawValue);
+  if (Number.isNaN(parsed.getTime())) {
+    return { date: '', time: '' };
+  }
+
+  return {
+    date: `${padDatePart(parsed.getDate())}/${padDatePart(parsed.getMonth() + 1)}/${parsed.getFullYear()}`,
+    time: `${padDatePart(parsed.getHours())}:${padDatePart(parsed.getMinutes())}`,
+  };
+};
+
+const normalizeAdminPublicationDate = (value: string): string | null => {
+  const rawDate = value.trim();
+  if (!rawDate) return null;
+
+  const brDate = rawDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brDate) {
+    return `${brDate[3]}-${brDate[2]}-${brDate[1]}`;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+    return rawDate;
+  }
+
+  return null;
+};
+
+const normalizeAdminPublicationTime = (value: string): string => {
+  const rawTime = value.trim();
+  const match = rawTime.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return '00:00';
+
+  const hours = Math.min(23, Math.max(0, Number(match[1])));
+  const minutes = Math.min(59, Math.max(0, Number(match[2])));
+  return `${padDatePart(hours)}:${padDatePart(minutes)}`;
+};
+
 const LEGAL_UPDATE_CHANGE_LABEL: Record<string, string> = {
   created: 'Incluido',
   changed: 'Alterado',
   revoked: 'Revogado',
   renumbered: 'Renumerado',
+  editorial_review_required: 'Revisao editorial',
 };
-
-const EditorPanel = ({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) => (
-  <section className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
-    <div className={ADMIN_SURFACE_HEADER_CLASS}>
-      <div className="space-y-1">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-        {description ? (
-          <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>
-        ) : null}
-      </div>
-    </div>
-    <div className="p-5">{children}</div>
-  </section>
-);
-
-const EditorMetaBox = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <section className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
-    <div className={ADMIN_SURFACE_HEADER_CLASS}>
-      <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
-    </div>
-    <div className="p-4">{children}</div>
-  </section>
-);
 
 const AI_KIND_LABEL: Record<LegalAiGenerationKind, string> = {
   'teacher-comment': 'Comentario',
@@ -1093,44 +1412,78 @@ const AI_KIND_LABEL: Record<LegalAiGenerationKind, string> = {
   bundle: 'Pacote IA',
 };
 
-const formatBatchStatusLabel = (status?: string) => {
-  switch (status) {
-    case 'success':
-      return 'Sucesso';
-    case 'partial':
-      return 'Parcial';
-    case 'failed':
-      return 'Falha';
-    case 'running':
-      return 'Em execucao';
-    case 'pending':
-      return 'Pendente';
-    case 'completed':
-      return 'Concluido';
-    case 'stopped':
-      return 'Interrompido';
-    case 'skipped':
-      return 'Ignorado';
-    default:
-      return status || 'Sem status';
-  }
-};
+const ARTICLE_AI_GENERATION_CARDS: Array<{
+  key: LegalArticleAiKind;
+  title: string;
+  text: string;
+  icon: typeof MessageSquare;
+  countKey: keyof Omit<ArticleEditorialCounts, 'total'>;
+  shortLabel: string;
+}> = [
+  {
+    key: 'teacher-comment',
+    title: 'Comentario do Professor',
+    text: 'Gere um comentario didatico e objetivo.',
+    icon: MessageSquare,
+    countKey: 'teacher',
+    shortLabel: 'comentario',
+  },
+  {
+    key: 'sumula',
+    title: 'Sumulas',
+    text: 'Busque e resuma sumulas relacionadas.',
+    icon: BookOpen,
+    countKey: 'sumulas',
+    shortLabel: 'sumula',
+  },
+  {
+    key: 'doctrine',
+    title: 'Doutrinas',
+    text: 'Selecione e resuma doutrinas relevantes.',
+    icon: FileText,
+    countKey: 'doctrine',
+    shortLabel: 'doutrina',
+  },
+  {
+    key: 'jurisprudence',
+    title: 'Jurisprudencia',
+    text: 'Traga julgados relevantes sobre o artigo.',
+    icon: Scale,
+    countKey: 'jurisprudence',
+    shortLabel: 'jurisprudencia',
+  },
+  {
+    key: 'exam-tip',
+    title: 'Macete',
+    text: 'Gere o pulo do gato: o que a banca cobra, troca ou tenta confundir.',
+    icon: Lightbulb,
+    countKey: 'tips',
+    shortLabel: 'macete',
+  },
+];
 
-const getBatchStatusClasses = (status?: string) => {
-  switch (status) {
-    case 'success':
-      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300';
-    case 'failed':
-      return 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300';
-    case 'running':
-      return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300';
-    case 'stopped':
-      return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
-    case 'pending':
-      return 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
-    default:
-      return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300';
-  }
+const ARTICLE_AI_REQUIREMENTS: Array<{
+  kind: LegalArticleAiKind;
+  label: string;
+  countKey: keyof Omit<ArticleEditorialCounts, 'total'>;
+}> = ARTICLE_AI_GENERATION_CARDS.map((card) => ({
+  kind: card.key,
+  label: card.shortLabel,
+  countKey: card.countKey,
+}));
+
+const getMissingArticleAiRequirements = (counts: ArticleEditorialCounts): LegalArticleAiKind[] => (
+  ARTICLE_AI_REQUIREMENTS
+    .filter((requirement) => Number(counts[requirement.countKey] || 0) <= 0)
+    .map((requirement) => requirement.kind)
+);
+
+const resolveAiScope = (kind: LegalArticleAiKind): LegalEditorialGenerationScope => {
+  if (kind === 'teacher-comment') return 'field-comment';
+  if (kind === 'exam-tip') return 'field-macete';
+  if (kind === 'jurisprudence') return 'field-jurisprudencia';
+  if (kind === 'sumula') return 'field-sumulas';
+  return 'field-doutrina';
 };
 
 const AdminLegalCommentaryEditPage = () => {
@@ -1138,6 +1491,7 @@ const AdminLegalCommentaryEditPage = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { currentUser, isLoading: isAuthLoading } = useAuth();
+  const confirm = useConfirm();
   const { addToast } = useToast();
   const { ensureTaxonomiesLoaded } = useTaxonomyActions();
   const canAccessAdmin = canAccessAdminPanel(currentUser);
@@ -1170,23 +1524,18 @@ const AdminLegalCommentaryEditPage = () => {
   const [isCreatingSubtopic, setIsCreatingSubtopic] = React.useState(false);
   const [isCreatingAssunto, setIsCreatingAssunto] = React.useState(false);
   const [aiLoading, setAiLoading] = React.useState<string | null>(null);
+  const [selectedTeacherCommentTargetId, setSelectedTeacherCommentTargetId] = React.useState('');
   const [, setAiProgress] = React.useState<{ kind: string; label: string; percent: number } | null>(null);
   const [sectionAnalysisLoadingKey, setSectionAnalysisLoadingKey] = React.useState<string | null>(null);
+  const [editingSectionAnalysisId, setEditingSectionAnalysisId] = React.useState<string | null>(null);
   const [isGeneratingAllSectionAnalyses, setIsGeneratingAllSectionAnalyses] = React.useState(false);
-  const [activeEditorialSection] = React.useState<LegalEditorialSection>('teacher');
+  const [lawAiBulkProgress, setLawAiBulkProgress] = React.useState<LegalAiBulkProgress | null>(null);
   const [isUpdatesModalOpen, setIsUpdatesModalOpen] = React.useState(false);
   const [isUpdatesModalLoading, setIsUpdatesModalLoading] = React.useState(false);
   const [updatesModalItems, setUpdatesModalItems] = React.useState<LawUpdate[]>([]);
   const [updatesModalLogs, setUpdatesModalLogs] = React.useState<LegalSyncLog[]>([]);
   const hasOpenedUpdatesFromQueryRef = React.useRef(false);
-  const [batchRun, setBatchRun] = React.useState<LegalEditorialBatchRun | null>(null);
-  const [isBatchRunning, setIsBatchRunning] = React.useState(false);
-  const [, setIsBatchRefreshing] = React.useState(false);
-  const [, setIsBatchPaused] = React.useState(false);
-  const [batchOnlyMissingComments] = React.useState(true);
-  const batchPauseRef = React.useRef(false);
-  const batchStopRef = React.useRef(false);
-  const batchStatusLoadedForLawRef = React.useRef('');
+  const publicationFieldsHydratedRef = React.useRef('');
 
   const renderAdminShell = (children: React.ReactNode) => (
     <AdminStandaloneShell
@@ -1200,13 +1549,21 @@ const AdminLegalCommentaryEditPage = () => {
   );
 
   const resolveKnowledgeTaxonomies = React.useCallback(async (force = false) => {
-    await ensureTaxonomiesLoaded(force);
+    await withAdminLoadTimeout(
+      ensureTaxonomiesLoaded(force),
+      8000,
+      'Tempo excedido ao carregar taxonomias.',
+    );
     const cachedTaxonomies = useAppConfigStore.getState().systemSettings.taxonomies;
     if (hasTaxonomyPayload(cachedTaxonomies)) {
       return splitKnowledgeTaxonomies(cachedTaxonomies);
     }
 
-    const fallbackTaxonomies = await filtersService.listTaxonomies();
+    const fallbackTaxonomies = await withAdminLoadTimeout(
+      filtersService.listTaxonomies(),
+      8000,
+      'Tempo excedido ao carregar taxonomias.',
+    );
     return splitKnowledgeTaxonomies(fallbackTaxonomies);
   }, [ensureTaxonomiesLoaded]);
 
@@ -1215,6 +1572,21 @@ const AdminLegalCommentaryEditPage = () => {
       router.replace('/');
     }
   }, [canAccessAdmin, isAuthLoading, router]);
+
+  React.useEffect(() => {
+    if (!draft) return;
+
+    const publicationValue = String(draft.publishedAt || draft.published_at || draft.date || '');
+    const hydrationKey = `${draft.id || 'new'}:${draft.status || ''}:${publicationValue}`;
+    if (publicationFieldsHydratedRef.current === hydrationKey) {
+      return;
+    }
+
+    publicationFieldsHydratedRef.current = hydrationKey;
+    const next = parseAdminPublicationDateTime(publicationValue);
+    setScheduledDate(next.date);
+    setScheduledTime(next.time);
+  }, [draft?.id, draft?.status, draft?.publishedAt, draft?.published_at, draft?.date, draft]);
 
   React.useEffect(() => {
     draftRef.current = draft;
@@ -1234,6 +1606,53 @@ const AdminLegalCommentaryEditPage = () => {
     }
 
     let isCurrent = true;
+    const hydrateKnowledgeTaxonomies = async (force = false) => {
+      try {
+        const knowledgeTaxonomies = await resolveKnowledgeTaxonomies(force);
+        if (!isCurrent) {
+          return null;
+        }
+
+        const fallbackAreas = buildAreasFromSubjects(knowledgeTaxonomies.subjects);
+        setAreas((currentAreas) => (currentAreas.length > 0 ? currentAreas : fallbackAreas));
+        setSubjects(knowledgeTaxonomies.subjects);
+        setTopics(knowledgeTaxonomies.topics);
+        setSpecificSubjects(knowledgeTaxonomies.specificSubjects);
+
+        return knowledgeTaxonomies;
+      } catch {
+        if (isCurrent) {
+          addToastRef.current(
+            'Editor aberto sem taxonomias carregadas. Tente recarregar as taxonomias antes de salvar.',
+            'warning',
+          );
+        }
+
+        return null;
+      }
+    };
+
+    if (isNew) {
+      queueMicrotask(() => {
+        if (!isCurrent) return;
+
+        setLoadError(null);
+        const nextLaw = buildEmptyLaw();
+        setAreas([]);
+        setSubjects([]);
+        setTopics([]);
+        setSpecificSubjects([]);
+        setDraft(nextLaw);
+        setActiveArticleId(nextLaw.articles?.[0]?.id || '');
+        setIsLoading(false);
+        void hydrateKnowledgeTaxonomies();
+      });
+
+      return () => {
+        isCurrent = false;
+      };
+    }
+
     const loadingFrameId = window.requestAnimationFrame(() => {
       if (!isCurrent) return;
       setIsLoading(true);
@@ -1242,10 +1661,10 @@ const AdminLegalCommentaryEditPage = () => {
 
     (async () => {
       try {
-        const knowledgeTaxonomies = await resolveKnowledgeTaxonomies();
-        const payload = isNew
-          ? { law: null, areas: [] as LegalArea[] }
-          : await legalCommentaryApiService.getAdminDetail(lawId);
+        const [knowledgeTaxonomies, payload] = await Promise.all([
+          resolveKnowledgeTaxonomies(),
+          legalCommentaryApiService.getAdminDetail(lawId),
+        ]);
 
         if (!isCurrent) return;
 
@@ -1280,52 +1699,6 @@ const AdminLegalCommentaryEditPage = () => {
     };
   }, [canAccessAdmin, editorReloadVersion, isAuthLoading, isNew, lawId, resolveKnowledgeTaxonomies]);
 
-  React.useEffect(() => {
-    if (!draft?.id || isNew) {
-      batchStatusLoadedForLawRef.current = '';
-      const resetFrameId = window.requestAnimationFrame(() => setBatchRun(null));
-      return () => window.cancelAnimationFrame(resetFrameId);
-    }
-
-    if (activeEditorialSection !== 'ai') {
-      return;
-    }
-
-    const currentLawId = String(draft.id);
-    if (batchStatusLoadedForLawRef.current === currentLawId) {
-      return;
-    }
-
-    let active = true;
-    const refreshingFrameId = window.requestAnimationFrame(() => {
-      if (active) setIsBatchRefreshing(true);
-    });
-
-    legalCommentaryApiService.getAdminEditorialBatchStatus({ lawId: currentLawId })
-      .then((run) => {
-        if (active) {
-          setBatchRun(run);
-          batchStatusLoadedForLawRef.current = currentLawId;
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setBatchRun(null);
-          batchStatusLoadedForLawRef.current = currentLawId;
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setIsBatchRefreshing(false);
-        }
-      });
-
-    return () => {
-      active = false;
-      window.cancelAnimationFrame(refreshingFrameId);
-    };
-  }, [activeEditorialSection, draft?.id, isNew]);
-
   const activeArticle = React.useMemo(
     () => draft?.articles?.find((article) => article.id === activeArticleId) || draft?.articles?.[0] || null,
     [activeArticleId, draft?.articles],
@@ -1337,8 +1710,8 @@ const AdminLegalCommentaryEditPage = () => {
         ...section,
         id: String(section.id || section.slug || `section-${index}`),
         lawId: String(section.lawId || draft?.id || ''),
-        title: String(section.displayTitle || section.title || `Secao ${index + 1}`),
-        displayTitle: String(section.displayTitle || section.title || `Secao ${index + 1}`),
+        title: String(section.displayTitle || section.title || `CAPITULO ${index + 1}`),
+        displayTitle: String(section.displayTitle || section.title || `CAPITULO ${index + 1}`),
         articleCount: Number(section.articleCount || 0),
         sortOrder: Number(section.sortOrder ?? index),
       }))
@@ -1351,7 +1724,6 @@ const AdminLegalCommentaryEditPage = () => {
       const map = new Map<string, LawSectionEditorial>();
       (draft?.sectionEditorials || []).forEach((item) => {
         if (item.sectionId) map.set(String(item.sectionId), item);
-        if (item.sectionKey) map.set(String(item.sectionKey), item);
       });
       return map;
     },
@@ -1365,13 +1737,13 @@ const AdminLegalCommentaryEditPage = () => {
 
     const articles = draft.articles || [];
     return lawSections.map((section) => {
-      const sectionKeyResolved = section.id;
+      const resolvedSectionId = section.id;
       const articlesList = articles.filter((article) => String(article.sectionId || '') === String(section.id));
       const articleIds = articlesList.map((article) => String(article.id));
-      const savedEditorial = sectionEditorialsByKey.get(sectionKeyResolved);
+      const savedEditorial = sectionEditorialsByKey.get(resolvedSectionId);
       return {
         ...section,
-        sectionKeyResolved,
+        resolvedSectionId,
         articleIds,
         articles: articlesList.length,
         articleCount: section.articleCount || articlesList.length,
@@ -1385,14 +1757,67 @@ const AdminLegalCommentaryEditPage = () => {
   }, [draft, lawSections, sectionEditorialsByKey]);
 
   const activeSectionOverview = React.useMemo(() => (
-    sectionOverviews.find((section) => section.id === activeSectionId || section.sectionKeyResolved === activeSectionId)
+    sectionOverviews.find((section) => section.id === activeSectionId || section.resolvedSectionId === activeSectionId)
     || sectionOverviews.find((section) => section.articleIds.includes(String(activeArticleId || '')))
     || sectionOverviews[0]
     || null
   ), [activeArticleId, activeSectionId, sectionOverviews]);
 
+  const lawAiCoverage = React.useMemo(() => {
+    const currentDraft = draft;
+    const eligibleArticles = (currentDraft?.articles || [])
+      .filter((article) => !isLikelyEditoriallyIrrelevantArticle(article));
+    const articleStatuses = eligibleArticles.map((article) => {
+      const counts = currentDraft ? getArticleEditorialCounts(currentDraft, article) : buildEmptyEditorialCounts();
+      const missingKinds = getMissingArticleAiRequirements(counts);
+      return {
+        article,
+        counts,
+        missingKinds,
+        isComplete: missingKinds.length === 0,
+        hasAnyContent: counts.total > 0,
+      };
+    });
+    const sectionStatuses = sectionOverviews.map((section) => ({
+      section,
+      hasAnalysis: Boolean(section.savedEditorial),
+    }));
+    const pendingSections = sectionStatuses.filter((item) => !item.hasAnalysis);
+    const pendingArticles = articleStatuses.filter((item) => item.missingKinds.length > 0);
+    const readySections = sectionStatuses.filter((item) => item.hasAnalysis);
+    const readyArticles = articleStatuses.filter((item) => item.isComplete);
+    const missingArticleFields = pendingArticles.reduce((total, item) => total + item.missingKinds.length, 0);
+    const articleRequirementStats = ARTICLE_AI_GENERATION_CARDS.map((card) => {
+      const ready = articleStatuses.filter((item) => !item.missingKinds.includes(card.key)).length;
+      const pending = articleStatuses.length - ready;
+      return {
+        ...card,
+        ready,
+        pending,
+        total: articleStatuses.length,
+      };
+    });
+
+    return {
+      totalSections: sectionStatuses.length,
+      readySections: readySections.length,
+      pendingSections,
+      totalArticles: articleStatuses.length,
+      readyArticles: readyArticles.length,
+      pendingArticles,
+      readyArticleSamples: readyArticles.slice(0, 3),
+      readySectionSamples: readySections.slice(0, 3),
+      pendingTaskCount: pendingSections.length + missingArticleFields,
+      missingArticleFields,
+      articleRequirementStats,
+    };
+  }, [draft, sectionOverviews]);
+  const lawAiBulkPercent = lawAiBulkProgress?.total
+    ? Math.round((lawAiBulkProgress.completed / lawAiBulkProgress.total) * 100)
+    : 0;
+
   const selectSection = React.useCallback((section: AdminLawSectionOverview) => {
-    setActiveSectionId(section.sectionKeyResolved);
+    setActiveSectionId(section.resolvedSectionId);
     const firstArticle = section.articlesList[0];
     if (firstArticle) {
       setActiveArticleId(firstArticle.id);
@@ -1404,7 +1829,7 @@ const AdminLegalCommentaryEditPage = () => {
     setIsStructurePreviewOpen(true);
     const section = sectionOverviews.find((item) => item.id === article.sectionId || item.articleIds.includes(article.id));
     if (section) {
-      setActiveSectionId(section.sectionKeyResolved);
+      setActiveSectionId(section.resolvedSectionId);
     }
   }, [sectionOverviews]);
 
@@ -1517,9 +1942,7 @@ const AdminLegalCommentaryEditPage = () => {
         lawTopicFilterId: null,
         articles: (current.articles || []).map((article) => ({
           ...article,
-          subjectFilterId: null,
           assuntoFilterId: null,
-          topicFilterId: null,
         })),
         sections: (current.sections || []).map((section) => ({
           ...section,
@@ -1543,9 +1966,7 @@ const AdminLegalCommentaryEditPage = () => {
         area: buildLegalAreaFromTaxonomy(subject, current.area) || current.area,
         articles: (current.articles || []).map((article) => ({
           ...article,
-          subjectFilterId: null,
           assuntoFilterId: null,
-          topicFilterId: null,
         })),
         sections: (current.sections || []).map((section) => ({
           ...section,
@@ -1565,9 +1986,7 @@ const AdminLegalCommentaryEditPage = () => {
         lawTopicFilterId: null,
         articles: (current.articles || []).map((article) => ({
           ...article,
-          subjectFilterId: null,
           assuntoFilterId: null,
-          topicFilterId: null,
         })),
         sections: (current.sections || []).map((section) => ({
           ...section,
@@ -1582,26 +2001,31 @@ const AdminLegalCommentaryEditPage = () => {
 
     setDraft((current) => {
       if (!current) return current;
+      const nextSections = (current.sections || []).map((section) => {
+        const currentSubtopic = topics.find((topic) => String(topic.id) === String(section.subtopicFilterId || ''));
+        const belongsToLawTopic = !currentSubtopic
+          || String(currentSubtopic.parentId || '') === String(lawTopicId)
+          || String(currentSubtopic.rootSubjectId || '') === String(lawTopicId);
+
+        return belongsToLawTopic
+          ? section
+          : {
+            ...section,
+            subtopicFilterId: null,
+            assuntoFilterId: null,
+            titleName: '',
+            chapterName: '',
+          };
+      });
+      const sectionAssuntoById = new Map(nextSections.map((section) => [String(section.id), section.assuntoFilterId || null]));
       return {
         ...current,
         lawTopicFilterId: String(lawTopicId),
-        articles: (current.articles || []).map((article) => article),
-        sections: (current.sections || []).map((section) => {
-          const currentSubtopic = topics.find((topic) => String(topic.id) === String(section.subtopicFilterId || ''));
-          const belongsToLawTopic = !currentSubtopic
-            || String(currentSubtopic.parentId || '') === String(lawTopicId)
-            || String(currentSubtopic.rootSubjectId || '') === String(lawTopicId);
-
-          return belongsToLawTopic
-            ? section
-            : {
-              ...section,
-              subtopicFilterId: null,
-              assuntoFilterId: null,
-              titleName: '',
-              chapterName: '',
-            };
-        }),
+        articles: (current.articles || []).map((article) => ({
+          ...article,
+          assuntoFilterId: sectionAssuntoById.get(String(article.sectionId || '')) || null,
+        })),
+        sections: nextSections,
       };
     });
 
@@ -1746,7 +2170,6 @@ const AdminLegalCommentaryEditPage = () => {
               ? {
                 ...article,
                 assuntoFilterId: patch.assuntoFilterId || null,
-                topicFilterId: patch.assuntoFilterId || null,
               }
               : article
           ))
@@ -1764,8 +2187,8 @@ const AdminLegalCommentaryEditPage = () => {
         id: sectionId,
         lawId: String(current.id || 'new'),
         slug: sectionId,
-        title: `Secao ${sectionIndex + 1}`,
-        displayTitle: `Secao ${sectionIndex + 1}`,
+        title: `CAPITULO ${sectionIndex + 1}`,
+        displayTitle: `CAPITULO ${sectionIndex + 1}`,
         articleCount: 0,
         sortOrder: sectionIndex,
       };
@@ -1813,9 +2236,9 @@ const AdminLegalCommentaryEditPage = () => {
         assuntoFilterId: null,
         chapterName: '',
       });
-      addToast(existing ? 'Subtopico existente selecionado.' : 'Subtopico criado e vinculado a secao.', existing ? 'info' : 'success');
+      addToast(existing ? 'Subtopico existente selecionado.' : 'Subtopico criado e vinculado ao capitulo.', existing ? 'info' : 'success');
     } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel criar o subtopico da secao.'), 'error');
+      addToast(getErrorMessage(error, 'Nao foi possivel criar o subtopico do capitulo.'), 'error');
     } finally {
       setIsCreatingSubtopic(false);
     }
@@ -1856,9 +2279,9 @@ const AdminLegalCommentaryEditPage = () => {
         assuntoFilterId: String(created.id),
         chapterName: created.name,
       });
-      addToast(existing ? 'Assunto existente selecionado.' : 'Assunto criado e vinculado a secao.', existing ? 'info' : 'success');
+      addToast(existing ? 'Assunto existente selecionado.' : 'Assunto criado e vinculado ao capitulo.', existing ? 'info' : 'success');
     } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel criar o assunto da secao.'), 'error');
+      addToast(getErrorMessage(error, 'Nao foi possivel criar o assunto do capitulo.'), 'error');
     } finally {
       setIsCreatingAssunto(false);
     }
@@ -1867,18 +2290,19 @@ const AdminLegalCommentaryEditPage = () => {
   const moveArticleToSection = (articleId: string, sectionId: string) => {
     setDraft((current) => {
       if (!current) return current;
+      const targetSection = (current.sections || []).find((section) => String(section.id) === String(sectionId));
       return {
         ...current,
         articles: (current.articles || []).map((article) => (
           String(article.id) === String(articleId)
-            ? { ...article, sectionId }
+            ? { ...article, sectionId, assuntoFilterId: targetSection?.assuntoFilterId || null }
             : article
         )),
       };
     });
   };
 
-  const updateArticleField = (field: keyof LawArticle | 'subjectFilterId' | 'topicFilterId' | 'assuntoFilterId', value: unknown) => {
+  const updateArticleField = (field: keyof LawArticle | 'assuntoFilterId', value: unknown) => {
     if (!activeArticle) return;
 
     setDraft((current) => {
@@ -1990,33 +2414,6 @@ const AdminLegalCommentaryEditPage = () => {
     });
   };
 
-  const moveArticleBlock = (blockId: string, direction: 'up' | 'down') => {
-    if (!activeArticle) return;
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        articles: (current.articles || []).map((article) => {
-          if (article.id !== activeArticle.id) return article;
-          const blocks = [...(article.blocks || [])];
-          const index = blocks.findIndex((block) => block.id === blockId);
-          if (index < 0) return article;
-          const nextIndex = direction === 'up' ? index - 1 : index + 1;
-          if (nextIndex < 0 || nextIndex >= blocks.length) return article;
-          const [block] = blocks.splice(index, 1);
-          blocks.splice(nextIndex, 0, block);
-          return {
-            ...article,
-            blocks: normalizeArticleBlocks({
-              ...article,
-              blocks,
-            }),
-          };
-        }),
-      };
-    });
-  };
-
   const removeArticleBlock = (blockId: string) => {
     if (!activeArticle) return;
     setDraft((current) => {
@@ -2042,7 +2439,8 @@ const AdminLegalCommentaryEditPage = () => {
     setDraft((current) => {
       if (!current) return current;
       const sectionId = activeSectionOverview?.id || current.sections?.[0]?.id || null;
-      const article = buildEmptyArticle(current.id || 'new', sectionId);
+      const section = (current.sections || []).find((item) => String(item.id) === String(sectionId || ''));
+      const article = buildEmptyArticle(current.id || 'new', sectionId, section?.assuntoFilterId || null);
       setActiveArticleId(article.id);
       if (sectionId) {
         setActiveSectionId(sectionId);
@@ -2070,152 +2468,6 @@ const AdminLegalCommentaryEditPage = () => {
     });
   };
 
-  const addDoctrine = (text = '') => {
-    if (!activeArticle) return;
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        articles: (current.articles || []).map((article) => article.id === activeArticle.id ? {
-          ...article,
-          doctrine: [...(article.doctrine || []), text],
-        } : article),
-      };
-    });
-  };
-
-  const updateDoctrine = (index: number, text: string) => {
-    if (!activeArticle) return;
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        articles: (current.articles || []).map((article) => {
-          if (article.id !== activeArticle.id) return article;
-          return {
-            ...article,
-            doctrine: (article.doctrine || []).map((item, itemIndex) => itemIndex === index ? text : item),
-          };
-        }),
-      };
-    });
-  };
-
-  const removeDoctrine = (index: number) => {
-    if (!activeArticle) return;
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        articles: (current.articles || []).map((article) => article.id === activeArticle.id ? {
-          ...article,
-          doctrine: (article.doctrine || []).filter((_, itemIndex) => itemIndex !== index),
-        } : article),
-      };
-    });
-  };
-
-  const addTeacherComment = (comment?: Partial<TeacherComment>) => {
-    if (!activeArticle) return;
-    const nextComment: TeacherComment = {
-      id: createTempId('teacher'),
-      articleId: activeArticle.id,
-      title: comment?.title || 'Comentario do professor',
-      body: comment?.body || '',
-      examFocus: comment?.examFocus || [],
-      pitfalls: comment?.pitfalls || [],
-      relatedRefs: comment?.relatedRefs || [],
-      authorName: comment?.authorName || 'Equipe editorial',
-      authorRole: comment?.authorRole || 'Professor especialista',
-      reviewedAt: new Date().toISOString(),
-    };
-    setDraft((current) => current ? { ...current, teacherComments: [...(current.teacherComments || []), nextComment] } : current);
-  };
-
-  const addExamTip = (tip?: Partial<ArticleExamTip>) => {
-    if (!activeArticle) return;
-    const nextTip: ArticleExamTip = {
-      id: createTempId('tip'),
-      articleId: activeArticle.id,
-      title: tip?.title || 'Macete para prova',
-      body: tip?.body || '',
-      tags: tip?.tags || [],
-    };
-    setDraft((current) => current ? { ...current, examTips: [...(current.examTips || []), nextTip] } : current);
-  };
-
-  const addJurisprudence = (item?: Partial<ArticleJurisprudence>) => {
-    if (!activeArticle) return;
-    const nextItem: ArticleJurisprudence = {
-      id: createTempId('juris'),
-      articleId: activeArticle.id,
-      court: (item?.court || 'STJ') as ArticleJurisprudence['court'],
-      precedentType: item?.precedentType || '',
-      title: item?.title || '',
-      summary: item?.summary || '',
-      examImpact: item?.examImpact || '',
-      isConsolidated: Boolean(item?.isConsolidated),
-      priority: item?.priority || 'medium',
-      sourceUrl: item?.sourceUrl || '',
-    };
-    setDraft((current) => current ? {
-      ...current,
-      jurisprudence: [...(current.jurisprudence || []), nextItem],
-      articles: (current.articles || []).map((article) => article.id === activeArticle.id ? {
-        ...article,
-        jurisprudenceNotes: [],
-      } : article),
-    } : current);
-  };
-
-  const addSumula = (item?: Partial<NonNullable<AdminLawDraft['sumulas']>[number]>) => {
-    if (!activeArticle) return;
-    const nextItem = {
-      id: createTempId('sumula'),
-      articleId: activeArticle.id,
-      court: item?.court || 'STJ',
-      number: item?.number || '',
-      text: item?.text || '',
-      sourceUrl: item?.sourceUrl || '',
-      priority: item?.priority || 'medium',
-    };
-    setDraft((current) => current ? { ...current, sumulas: [...(current.sumulas || []), nextItem] } : current);
-  };
-
-  const getEditableCollection = (current: AdminLawDraft, collection: EditableCollectionKey): EditableCollectionItem[] => {
-    const items = current[collection];
-    return Array.isArray(items) ? items as EditableCollectionItem[] : [];
-  };
-
-  const getEditableCollectionItemId = (item: EditableCollectionItem) => String('id' in item ? item.id || '' : '');
-
-  const updateNestedItem = (collection: EditableCollectionKey, id: string, field: string, value: unknown) => {
-    setDraft((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        [collection]: getEditableCollection(current, collection).map((item) => (
-          getEditableCollectionItemId(item) === id ? { ...item, [field]: value } : item
-        )),
-      };
-    });
-  };
-
-  const removeNestedItem = (collection: EditableCollectionKey, id: string) => {
-    setDraft((current) => current ? {
-      ...current,
-      [collection]: getEditableCollection(current, collection).filter((item) => getEditableCollectionItemId(item) !== id),
-    } : current);
-  };
-
-  const resolveAiScope = (kind: Exclude<LegalAiGenerationKind, 'bundle'>): LegalEditorialGenerationScope => {
-    if (kind === 'teacher-comment') return 'field-comment';
-    if (kind === 'exam-tip') return 'field-macete';
-    if (kind === 'jurisprudence') return 'field-jurisprudencia';
-    if (kind === 'sumula') return 'field-sumulas';
-    return 'field-doutrina';
-  };
-
   const startAiProgress = (kind: string, label: string) => {
     setAiProgress({ kind, label, percent: 8 });
     window.setTimeout(() => {
@@ -2233,191 +2485,36 @@ const AdminLegalCommentaryEditPage = () => {
     }, 900);
   };
 
-  const buildArticleEditorialSnapshot = React.useCallback((currentDraft: AdminLawDraft, article: LawArticle): LegalArticleEditorialSnapshot => ({
-    articleId: article.id,
-    articleNumber: article.number,
-    teacherComments: (currentDraft.teacherComments || []).filter((item) => item.articleId === article.id),
-    examTips: (currentDraft.examTips || []).filter((item) => item.articleId === article.id),
-    doctrine: article.doctrine || [],
-    jurisprudenceNotes: article.jurisprudenceNotes || [],
-    jurisprudence: (currentDraft.jurisprudence || []).filter((item) => item.articleId === article.id),
-    sumulas: (currentDraft.sumulas || []).filter((item) => item.articleId === article.id),
-  }), []);
-
-  const articleHasTeacherComment = React.useCallback((currentDraft: AdminLawDraft, article: LawArticle) => {
-    const snapshot = buildArticleEditorialSnapshot(currentDraft, article);
-    return (snapshot.teacherComments || []).some((item) => String(item.body || '').trim().length > 0);
-  }, [buildArticleEditorialSnapshot]);
-
-  const articleHasEditorialSection = React.useCallback((currentDraft: AdminLawDraft, article: LawArticle, section: LegalEditorialSection) => {
-    const snapshot = buildArticleEditorialSnapshot(currentDraft, article);
-    if (section === 'teacher') {
-      return (snapshot.teacherComments || []).some((item) => String(item.body || item.title || '').trim().length > 0);
-    }
-    if (section === 'tips') {
-      return (snapshot.examTips || []).some((item) => String(item.body || item.title || '').trim().length > 0);
-    }
-    if (section === 'jurisprudence') {
-      return (snapshot.jurisprudence || []).some(hasMeaningfulJurisprudenceContent)
-        || (snapshot.jurisprudenceNotes || []).some((item) => (
-          String(item || '').trim().length > 0
-          && !isEmptyJurisprudencePlaceholderText(item)
-        ));
-    }
-    if (section === 'sumulas') {
-      return (snapshot.sumulas || []).some((item) => String(item.text || item.number || '').trim().length > 0);
-    }
-    if (section === 'doctrine') {
-      return (snapshot.doctrine || []).some((item) => String(item || '').trim().length > 0);
-    }
-    return false;
-  }, [buildArticleEditorialSnapshot]);
-
-  const editorialCoverage = React.useMemo(() => {
-    if (!draft || activeEditorialSection === 'ai' || activeEditorialSection === 'section-analysis') {
-      return null;
-    }
-
-    const articles = draft.articles || [];
-    const relevantArticles = articles.filter((article) => !isLikelyEditoriallyIrrelevantArticle(article));
-    const missingArticles = relevantArticles.filter((article) => !articleHasEditorialSection(draft, article, activeEditorialSection));
+  const buildArticleEditorialSnapshot = React.useCallback((currentDraft: AdminLawDraft, article: LawArticle): LegalArticleEditorialSnapshot => {
+    const draftTeacherComments = (currentDraft.teacherComments || []).filter((item) => item.articleId === article.id);
+    const draftExamTips = (currentDraft.examTips || []).filter((item) => item.articleId === article.id);
+    const draftJurisprudence = (currentDraft.jurisprudence || []).filter((item) => item.articleId === article.id);
+    const draftSumulas = (currentDraft.sumulas || []).filter((item) => item.articleId === article.id);
+    const articleLegacyExamTips = Array.isArray((article as { examTips?: ArticleExamTip[] }).examTips)
+      ? (article as { examTips?: ArticleExamTip[] }).examTips || []
+      : [];
+    const fallbackExamTipBody = String(article.examTip || article.macete || '').trim();
 
     return {
-      total: relevantArticles.length,
-      covered: relevantArticles.length - missingArticles.length,
-      missingArticles,
-      skippedArticles: articles.length - relevantArticles.length,
+      articleId: article.id,
+      articleNumber: article.number,
+      teacherComments: draftTeacherComments.length > 0 ? draftTeacherComments : (article.comentarios || []),
+      examTips: draftExamTips.length > 0
+        ? draftExamTips
+        : (articleLegacyExamTips.length > 0
+          ? articleLegacyExamTips
+          : (fallbackExamTipBody ? [{
+            id: createTempId('tip-existing'),
+            articleId: article.id,
+            title: 'Macete para prova',
+            body: fallbackExamTipBody,
+            tags: [],
+          }] : [])),
+      doctrine: article.doctrine || article.doutrina || [],
+      jurisprudenceNotes: article.jurisprudenceNotes || [],
+      jurisprudence: draftJurisprudence.length > 0 ? draftJurisprudence : (article.jurisprudencia || []),
+      sumulas: draftSumulas.length > 0 ? draftSumulas : (article.sumulas || article.syllabi || []),
     };
-  }, [activeEditorialSection, articleHasEditorialSection, draft]);
-
-  const addEditorialPlaceholdersToArticles = (section: LegalEditorialSection, onlyMissing: boolean) => {
-    if (!draft || section === 'ai') return;
-
-    const articles = (draft.articles || []).filter((article) => !isLikelyEditoriallyIrrelevantArticle(article));
-    const targets = articles.filter((article) => (
-      onlyMissing ? !articleHasEditorialSection(draft, article, section) : true
-    ));
-
-    if (targets.length === 0) {
-      addToast('Todos os artigos ja possuem esse bloco editorial.', 'info');
-      return;
-    }
-
-    const targetIds = new Set(targets.map((article) => article.id));
-
-    setDraft((current) => {
-      if (!current) return current;
-      const currentArticles = current.articles || [];
-
-      if (section === 'teacher') {
-        return {
-          ...current,
-          teacherComments: [
-            ...(current.teacherComments || []),
-            ...targets.map((article) => ({
-              id: createTempId('teacher'),
-              articleId: article.id,
-              title: 'Comentario do professor',
-              body: '',
-              examFocus: [],
-              pitfalls: [],
-              relatedRefs: [],
-              authorName: 'Equipe editorial',
-              authorRole: 'Professor especialista',
-              reviewedAt: new Date().toISOString(),
-            })),
-          ],
-        };
-      }
-
-      if (section === 'tips') {
-        return {
-          ...current,
-          examTips: [
-            ...(current.examTips || []),
-            ...targets.map((article) => ({
-              id: createTempId('tip'),
-              articleId: article.id,
-              title: 'Macete para prova',
-              body: '',
-              tags: [],
-            })),
-          ],
-        };
-      }
-
-      if (section === 'jurisprudence') {
-        return {
-          ...current,
-          jurisprudence: [
-            ...(current.jurisprudence || []),
-            ...targets.map((article) => ({
-              id: createTempId('juris'),
-              articleId: article.id,
-              court: 'STJ' as ArticleJurisprudence['court'],
-              precedentType: '',
-              title: '',
-              summary: '',
-              examImpact: '',
-              isConsolidated: false,
-              priority: 'medium' as ArticleJurisprudence['priority'],
-              sourceUrl: '',
-            })),
-          ],
-        };
-      }
-
-      if (section === 'sumulas') {
-        return {
-          ...current,
-          sumulas: [
-            ...(current.sumulas || []),
-            ...targets.map((article) => ({
-              id: createTempId('sumula'),
-              articleId: article.id,
-              court: 'STJ',
-              number: '',
-              text: '',
-              sourceUrl: '',
-              priority: 'medium',
-            })),
-          ],
-        };
-      }
-
-      if (section === 'doctrine') {
-        return {
-          ...current,
-          articles: currentArticles.map((article) => targetIds.has(article.id)
-            ? { ...article, doctrine: [...(article.doctrine || []), ''] }
-            : article),
-        };
-      }
-
-      return current;
-    });
-
-    addToast(
-      onlyMissing
-        ? `Bloco adicionado em ${targets.length} artigo(s) pendente(s).`
-        : `Bloco adicionado em ${targets.length} artigo(s).`,
-      'success',
-    );
-  };
-
-  const batchEligibleArticlesCount = React.useMemo(() => {
-    if (!draft?.articles?.length) return 0;
-    return (draft.articles || [])
-      .filter((article) => !isLikelyEditoriallyIrrelevantArticle(article))
-      .filter((article) => (
-        batchOnlyMissingComments ? !articleHasTeacherComment(draft, article) : true
-      )).length;
-  }, [articleHasTeacherComment, batchOnlyMissingComments, draft]);
-
-  const waitWhileBatchPaused = React.useCallback(async () => {
-    while (batchPauseRef.current && !batchStopRef.current) {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
   }, []);
 
   const ensureNestedIds = React.useCallback((articleId: string, editorial: LegalArticleEditorialSnapshot): LegalArticleEditorialSnapshot => ({
@@ -2454,60 +2551,86 @@ const AdminLegalCommentaryEditPage = () => {
     setDraft((current) => {
       if (!current) return current;
       const editorial = ensureNestedIds(result.articleId, result.editorial);
+      const scope = result.scope;
+      const updatesTeacherComments = ['article-full', 'stage-a', 'field-comment'].includes(scope);
+      const updatesExamTips = ['article-full', 'stage-a', 'field-macete'].includes(scope);
+      const updatesDoctrine = ['article-full', 'stage-b', 'field-doutrina'].includes(scope);
+      const updatesJurisprudence = ['article-full', 'stage-c', 'field-jurisprudencia'].includes(scope);
+      const updatesSumulas = ['article-full', 'stage-c', 'field-sumulas'].includes(scope);
+      const activeArticle = (current.articles || []).find((article) => article.id === result.articleId);
+      const existingTeacherComments = (current.teacherComments || []).filter((item) => item.articleId === result.articleId);
+      const existingExamTips = (current.examTips || []).filter((item) => item.articleId === result.articleId);
+      const existingJurisprudence = (current.jurisprudence || []).filter((item) => item.articleId === result.articleId);
+      const existingSumulas = (current.sumulas || []).filter((item) => item.articleId === result.articleId);
+      const nextTeacherCommentsForArticle = updatesTeacherComments
+        ? mergeTeacherCommentsByTarget(
+          existingTeacherComments.length > 0 ? existingTeacherComments : (activeArticle?.comentarios || []),
+          editorial.teacherComments,
+        )
+        : (existingTeacherComments.length > 0 ? existingTeacherComments : (activeArticle?.comentarios || []));
+      const nextExamTipsForArticle = updatesExamTips
+        ? mergeExamTipsByTarget(
+          existingExamTips.length > 0 ? existingExamTips : buildArticleEditorialSnapshot(current, activeArticle || { id: result.articleId } as LawArticle).examTips,
+          editorial.examTips,
+        )
+        : (existingExamTips.length > 0 ? existingExamTips : buildArticleEditorialSnapshot(current, activeArticle || { id: result.articleId } as LawArticle).examTips);
+      const nextJurisprudenceForArticle = updatesJurisprudence && editorial.jurisprudence.length > 0
+        ? editorial.jurisprudence
+        : (existingJurisprudence.length > 0 ? existingJurisprudence : (activeArticle?.jurisprudencia || []));
+      const nextSumulasForArticle = updatesSumulas && editorial.sumulas.length > 0
+        ? editorial.sumulas
+        : (existingSumulas.length > 0 ? existingSumulas : (activeArticle?.sumulas || activeArticle?.syllabi || []));
 
-      return {
+      const nextDraft = {
         ...current,
-        teacherComments: [
-          ...(current.teacherComments || []).filter((item) => item.articleId !== result.articleId),
-          ...editorial.teacherComments,
-        ],
-        examTips: [
-          ...(current.examTips || []).filter((item) => item.articleId !== result.articleId),
-          ...editorial.examTips,
-        ],
-        jurisprudence: [
-          ...(current.jurisprudence || []).filter((item) => item.articleId !== result.articleId),
-          ...editorial.jurisprudence,
-        ],
-        sumulas: [
-          ...(current.sumulas || []).filter((item) => item.articleId !== result.articleId),
-          ...editorial.sumulas,
-        ],
+        teacherComments: updatesTeacherComments
+          ? [
+            ...(current.teacherComments || []).filter((item) => item.articleId !== result.articleId),
+            ...nextTeacherCommentsForArticle,
+          ]
+          : current.teacherComments || [],
+        examTips: updatesExamTips
+          ? [
+            ...(current.examTips || []).filter((item) => item.articleId !== result.articleId),
+            ...nextExamTipsForArticle,
+          ]
+          : current.examTips || [],
+        jurisprudence: updatesJurisprudence
+          ? [
+            ...(current.jurisprudence || []).filter((item) => item.articleId !== result.articleId),
+            ...nextJurisprudenceForArticle,
+          ]
+          : current.jurisprudence || [],
+        sumulas: updatesSumulas
+          ? [
+            ...(current.sumulas || []).filter((item) => item.articleId !== result.articleId),
+            ...nextSumulasForArticle,
+          ]
+          : current.sumulas || [],
         articles: (current.articles || []).map((article) => article.id === result.articleId ? {
           ...article,
-          doctrine: editorial.doctrine,
-          doutrina: editorial.doctrine,
-          jurisprudenceNotes: editorial.jurisprudenceNotes || [],
-          macete: editorial.examTips[0]?.body || null,
-          examTip: editorial.examTips[0]?.body || null,
-          comentarios: editorial.teacherComments,
-          jurisprudencia: editorial.jurisprudence,
-          sumulas: editorial.sumulas,
-          syllabi: editorial.sumulas,
+          doctrine: updatesDoctrine && editorial.doctrine.length > 0 ? editorial.doctrine : article.doctrine,
+          doutrina: updatesDoctrine && editorial.doctrine.length > 0 ? editorial.doctrine : article.doutrina,
+          jurisprudenceNotes: updatesJurisprudence && (editorial.jurisprudenceNotes || []).length > 0
+            ? editorial.jurisprudenceNotes || []
+            : article.jurisprudenceNotes,
+          macete: updatesExamTips && nextExamTipsForArticle[0]?.body ? nextExamTipsForArticle[0].body : article.macete,
+          examTip: updatesExamTips && nextExamTipsForArticle[0]?.body ? nextExamTipsForArticle[0].body : article.examTip,
+          comentarios: updatesTeacherComments ? nextTeacherCommentsForArticle : article.comentarios,
+          jurisprudencia: updatesJurisprudence ? nextJurisprudenceForArticle : article.jurisprudencia,
+          sumulas: updatesSumulas ? nextSumulasForArticle : article.sumulas,
+          syllabi: updatesSumulas ? nextSumulasForArticle : article.syllabi,
         } : article),
       };
+      draftRef.current = nextDraft;
+      return nextDraft;
     });
-  }, [ensureNestedIds]);
-
-  const refreshBatchRun = React.useCallback(async (runId?: string) => {
-    if (!runId && !draftRef.current?.id) return null;
-
-    setIsBatchRefreshing(true);
-    try {
-      const nextRun = await legalCommentaryApiService.getAdminEditorialBatchStatus(
-        runId ? { runId } : { lawId: String(draftRef.current?.id || '') },
-      );
-      setBatchRun(nextRun);
-      return nextRun;
-    } finally {
-      setIsBatchRefreshing(false);
-    }
-  }, []);
+  }, [buildArticleEditorialSnapshot, ensureNestedIds]);
 
   const generateArticleEditorial = React.useCallback(async (
     article: LawArticle,
     scope: LegalEditorialGenerationScope,
-    batchRunId?: string,
+    target?: LegalRichContentBlock['target'] | null,
   ) => {
     const currentDraft = draftRef.current;
     if (!currentDraft) {
@@ -2521,19 +2644,16 @@ const AdminLegalCommentaryEditPage = () => {
       law: currentDraft,
       article,
       existingEditorial: buildArticleEditorialSnapshot(currentDraft, article),
-      previewOnly: !/^\d+$/.test(String(currentDraft.id || '')) || !/^\d+$/.test(String(article.id || '')),
-      batchRunId,
+      previewOnly: true,
+      target,
     });
 
     applyEditorialResultToDraft(result);
-    if (result.batch) {
-      setBatchRun(result.batch);
-    }
     return result;
   }, [applyEditorialResultToDraft, buildArticleEditorialSnapshot]);
 
   const applySectionEditorialToDraft = React.useCallback((sectionEditorial?: LawSectionEditorial) => {
-    const editorialKey = String(sectionEditorial?.sectionId || sectionEditorial?.sectionKey || '');
+    const editorialKey = String(sectionEditorial?.sectionId || '');
     if (!sectionEditorial || !editorialKey) {
       return;
     }
@@ -2545,16 +2665,82 @@ const AdminLegalCommentaryEditPage = () => {
 
       const existing = current.sectionEditorials || [];
       const nextSectionEditorials = [
-        ...existing.filter((item) => String(item.sectionId || item.sectionKey || '') !== editorialKey),
+        ...existing.filter((item) => String(item.sectionId || '') !== editorialKey),
         sectionEditorial,
       ];
 
-      return {
+      const nextDraft = {
         ...current,
         sectionEditorials: nextSectionEditorials,
       };
+      draftRef.current = nextDraft;
+      return nextDraft;
     });
   }, []);
+
+  const updateSectionEditorialInDraft = React.useCallback((
+    sectionId: string,
+    updater: (editorial: LawSectionEditorial) => LawSectionEditorial,
+  ) => {
+    const editorialKey = String(sectionId || '');
+    if (!editorialKey) {
+      return;
+    }
+
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextSectionEditorials = (current.sectionEditorials || []).map((item) => (
+        String(item.sectionId || '') === editorialKey ? updater(item) : item
+      ));
+
+      const nextDraft = {
+        ...current,
+        sectionEditorials: nextSectionEditorials,
+      };
+      draftRef.current = nextDraft;
+      return nextDraft;
+    });
+  }, []);
+
+  const removeSectionEditorialFromDraft = React.useCallback((sectionId: string) => {
+    const editorialKey = String(sectionId || '');
+    if (!editorialKey) {
+      return;
+    }
+
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextSectionEditorials = (current.sectionEditorials || []).filter((item) => (
+        String(item.sectionId || '') !== editorialKey
+      ));
+
+      const nextDraft = {
+        ...current,
+        sectionEditorials: nextSectionEditorials,
+      };
+      draftRef.current = nextDraft;
+      return nextDraft;
+    });
+
+    setEditingSectionAnalysisId((current) => (current === editorialKey ? null : current));
+  }, []);
+
+  const updateSectionEditorialBlockInDraft = React.useCallback((
+    sectionId: string,
+    blockIndex: number,
+    updater: (block: NonNullable<LawSectionEditorial['blocks']>[number]) => NonNullable<LawSectionEditorial['blocks']>[number],
+  ) => {
+    updateSectionEditorialInDraft(sectionId, (editorial) => ({
+      ...editorial,
+      blocks: (editorial.blocks || []).map((block, index) => (index === blockIndex ? updater(block) : block)),
+    }));
+  }, [updateSectionEditorialInDraft]);
 
   const generateSectionAnalysis = React.useCallback(async (section: AdminLawSectionOverview | LawSection, options?: { silent?: boolean }) => {
     const currentDraft = draftRef.current;
@@ -2563,18 +2749,23 @@ const AdminLegalCommentaryEditPage = () => {
       return null;
     }
 
-    const sectionKey = section.id;
-    setSectionAnalysisLoadingKey(sectionKey);
+    const sectionId = section.id;
+    setSectionAnalysisLoadingKey(sectionId);
 
     try {
       const result = await legalCommentaryApiService.generateAdminEditorial({
         scope: 'section-analysis',
         lawId: String(currentDraft.id),
-        law: currentDraft,
+        law: {
+          id: currentDraft.id,
+          title: currentDraft.title,
+          shortTitle: currentDraft.shortTitle,
+          number: currentDraft.number,
+          officialUrl: currentDraft.officialUrl,
+        },
         section: {
           id: section.id,
           sectionId: section.id,
-          sectionKey,
           sectionTitle: section.title,
           title: section.title,
           rangeLabel: formatSectionRange(section),
@@ -2582,7 +2773,7 @@ const AdminLegalCommentaryEditPage = () => {
           toArticle: section.toArticle,
           articleIds: 'articleIds' in section ? section.articleIds : [],
         },
-        previewOnly: false,
+        previewOnly: true,
       });
 
       applySectionEditorialToDraft(result.sectionEditorial);
@@ -2600,49 +2791,151 @@ const AdminLegalCommentaryEditPage = () => {
     }
   }, [applySectionEditorialToDraft]);
 
-  const generateMissingSectionAnalyses = React.useCallback(async () => {
+  const buildMissingLawAiTasks = React.useCallback((
+    currentDraft: AdminLawDraft,
+    options?: {
+      includeSections?: boolean;
+      includeArticles?: boolean;
+      articleKinds?: LegalArticleAiKind[];
+    },
+  ): LegalAiBulkTask[] => {
+    const tasks: LegalAiBulkTask[] = [];
+    const existingSectionKeys = new Set((currentDraft.sectionEditorials || []).map((item) => String(item.sectionId || '')));
+    const allowedArticleKinds = options?.articleKinds && options.articleKinds.length > 0
+      ? new Set(options.articleKinds)
+      : null;
+
+    if (options?.includeSections !== false) {
+      sectionOverviews
+        .filter((section) => !existingSectionKeys.has(section.resolvedSectionId))
+        .forEach((section) => {
+          tasks.push({
+            id: `section:${section.resolvedSectionId}`,
+            type: 'section-analysis',
+            label: `Analise do capitulo - ${section.title}`,
+            section,
+          });
+        });
+    }
+
+    if (options?.includeArticles !== false) {
+      (currentDraft.articles || [])
+        .filter((article) => !isLikelyEditoriallyIrrelevantArticle(article))
+        .forEach((article) => {
+          const counts = getArticleEditorialCounts(currentDraft, article);
+          getMissingArticleAiRequirements(counts).filter((kind) => !allowedArticleKinds || allowedArticleKinds.has(kind)).forEach((kind) => {
+            tasks.push({
+              id: `article:${article.id}:${kind}`,
+              type: 'article-field',
+              label: `${getArticleLabel(article)} - ${AI_KIND_LABEL[kind]}`,
+              article,
+              kind,
+            });
+          });
+        });
+    }
+
+    return tasks;
+  }, [sectionOverviews]);
+
+  const generateMissingLawAiContent = React.useCallback(async (options?: {
+    includeSections?: boolean;
+    includeArticles?: boolean;
+    articleKinds?: LegalArticleAiKind[];
+    emptyMessage?: string;
+  }) => {
     const currentDraft = draftRef.current;
     if (!currentDraft?.id || !/^\d+$/.test(String(currentDraft.id))) {
-      addToastRef.current('Salve a lei antes de gerar as analises dos capitulos.', 'info');
+      addToastRef.current('Salve a lei antes de gerar conteudo em lote com IA.', 'info');
       return;
     }
 
-    const existingKeys = new Set((currentDraft.sectionEditorials || []).map((item) => String(item.sectionId || item.sectionKey || '')));
-    const pendingSections = lawSections.filter((section) => !existingKeys.has(section.id));
-    const sectionsToGenerate = pendingSections.length > 0 ? pendingSections : lawSections;
+    const tasks = buildMissingLawAiTasks(currentDraft, options);
 
-    if (sectionsToGenerate.length === 0) {
-      addToastRef.current('Nao ha capitulos detectados para esta lei.', 'info');
+    if (tasks.length === 0) {
+      setLawAiBulkProgress({
+        total: 0,
+        completed: 0,
+        failed: 0,
+        currentLabel: 'Tudo ja possui conteudo editorial de IA.',
+        running: false,
+      });
+      addToastRef.current(options?.emptyMessage || 'Nada pendente: capitulos e artigos ja possuem conteudo editorial.', 'success');
       return;
     }
 
     setIsGeneratingAllSectionAnalyses(true);
+    setLawAiBulkProgress({
+      total: tasks.length,
+      completed: 0,
+      failed: 0,
+      currentLabel: 'Preparando geracao editorial...',
+      running: true,
+    });
+
     let successCount = 0;
     let failedCount = 0;
     try {
-      for (const section of sectionsToGenerate) {
-        const saved = await generateSectionAnalysis(section, { silent: true });
-        if (saved) {
-          successCount += 1;
-        } else {
+      for (let index = 0; index < tasks.length; index += 1) {
+        const task = tasks[index];
+        setLawAiBulkProgress({
+          total: tasks.length,
+          completed: index,
+          failed: failedCount,
+          currentLabel: task.label,
+          running: true,
+        });
+
+        try {
+          if (task.type === 'section-analysis') {
+            const saved = await generateSectionAnalysis(task.section, { silent: true });
+            if (saved) {
+              successCount += 1;
+            } else {
+              failedCount += 1;
+            }
+          } else {
+            await generateArticleEditorial(task.article, resolveAiScope(task.kind));
+            successCount += 1;
+          }
+        } catch {
           failedCount += 1;
+        } finally {
+          setLawAiBulkProgress({
+            total: tasks.length,
+            completed: index + 1,
+            failed: failedCount,
+            currentLabel: task.label,
+            running: true,
+          });
         }
       }
 
+      setLawAiBulkProgress({
+        total: tasks.length,
+        completed: tasks.length,
+        failed: failedCount,
+        currentLabel: failedCount > 0 ? 'Geracao concluida com pendencias.' : 'Geracao editorial concluida.',
+        running: false,
+      });
+
       if (failedCount > 0) {
         addToastRef.current(
-          `Geracao dos capitulos concluida com pendencias: ${successCount} sucesso(s), ${failedCount} falha(s).`,
+          `Geracao editorial concluida com pendencias: ${successCount} sucesso(s), ${failedCount} falha(s).`,
           'info',
         );
       } else {
-        addToastRef.current(`Analises dos capitulos concluidas: ${successCount} capitulo(s) atualizado(s).`, 'success');
+        addToastRef.current(`Conteudo editorial gerado: ${successCount} item(ns) atualizado(s).`, 'success');
       }
     } finally {
       setIsGeneratingAllSectionAnalyses(false);
     }
-  }, [generateSectionAnalysis, lawSections]);
+  }, [buildMissingLawAiTasks, generateArticleEditorial, generateSectionAnalysis]);
 
-  const generateWithAi = async (kind: Exclude<LegalAiGenerationKind, 'bundle'>) => {
+  const generateWithAi = async (
+    kind: Exclude<LegalAiGenerationKind, 'bundle'>,
+    options?: { target?: LegalRichContentBlock['target'] | null; loadingKey?: string; label?: string },
+  ) => {
     if (!draft || !activeArticle) {
       addToast('Nenhum artigo ativo para gerar conteudo.', 'info');
       return;
@@ -2653,189 +2946,27 @@ const AdminLegalCommentaryEditPage = () => {
       return;
     }
 
-    setAiLoading(kind);
-    startAiProgress(kind, AI_KIND_LABEL[kind]);
+    const loadingKey = options?.loadingKey || kind;
+    const label = options?.label || AI_KIND_LABEL[kind];
+    setAiLoading(loadingKey);
+    startAiProgress(loadingKey, label);
 
     try {
-      const result = await generateArticleEditorial(activeArticle, resolveAiScope(kind));
-      setAiProgress((current) => current?.kind === kind ? { ...current, percent: 92 } : current);
+      const result = await generateArticleEditorial(activeArticle, resolveAiScope(kind), options?.target || null);
+      setAiProgress((current) => current?.kind === loadingKey ? { ...current, percent: 92 } : current);
       const warnings = result.summary.warnings || [];
 
       if (result.summary.approvedBlocks > 0) {
-        addToast(`${AI_KIND_LABEL[kind]} gerado${result.persisted ? ' e salvo' : ''}. Revise o resultado.`, 'success');
+        addToast(`${label} gerado${result.persisted ? ' e salvo' : ''}. Revise o resultado.`, 'success');
       } else {
-        addToast(warnings[0] || `Nada seguro para adicionar em ${AI_KIND_LABEL[kind].toLowerCase()}.`, 'info');
+        addToast(warnings[0] || `Nada seguro para adicionar em ${label.toLowerCase()}.`, 'info');
       }
     } catch (error: unknown) {
       addToast(getErrorMessage(error, 'Nao foi possivel gerar com IA agora.'), 'error');
     } finally {
-      finishAiProgress(kind);
+      finishAiProgress(loadingKey);
       setAiLoading(null);
     }
-  };
-
-  const generateAiBundle = async () => {
-    if (!draft || !activeArticle) {
-      addToast('Nenhum artigo ativo para gerar conteudo.', 'info');
-      return;
-    }
-
-    if (isLikelyEditoriallyIrrelevantArticle(activeArticle)) {
-      addToast('Este artigo parece ser bloco final, assinatura ou expediente sem relevancia recorrente para prova. Nao e necessario gerar pacote editorial.', 'info');
-      return;
-    }
-
-    setAiLoading('bundle');
-    startAiProgress('bundle', AI_KIND_LABEL.bundle);
-
-    try {
-      const result = await generateArticleEditorial(activeArticle, 'article-full');
-      setAiProgress((current) => current?.kind === 'bundle' ? { ...current, percent: 92 } : current);
-      const warnings = result.summary.warnings || [];
-
-      if (result.summary.approvedBlocks > 0) {
-        addToast(
-          `Pacote IA concluido${result.persisted ? ' e salvo' : ''}: ${result.summary.approvedBlocks} bloco(s) aprovados. Revise o artigo.`,
-          'success',
-        );
-      } else {
-        addToast(warnings[0] || 'A IA nao encontrou conteudo editorial seguro para este artigo.', 'info');
-      }
-    } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel gerar o pacote com IA agora.'), 'error');
-    } finally {
-      finishAiProgress('bundle');
-      setAiLoading(null);
-    }
-  };
-
-  const executeBatchRun = React.useCallback(async (run: LegalEditorialBatchRun) => {
-    setIsBatchRunning(true);
-    batchStopRef.current = false;
-    batchPauseRef.current = false;
-    setIsBatchPaused(false);
-
-    try {
-      for (const item of run.items) {
-        if (batchStopRef.current) {
-          break;
-        }
-
-        await waitWhileBatchPaused();
-        if (batchStopRef.current) {
-          break;
-        }
-
-        const currentDraft = draftRef.current;
-        const article = currentDraft?.articles?.find((entry) => entry.id === item.articleId);
-        if (!currentDraft || !article) {
-          continue;
-        }
-        if (isLikelyEditoriallyIrrelevantArticle(article)) {
-          continue;
-        }
-
-        try {
-          await generateArticleEditorial(article, 'article-full', run.id);
-        } catch {
-          await refreshBatchRun(run.id);
-        }
-      }
-
-      const finalRun = batchStopRef.current
-        ? await legalCommentaryApiService.stopAdminEditorialBatch(run.id).catch(async () => refreshBatchRun(run.id))
-        : await refreshBatchRun(run.id);
-
-      if (finalRun) {
-        setBatchRun(finalRun);
-      }
-
-      if (finalRun) {
-        if (finalRun.status === 'stopped') {
-          addToast('Lote interrompido. O progresso concluido foi mantido.', 'info');
-        } else if (finalRun.failedArticles > 0 || finalRun.partialArticles > 0) {
-          addToast(
-            `Lote concluido com revisoes pendentes: ${finalRun.successfulArticles} sucesso, ${finalRun.partialArticles} parcial, ${finalRun.failedArticles} falha.`,
-            'info',
-          );
-        } else {
-          addToast(`Lote concluido com sucesso em ${finalRun.successfulArticles} artigo(s).`, 'success');
-        }
-      }
-    } finally {
-      setIsBatchRunning(false);
-      batchPauseRef.current = false;
-      batchStopRef.current = false;
-      setIsBatchPaused(false);
-    }
-  }, [generateArticleEditorial, refreshBatchRun, addToast, waitWhileBatchPaused]);
-
-  const startBatchGeneration = async (options?: { onlyMissingComments?: boolean }) => {
-    if (!draft?.id || !/^\d+$/.test(String(draft.id))) {
-      addToast('Salve a lei antes de iniciar a geracao em lote.', 'info');
-      return;
-    }
-
-    const unsavedArticles = (draft.articles || []).some((article) => !/^\d+$/.test(String(article.id || '')));
-    if (unsavedArticles) {
-      addToast('Salve os artigos novos antes de rodar o lote.', 'info');
-      return;
-    }
-
-    try {
-      const onlyMissingComments = options?.onlyMissingComments ?? batchOnlyMissingComments;
-      const eligibleArticles = (draft.articles || [])
-        .filter((article) => !isLikelyEditoriallyIrrelevantArticle(article))
-        .filter((article) => (
-          onlyMissingComments ? !articleHasTeacherComment(draft, article) : true
-        ));
-
-      if (eligibleArticles.length === 0) {
-        addToast(
-          onlyMissingComments
-            ? 'Todos os artigos ja possuem comentario do professor.'
-            : 'Nao ha artigos elegiveis para o lote.',
-          'info',
-        );
-        return;
-      }
-
-      const run = await legalCommentaryApiService.startAdminEditorialBatch(
-        String(draft.id),
-        eligibleArticles.map((article) => article.id),
-      );
-      setBatchRun(run);
-      await executeBatchRun(run);
-    } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel iniciar o lote editorial.'), 'error');
-    }
-  };
-
-  const retryFailedBatch = async () => {
-    if (!batchRun?.id) {
-      addToast('Nenhum lote disponivel para reprocessar.', 'info');
-      return;
-    }
-
-    try {
-      const run = await legalCommentaryApiService.retryAdminEditorialBatch(batchRun.id);
-      setBatchRun(run);
-      await executeBatchRun(run);
-    } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel reprocessar os artigos falhados.'), 'error');
-    }
-  };
-
-  const toggleBatchPause = () => {
-    const nextPaused = !batchPauseRef.current;
-    batchPauseRef.current = nextPaused;
-    setIsBatchPaused(nextPaused);
-  };
-
-  const stopBatchRun = () => {
-    batchStopRef.current = true;
-    batchPauseRef.current = false;
-    setIsBatchPaused(false);
   };
 
   const importFromPlanalto = async () => {
@@ -2949,11 +3080,28 @@ const AdminLegalCommentaryEditPage = () => {
     router.replace(buildAdminLawEditPath(draft.id), { scroll: false });
   }, [draft?.id, isLoading, isNew, openUpdatesModal, router, shouldOpenUpdatesFromQuery]);
 
-  const saveLaw = async () => {
+  const resolvePublicationDate = (options?: { publish?: boolean }) => {
+    if (!options?.publish) {
+      return draftRef.current?.publishedAt || draftRef.current?.published_at || draftRef.current?.date || null;
+    }
+
+    const normalizedDate = normalizeAdminPublicationDate(scheduledDate);
+    if (normalizedDate) {
+      return `${normalizedDate} ${normalizeAdminPublicationTime(scheduledTime)}:00`;
+    }
+
+    return formatLocalDateTimeForApi(new Date());
+  };
+
+  const saveLaw = async (options?: { publish?: boolean; draft?: boolean }) => {
     if (!draft) return;
     const normalizedAreaId = String(draft.areaId || draft.area?.id || '').trim();
     if (!normalizedAreaId) {
       addToast('Selecione a materia da lei antes de salvar.', 'info');
+      return;
+    }
+    if (options?.publish && draft.status === 'scheduled' && !normalizeAdminPublicationDate(scheduledDate)) {
+      addToast('Informe a data de agendamento antes de agendar a lei.', 'info');
       return;
     }
 
@@ -2965,10 +3113,19 @@ const AdminLegalCommentaryEditPage = () => {
       const cleanedDescription = cleanedPreamble || cleanedEmenta || String(draft.description || '').trim();
       const normalizedLawName = String(draft.title || draft.shortTitle || '').trim();
       const normalizedArticles = (draft.articles || []).map((article) => normalizeArticleForSave(article));
+      const shouldSchedulePublication = options?.publish && draft.status === 'scheduled';
+      const nextStatus: NonNullable<AdminLawDraft['status']> = (
+        options?.draft ? 'draft' : options?.publish ? (shouldSchedulePublication ? 'scheduled' : 'active') : (draft.status || 'draft')
+      ) as NonNullable<AdminLawDraft['status']>;
+      const nextPublicationDate = resolvePublicationDate({ publish: options?.publish });
       const saved = await legalCommentaryApiService.saveAdminLaw({
         ...draft,
         title: normalizedLawName,
         shortTitle: normalizedLawName,
+        status: nextStatus,
+        date: nextPublicationDate,
+        publishedAt: nextPublicationDate,
+        published_at: nextPublicationDate,
         preamble: cleanedPreamble,
         description: cleanedDescription,
         summary: '',
@@ -2983,7 +3140,7 @@ const AdminLegalCommentaryEditPage = () => {
         sumulas: draft.sumulas || [],
         sectionEditorials: draft.sectionEditorials || [],
       });
-      addToast('Lei salva com sucesso.', 'success');
+      addToast(options?.draft ? 'Rascunho salvo com sucesso.' : 'Lei salva com sucesso.', 'success');
       if (isNew && saved.id) {
         router.replace(buildAdminLawEditPath(saved.id));
       } else {
@@ -3039,33 +3196,368 @@ const AdminLegalCommentaryEditPage = () => {
     ? new Date(draft.lastSyncedAt).toLocaleString('pt-BR')
     : 'Ainda nao sincronizada';
   const activeArticleBlocks = activeArticle ? normalizeArticleBlocks(activeArticle) : [];
-  const activeArticleHasSubject = Boolean(activeArticle?.assuntoFilterId || activeArticle?.topicFilterId || activeSectionOverview?.assuntoFilterId || getArticleAssuntoDisplayText(activeArticle));
+  const activeArticleHasSubject = Boolean(activeSectionOverview?.assuntoFilterId);
   const activeArticleTextPreview = activeArticle
     ? buildArticleTextFromBlocks(activeArticleBlocks) || activeArticle.text || activeArticle.texto || 'Texto do artigo ainda nao preenchido.'
     : 'Selecione um artigo para visualizar o conteudo.';
+  const activeArticleFilterSummary = [
+    { label: 'Materia', value: lawMateriaOptions.find((option) => String(option.id) === String(draft.areaId || ''))?.name || draft.area?.name || '' },
+    { label: 'Topico', value: lawTopicoOptions.find((option) => String(option.id) === String(draft.lawTopicFilterId || ''))?.name || draft.title || '' },
+    { label: 'Subtopico', value: activeSectionOverview?.titleName || '' },
+    { label: 'Assunto', value: activeSectionOverview?.chapterName || '' },
+  ].filter((item) => String(item.value || '').trim() !== '');
   const selectedLawTitle = draft.title || draft.shortTitle || 'Lei sem titulo';
   const selectedLawNumber = draft.number ? `Lei no ${draft.number}` : selectedLawTitle;
   const pendingUpdatesCount = recentLawUpdates.length;
   const showPreparationToast = (message = 'Funcionalidade em preparacao.') => addToast(message, 'info');
-  const toggleStructureSection = (sectionKey: string) => {
+  const activeArticleTargetOptions = activeArticleBlocks
+    .filter((block) => ['caput', 'paragraph', 'inciso', 'alinea', 'item'].includes(block.kind))
+    .map((block) => {
+      const kindLabel = LEGAL_BLOCK_KIND_LABEL[block.kind] || 'Bloco';
+      const label = String(block.label || '').trim();
+      const text = String(block.text || '').replace(/\s+/g, ' ').trim();
+      return {
+        id: block.id,
+        label: [kindLabel, label].filter(Boolean).join(' - '),
+        preview: text.length > 86 ? `${text.slice(0, 86)}...` : text,
+        target: {
+          kind: block.kind,
+          label: label || kindLabel,
+          blockId: block.id,
+        } satisfies LegalRichContentBlock['target'],
+      };
+    });
+  const selectedTeacherCommentTarget = activeArticleTargetOptions
+    .find((option) => option.id === selectedTeacherCommentTargetId)?.target || null;
+  const resolveArticleContentTarget = (blockId: string): LegalRichContentBlock['target'] | undefined => (
+    activeArticleTargetOptions.find((option) => option.id === blockId)?.target
+  );
+  const updateGeneratedArticleContent = (
+    kind: GeneratedArticleContentKind,
+    itemId: string,
+    patch: Record<string, unknown>,
+    index?: number,
+  ) => {
+    if (!activeArticle) return;
+
+    setDraft((current) => {
+      if (!current) return current;
+      const articleId = activeArticle.id;
+      const updateTarget = patch.target as LegalRichContentBlock['target'] | undefined;
+
+      const updateTeacher = (item: TeacherComment): TeacherComment => {
+        if (String(item.id || '') !== itemId) return item;
+        let nextItem: TeacherComment = { ...item };
+        if (typeof patch.title === 'string') {
+          nextItem.title = patch.title;
+        }
+        if (typeof patch.body === 'string') {
+          nextItem = updateTeacherCommentRichBody(nextItem, patch.body);
+        }
+        if (Object.prototype.hasOwnProperty.call(patch, 'target')) {
+          nextItem = updateTeacherCommentTarget(nextItem, updateTarget);
+        }
+        if (typeof patch.richBlockIndex === 'number') {
+          const richBlockIndex = patch.richBlockIndex;
+          const sourceBlocks = nextItem.richBlocks || nextItem.blocks || [];
+          const nextBlocks = sourceBlocks
+            .map((block, blockIndex) => {
+              if (blockIndex !== richBlockIndex) return block;
+              const nextBlock: LegalRichContentBlock = { ...block };
+              if (typeof patch.richBlockTitle === 'string') {
+                nextBlock.title = patch.richBlockTitle;
+              }
+              if (typeof patch.richBlockContent === 'string') {
+                nextBlock.content = patch.richBlockContent;
+                if (richBlockIndex === 0) {
+                  nextItem.body = patch.richBlockContent;
+                  nextItem.texto = patch.richBlockContent;
+                }
+              }
+              if (Object.prototype.hasOwnProperty.call(patch, 'richBlockTarget')) {
+                const richBlockTarget = patch.richBlockTarget as LegalRichContentBlock['target'] | undefined;
+                if (richBlockTarget?.label || richBlockTarget?.blockId) {
+                  nextBlock.target = richBlockTarget;
+                } else {
+                  delete nextBlock.target;
+                }
+              }
+              return nextBlock;
+            })
+            .filter((_, blockIndex) => !(patch.removeRichBlock === true && blockIndex === richBlockIndex));
+
+          nextItem.richBlocks = nextBlocks;
+          nextItem.blocks = nextBlocks;
+        }
+        return nextItem;
+      };
+
+      const updateTip = (item: ArticleExamTip): ArticleExamTip => (
+        String(item.id || '') === itemId
+          ? {
+            ...item,
+            ...(typeof patch.title === 'string' ? { title: patch.title } : {}),
+            ...(typeof patch.body === 'string' ? { body: patch.body, texto: patch.body } : {}),
+            ...(Object.prototype.hasOwnProperty.call(patch, 'target') ? { target: updateTarget } : {}),
+          }
+          : item
+      );
+
+      const updateJurisprudence = (item: ArticleJurisprudence): ArticleJurisprudence => (
+        String(item.id || '') === itemId
+          ? {
+            ...item,
+            ...(typeof patch.court === 'string' ? { court: patch.court as ArticleJurisprudence['court'], tribunal: patch.court } : {}),
+            ...(typeof patch.title === 'string' ? { title: patch.title } : {}),
+            ...(typeof patch.summary === 'string' ? { summary: patch.summary, texto: patch.summary } : {}),
+            ...(Object.prototype.hasOwnProperty.call(patch, 'target') ? { target: updateTarget } : {}),
+          }
+          : item
+      );
+
+      const updateSumula = (item: LegalArticleSyllabus): LegalArticleSyllabus => (
+        String(item.id || '') === itemId
+          ? {
+            ...item,
+            ...(typeof patch.court === 'string' ? { court: patch.court, tribunal: patch.court } : {}),
+            ...(typeof patch.number === 'string' ? { number: patch.number, numero: patch.number } : {}),
+            ...(typeof patch.text === 'string' ? { text: patch.text, texto: patch.text } : {}),
+            ...(Object.prototype.hasOwnProperty.call(patch, 'target') ? { target: updateTarget } : {}),
+          }
+          : item
+      );
+
+      const nextDraft: AdminLawDraft = {
+        ...current,
+        teacherComments: kind === 'teacher'
+          ? (current.teacherComments || []).map(updateTeacher)
+          : current.teacherComments,
+        examTips: kind === 'tip'
+          ? (current.examTips || []).map(updateTip)
+          : current.examTips,
+        jurisprudence: kind === 'jurisprudence'
+          ? (current.jurisprudence || []).map(updateJurisprudence)
+          : current.jurisprudence,
+        sumulas: kind === 'sumula'
+          ? (current.sumulas || []).map(updateSumula)
+          : current.sumulas,
+        articles: (current.articles || []).map((article) => {
+          if (article.id !== articleId) return article;
+
+          if (kind === 'teacher') {
+            return {
+              ...article,
+              comentarios: (article.comentarios || []).map(updateTeacher),
+            };
+          }
+          if (kind === 'tip') {
+            const nextTips = (current.examTips || []).map(updateTip).filter((item) => item.articleId === articleId);
+            const inlineTipBody = itemId === `${article.id}-inline-macete` && typeof patch.body === 'string'
+              ? patch.body
+              : null;
+            const editedTipBody = typeof patch.body === 'string' && nextTips.some((item) => String(item.id || '') === itemId)
+              ? patch.body
+              : null;
+            const nextTipBody = inlineTipBody ?? editedTipBody ?? nextTips[0]?.body ?? article.examTip ?? article.macete ?? null;
+            return {
+              ...article,
+              examTip: nextTipBody || undefined,
+              macete: nextTipBody,
+            };
+          }
+          if (kind === 'jurisprudence') {
+            return {
+              ...article,
+              jurisprudencia: (article.jurisprudencia || []).map(updateJurisprudence),
+            };
+          }
+          if (kind === 'sumula') {
+            const nextSumulas = (article.sumulas || article.syllabi || []).map(updateSumula);
+            return {
+              ...article,
+              sumulas: nextSumulas,
+              syllabi: nextSumulas,
+            };
+          }
+          if (kind === 'doctrine' && typeof index === 'number') {
+            const nextDoctrine = [...(article.doctrine || article.doutrina || [])];
+            nextDoctrine[index] = updateTargetedTextItem(nextDoctrine[index] || '', patch);
+            return {
+              ...article,
+              doctrine: nextDoctrine,
+              doutrina: nextDoctrine,
+            };
+          }
+          if (kind === 'jurisprudenceNote' && typeof index === 'number') {
+            const nextNotes = [...(article.jurisprudenceNotes || [])];
+            nextNotes[index] = updateTargetedTextItem(nextNotes[index] || '', patch);
+            return {
+              ...article,
+              jurisprudenceNotes: nextNotes,
+            };
+          }
+          return article;
+        }),
+      };
+
+      draftRef.current = nextDraft;
+      return nextDraft;
+    });
+  };
+
+  const deleteLaw = async () => {
+    if (!draft?.id || isNew) {
+      addToast('A lei ainda nao foi salva.', 'info');
+      return;
+    }
+
+    const canDelete = await confirm({
+      title: 'Excluir lei?',
+      description: `A lei "${draft.shortTitle || draft.title || draft.id}" sera excluida permanentemente. Esta acao nao pode ser desfeita.`,
+      confirmText: 'Excluir lei',
+      cancelText: 'Cancelar',
+      type: 'danger',
+    });
+    if (!canDelete) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await legalCommentaryApiService.deleteAdminLaw(String(draft.id));
+      addToast('Lei excluida com sucesso.', 'success');
+      router.push('/admin/operation/lei-comentada');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel excluir a lei.'), 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  const removeGeneratedArticleContent = async (
+    kind: GeneratedArticleContentKind,
+    itemId: string,
+    label: string,
+    index?: number,
+  ) => {
+    if (!activeArticle) return;
+    const canRemove = await confirm({
+      title: 'Remover conteudo?',
+      description: `${label} sera removido do rascunho atual. Salve a lei para confirmar.`,
+      confirmText: 'Remover',
+      cancelText: 'Cancelar',
+      type: 'danger',
+    });
+    if (!canRemove) return;
+
+    setDraft((current) => {
+      if (!current) return current;
+      const articleId = activeArticle.id;
+      const nextDraft: AdminLawDraft = {
+        ...current,
+        teacherComments: kind === 'teacher'
+          ? (current.teacherComments || []).filter((item) => String(item.id || '') !== itemId)
+          : current.teacherComments,
+        examTips: kind === 'tip'
+          ? (current.examTips || []).filter((item) => String(item.id || '') !== itemId)
+          : current.examTips,
+        jurisprudence: kind === 'jurisprudence'
+          ? (current.jurisprudence || []).filter((item) => String(item.id || '') !== itemId)
+          : current.jurisprudence,
+        sumulas: kind === 'sumula'
+          ? (current.sumulas || []).filter((item) => String(item.id || '') !== itemId)
+          : current.sumulas,
+        articles: (current.articles || []).map((article) => {
+          if (article.id !== articleId) return article;
+          if (kind === 'teacher') {
+            return {
+              ...article,
+              comentarios: (article.comentarios || []).filter((item) => String(item.id || '') !== itemId),
+            };
+          }
+          if (kind === 'jurisprudence') {
+            return {
+              ...article,
+              jurisprudencia: (article.jurisprudencia || []).filter((item) => String(item.id || '') !== itemId),
+            };
+          }
+          if (kind === 'tip') {
+            const remainingTips = (current.examTips || []).filter((item) => String(item.id || '') !== itemId && item.articleId === articleId);
+            const isInlineTip = itemId === `${article.id}-inline-macete`;
+            const remainingTipBody = remainingTips[0]?.body || null;
+            return {
+              ...article,
+              examTip: isInlineTip ? undefined : (remainingTipBody || undefined),
+              macete: isInlineTip ? null : remainingTipBody,
+            };
+          }
+          if (kind === 'sumula') {
+            const nextSumulas = (article.sumulas || article.syllabi || []).filter((item) => String(item.id || '') !== itemId);
+            return {
+              ...article,
+              sumulas: nextSumulas,
+              syllabi: nextSumulas,
+            };
+          }
+          if (kind === 'doctrine' && typeof index === 'number') {
+            const nextDoctrine = (article.doctrine || article.doutrina || []).filter((_, itemIndex) => itemIndex !== index);
+            return {
+              ...article,
+              doctrine: nextDoctrine,
+              doutrina: nextDoctrine,
+            };
+          }
+          if (kind === 'jurisprudenceNote' && typeof index === 'number') {
+            return {
+              ...article,
+              jurisprudenceNotes: (article.jurisprudenceNotes || []).filter((_, itemIndex) => itemIndex !== index),
+            };
+          }
+          return article;
+        }),
+      };
+
+      draftRef.current = nextDraft;
+      return nextDraft;
+    });
+    addToast('Conteudo removido do rascunho. Salve a lei para confirmar.', 'success');
+  };
+  const toggleStructureSection = (sectionId: string) => {
     setOpenStructureSectionIds((current) => {
       const next = new Set(current);
-      if (next.has(sectionKey)) {
-        next.delete(sectionKey);
+      if (next.has(sectionId)) {
+        next.delete(sectionId);
       } else {
-        next.add(sectionKey);
+        next.add(sectionId);
       }
       return next;
     });
   };
-  const confirmAndRemoveArticle = (articleId: string) => {
+  const confirmAndRemoveArticle = async (articleId: string) => {
     if (!articleId) return;
-    const canRemove = typeof window === 'undefined'
-      ? false
-      : window.confirm('Tem certeza que deseja excluir este artigo? Esta acao remove o artigo do rascunho atual.');
+    const canRemove = await confirm({
+      title: 'Excluir artigo?',
+      description: 'Esta acao remove o artigo do rascunho atual.',
+      confirmText: 'Excluir artigo',
+      cancelText: 'Cancelar',
+      type: 'danger',
+    });
     if (canRemove) {
       removeArticle(articleId);
       addToast('Artigo removido do rascunho.', 'success');
+    }
+  };
+  const confirmAndRemoveSectionAnalysis = async (section: AdminLawSectionOverview) => {
+    if (!section?.resolvedSectionId) return;
+    const canRemove = await confirm({
+      title: 'Excluir analise do capitulo?',
+      description: `A analise de "${section.title}" sera removida do rascunho atual. Salve a lei para confirmar a exclusao.`,
+      confirmText: 'Excluir analise',
+      cancelText: 'Cancelar',
+      type: 'danger',
+    });
+    if (canRemove) {
+      removeSectionEditorialFromDraft(section.resolvedSectionId);
+      addToast('Analise do capitulo removida do rascunho. Salve a lei para confirmar.', 'success');
     }
   };
   const previewLaw = () => {
@@ -3075,12 +3567,359 @@ const AdminLegalCommentaryEditPage = () => {
     }
     window.open(`/lei-comentada/${draft.slug}`, '_blank', 'noopener,noreferrer');
   };
-  const schedulePublication = () => {
-    if (!scheduledDate || !scheduledTime) {
-      addToast('Informe data e hora para agendar a publicacao.', 'info');
-      return;
-    }
-    showPreparationToast('Agendamento sera conectado ao fluxo de publicacao.');
+  const renderGeneratedArticleContent = () => {
+    if (!activeArticle) return null;
+
+    const dedupeByContent = <T extends { id?: string; title?: string; body?: string; text?: string; summary?: string }>(items: T[]): T[] => {
+      const seen = new Set<string>();
+      return items.filter((item) => {
+        const key = [
+          item.id || '',
+          item.title || '',
+          item.body || '',
+          item.text || '',
+          item.summary || '',
+        ].join('|').trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+
+    const draftTeacherComments = (draft.teacherComments || []).filter((item) => item.articleId === activeArticle.id);
+    const draftExamTips = (draft.examTips || []).filter((item) => item.articleId === activeArticle.id);
+    const draftJurisprudence = (draft.jurisprudence || []).filter((item) => item.articleId === activeArticle.id);
+    const draftSumulas = (draft.sumulas || []).filter((item) => item.articleId === activeArticle.id);
+
+    const teacherComments = dedupeByContent(draftTeacherComments.length > 0 ? draftTeacherComments : (activeArticle.comentarios || []));
+    const examTips = dedupeByContent(draftExamTips.length > 0 ? draftExamTips : [
+      ...(activeArticle.examTip || activeArticle.macete ? [{
+        id: `${activeArticle.id}-inline-macete`,
+        articleId: activeArticle.id,
+        title: 'Macete',
+        body: activeArticle.examTip || activeArticle.macete || '',
+        tags: [],
+      }] : []),
+    ]);
+    const jurisprudence = dedupeByContent(draftJurisprudence.length > 0 ? draftJurisprudence : (activeArticle.jurisprudencia || []));
+    const sumulas = dedupeByContent(draftSumulas.length > 0 ? draftSumulas : (activeArticle.sumulas || activeArticle.syllabi || []));
+    const dedupeTargetedTexts = (items: Array<string | LegalTargetedText>): Array<string | LegalTargetedText> => {
+      const seen = new Set<string>();
+      return items.filter((item) => {
+        const body = getTargetedTextBody(item);
+        const target = getTargetedTextTarget(item);
+        const key = `${body}|${target?.blockId || ''}|${target?.label || ''}`;
+        if (!body || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    const doctrine = dedupeTargetedTexts([
+      ...(activeArticle.doctrine || []),
+      ...(activeArticle.doutrina || []),
+    ]);
+    const jurisprudenceNotes = dedupeTargetedTexts(activeArticle.jurisprudenceNotes || []);
+    const totalGenerated = teacherComments.length + examTips.length + jurisprudence.length + sumulas.length + doctrine.length + jurisprudenceNotes.length;
+
+    const renderTargetSelect = (
+      value: string,
+      onChange: (target?: LegalRichContentBlock['target']) => void,
+    ) => (
+      <SelectInput
+        value={value}
+        onChange={(event) => onChange(resolveArticleContentTarget(event.target.value))}
+        className="h-9 text-xs"
+      >
+        <option value="">Sem vinculo especifico</option>
+        {activeArticleTargetOptions.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </SelectInput>
+    );
+
+    const resolveTargetValue = (target?: LegalRichContentBlock['target']) => {
+      const blockId = String(target?.blockId || '').trim();
+      if (blockId && activeArticleTargetOptions.some((option) => option.id === blockId)) {
+        return blockId;
+      }
+      return '';
+    };
+
+    const contentCardClass = 'rounded-sm border border-slate-200 bg-white p-4 shadow-sm';
+    const contentHeaderClass = 'text-[10px] font-black uppercase tracking-[0.18em]';
+    const actionButtonClass = 'inline-flex h-8 items-center justify-center gap-1 rounded-sm border border-red-200 bg-white px-2.5 text-xs font-semibold text-red-600 hover:bg-red-50';
+
+    return (
+      <div className="rounded-sm border border-slate-200 bg-slate-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Conteudos gerados para este artigo</p>
+            <p className="mt-1 text-xs text-slate-500">Revise o material ja criado antes de gerar novos blocos.</p>
+          </div>
+          <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+            {totalGenerated} item(ns)
+          </span>
+        </div>
+
+        {totalGenerated > 0 ? (
+          <div className="mt-4 space-y-3">
+            {teacherComments.map((comment, index) => {
+              const target = getTeacherCommentTarget(comment);
+              const commentRichBlocks = (comment.richBlocks || comment.blocks || [])
+                .map((block, blockIndex) => ({ block, blockIndex }))
+                .filter(({ block }) => hasLegalRichBlockContent(block));
+              return (
+                <div key={comment.id || `${activeArticle.id}-teacher-${index}`} className={contentCardClass}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className={`${contentHeaderClass} text-slate-500`}>Comentario do professor</span>
+                    <button
+                      type="button"
+                      onClick={() => void removeGeneratedArticleContent('teacher', comment.id, 'Comentario do professor')}
+                      className={actionButtonClass}
+                    >
+                      <Trash2 size={13} /> Remover
+                    </button>
+                  </div>
+                  <div className="mt-3 grid gap-3">
+                    <TextInput
+                      value={comment.title || ''}
+                      onChange={(event) => updateGeneratedArticleContent('teacher', comment.id, { title: event.target.value })}
+                      placeholder="Titulo do comentario"
+                    />
+                    <TextArea
+                      value={comment.body || comment.texto || ''}
+                      onChange={(event) => updateGeneratedArticleContent('teacher', comment.id, { body: event.target.value })}
+                      placeholder="Comentario do professor..."
+                    />
+                    <div>
+                      <FieldLabel>Direcionar para</FieldLabel>
+                      {renderTargetSelect(resolveTargetValue(target), (nextTarget) => updateGeneratedArticleContent('teacher', comment.id, { target: nextTarget }))}
+                    </div>
+                    {commentRichBlocks.length > 0 ? (
+                      <div className="rounded-sm border border-indigo-100 bg-indigo-50/50 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-700">Notas direcionadas do comentario</p>
+                            <p className="mt-1 text-xs text-indigo-900/70">Cada nota pode ficar vinculada ao caput, paragrafo, inciso, alinea ou item correto.</p>
+                          </div>
+                          <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-indigo-700">
+                            {commentRichBlocks.length} nota(s)
+                          </span>
+                        </div>
+                        <div className="mt-3 space-y-3">
+                          {commentRichBlocks.map(({ block, blockIndex }) => (
+                            <div key={`${comment.id || index}-rich-${blockIndex}`} className="rounded-sm border border-indigo-100 bg-white p-3 shadow-sm">
+                              <div className="grid gap-2">
+                                <TextInput
+                                  value={block.title || ''}
+                                  onChange={(event) => updateGeneratedArticleContent('teacher', comment.id, {
+                                    richBlockIndex: blockIndex,
+                                    richBlockTitle: event.target.value,
+                                  })}
+                                  placeholder="Titulo da nota"
+                                />
+                                <TextArea
+                                  value={block.content || ''}
+                                  onChange={(event) => updateGeneratedArticleContent('teacher', comment.id, {
+                                    richBlockIndex: blockIndex,
+                                    richBlockContent: event.target.value,
+                                  })}
+                                  placeholder="Conteudo da nota..."
+                                />
+                                <div>
+                                  <FieldLabel>Direcionar esta nota para</FieldLabel>
+                                  {renderTargetSelect(resolveTargetValue(block.target), (nextTarget) => updateGeneratedArticleContent('teacher', comment.id, {
+                                    richBlockIndex: blockIndex,
+                                    richBlockTarget: nextTarget,
+                                  }))}
+                                </div>
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateGeneratedArticleContent('teacher', comment.id, {
+                                      richBlockIndex: blockIndex,
+                                      removeRichBlock: true,
+                                    })}
+                                    className="inline-flex h-8 items-center justify-center gap-1 rounded-sm border border-red-200 bg-white px-2.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                                  >
+                                    <Trash2 size={13} /> Remover nota
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+
+            {examTips.map((tip, index) => (
+              <div key={tip.id || `${activeArticle.id}-tip-${index}`} className={`${contentCardClass} border-amber-200 bg-amber-50/40`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={`${contentHeaderClass} text-amber-700`}>Macete</span>
+                  <button
+                    type="button"
+                    onClick={() => void removeGeneratedArticleContent('tip', tip.id, 'Macete')}
+                    className={actionButtonClass}
+                  >
+                    <Trash2 size={13} /> Remover
+                  </button>
+                </div>
+                <div className="mt-3 grid gap-3">
+                  <TextInput
+                    value={tip.title || ''}
+                    onChange={(event) => updateGeneratedArticleContent('tip', tip.id, { title: event.target.value })}
+                    placeholder="Titulo do macete"
+                  />
+                  <TextArea
+                    value={tip.body || tip.texto || ''}
+                    onChange={(event) => updateGeneratedArticleContent('tip', tip.id, { body: event.target.value })}
+                    placeholder="Macete para prova..."
+                  />
+                  <div>
+                    <FieldLabel>Direcionar para</FieldLabel>
+                    {renderTargetSelect(resolveTargetValue(tip.target), (nextTarget) => updateGeneratedArticleContent('tip', tip.id, { target: nextTarget }))}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {sumulas.map((item, index) => (
+              <div key={item.id || `${activeArticle.id}-sumula-${index}`} className={`${contentCardClass} border-blue-200 bg-blue-50/40`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={`${contentHeaderClass} text-blue-700`}>Sumula</span>
+                  <button
+                    type="button"
+                    onClick={() => void removeGeneratedArticleContent('sumula', item.id || '', 'Sumula')}
+                    className={actionButtonClass}
+                  >
+                    <Trash2 size={13} /> Remover
+                  </button>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,160px)_minmax(0,1fr)]">
+                  <TextInput
+                    value={item.court || item.tribunal || ''}
+                    onChange={(event) => updateGeneratedArticleContent('sumula', item.id || '', { court: event.target.value })}
+                    placeholder="Tribunal"
+                  />
+                  <TextInput
+                    value={item.number || item.numero || ''}
+                    onChange={(event) => updateGeneratedArticleContent('sumula', item.id || '', { number: event.target.value })}
+                    placeholder="Numero"
+                  />
+                  <TextArea
+                    value={item.text || item.texto || ''}
+                    onChange={(event) => updateGeneratedArticleContent('sumula', item.id || '', { text: event.target.value })}
+                    placeholder="Texto da sumula..."
+                    className="sm:col-span-2"
+                  />
+                  <div className="sm:col-span-2">
+                    <FieldLabel>Direcionar para</FieldLabel>
+                    {renderTargetSelect(resolveTargetValue(item.target), (nextTarget) => updateGeneratedArticleContent('sumula', item.id || '', { target: nextTarget }))}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {jurisprudence.map((item, index) => (
+              <div key={item.id || `${activeArticle.id}-juris-${index}`} className={`${contentCardClass} border-emerald-200 bg-emerald-50/40`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={`${contentHeaderClass} text-emerald-700`}>Jurisprudencia</span>
+                  <button
+                    type="button"
+                    onClick={() => void removeGeneratedArticleContent('jurisprudence', item.id, 'Jurisprudencia')}
+                    className={actionButtonClass}
+                  >
+                    <Trash2 size={13} /> Remover
+                  </button>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,160px)_minmax(0,1fr)]">
+                  <TextInput
+                    value={item.court || item.tribunal || ''}
+                    onChange={(event) => updateGeneratedArticleContent('jurisprudence', item.id, { court: event.target.value })}
+                    placeholder="Tribunal"
+                  />
+                  <TextInput
+                    value={item.title || ''}
+                    onChange={(event) => updateGeneratedArticleContent('jurisprudence', item.id, { title: event.target.value })}
+                    placeholder="Titulo da jurisprudencia"
+                  />
+                  <TextArea
+                    value={item.summary || item.texto || item.examImpact || ''}
+                    onChange={(event) => updateGeneratedArticleContent('jurisprudence', item.id, { summary: event.target.value })}
+                    placeholder="Resumo e impacto em prova..."
+                    className="sm:col-span-2"
+                  />
+                  <div className="sm:col-span-2">
+                    <FieldLabel>Direcionar para</FieldLabel>
+                    {renderTargetSelect(resolveTargetValue(item.target), (nextTarget) => updateGeneratedArticleContent('jurisprudence', item.id, { target: nextTarget }))}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {jurisprudenceNotes.map((note, index) => (
+              <div key={`${activeArticle.id}-juris-note-${index}`} className={`${contentCardClass} border-emerald-200 bg-emerald-50/40`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={`${contentHeaderClass} text-emerald-700`}>Nota de jurisprudencia</span>
+                  <button
+                    type="button"
+                    onClick={() => void removeGeneratedArticleContent('jurisprudenceNote', `${activeArticle.id}-juris-note-${index}`, 'Nota de jurisprudencia', index)}
+                    className={actionButtonClass}
+                  >
+                    <Trash2 size={13} /> Remover
+                  </button>
+                </div>
+                <TextArea
+                  value={getTargetedTextBody(note)}
+                  onChange={(event) => updateGeneratedArticleContent('jurisprudenceNote', `${activeArticle.id}-juris-note-${index}`, { body: event.target.value }, index)}
+                  placeholder="Nota de jurisprudencia..."
+                  className="mt-3"
+                />
+                <div className="mt-3">
+                  <FieldLabel>Direcionar para</FieldLabel>
+                  {renderTargetSelect(resolveTargetValue(getTargetedTextTarget(note)), (nextTarget) => updateGeneratedArticleContent('jurisprudenceNote', `${activeArticle.id}-juris-note-${index}`, { target: nextTarget }, index))}
+                </div>
+              </div>
+            ))}
+
+            {doctrine.map((item, index) => (
+              <div key={`${activeArticle.id}-doctrine-${index}`} className={`${contentCardClass} border-violet-200 bg-violet-50/40`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={`${contentHeaderClass} text-violet-700`}>Doutrina</span>
+                  <button
+                    type="button"
+                    onClick={() => void removeGeneratedArticleContent('doctrine', `${activeArticle.id}-doctrine-${index}`, 'Doutrina', index)}
+                    className={actionButtonClass}
+                  >
+                    <Trash2 size={13} /> Remover
+                  </button>
+                </div>
+                <TextArea
+                  value={getTargetedTextBody(item)}
+                  onChange={(event) => updateGeneratedArticleContent('doctrine', `${activeArticle.id}-doctrine-${index}`, { body: event.target.value }, index)}
+                  placeholder="Doutrina relevante..."
+                  className="mt-3"
+                />
+                <div className="mt-3">
+                  <FieldLabel>Direcionar para</FieldLabel>
+                  {renderTargetSelect(resolveTargetValue(getTargetedTextTarget(item)), (nextTarget) => updateGeneratedArticleContent('doctrine', `${activeArticle.id}-doctrine-${index}`, { target: nextTarget }, index))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 rounded-sm border border-dashed border-slate-300 bg-white p-4 text-sm leading-6 text-slate-600">
+            Nenhum conteudo juridico foi gerado para este artigo ainda.
+          </div>
+        )}
+      </div>
+    );
   };
   const renderArticlePreviewPanel = () => (
     <div className="space-y-5">
@@ -3096,7 +3935,7 @@ const AdminLegalCommentaryEditPage = () => {
                   {activeArticleHasSubject ? 'Assunto definido' : 'Sem assunto'}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-slate-500">{activeArticle.title || getArticleAssuntoDisplayText(activeArticle) || 'Artigo sem titulo interno'}</p>
+              <p className="mt-1 text-xs text-slate-500">{activeArticle.title || activeSectionOverview?.chapterName || 'Artigo sem titulo interno'}</p>
             </div>
             <button
               type="button"
@@ -3119,19 +3958,38 @@ const AdminLegalCommentaryEditPage = () => {
             </div>
           )}
 
+          <div className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Filtros herdados do artigo
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {activeArticleFilterSummary.map((item) => (
+                <span key={item.label} className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700">
+                  <strong>{item.label}:</strong> {item.value}
+                </span>
+              ))}
+              {activeArticleFilterSummary.length === 0 ? (
+                <span className="text-xs font-medium text-slate-500">Defina a materia, o topico e o capitulo para classificar este artigo.</span>
+              ) : null}
+            </div>
+          </div>
+
+          {renderGeneratedArticleContent()}
+
           <div className="rounded-sm border border-slate-200 bg-slate-50 p-4">
             <p className="mb-3 text-sm font-semibold text-slate-900">Enriquecer este artigo com IA e conteudos juridicos</p>
-            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-              {[
-                { key: 'teacher-comment', title: 'Comentario do Professor', text: 'Gere um comentario didatico e objetivo.', icon: MessageSquare },
-                { key: 'sumula', title: 'Sumulas', text: 'Busque e resuma sumulas relacionadas.', icon: BookOpen },
-                { key: 'doctrine', title: 'Doutrinas', text: 'Selecione e resuma doutrinas relevantes.', icon: FileText },
-                { key: 'jurisprudence', title: 'Jurisprudencia', text: 'Traga julgados relevantes sobre o artigo.', icon: Scale },
-                { key: 'exam-tip', title: 'Macete', text: 'Crie um macete para facilitar a memorizacao.', icon: Lightbulb },
-              ].map((card) => {
+            <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+              {ARTICLE_AI_GENERATION_CARDS.map((card) => {
                 const Icon = card.icon;
+                const isTeacherCommentCard = card.key === 'teacher-comment';
+                const hasSelectedTeacherTarget = Boolean(selectedTeacherCommentTarget);
                 return (
-                  <div key={card.key} className="flex min-h-[156px] flex-col rounded-sm border border-slate-200 bg-white p-4">
+                  <div
+                    key={card.key}
+                    className={`flex min-h-[156px] flex-col rounded-sm border border-slate-200 bg-white p-4 ${
+                      isTeacherCommentCard ? 'lg:col-span-2' : ''
+                    }`}
+                  >
                     <div className="flex items-start gap-3">
                       <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-[#f0f6fc] text-[#2271b1]">
                         <Icon size={18} />
@@ -3141,10 +3999,47 @@ const AdminLegalCommentaryEditPage = () => {
                         <p className="mt-1 text-xs leading-5 text-slate-500">{card.text}</p>
                       </div>
                     </div>
+                    {isTeacherCommentCard ? (
+                      <div className="mt-4 space-y-2 rounded-sm border border-slate-200 bg-slate-50 p-2">
+                        <label className="block text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                          Comentario direcionado
+                        </label>
+                        <SelectInput
+                          value={activeArticleTargetOptions.some((option) => option.id === selectedTeacherCommentTargetId) ? selectedTeacherCommentTargetId : ''}
+                          onChange={(event) => setSelectedTeacherCommentTargetId(event.target.value)}
+                        >
+                          <option value="">Escolha caput, paragrafo, inciso...</option>
+                          {activeArticleTargetOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}{option.preview ? ` - ${option.preview}` : ''}
+                            </option>
+                          ))}
+                        </SelectInput>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!selectedTeacherCommentTarget) {
+                              addToast('Selecione o caput, paragrafo, inciso ou alinea para gerar um comentario direcionado.', 'info');
+                              return;
+                            }
+                            void generateWithAi('teacher-comment', {
+                              target: selectedTeacherCommentTarget,
+                              loadingKey: 'teacher-comment-target',
+                              label: 'Comentario direcionado',
+                            });
+                          }}
+                          disabled={Boolean(aiLoading) || !hasSelectedTeacherTarget}
+                          className="inline-flex h-8 w-full items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                        >
+                          {aiLoading === 'teacher-comment-target' ? <Loader2 className="animate-spin" size={13} /> : null}
+                          Gerar direcionado
+                        </button>
+                      </div>
+                    ) : null}
                     <button
                       type="button"
-                      onClick={() => void generateWithAi(card.key as Exclude<LegalAiGenerationKind, 'bundle'>)}
-                      disabled={Boolean(aiLoading) || isBatchRunning}
+                      onClick={() => void generateWithAi(card.key)}
+                      disabled={Boolean(aiLoading)}
                       className="mt-auto inline-flex h-8 w-full items-center justify-center gap-2 rounded-sm border border-[#2271b1] bg-white px-3 text-xs font-semibold text-[#2271b1] hover:bg-[#f0f6fc] disabled:opacity-60"
                     >
                       {aiLoading === card.key ? <Loader2 className="animate-spin" size={13} /> : null}
@@ -3204,10 +4099,149 @@ const AdminLegalCommentaryEditPage = () => {
       )}
     </div>
   );
+
+  const renderSectionRichBlocksPreview = (
+    blocks?: LawSectionEditorial['blocks'],
+    options?: { editable?: boolean; sectionId?: string },
+  ) => {
+    const visibleBlocks = (blocks || [])
+      .map((block, originalIndex) => ({ block, originalIndex }))
+      .filter(({ block }) => (
+        String(block.content || '').trim()
+        || (Array.isArray(block.items) && block.items.length > 0)
+        || (Array.isArray(block.rows) && block.rows.length > 0)
+      ));
+
+    if (visibleBlocks.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="space-y-3">
+        {visibleBlocks.slice(0, 8).map(({ block, originalIndex }, index) => {
+          const title = String(block.title || '').trim();
+          const content = String(block.content || '').trim();
+          const items = (block.items || []).map((item) => String(item || '').trim()).filter(Boolean);
+          const headers = (block.headers || []).map((item) => String(item || '').trim()).filter(Boolean);
+          const rows = (block.rows || []).filter((row) => Array.isArray(row) && row.some((cell) => String(cell || '').trim()));
+
+          if (block.type === 'table' && rows.length > 0) {
+            return (
+              <div key={`${block.type}-${title}-${index}`} className="overflow-hidden rounded-sm border border-slate-200 bg-white">
+                {title ? <p className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p> : null}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border-collapse text-left text-xs">
+                    {headers.length > 0 ? (
+                      <thead className="bg-slate-50 text-slate-600">
+                        <tr>
+                          {headers.map((header, headerIndex) => (
+                            <th key={`${header}-${headerIndex}`} className="border-b border-slate-200 px-3 py-2 font-semibold">
+                              {header}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                    ) : null}
+                    <tbody>
+                      {rows.map((row, rowIndex) => (
+                        <tr key={`row-${rowIndex}`}>
+                          {row.map((cell, cellIndex) => (
+                            <td key={`cell-${cellIndex}`} className="border-b border-slate-100 px-3 py-2 align-top text-slate-700">
+                              {options?.editable && options.sectionId ? (
+                                <textarea
+                                  value={String(cell || '')}
+                                  onChange={(event) => {
+                                    const nextRows = rows.map((rowValue, nextRowIndex) => (
+                                      nextRowIndex === rowIndex
+                                        ? rowValue.map((cellValue, nextCellIndex) => (
+                                          nextCellIndex === cellIndex ? event.target.value : cellValue
+                                        ))
+                                        : rowValue
+                                    ));
+                                    updateSectionEditorialBlockInDraft(options.sectionId || '', originalIndex, (currentBlock) => ({
+                                      ...currentBlock,
+                                      rows: nextRows,
+                                    }));
+                                  }}
+                                  className="min-h-[72px] w-full resize-y rounded-sm border border-slate-200 px-2 py-1 text-xs leading-5 text-slate-700 outline-none focus:border-[#2271b1] focus:ring-1 focus:ring-[#2271b1]"
+                                />
+                              ) : (
+                                <MathRichText content={String(cell || '')} className="text-xs leading-5 text-slate-700" />
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div key={`${block.type}-${title}-${index}`} className="rounded-sm border border-slate-200 bg-white p-3">
+              {title ? <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p> : null}
+              {content || options?.editable ? (
+                options?.editable && options.sectionId ? (
+                  <div className="mt-2">
+                    <RichTextEditor
+                      initialValue={content}
+                      onChange={(html) => updateSectionEditorialBlockInDraft(options.sectionId || '', originalIndex, (currentBlock) => ({
+                        ...currentBlock,
+                        content: html,
+                      }))}
+                      placeholder="Edite o texto com negrito, sublinhado, cores e destaques."
+                    />
+                  </div>
+                ) : (
+                  <MathRichText content={content} className="mt-2 text-sm leading-6 text-slate-700" />
+                )
+              ) : null}
+              {items.length > 0 ? (
+                options?.editable && options.sectionId ? (
+                  <div className="mt-3 space-y-2">
+                    {items.map((item, itemIndex) => (
+                      <RichTextEditor
+                        key={`${item}-${itemIndex}`}
+                        initialValue={item}
+                        onChange={(html) => updateSectionEditorialBlockInDraft(options.sectionId || '', originalIndex, (currentBlock) => ({
+                          ...currentBlock,
+                          items: (currentBlock.items || []).map((currentItem, currentItemIndex) => (
+                            currentItemIndex === itemIndex ? html : currentItem
+                          )),
+                        }))}
+                        placeholder="Item da análise"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-700">
+                    {items.map((item, itemIndex) => (
+                      <li key={`${item}-${itemIndex}`}>
+                        <MathRichText content={item} className="text-sm leading-6 text-slate-700" />
+                      </li>
+                    ))}
+                  </ul>
+                )
+              ) : null}
+            </div>
+          );
+        })}
+        {visibleBlocks.length > 8 ? (
+          <p className="text-xs font-medium text-slate-500">Mais {visibleBlocks.length - 8} bloco(s) serao exibidos na pagina do aluno.</p>
+        ) : null}
+      </div>
+    );
+  };
+
   const renderSectionAnalysisPanel = (section: AdminLawSectionOverview) => {
     const sectionAnalysis = section.savedEditorial || null;
-    const isSectionAnalysisLoading = sectionAnalysisLoadingKey === section.sectionKeyResolved;
+    const isSectionAnalysisLoading = sectionAnalysisLoadingKey === section.resolvedSectionId;
+    const isEditingSectionAnalysis = editingSectionAnalysisId === section.resolvedSectionId;
     const rangeLabel = formatSectionRange(section);
+    const sectionAnalysisContent = buildSingleSectionAnalysisHtml(sectionAnalysis);
+    const showLegacySectionDetails = false;
     const sectionTokens = [...(sectionAnalysis?.macetes || []), ...(sectionAnalysis?.keywords || [])];
 
     return (
@@ -3215,7 +4249,7 @@ const AdminLegalCommentaryEditPage = () => {
         <div className="flex flex-col gap-3 border-b border-slate-200 bg-[#f8fbff] px-3 py-3 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold text-slate-900">Analise detalhada da secao</h3>
+              <h3 className="text-sm font-semibold text-slate-900">Analise detalhada do capitulo</h3>
               <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
                 sectionAnalysis ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
               }`}>
@@ -3227,32 +4261,99 @@ const AdminLegalCommentaryEditPage = () => {
               {rangeLabel} - {section.articlesList.length} artigo(s)
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void generateSectionAnalysis(section)}
-            disabled={isSectionAnalysisLoading || isGeneratingAllSectionAnalyses}
-            className="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-sm border border-[#2271b1] bg-white px-3 text-xs font-semibold text-[#2271b1] hover:bg-[#f0f6fc] disabled:opacity-60"
-          >
-            {isSectionAnalysisLoading ? <Loader2 className="animate-spin" size={13} /> : <Sparkles size={13} />}
-            {sectionAnalysis ? 'Regerar analise' : 'Gerar analise'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {sectionAnalysis ? (
+              <button
+                type="button"
+                onClick={() => setEditingSectionAnalysisId((current) => (
+                  current === section.resolvedSectionId ? null : section.resolvedSectionId
+                ))}
+                className="inline-flex h-8 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                {isEditingSectionAnalysis ? 'Concluir edicao' : 'Editar texto'}
+              </button>
+            ) : null}
+            {sectionAnalysis ? (
+              <button
+                type="button"
+                onClick={() => void confirmAndRemoveSectionAnalysis(section)}
+                disabled={isSectionAnalysisLoading || isGeneratingAllSectionAnalyses}
+                className="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-sm border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60"
+              >
+                <Trash2 size={13} />
+                Excluir
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void generateSectionAnalysis(section)}
+              disabled={isSectionAnalysisLoading || isGeneratingAllSectionAnalyses}
+              className="inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-sm border border-[#2271b1] bg-white px-3 text-xs font-semibold text-[#2271b1] hover:bg-[#f0f6fc] disabled:opacity-60"
+            >
+              {isSectionAnalysisLoading ? <Loader2 className="animate-spin" size={13} /> : <Sparkles size={13} />}
+              {sectionAnalysis ? 'Regerar analise' : 'Gerar analise'}
+            </button>
+          </div>
         </div>
         <div className="space-y-3 p-3">
           {sectionAnalysis ? (
             <>
               <div className="rounded-sm border border-slate-200 bg-white p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resumo da analise</p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">{sectionAnalysis.summary}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Analise detalhada da secao</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Conteudo unico exibido ao aluno. Use subtitulos, tabelas, listas e destaques dentro deste editor.
+                </p>
+                {isEditingSectionAnalysis ? (
+                  <div className="mt-2">
+                    <RichTextEditor
+                      initialValue={sectionAnalysisContent}
+                      onChange={(html) => updateSectionEditorialInDraft(section.resolvedSectionId, (editorial) => ({
+                        ...editorial,
+                        summary: html,
+                        blocks: buildSingleSectionAnalysisBlocks(html),
+                      }))}
+                      placeholder="Escreva uma analise completa e continua da secao."
+                    />
+                  </div>
+                ) : (
+                  <MathRichText content={sectionAnalysisContent} className="mt-2 text-sm leading-6 text-slate-700" />
+                )}
               </div>
+              {showLegacySectionDetails ? renderSectionRichBlocksPreview(sectionAnalysis.blocks, {
+                editable: isEditingSectionAnalysis,
+                sectionId: section.resolvedSectionId,
+              }) : null}
+              {showLegacySectionDetails ? (
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-sm border border-slate-200 bg-white p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Como cai em prova</p>
-                  <ul className="mt-2 space-y-1 text-sm leading-5 text-slate-700">
-                    {(sectionAnalysis.examFocus || []).slice(0, 3).map((item) => (
-                      <li key={item}>- {item}</li>
-                    ))}
-                    {(sectionAnalysis.examFocus || []).length === 0 ? <li>Nenhum foco registrado.</li> : null}
-                  </ul>
+                  {isEditingSectionAnalysis ? (
+                    <div className="mt-2 space-y-2">
+                      {(sectionAnalysis.examFocus || []).slice(0, 3).map((item, itemIndex) => (
+                        <RichTextEditor
+                          key={`${item}-${itemIndex}`}
+                          initialValue={item}
+                          onChange={(html) => updateSectionEditorialInDraft(section.resolvedSectionId, (editorial) => ({
+                            ...editorial,
+                            examFocus: (editorial.examFocus || []).map((currentItem, currentIndex) => (
+                              currentIndex === itemIndex ? html : currentItem
+                            )),
+                          }))}
+                          placeholder="Como isso cai em prova"
+                        />
+                      ))}
+                      {(sectionAnalysis.examFocus || []).length === 0 ? <p className="text-sm text-slate-500">Nenhum foco registrado.</p> : null}
+                    </div>
+                  ) : (
+                    <ul className="mt-2 space-y-1 text-sm leading-5 text-slate-700">
+                      {(sectionAnalysis.examFocus || []).slice(0, 3).map((item) => (
+                        <li key={item}>
+                          <MathRichText content={item} className="text-sm leading-5 text-slate-700" />
+                        </li>
+                      ))}
+                      {(sectionAnalysis.examFocus || []).length === 0 ? <li>Nenhum foco registrado.</li> : null}
+                    </ul>
+                  )}
                 </div>
                 <div className="rounded-sm border border-slate-200 bg-white p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Macetes e palavras-chave</p>
@@ -3266,10 +4367,11 @@ const AdminLegalCommentaryEditPage = () => {
                   </div>
                 </div>
               </div>
+              ) : null}
             </>
           ) : (
             <div className="rounded-sm border border-dashed border-slate-300 bg-white p-4 text-sm leading-6 text-slate-600">
-              Esta secao ainda nao possui analise propria. Gere uma analise aqui para orientar o aluno pelo conjunto de artigos, com pegadinhas, pontos de prova e conexoes relevantes.
+              Este capitulo ainda nao possui analise propria. Gere uma analise aqui para orientar o aluno pelo conjunto de artigos, com pegadinhas, pontos de prova e conexoes relevantes.
             </div>
           )}
         </div>
@@ -3290,9 +4392,9 @@ const AdminLegalCommentaryEditPage = () => {
 
       <div className="mt-4 max-h-[520px] space-y-2 overflow-y-auto pr-1">
         {sectionOverviews.map((section) => {
-          const sectionKey = section.sectionKeyResolved;
-          const isActiveSection = activeSectionOverview?.sectionKeyResolved === sectionKey;
-          const isOpen = openStructureSectionIds.has(sectionKey) || isActiveSection;
+          const resolvedSectionId = section.resolvedSectionId;
+          const isActiveSection = activeSectionOverview?.resolvedSectionId === resolvedSectionId;
+          const isOpen = openStructureSectionIds.has(resolvedSectionId);
           const sectionParentLabel = section.titleName || section.titleLabel || 'Estrutura da lei';
           const sectionSubtopicOptions = getSectionSubtopicOptions(section);
           const sectionAssuntoOptions = getSectionAssuntoOptions(section);
@@ -3307,7 +4409,7 @@ const AdminLegalCommentaryEditPage = () => {
                 type="button"
                 onClick={() => {
                   selectSection(section);
-                  toggleStructureSection(sectionKey);
+                  toggleStructureSection(resolvedSectionId);
                 }}
                 className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
               >
@@ -3326,7 +4428,7 @@ const AdminLegalCommentaryEditPage = () => {
                   <div className="rounded-sm border border-slate-200 bg-white p-3">
                     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
                       <div>
-                        <FieldLabel>Nome exibido da secao</FieldLabel>
+                        <FieldLabel>Nome exibido do capitulo</FieldLabel>
                         <TextInput
                           value={section.displayTitle || section.title || ''}
                           onChange={(event) => updateSectionField(section.id, {
@@ -3345,7 +4447,7 @@ const AdminLegalCommentaryEditPage = () => {
                         createLabel="Criar subtopico"
                         disabled={!draft.lawTopicFilterId}
                         loading={isCreatingSubtopic}
-                        helper="Classificacao da secao pelo titulo da lei."
+                        helper="Subtopico herdado do titulo que abrange este capitulo."
                         onChange={(value, option) => updateSectionField(section.id, {
                           subtopicFilterId: value || null,
                           titleName: value ? String(option?.name || '') : '',
@@ -3363,7 +4465,7 @@ const AdminLegalCommentaryEditPage = () => {
                         createLabel="Criar assunto"
                         disabled={!draft.lawTopicFilterId}
                         loading={isCreatingAssunto}
-                        helper="Artigos desta secao herdam este assunto."
+                        helper="Assunto/capitulo herdado pelos artigos deste bloco."
                         onChange={(value, option) => updateSectionField(section.id, {
                           assuntoFilterId: value || null,
                           chapterName: value ? String(option?.name || '') : '',
@@ -3376,7 +4478,7 @@ const AdminLegalCommentaryEditPage = () => {
                     {renderSectionAnalysisPanel(section)}
                   </div>
                   {section.articlesList.map((article) => {
-                    const hasSubject = Boolean(article.assuntoFilterId || article.topicFilterId || section.assuntoFilterId || getArticleAssuntoDisplayText(article));
+                    const hasSubject = Boolean(section.assuntoFilterId);
                     const isActiveArticle = article.id === activeArticle?.id;
                     return (
                       <React.Fragment key={article.id}>
@@ -3409,7 +4511,7 @@ const AdminLegalCommentaryEditPage = () => {
                                   value={article.sectionId || section.id}
                                   onChange={(event) => moveArticleToSection(article.id, event.target.value)}
                                   className="h-8 rounded-sm border border-slate-300 bg-white px-2 text-xs text-slate-700"
-                                  title="Mover artigo para outra secao"
+                                  title="Mover artigo para outro capitulo"
                                 >
                                   {sectionOverviews.map((option) => (
                                     <option key={option.id} value={option.id}>{option.title}</option>
@@ -3442,14 +4544,14 @@ const AdminLegalCommentaryEditPage = () => {
         })}
         {sectionOverviews.length === 0 ? (
           <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-            Nenhuma secao detectada ainda. Importe uma lei ou adicione artigos manualmente.
+            Nenhum capitulo detectado ainda. Importe uma lei ou adicione artigos manualmente.
           </div>
         ) : null}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" onClick={addSection} className="inline-flex h-8 items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
-          <Plus size={13} /> Secao
+          <Plus size={13} /> Capitulo
         </button>
         <button type="button" onClick={addArticle} className="inline-flex h-8 items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
           <Plus size={13} /> Artigo
@@ -3491,49 +4593,27 @@ const AdminLegalCommentaryEditPage = () => {
                 <div className="border-b border-slate-200 px-4 py-3">
                   <h2 className="text-base font-semibold text-slate-900">1. Importar Lei do Planalto</h2>
                 </div>
-                <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_420px]">
-                  <div className="space-y-3">
-                    <div>
-                      <FieldLabel>URL da Lei (Planalto)</FieldLabel>
-                      <TextInput
-                        value={draft.officialUrl || ''}
-                        onChange={(event) => updateLawField('officialUrl', event.target.value)}
-                        placeholder="Cole a URL da lei no Planalto"
-                      />
-                      <p className="mt-1 text-xs text-slate-500">
-                        Ex.: https://www.planalto.gov.br/ccivil_03/leis/l2848compilado.htm
-                      </p>
-                    </div>
-                    <div className="rounded-sm border border-[#72aee6] bg-[#f0f6fc] px-3 py-2 text-sm text-slate-700">
-                      <span className="font-semibold text-[#135e96]">Dica:</span> A importacao preserva a hierarquia da lei, incluindo titulos, capitulos, secoes e artigos.
-                    </div>
+                <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                  <div>
+                    <FieldLabel>URL da Lei (Planalto)</FieldLabel>
+                    <TextInput
+                      value={draft.officialUrl || ''}
+                      onChange={(event) => updateLawField('officialUrl', event.target.value)}
+                      placeholder="Cole a URL da lei no Planalto"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      Ex.: https://www.planalto.gov.br/ccivil_03/leis/l2848compilado.htm
+                    </p>
                   </div>
-                  <div className="flex flex-col justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">O que sera importado automaticamente</p>
-                      <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                        {['Texto completo da lei', 'Todos os artigos', 'Incisos, alineas, paragrafos, caput', 'Estrutura de capitulos/titulos/secoes'].map((item) => (
-                          <li key={item} className="flex items-center gap-2">
-                            <CheckCircle2 size={15} className="text-emerald-600" /> {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="flex flex-col items-start gap-2 sm:items-end">
-                      <button
-                        type="button"
-                        onClick={() => void importFromPlanalto()}
-                        disabled={isImportingFromPlanalto}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-sm bg-[#2271b1] px-5 text-sm font-semibold text-white hover:bg-[#135e96] disabled:opacity-60"
-                      >
-                        {isImportingFromPlanalto ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-                        Importar Lei
-                      </button>
-                      <button type="button" onClick={() => showPreparationToast('Use uma URL publica do Planalto no campo ao lado.')} className="text-xs font-medium text-[#2271b1] hover:underline">
-                        Ver exemplo de URL
-                      </button>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void importFromPlanalto()}
+                    disabled={isImportingFromPlanalto}
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-sm bg-[#2271b1] px-5 text-sm font-semibold text-white hover:bg-[#135e96] disabled:opacity-60"
+                  >
+                    {isImportingFromPlanalto ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+                    Importar Lei
+                  </button>
                 </div>
               </section>
 
@@ -3570,7 +4650,7 @@ const AdminLegalCommentaryEditPage = () => {
                     onCreate={createLawTopico}
                   />
                   <div className="rounded-sm border border-[#72aee6] bg-[#f0f6fc] px-3 py-2 text-sm text-[#135e96] md:col-span-2">
-                    <span className="font-semibold">Como funciona:</span> {'Lei = Materia + Topico. Secao = Subtopico + Assunto. Artigos herdam a secao.'}
+                    <span className="font-semibold">Como funciona:</span> {'Lei = Materia + Topico. Capitulo = Subtopico + Assunto. Artigos herdam o capitulo.'}
                   </div>
                 </div>
               </section>
@@ -3579,7 +4659,7 @@ const AdminLegalCommentaryEditPage = () => {
                 <div className="border-b border-slate-200 px-4 py-3">
                   <h2 className="text-base font-semibold text-slate-900">3. Estrutura da Lei</h2>
                   <p className="mt-1 text-xs text-slate-600">
-                    Organize secoes e artigos em uma arvore ampla, sem dividir espaco com o editor.
+                    Organize capitulos e artigos em uma arvore ampla, sem dividir espaco com o editor.
                   </p>
                 </div>
                 <div className="p-4">
@@ -3619,7 +4699,7 @@ const AdminLegalCommentaryEditPage = () => {
                 <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">Publicar</h2>
                 <div className="space-y-4 p-4">
                   <div className="flex gap-2">
-                    <button type="button" onClick={() => void saveLaw()} disabled={isSaving} className="h-8 flex-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                    <button type="button" onClick={() => void saveLaw({ draft: true })} disabled={isSaving} className="h-8 flex-1 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">
                       Salvar como rascunho
                     </button>
                     <button type="button" onClick={previewLaw} className="h-8 rounded-sm border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50">
@@ -3627,30 +4707,35 @@ const AdminLegalCommentaryEditPage = () => {
                     </button>
                   </div>
                   <div className="space-y-3 text-sm text-slate-700">
-                    <p>Status: <strong>{lawStatusValue === 'active' ? 'Publicado' : 'Rascunho'}</strong> <button type="button" onClick={() => showPreparationToast()} className="text-[#2271b1] hover:underline">Editar</button></p>
-                    <p>Visibilidade: <strong>Publico</strong> <button type="button" onClick={() => showPreparationToast()} className="text-[#2271b1] hover:underline">Editar</button></p>
-                    <p>Publicado em: <strong>Imediatamente</strong> <button type="button" onClick={() => showPreparationToast()} className="text-[#2271b1] hover:underline">Editar</button></p>
+                    <div>
+                      <FieldLabel>Status</FieldLabel>
+                      <SelectInput
+                        value={lawStatusValue === 'active' || lawStatusValue === 'scheduled' ? lawStatusValue : 'draft'}
+                        onChange={(event) => updateLawField('status', event.target.value as AdminLawDraft['status'])}
+                      >
+                        <option value="active">Publicado</option>
+                        <option value="scheduled">Agendado</option>
+                        <option value="draft">Rascunho (nao visivel ao publico)</option>
+                      </SelectInput>
+                    </div>
+                    <p>Visibilidade: <strong>Publico quando publicado</strong></p>
+                    <div>
+                      <FieldLabel>Publicar em</FieldLabel>
+                      <div className="grid grid-cols-[1fr_96px] gap-2">
+                        <TextInput value={scheduledDate} onChange={(event) => setScheduledDate(event.target.value)} placeholder="dd/mm/aaaa" />
+                        <TextInput value={scheduledTime} onChange={(event) => setScheduledTime(event.target.value)} placeholder="--:--" />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Se ficar em branco, a data de publicacao sera definida como hoje ao publicar.
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3">
-                  <button type="button" onClick={() => showPreparationToast('Movimento para lixeira em preparacao.')} className="text-xs font-medium text-red-600 hover:underline">Mover para lixeira</button>
-                  <button type="button" onClick={() => void saveLaw()} disabled={isSaving} className="inline-flex h-9 items-center gap-2 rounded-sm bg-[#2271b1] px-4 text-sm font-semibold text-white hover:bg-[#135e96] disabled:opacity-60">
+                  <button type="button" onClick={() => void deleteLaw()} disabled={isSaving || isNew} className="text-xs font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50">Excluir</button>
+                  <button type="button" onClick={() => void saveLaw({ publish: true })} disabled={isSaving} className="inline-flex h-9 items-center gap-2 rounded-sm bg-[#2271b1] px-4 text-sm font-semibold text-white hover:bg-[#135e96] disabled:opacity-60">
                     {isSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
-                    {isNew ? 'Publicar' : 'Atualizar'}
-                  </button>
-                </div>
-              </section>
-
-              <section className="rounded-sm border border-slate-300 bg-white shadow-sm">
-                <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">Agendar Publicacao</h2>
-                <div className="space-y-3 p-4">
-                  <p className="text-xs text-slate-500">Publicar em:</p>
-                  <div className="grid grid-cols-[1fr_96px] gap-2">
-                    <TextInput value={scheduledDate} onChange={(event) => setScheduledDate(event.target.value)} placeholder="dd/mm/aaaa" />
-                    <TextInput value={scheduledTime} onChange={(event) => setScheduledTime(event.target.value)} placeholder="--:--" />
-                  </div>
-                  <button type="button" onClick={schedulePublication} className="text-sm font-medium text-[#2271b1] hover:underline">
-                    <CalendarDays size={14} className="mr-1 inline" /> Agendar
+                    {lawStatusValue === 'scheduled' ? 'Agendar' : isNew ? 'Publicar' : 'Atualizar'}
                   </button>
                 </div>
               </section>
@@ -3658,17 +4743,20 @@ const AdminLegalCommentaryEditPage = () => {
               <section className="rounded-sm border border-slate-300 bg-white shadow-sm">
                 <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">Atualizacoes da Lei</h2>
                 <div className="space-y-3 p-4 text-sm text-slate-700">
-                  <p>Verifique se ha atualizacoes no site do Planalto e importe as alteracoes.</p>
+                  <p>Compara o texto oficial do Planalto com o que esta salvo e atualiza somente artigos, caput, paragrafos, incisos e alineas alterados.</p>
+                  <p className="text-xs leading-5 text-slate-500">
+                    Quando o texto oficial muda, a plataforma tambem sinaliza revisao editorial para comentario, macete, doutrina, sumulas e jurisprudencia vinculados ao trecho.
+                  </p>
                   <p>Ultima verificacao: <strong>{lastSyncedLabel}</strong></p>
                   <button type="button" onClick={() => void syncFromOfficialSource()} disabled={isSyncingFromOfficial || isNew} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm border border-[#2271b1] bg-white px-3 text-sm font-semibold text-[#2271b1] hover:bg-[#f0f6fc] disabled:opacity-60">
                     {isSyncingFromOfficial ? <Loader2 className="animate-spin" size={14} /> : <RefreshCcw size={14} />}
                     Verificar atualizacoes
                   </button>
                   <div className="rounded-sm border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                    {pendingUpdatesCount > 0 ? `${pendingUpdatesCount} atualizacao(oes) recente(s) registrada(s).` : 'Nenhuma alteracao carregada nesta sessao.'}
+                    {pendingUpdatesCount > 0 ? `${pendingUpdatesCount} atualizacao(oes) recente(s) registrada(s).` : 'Nenhuma alteracao oficial carregada nesta sessao.'}
                   </div>
-                  <button type="button" onClick={() => void syncFromOfficialSource()} disabled={isSyncingFromOfficial || isNew} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-slate-200 px-3 text-sm font-semibold text-slate-600 disabled:opacity-60">
-                    Importar alteracoes encontradas
+                  <button type="button" onClick={() => void openUpdatesModal()} disabled={isSyncingFromOfficial || isNew || pendingUpdatesCount === 0} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-slate-200 px-3 text-sm font-semibold text-slate-600 disabled:opacity-60">
+                    Ver alteracoes encontradas
                   </button>
                   {!isNew && draft.id ? (
                     <button type="button" onClick={() => void openUpdatesModal()} className="text-xs font-medium text-[#2271b1] hover:underline">
@@ -3681,12 +4769,122 @@ const AdminLegalCommentaryEditPage = () => {
               <section className="rounded-sm border border-slate-300 bg-white shadow-sm">
                 <h2 className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">IA - Gerar informacoes gerais</h2>
                 <div className="space-y-3 p-4 text-sm text-slate-700">
-                  <p>Gere uma analise completa da lei, com resumo, comentarios do professor e pontos importantes.</p>
-                  <button type="button" onClick={() => void generateMissingSectionAnalyses()} disabled={isGeneratingAllSectionAnalyses} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-[#2271b1] px-3 text-sm font-semibold text-white hover:bg-[#135e96] disabled:opacity-60">
+                  <p>Gere em lote usando os mesmos padroes dos botoes individuais. O sistema pula o que ja existe e processa apenas pendencias.</p>
+                  <div className="rounded-sm border border-sky-200 bg-sky-50 p-2 text-xs leading-5 text-sky-800">
+                    A varredura considera caput, paragrafos, incisos, alineas e itens. Quando houver ponto relevante, a IA deve vincular o conteudo ao bloco exato, em vez de concentrar tudo no caput.
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-sm border border-slate-200 bg-slate-50 p-2">
+                      <span className="block font-semibold text-slate-900">{lawAiCoverage.readySections}/{lawAiCoverage.totalSections}</span>
+                      <span className="text-slate-500">capitulos com analise</span>
+                    </div>
+                    <div className="rounded-sm border border-slate-200 bg-slate-50 p-2">
+                      <span className="block font-semibold text-slate-900">{lawAiCoverage.readyArticles}/{lawAiCoverage.totalArticles}</span>
+                      <span className="text-slate-500">artigos completos</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="rounded-sm border border-slate-200 bg-white p-3">
+                      <div className="flex items-start gap-3">
+                        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-[#f0f6fc] text-[#2271b1]">
+                          <Sparkles size={16} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-slate-900">Analise dos capitulos</span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                              {lawAiCoverage.readySections}/{lawAiCoverage.totalSections}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">Mesmo padrao da analise detalhada gerada dentro de cada capitulo.</p>
+                          <button
+                            type="button"
+                            onClick={() => void generateMissingLawAiContent({
+                              includeSections: true,
+                              includeArticles: false,
+                              emptyMessage: 'Nenhum capitulo pendente de analise.',
+                            })}
+                            disabled={isGeneratingAllSectionAnalyses || lawAiCoverage.pendingSections.length === 0}
+                            className="mt-2 inline-flex h-8 w-full items-center justify-center gap-2 rounded-sm border border-[#2271b1] bg-white px-3 text-xs font-semibold text-[#2271b1] hover:bg-[#f0f6fc] disabled:opacity-60"
+                          >
+                            {isGeneratingAllSectionAnalyses ? <Loader2 className="animate-spin" size={13} /> : null}
+                            Gerar capitulos pendentes
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {lawAiCoverage.articleRequirementStats.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <div key={`law-ai-bulk-${item.key}`} className="rounded-sm border border-slate-200 bg-white p-3">
+                          <div className="flex items-start gap-3">
+                            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-[#f0f6fc] text-[#2271b1]">
+                              <Icon size={16} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-semibold text-slate-900">{item.title}</span>
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                  {item.ready}/{item.total}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">{item.text}</p>
+                              <button
+                                type="button"
+                                onClick={() => void generateMissingLawAiContent({
+                                  includeSections: false,
+                                  includeArticles: true,
+                                  articleKinds: [item.key],
+                                  emptyMessage: `Nenhum artigo pendente de ${item.shortLabel}.`,
+                                })}
+                                disabled={isGeneratingAllSectionAnalyses || item.pending === 0}
+                                className="mt-2 inline-flex h-8 w-full items-center justify-center gap-2 rounded-sm border border-[#2271b1] bg-white px-3 text-xs font-semibold text-[#2271b1] hover:bg-[#f0f6fc] disabled:opacity-60"
+                              >
+                                {isGeneratingAllSectionAnalyses ? <Loader2 className="animate-spin" size={13} /> : null}
+                                Gerar pendentes
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {lawAiBulkProgress ? (
+                    <div className="rounded-sm border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-700">
+                        <span className="truncate">{lawAiBulkProgress.currentLabel}</span>
+                        <span>{lawAiBulkPercent}%</span>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                        <div className="h-full rounded-full bg-[#2271b1] transition-all" style={{ width: `${lawAiBulkPercent}%` }} />
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {lawAiBulkProgress.completed}/{lawAiBulkProgress.total} item(ns) processado(s)
+                        {lawAiBulkProgress.failed > 0 ? ` - ${lawAiBulkProgress.failed} falha(s)` : ''}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  <button type="button" onClick={() => void generateMissingLawAiContent()} disabled={isGeneratingAllSectionAnalyses} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-sm bg-[#2271b1] px-3 text-sm font-semibold text-white hover:bg-[#135e96] disabled:opacity-60">
                     {isGeneratingAllSectionAnalyses ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                    Gerar analise da Lei
+                    Gerar todas as pendencias
                   </button>
-                  <p className="text-xs text-slate-500">Sera criado conteudo global por secao, disponivel para os artigos relacionados.</p>
+                  {lawAiCoverage.pendingTaskCount === 0 ? (
+                    <div className="flex items-start gap-2 rounded-sm border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-700">
+                      <CheckCircle2 size={13} className="mt-0.5 shrink-0" />
+                      <span>Todos os capitulos e artigos elegiveis ja possuem conteudo editorial.</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2 rounded-sm border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                      <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                      <span>{lawAiCoverage.pendingTaskCount} pendencia(s) editorial(is) detectada(s).</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-slate-500">A IA pode manter jurisprudencia ou sumula vazia quando nao houver base segura. Revise e salve a lei apos a geracao.</p>
                 </div>
               </section>
             </aside>

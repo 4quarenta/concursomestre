@@ -55,6 +55,13 @@ vi.mock('@constants/email/defaultEmailTemplates', () => ({
   normalizeEmailTemplates: (templates: unknown) => templates || [],
 }), { virtual: true });
 
+vi.mock('@constants/gamificationNotificationSettings', () => ({
+  DEFAULT_GAMIFICATION_SETTINGS: { enabled: true, rules: [] },
+  DEFAULT_NOTIFICATION_SETTINGS: { enabled: true, rules: [] },
+  normalizeGamificationSettings: (settings: unknown) => settings || { enabled: true, rules: [] },
+  normalizeNotificationSettings: (settings: unknown) => settings || { enabled: true, rules: [] },
+}), { virtual: true });
+
 vi.mock('@services/marketing/promotionCampaign', () => ({
   normalizeCampaignBannerActionUrl: (value: unknown) => value || '/planos',
   normalizePromotionNotificationActionUrl: (value: unknown) => value || '/planos',

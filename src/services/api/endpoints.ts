@@ -42,6 +42,9 @@ export const ENDPOINTS = {
         show: 'questions/show.php',
         edit: 'questions/edit.php',
         create: 'questionsCreate',
+        examImport: 'questionsExamImport',
+        examFiles: 'questions/exam-files.php',
+        bulkImport: 'questionsBulkImport',
         update: 'questionsUpdate',
         delete: 'questionsDelete',
         submit: 'questionsAnswer',
@@ -53,6 +56,7 @@ export const ENDPOINTS = {
         toggleSave: 'questionsToggleSave',
         resetAnswers: 'questionsResetAnswers',
         groups: 'questions/groups.php',
+        editorialFeedback: 'questions/editorial-feedback.php',
     },
 
     comments: {
@@ -72,6 +76,8 @@ export const ENDPOINTS = {
         markAllRead: 'notificationsMarkAllRead',
         delete: 'notificationsDelete',
         clearAll: 'notificationsClearAll',
+        restore: 'notificationsRestore',
+        permanentDelete: 'notificationsPermanentDelete',
         send: 'notificationsSend',
     },
 
@@ -138,6 +144,8 @@ export const ENDPOINTS = {
         uploadPhoto: 'users/upload_photo.php',
         removePhoto: 'users/remove_photo.php',
         changePassword: 'users/change_password.php',
+        delete: 'users/delete.php',
+        levelLeaderboard: 'users/level_leaderboard.php',
         listCards: 'users/list_cards.php',
         removeCard: 'users/remove_card.php',
         setDefaultCard: 'users/set_default_card.php',
@@ -217,6 +225,7 @@ export const ENDPOINTS = {
         list: 'feedback/list.php',
         create: 'feedback/create.php',
         testimonials: 'feedback/testimonials.php',
+        vote: 'feedback/vote.php',
     },
 
     cache: {

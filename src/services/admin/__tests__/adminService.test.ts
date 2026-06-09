@@ -18,7 +18,8 @@ type MockApiResponse = {
   error?: string;
 } | null | undefined;
 
-const { mockDownloadAuthenticatedFile, mockGet, mockPost, mockPut } = vi.hoisted(() => ({
+const { mockClearRequestCoalescing, mockDownloadAuthenticatedFile, mockGet, mockPost, mockPut } = vi.hoisted(() => ({
+  mockClearRequestCoalescing: vi.fn(),
   mockDownloadAuthenticatedFile: vi.fn(),
   mockGet: vi.fn(),
   mockPost: vi.fn(),
@@ -76,6 +77,14 @@ vi.mock('@services/api', () => ({
 
 vi.mock('@services/questions/questionPublication', () => ({
   withQuestionPublicationAliases: (question: unknown) => question,
+}));
+
+vi.mock('@services/api/requestCoalescer', () => ({
+  buildRequestCacheKey: (prefix: string, payload?: unknown) => (
+    payload === undefined ? prefix : `${prefix}:${JSON.stringify(payload)}`
+  ),
+  clearRequestCoalescing: mockClearRequestCoalescing,
+  withRequestCoalescing: <T,>(_key: string, loader: () => Promise<T>) => loader(),
 }));
 
 import { adminService } from '../adminService';
@@ -296,6 +305,24 @@ describe('adminService', () => {
       total_size_mb: 4.5,
       enabled: true,
     });
+  });
+
+  it('clears frontend request coalescing after cache mutations', async () => {
+    mockPost.mockResolvedValueOnce({
+      success: true,
+      message: 'Configuracoes do cache atualizadas.',
+    });
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      message: 'Cache limpo.',
+    });
+
+    await expect(adminService.saveCacheSettings({ enabled: true, default_ttl: 120 })).resolves.toBe('Configuracoes do cache atualizadas.');
+    await expect(adminService.clearCache()).resolves.toBe('Cache limpo.');
+
+    expect(mockPost).toHaveBeenCalledWith('admin/cache.php?action=settings', { enabled: true, default_ttl: 120 });
+    expect(mockGet).toHaveBeenCalledWith('admin/cache.php?action=clear');
+    expect(mockClearRequestCoalescing).toHaveBeenCalledTimes(2);
   });
 
   it('returns normalized system logs payload', async () => {

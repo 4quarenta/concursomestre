@@ -23,8 +23,8 @@ export type LegalAreaSlug =
   | 'ambiental'
   | 'eleitoral';
 
-export type LegalContentStatus = 'active' | 'revoked' | 'partially_revoked' | 'monitoring';
-export type LegalFavoriteType = 'law' | 'article' | 'jurisprudence' | 'teacher_comment';
+export type LegalContentStatus = 'active' | 'draft' | 'scheduled' | 'revoked' | 'partially_revoked' | 'monitoring';
+export type LegalFavoriteType = 'law' | 'section' | 'article' | 'jurisprudence' | 'teacher_comment';
 export type LegalUserCommentStatus = 'visible' | 'hidden' | 'reported' | 'deleted';
 export type LegalUpdateChangeType = 'created' | 'changed' | 'revoked' | 'renumbered';
 export type LegalSyncStatus = 'success' | 'warning' | 'failed' | 'running';
@@ -46,11 +46,42 @@ export interface LegalArea {
   iconTone: string;
 }
 
+export interface LegalTaxonomySummary {
+  id?: string;
+  slug?: string | null;
+  name?: string | null;
+  nome?: string | null;
+  title?: string | null;
+  label?: string | null;
+  materia?: boolean | number | string;
+  meta_materia?: boolean | number | string;
+  taxonomyLevel?: string | null;
+  taxonomy_level?: string | null;
+  parentId?: string | number | null;
+  parent_id?: string | number | null;
+}
+
 export interface LawSummary {
   id: string;
   slug: string;
   areaId: string;
   lawTopicFilterId?: string | null;
+  lawTopicName?: string | null;
+  lawTopicSlug?: string | null;
+  topicName?: string | null;
+  topicSlug?: string | null;
+  subjectFilterId?: string | null;
+  subjectName?: string | null;
+  materiaName?: string | null;
+  disciplinaName?: string | null;
+  subject?: LegalTaxonomySummary | string | null;
+  subjects?: Array<LegalTaxonomySummary | string>;
+  materia?: LegalTaxonomySummary | string | null;
+  materias?: Array<LegalTaxonomySummary | string>;
+  disciplina?: LegalTaxonomySummary | string | null;
+  disciplinas?: Array<LegalTaxonomySummary | string>;
+  disciplines?: Array<LegalTaxonomySummary | string>;
+  assuntos?: LegalTaxonomySummary[];
   acronym?: string;
   sigla?: string | null;
   catalogId?: string;
@@ -64,6 +95,8 @@ export interface LawSummary {
   description?: string;
   descricao?: string;
   date: string;
+  publishedAt?: string;
+  published_at?: string;
   aliases: string[];
   summary: string;
   preamble?: string;
@@ -90,6 +123,7 @@ export interface LawSummary {
   jurisprudenceCount: number;
   examTipCount: number;
   accessCount: number;
+  progress?: LegalUserProgress | null;
   progressPercent?: number;
   isFavorite?: boolean;
 }
@@ -135,12 +169,28 @@ export interface LegalRichContentBlock {
   };
 }
 
+export interface LegalTargetedText {
+  id?: string;
+  title?: string;
+  body: string;
+  text?: string;
+  author?: string;
+  target?: LegalRichContentBlock['target'];
+}
+
+export interface LegalContentReactionState {
+  reactionKey?: string;
+  likes?: number;
+  dislikes?: number;
+  userReaction?: 'like' | 'dislike' | null;
+}
+
 export interface LegalArticleParagraph {
   number: string;
   text: string;
 }
 
-export interface LegalArticleSyllabus {
+export interface LegalArticleSyllabus extends LegalContentReactionState {
   id?: string;
   articleId?: string;
   court: string;
@@ -153,6 +203,7 @@ export interface LegalArticleSyllabus {
   priority?: string;
   isBinding?: boolean;
   vinculante?: boolean;
+  target?: LegalRichContentBlock['target'];
 }
 
 export interface LawArticle {
@@ -168,41 +219,23 @@ export interface LawArticle {
   texto?: string;
   paragraphs?: LegalArticleParagraph[];
   paragrafos?: LegalArticleParagraph[];
-  jurisprudenceNotes?: string[];
+  jurisprudenceNotes?: Array<string | LegalTargetedText>;
   syllabi?: LegalArticleSyllabus[];
   sumulas?: LegalArticleSyllabus[];
-  doctrine?: string[];
-  doutrina?: string[];
+  doctrine?: Array<string | LegalTargetedText>;
+  doutrina?: Array<string | LegalTargetedText>;
   examTip?: string;
   macete?: string | null;
   relatedQuestionCount?: number;
   questoesRelacionadas?: number;
   comentarios?: TeacherComment[];
   jurisprudencia?: ArticleJurisprudence[];
-  hierarchy?: {
-    partLabel?: string | null;
-    part?: string;
-    bookLabel?: string | null;
-    book?: string;
-    titleLabel?: string | null;
-    title?: string;
-    chapterLabel?: string | null;
-    chapter?: string;
-    sectionLabel?: string | null;
-    section?: string;
-    subsectionLabel?: string | null;
-    subsection?: string;
-    resolvedSubtopic?: string;
-    resolvedAssunto?: string;
-  };
   blocks: LegalArticleBlock[];
   officialAnchor?: string;
   isRecentlyChanged?: boolean;
   isFavorite?: boolean;
   readAt?: string;
   assuntoFilterId?: string | null;
-  subjectFilterId?: string | null;
-  topicFilterId?: string | null;
 }
 
 export interface LawSection {
@@ -224,7 +257,7 @@ export interface LawSection {
   isFavorite?: boolean;
 }
 
-export interface TeacherComment {
+export interface TeacherComment extends LegalContentReactionState {
   id: string;
   articleId: string;
   title: string;
@@ -247,7 +280,7 @@ export interface TeacherComment {
   isFavorite?: boolean;
 }
 
-export interface ArticleJurisprudence {
+export interface ArticleJurisprudence extends LegalContentReactionState {
   id: string;
   articleId: string;
   court: 'STF' | 'STJ' | 'TST' | 'TCU' | 'TRF' | 'TJ';
@@ -260,16 +293,18 @@ export interface ArticleJurisprudence {
   isConsolidated: boolean;
   priority: 'high' | 'medium' | 'low';
   sourceUrl?: string;
+  target?: LegalRichContentBlock['target'];
   isFavorite?: boolean;
 }
 
-export interface ArticleExamTip {
+export interface ArticleExamTip extends LegalContentReactionState {
   id: string;
   articleId: string;
   title: string;
   body: string;
   texto?: string;
   tags: string[];
+  target?: LegalRichContentBlock['target'];
 }
 
 export interface LegalUserFavorite {
@@ -296,6 +331,9 @@ export interface LegalUserComment {
   createdAt: string;
   updatedAt?: string;
   reportedCount?: number;
+  likes?: number;
+  dislikes?: number;
+  userReaction?: 'like' | 'dislike' | null;
 }
 
 export interface LegalUserCommentSubmissionResult {
@@ -304,6 +342,9 @@ export interface LegalUserCommentSubmissionResult {
   requiresModeration: boolean;
   message?: string;
   comment?: LegalUserComment;
+  xpGain?: number;
+  newXp?: number;
+  newLevel?: number;
 }
 
 export interface LegalUserProgress {
@@ -343,11 +384,10 @@ export interface LegalSyncLog {
   revokedArticles?: number;
 }
 
-export interface LawSectionEditorial {
+export interface LawSectionEditorial extends LegalContentReactionState {
   id?: string;
   lawId?: string;
   sectionId?: string | null;
-  sectionKey: string;
   sectionTitle: string;
   rangeLabel: string;
   articleCount: number;
@@ -446,8 +486,8 @@ export interface LegalArticleEditorialSnapshot {
   articleNumber?: string;
   teacherComments: TeacherComment[];
   examTips: ArticleExamTip[];
-  doctrine: string[];
-  jurisprudenceNotes?: string[];
+  doctrine: Array<string | LegalTargetedText>;
+  jurisprudenceNotes?: Array<string | LegalTargetedText>;
   jurisprudence: ArticleJurisprudence[];
   sumulas: LegalArticleSyllabus[];
 }

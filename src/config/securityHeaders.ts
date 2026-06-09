@@ -22,15 +22,15 @@ const DEFAULT_LOCAL_API_BASE_URLS = [
   'http://127.0.0.1/questao-pro-backend/api/',
 ];
 
-const appendConnectOrigin = (connectSources: string[], candidate?: string) => {
+const appendUniqueOrigin = (sources: string[], candidate?: string) => {
   if (!candidate) {
     return;
   }
 
   try {
     const origin = new URL(candidate).origin;
-    if (!connectSources.includes(origin)) {
-      connectSources.push(origin);
+    if (!sources.includes(origin)) {
+      sources.push(origin);
     }
   } catch {
     // Valores invalidos nao devem quebrar a montagem da CSP.
@@ -73,10 +73,16 @@ export const buildFrontendContentSecurityPolicy = (apiBaseUrl?: string) => {
     'https://region1.google-analytics.com',
   ];
 
-  appendConnectOrigin(connectSources, apiBaseUrl);
+  const assetSources = ["'self'", 'data:', 'blob:', 'https:'];
+
+  appendUniqueOrigin(connectSources, apiBaseUrl);
+  appendUniqueOrigin(assetSources, apiBaseUrl);
 
   if (!isProduction) {
-    DEFAULT_LOCAL_API_BASE_URLS.forEach((candidate) => appendConnectOrigin(connectSources, candidate));
+    DEFAULT_LOCAL_API_BASE_URLS.forEach((candidate) => {
+      appendUniqueOrigin(connectSources, candidate);
+      appendUniqueOrigin(assetSources, candidate);
+    });
   }
 
   return joinPolicy({
@@ -89,8 +95,8 @@ export const buildFrontendContentSecurityPolicy = (apiBaseUrl?: string) => {
     'script-src-elem': scriptSources,
     'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
     'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
-    'img-src': ["'self'", 'data:', 'blob:', 'https:'],
-    'media-src': ["'self'", 'data:', 'blob:', 'https:'],
+    'img-src': assetSources,
+    'media-src': assetSources,
     'connect-src': connectSources,
     'frame-src': ["'self'", 'https://js.stripe.com', 'https://checkout.stripe.com', 'https://accounts.google.com', 'https://www.facebook.com', 'https://appleid.apple.com', 'https://www.google.com', 'https://recaptcha.google.com'],
     'worker-src': ["'self'", 'blob:'],

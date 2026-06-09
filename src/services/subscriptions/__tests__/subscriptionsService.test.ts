@@ -116,12 +116,25 @@ describe('subscriptionsService', () => {
         },
       },
     });
+    mockGet.mockResolvedValueOnce({
+      success: true,
+      data: {
+        cron_health: {
+          status: 'ok',
+          checked: 2,
+          materialized_invoices: 1,
+        },
+      },
+    });
 
     const response = await subscriptionsService.runAutomationNow();
+    const refreshedHelper = await subscriptionsService.getAutomationHelperInfo();
 
     expect(mockPost).toHaveBeenCalledWith('subscriptions/automation_helper.php?action=run_now', {});
+    expect(mockGet).toHaveBeenCalledWith('subscriptions/automation_helper.php');
     expect(response.summary.checked).toBe(2);
     expect(response.summary.synced_status).toBe(1);
+    expect(refreshedHelper.cron_health).toMatchObject({ materialized_invoices: 1 });
   });
 
   it('loads the official Stripe testing matrix through the subscriptions facade', async () => {

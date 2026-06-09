@@ -10,7 +10,22 @@
 */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Bold, Eraser, Highlighter, Italic, List, RotateCcw, Type, Underline, type LucideIcon } from 'lucide-react';
+import {
+  Bold,
+  Eraser,
+  Heading1,
+  Heading2,
+  Highlighter,
+  ImagePlus,
+  Italic,
+  List,
+  Pilcrow,
+  Quote,
+  RotateCcw,
+  Type,
+  Underline,
+  type LucideIcon,
+} from 'lucide-react';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 
 const FLOATING_TOOLBAR_TOP_OFFSET = 10;
@@ -21,6 +36,8 @@ interface RichTextEditorProps {
   placeholder?: string;
   disabled?: boolean;
   stickyToolbar?: boolean;
+  allowImages?: boolean;
+  contentClassName?: string;
 }
 
 type ToolbarButtonProps = {
@@ -63,17 +80,34 @@ const ToolbarButton = ({
   </button>
 );
 
+const escapeHtmlAttribute = (value: string) => String(value || '')
+  .replace(/&/g, '&amp;')
+  .replace(/"/g, '&quot;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;');
+
+const readImageFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onerror = () => reject(reader.error || new Error('Nao foi possivel ler a imagem.'));
+  reader.readAsDataURL(file);
+});
+
 const RichTextEditor: React.FC<RichTextEditorProps> = ({
   initialValue = '',
   onChange,
   placeholder,
   disabled = false,
   stickyToolbar = true,
+  allowImages = false,
+  contentClassName = '',
 }) => {
   const editorShellRef = useRef<HTMLDivElement>(null);
   const toolbarAnchorRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const selectionRangeRef = useRef<Range | null>(null);
   const lastSyncedHtmlRef = useRef('');
   const [color, setColor] = useState('#000000');
   const [highlightColor, setHighlightColor] = useState('#fef08a');
@@ -89,6 +123,46 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     underline: false,
     insertUnorderedList: false,
   });
+  const [activeBlock, setActiveBlock] = useState('P');
+
+  const saveCurrentSelection = React.useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const editor = contentRef.current;
+    const selection = window.getSelection();
+    if (!editor || !selection || selection.rangeCount === 0) {
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    const element = container instanceof Element ? container : container.parentElement;
+    if (!element || !editor.contains(element)) {
+      return;
+    }
+
+    selectionRangeRef.current = range.cloneRange();
+  }, []);
+
+  const restoreSavedSelection = React.useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const editor = contentRef.current;
+    const range = selectionRangeRef.current;
+    if (!editor || !range) {
+      editor?.focus();
+      return;
+    }
+
+    editor.focus();
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }, []);
 
   const refreshToolbarState = React.useCallback(() => {
     if (disabled || typeof document === 'undefined' || typeof window === 'undefined') {
@@ -103,13 +177,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       return;
     }
 
+    saveCurrentSelection();
+    const blockElement = anchorElement.closest('h1,h2,h3,h4,h5,h6,p,blockquote,li,div');
+    const blockTag = blockElement?.tagName?.toUpperCase() || 'P';
+    setActiveBlock(blockTag === 'DIV' || blockTag === 'LI' ? 'P' : blockTag);
     setActiveCommands({
       bold: document.queryCommandState('bold'),
       italic: document.queryCommandState('italic'),
       underline: document.queryCommandState('underline'),
       insertUnorderedList: document.queryCommandState('insertUnorderedList'),
     });
-  }, [disabled]);
+  }, [disabled, saveCurrentSelection]);
 
   const emitSanitizedChange = React.useCallback(() => {
     const editor = contentRef.current;
@@ -127,10 +205,39 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       return;
     }
 
+    restoreSavedSelection();
     document.execCommand(command, false, value);
     emitSanitizedChange();
     window.requestAnimationFrame(refreshToolbarState);
-  }, [disabled, emitSanitizedChange, refreshToolbarState]);
+  }, [disabled, emitSanitizedChange, refreshToolbarState, restoreSavedSelection]);
+
+  const insertHtmlAtSelection = React.useCallback((html: string) => {
+    if (disabled || typeof document === 'undefined') {
+      return;
+    }
+
+    restoreSavedSelection();
+    document.execCommand('insertHTML', false, html);
+    emitSanitizedChange();
+    window.requestAnimationFrame(refreshToolbarState);
+  }, [disabled, emitSanitizedChange, refreshToolbarState, restoreSavedSelection]);
+
+  const handleImageInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (!file || !file.type.startsWith('image/')) {
+      return;
+    }
+
+    const dataUrl = await readImageFileAsDataUrl(file);
+    const imageHtml = [
+      '<figure class="cm-editor-image">',
+      `<img src="${escapeHtmlAttribute(dataUrl)}" alt="${escapeHtmlAttribute(file.name || 'Figura de apoio')}" loading="lazy" />`,
+      '</figure>',
+      '<p><br /></p>',
+    ].join('');
+    insertHtmlAtSelection(imageHtml);
+  };
 
   const handleColorChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setColor(event.target.value);
@@ -260,9 +367,43 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
         <div className="mx-0.5 h-4 w-px shrink-0 bg-slate-300 transition-colors dark:bg-slate-700 sm:mx-1" />
 
+        <ToolbarButton icon={Pilcrow} command="formatBlock" value="P" title="Paragrafo" active={activeBlock === 'P'} disabled={disabled} onCommand={execCommand} />
+        <ToolbarButton icon={Heading1} command="formatBlock" value="H3" title="Titulo" active={activeBlock === 'H3'} disabled={disabled} onCommand={execCommand} />
+        <ToolbarButton icon={Heading2} command="formatBlock" value="H4" title="Subtitulo" active={activeBlock === 'H4'} disabled={disabled} onCommand={execCommand} />
+        <ToolbarButton icon={Quote} command="formatBlock" value="BLOCKQUOTE" title="Citacao" active={activeBlock === 'BLOCKQUOTE'} disabled={disabled} onCommand={execCommand} />
+
+        <div className="mx-0.5 h-4 w-px shrink-0 bg-slate-300 transition-colors dark:bg-slate-700 sm:mx-1" />
+
         <ToolbarButton icon={List} command="insertUnorderedList" title="Lista" active={activeCommands.insertUnorderedList} disabled={disabled} onCommand={execCommand} />
 
         <div className="mx-0.5 h-4 w-px shrink-0 bg-slate-300 transition-colors dark:bg-slate-700 sm:mx-1" />
+
+        {allowImages && (
+          <>
+            <button
+              type="button"
+              disabled={disabled}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                saveCurrentSelection();
+              }}
+              onClick={() => imageInputRef.current?.click()}
+              title="Inserir imagem no texto"
+              aria-label="Inserir imagem no texto"
+              className="shrink-0 rounded-lg p-1 text-slate-500 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800 sm:p-1.5"
+            >
+              <ImagePlus size={16} />
+            </button>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageInputChange}
+            />
+            <div className="mx-0.5 h-4 w-px shrink-0 bg-slate-300 transition-colors dark:bg-slate-700 sm:mx-1" />
+          </>
+        )}
 
         <div className={`group relative flex shrink-0 items-center gap-1 rounded-lg px-0.5 py-0.5 transition-colors sm:px-1 ${
           color !== '#000000' ? 'bg-indigo-50 ring-1 ring-indigo-200 dark:bg-indigo-500/10 dark:ring-indigo-500/30' : ''
@@ -330,7 +471,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         onMouseUp={refreshToolbarState}
         onPaste={handlePaste}
         aria-disabled={disabled}
-        className="rich-text-editor-content max-h-64 min-h-[96px] overflow-y-auto p-3 text-sm text-slate-700 outline-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-70 dark:text-slate-300 sm:min-h-[112px] sm:p-4"
+        className={`rich-text-editor-content question-rich-html max-h-64 min-h-[96px] overflow-y-auto p-3 text-sm text-slate-700 outline-none transition-colors aria-disabled:cursor-not-allowed aria-disabled:opacity-70 dark:text-slate-300 sm:min-h-[112px] sm:p-4 ${contentClassName}`}
         style={{ whiteSpace: 'pre-wrap' }}
       />
 

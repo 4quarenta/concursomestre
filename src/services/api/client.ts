@@ -276,18 +276,91 @@ export const openAuthenticatedFile = async (resource: string): Promise<void> => 
  * Ele e consumido por imagens, uploads e previews espalhados pelo site e pelo admin.
  * @since v1.0.0
  */
-export const getAssetUrl = (path: string) => {
-    if (!path) return '';
-    if (path.startsWith('http')) return path;
+const stripBackendPathPrefix = (resource: string, backendRoot: string): string => {
+    let cleanResource = resource.replace(/\\/g, '/').trim();
+    const [pathPart, suffix = ''] = cleanResource.split(/([?#].*)/, 2);
+    cleanResource = pathPart.replace(/^\/+/, '');
 
-    const backendRoot = resolveBackendRoot();
-    const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    try {
+        const backendRootUrl = new URL(backendRoot);
+        const backendPath = backendRootUrl.pathname.replace(/^\/+|\/+$/g, '');
 
-    if (cleanPath.startsWith('uploads/')) {
-        return `${backendRoot}/${cleanPath}`;
+        if (backendPath) {
+            const duplicatedPrefix = `${backendPath}/${backendPath}/`;
+            while (cleanResource.startsWith(duplicatedPrefix)) {
+                cleanResource = `${backendPath}/${cleanResource.slice(duplicatedPrefix.length)}`;
+            }
+
+            if (cleanResource.startsWith(`${backendPath}/api/`)) {
+                cleanResource = cleanResource.slice(`${backendPath}/api/`.length);
+            }
+
+            if (cleanResource.startsWith(`${backendPath}/`)) {
+                cleanResource = cleanResource.slice(`${backendPath}/`.length);
+            }
+        }
+    } catch {
+        // Mantem a normalizacao generica quando a base nao puder ser parseada.
     }
 
-    return `${backendRoot}/${cleanPath}`;
+    if (cleanResource.startsWith('api/uploads/')) {
+        cleanResource = cleanResource.slice('api/'.length);
+    }
+
+    const uploadsIndex = cleanResource.indexOf('/uploads/');
+    if (uploadsIndex >= 0 && !cleanResource.startsWith('uploads/')) {
+        cleanResource = cleanResource.slice(uploadsIndex + 1);
+    }
+
+    return `${cleanResource}${suffix}`;
+};
+
+export const getAssetUrl = (path: string) => {
+    const rawPath = String(path || '').trim();
+    if (!rawPath || ['null', 'undefined'].includes(rawPath.toLowerCase())) return '';
+    if (rawPath.startsWith('data:') || rawPath.startsWith('blob:')) return rawPath;
+
+    const backendRoot = resolveBackendRoot().replace(/\/+$/, '');
+
+    if (/^\/\//.test(rawPath)) {
+        const protocol = typeof window !== 'undefined' ? window.location.protocol : 'https:';
+        return `${protocol}${rawPath}`;
+    }
+
+    if (/^https?:\/\//i.test(rawPath)) {
+        try {
+            const rawUrl = new URL(rawPath);
+            const backendUrl = new URL(backendRoot);
+            const normalizedResource = stripBackendPathPrefix(`${rawUrl.pathname}${rawUrl.search}${rawUrl.hash}`, backendRoot);
+
+            if (rawUrl.origin === backendUrl.origin && normalizedResource.startsWith('uploads/')) {
+                return `${backendRoot}/${normalizedResource}`;
+            }
+        } catch {
+            return rawPath;
+        }
+
+        return rawPath;
+    }
+
+    const normalizedResource = stripBackendPathPrefix(rawPath, backendRoot).replace(/^\/+/, '');
+    if (!normalizedResource) return '';
+
+    return `${backendRoot}/${normalizedResource}`;
+};
+
+export const getVersionedAssetUrl = (path: string, version?: string | number | null) => {
+    const assetUrl = getAssetUrl(path);
+    if (!assetUrl || assetUrl.startsWith('data:') || assetUrl.startsWith('blob:')) {
+        return assetUrl;
+    }
+
+    const cacheKey = String(version ?? path).trim();
+    if (!cacheKey) {
+        return assetUrl;
+    }
+
+    return `${assetUrl}${assetUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(cacheKey)}`;
 };
 
 export default apiClient;

@@ -23,6 +23,7 @@ import {
   fetchAuthenticatedUser,
   getAccessToken,
   logoutAuthSession,
+  refreshAuthSession,
   subscribeToAuthSession,
   updateCurrentUserSnapshot,
 } from '@services/auth/session';
@@ -59,7 +60,6 @@ const EDITABLE_PROFILE_FIELDS: Array<keyof UserProfile> = [
   'bankAccount',
   'targetExam',
   'preferences',
-  'photoUrl',
   'role',
 ];
 
@@ -195,6 +195,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
   const { addToast } = useToast();
+  const missingPhotoHydrationRef = React.useRef<Set<string>>(new Set());
+  const photoHydrationUserId = state.currentUser?.id || '';
+  const photoHydrationPhotoUrl = state.currentUser?.photoUrl || '';
   
   /**
    * Escuta o estado global da sessão e executa o bootstrap inicial ao subir o app.
@@ -227,6 +230,52 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     return unsubscribe;
   }, []);
+
+  /**
+   * Algumas sessoes antigas ou reusadas por HMR podem chegar com dados basicos
+   * do usuario, mas sem o campo `photoUrl`. Nesse caso buscamos uma unica vez o
+   * snapshot completo, que vem da rota oficial de perfil e inclui `photoUrl`.
+   */
+  React.useEffect(() => {
+    if (!photoHydrationUserId || photoHydrationPhotoUrl) {
+      return;
+    }
+
+    if (missingPhotoHydrationRef.current.has(photoHydrationUserId)) {
+      return;
+    }
+
+    missingPhotoHydrationRef.current.add(photoHydrationUserId);
+
+    void (async () => {
+      if (!getAccessToken()) {
+        const refreshedSession = await refreshAuthSession({
+          reason: 'manual',
+          force: true,
+          allowAnonymousFailure: true,
+        });
+
+        if (refreshedSession?.currentUser?.photoUrl) {
+          updateCurrentUserSnapshot(refreshedSession.currentUser);
+          dispatch({ type: 'LOGIN', payload: refreshedSession.currentUser });
+          return;
+        }
+      }
+
+      if (!getAccessToken()) {
+        return;
+      }
+
+      const freshUser = await fetchAuthenticatedUser();
+      if (freshUser) {
+        updateCurrentUserSnapshot(freshUser);
+        dispatch({ type: 'LOGIN', payload: freshUser });
+      }
+    })()
+      .catch((error) => {
+        clientLog.warn('Failed to hydrate authenticated user photo:', error);
+      });
+  }, [photoHydrationPhotoUrl, photoHydrationUserId]);
 
   /**
    * Conclui o login no provider a partir do token e do usuário recebidos pelo fluxo de auth.
@@ -313,6 +362,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         `Você ganhou ${payload} pontos de experiencia. Continue assim!`,
         'info',
         'system',
+        '/levels',
+        undefined,
+        'xp_bonus',
       ).catch(err => clientLog.warn('Falha ao criar notificacao de XP:', err));
     }
 
@@ -328,6 +380,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         'success',
         'system',
         '/profile/personal',
+        undefined,
+        'level_bonus',
       ).catch(err => clientLog.warn('Falha ao criar notificacao de level up:', err));
     }
   }, [state.currentUser]);
@@ -341,9 +395,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     dispatch({ type: 'TOGGLE_SAVED', payload });
 
     if (state.currentUser) {
-      questionService.toggleSavedQuestion(state.currentUser.id, payload).catch(err => {
-        clientLog.error('Failed to toggle save', err);
-      });
+      questionService.toggleSavedQuestion(state.currentUser.id, payload)
+        .then((result) => {
+          if (!state.currentUser || !result.success || result.newXp === undefined) {
+            return;
+          }
+
+          const nextUser = {
+            ...state.currentUser,
+            xp: result.newXp,
+            level: result.newLevel ?? state.currentUser.level,
+          };
+          dispatch({ type: 'UPDATE_USER', payload: { xp: nextUser.xp, level: nextUser.level } });
+          updateCurrentUserSnapshot(nextUser);
+        })
+        .catch(err => {
+          clientLog.error('Failed to toggle save', err);
+        });
     }
   }, [state.currentUser]);
 
@@ -359,8 +427,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     simulationsService.saveSimulation(payload)
-        .catch(e => clientLog.error('Failed to save sim', e));
-  }, [state.currentUser?.id]);
+      .then((result) => {
+        if (!state.currentUser || result.newXp === undefined) {
+          return;
+        }
+
+        const nextUser = {
+          ...state.currentUser,
+          xp: result.newXp,
+          level: result.newLevel ?? state.currentUser.level,
+        };
+        dispatch({ type: 'UPDATE_USER', payload: { xp: nextUser.xp, level: nextUser.level } });
+        updateCurrentUserSnapshot(nextUser);
+      })
+      .catch(e => clientLog.error('Failed to save sim', e));
+  }, [state.currentUser]);
 
   /**
    * Libera localmente o acesso a um material comprado.

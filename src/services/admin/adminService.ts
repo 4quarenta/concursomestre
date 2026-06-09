@@ -11,7 +11,7 @@
 
 import { apiClient, ENDPOINTS, assertApiSuccess, downloadAuthenticatedFile, readApiData, resolveApiResourceUrl } from '@services/api';
 import type { ApiResponse } from '@services/api';
-import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
+import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
 import { withQuestionPublicationAliases } from '@services/questions/questionPublication';
 import type { ErrorReport, Question, Ranking, SystemSettings, UserProfile } from '@types';
 
@@ -128,6 +128,10 @@ export interface AdminFeedbackThread {
   details: string;
   created_at: string;
   status: FeedbackStatus;
+  public_rating?: number | string | null;
+  public_display_name?: string | null;
+  public_headline?: string | null;
+  home_published_at?: string | null;
   reply_count?: number;
 }
 
@@ -383,7 +387,26 @@ export interface AdminRevenueProjectionItem {
   currentPeriodEnd?: string | null;
   intervalUnit?: 'day' | 'week' | 'month' | 'year' | string;
   intervalCount?: number;
+  chargeIntervalUnit?: 'day' | 'week' | 'month' | 'year' | string;
+  chargeIntervalCount?: number;
   projectionMode?: 'installments' | 'auto_renew' | string;
+}
+
+export interface AdminRevenueProjectionOverduePayment {
+  subscriptionId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  planName: string;
+  status: string;
+  cycleKey: string;
+  cycleLabel: string;
+  installmentNumber: number;
+  installmentCount: number;
+  amount: number;
+  dueAt: string;
+  daysOverdue: number;
+  reason: string;
 }
 
 export interface AdminRevenueProjectionPayload {
@@ -391,6 +414,9 @@ export interface AdminRevenueProjectionPayload {
   totalRemainingInstallments: number;
   activeContracts: number;
   atRiskProjectedAmount: number;
+  overduePaymentCount?: number;
+  overduePaymentAmount?: number;
+  overduePayments?: AdminRevenueProjectionOverduePayment[];
   breakdownByCycle: AdminRevenueProjectionCycle[];
   breakdownByMonth: AdminRevenueProjectionMonth[];
   items: AdminRevenueProjectionItem[];
@@ -642,7 +668,11 @@ export const adminService = {
    */
   async getPublicSystemSettings(): Promise<Partial<SystemSettings>> {
     return withRequestCoalescing('settings:public', async () => {
-      const response = await requestApi<Partial<SystemSettings>>(apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.get));
+      const response = await requestApi<Partial<SystemSettings>>(apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.get, {
+        params: {
+          _: Date.now(),
+        },
+      }));
       return readApiData(response, {});
     }, 5000);
   },
@@ -653,7 +683,11 @@ export const adminService = {
    */
   async getSystemSettings(): Promise<Partial<SystemSettings>> {
     return withRequestCoalescing('settings:admin', async () => {
-      const response = await requestApi<Partial<SystemSettings>>(apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.update));
+      const response = await requestApi<Partial<SystemSettings>>(apiClient.get<ApiResponse<Partial<SystemSettings>>>(ENDPOINTS.settings.update, {
+        params: {
+          _: Date.now(),
+        },
+      }));
       return readApiData(response, {});
     }, 5000);
   },
@@ -839,6 +873,7 @@ export const adminService = {
    */
   async toggleCache(enabled: boolean): Promise<string> {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=settings`, { enabled }));
+    clearRequestCoalescing();
     return assertApiSuccess(response, 'Não foi possível atualizar o cache.').message || 'Configuração do cache atualizada.';
   },
 
@@ -848,6 +883,7 @@ export const adminService = {
    */
   async saveCacheSettings(payload: { enabled: boolean; default_ttl: number }): Promise<string> {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=settings`, payload));
+    clearRequestCoalescing();
     return assertApiSuccess(response, 'Nao foi possivel salvar as configuracoes de cache.').message || 'Configuracoes do cache atualizadas.';
   },
 
@@ -857,6 +893,7 @@ export const adminService = {
    */
   async clearCache(): Promise<string> {
     const response = await requestApi<unknown>(apiClient.get<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clear`));
+    clearRequestCoalescing();
     return assertApiSuccess(response, 'Não foi possível limpar o cache.').message || 'Cache limpo com sucesso.';
   },
 
@@ -866,6 +903,7 @@ export const adminService = {
    */
   async cleanExpiredCache(): Promise<string> {
     const response = await requestApi<unknown>(apiClient.get<ApiResponse>(`${ENDPOINTS.cache.manage}?action=clean`));
+    clearRequestCoalescing();
     return assertApiSuccess(response, 'Não foi possível limpar o cache expirado.').message || 'Entradas expiradas removidas.';
   },
 

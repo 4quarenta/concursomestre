@@ -20,6 +20,8 @@ type AddCommentInput = {
   content: string;
   userId: string;
   userName: string;
+  userAvatar?: string;
+  userPlan?: string;
   parentId?: string;
   targetType?: 'question' | 'material';
 };
@@ -29,6 +31,12 @@ type CommentCreationPayload = {
   moderationStatus?: 'pending' | 'approved' | 'spam' | string;
   requiresModeration?: boolean;
   message?: string;
+  xpGain?: string | number | null;
+  xp_gain?: string | number | null;
+  newXp?: string | number | null;
+  new_xp?: string | number | null;
+  newLevel?: string | number | null;
+  new_level?: string | number | null;
 };
 
 export interface CommentSubmissionResult {
@@ -37,7 +45,43 @@ export interface CommentSubmissionResult {
   requiresModeration: boolean;
   message?: string;
   comment?: QuestaoComentario;
+  xpGain?: number;
+  newXp?: number;
+  newLevel?: number;
 }
+
+export interface CommentMutationResult {
+  success: boolean;
+  message?: string;
+  xpGain?: number;
+  newXp?: number;
+  newLevel?: number;
+}
+
+const toOptionalNumber = (value: unknown): number | undefined => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const normalizeCommentPlan = (value: unknown): QuestaoComentario['userPlan'] => {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized.includes('elite')) return 'Elite';
+  if (normalized.includes('pro')) return 'Pro';
+  if (normalized.includes('essencial')) return 'Essencial';
+  return 'Gratuito';
+};
+
+const normalizeCommentRecord = (comment: QuestaoComentario): QuestaoComentario => {
+  const record = comment as unknown as Record<string, unknown>;
+  return {
+    ...comment,
+    userId: String(comment.userId || record.user_id || record.userId || ''),
+    userName: String(comment.userName || record.user_name || record.userName || 'Aluno'),
+    userAvatar: String(comment.userAvatar || record.user_avatar || record.user_photo_url || record.photo_url || record.avatar_url || ''),
+    userPlan: normalizeCommentPlan(comment.userPlan || record.user_plan || record.plan_name || record.plan || record.userPlan),
+    replies: Array.isArray(comment.replies) ? comment.replies.map(normalizeCommentRecord) : [],
+  };
+};
 
 /**
  * Fachada oficial do dominio de comentarios.
@@ -63,7 +107,7 @@ export const commentService = {
       ) as unknown;
 
       const comments = readApiData<QuestaoComentario[]>(response, []);
-      return Array.isArray(comments) ? comments : [];
+      return Array.isArray(comments) ? comments.map(normalizeCommentRecord) : [];
     }, 2500);
   },
 
@@ -80,7 +124,7 @@ export const commentService = {
       ) as unknown;
 
       const comments = readApiData<QuestaoComentario[]>(response, []);
-      return Array.isArray(comments) ? comments : [];
+      return Array.isArray(comments) ? comments.map(normalizeCommentRecord) : [];
     }, 4000);
   },
 
@@ -89,17 +133,29 @@ export const commentService = {
    * @since 1.0.0
    */
   async addComment(commentData: AddCommentInput): Promise<CommentSubmissionResult> {
+    const requestPayload: Record<string, unknown> = {
+      action: 'add',
+      question_id: commentData.questionId,
+      user_id: commentData.userId,
+      user_name: commentData.userName,
+      content: commentData.content,
+      parent_id: commentData.parentId,
+      targetType: commentData.targetType || 'question',
+      gamification_event: commentData.parentId ? 'comment_reply_submitted' : 'comment_submitted',
+      notification_event: commentData.parentId ? 'comment_reply' : 'comment_published',
+    };
+
+    if (commentData.userAvatar) {
+      requestPayload.user_avatar = commentData.userAvatar;
+    }
+
+    if (commentData.userPlan) {
+      requestPayload.user_plan = commentData.userPlan;
+    }
+
     const response = await apiClient.post(
       ENDPOINTS.comments.create,
-      {
-        action: 'add',
-        question_id: commentData.questionId,
-        user_id: commentData.userId,
-        user_name: commentData.userName,
-        content: commentData.content,
-        parent_id: commentData.parentId,
-        targetType: commentData.targetType || 'question',
-      },
+      requestPayload,
     ) as unknown;
 
     const envelope = assertApiSuccess<CommentCreationPayload>(response, 'Falha ao criar comentario.');
@@ -107,6 +163,9 @@ export const commentService = {
     const commentId = String(payload?.id ?? envelope.raw?.id ?? '');
     const moderationStatus = String(payload?.moderationStatus || envelope.raw?.moderationStatus || 'approved') as 'pending' | 'approved' | 'spam';
     const requiresModeration = Boolean(payload?.requiresModeration ?? envelope.raw?.requiresModeration ?? moderationStatus === 'pending');
+    const xpGain = toOptionalNumber(payload?.xpGain ?? payload?.xp_gain ?? envelope.raw?.xpGain ?? envelope.raw?.xp_gain);
+    const newXp = toOptionalNumber(payload?.newXp ?? payload?.new_xp ?? envelope.raw?.newXp ?? envelope.raw?.new_xp);
+    const newLevel = toOptionalNumber(payload?.newLevel ?? payload?.new_level ?? envelope.raw?.newLevel ?? envelope.raw?.new_level);
 
     if (!requiresModeration && moderationStatus === 'approved') {
       return {
@@ -114,11 +173,15 @@ export const commentService = {
         moderationStatus,
         requiresModeration,
         message: String(payload?.message || envelope.message || ''),
-        comment: {
+        xpGain,
+        newXp,
+        newLevel,
+        comment: normalizeCommentRecord({
           id: commentId,
           userId: commentData.userId,
           userName: commentData.userName,
-          userPlan: 'Gratuito',
+          userAvatar: commentData.userAvatar,
+          userPlan: normalizeCommentPlan(commentData.userPlan),
           text: commentData.content,
           date: 'Agora',
           likes: 0,
@@ -126,7 +189,7 @@ export const commentService = {
           isLiked: false,
           parentId: commentData.parentId,
           moderationStatus,
-        },
+        }),
       };
     }
 
@@ -135,6 +198,9 @@ export const commentService = {
       moderationStatus,
       requiresModeration,
       message: String(payload?.message || envelope.message || ''),
+      xpGain,
+      newXp,
+      newLevel,
     };
   },
 
@@ -142,14 +208,27 @@ export const commentService = {
    * Persiste a curtida via endpoint oficial de commentsHandle.
    * @since 1.0.0
    */
-  async likeComment(commentId: string, userId?: string): Promise<{ success: boolean }> {
+  async likeComment(commentId: string, userId?: string): Promise<CommentMutationResult> {
     const response = await apiClient.post<ApiResponse>(
       ENDPOINTS.comments.handle,
-      { action: 'like', commentId, userId },
+      {
+        action: 'like',
+        commentId,
+        userId,
+        gamification_event: 'comment_like_received',
+        notification_event: 'comment_like_received',
+      },
     );
 
-    assertApiSuccess(response, 'Falha ao curtir comentario.');
-    return { success: true };
+    const envelope = assertApiSuccess(response, 'Falha ao curtir comentario.');
+    const payload = readApiData<Record<string, unknown>>(response, {});
+    return {
+      success: true,
+      message: envelope.message,
+      xpGain: toOptionalNumber(payload.xpGain ?? payload.xp_gain ?? envelope.raw?.xpGain ?? envelope.raw?.xp_gain),
+      newXp: toOptionalNumber(payload.newXp ?? payload.new_xp ?? envelope.raw?.newXp ?? envelope.raw?.new_xp),
+      newLevel: toOptionalNumber(payload.newLevel ?? payload.new_level ?? envelope.raw?.newLevel ?? envelope.raw?.new_level),
+    };
   },
 
   /**
@@ -161,7 +240,7 @@ export const commentService = {
     reason: string,
     details: string,
     reporterId: string,
-  ): Promise<{ success: boolean; message?: string }> {
+  ): Promise<CommentMutationResult> {
     const result = await reportsService.createReport({
       reporterId,
       targetType: 'comment',
@@ -173,6 +252,9 @@ export const commentService = {
     return {
       success: true,
       message: result.message,
+      xpGain: result.xpGain,
+      newXp: result.newXp,
+      newLevel: result.newLevel,
     };
   },
 
@@ -225,7 +307,13 @@ export const commentService = {
   likeCommentInTree(comments: QuestaoComentario[], commentId: string): QuestaoComentario[] {
     return comments.map((comment) => {
       if (comment.id === commentId) {
-        return { ...comment, likes: comment.likes + 1 };
+        const currentLikes = Number(comment.likes || 0);
+        const nextIsLiked = !comment.isLiked;
+        return {
+          ...comment,
+          isLiked: nextIsLiked,
+          likes: nextIsLiked ? currentLikes + 1 : Math.max(0, currentLikes - 1),
+        };
       }
 
       if (comment.replies && comment.replies.length > 0) {

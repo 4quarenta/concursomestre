@@ -12,13 +12,12 @@
 
 
 import React, { useState, useRef, useEffect } from 'react';
-import Image from 'next/image';
 import { MessageSquare, XCircle, ThumbsUp, Reply, Crown, Zap, Star, Flag, Trash2 } from 'lucide-react';
 import RichTextEditor from '../ui/RichTextEditor';
 import type { QuestaoComentario as Comment } from '@types';
 import { useAuth } from '@providers/AuthProvider';
 import { useConfirm } from '@providers/ModalProvider';
-import { getAssetUrl } from '@services/api';
+import { getVersionedAssetUrl } from '@services/api';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 
 const COMMENT_REPORT_REASON_OPTIONS = [
@@ -38,12 +37,15 @@ interface CommentItemProps {
     depth?: number;
     highlightedId?: string | null;
     currentUserId?: string;
+    currentUserPhotoUrl?: string;
     restrictedReplies?: boolean;
     ownerId?: string;
+    pendingLikeIds?: Set<string>;
 }
 
-const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onReport, onDelete, depth = 0, highlightedId, currentUserId, restrictedReplies, ownerId }) => {
+const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onReport, onDelete, depth = 0, highlightedId, currentUserId, currentUserPhotoUrl, restrictedReplies, ownerId, pendingLikeIds }) => {
     const isHighlighted = highlightedId === comment.id;
+    const isLikePending = Boolean(pendingLikeIds?.has(comment.id));
     const getBadge = (plan?: string) => {
         switch (plan) {
             case 'Elite': return <span title="Usuário Elite"><Crown size={12} className="text-amber-500 fill-amber-500" /></span>;
@@ -58,6 +60,11 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
     const hasReplies = replies.length > 0;
     const [showReplies, setShowReplies] = useState(false);
     const hiddenCount = replies.length;
+    const avatarSource = comment.userAvatar || (comment.userId === currentUserId ? currentUserPhotoUrl : '') || '';
+    const resolvedAvatarUrl = getVersionedAssetUrl(avatarSource, avatarSource || comment.id);
+    const [failedAvatarUrl, setFailedAvatarUrl] = useState('');
+    const fallbackInitial = String(comment.userName || 'A').trim().charAt(0).toUpperCase() || 'A';
+    const shouldRenderAvatarImage = Boolean(resolvedAvatarUrl && failedAvatarUrl !== resolvedAvatarUrl);
 
     // Permissions
     const canReply = !restrictedReplies ||
@@ -75,14 +82,19 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
             <div className={`${isHighlighted ? 'ring-2 ring-indigo-500 bg-indigo-50 dark:bg-indigo-900/40 border-indigo-200' : (depth > 0 ? 'bg-slate-50/50 dark:bg-slate-900/20' : 'bg-white dark:bg-slate-800')} p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm space-y-2 transition-all`}>
                 <div className="flex justify-between items-center text-[10px]">
                     <div className="flex items-center gap-2">
-                        <Image
-                            src={getAssetUrl(comment.userAvatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.userName)}&background=random&color=fff&size=32`}
-                            alt={comment.userName}
-                            width={24}
-                            height={24}
-                            unoptimized
-                            className="h-6 w-6 rounded-full border border-slate-200 object-cover dark:border-slate-700"
-                        />
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-[10px] font-black uppercase text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                            {shouldRenderAvatarImage ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={resolvedAvatarUrl}
+                                    alt={comment.userName}
+                                    onError={() => setFailedAvatarUrl(resolvedAvatarUrl)}
+                                    className="h-full w-full object-cover"
+                                />
+                            ) : (
+                                fallbackInitial
+                            )}
+                        </span>
                         <div className="flex flex-col">
                             <div className="flex items-center gap-1.5">
                                 <span className="font-bold text-slate-700 dark:text-slate-200">{comment.userName}</span>
@@ -95,8 +107,11 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
                 </div>
                 <div className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed" dangerouslySetInnerHTML={{ __html: normalizeQuestionRichHtml(comment.text) }} />
                 <div className="flex gap-3 mt-1">
-                    <button onClick={() => onLike(comment.id)}
-                        className={`flex items-center gap-1 text-[10px] font-bold transition-all ${comment.isLiked ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'}`}>
+                    <button
+                        onClick={() => onLike(comment.id)}
+                        disabled={isLikePending}
+                        className={`flex items-center gap-1 text-[10px] font-bold transition-all disabled:cursor-wait disabled:opacity-60 ${comment.isLiked ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400'}`}
+                    >
                         <ThumbsUp size={12} className={comment.isLiked ? 'fill-current' : ''} /> {comment.likes > 0 && comment.likes}
                     </button>
                     {canReply && (
@@ -127,8 +142,10 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
                     depth={depth + 1}
                     highlightedId={highlightedId}
                     currentUserId={currentUserId}
+                    currentUserPhotoUrl={currentUserPhotoUrl}
                     restrictedReplies={restrictedReplies}
                     ownerId={ownerId}
+                    pendingLikeIds={pendingLikeIds}
                 />
             ))}
             {hasReplies && (
@@ -150,7 +167,13 @@ const MemoizedCommentItem = React.memo(CommentItem, (prev, next) => {
         prev.comment.id === next.comment.id &&
         prev.comment.likes === next.comment.likes &&
         prev.comment.isLiked === next.comment.isLiked &&
-        prev.highlightedId === next.highlightedId
+        prev.comment.userAvatar === next.comment.userAvatar &&
+        prev.comment.userName === next.comment.userName &&
+        prev.comment.userPlan === next.comment.userPlan &&
+        prev.currentUserId === next.currentUserId &&
+        prev.currentUserPhotoUrl === next.currentUserPhotoUrl &&
+        prev.highlightedId === next.highlightedId &&
+        prev.pendingLikeIds === next.pendingLikeIds
     );
 });
 
@@ -158,7 +181,7 @@ interface CommentsSectionProps {
     targetId: string;
     comments: Comment[];
     onAddComment: (text: string, parentId?: string) => void;
-    onLikeComment: (commentId: string) => void;
+    onLikeComment: (commentId: string) => void | Promise<void>;
     onReportComment: (commentId: string, reason: string, details: string) => void;
     onDeleteComment?: (commentId: string) => void;
     title?: string;
@@ -188,6 +211,8 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
     const [reportingCommentId, setReportingCommentId] = useState<string | null>(null);
     const [reportReason, setReportReason] = useState<(typeof COMMENT_REPORT_REASON_OPTIONS)[number]>(COMMENT_REPORT_REASON_OPTIONS[0]);
     const [reportDetails, setReportDetails] = useState('');
+    const [pendingLikeIds, setPendingLikeIds] = useState<Set<string>>(() => new Set());
+    const pendingLikeIdsRef = useRef<Set<string>>(new Set());
 
     const openReportModal = (commentId: string) => {
         setReportingCommentId(commentId);
@@ -282,6 +307,25 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
         setLastAddedId('pending');
     };
 
+    const handleLikeComment = (commentId: string) => {
+        if (pendingLikeIdsRef.current.has(commentId)) {
+            return;
+        }
+
+        pendingLikeIdsRef.current.add(commentId);
+        setPendingLikeIds((previous) => new Set(previous).add(commentId));
+        Promise.resolve()
+            .then(() => onLikeComment(commentId))
+            .finally(() => {
+                pendingLikeIdsRef.current.delete(commentId);
+                setPendingLikeIds((previous) => {
+                    const next = new Set(previous);
+                    next.delete(commentId);
+                    return next;
+                });
+            });
+    };
+
     // Efeito para capturar o ID do último comentário adicionado quando a lista for atualizada
     useEffect(() => {
         if (lastAddedId === 'pending' && comments.length > 0) {
@@ -361,7 +405,7 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                         key={comment.id}
                         comment={comment}
                         onReply={(id, name) => setReplyTo({ id, name })}
-                        onLike={(id) => onLikeComment(id)}
+                        onLike={handleLikeComment}
                         onReport={(id) => openReportModal(id)}
                         onDelete={async (id) => {
                             const confirmed = await confirm({
@@ -377,8 +421,10 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                         }}
                         highlightedId={lastAddedId}
                         currentUserId={currentUser?.id}
+                        currentUserPhotoUrl={currentUser?.photoUrl}
                         restrictedReplies={restrictedReplies}
                         ownerId={ownerId}
+                        pendingLikeIds={pendingLikeIds}
                     />
                 ))}
                 {comments.length === 0 && (

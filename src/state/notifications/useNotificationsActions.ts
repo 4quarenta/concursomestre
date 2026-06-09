@@ -30,14 +30,17 @@ export const useNotificationsActions = () => {
   }, [markAllLocalNotificationsAsRead]);
 
   const deleteNotification = useCallback(async (id: string) => {
+    await notificationService.deleteNotification(id);
     softDeleteLocalNotification(id, Date.now());
   }, [softDeleteLocalNotification]);
 
   const restoreNotification = useCallback(async (id: string) => {
+    await notificationService.restoreNotification(id);
     restoreLocalNotification(id);
   }, [restoreLocalNotification]);
 
   const permanentDeleteNotification = useCallback(async (id: string) => {
+    await notificationService.permanentDeleteNotification(id);
     removeLocalNotification(id);
   }, [removeLocalNotification]);
 

@@ -308,6 +308,52 @@ const buildStrategicInsights = (stats: BankXrayPayload, diagnosis: XrayDiagnosis
   return insights;
 };
 
+const resolveBankQuestionModel = (selectedAgency: string) => {
+  const normalized = selectedAgency.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+  if (/(cebraspe|cespe)/.test(normalized)) {
+    return {
+      label: 'Certo / Errado',
+      helper: 'Perfil historico de itens independentes, com penalizacao/estrategia propria quando o edital adota esse formato.',
+    };
+  }
+
+  if (/(enem|fgv|fcc|vunesp)/.test(normalized)) {
+    return {
+      label: 'Multipla escolha com 5 alternativas',
+      helper: 'Treine eliminacao de alternativas e leitura fina do comando.',
+    };
+  }
+
+  return {
+    label: 'Multipla escolha',
+    helper: 'Confirme o edital da prova recente; a plataforma infere pelo historico cadastrado.',
+  };
+};
+
+const resolveChargeProfile = (stats: BankXrayPayload, diagnosis: XrayDiagnosis) => {
+  const contextUsage = Number(stats.contextUsage || 0);
+  const textStyle = String(stats.textStyle || '').toLowerCase();
+
+  if (contextUsage >= 60 || textStyle.includes('interpret')) {
+    return {
+      label: 'Cobra leitura e contexto',
+      helper: 'Priorize questoes com texto-base, tabelas, graficos e comando longo.',
+    };
+  }
+
+  if (diagnosis.difficulty.score >= 2.1) {
+    return {
+      label: 'Cobra combinacao de conceitos',
+      helper: 'Revise excecoes e comparacoes, nao apenas definicoes soltas.',
+    };
+  }
+
+  return {
+    label: 'Cobra conceito e literalidade',
+    helper: 'Atenção a palavras restritivas, exceções e conceitos secos.',
+  };
+};
+
 const toneClasses: Record<string, {
   panel: string;
   icon: string;
@@ -769,6 +815,78 @@ const QuickFact = ({
   </div>
 );
 
+const BankCharacteristicsPanel = ({
+  selectedAgency,
+  stats,
+  diagnosis,
+}: {
+  selectedAgency: string;
+  stats: BankXrayPayload;
+  diagnosis: XrayDiagnosis;
+}) => {
+  const questionModel = resolveBankQuestionModel(selectedAgency);
+  const chargeProfile = resolveChargeProfile(stats, diagnosis);
+  const characteristics = [
+    {
+      label: 'Formato provavel',
+      value: questionModel.label,
+      helper: questionModel.helper,
+      icon: Check,
+    },
+    {
+      label: 'Dificuldade',
+      value: diagnosis.difficulty.label,
+      helper: diagnosis.difficulty.helper,
+      icon: Gauge,
+    },
+    {
+      label: 'Tipo de cobranca',
+      value: chargeProfile.label,
+      helper: chargeProfile.helper,
+      icon: BrainCircuit,
+    },
+    {
+      label: 'Texto e contexto',
+      value: diagnosis.context.label,
+      helper: `${formatPercent(stats.contextUsage)} da amostra usa contexto relevante.`,
+      icon: FileText,
+    },
+    {
+      label: 'Foco dominante',
+      value: diagnosis.topSubjectName,
+      helper: diagnosis.topTopic
+        ? `${diagnosis.topTopic.topic} aparece como assunto sensivel.`
+        : 'Sem topico dominante no recorte atual.',
+      icon: Target,
+    },
+  ];
+
+  return (
+    <section className={`${PANEL_CLASS} p-5`}>
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Caracteristicas da banca</p>
+          <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">Como essa banca tende a cobrar</h2>
+        </div>
+        <span className="inline-flex w-fit rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          Base: {stats.total} questoes
+        </span>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {characteristics.map((item) => (
+          <article key={item.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
+            <item.icon className="text-indigo-600 dark:text-indigo-300" size={18} />
+            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500">{item.label}</p>
+            <h3 className="mt-1 line-clamp-2 text-sm font-black text-slate-900 dark:text-slate-100">{item.value}</h3>
+            <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">{item.helper}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+};
+
 const SubjectPriorityPanel = ({
   stats,
 }: {
@@ -1152,6 +1270,7 @@ const BankAnalysis: React.FC = () => {
       ) : stats && stats.total > 0 && diagnosis ? (
         <div className="space-y-6 animate-slide-up">
           <ExecutiveSummary stats={stats} diagnosis={diagnosis} />
+          <BankCharacteristicsPanel selectedAgency={selectedAgency} stats={stats} diagnosis={diagnosis} />
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard icon={Database} label="Amostra" value={stats.total} helper={diagnosis.confidence.helper} tone="indigo" />

@@ -16,12 +16,29 @@ type SaveSimulationResult = {
   success: boolean;
   id?: string;
   message?: string;
+  newXp?: number;
+  newLevel?: number;
+  gamification?: {
+    applied?: boolean;
+    badge_awarded?: boolean;
+    xp?: number;
+  };
 };
 
 type SaveSimulationResponse = {
   id?: string | number;
+  new_xp?: string | number | null;
+  new_level?: string | number | null;
+  newXp?: string | number | null;
+  newLevel?: string | number | null;
+  gamification?: SaveSimulationResult['gamification'];
   data?: {
     id?: string | number;
+    new_xp?: string | number | null;
+    new_level?: string | number | null;
+    newXp?: string | number | null;
+    newLevel?: string | number | null;
+    gamification?: SaveSimulationResult['gamification'];
   };
 };
 
@@ -108,6 +125,9 @@ export const simulationsService = {
       success: true,
       id: String(result.data?.id ?? result.id ?? envelope.raw.id ?? ''),
       message: envelope.message,
+      newXp: Number(result.data?.newXp ?? result.data?.new_xp ?? result.newXp ?? result.new_xp ?? envelope.raw.newXp ?? envelope.raw.new_xp ?? undefined) || undefined,
+      newLevel: Number(result.data?.newLevel ?? result.data?.new_level ?? result.newLevel ?? result.new_level ?? envelope.raw.newLevel ?? envelope.raw.new_level ?? undefined) || undefined,
+      gamification: result.data?.gamification ?? result.gamification,
     };
   },
 };

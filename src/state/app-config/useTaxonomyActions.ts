@@ -6,6 +6,7 @@ import { useAppConfigStore } from './appConfigStore';
 import { mergeSystemSettings } from './systemSettings';
 
 let taxonomyLoadPromise: Promise<void> | null = null;
+const TAXONOMY_LOAD_TIMEOUT_MS = 10000;
 
 const hasTaxonomyPayload = (taxonomies: unknown): boolean => {
   if (!taxonomies || typeof taxonomies !== 'object') {
@@ -15,6 +16,19 @@ const hasTaxonomyPayload = (taxonomies: unknown): boolean => {
   const record = taxonomies as Record<string, unknown>;
   return Object.values(record).some((value) => Array.isArray(value) && value.length > 0);
 };
+
+const withTaxonomyLoadTimeout = async <T,>(promise: Promise<T>): Promise<T> => (
+  new Promise<T>((resolve, reject) => {
+    const timeoutId = globalThis.setTimeout(() => {
+      reject(new Error('Tempo excedido ao carregar taxonomias.'));
+    }, TAXONOMY_LOAD_TIMEOUT_MS);
+
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => globalThis.clearTimeout(timeoutId));
+  })
+);
 
 /**
  * Taxonomy actions bound to the app-config store.
@@ -36,7 +50,7 @@ export const useTaxonomyActions = () => {
     }
 
     taxonomyLoadPromise = (async () => {
-      const taxonomies = await filtersService.listTaxonomies();
+      const taxonomies = await withTaxonomyLoadTimeout(filtersService.listTaxonomies());
       const latestSettings = useAppConfigStore.getState().systemSettings;
       replaceSystemSettings(mergeSystemSettings(latestSettings, { taxonomies }));
     })().finally(() => {

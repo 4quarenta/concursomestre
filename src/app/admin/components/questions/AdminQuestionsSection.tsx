@@ -1048,7 +1048,8 @@ const AdminQuestionsSection = ({
           const fullQuestion = await questionService
             .getQuestionForAdminEdit(id)
             .catch(() => question);
-          const generationBase = { ...question, ...fullQuestion } as Question;
+          const cachedGeneration = generatedContentById[id] || {};
+          const generationBase = { ...question, ...fullQuestion, ...cachedGeneration } as Question;
           const result = kind === 'teacher'
             ? await aiService.generateTeacherComment(generationBase)
             : await aiService.generateDetailedAnalysis(generationBase);

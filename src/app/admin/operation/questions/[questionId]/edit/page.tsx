@@ -141,6 +141,10 @@ const AdminQuestionEditPage = () => {
       return;
     }
 
+    if (questionLoadKeyRef.current === normalizedQuestionId && loadError) {
+      return;
+    }
+
     if (
       questionLoadPromiseRef.current
       && questionLoadKeyRef.current === normalizedQuestionId
@@ -400,7 +404,18 @@ const AdminQuestionEditPage = () => {
     return null;
   }
 
-  if (loadError || (!isNewQuestion && !question) || !editor.isManualQuestionModalOpen) {
+  if (!loadError && (isNewQuestion || question) && !editor.isManualQuestionModalOpen) {
+    return renderAdminShell(
+      <div className="flex min-h-[360px] items-center justify-center text-slate-500 dark:text-slate-400">
+        <div className="inline-flex items-center gap-3 rounded-sm border border-slate-300 bg-white px-5 py-4 text-sm font-bold shadow-none dark:border-slate-700 dark:bg-slate-900">
+          <Loader2 className="animate-spin" size={18} />
+          Preparando editor da questão...
+        </div>
+      </div>,
+    );
+  }
+
+  if (loadError || (!isNewQuestion && !question)) {
     return renderAdminShell(
       <div className="flex min-h-[360px] items-center justify-center p-4">
         <div className="w-full max-w-xl rounded-sm border border-slate-300 bg-white p-8 text-center shadow-none dark:border-slate-700 dark:bg-slate-900">

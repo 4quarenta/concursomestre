@@ -12,6 +12,8 @@
 import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
 import { getAccessToken, isAccessTokenExpired } from '@services/auth/session';
 import { clientLog } from '@services/monitoring/clientLog';
+import { normalizeNotificationSettings } from '@/constants/gamificationNotificationSettings';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import type { Notification } from 'types';
 
 type NotificationListPayload = {
@@ -63,6 +65,26 @@ const readNotifications = (response: NotificationListResponse): Notification[] =
  * @since 1.0.0
  */
 const normalizeNotificationRecipient = (userId: string): string => String(userId || '').trim();
+
+const canSendConfiguredNotification = (eventKey?: string | null): boolean => {
+  const systemSettings = useAppConfigStore.getState().systemSettings;
+  if (systemSettings.features?.notificationsEnabled === false) {
+    return false;
+  }
+
+  const notificationSettings = normalizeNotificationSettings(systemSettings.notificationSettings);
+  if (!notificationSettings.enabled) {
+    return false;
+  }
+
+  const normalizedEventKey = String(eventKey || '').trim();
+  if (!normalizedEventKey) {
+    return true;
+  }
+
+  const rule = notificationSettings.rules.find((item) => item.key === normalizedEventKey);
+  return rule ? rule.enabled : true;
+};
 
 /**
  * Fachada oficial do dominio de notificações.
@@ -136,7 +158,35 @@ export const notificationService = {
   },
 
   /**
-   * Remove todas as notificações do usuário atual.
+   * Restaura uma notificacao que estava na lixeira.
+   * @since 1.0.0
+   */
+  async restoreNotification(notificationId: string): Promise<{ success: boolean }> {
+    const response = await apiClient.post(
+      ENDPOINTS.notifications.restore,
+      { notification_id: notificationId },
+    );
+
+    assertApiSuccess(response, 'Nao foi possivel restaurar a notificacao.');
+    return { success: true };
+  },
+
+  /**
+   * Exclui uma notificacao definitivamente.
+   * @since 1.0.0
+   */
+  async permanentDeleteNotification(notificationId: string): Promise<{ success: boolean }> {
+    const response = await apiClient.post(
+      ENDPOINTS.notifications.permanentDelete,
+      { notification_id: notificationId },
+    );
+
+    assertApiSuccess(response, 'Nao foi possivel excluir definitivamente a notificacao.');
+    return { success: true };
+  },
+
+  /**
+   * Remove todas as notificacoes do usuario atual.
    * @since 1.0.0
    */
   async clearAll(): Promise<{ success: boolean }> {
@@ -161,8 +211,13 @@ export const notificationService = {
     category: 'system' | 'social' | 'marketplace' | 'moderation' = 'system',
     actionUrl?: string,
     evidenceUrl?: string,
+    eventKey?: string,
   ): Promise<{ success: boolean }> {
     try {
+      if (!canSendConfiguredNotification(eventKey)) {
+        return { success: false };
+      }
+
       const recipientId = normalizeNotificationRecipient(userId);
       if (!recipientId) {
         return { success: false };
@@ -173,17 +228,20 @@ export const notificationService = {
         return { success: false };
       }
 
+      const notificationPayload = {
+        user_id: recipientId,
+        title,
+        message,
+        type,
+        category,
+        action_url: actionUrl,
+        evidence_url: evidenceUrl,
+        ...(eventKey ? { event_key: eventKey } : {}),
+      };
+
       const response = await apiClient.post(
         ENDPOINTS.notifications.send,
-        {
-          user_id: recipientId,
-          title,
-          message,
-          type,
-          category,
-          action_url: actionUrl,
-          evidence_url: evidenceUrl,
-        },
+        notificationPayload,
       );
 
       assertApiSuccess(response, 'Não foi possível enviar a notificação.');

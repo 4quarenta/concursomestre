@@ -53,16 +53,25 @@ vi.mock('@services/api', () => ({
       markAllRead: 'notificationsMarkAllRead',
       delete: 'notificationsDelete',
       clearAll: 'notificationsClearAll',
+      restore: 'notificationsRestore',
+      permanentDelete: 'notificationsPermanentDelete',
       send: 'notificationsSend',
     },
   },
 }));
 
+vi.mock('@services/auth/session', () => ({
+  getAccessToken: () => 'valid-token',
+  isAccessTokenExpired: () => false,
+}));
+
 import { notificationService } from '../index';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 
 describe('notificationService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAppConfigStore.getState().resetAppConfig();
   });
 
   it('normalizes notification lists from the official endpoint', async () => {
@@ -109,6 +118,39 @@ describe('notificationService', () => {
     expect(result.success).toBe(true);
   });
 
+  it('moves a notification to trash through the official mutation', async () => {
+    mockPost.mockResolvedValueOnce({ success: true });
+
+    const result = await notificationService.deleteNotification('n3');
+
+    expect(mockPost).toHaveBeenCalledWith('notificationsDelete', {
+      notification_id: 'n3',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('restores a trashed notification through the official mutation', async () => {
+    mockPost.mockResolvedValueOnce({ success: true });
+
+    const result = await notificationService.restoreNotification('n4');
+
+    expect(mockPost).toHaveBeenCalledWith('notificationsRestore', {
+      notification_id: 'n4',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('permanently deletes a notification through the official mutation', async () => {
+    mockPost.mockResolvedValueOnce({ success: true });
+
+    const result = await notificationService.permanentDeleteNotification('n5');
+
+    expect(mockPost).toHaveBeenCalledWith('notificationsPermanentDelete', {
+      notification_id: 'n5',
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('sends system notifications through the admin endpoint', async () => {
     mockPost.mockResolvedValueOnce({ success: true });
 
@@ -132,5 +174,39 @@ describe('notificationService', () => {
       evidence_url: 'https://evidência.local',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('does not send notifications disabled by admin settings', async () => {
+    useAppConfigStore.getState().mergeSystemSettings({
+      notificationSettings: {
+        enabled: true,
+        rules: [
+          {
+            key: 'xp_bonus',
+            category: 'Gamificacao',
+            label: 'Bonus de XP',
+            trigger: 'Quando um marco de XP e desbloqueado.',
+            title: 'Bonus de XP desbloqueado',
+            message: 'Mensagem dinamica com o marco e a quantidade de XP.',
+            type: 'success',
+            enabled: false,
+          },
+        ],
+      },
+    });
+
+    const result = await notificationService.sendNotification(
+      'user-1',
+      'XP',
+      'Mensagem',
+      'success',
+      'system',
+      '/levels',
+      undefined,
+      'xp_bonus',
+    );
+
+    expect(result.success).toBe(false);
+    expect(mockPost).not.toHaveBeenCalled();
   });
 });

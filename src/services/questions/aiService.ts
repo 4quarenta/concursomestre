@@ -42,6 +42,27 @@ interface GeminiGatewayPayload {
   model?: string;
 }
 
+interface ExamParserPromptProfile {
+  id?: string;
+  label?: string;
+  defaultMultipleChoiceOptions?: number;
+  trueFalseMode?: boolean;
+  certoErradoMode?: boolean;
+  questionMarkerPatterns?: Array<{ source?: string }>;
+  optionMarkerPatterns?: unknown[];
+}
+
+type ExtractedQuestionModality =
+  | 'multipla escolha'
+  | 'certo ou errado'
+  | 'verdadeiro/falso'
+  | 'multipla assertiva'
+  | 'somatorio'
+  | 'discursiva'
+  | 'redacao'
+  | 'estudo de caso'
+  | 'desconhecido';
+
 interface GeminiGatewayResponse {
   text?: string;
 }
@@ -57,6 +78,7 @@ export interface PageExtractionResult {
   metadata?: {
     agency?: string;
     source?: string;
+    sources?: string[];
     year?: string;
     role?: string;
     roles?: string[];
@@ -77,10 +99,21 @@ export interface PageExtractionResult {
     contextKey?: string;
     title?: string;
     text?: string;
+    referenceText?: string;
+    richText?: string;
+    sourcePage?: number;
     appliesToQuestionNumbers?: number[];
     hasFigure?: boolean;
     figureDescription?: string;
     figureBox?: FigureBox;
+    figures?: Array<{
+      figureKey?: string;
+      type?: string;
+      description?: string;
+      figureBox?: FigureBox;
+      page?: number;
+      order?: number;
+    }>;
   }>;
   questions: Array<Partial<Question> & {
     number?: number | string;
@@ -101,10 +134,21 @@ export interface PageExtractionResult {
     optionFigureBox?: FigureBox;
     optionFigureBoxes?: FigureBox[];
     imageDescriptions?: string[];
-    modality?: 'multipla escolha' | 'certo ou errado';
+    modality?: ExtractedQuestionModality;
     expectedOptionsCount?: number | string;
     expected_options_count?: number | string;
     correctOptionIndex?: number;
+    anulada?: boolean;
+    isCanceled?: boolean;
+    isCancelled?: boolean;
+    isAttributedToAll?: boolean;
+    attributedToAll?: boolean;
+    raw?: string;
+    status?: 'ok' | 'incompleta' | 'revisar';
+    extractionStatus?: 'ok' | 'incompleta' | 'revisar';
+    questionType?: ExtractedQuestionModality;
+    statusReasons?: string[];
+    validationReasons?: string[];
     subject?: string;
     topic?: string;
     specificSubject?: string;
@@ -187,6 +231,7 @@ export interface ImportedQuestionPartRepairRequest {
   statement?: string;
   options?: string[];
   modality?: string;
+  expectedOptionsCount?: number;
 }
 
 export interface ImportedQuestionPartRepairResult {
@@ -355,10 +400,31 @@ export const aiService = {
     pageText: string = '',
     targetQuestionNumbers: number[] = [],
     pageRichText: string = '',
+    parserProfile?: ExamParserPromptProfile,
   ): Promise<PageExtractionResult> {
     const commentInstruction = includeTeacherComment
       ? '- Comentario do Professor (teacherComment): gere uma mini-resolucao objetiva: cite o gabarito/alternativa correta e mostre o passo essencial que leva a resposta. Em questoes com calculo, inclua a formula com substituicao dos dados; em questoes teoricas, mencione a regra/conceito concreto aplicado. Nao faca comentario generico nem analise todas as alternativas. Escreva em tom humano, sem abertura padronizada; nao comece com frases como "A pegadinha aqui..." ou "O pulo do gato...". Quando houver formulas, use LaTeX entre $...$ para formulas inline e $$...$$ para blocos.'
       : '';
+    const profileLabel = parserProfile?.label || parserProfile?.id || 'Generico';
+    const expectedProfileOptions = Number(parserProfile?.defaultMultipleChoiceOptions || 0);
+    const profileQuestionPatterns = (parserProfile?.questionMarkerPatterns || [])
+      .map((pattern) => pattern.source)
+      .filter(Boolean)
+      .join(', ');
+    const parserProfileInstruction = `
+PERFIL DO PARSER DETECTADO:
+- Banca/perfil: ${profileLabel}.
+- Alternativas esperadas em multipla escolha: ${expectedProfileOptions || 'detectar pela pagina'}.
+- Modo CEBRASPE/CESPE certo/errado: ${parserProfile?.certoErradoMode || parserProfile?.trueFalseMode ? 'sim' : 'nao'}.
+- Padroes de marcador esperados: ${profileQuestionPatterns || '1), 1., Questao 1, QUESTAO 01, Q1, Q. 1, Item 1, 01 -'}.
+
+REGRAS DO PERFIL:
+- Se o perfil for CEBRASPE/CESPE ou a pagina disser "julgue o item", cada item numerado vira uma questao independente do tipo "certo ou errado", com options exatamente ["Certo","Errado"]. Nao force alternativas A-E.
+- Se o perfil for FGV, FCC, VUNESP ou ENEM, espere normalmente 5 alternativas A-E quando for multipla escolha.
+- Se o perfil for IBFC, espere normalmente 4 alternativas A-D e nao invente alternativa E.
+- Se o perfil for AOCP, IDECAN ou Quadrix, detecte pela pagina se ha 4 ou 5 alternativas.
+- Use IA apenas para complementar blocos ambiguos do OCR; respeite numeros e estrutura ja detectados no texto da pagina.
+`.trim();
 
     const targetNumbersInstruction = targetQuestionNumbers.length > 0
       ? `
@@ -373,6 +439,8 @@ Use essa lista como checklist. Se esses numeros estiverem visiveis na imagem, re
 Voce e um especialista em OCR juridico/educacional, provas de concursos e ENEM.
 Analise a imagem da pagina da prova fornecida e estruture SOMENTE o que for questao real.
 
+${parserProfileInstruction}
+
 REGRAS CRITICAS:
 - Nao transforme instrucoes gerais da prova, capa, dados do candidato, avisos, textos de abertura, comandos de bloco ou instrucoes de cartao-resposta em questao.
 - Uma questao real normalmente tem numero proprio, comando avaliativo e alternativas, ou e do tipo certo/errado.
@@ -381,15 +449,24 @@ REGRAS CRITICAS:
 - Se a pagina contiver um texto que serve SOMENTE para uma questao, coloque esse texto em introText/supportText da propria questao e NAO crie pageContexts/contextKey para ele.
 - Separe rigorosamente quatro partes quando existirem: supportText/introText = texto de apoio; referenceText = fonte/referencia bibliografica; text = comando/enunciado da questao; options = alternativas. Nao repita texto de apoio no text.
 - Preserve a estrutura original de supportText/introText e pageContexts.text: titulos como "TEXTO I", subtitulos, paragrafos, versos, listas e quebras de linha. Nao achate texto de apoio em uma unica linha.
+- Em textos-base, se houver titulo curto antes do texto, mantenha em linha propria; se houver autor abaixo do titulo, mantenha em linha propria. Cada paragrafo deve permanecer separado por "\\n\\n"; versos, listas, incisos, tabelas simples e trechos legais devem preservar quebras de linha relevantes.
 - Use quebras "\\n" entre linhas do mesmo bloco e "\\n\\n" entre paragrafos/blocos no JSON. Se houver titulo do texto-base, deixe-o em linha propria antes do corpo.
 - Referencias como "BADIO, B. et al. ... (adaptado).", "Disponivel em:" e "Acesso em:" devem ir em referenceText, nao em text nem em options.
 - Use pageContexts/contextKey apenas quando o mesmo texto, imagem, grafico, tabela, tirinha, mapa ou figura servir para DUAS OU MAIS questoes.
 - Se a pagina contiver um texto/imagem que serve para varias questoes, coloque esse material em pageContexts e vincule cada questao pelo contextKey. Nao repita o texto de apoio inteiro em todas as questoes.
+- Quando voce for chamado como fallback, revise tambem se ha texto de apoio/contexto na pagina, mesmo que as questoes parecam completas. Se houver, retorne pageContexts e vincule as questoes corretas por contextKey.
+- Se o texto-base disser explicitamente "questoes 3, 4 e 5", "questoes 3 a 5", "itens 10 e 11" ou equivalente, appliesToQuestionNumbers deve conter EXATAMENTE esses numeros. Nao vincule o contexto a outras questoes da pagina.
+- Em pageContexts, use referenceText para fonte bibliografica, richText quando houver estrutura/destaques seguros, sourcePage para a pagina de origem e figures para multiplas figuras do mesmo contexto.
+- Se houver figura no meio de um texto-base compartilhado, insira no ponto correspondente um marcador como [FIGURA: ctx-001-fig-01] em pageContexts.text e inclua o item correspondente em pageContexts.figures.
+- Nao achate tabelas, poemas, versos, artigos de lei, incisos ou alineas. Se a estrutura estiver ilegivel ou truncada, mantenha raw/statusReasons para revisao em vez de inventar.
+- Quando houver duvida estrutural, use status/extractionStatus "revisar" e um ou mais statusReasons: contexto_referenciado_nao_encontrado, estrutura_texto_achatada, tabela_corrompida, poema_corrompido, lei_corrompida, contexto_quebrado_entre_paginas, figura_sem_recorte, contexto_compartilhado_nao_vinculado, questao_sem_enunciado.
 - Se a MESMA imagem, grafico, tabela, tirinha, mapa ou figura servir para mais de uma questao, crie UM UNICO item em pageContexts com appliesToQuestionNumbers contendo todos os numeros. Em cada questao, use o mesmo contextKey desse contexto. Nunca duplique a mesma imagem como contexto individual de cada questao.
 - Se houver figura, grafico, mapa, tabela, tirinha, imagem ou esquema visual, descreva em figureDescription. Se a figura fizer parte do texto de apoio, marque hasFigure no contexto.
 - Para cada figura real, retorne figureBox com x, y, width e height em coordenadas normalizadas de 0 a 1000 relativas a pagina inteira. A caixa deve recortar APENAS a figura/tabela/grafico necessario para aquela questao ou contexto; nunca use a pagina inteira.
 - A figureBox deve ser justa, mas com margem de seguranca: exclua texto corrido do enunciado, numero da questao, cabecalho/rodape, margens largas e linhas externas que nao pertencam ao grafico/figura. Inclua legendas, eixos, rotulos, textos internos e toda borda util da propria figura para nao cortar conteudo.
 - Se a imagem estiver ligada a uma questao especifica, coloque a caixa em supportFigureBox/supportFigureBoxes da propria questao, nao em pageContexts. Se for texto de apoio para varias questoes, coloque a figureBox em pageContexts.
+- Detecte modalidades quando houver sinal claro: multipla escolha, certo ou errado, verdadeiro/falso, multipla assertiva, somatorio, discursiva, redacao e estudo de caso.
+- Se o gabarito ou a pagina indicar questao anulada/cancelada, use anulada/isCanceled/isCancelled=true. Se indicar "atribuida a todos", "todos" ou "T", use isAttributedToAll/attributedToAll=true.
 - Quando uma mesma questao tiver duas ou mais figuras intercaladas com texto (ex.: "Figura 1" + explicacao + "Figura 2"), trate como texto de apoio visual da propria questao: use supportText para o texto, imageDescriptions para descrever a ordem das figuras e supportFigureBoxes com uma caixa por figura/bloco visual. Se so conseguir uma caixa confiavel, use supportFigureBox cobrindo o bloco util das figuras relacionadas. Nao misture esse material com outra questao.
 - Em ENEM, extraia as alternativas mesmo quando estiverem em colunas, com letras em circulos, ou com marcadores A/B/C/D/E sem parenteses.
 - Em ENEM, quando as alternativas forem curtas e aparecerem compactadas como "A 1 B 2 C 3 D 4 E 5", retorne options exatamente ["1","2","3","4","5"]. Nao deixe isso no enunciado.
@@ -412,10 +489,11 @@ REGRAS CRITICAS:
 - Classifique materia (subject), topico (topic) e assunto especifico (specificSubject) quando possivel.
 
 METADADOS DA PROVA:
-Identifique banca (agency), orgao/fonte (source), ano (year), cargo/curso/prova principal (role), todos os cargos/versoes aplicaveis (roles), nivel (level), titulo da prova (title/examTitle), nome da prova (examName), concurso (contestName) e categoria (examType).
-Se a mesma prova for aplicada para varios cargos, como duas linhas de cabecalho "Soldado PM - Combatentes - QPC" e "Soldado BM - Combatentes - QBMP", coloque cada cargo completo em roles/cargos e use role como resumo separado por " / ".
+Identifique banca (agency), orgao/fonte principal (source), todos os orgaos aplicaveis quando houver mais de um (sources), ano (year), cargo/curso/prova principal (role), todos os cargos/versoes aplicaveis (roles), nivel (level), titulo da prova (title/examTitle), nome da prova (examName), concurso (contestName) e categoria (examType).
+Se a mesma prova for aplicada para varios orgaos, como "PM-PB" e "CBM-PB", coloque cada orgao em sources e use source como resumo separado por "/": "PM-PB/CBM-PB".
+Se a mesma prova for aplicada para varios cargos, como duas linhas de cabecalho "Soldado PM - Combatentes - QPC" e "Soldado BM - Combatentes - QBMP", coloque cada cargo completo em roles/cargos e use role como resumo separado por "/".
 Identifique tambem o caderno/versao da prova quando aparecer: caderno, tipoCaderno/bookletType (ex.: Tipo A, Tipo B, Caderno 1) e corCaderno/bookletColor (ex.: Amarelo, Azul, Rosa, Branco, Cinza).
-O titulo final deve seguir "Cargo/Prova - Orgao/Fonte (ano)". Em ENEM use "ENEM" como role e "INEP" ou o orgao responsavel como source quando aparecer na prova.
+O titulo final deve seguir "Banca - Ano - Orgao - Cargo/Prova", por exemplo "EXATUS - 2014 - PM-RJ - Soldado da Policia Militar". Em ENEM use "INEP" como agency, "ENEM" como role e "INEP" ou o orgao responsavel como source quando aparecer na prova.
 
 ${commentInstruction}
 
@@ -432,9 +510,20 @@ Retorne APENAS um JSON seguindo o esquema informado.
 
     const schemaProperties: Record<string, GeminiResponseSchema> = {
       text: { type: 'STRING' },
+      raw: { type: 'STRING' },
       number: { type: 'STRING' },
       isQuestion: { type: 'BOOLEAN' },
       rejectionReason: { type: 'STRING' },
+      status: { type: 'STRING', enum: ['ok', 'incompleta', 'revisar'] },
+      extractionStatus: { type: 'STRING', enum: ['ok', 'incompleta', 'revisar'] },
+      statusReasons: { type: 'ARRAY', items: { type: 'STRING' } },
+      validationReasons: { type: 'ARRAY', items: { type: 'STRING' } },
+      correctOptionIndex: { type: 'NUMBER' },
+      anulada: { type: 'BOOLEAN' },
+      isCanceled: { type: 'BOOLEAN' },
+      isCancelled: { type: 'BOOLEAN' },
+      isAttributedToAll: { type: 'BOOLEAN' },
+      attributedToAll: { type: 'BOOLEAN' },
       command: { type: 'STRING' },
       introText: { type: 'STRING' },
       supportText: { type: 'STRING' },
@@ -501,7 +590,8 @@ Retorne APENAS um JSON seguindo o esquema informado.
       specificSubject: { type: 'STRING' },
       level: { type: 'STRING', enum: ['Fundamental', 'Medio', 'Superior'] },
       difficulty: { type: 'STRING' },
-      modality: { type: 'STRING', enum: ['multipla escolha', 'certo ou errado'] },
+      modality: { type: 'STRING', enum: ['multipla escolha', 'certo ou errado', 'verdadeiro/falso', 'multipla assertiva', 'somatorio', 'discursiva', 'redacao', 'estudo de caso', 'desconhecido'] },
+      questionType: { type: 'STRING', enum: ['multipla escolha', 'certo ou errado', 'verdadeiro/falso', 'multipla assertiva', 'somatorio', 'discursiva', 'redacao', 'estudo de caso', 'desconhecido'] },
       expectedOptionsCount: { type: 'NUMBER' },
       options: { type: 'ARRAY', items: { type: 'STRING' } },
     };
@@ -525,6 +615,7 @@ Retorne APENAS um JSON seguindo o esquema informado.
             properties: {
               agency: { type: 'STRING' },
               source: { type: 'STRING' },
+              sources: { type: 'ARRAY', items: { type: 'STRING' } },
               year: { type: 'STRING' },
               role: { type: 'STRING' },
               roles: { type: 'ARRAY', items: { type: 'STRING' } },
@@ -550,6 +641,9 @@ Retorne APENAS um JSON seguindo o esquema informado.
                 contextKey: { type: 'STRING' },
                 title: { type: 'STRING' },
                 text: { type: 'STRING' },
+                referenceText: { type: 'STRING' },
+                richText: { type: 'STRING' },
+                sourcePage: { type: 'NUMBER' },
                 appliesToQuestionNumbers: { type: 'ARRAY', items: { type: 'INTEGER' } },
                 hasFigure: { type: 'BOOLEAN' },
                 figureDescription: { type: 'STRING' },
@@ -560,6 +654,28 @@ Retorne APENAS um JSON seguindo o esquema informado.
                     y: { type: 'NUMBER' },
                     width: { type: 'NUMBER' },
                     height: { type: 'NUMBER' },
+                  },
+                },
+                figures: {
+                  type: 'ARRAY',
+                  items: {
+                    type: 'OBJECT',
+                    properties: {
+                      figureKey: { type: 'STRING' },
+                      type: { type: 'STRING' },
+                      description: { type: 'STRING' },
+                      page: { type: 'NUMBER' },
+                      order: { type: 'NUMBER' },
+                      figureBox: {
+                        type: 'OBJECT',
+                        properties: {
+                          x: { type: 'NUMBER' },
+                          y: { type: 'NUMBER' },
+                          width: { type: 'NUMBER' },
+                          height: { type: 'NUMBER' },
+                        },
+                      },
+                    },
                   },
                 },
               },
@@ -592,6 +708,8 @@ O gabarito pode estar em multiplas colunas, tabelas compactas ou blocos separado
 Se houver varios gabaritos por cor/caderno/versao, escolha apenas um conjunto coerente e completo de numeracao. Nao some versoes diferentes da mesma prova.
 Ignore cabecalhos, legendas, textos de recurso e instrucoes. Preserve a numeracao original da prova.
 Retorne um objeto JSON onde a chave e o numero da questao e o valor e o indice da alternativa (0 para A, 1 para B, 2 para C, 3 para D, 4 para E).
+Quando a questao estiver anulada, marcada com *, X, ANULADA ou ANULADO, retorne -1 como valor dessa questao.
+Quando a questao estiver marcada como ATRIBUIDA A TODOS, TODOS ou T, retorne -2 como valor dessa questao.
 Exemplo: {"1": 2, "2": 0}
     `.trim();
 
@@ -615,8 +733,13 @@ Exemplo: {"1": 2, "2": 0}
     statement = '',
     options = [],
     modality = '',
+    expectedOptionsCount,
   }: ImportedQuestionPartRepairRequest): Promise<ImportedQuestionPartRepairResult> {
-    const expectedOptions = String(modality || '').toLowerCase().includes('certo') ? 2 : 5;
+    const explicitExpectedOptions = Number(expectedOptionsCount || 0);
+    const expectedOptions = explicitExpectedOptions >= 2 && explicitExpectedOptions <= 5
+      ? explicitExpectedOptions
+      : String(modality || '').toLowerCase().includes('certo') ? 2 : 5;
+    const optionLabelRange = expectedOptions === 4 ? 'A/B/C/D' : expectedOptions === 2 ? 'Certo/Errado' : 'A/B/C/D/E';
     const prompt = `
 Voce e um revisor de OCR de provas. Reorganize uma questao em partes SEM resolver a questao.
 
@@ -624,7 +747,7 @@ Separe exatamente:
 - supportText: texto de apoio/base. Nao inclua referencia bibliografica nem comando da pergunta.
 - referenceText: fonte/referencia bibliografica, como "BADIO, B. et al. ... (adaptado).", "Disponivel em:" ou "Acesso em:".
 - statement: somente o comando/enunciado da pergunta. Nao repita texto de apoio nem referencia.
-- options: alternativas, sem letras A/B/C/D/E no inicio. Para multipla escolha, espere ${expectedOptions} alternativas quando existirem.
+- options: alternativas, sem marcadores ${optionLabelRange} no inicio. Para multipla escolha, espere ${expectedOptions} alternativas quando existirem.
 
 Regras:
 - Nao invente conteudo.
@@ -980,20 +1103,26 @@ Retorne APENAS JSON valido no schema informado.
   async generateTeacherComment(question: Question): Promise<string> {
     const itens = Array.isArray(question.itens) ? question.itens : [];
     const prompt = `
-Analise a questao: "${question.enunciado}".
-Alternativas: ${itens.map((item) => item.corpo).join(', ')}.
-A correta e a letra ${resolveCorrectLetter(question)}.
+Atue como um professor humano de cursinho preparatorio para concursos.
+Gere um COMENTARIO DO PROFESSOR curto para a questao abaixo.
 
-Gere um comentario curto e didatico do professor explicando o gabarito. Sem saudacoes.
-O comentario deve citar explicitamente a alternativa correta, por exemplo "Gabarito: ${resolveCorrectLetter(question)}.", e mostrar a resolucao resumida em 2 a 4 frases.
-Se a questao tiver calculo, inclua a formula essencial com os valores substituidos e o resultado. Nao diga apenas que "a formula permite encontrar"; mostre a conta principal.
-Se a questao for teorica, mencione a regra, conceito, artigo ou criterio concreto que torna a alternativa correta.
-Use uma unica abertura de gabarito. Nao escreva "Gabarito: ${resolveCorrectLetter(question)}. A alternativa correta e a ${resolveCorrectLetter(question)}."; isso e repetitivo.
-Nao faca um comentario generico que poderia servir para qualquer questao; mencione a regra, conceito ou detalhe concreto que justifica a resposta.
-Nao analise todas as alternativas aqui; isso pertence a analise detalhada.
-Escreva como um professor humano, com abertura natural e variada. Nao comece com frases padronizadas como "A pegadinha aqui esta...", "A pegadinha esta..." ou "O pulo do gato e...".
-So mencione pegadinha, macete ou cuidado de prova quando isso realmente ajudar a entender a questao; caso contrario, explique pelo caminho mais natural.
-Quando houver formulas, use LaTeX entre $...$ para formulas inline e $$...$$ para blocos. Nao deixe comandos como \sqrt fora desses delimitadores.
+REGRAS ESTRITAS:
+1. Nao use saudacoes.
+2. O comentario deve ter de 2 a 4 frases.
+3. Cite uma unica vez o gabarito, no formato "Gabarito: ${resolveCorrectLetter(question)}.".
+4. Explique por que a alternativa correta resolve a questao, de forma resumida e didatica para leigo.
+5. Se houver calculo, mostre a formula ou conta essencial com os valores substituidos.
+6. Se for teorica, cite a regra, conceito, artigo ou criterio concreto aplicado.
+7. Nao analise todas as alternativas; isso pertence a analise detalhada.
+8. Nao use frases genericas que poderiam servir para qualquer questao.
+9. Escreva como um professor humano, com abertura natural e variada.
+10. Nao force pegadinha. Use "cuidado", "pulo do gato" ou "macete" apenas quando realmente ajudar.
+11. Quando houver formulas, use LaTeX entre $...$ para formulas inline e $$...$$ para blocos.
+
+Enunciado: ${question.enunciado}
+Alternativas:
+${itens.map((item, index) => `${String.fromCharCode(65 + index)}) ${item.corpo}`).join('\n')}
+Resposta correta: ${resolveCorrectLetter(question)}
     `.trim();
 
     const text = await requestGeminiText({ prompt });

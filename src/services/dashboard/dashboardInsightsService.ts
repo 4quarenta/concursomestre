@@ -59,6 +59,8 @@ export interface DashboardLevelProgress {
 }
 
 const XP_PER_LEVEL = 1000;
+const SECONDS_TIMESTAMP_LIMIT = 10_000_000_000;
+const DAY_IN_MILLISECONDS = 86_400_000;
 
 const normalizeMetricCount = (value: unknown): number => {
   const numericValue = Number(value || 0);
@@ -67,6 +69,153 @@ const normalizeMetricCount = (value: unknown): number => {
   }
 
   return Math.max(0, numericValue);
+};
+
+const normalizeEpochTimestamp = (value: number): number => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+
+  return value < SECONDS_TIMESTAMP_LIMIT ? value * 1000 : value;
+};
+
+const parseTimestampCandidate = (value: unknown): number => {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+
+  if (value instanceof Date) {
+    return normalizeEpochTimestamp(value.getTime());
+  }
+
+  if (typeof value === 'number') {
+    return normalizeEpochTimestamp(value);
+  }
+
+  if (typeof value !== 'string') {
+    return 0;
+  }
+
+  const trimmedValue = value.trim();
+  if (trimmedValue === '') {
+    return 0;
+  }
+
+  if (trimmedValue.toLowerCase() === 'agora') {
+    return Date.now();
+  }
+
+  const numericValue = Number(trimmedValue);
+  if (Number.isFinite(numericValue)) {
+    return normalizeEpochTimestamp(numericValue);
+  }
+
+  const brazilianDateMatch = trimmedValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
+  if (brazilianDateMatch) {
+    const [, day, month, year, hour = '0', minute = '0'] = brazilianDateMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)).getTime();
+  }
+
+  const normalizedDateValue = /^\d{4}-\d{2}-\d{2}\s+\d{2}:/.test(trimmedValue)
+    ? trimmedValue.replace(' ', 'T')
+    : trimmedValue;
+  const parsedTimestamp = Date.parse(normalizedDateValue);
+
+  return Number.isFinite(parsedTimestamp) ? parsedTimestamp : 0;
+};
+
+/**
+ * Resolve datas de respostas vindas do frontend local ou do backend legado.
+ * O backend pode enviar timestamp em segundos, milissegundos ou campos ISO/snake_case.
+ *
+ * @since 1.0.0
+ */
+export const resolveDashboardAnswerTimestamp = (answer: UserAnswer | Record<string, unknown> | null | undefined): number => {
+  if (!answer || typeof answer !== 'object') {
+    return 0;
+  }
+
+  const record = answer as Record<string, unknown>;
+  const candidates = [
+    record.timestamp,
+    record.submittedAt,
+    record.submitted_at,
+    record.answeredAt,
+    record.answered_at,
+    record.answerDate,
+    record.answer_date,
+    record.answeredDate,
+    record.answered_date,
+    record.dataResposta,
+    record.data_resposta,
+    record.respondidoEm,
+    record.respondido_em,
+    record.completedAt,
+    record.completed_at,
+    record.finishedAt,
+    record.finished_at,
+    record.createdAt,
+    record.created_at,
+    record.updatedAt,
+    record.updated_at,
+    record.date,
+    record.data,
+  ];
+
+  for (const candidate of candidates) {
+    const timestamp = parseTimestampCandidate(candidate);
+    if (timestamp > 0) {
+      return timestamp;
+    }
+  }
+
+  return 0;
+};
+
+const buildLocalDateKey = (date: Date): string => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+);
+
+const buildLocalMonthKey = (date: Date): string => (
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+);
+
+const buildTimelineBucketKey = (date: Date, timeRange: DashboardTimeRange): string => {
+  if (timeRange === 'today') {
+    return `${buildLocalDateKey(date)}-${String(date.getHours()).padStart(2, '0')}`;
+  }
+
+  if (timeRange === 'year') {
+    return buildLocalMonthKey(date);
+  }
+
+  return buildLocalDateKey(date);
+};
+
+const normalizeSubjectNameCandidate = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    return String(value).trim();
+  }
+
+  if (typeof value !== 'object') {
+    return '';
+  }
+
+  const record = value as Record<string, unknown>;
+  return String(
+    record.nome
+    || record.name
+    || record.title
+    || record.label
+    || record.subject
+    || record.materia
+    || record.slug
+    || '',
+  ).trim();
 };
 
 /**
@@ -111,7 +260,7 @@ export const filterAnswersByRange = (
     return answers;
   }
 
-  return answers.filter((answer) => Number(answer.timestamp) >= startTimestamp);
+  return answers.filter((answer) => resolveDashboardAnswerTimestamp(answer) >= startTimestamp);
 };
 
 /**
@@ -130,6 +279,85 @@ export const getQuestionPrimarySubject = (question: Question | undefined | null)
     : subjectEntry;
 
   return String(rawName || 'Geral').trim() || 'Geral';
+};
+
+const getAnswerSubjectName = (answer: UserAnswer): string => {
+  const record = answer as unknown as Record<string, unknown>;
+  const directSubject = [
+    record.subject,
+    record.subjectName,
+    record.subject_name,
+    record.materia,
+    record.materiaNome,
+    record.materia_nome,
+    record.discipline,
+    record.disciplina,
+  ]
+    .map(normalizeSubjectNameCandidate)
+    .find(Boolean);
+
+  if (directSubject) {
+    return directSubject;
+  }
+
+  if (Array.isArray(record.assuntos)) {
+    const subjectFromAssuntos = record.assuntos
+      .map((item) => normalizeSubjectNameCandidate(
+        item && typeof item === 'object'
+          ? (item as Record<string, unknown>).nome
+            || (item as Record<string, unknown>).name
+            || (item as Record<string, unknown>).subject
+            || (item as Record<string, unknown>).materia
+            || (item as Record<string, unknown>).slug
+          : item,
+      ))
+      .find(Boolean);
+
+    if (subjectFromAssuntos) {
+      return subjectFromAssuntos;
+    }
+  }
+
+  const questionCandidate = record.question || record.questao;
+  if (questionCandidate && typeof questionCandidate === 'object') {
+    return getQuestionPrimarySubject(questionCandidate as Question);
+  }
+
+  return 'Geral';
+};
+
+/**
+ * Consolida materias a partir das respostas do periodo atual.
+ * Quando a resposta nao traz materia, cai em "Geral" para ainda respeitar o filtro selecionado.
+ *
+ * @since 1.0.0
+ */
+export const buildSubjectPerformanceDataFromAnswers = (
+  answers: UserAnswer[],
+): DashboardSubjectMetric[] => {
+  const metrics = new Map<string, DashboardSubjectMetric>();
+
+  answers.forEach((answer) => {
+    const subjectName = getAnswerSubjectName(answer);
+    const existingMetric = metrics.get(subjectName) || {
+      name: subjectName,
+      total: 0,
+      correct: 0,
+      wrong: 0,
+      accuracy: 0,
+    };
+
+    existingMetric.total += 1;
+    existingMetric.correct += answer.isCorrect ? 1 : 0;
+    existingMetric.wrong += answer.isCorrect ? 0 : 1;
+    existingMetric.accuracy = existingMetric.total > 0
+      ? Math.round((existingMetric.correct / existingMetric.total) * 100)
+      : 0;
+
+    metrics.set(subjectName, existingMetric);
+  });
+
+  return Array.from(metrics.values()).sort((left, right) => right.total - left.total);
 };
 
 /**
@@ -402,52 +630,164 @@ export const buildQuestionTimelineData = (
   timeRange: DashboardTimeRange,
   now: Date = new Date(),
 ): DashboardTimelinePoint[] => {
-  const points: DashboardTimelinePoint[] = [];
-  let steps = 7;
-  let format: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit' };
+  if (timeRange === 'all' && answers.length > 0) {
+    const answerEntries = answers
+      .map((answer) => ({
+        answer,
+        timestamp: resolveDashboardAnswerTimestamp(answer),
+      }));
+    const datedEntries = answerEntries.filter((entry) => entry.timestamp > 0);
+    const undatedEntries = answerEntries.filter((entry) => entry.timestamp <= 0);
+    const timestamps = answerEntries
+      .map((entry) => entry.timestamp)
+      .filter((timestamp) => timestamp > 0)
+      .sort((left, right) => left - right);
 
-  if (timeRange === 'today') {
-    steps = now.getHours() + 1;
-    format = { hour: '2-digit', minute: '2-digit' };
-  } else if (timeRange === 'month') {
-    steps = 30;
-  } else if (timeRange === 'year') {
-    steps = 12;
-    format = { month: 'short' };
-  }
-
-  for (let index = steps - 1; index >= 0; index -= 1) {
-    const pointDate = new Date(now);
-    if (timeRange === 'today') {
-      pointDate.setHours(pointDate.getHours() - index, 0, 0, 0);
-    } else if (timeRange === 'year') {
-      pointDate.setMonth(pointDate.getMonth() - index, 1);
-      pointDate.setHours(0, 0, 0, 0);
-    } else {
-      pointDate.setDate(pointDate.getDate() - index);
-      pointDate.setHours(0, 0, 0, 0);
+    if (timestamps.length === 0) {
+      const totalCorrect = answers.filter((answer) => answer.isCorrect).length;
+      return [{
+        date: 'Sem data',
+        questions: answers.length,
+        correct: totalCorrect,
+        wrong: answers.length - totalCorrect,
+        timestamp: 0,
+      }];
     }
 
-    points.push({
-      date: timeRange === 'today'
-        ? `${pointDate.getHours().toString().padStart(2, '0')}:00`
-        : pointDate.toLocaleDateString('pt-BR', format),
+    const firstDate = new Date(timestamps[0]);
+    const lastDate = new Date(timestamps[timestamps.length - 1]);
+    const spanDays = Math.max(1, Math.ceil((lastDate.getTime() - firstDate.getTime()) / DAY_IN_MILLISECONDS));
+    const points: DashboardTimelinePoint[] = [];
+    const pointMap = new Map<string, DashboardTimelinePoint>();
+    const buildYearKey = (date: Date) => String(date.getFullYear());
+    const addPoint = (key: string, date: string, timestamp: number) => {
+      const point = { date, questions: 0, correct: 0, wrong: 0, timestamp };
+      points.push(point);
+      pointMap.set(key, point);
+    };
+
+    if (spanDays <= 31) {
+      const cursor = new Date(firstDate);
+      cursor.setHours(0, 0, 0, 0);
+      const end = new Date(lastDate);
+      end.setHours(0, 0, 0, 0);
+
+      while (cursor.getTime() <= end.getTime()) {
+        addPoint(
+          buildLocalDateKey(cursor),
+          cursor.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+          cursor.getTime(),
+        );
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    } else if (spanDays <= 730) {
+      const cursor = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
+      const end = new Date(lastDate.getFullYear(), lastDate.getMonth(), 1);
+
+      while (cursor.getTime() <= end.getTime()) {
+        addPoint(
+          buildLocalMonthKey(cursor),
+          cursor.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+          cursor.getTime(),
+        );
+        cursor.setMonth(cursor.getMonth() + 1);
+      }
+    } else {
+      for (let year = firstDate.getFullYear(); year <= lastDate.getFullYear(); year += 1) {
+        addPoint(String(year), String(year), new Date(year, 0, 1).getTime());
+      }
+    }
+
+    datedEntries.forEach(({ answer, timestamp }) => {
+      const answerDate = new Date(timestamp);
+      const key = spanDays <= 31
+        ? buildLocalDateKey(answerDate)
+        : spanDays <= 730
+          ? buildLocalMonthKey(answerDate)
+          : buildYearKey(answerDate);
+      const point = pointMap.get(key);
+      if (!point) {
+        return;
+      }
+
+      point.questions += 1;
+      point.correct += answer.isCorrect ? 1 : 0;
+      point.wrong += answer.isCorrect ? 0 : 1;
+    });
+
+    if (undatedEntries.length > 0) {
+      const correct = undatedEntries.filter(({ answer }) => answer.isCorrect).length;
+      points.unshift({
+        date: 'Sem data',
+        questions: undatedEntries.length,
+        correct,
+        wrong: undatedEntries.length - correct,
+        timestamp: 0,
+      });
+    }
+
+    return points;
+  }
+
+  const points: DashboardTimelinePoint[] = [];
+  const pointMap = new Map<string, DashboardTimelinePoint>();
+  const addTimelinePoint = (pointDate: Date, label: string) => {
+    const point: DashboardTimelinePoint = {
+      date: label,
       questions: 0,
       correct: 0,
       wrong: 0,
       timestamp: pointDate.getTime(),
-    });
+    };
+    points.push(point);
+    pointMap.set(buildTimelineBucketKey(pointDate, timeRange), point);
+  };
+
+  if (timeRange === 'today') {
+    for (let hour = 0; hour <= now.getHours(); hour += 1) {
+      const pointDate = new Date(now);
+      pointDate.setHours(hour, 0, 0, 0);
+      addTimelinePoint(pointDate, `${String(hour).padStart(2, '0')}:00`);
+    }
+  } else if (timeRange === 'week') {
+    const weekStart = new Date(getRangeStartTimestamp('week', now));
+    for (let dayOffset = 0; dayOffset < 7; dayOffset += 1) {
+      const pointDate = new Date(weekStart);
+      pointDate.setDate(weekStart.getDate() + dayOffset);
+      addTimelinePoint(
+        pointDate,
+        pointDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      );
+    }
+  } else if (timeRange === 'month') {
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    for (let dayOffset = 0; dayOffset < daysInMonth; dayOffset += 1) {
+      const pointDate = new Date(monthStart);
+      pointDate.setDate(monthStart.getDate() + dayOffset);
+      addTimelinePoint(
+        pointDate,
+        pointDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      );
+    }
+  } else if (timeRange === 'year') {
+    for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
+      const pointDate = new Date(now.getFullYear(), monthIndex, 1);
+      addTimelinePoint(
+        pointDate,
+        pointDate.toLocaleDateString('pt-BR', { month: 'short' }),
+      );
+    }
   }
 
-  const pointMap = new Map<string, DashboardTimelinePoint>();
-  points.forEach((point) => pointMap.set(point.date, point));
-
   answers.forEach((answer) => {
-    const answerDate = new Date(answer.timestamp);
-    const pointKey = timeRange === 'today'
-      ? `${answerDate.getHours().toString().padStart(2, '0')}:00`
-      : answerDate.toLocaleDateString('pt-BR', format);
+    const answerTimestamp = resolveDashboardAnswerTimestamp(answer);
+    if (answerTimestamp <= 0) {
+      return;
+    }
 
+    const answerDate = new Date(answerTimestamp);
+    const pointKey = buildTimelineBucketKey(answerDate, timeRange);
     const point = pointMap.get(pointKey);
     if (!point) {
       return;

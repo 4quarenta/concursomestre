@@ -21,7 +21,10 @@
     "check:next-proxy": "node scripts/checks/check-next-proxy-convention.mjs",
     "check:billing-e2e": "node scripts/checks/run-billing-e2e-validation.mjs",
     "check:hard-refresh-budget": "node scripts/checks/hard-refresh-budget.mjs",
-    "check:production-local": "node scripts/checks/production-readiness-local.mjs"
+    "check:visual-smoke": "node scripts/checks/visual-auth-smoke.mjs",
+    "check:release-repos": "node scripts/checks/release-repositories-status.mjs",
+    "check:production-local": "node scripts/checks/production-readiness-local.mjs",
+    "check:release-local": "npm run check:release-repos -- --report-file=.tmp/release-repos-status-latest.json && node scripts/checks/production-readiness-local.mjs --with-build --with-backend-readiness --web-base-url= --backend-readiness-report=.tmp/backend-readiness-suite-latest.json"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",

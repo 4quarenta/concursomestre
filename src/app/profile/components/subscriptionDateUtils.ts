@@ -183,6 +183,9 @@ const getCalendarDayOrdinal = (date: Date) => {
 };
 
 const getCalendarDayDifference = (start: Date, end: Date) => getCalendarDayOrdinal(end) - getCalendarDayOrdinal(start);
+const getPositiveCeilDayDifference = (start: Date, end: Date) => (
+  Math.max(0, Math.ceil((end.getTime() - start.getTime()) / MS_PER_DAY))
+);
 const addDaysInSaoPauloCalendar = (date: Date, dayDelta: number) => {
   const targetOrdinal = getCalendarDayOrdinal(date) + dayDelta;
   return new Date((targetOrdinal * MS_PER_DAY) + (12 * 60 * 60 * 1000));
@@ -397,16 +400,16 @@ export const resolveProfileSubscriptionTimeline = ({
     ? Math.max(0, getCalendarDayDifference(termStartAt, now))
     : null;
 
-  const usedDays = totalDays > 0 && daysSinceStart !== null
-    ? Math.min(totalDays, daysSinceStart)
-    : 0;
-
   const remainingDays = termEndAt
     ? (
       termStartAt && getCalendarDayDifference(now, termStartAt) > 0
         ? totalDays
-        : Math.max(0, getCalendarDayDifference(now, termEndAt))
+        : Math.min(totalDays, getPositiveCeilDayDifference(now, termEndAt))
     )
+    : 0;
+
+  const usedDays = totalDays > 0
+    ? Math.min(totalDays, Math.max(0, totalDays - remainingDays))
     : 0;
 
   const progressPercent = totalDays > 0

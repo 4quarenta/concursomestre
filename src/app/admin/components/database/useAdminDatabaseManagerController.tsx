@@ -312,7 +312,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Unifica o fluxo de importacao e de criacao/edicao manual de questões.
+   * Unifica o fluxo de importacao e de criacao/edicao manual de questoes.
    */
   const {
     isManualQuestionModalOpen,
@@ -323,9 +323,13 @@ export const useAdminDatabaseManagerController = ({
     systemSettings,
     addToast,
     onAddQuestion,
-    onAddQuestions,
     onUpdateQuestion,
     onRefreshQuestions: reloadCurrentPage,
+    onImportedQuestionsSaved: () => {
+      void reloadCurrentPage();
+    },
+    updateSystemSettings,
+    saveSystemSettingsNow,
   });
 
   const openQuestionEditPage = React.useCallback((question?: Partial<Question> | null, report?: Partial<ErrorReport> | null) => {

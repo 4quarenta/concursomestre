@@ -10,6 +10,12 @@ import { createDefaultLandingPageContent, mergeLandingPageContent } from '@/app/
 import { mergeMarketingLandingPages } from '@services/marketing/landingPages';
 import { DEFAULT_EMAIL_TEMPLATES, normalizeEmailTemplates } from '@constants/email/defaultEmailTemplates';
 import {
+  DEFAULT_GAMIFICATION_SETTINGS,
+  DEFAULT_NOTIFICATION_SETTINGS,
+  normalizeGamificationSettings,
+  normalizeNotificationSettings,
+} from '@constants/gamificationNotificationSettings';
+import {
   normalizeCampaignBannerActionUrl,
   normalizePromotionNotificationActionUrl,
 } from '@services/marketing/promotionCampaign';
@@ -101,9 +107,14 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     partnerRegistrationEnabled: true,
     recurringEnabled: true,
     sameTierCycleChangeEnabled: false,
+    autoRefundEnabled: false,
   },
+  aiProvider: 'gemini',
   geminiApiKey: '',
   hasGeminiApiKeyConfigured: false,
+  openaiApiKey: '',
+  openAiModel: 'gpt-4o-mini',
+  hasOpenAiApiKeyConfigured: false,
   recaptchaEnabled: false,
   recaptchaSiteKey: '',
   recaptchaSecretKey: '',
@@ -118,6 +129,10 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   hasAppleAuthConfigured: false,
   hasSmtpPasswordConfigured: false,
   emailTemplates: DEFAULT_EMAIL_TEMPLATES,
+  gamification: DEFAULT_GAMIFICATION_SETTINGS,
+  notificationSettings: DEFAULT_NOTIFICATION_SETTINGS,
+  legalContactEmail: 'juridico@concursomestre.ai',
+  privacyContactEmail: 'dpo@concursomestre.ai',
 };
 
 const FEATURE_SETTING_KEYS = Object.keys(DEFAULT_SYSTEM_SETTINGS.features) as Array<keyof SystemSettings['features']>;
@@ -259,6 +274,12 @@ export const mergeSystemSettings = (
   const mergedEmailTemplates = normalizeEmailTemplates(
     (payload.emailTemplates as Partial<SystemSettings['emailTemplates']>) ?? base.emailTemplates,
   );
+  const mergedGamification = normalizeGamificationSettings(
+    (payload.gamification as Partial<SystemSettings['gamification']>) ?? base.gamification,
+  );
+  const mergedNotificationSettings = normalizeNotificationSettings(
+    (payload.notificationSettings as Partial<SystemSettings['notificationSettings']>) ?? base.notificationSettings,
+  );
   const mergedCoupons = normalizeDiscountCodes(
     Object.prototype.hasOwnProperty.call(payload, 'coupons')
       ? payload.coupons
@@ -285,6 +306,8 @@ export const mergeSystemSettings = (
     stripePaymentMethods: mergedStripePaymentMethods,
     legalCommentaryFeatureConfig: mergedLegalCommentaryFeatureConfig,
     emailTemplates: mergedEmailTemplates,
+    gamification: mergedGamification,
+    notificationSettings: mergedNotificationSettings,
     coupons: mergedCoupons,
   };
 };
@@ -309,6 +332,18 @@ export const sanitizePersistedSystemSettings = (settings: SystemSettings): Syste
     nextSettings.hasGeminiApiKeyConfigured = true;
   }
   nextSettings.geminiApiKey = '';
+
+  const openaiApiKey = typeof nextSettings.openaiApiKey === 'string' ? nextSettings.openaiApiKey.trim() : '';
+  if (openaiApiKey !== '') {
+    nextSettings.hasOpenAiApiKeyConfigured = true;
+  }
+  nextSettings.openaiApiKey = '';
+
+  const aiProvider = typeof nextSettings.aiProvider === 'string' ? nextSettings.aiProvider.trim().toLowerCase() : 'gemini';
+  nextSettings.aiProvider = ['gemini', 'openai', 'auto'].includes(aiProvider) ? aiProvider : 'gemini';
+  if (!nextSettings.openAiModel) {
+    nextSettings.openAiModel = 'gpt-4o-mini';
+  }
 
   const recaptchaSecretKey = typeof nextSettings.recaptchaSecretKey === 'string' ? nextSettings.recaptchaSecretKey.trim() : '';
   if (recaptchaSecretKey !== '') {

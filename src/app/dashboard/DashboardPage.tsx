@@ -52,12 +52,14 @@ import { AdPlaceholder } from '../../components/shared/ui/AdPlaceholder';
 import {
   buildAccuracyInsight,
   buildQuestionTimelineData,
+  buildSubjectPerformanceDataFromAnswers,
   buildSubjectPerformanceDataFromStatistics,
   calculateAccuracySummary,
   calculateLevelProgress,
   filterAnswersByRange,
   formatDashboardDate,
   getDailyMotivationForDate,
+  resolveDashboardAnswerTimestamp,
   type DashboardTimeRange,
 } from '@services/dashboard/dashboardInsightsService';
 import { loadDailyMotivationMarkdown } from '@services/dashboard/dailyMotivationContentService';
@@ -70,9 +72,17 @@ const EMPTY_STREAK: StudyStreakSnapshot = {
   current: 0,
   best: 0,
   lastVisitDate: '',
+  visitedDateKeys: [],
 };
-const DASHBOARD_ANSWERS_BOOTSTRAP_DELAY_MS = 4000;
 const MILLISECONDS_PER_DAY = 86_400_000;
+const STUDY_WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+
+const hasSpecificSubjectMetric = (metrics: Array<{ name: string }>): boolean => (
+  metrics.some((metric) => {
+    const normalizedName = metric.name.trim().toLowerCase();
+    return normalizedName !== '' && normalizedName !== 'geral';
+  })
+);
 
 const scheduleLowPriorityTask = (task: () => void): (() => void) => {
   if (typeof window === 'undefined') {
@@ -93,6 +103,13 @@ const scheduleLowPriorityTask = (task: () => void): (() => void) => {
   return () => {
     window.clearTimeout(timeoutId);
   };
+};
+
+const toDashboardDateKey = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 /**
@@ -231,7 +248,6 @@ const Dashboard: React.FC = () => {
 
     let isMounted = true;
     let cancelScheduledFetch: (() => void) | null = null;
-    const bootstrapDelayMs = timeRange === 'all' ? DASHBOARD_ANSWERS_BOOTSTRAP_DELAY_MS : 0;
     const timeoutId = window.setTimeout(() => {
       cancelScheduledFetch = scheduleLowPriorityTask(() => {
         userProgressService.getUserAnswers(currentUser.id)
@@ -248,7 +264,7 @@ const Dashboard: React.FC = () => {
             }
           });
       });
-    }, bootstrapDelayMs);
+    }, 0);
 
     return () => {
       isMounted = false;
@@ -257,7 +273,7 @@ const Dashboard: React.FC = () => {
         cancelScheduledFetch();
       }
     };
-  }, [currentUser?.id, dashboardAnswersOwnerId, hasDashboardEliteAccess, timeRange]);
+  }, [currentUser?.id, dashboardAnswersOwnerId, hasDashboardEliteAccess]);
 
   React.useEffect(() => {
     if (
@@ -373,8 +389,24 @@ const Dashboard: React.FC = () => {
   );
 
   const subjectMetrics = useMemo(
-    () => buildSubjectPerformanceDataFromStatistics(userStatistics?.subjectBreakdown),
-    [userStatistics?.subjectBreakdown],
+    () => {
+      const metricsFromAnswers = buildSubjectPerformanceDataFromAnswers(filteredAnswers);
+      if (timeRange !== 'all') {
+        return metricsFromAnswers;
+      }
+
+      const metricsFromStatistics = buildSubjectPerformanceDataFromStatistics(userStatistics?.subjectBreakdown);
+      if (metricsFromAnswers.length > 0 && (hasSpecificSubjectMetric(metricsFromAnswers) || metricsFromStatistics.length === 0)) {
+        return metricsFromAnswers;
+      }
+
+      if (metricsFromStatistics.length > 0) {
+        return metricsFromStatistics;
+      }
+
+      return metricsFromAnswers;
+    },
+    [filteredAnswers, timeRange, userStatistics?.subjectBreakdown],
   );
 
   const accuracyInsight = useMemo(
@@ -402,10 +434,35 @@ const Dashboard: React.FC = () => {
     }
 
     const startTimestamp = timelineData[0]?.timestamp || 0;
-    return (effectiveDashboardComments || []).filter((comment) => new Date(comment.date).getTime() >= startTimestamp).length;
+    return (effectiveDashboardComments || []).filter((comment) => (
+      resolveDashboardAnswerTimestamp(comment as unknown as Record<string, unknown>) >= startTimestamp
+    )).length;
   }, [currentUser, effectiveDashboardComments, timeRange, timelineData]);
 
   const topSubjects = subjectMetrics.slice(0, 5);
+  const currentStudyStreakDays = studyStreak.current;
+  const studyWeekDays = useMemo(() => {
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const visitedDateKeys = new Set(studyStreak.visitedDateKeys || []);
+
+    return STUDY_WEEKDAY_LABELS.map((label, index) => {
+      const date = new Date(weekStart);
+      date.setDate(weekStart.getDate() + index);
+      const dateKey = toDashboardDateKey(date);
+
+      return {
+        label,
+        dateKey,
+        dayNumber: date.getDate(),
+        isToday: dateKey === toDashboardDateKey(today),
+        isVisited: visitedDateKeys.has(dateKey),
+      };
+    });
+  }, [studyStreak.visitedDateKeys]);
+
   const averageDailyStudySeconds = useMemo(() => {
     const totalStudySeconds = Math.max(0, Number(displayTotals.totalSeconds || 0));
     if (totalStudySeconds <= 0) {
@@ -413,7 +470,7 @@ const Dashboard: React.FC = () => {
     }
 
     const firstAnswerTimestamp = (effectiveDashboardAnswers || [])
-      .map((answer) => Number(answer.timestamp))
+      .map(resolveDashboardAnswerTimestamp)
       .filter((timestamp) => Number.isFinite(timestamp) && timestamp > 0)
       .sort((left, right) => left - right)[0];
 
@@ -425,14 +482,14 @@ const Dashboard: React.FC = () => {
       todayStart.setHours(0, 0, 0, 0);
       const elapsedDays = Math.floor((todayStart.getTime() - firstStudyDay.getTime()) / MILLISECONDS_PER_DAY);
       totalStudyDays = Math.max(1, elapsedDays + 1);
-    } else if (studyStreak.current > 0) {
-      totalStudyDays = studyStreak.current;
+    } else if (currentStudyStreakDays > 0) {
+      totalStudyDays = currentStudyStreakDays;
     } else if (userStatistics?.lastActivity) {
       totalStudyDays = 1;
     }
 
     return Math.max(0, Math.round(totalStudySeconds / totalStudyDays));
-  }, [displayTotals.totalSeconds, effectiveDashboardAnswers, studyStreak, userStatistics?.lastActivity]);
+  }, [currentStudyStreakDays, displayTotals.totalSeconds, effectiveDashboardAnswers, userStatistics?.lastActivity]);
 
   const dailyMotivation = useMemo(
     () => getDailyMotivationForDate(dailyMotivationMarkdown, new Date()),
@@ -638,6 +695,28 @@ const Dashboard: React.FC = () => {
                 <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Melhor marca</p>
                 <p className="text-sm font-black text-slate-900 dark:text-slate-100">{studyStreak.best}d</p>
               </div>
+            </div>
+            <div className="mt-3 grid grid-cols-7 gap-1.5">
+              {studyWeekDays.map((day) => (
+                <div
+                  key={day.dateKey}
+                  title={day.isVisited ? `Visitado em ${day.dayNumber}` : day.isToday ? 'Hoje' : undefined}
+                  className={`flex min-h-16 flex-col items-center justify-center rounded-xl border px-1 py-2 text-center transition-all ${
+                    day.isVisited
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700 shadow-sm shadow-emerald-100 ring-1 ring-emerald-100 dark:border-emerald-500/50 dark:bg-emerald-500/15 dark:text-emerald-200 dark:shadow-none dark:ring-emerald-500/20'
+                      : day.isToday
+                        ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-500/10 dark:text-indigo-200'
+                        : 'border-slate-100 bg-white text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500'
+                  }`}
+                >
+                  <span className="text-[9px] font-black uppercase tracking-wide">{day.label}</span>
+                  <span className="mt-1 text-sm font-black">{day.dayNumber}</span>
+                  <span className={`mt-1 h-1.5 w-1.5 rounded-full ${day.isVisited ? 'bg-emerald-500 dark:bg-emerald-300' : day.isToday ? 'bg-indigo-400 dark:bg-indigo-300' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                  <span className={`mt-1 text-[7px] font-black uppercase leading-none tracking-tight ${day.isVisited ? 'text-emerald-600 dark:text-emerald-200' : 'text-transparent'}`}>
+                    Visitou
+                  </span>
+                </div>
+              ))}
             </div>
           </section>
         </div>

@@ -87,6 +87,8 @@ describe('reportsService', () => {
       reason: 'Plagio',
       details: 'Conteúdo duplicado.',
       evidence_url: 'https://cdn.example.com/prova.png',
+      gamification_event: 'report_submitted',
+      notification_event: 'report_received',
     });
     expect(result).toEqual({
       id: 'rep-10',

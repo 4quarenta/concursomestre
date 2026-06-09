@@ -13,7 +13,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronUp, FileText, Gavel, GripVertical, Loader2, Search, Star } from 'lucide-react';
+import { Bookmark, ChevronDown, ChevronUp, FileText, Gavel, GripVertical, Loader2, Search } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import {
@@ -25,7 +25,7 @@ import {
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { legalCommentaryApiService } from '@services/legal-commentary';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
-import type { LawArticle, LawSection, LawSummary, LegalHomeSnapshot } from '@types';
+import type { LawArticle, LawSection, LawSummary, LegalHomeSnapshot, LegalTaxonomySummary } from '@types';
 import BetaFeaturePage from '../../components/shared/feedback/BetaFeaturePage';
 
 type UserLike = {
@@ -48,21 +48,35 @@ type LawOutlineEntry = {
 
 type LawSectionSummary = {
   id: string;
-  sectionKey?: string;
+  sectionSlug?: string;
   title: string;
   fromArticle: string;
   toArticle: string;
   articles: number;
   primaryArticleId: string;
   articleIds: string[];
+  articlePreviews: LawSectionArticleSummary[];
   isFavorite: boolean;
 };
 
-type LawSummaryWithArticleAliases = LawSummary & {
-  articlesCount?: number | string;
-  totalArticles?: number | string;
-  artigos?: number | string | unknown[];
-  articles?: number | string | unknown[];
+type LawSectionArticleSummary = {
+  id: string;
+  number: string;
+  title: string;
+  isFavorite: boolean;
+};
+
+type LawSubjectGroup = {
+  id: string;
+  name: string;
+  description: string;
+  order: number;
+  iconTone: string;
+};
+
+type LawSubjectBucket = {
+  area: LawSubjectGroup;
+  laws: LawSummary[];
 };
 
 const EMPTY_LEGAL_HOME: LegalHomeSnapshot = {
@@ -129,6 +143,206 @@ const normalizeText = (value: unknown) => String(value || '')
   .toLowerCase()
   .trim();
 
+const UNCATEGORIZED_LEGAL_SUBJECT: LawSubjectGroup = {
+  id: 'subject-sem-materia-definida',
+  name: 'Sem materia definida',
+  description: 'Leis sem materia ou disciplina vinculada.',
+  order: 9999,
+  iconTone: 'text-slate-500',
+};
+
+const normalizeSubjectSlug = (value: unknown) => normalizeText(value)
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const isTruthyTaxonomyFlag = (value: unknown) => (
+  value === true
+  || value === 1
+  || String(value || '').trim().toLowerCase() === '1'
+  || String(value || '').trim().toLowerCase() === 'true'
+);
+
+const isMateriaTaxonomyEntry = (value: unknown) => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const record = value as LegalTaxonomySummary;
+  const taxonomyLevel = normalizeText(record.taxonomyLevel || record.taxonomy_level);
+  return isTruthyTaxonomyFlag(record.materia)
+    || isTruthyTaxonomyFlag(record.meta_materia)
+    || taxonomyLevel === 'materia'
+    || taxonomyLevel === 'disciplina';
+};
+
+const toCandidateList = (value: unknown): unknown[] => {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (value === null || value === undefined || value === '') {
+    return [];
+  }
+
+  return [value];
+};
+
+const coerceLegalSubjectGroup = (candidate: unknown): LawSubjectGroup | null => {
+  if (candidate === null || candidate === undefined || candidate === '') {
+    return null;
+  }
+
+  if (typeof candidate === 'string' || typeof candidate === 'number') {
+    const name = String(candidate).trim();
+    if (!name) return null;
+    return {
+      id: `subject-${normalizeSubjectSlug(name) || name}`,
+      name,
+      description: '',
+      order: 500,
+      iconTone: 'text-[#615fff]',
+    };
+  }
+
+  if (typeof candidate !== 'object') {
+    return null;
+  }
+
+  const record = candidate as LegalTaxonomySummary & Record<string, unknown>;
+  const name = String(
+    record.name
+    || record.nome
+    || record.title
+    || record.label
+    || record.subjectName
+    || record.materiaName
+    || record.disciplinaName
+    || '',
+  ).trim();
+
+  if (!name) {
+    return null;
+  }
+
+  const rawId = String(
+    record.id
+    || record.slug
+    || record.subjectFilterId
+    || record.materiaId
+    || record.disciplinaId
+    || '',
+  ).trim();
+  const slug = normalizeSubjectSlug(rawId || name) || normalizeSubjectSlug(name);
+
+  return {
+    id: `subject-${slug || name}`,
+    name,
+    description: String(record.description || record.descricao || '').trim(),
+    order: Number.isFinite(Number(record.order || record.sortOrder || record.sort_order))
+      ? Number(record.order || record.sortOrder || record.sort_order)
+      : 500,
+    iconTone: String(record.iconTone || record.icon_tone || 'text-[#615fff]').trim() || 'text-[#615fff]',
+  };
+};
+
+const getLawSubjectGroups = (law: LawSummary): LawSubjectGroup[] => {
+  const record = law as LawSummary & Record<string, unknown>;
+  const candidates: unknown[] = [
+    ...toCandidateList(record.subjects),
+    ...toCandidateList(record.materias),
+    ...toCandidateList(record.disciplinas),
+    ...toCandidateList(record.disciplines),
+    ...toCandidateList(record.subject),
+    ...toCandidateList(record.materia),
+    ...toCandidateList(record.disciplina),
+    ...toCandidateList(record.subjectName),
+    ...toCandidateList(record.materiaName),
+    ...toCandidateList(record.disciplinaName),
+  ];
+
+  const assuntos = Array.isArray(record.assuntos) ? record.assuntos : [];
+  assuntos
+    .filter(isMateriaTaxonomyEntry)
+    .forEach((item) => candidates.push(item));
+
+  const grouped = new Map<string, LawSubjectGroup>();
+  const groupedByName = new Set<string>();
+  candidates
+    .map(coerceLegalSubjectGroup)
+    .filter((item): item is LawSubjectGroup => Boolean(item))
+    .forEach((item) => {
+      const nameKey = normalizeSubjectSlug(item.name);
+      if (!grouped.has(item.id) && !groupedByName.has(nameKey)) {
+        grouped.set(item.id, item);
+        groupedByName.add(nameKey);
+      }
+    });
+
+  if (grouped.size === 0) {
+    [
+      ...toCandidateList(record.lawTopicName),
+      ...toCandidateList(record.topicName),
+    ]
+      .map(coerceLegalSubjectGroup)
+      .filter((item): item is LawSubjectGroup => Boolean(item))
+      .forEach((item) => {
+        const nameKey = normalizeSubjectSlug(item.name);
+        if (!grouped.has(item.id) && !groupedByName.has(nameKey)) {
+          grouped.set(item.id, item);
+          groupedByName.add(nameKey);
+        }
+      });
+  }
+
+  return grouped.size > 0 ? Array.from(grouped.values()) : [UNCATEGORIZED_LEGAL_SUBJECT];
+};
+
+const collectHomeLaws = (snapshot: LegalHomeSnapshot): LawSummary[] => {
+  const lawsById = new Map<string, LawSummary>();
+  const addLaw = (law: LawSummary | null | undefined) => {
+    const lawId = String(law?.id || '').trim();
+    if (!law || !lawId || lawsById.has(lawId)) {
+      return;
+    }
+    lawsById.set(lawId, law);
+  };
+
+  snapshot.lawsByArea.forEach((group) => {
+    (group.laws || []).forEach(addLaw);
+  });
+  snapshot.mostAccessed.forEach(addLaw);
+  snapshot.favoriteLaws.forEach(addLaw);
+  snapshot.recentlyStudied.forEach(addLaw);
+  snapshot.recentlyUpdated.forEach(addLaw);
+
+  return Array.from(lawsById.values());
+};
+
+const buildSubjectBuckets = (laws: LawSummary[]): LawSubjectBucket[] => {
+  const buckets = new Map<string, { area: LawSubjectGroup; laws: Map<string, LawSummary> }>();
+
+  laws.forEach((law) => {
+    getLawSubjectGroups(law).forEach((subject) => {
+      const bucketKey = normalizeSubjectSlug(subject.name) || subject.id;
+      if (!buckets.has(bucketKey)) {
+        buckets.set(bucketKey, { area: { ...subject, id: bucketKey }, laws: new Map<string, LawSummary>() });
+      }
+
+      buckets.get(bucketKey)!.laws.set(law.id, law);
+    });
+  });
+
+  return Array.from(buckets.values())
+    .map((bucket) => ({
+      area: bucket.area,
+      laws: Array.from(bucket.laws.values()),
+    }))
+    .sort((left, right) => (
+      left.area.order - right.area.order
+      || left.area.name.localeCompare(right.area.name, 'pt-BR')
+    ));
+};
+
 const formatNumber = (value: number) => new Intl.NumberFormat('pt-BR').format(Number(value || 0));
 
 const buildLawDisplayTitle = (law: LawSummary) => {
@@ -145,6 +359,62 @@ const buildLawDisplayTitle = (law: LawSummary) => {
 
 const formatArticleCount = (value: number) => `${formatNumber(value)} artigos`;
 const formatProgressPercent = (value?: number) => `${Math.max(0, Math.min(100, Math.round(Number(value || 0))))}%`;
+const getLawBackendProgressPercent = (law: LawSummary) => Number(law.progress?.progressPercent ?? law.progressPercent ?? 0);
+const getLawViewedArticleIds = (law: LawSummary) => new Set(
+  (law.progress?.viewedArticleIds || [])
+    .map((id) => String(id || '').trim())
+    .filter(Boolean),
+);
+const hasLawReadingProgress = (law: LawSummary) => getLawBackendProgressPercent(law) > 0 || getLawViewedArticleIds(law).size > 0;
+const resolveLawProgressPercent = (
+  law: LawSummary,
+  sections: LawSectionSummary[],
+  readingState: SectionReadingState | undefined,
+) => {
+  const backendProgress = getLawBackendProgressPercent(law);
+  const articleCount = Number(law.articleCount || law.totalArtigos || 0);
+  const viewedArticleIds = getLawViewedArticleIds(law);
+
+  if (sections.length && readingState) {
+    sections.forEach((section) => {
+      if (!getSectionReadingEntry(readingState, section)?.completedAt) {
+        return;
+      }
+
+      (section.articleIds || []).forEach((articleId) => {
+        const normalizedArticleId = String(articleId || '').trim();
+        if (normalizedArticleId) {
+          viewedArticleIds.add(normalizedArticleId);
+        }
+      });
+    });
+  }
+
+  if (articleCount > 0 && viewedArticleIds.size > 0) {
+    return Math.round((Math.min(viewedArticleIds.size, articleCount) / articleCount) * 100);
+  }
+
+  if (!sections.length || !readingState) {
+    return backendProgress;
+  }
+
+  const completedSections = sections.filter((section) => getSectionReadingEntry(readingState, section)?.completedAt).length;
+  const localProgress = sections.length > 0 ? Math.round((completedSections / sections.length) * 100) : 0;
+  if (completedSections > 0) {
+    return localProgress;
+  }
+
+  return Math.max(backendProgress, localProgress);
+};
+
+const getArticleNumber = (article: LawArticle) => String(article.number || article.numero || '').trim();
+const getArticleTitle = (article: LawArticle) => String(article.title || article.titulo || '').trim();
+const getArticleOrdinal = (value: unknown): number | null => {
+  const match = String(value || '').match(/\d+/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 const buildSectionRangeLabel = (section: LawSectionSummary) => (
   section.fromArticle === section.toArticle
@@ -188,42 +458,6 @@ const withOutlineTimeout = async <T,>(promise: Promise<T>, timeoutMs = LAW_OUTLI
   }
 };
 
-const resolveLawArticleCount = (law: LawSummary): number => {
-  const lawWithAliases = law as LawSummaryWithArticleAliases;
-  const candidates: unknown[] = [
-    law.articleCount,
-    law.totalArtigos,
-    lawWithAliases.articlesCount,
-    lawWithAliases.totalArticles,
-    lawWithAliases.artigos,
-    lawWithAliases.articles,
-  ];
-
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate) && candidate.length > 0) {
-      return candidate.length;
-    }
-
-    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
-      return Math.round(candidate);
-    }
-
-    if (typeof candidate === 'string') {
-      const extracted = candidate.match(/\d+/g)?.join('') || '';
-      if (!extracted) {
-        continue;
-      }
-
-      const parsed = Number(extracted);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return Math.round(parsed);
-      }
-    }
-  }
-
-  return 1;
-};
-
 const buildSectionsFromLawDetail = (_law: LawSummary, detail: { articles?: LawArticle[]; sections?: LawSection[] } | null | undefined): LawSectionSummary[] => {
   const articles = Array.isArray(detail?.articles) ? detail.articles : [];
   const articlesBySection = new Map<string, LawArticle[]>();
@@ -235,26 +469,66 @@ const buildSectionsFromLawDetail = (_law: LawSummary, detail: { articles?: LawAr
     articlesBySection.set(sectionId, collection);
   });
 
-  return (detail?.sections || []).map((section) => {
-    const sectionArticles = articlesBySection.get(String(section.id)) || [];
+  const sections = Array.isArray(detail?.sections) ? detail.sections : [];
+
+  if (sections.length === 0 && articles.length > 0) {
+    const firstArticle = articles[0];
+    const lastArticle = articles[articles.length - 1];
+    const articleIds = articles.map((article) => String(article.id));
+
+    return [{
+      id: `law-${_law.id}-all`,
+      sectionSlug: `law-${_law.id}-all`,
+      title: 'Capitulo unico',
+      fromArticle: getArticleNumber(firstArticle),
+      toArticle: getArticleNumber(lastArticle),
+      articles: articles.length,
+      primaryArticleId: articleIds[0] || '',
+      articleIds,
+      articlePreviews: articles.map((article) => ({
+        id: String(article.id),
+        number: getArticleNumber(article),
+        title: getArticleTitle(article),
+        isFavorite: Boolean(article.isFavorite),
+      })),
+      isFavorite: false,
+    }];
+  }
+
+  return sections.map((section) => {
+    let sectionArticles = articlesBySection.get(String(section.id)) || [];
+    if (sectionArticles.length === 0) {
+      const fromOrdinal = getArticleOrdinal(section.fromArticle);
+      const toOrdinal = getArticleOrdinal(section.toArticle || section.fromArticle);
+      if (fromOrdinal !== null) {
+        const upperLimit = toOrdinal !== null ? toOrdinal : fromOrdinal;
+        sectionArticles = articles.filter((article) => {
+          const articleOrdinal = getArticleOrdinal(getArticleNumber(article));
+          return articleOrdinal !== null && articleOrdinal >= fromOrdinal && articleOrdinal <= upperLimit;
+        });
+      }
+    }
+
     const articleIds = sectionArticles.map((article) => String(article.id));
     return {
       id: String(section.id),
-      sectionKey: String(section.slug || section.id),
-      title: String(section.displayTitle || section.title || 'Secao da lei'),
+      sectionSlug: String(section.slug || section.id),
+      title: String(section.displayTitle || section.title || 'Capitulo da lei'),
       fromArticle: String(section.fromArticle || sectionArticles[0]?.number || ''),
       toArticle: String(section.toArticle || sectionArticles[sectionArticles.length - 1]?.number || ''),
       articles: Number(section.articleCount || sectionArticles.length),
       primaryArticleId: articleIds[0] || '',
       articleIds,
+      articlePreviews: sectionArticles.map((article) => ({
+        id: String(article.id),
+        number: getArticleNumber(article),
+        title: getArticleTitle(article),
+        isFavorite: Boolean(article.isFavorite),
+      })),
       isFavorite: Boolean(section.isFavorite),
     };
   });
 };
-
-const isFallbackSectionCollection = (law: LawSummary, sections: LawSectionSummary[]) => (
-  sections.length === 1 && sections[0]?.id === `full-law-${law.id}`
-);
 
 const hasResolvedArticleBindings = (sections: LawSectionSummary[]) => (
   sections.some((section) => (
@@ -291,6 +565,7 @@ const AnnotatedLawsPage: React.FC = () => {
   const [sortMode, setSortMode] = React.useState<SortMode>('name');
   const [expandedAreaId, setExpandedAreaId] = React.useState('');
   const [expandedLawByArea, setExpandedLawByArea] = React.useState<Record<string, string>>({});
+  const [expandedSectionByLawId, setExpandedSectionByLawId] = React.useState<Record<string, string>>({});
   const [lawOutlineById, setLawOutlineById] = React.useState<Record<string, LawOutlineEntry>>({});
   const [sectionFavoriteBusyMap, setSectionFavoriteBusyMap] = React.useState<Record<string, boolean>>({});
   const [sectionReadingByLawId, setSectionReadingByLawId] = React.useState<Record<string, SectionReadingState>>({});
@@ -300,8 +575,12 @@ const AnnotatedLawsPage: React.FC = () => {
   const addToastRef = React.useRef(addToast);
   const homeRequestIdRef = React.useRef(0);
 
-  React.useEffect(() => () => {
-    isMountedRef.current = false;
+  React.useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   React.useEffect(() => {
@@ -390,10 +669,13 @@ const AnnotatedLawsPage: React.FC = () => {
     };
   }, [homeReloadVersion, userId]);
 
+  const homeLaws = React.useMemo(() => collectHomeLaws(snapshot), [snapshot]);
+  const subjectBuckets = React.useMemo(() => buildSubjectBuckets(homeLaws), [homeLaws]);
+
   const groupedAreas = React.useMemo(() => {
     const normalizedQuery = normalizeText(query);
 
-    return snapshot.lawsByArea
+    return subjectBuckets
       .filter((group) => selectedArea === 'all' || String(group.area.id) === String(selectedArea))
       .map((group) => {
         const areaLaws = Array.isArray(group.laws) ? group.laws : [];
@@ -430,12 +712,12 @@ const AnnotatedLawsPage: React.FC = () => {
         return {
           area: group.area,
           laws,
-          readCount: areaLaws.filter((law) => Number(law.progressPercent || 0) > 0).length,
+          readCount: areaLaws.filter(hasLawReadingProgress).length,
           totalCount: areaLaws.length,
         };
       })
       .filter((group) => group.laws.length > 0);
-  }, [query, selectedArea, snapshot.lawsByArea, sortMode]);
+  }, [query, selectedArea, sortMode, subjectBuckets]);
 
   React.useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -445,16 +727,14 @@ const AnnotatedLawsPage: React.FC = () => {
       }
 
       const nextState: Record<string, SectionReadingState> = {};
-      snapshot.lawsByArea.forEach((group) => {
-        (group.laws || []).forEach((law) => {
-          nextState[law.id] = readSectionReadingState(userId, law.id);
-        });
+      homeLaws.forEach((law) => {
+        nextState[law.id] = readSectionReadingState(userId, law.id);
       });
       setSectionReadingByLawId(nextState);
     });
 
     return () => window.cancelAnimationFrame(frameId);
-  }, [snapshot.lawsByArea, userId]);
+  }, [homeLaws, userId]);
 
   React.useEffect(() => {
     if (groupedAreas.length === 0) {
@@ -550,7 +830,7 @@ const AnnotatedLawsPage: React.FC = () => {
 
       let sections = buildSectionsFromLawDetail(law, outlineDetail);
 
-      if (sections.length === 0) {
+      if (sections.length === 0 || !hasResolvedArticleBindings(sections)) {
         const fullDetail = await withOutlineTimeout(
           legalCommentaryApiService.getLawDetail(
             law.slug,
@@ -691,6 +971,13 @@ const AnnotatedLawsPage: React.FC = () => {
     void legalCommentaryApiService.prefetchLawDetail(slug);
   };
 
+  const toggleSectionArticles = React.useCallback((lawId: string, sectionId: string) => {
+    setExpandedSectionByLawId((current) => ({
+      ...current,
+      [lawId]: current[lawId] === sectionId ? '' : sectionId,
+    }));
+  }, []);
+
   const handleToggleSectionFavorite = React.useCallback(async (
     lawId: string,
     section: LawSectionSummary,
@@ -700,21 +987,21 @@ const AnnotatedLawsPage: React.FC = () => {
       return;
     }
 
-    const sectionKey = buildSectionFavoriteKey(lawId, section.id);
-    if (sectionFavoriteBusyMap[sectionKey]) {
+    const favoriteKey = buildSectionFavoriteKey(lawId, section.id);
+    if (sectionFavoriteBusyMap[favoriteKey]) {
       return;
     }
 
     const targetSectionId = String(section.id || '').trim();
     if (!targetSectionId) {
-      addToast('Nao foi possivel identificar esta secao para salvar.', 'error');
+      addToast('Nao foi possivel identificar este capitulo para salvar.', 'error');
       return;
     }
 
     const previousFavorite = Boolean(section.isFavorite);
     const optimisticFavorite = !previousFavorite;
 
-    setSectionFavoriteBusyMap((current) => ({ ...current, [sectionKey]: true }));
+    setSectionFavoriteBusyMap((current) => ({ ...current, [favoriteKey]: true }));
     setLawOutlineById((current) => {
       const currentEntry = current[lawId];
       if (!currentEntry) return current;
@@ -751,7 +1038,7 @@ const AnnotatedLawsPage: React.FC = () => {
         };
       });
 
-      addToast(persistedFavorite ? 'Secao salva nos favoritos.' : 'Secao removida dos favoritos.', 'success');
+      addToast(persistedFavorite ? 'Capitulo salvo nos favoritos.' : 'Capitulo removido dos favoritos.', 'success');
     } catch {
       setLawOutlineById((current) => {
         const currentEntry = current[lawId];
@@ -768,12 +1055,12 @@ const AnnotatedLawsPage: React.FC = () => {
           },
         };
       });
-      addToast('Nao foi possivel atualizar o favorito desta secao.', 'error');
+      addToast('Nao foi possivel atualizar o favorito deste capitulo.', 'error');
     } finally {
       setSectionFavoriteBusyMap((current) => {
-        if (!current[sectionKey]) return current;
+        if (!current[favoriteKey]) return current;
         const next = { ...current };
-        delete next[sectionKey];
+        delete next[favoriteKey];
         return next;
       });
     }
@@ -839,8 +1126,8 @@ const AnnotatedLawsPage: React.FC = () => {
             onChange={(event) => setSelectedArea(event.target.value)}
             className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition-colors focus:border-[#615fff]/40 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
           >
-            <option value="all">Todas as areas</option>
-            {snapshot.lawsByArea.map((group) => (
+            <option value="all">Todas as materias</option>
+            {subjectBuckets.map((group) => (
               <option key={group.area.id} value={group.area.id}>
                 {group.area.name}
               </option>
@@ -917,6 +1204,8 @@ const AnnotatedLawsPage: React.FC = () => {
                         const isLawOpen = expandedLawByArea[group.area.id] === law.id;
                         const outline = lawOutlineById[law.id] || { status: 'idle', sections: [] };
                         const effectiveSections = outline.sections;
+                        const lawReading = sectionReadingByLawId[law.id] || {};
+                        const effectiveProgressPercent = resolveLawProgressPercent(law, effectiveSections, lawReading);
 
                         return (
                           <article key={law.id} className="overflow-hidden border-b border-slate-100 last:border-b-0 dark:border-slate-800">
@@ -943,11 +1232,11 @@ const AnnotatedLawsPage: React.FC = () => {
                                 <div className="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-700">
                                   <div
                                     className="h-full rounded-full bg-[#2f6ff5] transition-[width]"
-                                    style={{ width: formatProgressPercent(law.progressPercent) }}
+                                    style={{ width: formatProgressPercent(effectiveProgressPercent) }}
                                   />
                                 </div>
                                 <span className="text-sm font-bold text-[#2f6ff5]">
-                                  {formatProgressPercent(law.progressPercent)}
+                                  {formatProgressPercent(effectiveProgressPercent)}
                                 </span>
                                 <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                                   {isLawOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -988,74 +1277,133 @@ const AnnotatedLawsPage: React.FC = () => {
                                   <div className="space-y-2">
                                     {effectiveSections.map((section, index) => {
                                       const sectionReadingKey = buildSectionReadingKey(section);
-                                      const lawReading = sectionReadingByLawId[law.id] || {};
                                       const readingState = getSectionReadingEntry(lawReading, section);
-                                      const actionLabel = getSectionReadActionLabel(readingState, law.progressPercent);
+                                      const actionLabel = getSectionReadActionLabel(readingState, effectiveProgressPercent);
+                                      const sectionArticles = section.articlePreviews || [];
+                                      const isSectionArticlesOpen = expandedSectionByLawId[law.id] === section.id;
 
                                       return (
                                       <div
                                         key={section.id}
-                                        className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900 md:flex-row md:items-center md:justify-between"
+                                        className="rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900"
                                       >
-                                        <div className="flex min-w-0 items-center gap-3">
-                                          <FileText size={15} className="shrink-0 text-slate-400" />
-                                          <p className="truncate text-sm font-semibold text-slate-700 dark:text-slate-200">
-                                            {buildSectionRowLabel(section, index)}
-                                          </p>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <Link
-                                            href={{
-                                              pathname: `/lei-comentada/${law.slug}`,
-                                              query: {
-                                                lawId: law.id,
-                                                sectionId: section.id,
-                                                from: section.fromArticle,
-                                                to: section.toArticle,
-                                                view: 'pdf',
-                                              },
-                                            }}
-                                            onMouseEnter={() => prefetchLaw(law.slug)}
-                                            onClick={() => {
-                                              if (!userId) return;
-                                              const existingReading = getSectionReadingEntry(lawReading, section);
-                                              const nextLawReading = {
-                                                ...lawReading,
-                                                [sectionReadingKey]: {
-                                                  ...existingReading,
-                                                  startedAt: existingReading?.startedAt || new Date().toISOString(),
-                                                },
-                                                [section.id]: {
-                                                  ...existingReading,
-                                                  startedAt: existingReading?.startedAt || new Date().toISOString(),
-                                                },
-                                              };
-                                              saveSectionReadingState(userId, law.id, nextLawReading);
-                                              setSectionReadingByLawId((current) => ({
-                                                ...current,
-                                                [law.id]: nextLawReading,
-                                              }));
-                                            }}
-                                            className="inline-flex h-9 items-center justify-center rounded-lg border border-[#2f6ff5] bg-[#2f6ff5] px-4 text-sm font-bold text-white transition-colors hover:bg-[#255ee0]"
-                                          >
-                                            {actionLabel}
-                                          </Link>
+                                        <div className="flex flex-col gap-3 px-3 py-2.5 md:flex-row md:items-center md:justify-between">
                                           <button
                                             type="button"
-                                            onClick={() => {
-                                              void handleToggleSectionFavorite(law.id, section);
-                                            }}
-                                            disabled={Boolean(sectionFavoriteBusyMap[buildSectionFavoriteKey(law.id, section.id)])}
-                                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition-colors hover:border-amber-200 hover:text-amber-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900"
-                                            title={section.isFavorite ? 'Remover favorito' : 'Salvar favorito'}
-                                            aria-label={section.isFavorite ? 'Remover favorito' : 'Salvar favorito'}
+                                            onClick={() => toggleSectionArticles(law.id, section.id)}
+                                            disabled={sectionArticles.length === 0}
+                                            aria-expanded={isSectionArticlesOpen}
+                                            className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
                                           >
-                                            <Star
-                                              size={16}
-                                              className={section.isFavorite ? 'fill-amber-400 text-amber-500' : ''}
-                                            />
+                                            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
+                                              {isSectionArticlesOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                            </span>
+                                            <FileText size={15} className="shrink-0 text-slate-400" />
+                                            <span className="min-w-0">
+                                              <span className="block truncate text-sm font-semibold text-slate-700 dark:text-slate-200">
+                                                {buildSectionRowLabel(section, index)}
+                                              </span>
+                                              <span className="mt-0.5 block text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">
+                                                {sectionArticles.length > 0
+                                                  ? `${formatNumber(sectionArticles.length)} artigo(s) vinculado(s)`
+                                                  : 'Nenhum artigo vinculado'}
+                                              </span>
+                                            </span>
                                           </button>
+                                          <div className="flex items-center gap-2">
+                                            <Link
+                                              href={{
+                                                pathname: `/lei-comentada/${law.slug}`,
+                                                query: {
+                                                  lawId: law.id,
+                                                  sectionId: section.id,
+                                                  from: section.fromArticle,
+                                                  to: section.toArticle,
+                                                  view: 'pdf',
+                                                },
+                                              }}
+                                              onMouseEnter={() => prefetchLaw(law.slug)}
+                                              onClick={() => {
+                                                if (!userId) return;
+                                                const existingReading = getSectionReadingEntry(lawReading, section);
+                                                const nextLawReading = {
+                                                  ...lawReading,
+                                                  [sectionReadingKey]: {
+                                                    ...existingReading,
+                                                    startedAt: existingReading?.startedAt || new Date().toISOString(),
+                                                  },
+                                                  [section.id]: {
+                                                    ...existingReading,
+                                                    startedAt: existingReading?.startedAt || new Date().toISOString(),
+                                                  },
+                                                };
+                                                saveSectionReadingState(userId, law.id, nextLawReading);
+                                                setSectionReadingByLawId((current) => ({
+                                                  ...current,
+                                                  [law.id]: nextLawReading,
+                                                }));
+                                              }}
+                                              className="inline-flex h-9 items-center justify-center rounded-lg border border-[#2f6ff5] bg-[#2f6ff5] px-4 text-sm font-bold text-white transition-colors hover:bg-[#255ee0]"
+                                            >
+                                              {actionLabel}
+                                            </Link>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                void handleToggleSectionFavorite(law.id, section);
+                                              }}
+                                              disabled={Boolean(sectionFavoriteBusyMap[buildSectionFavoriteKey(law.id, section.id)])}
+                                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition-colors hover:border-amber-200 hover:text-amber-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900"
+                                              title={section.isFavorite ? 'Remover favorito' : 'Salvar favorito'}
+                                              aria-label={section.isFavorite ? 'Remover favorito' : 'Salvar favorito'}
+                                            >
+                                              <Bookmark
+                                                size={16}
+                                                className={section.isFavorite ? 'fill-amber-400 text-amber-500' : ''}
+                                              />
+                                            </button>
+                                          </div>
                                         </div>
+
+                                        {isSectionArticlesOpen && sectionArticles.length > 0 ? (
+                                          <div className="border-t border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40">
+                                            <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+                                              {sectionArticles.map((article) => (
+                                                <Link
+                                                  key={article.id}
+                                                  href={{
+                                                    pathname: `/lei-comentada/${law.slug}`,
+                                                    query: {
+                                                      lawId: law.id,
+                                                      sectionId: section.id,
+                                                      articleId: article.id,
+                                                      from: section.fromArticle,
+                                                      to: section.toArticle,
+                                                      view: 'pdf',
+                                                    },
+                                                  }}
+                                                  onMouseEnter={() => prefetchLaw(law.slug)}
+                                                  className="flex items-center justify-between gap-3 bg-white px-3 py-2 text-sm transition-colors hover:bg-slate-50 dark:bg-slate-950/20 dark:hover:bg-slate-900"
+                                                >
+                                                  <span className="flex min-w-0 items-center gap-2">
+                                                    <FileText size={14} className="shrink-0 text-slate-400" />
+                                                    <span className="shrink-0 font-black text-slate-700 dark:text-slate-200">
+                                                      Art. {article.number || '-'}
+                                                    </span>
+                                                    {article.title ? (
+                                                      <span className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                                        {article.title}
+                                                      </span>
+                                                    ) : null}
+                                                  </span>
+                                                  <span className="shrink-0 text-xs font-black text-[#615fff]">
+                                                    Abrir
+                                                  </span>
+                                                </Link>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        ) : null}
                                       </div>
                                       );
                                     })}

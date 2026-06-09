@@ -216,6 +216,7 @@ const CheckoutPage: React.FC = () => {
         signupStarted: false,
         checkoutAbandoned: false,
     });
+    const checkoutCompletionInProgressRef = useRef(false);
     const trackedCheckoutEmailsRef = useRef<Set<string>>(new Set());
     const trackedPaymentFailuresRef = useRef<Set<string>>(new Set());
     
@@ -515,7 +516,7 @@ const CheckoutPage: React.FC = () => {
                 const targetPlanTier = getPlanTierScore(found.name);
                 const targetPlanTimeScore = getPlanTimeScore(found);
 
-                if (hasActivePlanAccess(currentUser)) {
+                if (hasActivePlanAccess(currentUser) && !checkoutCompletionInProgressRef.current) {
                     if (isSameActiveSubscriptionPlan(currentUser.subscription?.plan || currentPlanInList, found, currentUser.subscription?.plan_id)) {
                         addToast(`Voce ja possui o plano ${currentUser.subscription?.plan?.name || 'Premium'} ativo.`, 'warning');
                         router.push(buildProfilePath('billing'));
@@ -589,6 +590,10 @@ const CheckoutPage: React.FC = () => {
     const hasTriggeredRepeatedPurchaseRedirectRef = useRef(false);
 
     const ensurePlanPurchaseAllowed = React.useCallback(() => {
+        if (checkoutCompletionInProgressRef.current || step === 'success') {
+            return true;
+        }
+
         if (!hasRepeatedActivePlanPurchase) {
             hasTriggeredRepeatedPurchaseRedirectRef.current = false;
             return true;
@@ -601,24 +606,26 @@ const CheckoutPage: React.FC = () => {
 
         router.replace(buildProfilePath('billing'));
         return false;
-    }, [addToast, hasRepeatedActivePlanPurchase, repeatedPurchaseMessage, router]);
+    }, [addToast, hasRepeatedActivePlanPurchase, repeatedPurchaseMessage, router, step]);
 
     useEffect(() => {
         if (loading) return;
+        if (checkoutCompletionInProgressRef.current || step === 'success') return;
         if (!hasRepeatedActivePlanPurchase) {
             hasTriggeredRepeatedPurchaseRedirectRef.current = false;
             return;
         }
 
         ensurePlanPurchaseAllowed();
-    }, [ensurePlanPurchaseAllowed, hasRepeatedActivePlanPurchase, loading]);
+    }, [ensurePlanPurchaseAllowed, hasRepeatedActivePlanPurchase, loading, step]);
 
     useEffect(() => {
         if (isAuthLoading) return;
+        if (checkoutCompletionInProgressRef.current || step === 'success') return;
         if (!hasExactCurrentPlanMatch && !hasBillingMirrorPlanMatch) return;
 
         ensurePlanPurchaseAllowed();
-    }, [ensurePlanPurchaseAllowed, hasBillingMirrorPlanMatch, hasExactCurrentPlanMatch, isAuthLoading]);
+    }, [ensurePlanPurchaseAllowed, hasBillingMirrorPlanMatch, hasExactCurrentPlanMatch, isAuthLoading, step]);
 
     const checkoutBaseOffer = useMemo(() => {
         if (!plan) return null;
@@ -1199,6 +1206,7 @@ const CheckoutPage: React.FC = () => {
         }
 
         const payload = response?.data || response;
+        checkoutCompletionInProgressRef.current = true;
         await refreshUser();
         await loadSavedCards();
 

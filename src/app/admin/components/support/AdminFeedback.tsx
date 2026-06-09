@@ -38,6 +38,10 @@ const TYPE_LABELS: Record<string, string> = {
   cancellation: 'Cancelamento',
   support: 'Suporte',
   report: 'Denuncia',
+  'platform-rating': 'Avaliacao',
+  platform_rating: 'Avaliacao',
+  testimonial: 'Avaliacao',
+  rating: 'Avaliacao',
   suggestion: 'Sugestao',
   bug: 'Bug',
   other: 'Outro',
@@ -105,6 +109,16 @@ const cleanFeedbackDetails = (item: AdminFeedbackThread) => {
 
   return cleaned || 'Sem detalhes fornecidos.';
 };
+
+const isPlatformRatingFeedback = (item: AdminFeedbackThread) => (
+  String(item.reason || '').toLowerCase().includes('avaliar plataforma')
+  || Number(item.public_rating || 0) > 0
+  || ['platform-rating', 'platform_rating', 'testimonial', 'rating'].includes(String(item.type || ''))
+);
+
+const getFeedbackTypeLabel = (item: AdminFeedbackThread) => (
+  isPlatformRatingFeedback(item) ? 'Avaliacao' : (TYPE_LABELS[item.type] || item.type)
+);
 
 export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   mode = 'feedback',
@@ -174,7 +188,11 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
         return false;
       }
 
-      if (typeFilter !== 'all' && item.type !== typeFilter) {
+      if (typeFilter !== 'all' && (
+        typeFilter === 'platform-rating'
+          ? !isPlatformRatingFeedback(item)
+          : item.type !== typeFilter
+      )) {
         return false;
       }
 
@@ -187,7 +205,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
         item.details,
         item.user_name,
         item.user_email,
-        TYPE_LABELS[item.type] || item.type,
+        getFeedbackTypeLabel(item),
       ]
         .filter(Boolean)
         .join(' ')
@@ -391,12 +409,12 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                     <tr className="align-top hover:bg-slate-50/80 dark:hover:bg-slate-800/30">
                       <td className="px-3 py-3">
                         <span className="inline-flex rounded-sm border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-                          {TYPE_LABELS[item.type] || item.type}
+                          {getFeedbackTypeLabel(item)}
                         </span>
                       </td>
                       <td className="px-3 py-3">
                         <p className="font-semibold text-slate-900 dark:text-slate-100">
-                          {compactText(item.reason || TYPE_LABELS[item.type] || 'Feedback', 78)}
+                          {compactText(item.reason || getFeedbackTypeLabel(item) || 'Feedback', 78)}
                         </p>
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                           {compactText(cleanFeedbackDetails(item), 140)}

@@ -13,12 +13,14 @@ export interface StudyStreakSnapshot {
   current: number;
   best: number;
   lastVisitDate: string;
+  visitedDateKeys?: string[];
 }
 
 const DEFAULT_STREAK_SNAPSHOT: StudyStreakSnapshot = {
   current: 0,
   best: 0,
   lastVisitDate: '',
+  visitedDateKeys: [],
 };
 
 /**
@@ -80,6 +82,10 @@ export const getStudyStreakSnapshot = (userId: string): StudyStreakSnapshot => {
       current: Math.max(0, Number(parsedValue.current || 0)),
       best: Math.max(0, Number(parsedValue.best || 0)),
       lastVisitDate: String(parsedValue.lastVisitDate || ''),
+      visitedDateKeys: Array.from(new Set([
+        ...(Array.isArray(parsedValue.visitedDateKeys) ? parsedValue.visitedDateKeys : []),
+        parsedValue.lastVisitDate,
+      ].map((item) => String(item || '').trim()).filter(Boolean))).slice(-120),
     };
   } catch {
     return DEFAULT_STREAK_SNAPSHOT;
@@ -106,10 +112,15 @@ export const touchStudyStreak = (userId: string, currentDate: Date = new Date())
   }
 
   const current = diffDays === 1 ? snapshot.current + 1 : 1;
+  const visitedDateKeys = Array.from(new Set([
+    ...(snapshot.visitedDateKeys || []),
+    currentDateKey,
+  ])).slice(-120);
   const nextSnapshot = {
     current,
     best: Math.max(snapshot.best, current),
     lastVisitDate: currentDateKey,
+    visitedDateKeys,
   };
 
   window.localStorage.setItem(
