@@ -25,6 +25,7 @@ import AdBanner from '../feedback/AdBanner';
 import { useToast } from '@providers/ToastProvider';
 import { apiClient } from '@services/api';
 import { ENDPOINTS } from '@services/api';
+import { readApiErrorMessage } from '@services/api';
 import { getVersionedAssetUrl } from '@services/api';
 import { PLATFORM_MAIN_CONTENT_WIDTH_CLASS } from '@constants/layout';
 import { canAccessAdminPanel } from '@services/auth';
@@ -34,15 +35,18 @@ import { buildAdminPath } from '../../../app/admin/config/adminPageNavigationCon
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import PublicBrandLink from './PublicBrandLink';
 import {
+  getBenefitPlanLabel,
   getEffectivePlanName,
   getEffectivePlanTier,
   hasPlanBenefit,
 } from '@services/plans/planAccess';
+import type { PlanBenefitKey } from '@types';
 import { resolveUserPaymentIssue } from '@services/billing/paymentIssue';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useNotificationsStore } from '@/state/notifications/notificationsStore';
 import { useNotificationsActions } from '@/state/notifications/useNotificationsActions';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
+import { clientLog } from '@services/monitoring/clientLog';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -54,6 +58,7 @@ type SidebarNavItem = {
   path: string;
   enabled: boolean;
   moduleEnabled?: boolean;
+  benefitKey?: PlanBenefitKey | PlanBenefitKey[];
   badge?: number;
 };
 
@@ -68,6 +73,34 @@ type ProfileQuickMenuItem = {
 type ResendConfirmationResponse = {
   success?: boolean;
   message?: string;
+  data?: ResendConfirmationResponse;
+};
+
+type EmailConfirmationDeliveryNotice = {
+  email?: string;
+  status?: string;
+  message?: string;
+};
+
+const EMAIL_VERIFICATION_MODAL_DISMISS_PREFIX = 'emailVerificationModalClosed:';
+
+const buildEmailVerificationDismissKey = (user: { id?: string; email?: string } | null | undefined) => (
+  `${EMAIL_VERIFICATION_MODAL_DISMISS_PREFIX}${user?.id || user?.email || 'anonymous'}`
+);
+
+const clearEmailVerificationDismissals = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.sessionStorage.removeItem('welcomeModalClosed');
+
+  for (let index = window.sessionStorage.length - 1; index >= 0; index -= 1) {
+    const key = window.sessionStorage.key(index);
+    if (key?.startsWith(EMAIL_VERIFICATION_MODAL_DISMISS_PREFIX)) {
+      window.sessionStorage.removeItem(key);
+    }
+  }
 };
 
 type NotificationDropdownProps = {
@@ -76,6 +109,7 @@ type NotificationDropdownProps = {
   onClose: () => void;
   onNotificationClick: (notification: Notification) => void;
   onMarkAsRead: (notificationId: string) => void;
+  onMarkAllAsRead: () => void;
   onOpenAll: () => void;
 };
 
@@ -85,6 +119,7 @@ const NotificationDropdownPanel: React.FC<NotificationDropdownProps> = ({
   onClose,
   onNotificationClick,
   onMarkAsRead,
+  onMarkAllAsRead,
   onOpenAll,
 }) => {
   const visibleNotifications = notifications.filter((notification) => !notification.deletedAt);
@@ -103,7 +138,19 @@ const NotificationDropdownPanel: React.FC<NotificationDropdownProps> = ({
     <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden z-50 animate-scale-in">
       <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
         <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
-        {unreadCount > 0 ? <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">{unreadCount} novas</span> : null}
+        {unreadCount > 0 ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onMarkAllAsRead();
+            }}
+            className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
+          >
+            <Check size={10} />
+            Marcar vistas
+          </button>
+        ) : null}
       </div>
       <div className="max-h-80 overflow-y-auto no-scrollbar">
         {visibleNotifications.length === 0 ? (
@@ -173,7 +220,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { currentUser: user, refreshUser } = useAuth();
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const notifications = useNotificationsStore((state) => state.notifications);
-  const { markNotificationAsRead } = useNotificationsActions();
+  const { markNotificationAsRead, markAllNotificationsAsRead } = useNotificationsActions();
   const reports = useAdminDataStore((state) => state.reports);
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
@@ -218,6 +265,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const profileMenuRef = React.useRef<HTMLDivElement | null>(null);
 
   const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [emailDeliveryNotice, setEmailDeliveryNotice] = useState<EmailConfirmationDeliveryNotice | null>(null);
 
   React.useEffect(() => {
     if (typeof window === 'undefined') {
@@ -238,7 +286,29 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   React.useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
-      setShowVerificationModal(Boolean(user && !user.emailVerified && !window.sessionStorage.getItem('welcomeModalClosed')));
+      if (!user) {
+        clearEmailVerificationDismissals();
+        setEmailDeliveryNotice(null);
+        setShowVerificationModal(false);
+        return;
+      }
+
+      const rawEmailDeliveryNotice = window.sessionStorage.getItem('emailConfirmationDelivery');
+      let parsedEmailDeliveryNotice: EmailConfirmationDeliveryNotice | null = null;
+
+      if (rawEmailDeliveryNotice) {
+        try {
+          parsedEmailDeliveryNotice = JSON.parse(rawEmailDeliveryNotice) as EmailConfirmationDeliveryNotice;
+        } catch {
+          window.sessionStorage.removeItem('emailConfirmationDelivery');
+        }
+      }
+
+      setEmailDeliveryNotice(parsedEmailDeliveryNotice);
+      const dismissKey = buildEmailVerificationDismissKey(user);
+      const isDismissed = window.sessionStorage.getItem(dismissKey) === 'true';
+      window.sessionStorage.removeItem('welcomeModalClosed');
+      setShowVerificationModal(Boolean(!user.emailVerified && !isDismissed));
     });
 
     return () => window.cancelAnimationFrame(frameId);
@@ -278,7 +348,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [isProfileMenuOpen]);
 
   const closeVerificationModal = () => {
-    window.sessionStorage.setItem('welcomeModalClosed', 'true');
+    if (user) {
+      window.sessionStorage.setItem(buildEmailVerificationDismissKey(user), 'true');
+    }
     setShowVerificationModal(false);
   };
 
@@ -301,12 +373,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     try {
       setIsResendingConfirmation(true);
-      // O interceptor do axios (client.ts) já retorna response.data diretamente
       const response = await apiClient.post<ResendConfirmationResponse>(ENDPOINTS.auth.resendConfirmation, { email: user.email });
-      const payload = response.data;
+      const payload = (response && typeof response === 'object' && 'data' in response && response.data
+        ? response.data
+        : response) as ResendConfirmationResponse;
 
       if (payload && payload.success) {
         setResendTimer(60);
+        window.sessionStorage.removeItem('emailConfirmationDelivery');
+        setEmailDeliveryNotice(null);
         addToast(payload.message || 'E-mail reenviado com sucesso!', 'success');
 
         // Se o e-mail já foi verificado (o backend retorna success com mensagem de aviso),
@@ -318,9 +393,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         addToast(payload?.message || 'Falha ao reenviar e-mail.', 'error');
       }
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error && error.message.trim()
-        ? error.message
-        : 'Erro do servidor ao reenviar e-mail.';
+      const errorMessage = readApiErrorMessage(error, 'Erro do servidor ao reenviar e-mail.');
       addToast(errorMessage, 'error');
     } finally {
       setIsResendingConfirmation(false);
@@ -336,18 +409,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   );
   const adminMenuBadgeCount = adminFeedbackCount + adminOpenReportsCount;
 
-  const navItems: SidebarNavItem[] = [
-    { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', enabled: !!user },
-    { label: 'Quest\u00F5es', icon: BookOpen, path: '/practice', enabled: practiceEnabled },
-    { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled },
-    { label: 'Flashcards', icon: Layers, path: '/flashcards', enabled: true, moduleEnabled: flashcardsEnabled },
-    { label: 'Simulados', icon: Timer, path: '/simulation', enabled: simulationsEnabled },
-    { label: 'Cronograma', icon: CalendarDays, path: '/cronograma', enabled: true, moduleEnabled: studyScheduleEnabled },
-    { label: 'Raio-X Banca', icon: Zap, path: '/x-ray', enabled: xRayEnabled },
+  const navItems: SidebarNavItem[] = ([
+    { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', enabled: !!user, benefitKey: 'module.dashboard' },
+    { label: 'Quest\u00F5es', icon: BookOpen, path: '/practice', enabled: practiceEnabled, benefitKey: 'module.practice' },
+    { label: 'Lei comentada', icon: FileText, path: '/lei-comentada', enabled: true, moduleEnabled: annotatedLawsEnabled, benefitKey: 'module.lei_comentada' },
+    { label: 'Flashcards', icon: Layers, path: '/flashcards', enabled: true, moduleEnabled: flashcardsEnabled, benefitKey: 'module.flashcards' },
+    { label: 'Simulados', icon: Timer, path: '/simulation', enabled: simulationsEnabled, benefitKey: 'module.simulations' },
+    { label: 'Cronograma', icon: CalendarDays, path: '/cronograma', enabled: true, moduleEnabled: studyScheduleEnabled, benefitKey: 'module.schedule' },
+    { label: 'Raio-X Banca', icon: Zap, path: '/x-ray', enabled: xRayEnabled, benefitKey: ['module.xray', 'xray_banca'] },
     { label: 'Rankings', icon: Trophy, path: '/ranking', enabled: rankingsEnabled },
-    { label: 'Loja', icon: ShoppingBag, path: '/marketplace', enabled: marketplaceEnabled },
+    { label: 'Loja', icon: ShoppingBag, path: '/marketplace', enabled: marketplaceEnabled, benefitKey: 'module.marketplace' },
     { label: 'Perfil', icon: User, path: '/profile/personal', enabled: !!user },
-  ].filter((item) => {
+  ] satisfies SidebarNavItem[]).filter((item) => {
     const isGloballyDisabled = item.enabled === false;
     const isModuleDisabled = item.moduleEnabled === false;
 
@@ -378,7 +451,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Otherwise, fallback to 'Gratuito'. This mirrors the logic in Profile.tsx
   const currentCanonicalPlan = getEffectivePlanName(user);
   const currentTier = React.useMemo(() => getEffectivePlanTier(user), [user]);
-  const hasXRayAccess = hasPlanBenefit(user, 'xray_banca', systemSettings.planEntitlements);
+  const resolvePlanLocked = React.useCallback((benefitKey?: PlanBenefitKey | PlanBenefitKey[]) => {
+    if (!benefitKey || isStrictAdmin) {
+      return false;
+    }
+
+    const benefitKeys = Array.isArray(benefitKey) ? benefitKey : [benefitKey];
+    return !benefitKeys.some((key) => hasPlanBenefit(user, key, systemSettings.planEntitlements));
+  }, [isStrictAdmin, systemSettings.planEntitlements, user]);
 
   const userName = user?.name || 'Visitante';
   const userFirstName = React.useMemo(() => {
@@ -506,6 +586,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     setIsNotifOpen(false);
   };
 
+  const handleNotificationsToggle = () => {
+    setIsNotifOpen((current) => {
+      const next = !current;
+      if (next && unreadCount > 0) {
+        void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined).catch((error) => {
+          clientLog.warn('[notifications] Nao foi possivel marcar notificacoes como vistas ao abrir o box.', error);
+        });
+      }
+      return next;
+    });
+  };
+
   const handleProfileMenuToggle = () => {
     if (!user) {
       window.sessionStorage.setItem('redirectAfterLogin', location.pathname + location.search + location.hash);
@@ -525,10 +617,40 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const isSimulationFullscreenPage = location.pathname.startsWith('/simulation')
     && simulationSearchParams.get('immersive') === '1';
   const hasMobileTopHeader = !isDashboardPage && !isSimulationFullscreenPage;
+  const hasFailedEmailDeliveryNotice = Boolean(
+    user
+    && emailDeliveryNotice
+    && emailDeliveryNotice.email === user.email
+    && ['failed', 'disabled'].includes(String(emailDeliveryNotice.status || '')),
+  );
+  const showEmailVerificationBanner = Boolean(user && !user.emailVerified && !showVerificationModal);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
       <PromoBanner />
+
+      {showEmailVerificationBanner && user && (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 shadow-sm dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+          <div className={`${PLATFORM_MAIN_CONTENT_WIDTH_CLASS} mx-auto flex flex-col gap-3 text-sm font-semibold md:flex-row md:items-center md:justify-between`}>
+            <div className="flex items-start gap-3">
+              <Mail size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+              <p className="leading-relaxed">
+                Confirme o e-mail <strong>{user.email}</strong> para liberar todos os recursos e receber +50 XP.
+                {hasFailedEmailDeliveryNotice ? ' O envio automatico ainda precisa ser refeito.' : ''}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={resendTimer > 0 || isResendingConfirmation}
+              onClick={handleResendConfirmation}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/30 dark:bg-slate-950/40 dark:text-amber-100 dark:hover:bg-amber-500/10"
+            >
+              {isResendingConfirmation ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
+              {resendTimer > 0 ? `Aguarde ${resendTimer}s` : 'Reenviar e-mail'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showVerificationModal && user && !user.emailVerified && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
@@ -544,9 +666,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             <h2 className="text-2xl font-black mb-3 text-slate-800 dark:text-slate-100 tracking-tight">Verifique seu E-mail</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium mb-8">
-              Enviamos um link de confirmação para <br/><strong className="text-slate-700 dark:text-slate-200">{user.email}</strong>.
-              <br/><br/>
-              Acesse sua caixa de entrada e ative sua conta para liberar todas as funcionalidades e ganhar <span className="text-indigo-600 dark:text-indigo-400 font-bold">+50 XP</span>!
+              {hasFailedEmailDeliveryNotice ? (
+                <>
+                  Sua conta foi criada, mas o envio automático do e-mail de confirmação ainda não está configurado.
+                  <br/><br/>
+                  Use o botão abaixo para tentar novamente após a configuração do SMTP.
+                </>
+              ) : (
+                <>
+                  Enviamos um link de confirmação para <br/><strong className="text-slate-700 dark:text-slate-200">{user.email}</strong>.
+                  <br/><br/>
+                  Acesse sua caixa de entrada e ative sua conta para liberar todas as funcionalidades e ganhar <span className="text-indigo-600 dark:text-indigo-400 font-bold">+50 XP</span>!
+                </>
+              )}
             </p>
             
             <button
@@ -583,7 +715,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </span>
               </button>
               <div className="relative">
-                <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="p-1 relative">
+                <button onClick={handleNotificationsToggle} className="p-1 relative">
                   <Bell size={20} className="text-slate-600 dark:text-slate-400" />
                   {unreadCount > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" />}
                 </button>
@@ -596,6 +728,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                       onClose={() => setIsNotifOpen(false)}
                       onNotificationClick={handleNotificationClick}
                       onMarkAsRead={markNotificationAsRead}
+                      onMarkAllAsRead={() => void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)}
                       onOpenAll={() => router.push('/notifications')}
                     />
                   </>
@@ -663,10 +796,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100";
                 }
 
-                // Logic to lock/unlock features based on plan
-                // Raio-X Banca is exclusive to Tier 4 (Elite)
-                const isLocked = (item.label === 'Raio-X Banca' && !hasXRayAccess)
-                  || (item.label === 'Cronograma' && currentTier < 4);
+                const isLocked = resolvePlanLocked(item.benefitKey);
                 const isGloballyDisabled = item.enabled === false;
                 const isModuleDisabled = item.moduleEnabled === false;
                 const shouldShowDevBadge = isGloballyDisabled || isModuleDisabled;
@@ -681,7 +811,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     prefetch={false}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={`${styles} ${isLocked ? 'opacity-75' : ''}`}
-                    title={shouldShowDevBadge ? 'Desativado no admin (visivel apenas para Admin)' : ''}
+                    title={
+                      shouldShowDevBadge
+                        ? 'Desativado no admin (visivel apenas para Admin)'
+                        : isLocked && item.benefitKey && !Array.isArray(item.benefitKey)
+                          ? `Disponivel no ${getBenefitPlanLabel(item.benefitKey, systemSettings.planEntitlements)}`
+                          : ''
+                    }
                   >
                     <item.icon size={19} className="shrink-0" />
                     <span className={`min-w-0 truncate ${hasRightAccessory ? 'pr-8' : ''}`}>{item.label}</span>
@@ -784,7 +920,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               {/* Sempre mostrar notificações se o usuário estiver logado, independente da feature flag global, se o usuário pediu para restaurar */}
               {user && (
                 <div className="relative">
-                  <button onClick={() => setIsNotifOpen(!isNotifOpen)} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all relative">
+                  <button onClick={handleNotificationsToggle} className="p-2 rounded-xl text-slate-400 dark:text-slate-500 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:shadow-sm transition-all relative">
                     <Bell size={20} />
                     {unreadCount > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-slate-950" />}
                   </button>
@@ -797,6 +933,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                         onClose={() => setIsNotifOpen(false)}
                         onNotificationClick={handleNotificationClick}
                         onMarkAsRead={markNotificationAsRead}
+                        onMarkAllAsRead={() => void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)}
                         onOpenAll={() => router.push('/notifications')}
                       />
                     </>

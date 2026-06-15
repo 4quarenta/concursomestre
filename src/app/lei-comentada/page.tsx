@@ -97,7 +97,8 @@ const EMPTY_LEGAL_HOME: LegalHomeSnapshot = {
 const LAW_OUTLINE_WATCHDOG_MS = 10_000;
 const LAW_OUTLINE_SOFT_TIMEOUT_MS = 8_000;
 const buildSectionFavoriteKey = (lawId: string, sectionId: string) => `${lawId}:${sectionId}`;
-type SectionReadingState = Record<string, { startedAt?: string; completedAt?: string }>;
+type SectionReadingEntry = { startedAt?: string; completedAt?: string; restartedAt?: string };
+type SectionReadingState = Record<string, SectionReadingEntry>;
 
 const getSectionReadingStorageKey = (userKey: string, lawId: string) => `cm:legal-commentary:section-reading:${userKey}:${lawId}`;
 const buildSectionReadingKey = (section: Pick<LawSectionSummary, 'id' | 'fromArticle' | 'toArticle'>) => {
@@ -121,6 +122,15 @@ const saveSectionReadingState = (userKey: string, lawId: string, state: SectionR
   window.localStorage.setItem(getSectionReadingStorageKey(userKey, lawId), JSON.stringify(state));
 };
 
+const getDateTimeValue = (value?: string) => {
+  const timestamp = value ? Date.parse(value) : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const isSectionReadingRestartPending = (entry?: SectionReadingEntry) => (
+  getDateTimeValue(entry?.restartedAt) > getDateTimeValue(entry?.completedAt)
+);
+
 const getSectionReadingEntry = (
   state: SectionReadingState | undefined,
   section: Pick<LawSectionSummary, 'id' | 'fromArticle' | 'toArticle'>,
@@ -131,15 +141,17 @@ const getSectionReadingEntry = (
 
 const getSectionReadActionLabel = (reading?: { startedAt?: string; completedAt?: string }, progressPercent?: number) => {
   if (reading?.completedAt || Number(progressPercent || 0) >= 100) return 'Ler novamente';
-  if (reading?.startedAt) return 'Continuar lendo';
+  if (reading?.startedAt) return 'Marcar como lido';
   return 'Começar';
 };
 
 const getUserId = (user: UserLike) => user?.id || user?.userId || user?.email || null;
 
 const normalizeText = (value: unknown) => String(value || '')
-  .normalize('NFD')
+  .normalize('NFKD')
   .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[\u200B-\u200D\uFEFF]/g, '')
+  .replace(/\s+/g, ' ')
   .toLowerCase()
   .trim();
 
@@ -332,7 +344,36 @@ const buildSubjectBuckets = (laws: LawSummary[]): LawSubjectBucket[] => {
     });
   });
 
-  return Array.from(buckets.values())
+  const mergedBuckets = new Map<string, { area: LawSubjectGroup; laws: Map<string, LawSummary> }>();
+
+  Array.from(buckets.values()).forEach((bucket) => {
+    const canonicalKey = normalizeSubjectSlug(bucket.area.name) || normalizeSubjectSlug(bucket.area.id) || bucket.area.id;
+    const existing = mergedBuckets.get(canonicalKey);
+
+    if (!existing) {
+      mergedBuckets.set(canonicalKey, {
+        area: { ...bucket.area, id: canonicalKey },
+        laws: new Map(bucket.laws),
+      });
+      return;
+    }
+
+    bucket.laws.forEach((law, lawId) => {
+      existing.laws.set(lawId, law);
+    });
+
+    if (
+      bucket.area.order < existing.area.order
+      || (
+        bucket.area.order === existing.area.order
+        && bucket.area.description.length > existing.area.description.length
+      )
+    ) {
+      existing.area = { ...bucket.area, id: canonicalKey };
+    }
+  });
+
+  return Array.from(mergedBuckets.values())
     .map((bucket) => ({
       area: bucket.area,
       laws: Array.from(bucket.laws.values()),
@@ -344,6 +385,7 @@ const buildSubjectBuckets = (laws: LawSummary[]): LawSubjectBucket[] => {
 };
 
 const formatNumber = (value: number) => new Intl.NumberFormat('pt-BR').format(Number(value || 0));
+const getLawArticleCount = (law: LawSummary) => Math.max(0, Number(law.articleCount || law.totalArtigos || 0));
 
 const buildLawDisplayTitle = (law: LawSummary) => {
   const shortTitle = String(law.shortTitle || law.title || '').trim();
@@ -366,45 +408,90 @@ const getLawViewedArticleIds = (law: LawSummary) => new Set(
     .filter(Boolean),
 );
 const hasLawReadingProgress = (law: LawSummary) => getLawBackendProgressPercent(law) > 0 || getLawViewedArticleIds(law).size > 0;
+const hasSectionReadingProgress = (sectionReading: SectionReadingState = {}) => (
+  Object.values(sectionReading).some((entry) => Boolean(entry?.completedAt || isSectionReadingRestartPending(entry)))
+);
+const getSectionArticleIds = (section: Pick<LawSectionSummary, 'articleIds' | 'articlePreviews'>) => Array.from(new Set([
+  ...(section.articleIds || []),
+  ...(section.articlePreviews || []).map((article) => article.id),
+]
+  .map((articleId) => String(articleId || '').trim())
+  .filter(Boolean)));
+const buildCompletedArticleIdsForLaw = (
+  law: LawSummary,
+  sections: LawSectionSummary[] = [],
+  sectionReading: SectionReadingState = {},
+) => {
+  const completedArticleIds = new Set(getLawViewedArticleIds(law));
+
+  sections.forEach((section) => {
+    const readingEntry = getSectionReadingEntry(sectionReading, section);
+    const sectionArticleIds = getSectionArticleIds(section);
+
+    if (isSectionReadingRestartPending(readingEntry)) {
+      sectionArticleIds.forEach((articleId) => completedArticleIds.delete(articleId));
+      return;
+    }
+
+    if (readingEntry?.completedAt) {
+      sectionArticleIds.forEach((articleId) => completedArticleIds.add(articleId));
+    }
+  });
+
+  return completedArticleIds;
+};
+const isSectionCompletedForProgress = (
+  section: LawSectionSummary,
+  completedArticleIds: Set<string>,
+  sectionReading: SectionReadingState,
+) => {
+  const readingEntry = getSectionReadingEntry(sectionReading, section);
+  if (isSectionReadingRestartPending(readingEntry)) return false;
+  if (readingEntry?.completedAt) return true;
+
+  const sectionArticleIds = getSectionArticleIds(section);
+  return sectionArticleIds.length > 0 && sectionArticleIds.every((articleId) => completedArticleIds.has(articleId));
+};
 const resolveLawProgressPercent = (
   law: LawSummary,
-  sections: LawSectionSummary[],
-  readingState: SectionReadingState | undefined,
+  sections: LawSectionSummary[] = [],
+  sectionReading: SectionReadingState = {},
 ) => {
   const backendProgress = getLawBackendProgressPercent(law);
-  const articleCount = Number(law.articleCount || law.totalArtigos || 0);
+  const articleCount = getLawArticleCount(law);
   const viewedArticleIds = getLawViewedArticleIds(law);
+  const completedArticleIds = buildCompletedArticleIdsForLaw(law, sections, sectionReading);
+  const hasLocalReadingSignal = sections.some((section) => {
+    const readingEntry = getSectionReadingEntry(sectionReading, section);
+    return Boolean(readingEntry?.completedAt || isSectionReadingRestartPending(readingEntry));
+  });
 
-  if (sections.length && readingState) {
-    sections.forEach((section) => {
-      if (!getSectionReadingEntry(readingState, section)?.completedAt) {
-        return;
+  if (sections.length > 0) {
+    const sectionArticleIds = sections
+      .flatMap((section) => getSectionArticleIds(section));
+    const knownArticleIds = new Set(sectionArticleIds);
+    const totalArticles = articleCount > 0 ? articleCount : knownArticleIds.size;
+
+    if (totalArticles > 0) {
+      if (articleCount > 0 && viewedArticleIds.size > 0) {
+        return Math.round((Math.min(completedArticleIds.size, totalArticles) / totalArticles) * 100);
       }
 
-      (section.articleIds || []).forEach((articleId) => {
-        const normalizedArticleId = String(articleId || '').trim();
-        if (normalizedArticleId) {
-          viewedArticleIds.add(normalizedArticleId);
-        }
-      });
-    });
+      if (hasLocalReadingSignal) {
+        return Math.round((Math.min(completedArticleIds.size, totalArticles) / totalArticles) * 100);
+      }
+
+      if (backendProgress <= 0 && viewedArticleIds.size > 0) {
+        return Math.round((Math.min(completedArticleIds.size, totalArticles) / totalArticles) * 100);
+      }
+    }
   }
 
   if (articleCount > 0 && viewedArticleIds.size > 0) {
     return Math.round((Math.min(viewedArticleIds.size, articleCount) / articleCount) * 100);
   }
 
-  if (!sections.length || !readingState) {
-    return backendProgress;
-  }
-
-  const completedSections = sections.filter((section) => getSectionReadingEntry(readingState, section)?.completedAt).length;
-  const localProgress = sections.length > 0 ? Math.round((completedSections / sections.length) * 100) : 0;
-  if (completedSections > 0) {
-    return localProgress;
-  }
-
-  return Math.max(backendProgress, localProgress);
+  return backendProgress;
 };
 
 const getArticleNumber = (article: LawArticle) => String(article.number || article.numero || '').trim();
@@ -545,7 +632,7 @@ const InlineSpinner: React.FC<{ label?: string }> = ({ label }) => (
 );
 
 const AnnotatedLawsPage: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, updateUser } = useAuth();
   const { addToast } = useToast();
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const userId = getUserId(currentUser as UserLike);
@@ -568,6 +655,7 @@ const AnnotatedLawsPage: React.FC = () => {
   const [expandedSectionByLawId, setExpandedSectionByLawId] = React.useState<Record<string, string>>({});
   const [lawOutlineById, setLawOutlineById] = React.useState<Record<string, LawOutlineEntry>>({});
   const [sectionFavoriteBusyMap, setSectionFavoriteBusyMap] = React.useState<Record<string, boolean>>({});
+  const [sectionReadBusyMap, setSectionReadBusyMap] = React.useState<Record<string, boolean>>({});
   const [sectionReadingByLawId, setSectionReadingByLawId] = React.useState<Record<string, SectionReadingState>>({});
   const lawOutlineByIdRef = React.useRef<Record<string, LawOutlineEntry>>({});
   const pendingOutlineIdsRef = React.useRef<Set<string>>(new Set());
@@ -679,9 +767,17 @@ const AnnotatedLawsPage: React.FC = () => {
       .filter((group) => selectedArea === 'all' || String(group.area.id) === String(selectedArea))
       .map((group) => {
         const areaLaws = Array.isArray(group.laws) ? group.laws : [];
+        const groupHaystack = normalizeText([
+          group.area.name,
+          group.area.description,
+        ].join(' '));
         const laws = areaLaws
           .filter((law) => {
             if (!normalizedQuery) return true;
+            if (groupHaystack.includes(normalizedQuery)) return true;
+            const subjectHaystack = normalizeText(getLawSubjectGroups(law)
+              .flatMap((subject) => [subject.name, subject.description])
+              .join(' '));
             const haystack = normalizeText([
               law.shortTitle,
               law.title,
@@ -689,6 +785,10 @@ const AnnotatedLawsPage: React.FC = () => {
               law.summary,
               law.description,
               law.acronym,
+              law.subjectName,
+              law.materiaName,
+              law.disciplinaName,
+              subjectHaystack,
             ].join(' '));
             return haystack.includes(normalizedQuery);
           })
@@ -897,6 +997,54 @@ const AnnotatedLawsPage: React.FC = () => {
     }
   }, []);
 
+  React.useEffect(() => {
+    if (!userId || homeLaws.length === 0) {
+      return undefined;
+    }
+
+    const lawsNeedingProgressOutline = homeLaws.filter((law) => {
+      const sectionReading = sectionReadingByLawId[law.id] || {};
+      const needsSectionAwareProgress = hasSectionReadingProgress(sectionReading);
+      if (!needsSectionAwareProgress) {
+        return false;
+      }
+
+      const outlineEntry = lawOutlineById[law.id];
+      if (
+        outlineEntry?.status === 'ready'
+        && outlineEntry.sections.length > 0
+        && hasResolvedArticleBindings(outlineEntry.sections)
+      ) {
+        return false;
+      }
+
+      return outlineEntry?.status !== 'loading' && !pendingOutlineIdsRef.current.has(law.id);
+    }).slice(0, 6);
+
+    if (lawsNeedingProgressOutline.length === 0) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timeoutIds: number[] = [];
+    const frameId = window.requestAnimationFrame(() => {
+      lawsNeedingProgressOutline.forEach((law, index) => {
+        const timeoutId = window.setTimeout(() => {
+          if (!cancelled) {
+            void ensureLawOutline(law, false);
+          }
+        }, index * 120);
+        timeoutIds.push(timeoutId);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frameId);
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
+  }, [ensureLawOutline, homeLaws, lawOutlineById, sectionReadingByLawId, userId]);
+
   const handleToggleLaw = (areaId: string, law: LawSummary) => {
     const currentLawId = expandedLawByArea[areaId];
     const nextLawId = currentLawId === law.id ? '' : law.id;
@@ -1066,6 +1214,91 @@ const AnnotatedLawsPage: React.FC = () => {
     }
   }, [addToast, sectionFavoriteBusyMap, userId]);
 
+  const handleMarkSectionAsRead = React.useCallback(async (
+    law: LawSummary,
+    section: LawSectionSummary,
+    currentReading: SectionReadingState,
+  ) => {
+    if (!userId) {
+      addToast('Entre na sua conta para salvar o progresso.', 'warning');
+      return;
+    }
+
+    const busyKey = `${law.id}:${section.id}`;
+    if (sectionReadBusyMap[busyKey]) {
+      return;
+    }
+
+    const articleIds = Array.from(new Set([
+      ...(section.articleIds || []),
+      ...(section.articlePreviews || []).map((article) => article.id),
+    ]
+      .map((articleId) => String(articleId || '').trim())
+      .filter(Boolean)));
+
+    const completedAt = new Date().toISOString();
+    setSectionReadBusyMap((current) => ({ ...current, [busyKey]: true }));
+
+    try {
+      const progressResults = [];
+      if (articleIds.length > 0) {
+        for (const articleId of articleIds) {
+          progressResults.push(await legalCommentaryApiService.recordArticleView(law.id, articleId));
+        }
+      } else {
+        progressResults.push(await legalCommentaryApiService.recordLawView(law.id));
+      }
+      const latestProgress = [...progressResults].reverse().find((progress) => (
+        progress.newXp !== undefined || progress.newLevel !== undefined
+      ));
+      const totalXpGain = progressResults.reduce((total, progress) => total + Number(progress.xpGain || 0), 0);
+
+      if (latestProgress) {
+        void updateUser({
+          ...(latestProgress.newXp !== undefined ? { xp: latestProgress.newXp } : {}),
+          ...(latestProgress.newLevel !== undefined ? { level: latestProgress.newLevel } : {}),
+        });
+      }
+
+      const sectionReadingKey = buildSectionReadingKey(section);
+      const existingReading = getSectionReadingEntry(currentReading, section);
+      const nextLawReading = {
+        ...currentReading,
+        [sectionReadingKey]: {
+          ...existingReading,
+          startedAt: existingReading?.startedAt || completedAt,
+          completedAt,
+        },
+        [section.id]: {
+          ...existingReading,
+          startedAt: existingReading?.startedAt || completedAt,
+          completedAt,
+        },
+      };
+
+      saveSectionReadingState(userId, law.id, nextLawReading);
+      setSectionReadingByLawId((current) => ({
+        ...current,
+        [law.id]: nextLawReading,
+      }));
+      setHomeReloadVersion((current) => current + 1);
+
+      addToast(
+        totalXpGain > 0 ? `Seção marcada como lida. +${totalXpGain} XP.` : 'Seção marcada como lida.',
+        'success',
+      );
+    } catch {
+      addToast('Não foi possível marcar esta seção como lida agora.', 'error');
+    } finally {
+      setSectionReadBusyMap((current) => {
+        if (!current[busyKey]) return current;
+        const next = { ...current };
+        delete next[busyKey];
+        return next;
+      });
+    }
+  }, [addToast, sectionReadBusyMap, updateUser, userId]);
+
   if (!isFeatureEnabled && !isAdminPreview) {
     return (
       <BetaFeaturePage
@@ -1206,6 +1439,7 @@ const AnnotatedLawsPage: React.FC = () => {
                         const effectiveSections = outline.sections;
                         const lawReading = sectionReadingByLawId[law.id] || {};
                         const effectiveProgressPercent = resolveLawProgressPercent(law, effectiveSections, lawReading);
+                        const completedArticleIds = buildCompletedArticleIdsForLaw(law, effectiveSections, lawReading);
 
                         return (
                           <article key={law.id} className="overflow-hidden border-b border-slate-100 last:border-b-0 dark:border-slate-800">
@@ -1223,7 +1457,7 @@ const AnnotatedLawsPage: React.FC = () => {
                                     {buildLawDisplayTitle(law)}
                                   </p>
                                   <p className="mt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                                    {formatArticleCount(law.articleCount)}
+                                    {formatArticleCount(getLawArticleCount(law))}
                                   </p>
                                 </div>
                               </div>
@@ -1278,7 +1512,11 @@ const AnnotatedLawsPage: React.FC = () => {
                                     {effectiveSections.map((section, index) => {
                                       const sectionReadingKey = buildSectionReadingKey(section);
                                       const readingState = getSectionReadingEntry(lawReading, section);
-                                      const actionLabel = getSectionReadActionLabel(readingState, effectiveProgressPercent);
+                                      const isSectionCompleted = isSectionCompletedForProgress(section, completedArticleIds, lawReading);
+                                      const actionLabel = getSectionReadActionLabel(readingState, isSectionCompleted ? 100 : 0);
+                                      const shouldMarkAsRead = Boolean(readingState?.startedAt && !isSectionCompleted);
+                                      const readBusyKey = `${law.id}:${section.id}`;
+                                      const isMarkingSectionAsRead = Boolean(sectionReadBusyMap[readBusyKey]);
                                       const sectionArticles = section.articlePreviews || [];
                                       const isSectionArticlesOpen = expandedSectionByLawId[law.id] === section.id;
 
@@ -1311,42 +1549,56 @@ const AnnotatedLawsPage: React.FC = () => {
                                             </span>
                                           </button>
                                           <div className="flex items-center gap-2">
-                                            <Link
-                                              href={{
-                                                pathname: `/lei-comentada/${law.slug}`,
-                                                query: {
-                                                  lawId: law.id,
-                                                  sectionId: section.id,
-                                                  from: section.fromArticle,
-                                                  to: section.toArticle,
-                                                  view: 'pdf',
-                                                },
-                                              }}
-                                              onMouseEnter={() => prefetchLaw(law.slug)}
-                                              onClick={() => {
-                                                if (!userId) return;
-                                                const existingReading = getSectionReadingEntry(lawReading, section);
-                                                const nextLawReading = {
-                                                  ...lawReading,
-                                                  [sectionReadingKey]: {
-                                                    ...existingReading,
-                                                    startedAt: existingReading?.startedAt || new Date().toISOString(),
+                                            {shouldMarkAsRead ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  void handleMarkSectionAsRead(law, section, lawReading);
+                                                }}
+                                                disabled={isMarkingSectionAsRead}
+                                                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-emerald-500 bg-emerald-500 px-4 text-sm font-bold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-70"
+                                              >
+                                                {isMarkingSectionAsRead ? <Loader2 size={14} className="animate-spin" /> : null}
+                                                {actionLabel}
+                                              </button>
+                                            ) : (
+                                              <Link
+                                                href={{
+                                                  pathname: `/lei-comentada/${law.slug}`,
+                                                  query: {
+                                                    lawId: law.id,
+                                                    sectionId: section.id,
+                                                    from: section.fromArticle,
+                                                    to: section.toArticle,
+                                                    view: 'pdf',
                                                   },
-                                                  [section.id]: {
-                                                    ...existingReading,
-                                                    startedAt: existingReading?.startedAt || new Date().toISOString(),
-                                                  },
-                                                };
-                                                saveSectionReadingState(userId, law.id, nextLawReading);
-                                                setSectionReadingByLawId((current) => ({
-                                                  ...current,
-                                                  [law.id]: nextLawReading,
-                                                }));
-                                              }}
-                                              className="inline-flex h-9 items-center justify-center rounded-lg border border-[#2f6ff5] bg-[#2f6ff5] px-4 text-sm font-bold text-white transition-colors hover:bg-[#255ee0]"
-                                            >
-                                              {actionLabel}
-                                            </Link>
+                                                }}
+                                                onMouseEnter={() => prefetchLaw(law.slug)}
+                                                onClick={() => {
+                                                  if (!userId || isSectionCompleted) return;
+                                                  const existingReading = getSectionReadingEntry(lawReading, section);
+                                                  const nextLawReading = {
+                                                    ...lawReading,
+                                                    [sectionReadingKey]: {
+                                                      ...existingReading,
+                                                      startedAt: existingReading?.startedAt || new Date().toISOString(),
+                                                    },
+                                                    [section.id]: {
+                                                      ...existingReading,
+                                                      startedAt: existingReading?.startedAt || new Date().toISOString(),
+                                                    },
+                                                  };
+                                                  saveSectionReadingState(userId, law.id, nextLawReading);
+                                                  setSectionReadingByLawId((current) => ({
+                                                    ...current,
+                                                    [law.id]: nextLawReading,
+                                                  }));
+                                                }}
+                                                className="inline-flex h-9 items-center justify-center rounded-lg border border-[#2f6ff5] bg-[#2f6ff5] px-4 text-sm font-bold text-white transition-colors hover:bg-[#255ee0]"
+                                              >
+                                                {actionLabel}
+                                              </Link>
+                                            )}
                                             <button
                                               type="button"
                                               onClick={() => {

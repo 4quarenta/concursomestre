@@ -11,12 +11,13 @@
 
 import axios from 'axios';
 import type { UserProfile } from '@types';
+import { API_BASE_URL } from '@services/api/baseUrl';
 import { clientLog } from '@services/monitoring/clientLog';
 import { canAccessAdminPanel, canAccessPartnerArea, normalizeUserRole } from './userAccess';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost/questao-pro-backend/api/';
 const AUTH_CHANNEL_NAME = 'cm-auth-session';
 const AUTH_STORAGE_EVENT_KEY = 'cm-auth-event';
+const AUTH_SESSION_HINT_KEY = 'cm-auth-session-present';
 const REFRESH_LOCK_KEY = 'cm-auth-refresh-lock';
 const REFRESH_LOCK_TTL_MS = 15000;
 const EXTERNAL_REFRESH_WAIT_MS = 8000;
@@ -33,7 +34,6 @@ interface AuthBroadcastEvent {
     reason?: string | null;
     at: number;
 }
-
 export interface AuthSessionSnapshot {
     accessToken: string | null;
     accessTokenExpMs: number | null;
@@ -47,7 +47,6 @@ interface RefreshOptions {
     allowAnonymousFailure?: boolean;
     force?: boolean;
 }
-
 interface RefreshSessionResponsePayload {
     token?: string | null;
     user?: UserProfile | null;
@@ -367,6 +366,36 @@ const broadcastAuthEvent = (event: Omit<AuthBroadcastEvent, 'sourceTabId' | 'at'
     writeAuthEventToStorage(payload);
 };
 
+const hasAuthSessionHint = (): boolean => {
+    if (typeof localStorage === 'undefined') {
+        return Boolean(accessToken || currentUser);
+    }
+
+    try {
+        return localStorage.getItem(AUTH_SESSION_HINT_KEY) === '1';
+    } catch {
+        return Boolean(accessToken || currentUser);
+    }
+};
+
+const setAuthSessionHint = (isPresent: boolean): void => {
+    if (typeof localStorage === 'undefined') {
+        return;
+    }
+
+    try {
+        if (isPresent) {
+            localStorage.setItem(AUTH_SESSION_HINT_KEY, '1');
+        } else {
+            localStorage.removeItem(AUTH_SESSION_HINT_KEY);
+        }
+    } catch {
+        // Ignore browsers with storage disabled.
+    }
+};
+
+const hasMaterializedAuthenticatedSession = (): boolean => Boolean(accessToken || currentUser);
+
 /**
  * Atualiza o token em memoria e reprograma o refresh futuro.
  * Serve como ponto unico para troca do access token em toda a sessão web.
@@ -389,6 +418,7 @@ const updateSessionState = (
     options?: { isBootstrapped?: boolean; broadcast?: boolean; eventType?: AuthEventType; reason?: string | null }
 ): void => {
     applyAccessToken(nextToken);
+    setAuthSessionHint(Boolean(accessToken));
 
     if (nextUser !== undefined) {
         currentUser = normalizeAuthUserProfile(nextUser);
@@ -720,8 +750,16 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
         const csrfToken = getCsrfToken();
         if (!csrfToken) {
             if (options.allowAnonymousFailure) {
-                clearAuthenticatedSession('missing_csrf', false);
-                return null;
+                if (!hasMaterializedAuthenticatedSession()) {
+                    clearAuthenticatedSession('missing_csrf', false);
+                    return null;
+                }
+
+                clientLog.warn('Auth refresh skipped: missing CSRF token. Preserving local session.', {
+                    reason: options.reason,
+                    hasSession: hasMaterializedAuthenticatedSession(),
+                });
+                return getSnapshot();
             }
 
             throw new Error('CSRF token ausente para renovar a sessão.');
@@ -777,9 +815,18 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
         } catch (error: unknown) {
             const status = axios.isAxiosError(error) ? error.response?.status : undefined;
             if (status === 401 || status === 403) {
-                clearAuthenticatedSession('refresh_failed', true);
+                clientLog.warn('Auth refresh rejected by backend. Preserving local session until explicit logout.', {
+                    status,
+                    reason: options.reason,
+                    hasSession: hasMaterializedAuthenticatedSession(),
+                });
                 if (options.allowAnonymousFailure) {
-                    return null;
+                    if (!hasMaterializedAuthenticatedSession()) {
+                        clearAuthenticatedSession('refresh_failed', false);
+                        return null;
+                    }
+
+                    return getSnapshot();
                 }
             }
 
@@ -803,7 +850,7 @@ export const bootstrapAuthSession = async (): Promise<AuthSessionSnapshot> => {
         return getSnapshot();
     }
 
-    if (!getCsrfToken()) {
+    if (!getCsrfToken() || !hasAuthSessionHint()) {
         isBootstrapped = true;
         notifyListeners();
         return getSnapshot();

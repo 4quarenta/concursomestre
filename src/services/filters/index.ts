@@ -193,11 +193,20 @@ const collectQuestionTexts = (question: Question) => {
 };
 
 export const injectEnemFocusOption = (careers: string[]) => {
-  const next = careers.filter(Boolean);
-  const hasEnem = next.some((career) => normalizeFilterText(career) === normalizeFilterText(ENEM_FOCUS_NAME));
-  if (hasEnem) {
-    return next;
-  }
+  const enemKey = normalizeFilterText(ENEM_FOCUS_NAME);
+  const seen = new Set<string>();
+  const next = careers
+    .map((career) => String(career || '').trim())
+    .filter(Boolean)
+    .filter((career) => normalizeFilterText(career) !== enemKey)
+    .filter((career) => {
+      const key = normalizeFilterText(career);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
 
   return [ENEM_FOCUS_NAME, ...next];
 };
@@ -211,7 +220,10 @@ export const normalizeCareerSelectorLabel = (value: unknown) => {
   const trailingGroupMatch = rawValue.match(/^(.+?)\s*\(([^()]+)\)$/);
   if (!trailingGroupMatch) {
     const [baseLabel] = rawValue.split('/');
-    return String(baseLabel || rawValue).trim();
+    const normalizedBaseLabel = String(baseLabel || rawValue).trim();
+    return normalizeFilterText(normalizedBaseLabel) === normalizeFilterText(ENEM_FOCUS_NAME)
+      ? ENEM_FOCUS_NAME
+      : normalizedBaseLabel;
   }
 
   const baseLabel = trailingGroupMatch[1].trim();
@@ -219,7 +231,9 @@ export const normalizeCareerSelectorLabel = (value: unknown) => {
     return rawValue;
   }
 
-  return baseLabel;
+  return normalizeFilterText(baseLabel) === normalizeFilterText(ENEM_FOCUS_NAME)
+    ? ENEM_FOCUS_NAME
+    : baseLabel;
 };
 
 export const isEnemQuestion = (question: Question) => {

@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import type { Assunto, Material, Question, Transaction, UserAnswer, ErrorReport, UserNote, QuestionStats, RelatedQuestionLawMatch, UserProfile } from '@types';
+import type { Assunto, Material, Question, Transaction, UserAnswer, ErrorReport, UserNote, QuestionStats, RelatedQuestionLawMatch, UserProfile, PlanBenefitKey } from '@types';
 import {
   CheckCircle2, XCircle, Flag, BookOpen, GraduationCap,
   Eye, EyeOff, Building2, Calendar, Briefcase, MessageSquare, BarChart3, AlertTriangle, Share2, Lock, StickyNote, Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Layers, Tag, History, PlusCircle, MinusCircle, FileText, Loader2, ThumbsUp, ThumbsDown
@@ -20,6 +20,7 @@ import { getAssetUrl } from '@services/api';
 import { legalCommentaryApiService } from '@services/legal-commentary';
 import { isPlatformOriginalQuestion, isQuestionCanceled, questionService, type QuestionEditorialFeedbackKind, type QuestionEditorialFeedbackSnapshot, type QuestionEditorialFeedbackValue } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+import { maybeShowQuestionAnswerInterstitial } from '@services/ads/adService';
 import MathRichText from '@/components/shared/math/MathRichText';
 import { commentService } from '@services/comments';
 import { clientLog } from '@services/monitoring/clientLog';
@@ -34,6 +35,40 @@ const fixHtmlImages = (html: string) => {
     const absoluteUrl = getAssetUrl(src);
     return match.replace(src, absoluteUrl);
   });
+};
+
+const escapeQuestionHtmlAttribute = (value: unknown) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/"/g, '&quot;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;');
+
+const hasQuestionFigureMarker = (value?: string | null) => /\[FIGURA:\s*[-\w]+\]/i.test(String(value || ''));
+
+const renderQuestionGroupHtml = (html: string, imageUrl?: string | null) => {
+  const normalizedHtml = fixHtmlImages(html);
+  const rawImageUrl = String(imageUrl || '').trim();
+  if (!normalizedHtml || !rawImageUrl || !hasQuestionFigureMarker(normalizedHtml)) {
+    return normalizedHtml;
+  }
+
+  const imageSrc = getAssetUrl(rawImageUrl);
+  return normalizedHtml.replace(/\[FIGURA:\s*([-\w]+)\]/gi, (_marker, figureKey) => [
+    '<figure class="question-support-figure cm-import-context-figure">',
+    `<img src="${escapeQuestionHtmlAttribute(imageSrc)}" alt="Figura ${escapeQuestionHtmlAttribute(figureKey)}" loading="lazy" />`,
+    '</figure>',
+  ].join(''));
+};
+
+const SafeQuestionGroupHtml: React.FC<{ html: string; imageUrl?: string | null }> = ({ html, imageUrl }) => {
+  const sanitizedHtml = renderQuestionGroupHtml(html, imageUrl);
+
+  return (
+    <div
+      className="question-rich-html"
+      dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+    />
+  );
 };
 
 type QuestionSourceMetadata = Question & {
@@ -479,6 +514,13 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const [isPreparingNoteModal, setIsPreparingNoteModal] = useState(false);
   // Modal de upgrade de plano
   const [planUpgradeModal, setPlanUpgradeModal] = useState<{ featureName: string; requiredPlan: string; planLabel: string } | null>(null);
+  const openPlanUpgrade = React.useCallback((featureName: string, benefitKey: PlanBenefitKey) => {
+    setPlanUpgradeModal({
+      featureName,
+      requiredPlan: getBenefitRequiredPlan(benefitKey, systemSettings.planEntitlements),
+      planLabel: getBenefitPlanLabel(benefitKey, systemSettings.planEntitlements),
+    });
+  }, [systemSettings.planEntitlements]);
 
   useEffect(() => {
     if (!editorialFeedbackQuestionId) {
@@ -618,12 +660,25 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const [sessionAnswer, setSessionAnswer] = useState<UserAnswer | null>(null);
   const [showAnswerFeedback, setShowAnswerFeedback] = useState(false);
 
+  const teacherRequiredPlan = getBenefitRequiredPlan('question.basic_explanation', systemSettings.planEntitlements);
+  const detailedRequiredPlan = getBenefitRequiredPlan('question.detailed_analysis', systemSettings.planEntitlements);
+  const teacherPlanLabel = getBenefitPlanLabel('question.basic_explanation', systemSettings.planEntitlements);
+  const detailedPlanLabel = getBenefitPlanLabel('question.detailed_analysis', systemSettings.planEntitlements);
+  const canResolveQuestion = hasPlanBenefit(currentUser, 'question.resolve', systemSettings.planEntitlements);
+  const canSeeAnswerKey = hasPlanBenefit(currentUser, 'question.answer_key', systemSettings.planEntitlements);
+  const canSaveQuestion = hasPlanBenefit(currentUser, 'question.save', systemSettings.planEntitlements);
+  const canUseQuestionNotes = hasPlanBenefit(currentUser, 'question.notes', systemSettings.planEntitlements);
+  const canShareQuestion = hasPlanBenefit(currentUser, 'question.share', systemSettings.planEntitlements);
+  const canSeeFullStats = hasPlanBenefit(currentUser, 'question.full_statistics', systemSettings.planEntitlements);
+  const canSeeDetailed = hasPlanBenefit(currentUser, 'question.detailed_analysis', systemSettings.planEntitlements)
+    || hasPlanBenefit(currentUser, 'detailed_analysis', systemSettings.planEntitlements);
+
   // We rely on sessionAnswer for locking the UI in practice mode.
   // existingAnswer is used for history display.
   const isSubmitted = !!sessionAnswer;
   // Revised: Only show result if current session is submitted OR if we are in a mode that forces feedback (like review)
   // But for 'practice' with retry, we want clean state until session answer.
-  const showResult = showAnswerFeedback || isSubmitted || (mode === 'simulation' && !!existingAnswer && !hideFeedback);
+  const showResult = canSeeAnswerKey && (showAnswerFeedback || isSubmitted || (mode === 'simulation' && !!existingAnswer && !hideFeedback));
 
   // Logic Refinement:
   // - If I have history (`existingAnswer`), I show the TAG in header.
@@ -649,16 +704,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
   // Normaliza o plano para comparação (podem vir em minúsculas do backend)
   // Hierarquia e regras de acesso de plano
-  const teacherRequiredPlan = getBenefitRequiredPlan('teacher_comments', systemSettings.planEntitlements);
-  const detailedRequiredPlan = getBenefitRequiredPlan('detailed_analysis', systemSettings.planEntitlements);
-  const teacherPlanLabel = getBenefitPlanLabel('teacher_comments', systemSettings.planEntitlements);
-  const detailedPlanLabel = getBenefitPlanLabel('detailed_analysis', systemSettings.planEntitlements);
-
   // Gabarito Comentado: Pro ou Elite
-  const canSeeTeacher = hasPlanBenefit(currentUser, 'teacher_comments', systemSettings.planEntitlements);
+  const canSeeTeacher = hasPlanBenefit(currentUser, 'question.basic_explanation', systemSettings.planEntitlements)
+    || hasPlanBenefit(currentUser, 'teacher_comments', systemSettings.planEntitlements);
   // Análise Detalhada: apenas Elite
-  const canSeeDetailed = hasPlanBenefit(currentUser, 'detailed_analysis', systemSettings.planEntitlements);
-
   const [showStats, setShowStats] = useState(false);
   const [localStats, setLocalStats] = useState<QuestionStats | null>(question.stats || null);
   const [loadingStats, setLoadingStats] = useState(false);
@@ -706,6 +755,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   }, [mode, existingAnswer, sessionAnswer, question.id, question.itens]); // Keep simulation logic updated if needed.
 
   const handleToggleStats = async () => {
+    if (!canSeeFullStats) {
+      openPlanUpgrade('Estatisticas completas', 'question.full_statistics');
+      return;
+    }
+
     const nextState = !showStats;
     setShowStats(nextState);
     if (nextState) {
@@ -781,6 +835,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       onGuestAction?.('answer');
       return;
     }
+    if (!canResolveQuestion) {
+      openPlanUpgrade('Resolver questao', 'question.resolve');
+      return;
+    }
     if (selectedOptionId === null || isSubmitted) return;
 
     const selectedItemIndex = question.itens?.findIndex(item => item.id === selectedOptionId) ?? -1;
@@ -799,6 +857,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     setSessionAnswer(newAnswer); // Lock interaction locally
     setShowAnswerFeedback(true); // Show correct/incorrect highlighting
     onAnswerSubmit(newAnswer);
+    if (!canSeeAnswerKey) {
+      openPlanUpgrade('Ver gabarito', 'question.answer_key');
+    }
+    void maybeShowQuestionAnswerInterstitial(currentUser, systemSettings);
   };
 
 
@@ -809,6 +871,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
     if (!currentUser) {
       onGuestAction?.('answer');
+      return;
+    }
+    if (!canResolveQuestion) {
+      openPlanUpgrade('Resolver questao', 'question.resolve');
       return;
     }
     if (isSubmitted) return;
@@ -831,11 +897,15 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
     if (mode === 'simulation') {
       if (!hideFeedback) {
-        setSessionAnswer(answerPayload);
-        setShowAnswerFeedback(true);
+      setSessionAnswer(answerPayload);
+      setShowAnswerFeedback(true);
+        if (!canSeeAnswerKey) {
+          openPlanUpgrade('Ver gabarito', 'question.answer_key');
+        }
       }
 
       onAnswerSubmit(answerPayload);
+      void maybeShowQuestionAnswerInterstitial(currentUser, systemSettings);
     }
   };
 
@@ -862,7 +932,24 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     }
   };
 
+  const handleToggleSaveLocal = () => {
+    if (!currentUser) {
+      onGuestAction?.('save');
+      return;
+    }
+    if (!canSaveQuestion) {
+      openPlanUpgrade('Salvar questao', 'question.save');
+      return;
+    }
+    onToggleSave?.(String(question.id));
+  };
+
   const handleShare = () => {
+    if (!canShareQuestion) {
+      openPlanUpgrade('Compartilhar questao', 'question.share');
+      return;
+    }
+
     const baseUrl = window.location.origin + window.location.pathname;
     const questionUrl = `${baseUrl}?questionId=${question.id}`;
 
@@ -885,6 +972,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       onGuestAction?.('note');
       return;
     }
+    if (!canUseQuestionNotes) {
+      openPlanUpgrade('Anotacoes', 'question.notes');
+      return;
+    }
     if (onSaveNote) {
       onSaveNote(String(question.id), noteText);
       setIsNoteModalOpen(false);
@@ -892,6 +983,15 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   };
 
   const handleOpenNoteModal = () => {
+    if (!currentUser) {
+      onGuestAction?.('note');
+      return;
+    }
+    if (!canUseQuestionNotes) {
+      openPlanUpgrade('Anotacoes', 'question.notes');
+      return;
+    }
+
     if (!onOpenNote) {
       setIsNoteModalOpen(true);
       return;
@@ -1016,7 +1116,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               {isOriginalQuestion && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-violet-600 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Inédita</span>}
               {isCanceledQuestion && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-red-500 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Anulada</span>}
               {(question.desatualizada || question.isOutdated) && <span className="inline-flex min-h-5 items-center justify-center rounded-md bg-amber-500 px-2 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white">Desatualizada</span>}
-              {(existingAnswer || sessionAnswer) && !(mode === 'simulation' && hideFeedback) && (
+              {canSeeAnswerKey && (existingAnswer || sessionAnswer) && !(mode === 'simulation' && hideFeedback) && (
                 (sessionAnswer || existingAnswer)!.isCorrect
                   ? <span className="border border-emerald-500 text-emerald-600 bg-white dark:bg-emerald-900/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase flex items-center gap-1.5"><CheckCircle2 size={12} /> Resolvida (Certa)</span>
                   : <span className="border border-red-500 text-red-600 bg-white dark:bg-red-900/10 px-3 py-1 rounded-full text-[10px] font-bold uppercase flex items-center gap-1.5"><XCircle size={12} /> Resolvida (Errada)</span>
@@ -1026,18 +1126,19 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
           <div className="flex items-center gap-1">
             <button
-              onClick={() => {
-                if (!currentUser) {
-                  onGuestAction?.('save');
-                  return;
-                }
-                onToggleSave?.(String(question.id));
-              }}
-              className={`p-2 rounded-lg transition-all ${isSaved ? 'text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-700 border border-indigo-100 dark:border-indigo-900 shadow-sm' : 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700'}`}
+              onClick={handleToggleSaveLocal}
+              className={`p-2 rounded-lg transition-all ${isSaved ? 'text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-700 border border-indigo-100 dark:border-indigo-900 shadow-sm' : canSaveQuestion ? 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700' : 'text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800'}`}
+              title={canSaveQuestion ? 'Salvar questao' : 'Disponivel no plano configurado para salvar questoes'}
             >
-              {isSaved ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+              {canSaveQuestion ? (isSaved ? <BookmarkCheck size={16} /> : <Bookmark size={16} />) : <Lock size={16} />}
             </button>
-            <button onClick={handleShare} className="p-2 rounded-lg text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all"><Share2 size={16} /></button>
+            <button
+              onClick={handleShare}
+              className={`p-2 rounded-lg transition-all ${canShareQuestion ? 'text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400' : 'text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800'}`}
+              title={canShareQuestion ? 'Compartilhar questao' : 'Disponivel no plano configurado para compartilhar'}
+            >
+              {canShareQuestion ? <Share2 size={16} /> : <Lock size={16} />}
+            </button>
             {systemSettings.features.reportsEnabled && (
               <button
                 onClick={() => !isAlreadyReported && setIsReporting(!isReporting)}
@@ -1162,17 +1263,19 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               <div className="mb-6 space-y-4">
                 {question.grupoQuestao.enunciado && (
                   <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium prose dark:prose-invert max-w-none">
-                    <div className="question-rich-html" dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.grupoQuestao.enunciado) }} />
+                    <SafeQuestionGroupHtml html={question.grupoQuestao.enunciado} imageUrl={question.grupoQuestao.image_url} />
                   </div>
                 )}
 
                 {(question.grupoQuestao.texto && question.grupoQuestao.texto !== question.grupoQuestao.enunciado) && (
                   <div className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-medium italic prose dark:prose-invert max-w-none">
-                    <div className="question-rich-html" dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.grupoQuestao.texto) }} />
+                    <SafeQuestionGroupHtml html={question.grupoQuestao.texto} imageUrl={question.grupoQuestao.image_url} />
                   </div>
                 )}
 
-                {question.grupoQuestao.image_url && (
+                {question.grupoQuestao.image_url
+                  && !hasQuestionFigureMarker(question.grupoQuestao.enunciado)
+                  && !hasQuestionFigureMarker(question.grupoQuestao.texto) && (
                   <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1">
                     <Image
                       src={getAssetUrl(question.grupoQuestao.image_url)}
@@ -1190,11 +1293,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             )}
 
             {question.introText && (
-              <div className="bg-slate-50 dark:bg-slate-800/50 border-l-2 border-indigo-200 dark:border-indigo-800 p-4 rounded-r-xl mb-6">
+              <div className="mb-6 space-y-3">
                 <div
-                  className="question-rich-html text-xs text-slate-500 dark:text-slate-400 leading-relaxed italic font-medium [&_img]:mx-auto [&_img]:my-3 [&_img]:max-h-[420px] [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-lg [&_img]:border [&_img]:border-slate-200 [&_img]:bg-white [&_img]:p-1 dark:[&_img]:border-slate-700 dark:[&_img]:bg-slate-900"
+                  className="question-rich-html text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium prose prose-indigo dark:prose-invert max-w-none [&_img]:mx-auto [&_img]:my-3 [&_img]:max-h-[420px] [&_img]:w-auto [&_img]:max-w-full [&_img]:rounded-lg [&_img]:border [&_img]:border-slate-200 [&_img]:bg-white [&_img]:p-1 dark:[&_img]:border-slate-700 dark:[&_img]:bg-slate-900"
                   dangerouslySetInnerHTML={{ __html: fixHtmlImages(question.introText) }}
                 />
+                <div className="h-px bg-slate-100 dark:bg-slate-800 w-full my-4" />
               </div>
             )}
 
@@ -1372,7 +1476,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
               </button>
             )}
 
-            <button onClick={() => { handleToggleStats(); setShowMaterials(false); setShowAnnotatedLaws(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showStats ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300'}`}>
+            <button onClick={() => { handleToggleStats(); setShowMaterials(false); setShowAnnotatedLaws(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showStats ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeFullStats ? 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
               <BarChart3 size={14} /> Estatísticas
             </button>
 
@@ -1386,7 +1490,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <button
                     onClick={handleOpenNoteModal}
                     disabled={isPreparingNoteModal}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all disabled:opacity-70 disabled:cursor-not-allowed ${noteText ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-900/50' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/10'}`}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all disabled:opacity-70 disabled:cursor-not-allowed ${!canUseQuestionNotes ? 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700' : noteText ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-900/50' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/10'}`}
                   >
                     {isPreparingNoteModal ? <Loader2 size={14} className="animate-spin" /> : <StickyNote size={14} />} {noteText ? 'Anotação ✅' : 'Anotar'}
                   </button>
@@ -1402,7 +1506,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             <button
               disabled={isCanceledQuestion || selectedOptionId === null}
               onClick={handleSubmit}
-              className="px-8 py-3 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest rounded-xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all disabled:opacity-30 text-[10px] shadow-lg shadow-slate-200 dark:shadow-none"
+              className="inline-flex items-center gap-2 px-8 py-3 bg-slate-900 dark:bg-indigo-600 text-white font-black uppercase tracking-widest rounded-xl hover:bg-indigo-600 dark:hover:bg-indigo-700 transition-all disabled:opacity-30 text-[10px] shadow-lg shadow-slate-200 dark:shadow-none"
             >
               {isCanceledQuestion ? 'Questão anulada' : 'Responder'}
             </button>

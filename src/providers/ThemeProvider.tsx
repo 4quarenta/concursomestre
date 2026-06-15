@@ -12,6 +12,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react';
 
 type Theme = 'light' | 'dark';
+const DEFAULT_THEME: Theme = 'light';
 
 interface ThemeContextType {
   theme: Theme;
@@ -42,7 +43,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
    * @since 1.0.0
    */
   const [theme, setThemeState] = useState<Theme>(() => {
-    return 'light';
+    return DEFAULT_THEME;
   });
 
   useEffect(() => {
@@ -58,7 +59,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return;
       }
 
-      setThemeState(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      setThemeState(DEFAULT_THEME);
       setIsHydrated(true);
     });
 

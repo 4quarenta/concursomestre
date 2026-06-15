@@ -22,7 +22,7 @@ import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import AdBanner from '../../components/shared/feedback/AdBanner';
-import { getEffectivePlanName } from '@services/plans/planAccess';
+import { getBenefitPlanLabel, getEffectivePlanName, hasPlanBenefit } from '@services/plans/planAccess';
 import { questionService } from '@services/questions';
 import { reportsService } from '@services/reports';
 import { commentService } from '@services/comments';
@@ -37,7 +37,7 @@ import {
   isEnemQuestion,
   normalizeCareerSelectorLabel,
 } from '@services/filters';
-import type { Assunto, Banca, Cargo, ErrorReport, Orgao, QuestaoComentario, Question } from '@types';
+import type { Assunto, Banca, Cargo, ErrorReport, Orgao, PlanBenefitKey, QuestaoComentario, Question } from '@types';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import { useQuestionBankActions } from '@/state/question-bank/useQuestionBankActions';
@@ -135,6 +135,25 @@ type SearchableFilterGroup = {
 
 const MULTI_FILTER_KEYS = ['subject', 'difficulty', 'agency', 'organization', 'year', 'level', 'topic', 'role', 'career', 'modality'] as const;
 const BOOLEAN_FILTER_KEYS = ['onlySaved', 'hasTeacherComment', 'hasDetailedComment', 'excludeCanceled', 'excludeOutdated', 'excludeAnswered', 'excludeCorrect', 'excludeWrong', 'onlyCorrect', 'onlyWrong'] as const;
+const PRACTICE_FILTER_BENEFITS: Partial<Record<PracticeFilterKey, PlanBenefitKey>> = {
+  keyword: 'practice.filter_keyword',
+  subject: 'practice.filter_subject',
+  difficulty: 'practice.filter_difficulty',
+  agency: 'practice.filter_bank',
+  organization: 'practice.filter_organization',
+  year: 'practice.filter_year',
+  level: 'practice.filter_level',
+  topic: 'practice.filter_topic',
+  role: 'practice.filter_role',
+  modality: 'practice.filter_modality',
+  onlySaved: 'practice.filter_saved',
+  hasTeacherComment: 'practice.filter_teacher_comment',
+  hasDetailedComment: 'practice.filter_detailed_analysis',
+  excludeCorrect: 'practice.filter_answered_correct',
+  excludeWrong: 'practice.filter_answered_wrong',
+  onlyCorrect: 'practice.filter_answered_correct',
+  onlyWrong: 'practice.filter_answered_wrong',
+};
 
 const isMultiFilterKey = (key: string): key is typeof MULTI_FILTER_KEYS[number] => (
   (MULTI_FILTER_KEYS as readonly string[]).includes(key)
@@ -155,7 +174,29 @@ const toFilterValues = (value: unknown) => {
 
 const hasAnyFilterValue = (value: unknown) => toFilterValues(value).length > 0;
 
-const filterHasValue = (value: unknown, option: string) => toFilterValues(value).includes(option);
+const resetPracticeFilterValue = <K extends PracticeFilterKey>(key: K): PracticeFilters[K] => DEFAULT_FILTERS[key];
+
+const sanitizePracticeFiltersForPlan = (
+  nextFilters: PracticeFilters,
+  canUseBenefit: (benefitKey: PlanBenefitKey) => boolean,
+): PracticeFilters => {
+  return (Object.keys(PRACTICE_FILTER_BENEFITS) as PracticeFilterKey[]).reduce((acc, key) => {
+    const benefitKey = PRACTICE_FILTER_BENEFITS[key];
+    if (benefitKey && !canUseBenefit(benefitKey)) {
+      return {
+        ...acc,
+        [key]: resetPracticeFilterValue(key),
+      };
+    }
+
+    return acc;
+  }, nextFilters);
+};
+
+const filterHasValue = (value: unknown, option: string) => {
+  const normalizedOption = normalizePracticeText(option);
+  return toFilterValues(value).some((item) => normalizePracticeText(item) === normalizedOption);
+};
 
 const filterMatchesAny = (value: unknown, matcher: (selected: string) => boolean) => {
   const selectedValues = toFilterValues(value);
@@ -572,6 +613,8 @@ type CheckboxFilterProps = {
   onChange: (checked: boolean) => void;
   icon?: React.ComponentType<{ size?: number; className?: string }>;
   colorClass?: CheckboxFilterTone;
+  disabled?: boolean;
+  disabledTitle?: string;
 };
 
 const CheckboxFilter = ({
@@ -580,17 +623,22 @@ const CheckboxFilter = ({
   onChange,
   icon: Icon,
   colorClass = 'indigo',
+  disabled = false,
+  disabledTitle,
 }: CheckboxFilterProps) => {
   const tone = CHECKBOX_FILTER_TONE_CLASSES[colorClass] || CHECKBOX_FILTER_TONE_CLASSES.indigo;
 
   return (
-    <label className={`flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 transition-all select-none ${checked ? tone.checked : tone.unchecked}`}>
+    <label
+      title={disabled ? disabledTitle : undefined}
+      className={`flex items-center gap-2 rounded-xl border px-4 py-2 transition-all select-none ${disabled ? 'cursor-not-allowed opacity-55' : 'cursor-pointer'} ${checked ? tone.checked : tone.unchecked}`}
+    >
       <div className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${checked ? tone.boxChecked : tone.boxUnchecked}`}>
         {checked && <Check size={10} className="text-white" />}
       </div>
       <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
       {Icon && <Icon size={14} className="ml-1 opacity-50" />}
-      <input type="checkbox" className="hidden" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <input type="checkbox" className="hidden" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
     </label>
   );
 };
@@ -621,6 +669,26 @@ const Practice: React.FC = () => {
   const { currentUser, toggleSavedQuestion, updateUser } = useAuth();
   const { addToast } = useToast();
   const systemSettings = useAppConfigStore((store) => store.systemSettings);
+  const canUsePracticeBenefit = useCallback(
+    (benefitKey: PlanBenefitKey) => hasPlanBenefit(currentUser, benefitKey, systemSettings.planEntitlements),
+    [currentUser, systemSettings.planEntitlements],
+  );
+  const isPracticeFilterLocked = useCallback((key: PracticeFilterKey) => {
+    const benefitKey = PRACTICE_FILTER_BENEFITS[key];
+    return Boolean(benefitKey && !canUsePracticeBenefit(benefitKey));
+  }, [canUsePracticeBenefit]);
+  const getLockedFilterHelperText = useCallback((key: PracticeFilterKey, fallback?: string) => {
+    const benefitKey = PRACTICE_FILTER_BENEFITS[key];
+    if (!benefitKey || !isPracticeFilterLocked(key)) {
+      return fallback;
+    }
+
+    return `Disponivel no ${getBenefitPlanLabel(benefitKey, systemSettings.planEntitlements)}.`;
+  }, [isPracticeFilterLocked, systemSettings.planEntitlements]);
+  const sanitizeFiltersForCurrentPlan = useCallback(
+    (nextFilters: PracticeFilters) => sanitizePracticeFiltersForPlan(nextFilters, canUsePracticeBenefit),
+    [canUsePracticeBenefit],
+  );
   const reports = useAdminDataStore((store) => store.reports);
   const addLocalReport = useAdminDataStore((store) => store.addReport);
   const { ensureTaxonomiesLoaded } = useTaxonomyActions();
@@ -768,6 +836,7 @@ const Practice: React.FC = () => {
       userName: currentUserName || comment.userName,
       userAvatar: currentUser?.photoUrl,
       userPlan: currentUser?.planDisplayName || currentUser?.plan,
+      userRole: currentUser?.role,
       parentId,
       targetType: 'question',
     }).then((result) => {
@@ -866,7 +935,7 @@ const Practice: React.FC = () => {
       ));
     };
 
-    return {
+    const parsedFilters: PracticeFilters = {
       ...DEFAULT_FILTERS,
       keyword: searchParams.get('keyword') || DEFAULT_FILTERS.keyword,
       subject: readMultiParam(['subject', 'materia']),
@@ -890,7 +959,9 @@ const Practice: React.FC = () => {
       onlyCorrect: searchParams.get('onlyCorrect') === 'true',
       onlyWrong: searchParams.get('onlyWrong') === 'true',
     };
-  }, [searchParams]);
+
+    return sanitizeFiltersForCurrentPlan(parsedFilters);
+  }, [sanitizeFiltersForCurrentPlan, searchParams]);
 
   const [filters, setFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters));
   const [pendingFilters, setPendingFilters] = useState<PracticeFilters>(() => sanitizePracticeFiltersForFocus(initialFilters)); // State for UI selection before submit
@@ -910,6 +981,15 @@ const Practice: React.FC = () => {
   const focusQuestionRef = useRef<HTMLDivElement>(null);
   const scrollTargetRef = useRef<HTMLElement | Window | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setFilters((currentFilters) => sanitizeFiltersForCurrentPlan(currentFilters));
+      setPendingFilters((currentFilters) => sanitizeFiltersForCurrentPlan(currentFilters));
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [sanitizeFiltersForCurrentPlan]);
 
   useEffect(() => {
     if (!currentUser?.id || hasAppliedPreferredViewRef.current) {
@@ -964,7 +1044,7 @@ const Practice: React.FC = () => {
       const enemSubjectAreas = getEnemSubjectAreasForQuestion(q);
       const selectedSubjects = toFilterValues(filters.subject);
       const selectedCareers = toFilterValues(filters.career);
-      const isEnemFocus = selectedCareers.includes(ENEM_FOCUS_NAME);
+      const isEnemFocus = filterHasValue(selectedCareers, ENEM_FOCUS_NAME);
       const matchSubject = selectedSubjects.length === 0
         || (
           isEnemFocus
@@ -986,7 +1066,7 @@ const Practice: React.FC = () => {
       const matchYear = filterMatchesAny(filters.year, (year) => Boolean(q.anos?.some(y => String(y) === year)));
       const matchLevel = isEnemFocus || filterMatchesAny(filters.level, (level) => q.level === level);
       const matchTopic = filterMatchesAny(filters.topic, (topic) => Boolean(q.assuntos?.some(a => getPracticeTaxonomyName(a) === topic)));
-      const selectedNonEnemCareers = selectedCareers.filter((career) => career !== ENEM_FOCUS_NAME);
+      const selectedNonEnemCareers = selectedCareers.filter((career) => !filterHasValue([career], ENEM_FOCUS_NAME));
       const matchRoleMulti = isEnemFocus || filterMatchesAny(filters.role, (role) => Boolean(q.cargos?.some((cargo) => getPracticeTaxonomyName(cargo) === role)));
       const matchCareerMulti = selectedCareers.length === 0
         || (isEnemFocus && enemQuestion)
@@ -1265,13 +1345,17 @@ const Practice: React.FC = () => {
   }, [currentUser, dispatchAnswer]);
 
   const handleFilterChange = useCallback((key: PracticeFilterKey, value: PracticeFilterValue) => {
+    if (isPracticeFilterLocked(key)) {
+      return;
+    }
+
     setPendingFilters(prev => {
       let nextFilters = { ...prev, [key]: value } as PracticeFilters;
 
       if (key === 'career') {
         const nextCareerValues = toFilterValues(value);
         const previousHadEnemFocus = filterHasValue(prev.career, ENEM_FOCUS_NAME);
-        const nextHasEnemFocus = nextCareerValues.includes(ENEM_FOCUS_NAME);
+        const nextHasEnemFocus = filterHasValue(nextCareerValues, ENEM_FOCUS_NAME);
 
         if (nextHasEnemFocus) {
           const allowedSubjectValues = toFilterValues(nextFilters.subject)
@@ -1304,13 +1388,14 @@ const Practice: React.FC = () => {
 
       return nextFilters;
     });
-  }, [sanitizeFiltersForFocus]);
+  }, [isPracticeFilterLocked, sanitizeFiltersForFocus]);
 
   const applyFilters = useCallback(() => {
     setIsFiltering(true);
     setTimeout(() => {
-      const nextFilters = sanitizeFiltersForFocus(pendingFilters);
+      const nextFilters = sanitizeFiltersForCurrentPlan(sanitizeFiltersForFocus(pendingFilters));
       setFilters(nextFilters);
+      setPendingFilters(nextFilters);
       setFilterTimestamp((timestamp) => timestamp + 1);
       setVisibleCount(PAGE_SIZE);
       setCurrentQuestionIndex(0);
@@ -1319,7 +1404,7 @@ const Practice: React.FC = () => {
         .finally(() => setIsFiltering(false));
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 500);
-  }, [ensureQuestionsLoaded, pendingFilters, sanitizeFiltersForFocus]);
+  }, [ensureQuestionsLoaded, pendingFilters, sanitizeFiltersForCurrentPlan, sanitizeFiltersForFocus]);
 
   const clearFilter = useCallback((key: PracticeFilterKey) => {
     let defaultValue: PracticeFilterValue = isMultiFilterKey(key) ? [] : key === 'keyword' ? '' : 'All';
@@ -1613,6 +1698,45 @@ const Practice: React.FC = () => {
   const agencyOptionGroups = useMemo(() => buildSearchableOptionGroup('Bancas', uniqueAgencies), [uniqueAgencies]);
   const yearOptionGroups = useMemo(() => buildSearchableOptionGroup('Anos', uniqueYears), [uniqueYears]);
   const roleOptionGroups = useMemo(() => buildSearchableOptionGroup('Cargos', uniqueRoles), [uniqueRoles]);
+  const formatFilterChipValue = useCallback((key: string, value: unknown) => {
+    if (key !== 'topic') {
+      return serializeFilterValue(value);
+    }
+
+    const selectedValues = toFilterValues(value);
+    if (selectedValues.length === 0) {
+      return '';
+    }
+
+    const selectedKeys = new Set(selectedValues.map((item) => normalizePracticeText(item)));
+    const consumedKeys = new Set<string>();
+    const groupedLabels: string[] = [];
+
+    topicOptionGroups.forEach((group) => {
+      if (!group.selectable || group.options.length === 0) {
+        return;
+      }
+
+      const optionKeys = Array.from(new Set(
+        group.options
+          .map((option) => normalizePracticeText(option.value))
+          .filter(Boolean),
+      ));
+
+      if (optionKeys.length > 0 && optionKeys.every((optionKey) => selectedKeys.has(optionKey))) {
+        groupedLabels.push(group.label);
+        optionKeys.forEach((optionKey) => consumedKeys.add(optionKey));
+      }
+    });
+
+    selectedValues.forEach((item) => {
+      if (!consumedKeys.has(normalizePracticeText(item))) {
+        groupedLabels.push(item);
+      }
+    });
+
+    return groupedLabels.join(', ');
+  }, [topicOptionGroups]);
 
   // Labels amigaveis para os chips
   const filterLabels: Record<string, string> = {
@@ -1661,7 +1785,9 @@ const Practice: React.FC = () => {
                 placeholder="Pesquisar por palavra-chave no enunciado..."
                 value={pendingFilters.keyword}
                 onChange={e => handleFilterChange('keyword', e.target.value)}
-                className="w-full h-12 pl-12 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 font-medium text-sm text-slate-900 dark:text-slate-100 transition-all"
+                disabled={isPracticeFilterLocked('keyword')}
+                title={getLockedFilterHelperText('keyword')}
+                className="w-full h-12 pl-12 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 font-medium text-sm text-slate-900 dark:text-slate-100 transition-all disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
 
@@ -1701,51 +1827,55 @@ const Practice: React.FC = () => {
               value={pendingFilters.subject}
               onChange={(v) => handleFilterChange('subject', v)}
               groups={subjectOptionGroups}
-              helperText={isEnemPendingFocus ? 'No foco ENEM, a materia usa as areas oficiais de conhecimento.' : undefined}
+              disabled={isPracticeFilterLocked('subject')}
+              helperText={getLockedFilterHelperText('subject', isEnemPendingFocus ? 'No foco ENEM, a materia usa as areas oficiais de conhecimento.' : undefined)}
             />
-            <FilterSelect label="Dificuldade" value={pendingFilters.difficulty} onChange={(v) => handleFilterChange('difficulty', v)} options={Object.values(Difficulty)} />
+            <FilterSelect label="Dificuldade" value={pendingFilters.difficulty} onChange={(v) => handleFilterChange('difficulty', v)} options={Object.values(Difficulty)} disabled={isPracticeFilterLocked('difficulty')} helperText={getLockedFilterHelperText('difficulty')} />
             <SearchableFilterSelect
               label="Banca"
               value={pendingFilters.agency}
               onChange={(v) => handleFilterChange('agency', v)}
               groups={agencyOptionGroups}
-              disabled={isEnemPendingFocus}
-              helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined}
+              disabled={isEnemPendingFocus || isPracticeFilterLocked('agency')}
+              helperText={getLockedFilterHelperText('agency', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)}
             />
-            <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
+            <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus || isPracticeFilterLocked('organization')} helperText={getLockedFilterHelperText('organization', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} />
             <SearchableFilterSelect
               label="Ano"
               value={pendingFilters.year}
               onChange={(v) => handleFilterChange('year', v)}
               groups={yearOptionGroups}
+              disabled={isPracticeFilterLocked('year')}
+              helperText={getLockedFilterHelperText('year')}
             />
-            <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
+            <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus || isPracticeFilterLocked('level')} helperText={getLockedFilterHelperText('level', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} />
             <SearchableFilterSelect
               label="Assunto"
               value={pendingFilters.topic}
               onChange={(v) => handleFilterChange('topic', v)}
               groups={topicOptionGroups}
-              disabled={!hasAnyFilterValue(pendingFilters.subject)}
+              disabled={!hasAnyFilterValue(pendingFilters.subject) || isPracticeFilterLocked('topic')}
+              helperText={getLockedFilterHelperText('topic')}
             />
             <SearchableFilterSelect
               label="Cargo"
               value={pendingFilters.role}
               onChange={(v) => handleFilterChange('role', v)}
               groups={roleOptionGroups}
-              disabled={isEnemPendingFocus}
-              helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined}
+              disabled={isEnemPendingFocus || isPracticeFilterLocked('role')}
+              helperText={getLockedFilterHelperText('role', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)}
             />
-            <FilterSelect label="Modalidade" value={pendingFilters.modality} onChange={(v) => handleFilterChange('modality', v)} options={uniqueModalities} disabled={isEnemPendingFocus} helperText={isEnemPendingFocus ? 'Desativado para ENEM.' : undefined} />
+            <FilterSelect label="Modalidade" value={pendingFilters.modality} onChange={(v) => handleFilterChange('modality', v)} options={uniqueModalities} disabled={isEnemPendingFocus || isPracticeFilterLocked('modality')} helperText={getLockedFilterHelperText('modality', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} />
           </div>
 
           {isEnemPendingFocus ? (
-            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/80 p-4 transition-colors dark:border-indigo-500/20 dark:bg-slate-900/80">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300">Mapa ENEM</p>
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/80 p-4 shadow-sm shadow-indigo-100/50 transition-colors dark:border-indigo-400/20 dark:bg-indigo-950/20 dark:shadow-none">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-200">Mapa ENEM</p>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {ENEM_SUBJECT_AREA_OPTIONS.map((areaName) => (
-                  <div key={areaName} className="rounded-xl border border-indigo-100 bg-white/90 p-3 transition-colors dark:border-slate-700 dark:bg-slate-800/80">
-                    <p className="text-xs font-black text-slate-900 dark:text-slate-100">{areaName}</p>
-                    <p className="mt-2 text-[10px] font-medium leading-5 text-slate-500 dark:text-slate-300">
+                  <div key={areaName} className="rounded-xl border border-indigo-100 bg-white/90 p-3 transition-colors dark:border-indigo-400/15 dark:bg-slate-950/55">
+                    <p className="text-xs font-black text-slate-900 dark:text-white">{areaName}</p>
+                    <p className="mt-2 text-[10px] font-semibold leading-5 text-slate-500 dark:text-slate-300">
                       {ENEM_SUBJECT_AREA_DESCRIPTIONS[areaName].join(', ')}
                     </p>
                   </div>
@@ -1787,6 +1917,8 @@ const Practice: React.FC = () => {
                   onChange={(v: boolean) => handleFilterChange('excludeCorrect', v)}
                   icon={CheckCircle}
                   colorClass="emerald"
+                  disabled={isPracticeFilterLocked('excludeCorrect')}
+                  disabledTitle={getLockedFilterHelperText('excludeCorrect')}
                 />
                 <CheckboxFilter
                   label="Errei"
@@ -1794,6 +1926,8 @@ const Practice: React.FC = () => {
                   onChange={(v: boolean) => handleFilterChange('excludeWrong', v)}
                   icon={X}
                   colorClass="red"
+                  disabled={isPracticeFilterLocked('excludeWrong')}
+                  disabledTitle={getLockedFilterHelperText('excludeWrong')}
                 />
               </div>
             </div>
@@ -1808,6 +1942,8 @@ const Practice: React.FC = () => {
                   onChange={(v: boolean) => handleFilterChange('onlySaved', v)}
                   icon={BookmarkCheck}
                   colorClass="emerald"
+                  disabled={isPracticeFilterLocked('onlySaved')}
+                  disabledTitle={getLockedFilterHelperText('onlySaved')}
                 />
                 <CheckboxFilter
                   label="Acertei"
@@ -1815,6 +1951,8 @@ const Practice: React.FC = () => {
                   onChange={(v: boolean) => handleFilterChange('onlyCorrect', v)}
                   icon={CheckCircle}
                   colorClass="emerald"
+                  disabled={isPracticeFilterLocked('onlyCorrect')}
+                  disabledTitle={getLockedFilterHelperText('onlyCorrect')}
                 />
                 <CheckboxFilter
                   label="Errei"
@@ -1822,6 +1960,8 @@ const Practice: React.FC = () => {
                   onChange={(v: boolean) => handleFilterChange('onlyWrong', v)}
                   icon={X}
                   colorClass="red"
+                  disabled={isPracticeFilterLocked('onlyWrong')}
+                  disabledTitle={getLockedFilterHelperText('onlyWrong')}
                 />
                 <CheckboxFilter
                   label="Comentário do Professor"
@@ -1829,6 +1969,8 @@ const Practice: React.FC = () => {
                   onChange={(v: boolean) => handleFilterChange('hasTeacherComment', v)}
                   icon={GraduationCap}
                   colorClass="amber"
+                  disabled={isPracticeFilterLocked('hasTeacherComment')}
+                  disabledTitle={getLockedFilterHelperText('hasTeacherComment')}
                 />
                 <CheckboxFilter
                     label="Análise detalhada"
@@ -1836,6 +1978,8 @@ const Practice: React.FC = () => {
                   onChange={(v: boolean) => handleFilterChange('hasDetailedComment', v)}
                   icon={Sparkles}
                   colorClass="indigo"
+                  disabled={isPracticeFilterLocked('hasDetailedComment')}
+                  disabledTitle={getLockedFilterHelperText('hasDetailedComment')}
                 />
               </div>
             </div>
@@ -1851,7 +1995,7 @@ const Practice: React.FC = () => {
                   return (
                     <div key={key} className={`px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-2 animate-scale-in border ${key === 'hasTeacherComment' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-900/30' : key === 'hasDetailedComment' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30' : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}>
                       <span className="opacity-60">{filterLabels[key] || key}:</span>
-                      <span>{value === true ? 'Sim' : serializeFilterValue(value)}</span>
+                      <span>{value === true ? 'Sim' : formatFilterChipValue(key, value)}</span>
                       <button onClick={() => clearFilter(key as PracticeFilterKey)} className="hover:opacity-70 rounded-full p-0.5 transition-colors">
                         <X size={10} />
                       </button>

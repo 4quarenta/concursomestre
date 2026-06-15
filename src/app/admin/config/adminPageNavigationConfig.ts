@@ -42,6 +42,38 @@ export type AdminNavigationSection = {
 
 export type SupportPendingCounts = Partial<Record<'feedback' | 'reports' | 'comments' | 'refunds', number>>;
 
+export const STAFF_ADMIN_ALLOWED_TABS: AdminPageTab[] = ['panel', 'operation', 'support'];
+
+export const normalizeAdminUserRole = (role?: string | null) =>
+  String(role || '').trim().toLowerCase();
+
+export const canAccessAdminTabForRole = (tab: AdminPageTab, role?: string | null) => {
+  const normalizedRole = normalizeAdminUserRole(role);
+
+  if (normalizedRole === 'admin') {
+    return true;
+  }
+
+  if (normalizedRole === 'staff') {
+    return STAFF_ADMIN_ALLOWED_TABS.includes(tab);
+  }
+
+  return false;
+};
+
+export const filterAdminTabsForRole = <T extends { key: AdminPageTab }>(
+  tabs: T[],
+  role?: string | null,
+) => {
+  const normalizedRole = normalizeAdminUserRole(role);
+
+  if (!normalizedRole || normalizedRole === 'admin') {
+    return tabs;
+  }
+
+  return tabs.filter((tab) => canAccessAdminTabForRole(tab.key, normalizedRole));
+};
+
 export const resolveSupportLandingSection = (counts: SupportPendingCounts = {}): AdminSupportSection => {
   if (Number(counts.comments || 0) > 0) return 'comments';
   if (Number(counts.reports || 0) > 0) return 'reports';
@@ -402,6 +434,23 @@ export const resolveAdminRoute = (rawTab?: string | null, rawSection?: string | 
       tab: legacy.tab,
       section: resolveSectionByTab(legacy.tab, normalizedSection || legacy.section),
     };
+  }
+
+  return {
+    tab: 'panel' as const,
+    section: DEFAULT_SECTION_BY_TAB.panel as AdminPanelSection,
+  };
+};
+
+export const resolveAdminRouteForRole = (
+  rawTab?: string | null,
+  rawSection?: string | null,
+  role?: string | null,
+) => {
+  const resolved = resolveAdminRoute(rawTab, rawSection);
+
+  if (canAccessAdminTabForRole(resolved.tab, role) || !normalizeAdminUserRole(role)) {
+    return resolved;
   }
 
   return {

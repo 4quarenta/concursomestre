@@ -551,6 +551,9 @@ export const MarketplaceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         content: text,
         userId: currentUser.id,
         userName: currentUser.name,
+        userAvatar: currentUser.photoUrl,
+        userPlan: currentUser.planDisplayName || currentUser.plan,
+        userRole: currentUser.role,
         parentId,
         targetType: 'material',
       });

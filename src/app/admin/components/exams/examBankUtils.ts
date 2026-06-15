@@ -238,6 +238,24 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
   const proofFile = files.find((file) => file.kind === 'prova');
   const editalFile = files.find((file) => file.kind === 'edital');
   const answerKeyFile = files.find((file) => file.kind === 'gabarito');
+  const requisitos = dedupeTextList([
+    ...toTextList(rawRecord.requisitos),
+    ...toTextList(rawRecord.requirements),
+    ...toTextList(metadataRecord.requisitos),
+    ...toTextList(metadataRecord.requirements),
+  ]);
+  const remuneracoes = dedupeTextList([
+    ...toTextList(rawRecord.remuneracoes),
+    ...toTextList(rawRecord.remunerations),
+    ...toTextList(metadataRecord.remuneracoes),
+    ...toTextList(metadataRecord.remunerations),
+  ]);
+  const conteudoProgramatico = dedupeTextList([
+    ...toTextList(rawRecord.conteudoProgramatico),
+    ...toTextList(rawRecord.programmaticContent),
+    ...toTextList(metadataRecord.conteudoProgramatico),
+    ...toTextList(metadataRecord.programmaticContent),
+  ]);
 
   const banca: Banca = {
     id: toNumber(bancaRecord?.id, 0),
@@ -310,6 +328,12 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
     cargo,
     cargos,
     roles: cargos.map((item) => item.descricao || item.name || item['descrição']).filter(Boolean),
+    requisitos,
+    requirements: requisitos,
+    remuneracoes,
+    remunerations: remuneracoes,
+    conteudoProgramatico,
+    programmaticContent: conteudoProgramatico,
   };
 };
 
@@ -358,7 +382,13 @@ export const mergeExamBankSources = (
  */
 export const formatProvaLabel = (prova: Prova) => {
   const banca = toText(prova.banca?.sigla || prova.banca?.nome);
-  return `${prova.nome} ${prova.ano ? `(${prova.ano})` : ''}${banca ? ` - ${banca}` : ''}`.trim();
+  const name = toText(prova.nome);
+  const year = Number(prova.ano || 0);
+  const shouldShowYear = year > 0 && !new RegExp(`(^|\\D)${year}(\\D|$)`).test(name);
+  const normalizedName = name.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const normalizedBanca = banca.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const shouldShowBanca = Boolean(banca) && !normalizedName.includes(normalizedBanca);
+  return `${name}${shouldShowYear ? ` (${year})` : ''}${shouldShowBanca ? ` - ${banca}` : ''}`.trim();
 };
 
 /**

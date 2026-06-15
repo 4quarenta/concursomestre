@@ -14,6 +14,7 @@ import { CheckCircle2, SlidersHorizontal, Trophy, Zap } from 'lucide-react';
 import type { GamificationRuleSettings, GamificationSettings } from '@types';
 import { normalizeGamificationSettings } from '@constants/gamificationNotificationSettings';
 import {
+  ADMIN_FIELD_CLASS,
   ADMIN_MUTED_SURFACE_CLASS,
   ADMIN_PAGE_PANEL_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
@@ -46,6 +47,12 @@ const formatReputation = (value?: number) => {
   const reputation = Number(value || 0);
   if (reputation === 0) return 'Sem reputacao';
   return reputation > 0 ? `+${reputation} reputacao` : `${reputation} reputacao`;
+};
+
+const normalizePositiveInteger = (value: string, fallback = 0) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.round(parsed));
 };
 
 const TogglePill = ({ enabled }: { enabled: boolean }) => (
@@ -90,6 +97,15 @@ const AdminGamificationSettingsSection = ({
       ...normalizedSettings,
       rules: normalizedSettings.rules.map((rule) => (
         rule.key === ruleKey ? { ...rule, enabled: !rule.enabled } : rule
+      )),
+    });
+  };
+
+  const updateRule = (ruleKey: string, patch: Partial<GamificationRuleSettings>) => {
+    emitChange({
+      ...normalizedSettings,
+      rules: normalizedSettings.rules.map((rule) => (
+        rule.key === ruleKey ? { ...rule, ...patch } : rule
       )),
     });
   };
@@ -167,11 +183,9 @@ const AdminGamificationSettingsSection = ({
 
           <div className="divide-y divide-slate-200 dark:divide-slate-800">
             {rules.map((rule) => (
-              <button
+              <div
                 key={rule.key}
-                type="button"
-                onClick={() => toggleRule(rule.key)}
-                className="grid w-full gap-4 px-4 py-4 text-left transition-colors hover:bg-slate-50 md:grid-cols-[minmax(0,1fr)_160px_140px_92px] md:items-center dark:hover:bg-slate-950/60"
+                className="grid gap-4 px-4 py-4 md:grid-cols-[minmax(0,1fr)_260px_170px_100px] md:items-center"
               >
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -182,19 +196,61 @@ const AdminGamificationSettingsSection = ({
                   </div>
                   <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{rule.description}</p>
                 </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">XP</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={rule.xp}
+                      onChange={(event) => updateRule(rule.key, { xp: normalizePositiveInteger(event.target.value, rule.xp) })}
+                      className={`mt-1 w-full ${ADMIN_FIELD_CLASS}`}
+                    />
+                  </label>
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Max.</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={rule.maxXp ?? ''}
+                      placeholder="-"
+                      onChange={(event) => updateRule(rule.key, {
+                        maxXp: event.target.value.trim() === ''
+                          ? undefined
+                          : normalizePositiveInteger(event.target.value, rule.maxXp || rule.xp),
+                      })}
+                      className={`mt-1 w-full ${ADMIN_FIELD_CLASS}`}
+                    />
+                  </label>
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Rep.</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={rule.reputation ?? 0}
+                      onChange={(event) => updateRule(rule.key, { reputation: normalizePositiveInteger(event.target.value, rule.reputation || 0) })}
+                      className={`mt-1 w-full ${ADMIN_FIELD_CLASS}`}
+                    />
+                  </label>
+                </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">XP</p>
                   <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{formatXp(rule)}</p>
-                </div>
-                <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Repeticao</p>
                   <p className="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">{rule.repeatability || '-'}</p>
                   <p className="mt-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500">{formatReputation(rule.reputation)}</p>
                 </div>
                 <div className="md:text-right">
-                  <TogglePill enabled={normalizedSettings.enabled && rule.enabled} />
+                  <button
+                    type="button"
+                    onClick={() => toggleRule(rule.key)}
+                    className="inline-flex rounded-sm focus:outline-none focus:ring-2 focus:ring-sky-700 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                    aria-pressed={normalizedSettings.enabled && rule.enabled}
+                  >
+                    <TogglePill enabled={normalizedSettings.enabled && rule.enabled} />
+                  </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </div>

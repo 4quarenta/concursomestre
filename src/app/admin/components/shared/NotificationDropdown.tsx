@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 
 export interface AdminNotificationItem {
   id: string | number;
@@ -26,6 +26,7 @@ export interface AdminNotificationItem {
 interface NotificationDropdownProps {
   notifications: AdminNotificationItem[];
   markNotificationAsRead: (id: string | number) => void;
+  markAllNotificationsAsRead?: () => void;
   unreadCount: number;
   setIsNotifOpen: (value: boolean) => void;
   navigate: (path: string) => void;
@@ -38,6 +39,7 @@ interface NotificationDropdownProps {
 export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   notifications,
   markNotificationAsRead,
+  markAllNotificationsAsRead,
   unreadCount,
   setIsNotifOpen,
   navigate,
@@ -49,9 +51,17 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
       <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
         <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">Notificações</h3>
         {unreadCount > 0 && (
-          <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full">
-            {unreadCount} novas
-          </span>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              markAllNotificationsAsRead?.();
+            }}
+            className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
+          >
+            <Check size={10} />
+            Marcar vistas
+          </button>
         )}
       </div>
 

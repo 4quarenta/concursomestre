@@ -97,4 +97,24 @@ describe('resolveProfileSubscriptionTimeline', () => {
     expect(timeline.remainingDays).toBe(1);
     expect(timeline.progressPercent).toBe(99);
   });
+
+  it('marks an expired quarterly cycle as fully used after the end date', () => {
+    const timeline = resolveProfileSubscriptionTimeline({
+      now: new Date('2026-06-08T12:00:00-03:00'),
+      subscription: buildSubscription({
+        plan: eliteQuarterlyPlan,
+        current_period_start: '2026-02-24 09:00:00',
+        current_period_end: '2026-05-24 09:00:00',
+        created_at: '2026-02-24 09:00:00',
+        total_installments: 3,
+        paid_installments: 2,
+        recurring_amount: 33.27,
+      }),
+    });
+
+    expect(timeline.totalDays).toBe(89);
+    expect(timeline.usedDays).toBe(89);
+    expect(timeline.remainingDays).toBe(0);
+    expect(timeline.progressPercent).toBe(100);
+  });
 });

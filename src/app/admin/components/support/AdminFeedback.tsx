@@ -48,6 +48,11 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const FEEDBACK_REPLY_TEMPLATES: Record<string, Array<{ label: string; message: string }>> = {
+  'platform-rating': [
+    { label: 'Avaliacao recebida', message: 'Obrigado por avaliar a plataforma. Seu feedback ajuda a direcionar as proximas melhorias.' },
+    { label: 'Avaliacao em analise', message: 'Recebemos sua avaliacao e ela esta em analise pela equipe.' },
+    { label: 'Agradecimento publico', message: 'Obrigado pelo depoimento. Se aprovado, ele podera aparecer nas areas publicas da plataforma.' },
+  ],
   bug: [
     { label: 'Bug em analise', message: 'Recebemos o bug e ele ja esta em analise pelo time tecnico.' },
     { label: 'Correcao aplicada', message: 'Ajuste concluido. Se ainda houver erro, envie mais contexto por esta conversa.' },
@@ -116,8 +121,12 @@ const isPlatformRatingFeedback = (item: AdminFeedbackThread) => (
   || ['platform-rating', 'platform_rating', 'testimonial', 'rating'].includes(String(item.type || ''))
 );
 
+const getEffectiveFeedbackType = (item: AdminFeedbackThread) => (
+  isPlatformRatingFeedback(item) ? 'platform-rating' : String(item.type || 'other')
+);
+
 const getFeedbackTypeLabel = (item: AdminFeedbackThread) => (
-  isPlatformRatingFeedback(item) ? 'Avaliacao' : (TYPE_LABELS[item.type] || item.type)
+  TYPE_LABELS[getEffectiveFeedbackType(item)] || getEffectiveFeedbackType(item)
 );
 
 export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
@@ -188,11 +197,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
         return false;
       }
 
-      if (typeFilter !== 'all' && (
-        typeFilter === 'platform-rating'
-          ? !isPlatformRatingFeedback(item)
-          : item.type !== typeFilter
-      )) {
+      if (typeFilter !== 'all' && getEffectiveFeedbackType(item) !== typeFilter) {
         return false;
       }
 
@@ -345,9 +350,13 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
               className={`${ADMIN_FIELD_CLASS} min-w-[180px]`}
             >
               <option value="all">{mode === 'threads' ? 'Todos os contextos' : 'Todos os tipos'}</option>
-              {Object.entries(TYPE_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
+              <option value="platform-rating">Avaliacao</option>
+              <option value="bug">Bug</option>
+              <option value="suggestion">Sugestao</option>
+              <option value="support">Suporte</option>
+              <option value="report">Denuncia</option>
+              <option value="cancellation">Cancelamento</option>
+              <option value="other">Outro</option>
             </select>
           </div>
         </div>
@@ -499,7 +508,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
 
                               <div className="space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
                                 <div className="flex flex-wrap gap-2">
-                                  {(FEEDBACK_REPLY_TEMPLATES[item.type] || FEEDBACK_REPLY_TEMPLATES.support).map((template) => (
+                                  {(FEEDBACK_REPLY_TEMPLATES[getEffectiveFeedbackType(item)] || FEEDBACK_REPLY_TEMPLATES.support).map((template) => (
                                     <button
                                       key={`${item.id}-${template.label}`}
                                       type="button"

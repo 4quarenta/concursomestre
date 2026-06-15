@@ -16,15 +16,16 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@providers/AuthProvider';
-import type { Plan } from '@types';
+import type { Plan, PlanName } from '@types';
 import { planService } from '@services/plans';
-import { calculateSubscriptionProRatedCredit, getConfiguredPlanDisplayName, isPlanEnabledByName, resolvePlanAutoCouponsById, resolvePlanDiscountBadgesByCycle, resolvePlanOffer } from '@services/plans';
+import { calculateSubscriptionProRatedCredit, getCanonicalPlanName, getConfiguredPlanDisplayName, hasActivePlanAccess, isPlanEnabledByName, resolvePlanAutoCouponsById, resolvePlanCycleKey, resolvePlanDiscountBadgesByCycle, resolvePlanOffer } from '@services/plans';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { PlanCard } from './components/PlanCard';
 import { useToast } from '@providers/ToastProvider';
 import { ArrowLeft, ArrowRight, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { buildProfilePath } from '../profile/profileNavigation';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
 
 const BILLING_CYCLE_OPTIONS = [
     { key: 'monthly', label: 'Mensal' },
@@ -33,6 +34,34 @@ const BILLING_CYCLE_OPTIONS = [
 ] as const;
 
 type BillingCycle = typeof BILLING_CYCLE_OPTIONS[number]['key'];
+
+const PLAN_DISPLAY_ORDER: Record<PlanName, number> = {
+    Gratuito: 0,
+    Essencial: 1,
+    Pro: 2,
+    Elite: 3,
+};
+
+const getCatalogPlanName = (plan: Plan): PlanName => plan.canonical_name || getCanonicalPlanName(plan.name);
+
+const planNameMatchesCycle = (plan: Plan, cycle: BillingCycle): boolean => {
+    const normalizedName = String(plan.name || '').toLowerCase();
+
+    if (cycle === 'monthly') return normalizedName.includes('mensal');
+    if (cycle === 'quarterly') return normalizedName.includes('trimestral');
+    return normalizedName.includes('anual');
+};
+
+const shouldReplaceVisiblePlan = (current: Plan, candidate: Plan, cycle: BillingCycle): boolean => {
+    const candidateMatchesCycle = planNameMatchesCycle(candidate, cycle);
+    const currentMatchesCycle = planNameMatchesCycle(current, cycle);
+
+    if (candidateMatchesCycle !== currentMatchesCycle) {
+        return candidateMatchesCycle;
+    }
+
+    return Number(candidate.id || 0) > Number(current.id || 0);
+};
 
 const PlansPage: React.FC = () => {
     const { currentUser } = useAuth();
@@ -77,24 +106,50 @@ const PlansPage: React.FC = () => {
     }, [plans, systemSettings.planDetails]);
 
     const filteredPlans = useMemo(() => {
-        const visiblePlans = plans.filter((plan) => {
-            if (!isPlanEnabledByName(plan.name, systemSettings.planDetails)) return false;
-            if (plan.price === 0) return true;
+        const visiblePlansByKey = new Map<string, Plan>();
 
-            const intervalUnit = String(plan.interval_unit || '').toLowerCase();
-            const intervalCount = Number(plan.interval_count || 1);
-            const isMonthly = intervalUnit === 'month' && intervalCount === 1;
-            const isQuarterly = intervalUnit === 'month' && intervalCount === 3;
-            const isAnnual = intervalUnit === 'year' || (intervalUnit === 'month' && intervalCount === 12);
-            const isCustomShortCycle = intervalUnit === 'day' || intervalUnit === 'week';
+        plans.forEach((plan) => {
+            const canonicalName = getCatalogPlanName(plan);
+            const price = Number(plan.price || 0);
+            const cycleKey = resolvePlanCycleKey(plan);
+            const isCustomShortCycle = plan.interval_unit === 'day' || plan.interval_unit === 'week';
+            const isFreePlan = canonicalName === 'Gratuito' && price <= 0;
 
-            if (billingCycle === 'monthly') return isMonthly || isCustomShortCycle;
-            if (billingCycle === 'quarterly') return isQuarterly;
-            if (billingCycle === 'annual') return isAnnual;
-            return false;
+            if (!isPlanEnabledByName(canonicalName, systemSettings.planDetails)) return;
+            if (canonicalName !== 'Gratuito' && price <= 0) return;
+
+            if (isFreePlan) {
+                const key = 'Gratuito:free';
+                if (!visiblePlansByKey.has(key)) {
+                    visiblePlansByKey.set(key, plan);
+                }
+                return;
+            }
+
+            if (isCustomShortCycle) {
+                if (billingCycle !== 'monthly') return;
+
+                const key = `${canonicalName}:short:${plan.id}`;
+                visiblePlansByKey.set(key, plan);
+                return;
+            }
+
+            if (!cycleKey || cycleKey !== billingCycle) return;
+
+            const key = `${canonicalName}:${cycleKey}`;
+            const current = visiblePlansByKey.get(key);
+            if (!current || shouldReplaceVisiblePlan(current, plan, cycleKey)) {
+                visiblePlansByKey.set(key, plan);
+            }
         });
 
+        const visiblePlans = Array.from(visiblePlansByKey.values());
+
         return visiblePlans.sort((left, right) => {
+            const leftPlanOrder = PLAN_DISPLAY_ORDER[getCatalogPlanName(left)] ?? 99;
+            const rightPlanOrder = PLAN_DISPLAY_ORDER[getCatalogPlanName(right)] ?? 99;
+            if (leftPlanOrder !== rightPlanOrder) return leftPlanOrder - rightPlanOrder;
+
             const leftPrice = Number(left.price || 0);
             const rightPrice = Number(right.price || 0);
             if (leftPrice !== rightPrice) return leftPrice - rightPrice;
@@ -146,7 +201,7 @@ const PlansPage: React.FC = () => {
             return;
         }
 
-        const activeSub = currentUser?.subscription?.status === 'active';
+        const activeSub = hasActivePlanAccess(currentUser);
         if (activeSub) {
             const getTier = (name: string) => {
                 const normalized = name.toLowerCase();
@@ -244,7 +299,7 @@ const PlansPage: React.FC = () => {
                             return 1;
                         };
 
-                        const activeSub = currentUser?.subscription?.status === 'active';
+                        const activeSub = hasActivePlanAccess(currentUser);
                         const currentPlanName = currentUser?.subscription?.plan?.name || '';
                         const currentTier = activeSub ? getTier(currentPlanName) : 0;
                         const currentPlanInList = plans.find((currentPlan) => currentPlan.id === currentUser?.subscription?.plan_id);
@@ -267,6 +322,7 @@ const PlansPage: React.FC = () => {
                                 plan={plan}
                                 displayName={planDisplayNames[plan.id]}
                                 offer={planOffersById[plan.id]}
+                                featuresOverride={getPublicPlanFeaturesForPlan(getCatalogPlanName(plan), systemSettings.planEntitlements)}
                                 onSubscribe={handleSubscribe}
                                 isCurrent={isCurrent}
                                 isDisabled={isLower}

@@ -23,7 +23,7 @@ import { hasActivePlanAccess } from '@services/plans/planAccess';
 import { clientLog } from '@services/monitoring/clientLog';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { readApiErrorMessage } from '@services/api';
-import { Address, DiscountCode, Plan, PlanConfig, PlanFeature, PlanName, UserProfile } from '@types';
+import { Address, DiscountCode, Plan, PlanConfig, PlanEntitlements, PlanName, UserProfile } from '@types';
 import { authFlowService } from '@services/auth';
 import { cardsService, type SavedCard } from '@services/billing';
 import { getEnabledStripePaymentMethods } from '@services/payments/stripePaymentMethodsConfig';
@@ -39,6 +39,7 @@ import CheckoutStepTracker from './components/CheckoutStepTracker';
 import useCheckoutSummaryAction from './hooks/useCheckoutSummaryAction';
 import type { CheckoutAuthMode, CheckoutStep } from './types';
 import { buildProfilePath } from '../profile/profileNavigation';
+import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
 
 const getPlanTierScore = (name: string) => {
     const normalized = String(name || '').toLowerCase();
@@ -148,19 +149,12 @@ const isSameBillingMirrorPlan = (
 
 const getActivePlanBenefits = (
     plan: Plan | null,
-    configuredPlanDetails?: Partial<Record<PlanName, PlanConfig>> | null,
+    configuredEntitlements?: Partial<PlanEntitlements> | null,
 ): string[] => {
     if (!plan) return [];
 
     const canonicalPlan = getCanonicalPlanName(plan.name);
-    const configuredFeatures = configuredPlanDetails?.[canonicalPlan]?.features;
-    const sourceFeatures: PlanFeature[] = Array.isArray(configuredFeatures) && configuredFeatures.length > 0
-        ? configuredFeatures
-        : Array.isArray(plan.features)
-            ? plan.features
-            : [];
-
-    return sourceFeatures
+    return getPublicPlanFeaturesForPlan(canonicalPlan, configuredEntitlements, 12)
         .filter((feature) => feature?.included)
         .map((feature) => String(feature?.text || '').trim())
         .filter(Boolean);
@@ -316,11 +310,12 @@ const CheckoutPage: React.FC = () => {
     ), [currentActiveSubscription, numericPlanId]);
     const hasBillingMirrorPlanMatch = useMemo(() => (
         Boolean(
-            plan
+            currentActiveSubscription
+            && plan
             && hasComparablePaidPlanSnapshot
             && isSameBillingMirrorPlan(currentComparablePlanName, currentComparableBillingCycle, plan),
         )
-    ), [currentComparableBillingCycle, currentComparablePlanName, hasComparablePaidPlanSnapshot, plan]);
+    ), [currentActiveSubscription, currentComparableBillingCycle, currentComparablePlanName, hasComparablePaidPlanSnapshot, plan]);
 
     const formatCurrency = (value: number) => `R$ ${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -1465,8 +1460,8 @@ const CheckoutPage: React.FC = () => {
     const checkoutDiscountedCycleAmount = Number(checkoutOffer?.discountedCycleAmount || Math.max(0, checkoutSubtotal - checkoutDiscountAmount));
     const checkoutFinalCycleAmount = Math.max(0, roundCurrency(checkoutDiscountedCycleAmount - checkoutResidualCreditAmount));
     const activePlanBenefits = useMemo(
-        () => getActivePlanBenefits(plan, systemSettings.planDetails),
-        [plan, systemSettings.planDetails],
+        () => getActivePlanBenefits(plan, systemSettings.planEntitlements),
+        [plan, systemSettings.planEntitlements],
     );
     const displayedPlanBenefits = activePlanBenefits.slice(0, 8);
 

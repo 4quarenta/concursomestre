@@ -10,9 +10,11 @@
 */
 
 import React from 'react';
-import { ArrowLeft, CalendarClock, Check, Download, FileCheck2, FileText, Link2, Loader2, Plus, Save, Search, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Check, Download, FileCheck2, FileText, Link2, Loader2, Plus, Save, Search, Sparkles, Trash2, Upload, X } from 'lucide-react';
 import type { ExamFileAttachment, ExamFileKind, Prova } from '@types';
+import { resolveApiResourceUrl } from '@services/api';
 import type { ExamDraftState } from './useAdminExamBankWorkflow';
+import { extractExamNoticeMetadata } from './examNoticeExtractor';
 import {
   ADMIN_FIELD_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
@@ -92,6 +94,26 @@ const TextInput = ({
     onChange={(event) => onChange(event.target.value)}
     placeholder={placeholder}
     className={`h-10 w-full ${ADMIN_FIELD_CLASS}`}
+  />
+);
+
+const TextAreaInput = ({
+  value,
+  onChange,
+  placeholder,
+  rows = 3,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  rows?: number;
+}) => (
+  <textarea
+    value={value}
+    rows={rows}
+    onChange={(event) => onChange(event.target.value)}
+    placeholder={placeholder}
+    className={`min-h-24 w-full resize-y py-2 ${ADMIN_FIELD_CLASS}`}
   />
 );
 
@@ -308,6 +330,9 @@ const AdminExamEditorPage = ({
 }: AdminExamEditorPageProps) => {
   const [creatingTaxonomy, setCreatingTaxonomy] = React.useState<'agency' | 'organization' | null>(null);
   const [uploadingFileKind, setUploadingFileKind] = React.useState<ExamFileKind | null>(null);
+  const [extractingNotice, setExtractingNotice] = React.useState(false);
+  const [noticeExtractionMessage, setNoticeExtractionMessage] = React.useState('');
+  const [localExamFiles, setLocalExamFiles] = React.useState<Partial<Record<ExamFileKind, File>>>({});
 
   const updateDraft = (patch: Partial<ExamDraftState>) => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -318,6 +343,25 @@ const AdminExamEditorPage = ({
       ...current,
       files: updater(current.files || []),
     }));
+  };
+
+  const mergeTextList = (current: string, next: string[]) => {
+    const seen = new Set<string>();
+
+    return [
+      ...String(current || '').split(/\n|;/),
+      ...next,
+    ]
+      .map((item) => item.trim())
+      .filter((item) => {
+        const key = item.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (!key || seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      })
+      .join('\n');
   };
 
   const handlePersistWithPatch = (patch: Partial<ExamDraftState>) => {
@@ -347,7 +391,19 @@ const AdminExamEditorPage = ({
     scheduledAt: draft.scheduledAt,
     banca: { id: Number(draft.bancaId || 0), nome: draft.bancaNome, name: draft.bancaNome, sigla: draft.bancaSigla },
     orgao: { id: Number(draft.orgaoId || 0), nome: draft.orgaoNome, name: draft.orgaoNome, sigla: draft.orgaoSigla },
+    orgaos: (draft.orgaosText || '')
+      .split(/\n|;/)
+      .map((value, index) => ({ id: index === 0 ? Number(draft.orgaoId || 0) : 0, nome: value.trim(), name: value.trim(), sigla: value.trim() }))
+      .filter((item) => item.nome),
     cargo: { id: 0, descricao: draft.cargoDescricao, name: draft.cargoDescricao },
+    cargos: (draft.cargosText || '')
+      .split(/\n|;/)
+      .map((value) => ({ id: 0, descricao: value.trim(), name: value.trim() }))
+      .filter((item) => item.descricao),
+    requisitos: (draft.requisitosText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
+    remuneracoes: (draft.remuneracaoText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
+    conteudoProgramatico: (draft.conteudoProgramaticoText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
+    programmaticContent: (draft.conteudoProgramaticoText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
   } as unknown as Prova);
 
   const publishState = resolveAdminPublishState(publishPreview as unknown as Record<string, unknown>);
@@ -371,10 +427,12 @@ const AdminExamEditorPage = ({
 
   const selectOrganization = (optionId: string) => {
     const option = organizationOptions.find((item) => String(item.id || '') === optionId);
+    const organizationLabel = option ? (getTaxonomySigla(option) || getTaxonomyName(option)) : '';
     updateDraft({
       orgaoId: optionId,
       orgaoSigla: option ? getTaxonomySigla(option) : '',
       orgaoNome: option ? getTaxonomyName(option) : '',
+      orgaosText: organizationLabel ? mergeTextList(draft.orgaosText, [organizationLabel]) : draft.orgaosText,
     });
   };
 
@@ -407,10 +465,12 @@ const AdminExamEditorPage = ({
     try {
       const created = await onCreateOrganization({ name, sigla: draft.orgaoSigla.trim() });
       if (created) {
+        const organizationLabel = getTaxonomySigla(created) || getTaxonomyName(created);
         updateDraft({
           orgaoId: String(created.id || ''),
           orgaoSigla: getTaxonomySigla(created),
           orgaoNome: getTaxonomyName(created),
+          orgaosText: organizationLabel ? mergeTextList(draft.orgaosText, [organizationLabel]) : draft.orgaosText,
         });
       }
     } finally {
@@ -424,8 +484,10 @@ const AdminExamEditorPage = ({
     }
 
     setUploadingFileKind(kind);
+    setNoticeExtractionMessage('');
     try {
       const uploaded = await onUploadExamFile(file, kind);
+      setLocalExamFiles((current) => ({ ...current, [kind]: file }));
       updateDraftFiles((files) => [
         ...files.filter((item) => item.kind !== kind),
         uploaded,
@@ -438,7 +500,70 @@ const AdminExamEditorPage = ({
   };
 
   const removeExamFile = (kind: ExamFileKind) => {
+    setLocalExamFiles((current) => {
+      const next = { ...current };
+      delete next[kind];
+      return next;
+    });
     updateDraftFiles((files) => files.filter((item) => item.kind !== kind));
+  };
+
+  const readNoticeFileForExtraction = async (attachedFile: ExamFileAttachment): Promise<File> => {
+    const localFile = localExamFiles.edital;
+    if (localFile) {
+      return localFile;
+    }
+
+    const response = await fetch(resolveApiResourceUrl(attachedFile.url), { credentials: 'include' });
+    if (!response.ok) {
+      throw new Error('Nao foi possivel abrir o edital anexado.');
+    }
+    const blob = await response.blob();
+    return new File([blob], attachedFile.name || 'edital.pdf', {
+      type: attachedFile.mimeType || blob.type || 'application/pdf',
+    });
+  };
+
+  const handleExtractNoticeMetadata = async (attachedFile?: ExamFileAttachment) => {
+    if (!attachedFile) {
+      setNoticeExtractionMessage('Anexe o edital antes de extrair os dados do concurso.');
+      return;
+    }
+
+    setExtractingNotice(true);
+    setNoticeExtractionMessage('');
+    try {
+      const file = await readNoticeFileForExtraction(attachedFile);
+      const metadata = await extractExamNoticeMetadata(file);
+      setDraft((current) => {
+        const organizationsText = mergeTextList(current.orgaosText || current.orgaoSigla || current.orgaoNome, metadata.organizations);
+        const rolesText = mergeTextList(current.cargosText || current.cargoDescricao, metadata.roles);
+        const primaryOrganization = organizationsText.split(/\n/).find(Boolean) || '';
+        const primaryRole = rolesText.split(/\n/).find(Boolean) || '';
+
+        return {
+          ...current,
+          bancaId: metadata.agency ? '' : current.bancaId,
+          bancaSigla: metadata.agency || current.bancaSigla,
+          bancaNome: metadata.agencyName || current.bancaNome,
+          ano: metadata.year || current.ano,
+          orgaoId: primaryOrganization !== (current.orgaoSigla || current.orgaoNome) ? '' : current.orgaoId,
+          orgaoSigla: primaryOrganization || current.orgaoSigla,
+          orgaoNome: primaryOrganization || current.orgaoNome,
+          orgaosText: organizationsText,
+          cargoDescricao: primaryRole || current.cargoDescricao,
+          cargosText: rolesText,
+          requisitosText: mergeTextList(current.requisitosText, metadata.requirements),
+          remuneracaoText: mergeTextList(current.remuneracaoText, metadata.remunerations),
+          conteudoProgramaticoText: mergeTextList(current.conteudoProgramaticoText, metadata.programmaticContent),
+        };
+      });
+      setNoticeExtractionMessage('Dados do concurso extraidos do edital. Revise os campos antes de publicar.');
+    } catch {
+      setNoticeExtractionMessage('Nao foi possivel extrair os dados do edital.');
+    } finally {
+      setExtractingNotice(false);
+    }
   };
 
   return (
@@ -598,6 +723,53 @@ const AdminExamEditorPage = ({
                 <FieldLabel>Cargo</FieldLabel>
                 <TextInput value={draft.cargoDescricao} onChange={(value) => updateDraft({ cargoDescricao: value })} placeholder="Analista Judiciario" />
               </div>
+              <div className="md:col-span-2 xl:col-span-3">
+                <FieldLabel>Orgaos vinculados</FieldLabel>
+                <TextAreaInput
+                  value={draft.orgaosText}
+                  onChange={(value) => updateDraft({ orgaosText: value })}
+                  placeholder={'PM-PB\nCBM-PB'}
+                />
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Informe um orgao por linha quando a mesma prova servir para mais de um orgao.
+                </p>
+              </div>
+              <div className="md:col-span-2 xl:col-span-3">
+                <FieldLabel>Cargos vinculados</FieldLabel>
+                <TextAreaInput
+                  value={draft.cargosText}
+                  onChange={(value) => updateDraft({ cargosText: value })}
+                  placeholder={'Soldado PM - Combatentes - QPC\nSoldado BM - Combatentes - QBMP'}
+                />
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Informe um cargo por linha quando o edital listar mais de uma aplicacao para a prova.
+                </p>
+              </div>
+              <div className="md:col-span-2">
+                <FieldLabel>Requisitos extraidos do edital</FieldLabel>
+                <TextAreaInput
+                  value={draft.requisitosText}
+                  onChange={(value) => updateDraft({ requisitosText: value })}
+                  placeholder="Escolaridade, CNH, idade minima, registro profissional..."
+                />
+              </div>
+              <div>
+                <FieldLabel>Remuneracao</FieldLabel>
+                <TextAreaInput
+                  value={draft.remuneracaoText}
+                  onChange={(value) => updateDraft({ remuneracaoText: value })}
+                  placeholder={'R$ 3.500,00\nR$ 5.200,00'}
+                />
+              </div>
+              <div className="md:col-span-2 xl:col-span-3">
+                <FieldLabel>Conteudo programatico</FieldLabel>
+                <TextAreaInput
+                  value={draft.conteudoProgramaticoText}
+                  onChange={(value) => updateDraft({ conteudoProgramaticoText: value })}
+                  placeholder="Disciplinas, topicos e assuntos previstos no edital."
+                  rows={6}
+                />
+              </div>
             </div>
           </EditorPanel>
 
@@ -605,6 +777,14 @@ const AdminExamEditorPage = ({
             title="Arquivos da prova"
             description="Anexe ou remova os documentos oficiais usados por esta prova."
           >
+            {extractingNotice || noticeExtractionMessage ? (
+              <div className="mb-4 rounded-sm border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-200">
+                <span className="inline-flex items-center gap-2">
+                  {extractingNotice ? <Loader2 className="animate-spin" size={15} /> : <Sparkles size={15} />}
+                  {extractingNotice ? 'Extraindo dados do edital...' : noticeExtractionMessage}
+                </span>
+              </div>
+            ) : null}
             <div className="grid gap-3 lg:grid-cols-3">
               {EXAM_FILE_CONFIG.map((config) => {
                 const attachedFile = (draft.files || []).find((file) => file.kind === config.kind);
@@ -659,6 +839,17 @@ const AdminExamEditorPage = ({
                         {isUploading ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
                         {attachedFile ? 'Substituir' : 'Adicionar'}
                       </label>
+                      {config.kind === 'edital' ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleExtractNoticeMetadata(attachedFile)}
+                          disabled={isUploading || extractingNotice || !attachedFile}
+                          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-sm border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-950"
+                        >
+                          {extractingNotice ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                          Extrair concurso
+                        </button>
+                      ) : null}
                       {attachedFile ? (
                         <>
                           <a

@@ -217,6 +217,16 @@ describe('admin architecture', () => {
     expect(routeFrame).toContain('GlobalLoader');
   });
 
+  it('marks top-bar notifications as seen when the dropdown is opened', () => {
+    const publicLayout = readFile('src/components/shared/layout/Layout.tsx');
+    const adminTopBar = readFile('src/app/admin/components/shared/AdminTopBar.tsx');
+
+    expect(publicLayout).toContain('markAllNotificationsAsRead(user?.id ? String(user.id) : undefined)');
+    expect(publicLayout).toContain('Nao foi possivel marcar notificacoes como vistas ao abrir o box');
+    expect(adminTopBar).toContain('markAllNotificationsAsRead()');
+    expect(adminTopBar).toContain('Nao foi possivel marcar notificacoes como vistas ao abrir o box');
+  });
+
   it('keeps admin shared limited to shell-layer files', () => {
     const sharedDir = path.resolve(root, 'src/app/admin/components/shared');
     const sharedFiles = fs

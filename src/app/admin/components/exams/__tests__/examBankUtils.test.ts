@@ -10,7 +10,7 @@
 */
 
 import { describe, expect, it } from 'vitest';
-import { normalizeProvaRecord } from '../examBankUtils';
+import { formatProvaLabel, normalizeProvaRecord } from '../examBankUtils';
 
 describe('examBankUtils', () => {
   it('preserves booklet metadata from imported exam metadata_json', () => {
@@ -84,6 +84,42 @@ describe('examBankUtils', () => {
 
     expect(prova?.orgao.nome).toBe('PM-PB');
     expect(prova?.orgaos?.map((orgao) => orgao.nome)).toEqual(['PM-PB', 'CBM-PB']);
+    expect(prova ? formatProvaLabel(prova) : '').toBe('IBFC - 2018 - PM-PB/CBM-PB - SOLDADO');
+  });
+
+  it('preserves notice metadata used by the exam editor', () => {
+    const prova = normalizeProvaRecord({
+      id: 82,
+      nome: 'FGV - 2026 - TJ-SP - Analista',
+      ano: 2026,
+      requisitos: ['Nivel superior em Direito', 'Registro profissional quando exigido'],
+      remuneracoes: ['R$ 8.000,00'],
+      conteudoProgramatico: ['Direito Constitucional', 'Direito Administrativo'],
+      orgaos: ['TJ-SP', 'TRF-3'],
+      cargos: ['Analista Judiciario', 'Tecnico Judiciario'],
+      banca: { id: 1, nome: 'FGV', sigla: 'FGV' },
+      orgao: { id: 2, nome: 'TJ-SP', sigla: 'TJ-SP' },
+      cargo: { id: 3, descricao: 'Analista Judiciario' },
+    });
+
+    expect(prova?.orgaos?.map((orgao) => orgao.nome)).toEqual(['TJ-SP', 'TRF-3']);
+    expect(prova?.cargos?.map((cargo) => cargo.descricao)).toEqual(['Analista Judiciario', 'Tecnico Judiciario']);
+    expect(prova?.requisitos).toEqual(['Nivel superior em Direito', 'Registro profissional quando exigido']);
+    expect(prova?.remuneracoes).toEqual(['R$ 8.000,00']);
+    expect(prova?.conteudoProgramatico).toEqual(['Direito Constitucional', 'Direito Administrativo']);
+  });
+
+  it('does not append the year again when the exam name already includes it', () => {
+    const prova = normalizeProvaRecord({
+      id: 81,
+      nome: 'IBFC - 2018 - PM-PB/CBM-PB - SOLDADO',
+      ano: 2018,
+      banca: { id: 1, nome: 'IBFC', sigla: 'IBFC' },
+      orgao: { id: 2, nome: 'PM-PB', sigla: 'PM-PB' },
+      cargo: { id: 3, descricao: 'SOLDADO' },
+    });
+
+    expect(prova ? formatProvaLabel(prova) : '').not.toContain('(2018)');
   });
 
   it('preserves exam file attachments and legacy URLs', () => {

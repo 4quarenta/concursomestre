@@ -13,6 +13,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Copy, CreditCard, Download, Loader2, Mail, RefreshCcw, TrendingUp, Users } from 'lucide-react';
 import {
   adminService,
+  type AdminBillingRiskRow,
   type AdminFinanceAnalyticsPayload,
   type AdminLeadSegment,
 } from '@services/admin/adminService';
@@ -172,6 +173,7 @@ const AdminFinanceAnalyticsPanel = () => {
   const [payload, setPayload] = useState<AdminFinanceAnalyticsPayload>(EMPTY_PAYLOAD);
   const [segments, setSegments] = useState<AdminLeadSegment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [billingRiskEmailLoadingKey, setBillingRiskEmailLoadingKey] = useState<string | null>(null);
 
   useEffect(() => {
     let isCurrent = true;
@@ -237,8 +239,13 @@ const AdminFinanceAnalyticsPanel = () => {
     },
     {
       label: 'Cobrança em risco',
-      value: `${payload.billingHealth.failedPayments} falha(s)`,
-      helper: `${payload.billingHealth.pastDueSubscribers} em past_due`,
+      value: `${payload.billingHealth.riskRows?.length ?? (payload.billingHealth.failedPayments + payload.billingHealth.pastDueSubscribers)} caso(s)`,
+      helper: [
+        (payload.billingHealth.cardExpiredSubscribers || 0) > 0 ? `${payload.billingHealth.cardExpiredSubscribers} cartao vencido` : null,
+        (payload.billingHealth.cardExpiringSubscribers || 0) > 0 ? `${payload.billingHealth.cardExpiringSubscribers} perto de vencer` : null,
+        (payload.billingHealth.missingCardSubscribers || 0) > 0 ? `${payload.billingHealth.missingCardSubscribers} sem cartao` : null,
+        payload.billingHealth.pastDueSubscribers > 0 ? `${payload.billingHealth.pastDueSubscribers} past_due` : null,
+      ].filter(Boolean).join(' | ') || 'Sem risco ativo',
       icon: AlertTriangle,
     },
   ]), [payload]);
@@ -274,25 +281,34 @@ const AdminFinanceAnalyticsPanel = () => {
     const projectionRiskRows = payload.revenueProjection.items
       .filter((item) => String(item.status || '').toLowerCase() === 'past_due')
       .map((item) => ({
+        userId: item.userId,
         source: 'Past due',
         userName: String(item.userName || '').trim() || 'Usuario sem nome',
         userEmail: String(item.userEmail || '').trim() || '-',
+        planName: item.planName || '-',
+        cardLabel: '',
         lastSignalAt: item.nextBillingAt || item.currentPeriodEnd || null,
         note: `Plano ${item.planName || '-'} • ${item.remainingInstallments || 0} parcela(s) restante(s) • proxima cobranca ${formatDate(item.nextBillingAt || item.currentPeriodEnd || null)}`,
       }));
 
     const segmentRiskRows = (subscriberAtRiskSegment?.items || []).map((item) => ({
+      userId: item.userId,
       source: 'Risco de churn',
       userName: String(item.name || '').trim() || 'Usuario sem nome',
       userEmail: String(item.email || '').trim() || '-',
+      planName: '',
+      cardLabel: '',
       lastSignalAt: item.lastEventAt || null,
       note: String(item.notes || '').trim() || 'Assinante com risco de churn.',
     }));
 
     const uniqueRows = new Map<string, {
+      userId?: string | null;
       source: string;
       userName: string;
       userEmail: string;
+      planName?: string;
+      cardLabel?: string;
       note: string;
       lastSignalAt: string | null;
     }>();
@@ -308,13 +324,43 @@ const AdminFinanceAnalyticsPanel = () => {
 
   const failedPaymentRows = useMemo(() => (
     (paymentFailedSegment?.items || []).map((item) => ({
+      userId: item.userId,
       source: 'Falha de pagamento',
       userName: String(item.name || '').trim() || 'Usuario sem nome',
       userEmail: String(item.email || '').trim() || '-',
+      planName: '',
+      cardLabel: '',
       note: String(item.notes || '').trim() || 'Falha de cobranca identificada.',
       lastSignalAt: item.lastEventAt || null,
     }))
   ), [paymentFailedSegment]);
+
+  const billingRiskRows = useMemo(() => {
+    const apiRows = (payload.billingHealth.riskRows || []).map((row: AdminBillingRiskRow) => ({
+      userId: row.userId,
+      source: row.source || 'Risco de cobranca',
+      userName: String(row.userName || '').trim() || 'Usuario sem nome',
+      userEmail: String(row.userEmail || '').trim() || '-',
+      planName: String(row.planName || '').trim(),
+      cardLabel: String(row.cardLabel || '').trim(),
+      note: String(row.reason || '').trim() || 'Cobranca precisa de acompanhamento.',
+      lastSignalAt: row.lastSignalAt || null,
+      actionLabel: row.actionLabel || 'Enviar email',
+      severity: row.severity || 'warning',
+      canSendEmail: row.canSendEmail !== false,
+    }));
+
+    if (apiRows.length > 0) {
+      return apiRows;
+    }
+
+    return [...failedPaymentRows, ...riskSubscribers].map((row) => ({
+      ...row,
+      actionLabel: 'Enviar email',
+      severity: 'warning',
+      canSendEmail: Boolean(row.userId && row.userEmail && row.userEmail !== '-'),
+    }));
+  }, [failedPaymentRows, payload.billingHealth.riskRows, riskSubscribers]);
 
   const copyVisibleEmails = async () => {
     if (visibleEmails.length === 0) {
@@ -338,6 +384,28 @@ const AdminFinanceAnalyticsPanel = () => {
     } catch (error) {
       clientLog.warn('Failed to export analytics CSV:', error);
       addToast('Não foi possível exportar o CSV agora.', 'error');
+    }
+  };
+
+  const sendBillingRiskEmail = async (row: (typeof billingRiskRows)[number]) => {
+    const userId = String(row.userId || '').trim();
+    if (!userId) {
+      addToast('Este risco nao possui usuario vinculado para envio.', 'warning');
+      return;
+    }
+
+    setBillingRiskEmailLoadingKey(userId);
+    try {
+      await adminService.sendBillingRiskEmail({
+        userId,
+        reason: row.note,
+      });
+      addToast(`Email de regularizacao enviado para ${row.userEmail}.`, 'success');
+    } catch (error) {
+      clientLog.warn('Failed to send billing risk email:', error);
+      addToast('Nao foi possivel enviar o email de regularizacao.', 'error');
+    } finally {
+      setBillingRiskEmailLoadingKey(null);
     }
   };
 
@@ -688,36 +756,67 @@ const AdminFinanceAnalyticsPanel = () => {
         description="Assinantes com falha recente, past_due e sinais de risco para acompanhamento do financeiro."
       >
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left">
+          <table className="w-full min-w-[940px] text-left">
             <thead className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
               <tr>
                 <th className="pb-3 pr-4">Usuário</th>
-                <th className="pb-3 pr-4">Email</th>
-                <th className="pb-3 pr-4">Sinal</th>
-                <th className="pb-3">Último evento</th>
+                <th className="pb-3 pr-4">Plano</th>
+                <th className="pb-3 pr-4">Cartao / sinal</th>
+                <th className="pb-3 pr-4">Por que</th>
+                <th className="pb-3 pr-4">Ultimo evento</th>
+                <th className="pb-3">Acao</th>
               </tr>
             </thead>
             <tbody>
-              {[...failedPaymentRows, ...riskSubscribers].length === 0 ? (
+              {billingRiskRows.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="border-t border-slate-200 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                  <td colSpan={6} className="border-t border-slate-200 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
                     Nenhum usuário em risco no recorte atual.
                   </td>
                 </tr>
               ) : (
-                [...failedPaymentRows, ...riskSubscribers]
+                billingRiskRows
                   .slice(0, 16)
                   .map((row, index) => (
                     <tr key={`${row.userEmail}-${row.userName}-${index}`} className="border-t border-slate-200 dark:border-slate-800">
-                      <td className="py-3 pr-4 text-sm font-medium text-slate-900 dark:text-slate-100">{row.userName}</td>
-                      <td className="py-3 pr-4 text-sm text-slate-600 dark:text-slate-300">{row.userEmail}</td>
                       <td className="py-3 pr-4">
-                        <span className="inline-flex max-w-[360px] items-center gap-2 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
-                          {row.source}: {row.note}
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.userName}</p>
+                        <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{row.userEmail}</p>
+                      </td>
+                      <td className="py-3 pr-4 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        {row.planName || 'Plano nao identificado'}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className={`inline-flex max-w-[240px] items-center gap-2 rounded-sm border px-2 py-1 text-[11px] font-semibold ${
+                          row.severity === 'danger'
+                            ? 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/40 dark:bg-rose-900/20 dark:text-rose-200'
+                            : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200'
+                        }`}
+                        >
+                          {row.cardLabel || row.source}
                         </span>
                       </td>
-                      <td className="py-3 text-sm text-slate-500 dark:text-slate-400">
+                      <td className="py-3 pr-4 text-sm text-slate-600 dark:text-slate-300">
+                        <p className="max-w-[360px] font-medium">{row.note}</p>
+                        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">{row.source}</p>
+                      </td>
+                      <td className="py-3 pr-4 text-sm text-slate-500 dark:text-slate-400">
                         {formatDateTime(row.lastSignalAt)}
+                      </td>
+                      <td className="py-3">
+                        <button
+                          type="button"
+                          onClick={() => sendBillingRiskEmail(row)}
+                          disabled={!row.canSendEmail || billingRiskEmailLoadingKey === row.userId}
+                          className={`${ADMIN_SECONDARY_BUTTON_CLASS} min-w-[150px] justify-center disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {billingRiskEmailLoadingKey === row.userId ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Mail size={14} />
+                          )}
+                          {row.actionLabel || 'Enviar email'}
+                        </button>
                       </td>
                     </tr>
                   ))

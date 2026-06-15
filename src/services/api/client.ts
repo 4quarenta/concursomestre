@@ -13,8 +13,7 @@ import axios from 'axios';
 import { getAccessToken, isAccessTokenExpired, refreshAuthSession } from '@services/auth/session';
 import { registerApiInterceptors } from './interceptors';
 import { ENDPOINTS } from './endpoints';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost/questao-pro-backend/api/';
+import { API_BASE_URL, resolveAbsoluteApiBaseUrl, resolveBackendRootFromApiBaseUrl } from './baseUrl';
 
 export const apiClient = axios.create({
     baseURL: API_BASE_URL,
@@ -31,15 +30,7 @@ export const apiClient = axios.create({
  * @since v1.0.0
  */
 const resolveApiBaseUrl = (): string => {
-    let baseUrl = API_BASE_URL;
-
-    if (!/^https?:\/\//i.test(baseUrl)) {
-        const frontendOrigin = window.location.origin;
-        const backendOrigin = frontendOrigin.replace(':3000', '');
-        baseUrl = `${backendOrigin}${baseUrl.startsWith('/') ? '' : '/'}${baseUrl}`;
-    }
-
-    return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    return resolveAbsoluteApiBaseUrl(API_BASE_URL);
 };
 
 /**
@@ -47,7 +38,7 @@ const resolveApiBaseUrl = (): string => {
  * Ela e usada quando a UI precisa abrir arquivos e assets fora do contrato JSON tradicional.
  * @since v1.0.0
  */
-const resolveBackendRoot = (): string => resolveApiBaseUrl().replace(/\/api\/?$/, '');
+const resolveBackendRoot = (): string => resolveBackendRootFromApiBaseUrl(API_BASE_URL);
 
 /**
  * Converte um recurso relativo da plataforma em URL absoluta do backend.

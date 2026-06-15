@@ -364,6 +364,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [isAppleLoading, setIsAppleLoading] = useState(false);
   const [googleScriptReady, setGoogleScriptReady] = useState(false);
   const [googleScriptFailed, setGoogleScriptFailed] = useState(false);
+  const [googleButtonBlocked, setGoogleButtonBlocked] = useState(false);
   const [facebookScriptReady, setFacebookScriptReady] = useState(false);
   const [facebookScriptFailed, setFacebookScriptFailed] = useState(false);
   const [appleScriptReady, setAppleScriptReady] = useState(false);
@@ -582,6 +583,19 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         metadata: { mode: 'signup' },
       });
       try {
+        const emailDelivery = result.data.emailDelivery;
+        if (typeof window !== 'undefined') {
+          if (emailDelivery?.status === 'failed' || emailDelivery?.status === 'disabled') {
+            window.sessionStorage.setItem('emailConfirmationDelivery', JSON.stringify({
+              email: user?.email || formData.email.trim(),
+              status: emailDelivery.status,
+              message: emailDelivery.message,
+            }));
+          } else {
+            window.sessionStorage.removeItem('emailConfirmationDelivery');
+          }
+        }
+
         await onLogin(buildUserProfile(user), token);
       } catch (sessionError) {
         setError(readApiErrorMessage(sessionError, 'Cadastro realizado, mas não foi possível concluir sua sessão.'));
@@ -822,26 +836,41 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     }
 
     buttonContainer.innerHTML = '';
-    googleIdentity.initialize({
-      client_id: googleClientId,
-      callback: (response: GoogleCredentialResponse) => {
-        void googleCredentialHandlerRef.current(response);
-      },
-      context: isSignup ? 'signup' : 'signin',
-      ux_mode: 'popup',
-      auto_select: false,
-    });
-    googleIdentity.renderButton(buttonContainer, {
-      theme: theme === 'dark' ? 'filled_black' : 'outline',
-      size: 'large',
-      type: 'standard',
-      shape: 'rectangular',
-      text: isSignup ? 'signup_with' : 'signin_with',
-      logo_alignment: 'left',
-      width: Math.min(buttonContainer.clientWidth || 360, 400),
-    });
+    setGoogleButtonBlocked(false);
+
+    try {
+      googleIdentity.initialize({
+        client_id: googleClientId,
+        callback: (response: GoogleCredentialResponse) => {
+          void googleCredentialHandlerRef.current(response);
+        },
+        context: isSignup ? 'signup' : 'signin',
+        ux_mode: 'popup',
+        auto_select: false,
+      });
+      googleIdentity.renderButton(buttonContainer, {
+        theme: theme === 'dark' ? 'filled_black' : 'outline',
+        size: 'large',
+        type: 'standard',
+        shape: 'rectangular',
+        text: isSignup ? 'signup_with' : 'signin_with',
+        logo_alignment: 'left',
+        width: Math.min(buttonContainer.clientWidth || 360, 400),
+      });
+    } catch {
+      window.setTimeout(() => setGoogleButtonBlocked(true), 0);
+    }
+
+    const renderGuard = window.setTimeout(() => {
+      const renderedFrame = buttonContainer.querySelector('iframe');
+      if (!renderedFrame) {
+        setGoogleButtonBlocked(true);
+        buttonContainer.innerHTML = '';
+      }
+    }, 1800);
 
     return () => {
+      window.clearTimeout(renderGuard);
       buttonContainer.innerHTML = '';
       googleIdentity.cancel?.();
     };
@@ -1034,7 +1063,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     if (isForgot) return null;
 
     const socialBusy = isGoogleLoading || isFacebookLoading || isAppleLoading;
-    const isGoogleAvailable = hasGoogleProviderConfigured && googleScriptReady && !googleScriptFailed;
+    const isGoogleAvailable = hasGoogleProviderConfigured && googleScriptReady && !googleScriptFailed && !googleButtonBlocked;
     const isFacebookAvailable = hasFacebookProviderConfigured && facebookScriptReady && !facebookScriptFailed;
     const isAppleAvailable = hasAppleProviderConfigured && appleScriptReady && !appleScriptFailed;
 
@@ -1454,12 +1483,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               </label>
               <div className="relative">
                 <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="email"
-                  required
-                  autoFocus={!isSignup}
-                  value={isForgot ? formData.forgotEmail : formData.email}
-                  onChange={(event) => update(isForgot ? 'forgotEmail' : 'email', event.target.value)}
+                  <input
+                    type="email"
+                    required
+                    autoFocus={!isSignup}
+                    autoComplete="email"
+                    value={isForgot ? formData.forgotEmail : formData.email}
+                    onChange={(event) => update(isForgot ? 'forgotEmail' : 'email', event.target.value)}
                   className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
                   placeholder="exemplo@email.com"
                 />
@@ -1474,6 +1504,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    autoComplete={isSignup ? 'new-password' : 'current-password'}
                     value={formData.password}
                     onChange={(event) => update('password', event.target.value)}
                     className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-12 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"
@@ -1498,6 +1529,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   <input
                     type={showConfirmPassword ? 'text' : 'password'}
                     required
+                    autoComplete="new-password"
                     value={formData.confirmPassword}
                     onChange={(event) => update('confirmPassword', event.target.value)}
                     className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-12 text-sm font-medium outline-none transition focus:border-[#4b28ff] focus:ring-4 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-indigo-950"

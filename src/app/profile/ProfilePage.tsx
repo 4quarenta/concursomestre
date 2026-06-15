@@ -460,6 +460,8 @@ const Profile: React.FC = () => {
     const renewalRequestInFlightRef = React.useRef(false);
     const billingSyncRequestInFlightRef = React.useRef(false);
     const lastBillingSyncAtRef = React.useRef(0);
+    const personalDetailsSectionRef = React.useRef<HTMLDivElement>(null);
+    const pendingPersonalDetailsScrollRef = React.useRef(false);
     const [hasSyncedBillingSnapshot, setHasSyncedBillingSnapshot] = useState(false);
     const [isSyncingBillingSnapshot, setIsSyncingBillingSnapshot] = useState(false);
     const [lawNotes, setLawNotes] = useState<LegalCommentaryStoredNote[]>([]);
@@ -468,7 +470,7 @@ const Profile: React.FC = () => {
     const [isLoadingFavoriteLaws, setIsLoadingFavoriteLaws] = useState(false);
     const [savedQuestionDetails, setSavedQuestionDetails] = useState<Question[]>([]);
     const [isLoadingSavedQuestions, setIsLoadingSavedQuestions] = useState(false);
-    const [profileNowMs, setProfileNowMs] = useState(0);
+    const [profileNowMs, setProfileNowMs] = useState(() => Date.now());
     const shouldLoadQuestionBankForProfile = activeTab === 'notebook' || activeTab === 'saved-questions';
 
     const currentUserKey = React.useMemo(() => {
@@ -820,6 +822,20 @@ const Profile: React.FC = () => {
         setActiveTab(normalizedTab);
     }, [location.pathname, location.search, normalizeProfileTabForAccess, router]);
 
+    const scrollToPersonalDetailsForm = React.useCallback(() => {
+        pendingPersonalDetailsScrollRef.current = true;
+        changeActiveTab('personal');
+
+        window.setTimeout(() => {
+            if (!pendingPersonalDetailsScrollRef.current || !personalDetailsSectionRef.current) {
+                return;
+            }
+
+            personalDetailsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            pendingPersonalDetailsScrollRef.current = false;
+        }, 160);
+    }, [changeActiveTab]);
+
     // Sincronizar aba com parâmetro da URL (?tab=)
     React.useEffect(() => {
         const legacyTab = new URLSearchParams(location.search).get('tab');
@@ -838,6 +854,19 @@ const Profile: React.FC = () => {
 
         return () => window.cancelAnimationFrame(frameId);
     }, [location.pathname, location.search, normalizeProfileTabForAccess, router, params.tab]);
+
+    React.useEffect(() => {
+        if (activeTab !== 'personal' || !pendingPersonalDetailsScrollRef.current) {
+            return;
+        }
+
+        const frameId = window.requestAnimationFrame(() => {
+            personalDetailsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            pendingPersonalDetailsScrollRef.current = false;
+        });
+
+        return () => window.cancelAnimationFrame(frameId);
+    }, [activeTab]);
 
     // Handlers de API para Gerenciamento de Dados
     const primarySavedCardExpiryState = useMemo(() => getCardExpiryState(primarySavedCard), [getCardExpiryState, primarySavedCard]);
@@ -1703,6 +1732,14 @@ const Profile: React.FC = () => {
         : Number(activeSubscription?.next_renewal_amount || subscriptionChargeAmount || 0);
     const nextRenewalDate = activeSubscription?.next_renewal_date || nextChargeReferenceDate;
     const nextRenewalCycleLabel = String(activeSubscription?.next_renewal_cycle_label || subscriptionCycleLabel || 'Mensal');
+    const nextRenewalDateObject = parseSubscriptionDate(nextRenewalDate);
+    const profileNowReferenceMs = profileNowMs;
+    const isNextRenewalOverdue = Boolean(
+        hasActiveSubscription
+        && resolvedAutoRenew
+        && nextRenewalDateObject
+        && nextRenewalDateObject.getTime() < profileNowReferenceMs
+    );
     const nextRenewalPriceSourceLabel = termCommitmentRemaining
         ? 'valor contratado nas parcelas pre-aprovadas'
         : activeSubscription?.next_renewal_price_source === 'auto_coupon'
@@ -1715,14 +1752,18 @@ const Profile: React.FC = () => {
             : `Cobrança ${subscriptionCycleLabel.toLowerCase()}.`;
     const subscriptionHeadline = hasActiveSubscription
         ? (resolvedAutoRenew
-            ? `A próxima renovação está prevista para ${formatDateTimeBR(nextRenewalDate)} por ${formatTransactionAmount(nextRenewalAmount)} no plano ${nextRenewalCycleLabel.toLowerCase()}.`
+            ? (isNextRenewalOverdue
+                ? `A cobrança prevista para ${formatDateTimeBR(nextRenewalDate)} está em atraso e precisa de averiguação financeira. Valor esperado: ${formatTransactionAmount(nextRenewalAmount)} no plano ${nextRenewalCycleLabel.toLowerCase()}.`
+                : `A próxima renovação está prevista para ${formatDateTimeBR(nextRenewalDate)} por ${formatTransactionAmount(nextRenewalAmount)} no plano ${nextRenewalCycleLabel.toLowerCase()}.`)
             : (termCommitmentRemaining
                 ? 'A renovação automática está desligada. O termo atual seguirá até a última parcela contratada e depois será encerrado.'
                 : `A renovação automática está desligada. Seu acesso fica ativo até ${formatDateTimeBR(subscriptionEndDate)}.`))
         : 'Sua assinatura não está ativa no momento.';
     const renewalCardDescription = hasActiveSubscription
         ? (resolvedAutoRenew
-            ? `Ao manter a renovação ativa, a próxima cobrança seguirá o ${nextRenewalPriceSourceLabel}.`
+            ? (isNextRenewalOverdue
+                ? 'Esta cobrança já passou da data prevista. Confira o financeiro, o cartão padrão e a sincronização da assinatura antes de considerar o ciclo regular.'
+                : `Ao manter a renovação ativa, a próxima cobrança seguirá o ${nextRenewalPriceSourceLabel}.`)
             : (termCommitmentRemaining
                 ? 'A renovação esta desligada. As cobrancas atuais seguem ate o fim do termo contratado e depois param automaticamente.'
                 : 'A renovação esta desligada e o acesso termina no fim deste ciclo.'))
@@ -1761,6 +1802,8 @@ const Profile: React.FC = () => {
                 : 'Sem assinatura ativa para cancelamento.');
     const billingStatusLabel = currentUser?.paymentIssue
         ? 'Atencao no pagamento'
+        : isNextRenewalOverdue
+            ? 'Pagamento em atraso'
         : hasActiveSubscription
             ? 'Cobranca em dia'
             : 'Sem cobranca ativa';
@@ -1948,11 +1991,17 @@ const Profile: React.FC = () => {
 
                         <div className="flex flex-wrap gap-2 md:max-w-[340px] md:justify-end">
                             <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-slate-500 dark:border-slate-700 dark:text-slate-300">
-                                <span className={`h-2 w-2 rounded-full ${hasActiveSubscription ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                                {hasActiveSubscription ? 'Assinatura ativa' : 'Assinatura'}
+                                <span className={`h-2 w-2 rounded-full ${isNextRenewalOverdue ? 'bg-amber-500' : hasActiveSubscription ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                                {isNextRenewalOverdue ? 'Cobrança em atraso' : hasActiveSubscription ? 'Assinatura ativa' : 'Assinatura'}
                             </span>
-                            <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] ${hasActiveSubscription ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300' : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
-                                {hasActiveSubscription ? 'Ativa' : 'Inativa'}
+                            <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] ${
+                                isNextRenewalOverdue
+                                    ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
+                                    : hasActiveSubscription
+                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                        : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                            }`}>
+                                {isNextRenewalOverdue ? 'Averiguar' : hasActiveSubscription ? 'Ativa' : 'Inativa'}
                             </span>
                             {hasActiveSubscription && (
                                 <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
@@ -1976,13 +2025,15 @@ const Profile: React.FC = () => {
                         <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/40">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Status</p>
                             <p className="mt-2 text-lg font-black leading-tight text-slate-900 dark:text-slate-100">
-                                {hasPendingRefundRequest ? 'Reembolso em análise' : hasBlockingPaymentIssue ? 'Acesso bloqueado' : hasActiveSubscription ? 'Acesso liberado' : 'Assinatura inativa'}
+                                {hasPendingRefundRequest ? 'Reembolso em análise' : hasBlockingPaymentIssue ? 'Acesso bloqueado' : isNextRenewalOverdue ? 'Pagamento em atraso' : hasActiveSubscription ? 'Acesso liberado' : 'Assinatura inativa'}
                             </p>
                             <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                 {hasPendingRefundRequest
                                     ? 'Sua solicitacao esta em andamento e atualizaremos o histórico assim que houver retorno do gateway.'
                                     : hasBlockingPaymentIssue
                                         ? 'Regularize a forma de pagamento para desbloquear novamente os recursos premium.'
+                                        : isNextRenewalOverdue
+                                            ? 'Há uma cobrança prevista vencida. Verifique o financeiro e a sincronização do gateway.'
                                         : hasActiveSubscription
                                         ? 'Seu acesso premium esta liberado e o ciclo atual segue normalmente.'
                                         : 'Sua assinatura não esta ativa no momento.'}
@@ -2945,7 +2996,7 @@ const Profile: React.FC = () => {
 
         return createPortal(
             <AnimatePresence>
-                <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-[999] overflow-hidden p-2 sm:p-4">
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -2956,19 +3007,23 @@ const Profile: React.FC = () => {
                         className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm"
                     />
 
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.96, y: 16 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.96, y: 16 }}
-                        className="relative z-10 my-auto flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:max-h-[calc(100dvh-2rem)]"
-                    >
+                    <div className="relative z-10 flex h-full min-h-0 items-center justify-center">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.96, y: 16 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.96, y: 16 }}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="platform-rating-modal-title"
+                            className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+                        >
                         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 p-4 dark:border-slate-800 sm:p-6">
                             <div className="space-y-1">
                                 <span className="inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-300">
                                     <MessageSquare size={12} />
                                     Avaliar plataforma
                                 </span>
-                                <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">
+                                <h3 id="platform-rating-modal-title" className="text-lg font-black text-slate-900 dark:text-slate-100">
                                     Avaliar plataforma
                                 </h3>
                                 <p className="max-w-xl text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
@@ -3084,8 +3139,8 @@ const Profile: React.FC = () => {
                                         </span>
                                     )}
                                 </div>
-                                <div className="mt-3 max-h-52 space-y-2 overflow-y-auto pr-1">
-                                    {userPlatformRatings.length > 0 ? userPlatformRatings.slice(0, 4).map((rating) => (
+                                <div className="mt-3 max-h-40 space-y-2 overflow-y-auto pr-1 sm:max-h-52">
+                                    {userPlatformRatings.length > 0 ? userPlatformRatings.map((rating) => (
                                         <article key={rating.id} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                                             <div className="flex flex-wrap items-center justify-between gap-2">
                                                 <div className="flex items-center gap-1 text-amber-500 dark:text-amber-300">
@@ -3104,6 +3159,11 @@ const Profile: React.FC = () => {
                                             <p className="mt-2 line-clamp-3 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
                                                 {rating.details}
                                             </p>
+                                            {rating.created_at ? (
+                                                <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
+                                                    {new Date(rating.created_at).toLocaleString('pt-BR')}
+                                                </p>
+                                            ) : null}
                                         </article>
                                     )) : (
                                         <p className="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-xs font-semibold text-slate-400 dark:border-slate-800 dark:bg-slate-900">
@@ -3132,7 +3192,8 @@ const Profile: React.FC = () => {
                                 </button>
                             </footer>
                         </form>
-                    </motion.div>
+                        </motion.div>
+                    </div>
                 </div>
             </AnimatePresence>,
             document.body
@@ -3404,7 +3465,7 @@ const Profile: React.FC = () => {
                             <p className="text-xs text-indigo-100 mt-0.5">Adicione seu CPF e endereço para agilizar o checkout de materiais e planos.</p>
                         </div>
                     </div>
-                    <button onClick={() => changeActiveTab('personal')} className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 transition-all flex items-center gap-2 shrink-0 active:scale-95">
+                    <button onClick={scrollToPersonalDetailsForm} className="px-4 py-2 bg-white text-indigo-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-50 transition-all flex items-center gap-2 shrink-0 active:scale-95">
                         Completar Agora <ArrowRight size={14} />
                     </button>
                 </div>
@@ -4093,7 +4154,7 @@ const Profile: React.FC = () => {
                )}
 
                {activeTab === 'personal' && (
-                  <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+                  <div ref={personalDetailsSectionRef} className="scroll-mt-24 bg-white dark:bg-slate-900 p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
                       <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-6 transition-colors">Dados Pessoais</h2>
                       <form
                         onSubmit={async (e) => {
@@ -4174,8 +4235,24 @@ const Profile: React.FC = () => {
                             <input name="name" type="text" defaultValue={currentUser.name} className="w-full h-11 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all font-sans" />
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">E-mail de Acesso</label>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase transition-colors">E-mail de Acesso</label>
+                                {currentUser.emailVerified ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                        <CheckCircle2 size={12} /> Confirmado
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                                        <AlertTriangle size={12} /> Pendente
+                                    </span>
+                                )}
+                            </div>
                             <input name="email" type="email" defaultValue={currentUser.email} readOnly className="w-full h-11 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 font-bold text-sm text-slate-500 dark:text-slate-400 outline-none cursor-not-allowed transition-all font-sans" title="Não é possível alterar o email" />
+                            <p className={`text-xs font-semibold leading-relaxed ${currentUser.emailVerified ? 'text-emerald-600 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                                {currentUser.emailVerified
+                                    ? 'Seu e-mail foi confirmado e está apto para recuperar senha, receber avisos e liberar recursos da conta.'
+                                    : 'Seu e-mail ainda não foi confirmado. Confirme para liberar todos os recursos e receber notificações importantes.'}
+                            </p>
                         </div>
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                            <div className="space-y-1.5">

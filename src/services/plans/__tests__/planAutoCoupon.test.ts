@@ -172,9 +172,37 @@ describe('plan auto coupon offers', () => {
     });
 
     expect(couponsByPlanId[19].discountAmount).toBeCloseTo(179.14, 2);
+    expect(offer.originalCycleAmount).toBeCloseTo(658.8, 2);
     expect(offer.discountedMonthlyAmount).toBeCloseTo(9.95, 2);
     expect(offer.discountedCycleAmount).toBeCloseTo(119.4, 2);
-    expect(offer.effectiveDiscountPercent).toBe(60);
+    expect(offer.effectiveDiscountPercent).toBe(82);
+  });
+
+  it('shows configured cycle discounts even without an auto coupon', () => {
+    const plan = {
+      ...eliteAnnualPlan,
+      price: 119.77,
+    } as Plan;
+    const pricing = {
+      monthly: 33.27,
+      quarterly: 50.9,
+      annual: 119.77,
+      quarterlyDiscountPercent: 49,
+      annualDiscountPercent: 70,
+    } as PlanPricing;
+
+    const offer = resolvePlanOffer({
+      plan,
+      pricing: { Elite: pricing },
+      discountAmount: 0,
+    });
+
+    expect(offer.hasDiscount).toBe(true);
+    expect(offer.originalMonthlyAmount).toBeCloseTo(33.27, 2);
+    expect(offer.originalCycleAmount).toBeCloseTo(399.24, 2);
+    expect(offer.discountedMonthlyAmount).toBeCloseTo(9.98, 2);
+    expect(offer.discountedCycleAmount).toBeCloseTo(119.76, 2);
+    expect(offer.effectiveDiscountPercent).toBe(70);
   });
 
   it('ignores expired annual Elite coupons', () => {

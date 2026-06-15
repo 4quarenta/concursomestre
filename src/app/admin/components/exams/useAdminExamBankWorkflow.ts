@@ -42,7 +42,12 @@ export interface ExamDraftState {
   orgaoId: string;
   orgaoSigla: string;
   orgaoNome: string;
+  orgaosText: string;
   cargoDescricao: string;
+  cargosText: string;
+  requisitosText: string;
+  remuneracaoText: string;
+  conteudoProgramaticoText: string;
   files: ExamFileAttachment[];
 }
 
@@ -76,6 +81,26 @@ export const createDraftFromProva = (prova: Prova): ExamDraftState => ({
   orgaoNome: prova.orgao?.nome || prova.orgao?.name || '',
   files: prova.files || prova.examFiles || [],
   cargoDescricao: prova.cargo?.descricao || prova.cargo?.['descrição'] || '',
+  orgaosText: (prova.orgaos || [])
+    .map((orgao) => orgao.sigla || orgao.nome || orgao.name)
+    .filter(Boolean)
+    .join('\n'),
+  cargosText: (prova.cargos || [])
+    .map((cargo) => cargo.descricao || cargo.name || cargo['descrição'])
+    .filter(Boolean)
+    .join('\n'),
+  requisitosText: [
+    ...(Array.isArray(prova.requisitos) ? prova.requisitos : []),
+    ...(Array.isArray(prova.requirements) ? prova.requirements : []),
+  ].filter(Boolean).join('\n'),
+  remuneracaoText: [
+    ...(Array.isArray(prova.remuneracoes) ? prova.remuneracoes : []),
+    ...(Array.isArray(prova.remunerations) ? prova.remunerations : []),
+  ].filter(Boolean).join('\n'),
+  conteudoProgramaticoText: [
+    ...(Array.isArray(prova.conteudoProgramatico) ? prova.conteudoProgramatico : []),
+    ...(Array.isArray(prova.programmaticContent) ? prova.programmaticContent : []),
+  ].filter(Boolean).join('\n'),
 });
 
 export const createEmptyExamDraft = (): ExamDraftState => ({
@@ -98,6 +123,11 @@ export const createEmptyExamDraft = (): ExamDraftState => ({
   orgaoNome: '',
   files: [],
   cargoDescricao: '',
+  orgaosText: '',
+  cargosText: '',
+  requisitosText: '',
+  remuneracaoText: '',
+  conteudoProgramaticoText: '',
 });
 
 /**
@@ -210,10 +240,38 @@ export const useAdminExamBankWorkflow = ({
         sigla: examDraft.orgaoSigla || examDraft.orgaoNome,
         nome: examDraft.orgaoNome || examDraft.orgaoSigla,
       },
+      orgaos: examDraft.orgaosText
+        .split(/\n|;/)
+        .map((value) => value.trim())
+        .filter(Boolean),
       cargo: {
         descricao: examDraft.cargoDescricao,
         ['descrição']: examDraft.cargoDescricao,
       },
+      cargos: examDraft.cargosText
+        .split(/\n|;/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+      roles: examDraft.cargosText
+        .split(/\n|;/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+      requisitos: examDraft.requisitosText
+        .split(/\n/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+      remuneracoes: examDraft.remuneracaoText
+        .split(/\n/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+      conteudoProgramatico: examDraft.conteudoProgramaticoText
+        .split(/\n/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+      programmaticContent: examDraft.conteudoProgramaticoText
+        .split(/\n/)
+        .map((value) => value.trim())
+        .filter(Boolean),
       publishStatus: examDraft.publishStatus,
       visibilityStatus: examDraft.visibilityStatus,
       scheduledAt: examDraft.scheduledAt,

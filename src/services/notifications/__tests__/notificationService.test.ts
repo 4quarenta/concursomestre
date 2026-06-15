@@ -48,14 +48,14 @@ vi.mock('@services/api', () => ({
   },
   ENDPOINTS: {
     notifications: {
-      list: 'notificationsList',
-      markRead: 'notificationsMarkRead',
-      markAllRead: 'notificationsMarkAllRead',
-      delete: 'notificationsDelete',
-      clearAll: 'notificationsClearAll',
-      restore: 'notificationsRestore',
-      permanentDelete: 'notificationsPermanentDelete',
-      send: 'notificationsSend',
+      list: 'notifications/list.php',
+      markRead: 'notifications/mark_read.php',
+      markAllRead: 'notifications/mark_all_read.php',
+      delete: 'notifications/delete.php',
+      clearAll: 'notifications/clear_all.php',
+      restore: 'notifications/restore.php',
+      permanentDelete: 'notifications/permanent-delete.php',
+      send: 'notifications/send.php',
     },
   },
 }));
@@ -84,7 +84,7 @@ describe('notificationService', () => {
 
     const result = await notificationService.getNotifications();
 
-    expect(mockGet).toHaveBeenCalledWith('notificationsList');
+    expect(mockGet).toHaveBeenCalledWith('notifications/list.php');
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('n1');
   });
@@ -94,7 +94,7 @@ describe('notificationService', () => {
 
     const result = await notificationService.markAsRead('n2');
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsMarkRead', {
+    expect(mockPost).toHaveBeenCalledWith('notifications/mark_read.php', {
       notification_id: 'n2',
     });
     expect(result.success).toBe(true);
@@ -105,7 +105,7 @@ describe('notificationService', () => {
 
     const result = await notificationService.markAllAsRead();
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsMarkAllRead');
+    expect(mockPost).toHaveBeenCalledWith('notifications/mark_all_read.php');
     expect(result.success).toBe(true);
   });
 
@@ -114,7 +114,7 @@ describe('notificationService', () => {
 
     const result = await notificationService.clearAll();
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsClearAll');
+    expect(mockPost).toHaveBeenCalledWith('notifications/clear_all.php');
     expect(result.success).toBe(true);
   });
 
@@ -123,7 +123,7 @@ describe('notificationService', () => {
 
     const result = await notificationService.deleteNotification('n3');
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsDelete', {
+    expect(mockPost).toHaveBeenCalledWith('notifications/delete.php', {
       notification_id: 'n3',
     });
     expect(result.success).toBe(true);
@@ -134,7 +134,7 @@ describe('notificationService', () => {
 
     const result = await notificationService.restoreNotification('n4');
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsRestore', {
+    expect(mockPost).toHaveBeenCalledWith('notifications/restore.php', {
       notification_id: 'n4',
     });
     expect(result.success).toBe(true);
@@ -145,7 +145,7 @@ describe('notificationService', () => {
 
     const result = await notificationService.permanentDeleteNotification('n5');
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsPermanentDelete', {
+    expect(mockPost).toHaveBeenCalledWith('notifications/permanent-delete.php', {
       notification_id: 'n5',
     });
     expect(result.success).toBe(true);
@@ -164,7 +164,7 @@ describe('notificationService', () => {
       'https://evidência.local',
     );
 
-    expect(mockPost).toHaveBeenCalledWith('notificationsSend', {
+    expect(mockPost).toHaveBeenCalledWith('notifications/send.php', {
       user_id: 'user-1',
       title: 'Título',
       message: 'Mensagem',

@@ -30,6 +30,8 @@ type ChangelogListPayload = {
   versions?: ChangelogVersion[];
 };
 
+const CHANGELOG_DEV_MARKER_PATTERN = /(?:\[\s*dev\s*\]|\(\s*dev\s*\)|\bdev\b)/i;
+
 const BASELINE_1_0_0_CHANGELOG: ChangelogVersion = {
   id: 100000,
   version: '1.0.0',
@@ -80,11 +82,41 @@ const BASELINE_1_0_0_CHANGELOG: ChangelogVersion = {
   ],
 };
 
+const hasPrivateDevMarker = (value: unknown): boolean => {
+  return CHANGELOG_DEV_MARKER_PATTERN.test(String(value ?? ''));
+};
+
+const sanitizePublicChangelogVersion = (version: ChangelogVersion): ChangelogVersion | null => {
+  if (!version || typeof version !== 'object') {
+    return null;
+  }
+
+  const text = `${version.version} ${version.title} ${version.description}`;
+  if (hasPrivateDevMarker(text)) {
+    return null;
+  }
+
+  const contentJson = Array.isArray(version.content_json) ? version.content_json : [];
+  const content_json = contentJson
+    .filter((category) => !hasPrivateDevMarker(`${category.title} ${category.icon}`))
+    .map((category) => ({
+      ...category,
+      items: Array.isArray(category.items)
+        ? category.items.filter((item) => !hasPrivateDevMarker(item))
+        : [],
+    }))
+    .filter((category) => category.items.length > 0);
+
+  return {
+    ...version,
+    content_json,
+  };
+};
+
 const withBaselineChangelog = (versions: ChangelogVersion[]) => {
-  const publicVersions = versions.filter((version) => {
-    const text = `${version.version} ${version.title} ${version.description}`.toLowerCase();
-    return !text.includes('[dev]') && !text.includes('(dev)');
-  });
+  const publicVersions = versions
+    .map(sanitizePublicChangelogVersion)
+    .filter((version): version is ChangelogVersion => Boolean(version));
 
   const hasBaseline = publicVersions.some((version) => version.version === BASELINE_1_0_0_CHANGELOG.version);
   return hasBaseline ? publicVersions : [BASELINE_1_0_0_CHANGELOG, ...publicVersions];

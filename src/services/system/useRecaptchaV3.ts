@@ -9,10 +9,12 @@ declare global {
   interface Window {
     grecaptcha?: GrecaptchaLike;
     __cmRecaptchaLoaderPromise?: Promise<void>;
+    __cmRecaptchaActiveCount?: number;
   }
 }
 
 const RECAPTCHA_SCRIPT_ID = 'cm-recaptcha-v3-script';
+const RECAPTCHA_BADGE_STYLE_ID = 'cm-recaptcha-badge-visibility-style';
 const RECAPTCHA_SCRIPT_BASE_URL = 'https://www.google.com/recaptcha/api.js';
 
 const readRecaptchaErrorMessage = (error: unknown, fallbackMessage: string) => {
@@ -30,6 +32,50 @@ const buildRecaptchaScriptUrl = (siteKey: string) => {
   });
 
   return `${RECAPTCHA_SCRIPT_BASE_URL}?${params.toString()}`;
+};
+
+const ensureRecaptchaBadgeStyle = () => {
+  if (typeof document === 'undefined' || document.getElementById(RECAPTCHA_BADGE_STYLE_ID)) {
+    return;
+  }
+
+  const style = document.createElement('style');
+  style.id = RECAPTCHA_BADGE_STYLE_ID;
+  style.textContent = `
+    html:not([data-cm-recaptcha-active="1"]) .grecaptcha-badge {
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
+    html[data-cm-recaptcha-active="1"] .grecaptcha-badge {
+      right: 8px !important;
+      bottom: 8px !important;
+      z-index: 30 !important;
+      opacity: 0.72 !important;
+      transform: scale(0.72);
+      transform-origin: right bottom;
+    }
+  `;
+  document.head.appendChild(style);
+};
+
+const setRecaptchaBadgeActive = (isActive: boolean) => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return;
+  }
+
+  window.__cmRecaptchaActiveCount = Math.max(
+    0,
+    Number(window.__cmRecaptchaActiveCount || 0) + (isActive ? 1 : -1),
+  );
+
+  if (window.__cmRecaptchaActiveCount > 0) {
+    document.documentElement.dataset.cmRecaptchaActive = '1';
+    return;
+  }
+
+  delete document.documentElement.dataset.cmRecaptchaActive;
 };
 
 const waitForRecaptchaReady = (): Promise<void> => new Promise((resolve, reject) => {
@@ -130,6 +176,8 @@ export const useRecaptchaV3 = ({ enabled, siteKey }: UseRecaptchaV3Options): Use
     }
 
     let active = true;
+    ensureRecaptchaBadgeStyle();
+    setRecaptchaBadgeActive(true);
     const frameId = window.requestAnimationFrame(() => {
       if (!active) {
         return;
@@ -165,6 +213,7 @@ export const useRecaptchaV3 = ({ enabled, siteKey }: UseRecaptchaV3Options): Use
 
     return () => {
       active = false;
+      setRecaptchaBadgeActive(false);
       window.cancelAnimationFrame(frameId);
     };
   }, [enabled, normalizedSiteKey]);

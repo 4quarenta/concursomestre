@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { SystemSettings } from '@types';
 import { adminService } from '@services/admin/adminService';
+import { readApiErrorMessage } from '@services/api';
 import { useToast } from '@providers/ToastProvider';
 import { useAppConfigStore } from './appConfigStore';
 import { buildSystemSettingsQueryKey } from './appConfigQuery';
@@ -59,8 +60,9 @@ export const useSystemSettingsActions = () => {
     } catch (error) {
       clientLog.error('Failed to persist system settings:', error);
       replaceSystemSettings(lastSavedSystemSettingsRef.current);
-      addToast('Erro ao salvar configuracoes. As alteracoes nao foram persistidas.', 'error');
-      throw error;
+      const message = readApiErrorMessage(error, 'Erro ao salvar configuracoes. As alteracoes nao foram persistidas.');
+      addToast(message, 'error');
+      throw new Error(message);
     } finally {
       isSavingSystemSettingsRef.current = false;
       if (pendingSystemSettingsRef.current) {
@@ -115,8 +117,9 @@ export const useSystemSettingsActions = () => {
     } catch (error) {
       clientLog.error('Failed to persist system settings immediately:', error);
       replaceSystemSettings(lastSavedSystemSettingsRef.current);
-      addToast('Erro ao salvar configuracoes. As alteracoes nao foram persistidas.', 'error');
-      throw error;
+      const message = readApiErrorMessage(error, 'Erro ao salvar configuracoes. As alteracoes nao foram persistidas.');
+      addToast(message, 'error');
+      throw new Error(message);
     } finally {
       isSavingSystemSettingsRef.current = false;
       if (pendingSystemSettingsRef.current) {

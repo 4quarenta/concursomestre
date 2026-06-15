@@ -73,6 +73,7 @@ type AdminUserSubscriptionItem = {
   current_period_start?: string | null;
   current_period_end?: string | null;
   auto_renew?: boolean;
+  payment_provider?: string | null;
 };
 
 type AdminUserTransactionItem = {
@@ -214,15 +215,21 @@ const AdminUserEditorPage = ({
 
   const openAddDaysConfirm = () => {
     const days = Number(daysToAdd || 0);
-    if (!Number.isFinite(days) || days <= 0) return;
+    if (!Number.isFinite(days) || days === 0) return;
+    const isRemovingDays = days < 0;
+    const absoluteDays = Math.abs(days);
+    const isManualGrant = String(activeSubscription?.payment_provider || '').toLowerCase() === 'manual_admin';
+    if (isRemovingDays && !isManualGrant) return;
 
     setConfirmState({
       action: 'add_days',
       actionKey: 'add_days',
-      title: 'Adicionar dias',
-      description: `O periodo ativo sera estendido em ${days} dias.`,
-      confirmLabel: 'Aplicar dias',
-      tone: 'primary',
+      title: isRemovingDays ? 'Remover dias da cortesia' : 'Adicionar dias de cortesia',
+      description: isRemovingDays
+        ? `O periodo de cortesia sera reduzido em ${absoluteDays} dia(s).`
+        : `O periodo ativo sera estendido em ${absoluteDays} dia(s) como cortesia manual.`,
+      confirmLabel: isRemovingDays ? 'Remover dias' : 'Aplicar cortesia',
+      tone: isRemovingDays ? 'danger' : 'primary',
       payload: { days },
     });
   };
@@ -604,10 +611,13 @@ const AdminUserEditorPage = ({
 
                   <div className="mt-5 grid gap-4 md:grid-cols-2">
                     <div className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-2 p-4`}>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Adicionar dias</p>
-                      <input type="number" min={1} value={daysToAdd} onChange={(event) => setDaysToAdd(event.target.value)} className={`${ADMIN_FIELD_CLASS} w-full`} />
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ajustar dias de cortesia</p>
+                      <input type="number" value={daysToAdd} onChange={(event) => setDaysToAdd(event.target.value)} className={`${ADMIN_FIELD_CLASS} w-full`} />
+                      <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                        Use valor positivo para adicionar e negativo para remover dias de uma cortesia.
+                      </p>
                       <button type="button" onClick={openAddDaysConfirm} disabled={!activeSubscription || actionLoading === 'add_days' || !onUserAction} className={`${ADMIN_PRIMARY_BUTTON_CLASS} w-full justify-center`}>
-                        <PlusCircle size={14} /> {actionLoading === 'add_days' ? 'Aplicando...' : 'Aplicar dias'}
+                        <PlusCircle size={14} /> {actionLoading === 'add_days' ? 'Aplicando...' : 'Aplicar ajuste'}
                       </button>
                     </div>
                     <div className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-2 p-4`}>

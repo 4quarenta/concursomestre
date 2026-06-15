@@ -7,6 +7,7 @@ import { useAuth } from '@providers/AuthProvider';
 import { canAccessAdminPanel } from '@services/auth';
 import { getAccessToken } from '@services/auth/session';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
+import { getBenefitRequiredPlan, getPlanTierFromName, hasPlanBenefit, type CanonicalPlanName } from '@services/plans/planAccess';
 import Layout from '@/components/shared/layout/Layout';
 import PageTransition from '@/components/PageTransition';
 import GlobalLoader from '@/components/GlobalLoader';
@@ -18,6 +19,7 @@ import { buildProfilePath } from '../app/profile/profileNavigation';
 import { buildAdminPath, resolveAdminRoute } from '../app/admin/config/adminPageNavigationConfig';
 import { resolveUserPaymentIssue } from '@/services/billing/paymentIssue';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import type { PlanBenefitKey } from '@types';
 
 const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/auth',
@@ -69,6 +71,166 @@ const featureGateForPath = (pathname: string): { key: Parameters<typeof resolveS
   return null;
 };
 
+type RoutePlanGate = {
+  keys: PlanBenefitKey[];
+  label: string;
+  copyKey: PlanBenefitKey;
+};
+
+const planGateForPath = (pathname: string): RoutePlanGate | null => {
+  if (pathname.startsWith('/practice')) return { keys: ['module.practice'], copyKey: 'module.practice', label: 'Pratica de questoes' };
+  if (pathname.startsWith('/lei-comentada')) return { keys: ['module.lei_comentada'], copyKey: 'module.lei_comentada', label: 'Lei comentada' };
+  if (pathname.startsWith('/flashcards')) return { keys: ['module.flashcards'], copyKey: 'module.flashcards', label: 'Flashcards' };
+  if (pathname.startsWith('/simulation')) return { keys: ['module.simulations'], copyKey: 'module.simulations', label: 'Simulados' };
+  if (pathname.startsWith('/x-ray')) return { keys: ['module.xray', 'xray_banca'], copyKey: 'module.xray', label: 'Raio-X Banca' };
+  if (pathname.startsWith('/cronograma')) return { keys: ['module.schedule'], copyKey: 'module.schedule', label: 'Cronograma' };
+  if (pathname.startsWith('/marketplace')) return { keys: ['module.marketplace'], copyKey: 'module.marketplace', label: 'Loja' };
+  return null;
+};
+
+type ModuleUpgradeCopy = {
+  title: string;
+  description: string;
+  benefits: string[];
+};
+
+const MODULE_UPGRADE_COPY: Partial<Record<PlanBenefitKey, ModuleUpgradeCopy>> = {
+  'module.dashboard': {
+    title: 'Desbloqueie o dashboard completo',
+    description: 'Acompanhe seu desempenho, tempo de estudo, sequencia e evolucao por materia em um painel feito para orientar sua rotina.',
+    benefits: [
+      'Desempenho geral com insights',
+      'Evolucao real por periodo',
+      'Tempo total de estudo',
+      'Top materias do recorte atual',
+    ],
+  },
+  'module.practice': {
+    title: 'Desbloqueie a pratica de questoes',
+    description: 'Resolva questoes com filtros, gabarito, estatisticas e ferramentas de estudo de acordo com o seu plano.',
+    benefits: [
+      'Filtros avancados de questoes',
+      'Gabarito e explicacao no card',
+      'Questoes salvas e anotacoes',
+      'Recortes de acertos e erros',
+    ],
+  },
+  'module.lei_comentada': {
+    title: 'Desbloqueie a Lei Comentada',
+    description: 'Estude a lei por artigo com comentarios, jurisprudencia, questoes relacionadas e recursos de revisao vinculados ao texto legal.',
+    benefits: [
+      'Comentarios por artigo',
+      'Jurisprudencia e como cai',
+      'Questoes relacionadas',
+      'Anotacoes e conexoes da lei',
+    ],
+  },
+  'module.flashcards': {
+    title: 'Desbloqueie os flashcards',
+    description: 'Revise pontos importantes com cartoes organizados para memorizacao e revisao rapida.',
+    benefits: [
+      'Flashcards por materia',
+      'Revisao guiada',
+      'Memorizacao ativa',
+      'Rotina de revisao mais leve',
+    ],
+  },
+  'module.simulations': {
+    title: 'Desbloqueie os simulados',
+    description: 'Monte e resolva simulados com controle de tempo, desempenho e historico para treinar em ritmo de prova.',
+    benefits: [
+      'Simulados ativos por plano',
+      'Modo lista e modo prova',
+      'Resultado com desempenho',
+      'Historico de tentativas',
+    ],
+  },
+  'module.xray': {
+    title: 'Desbloqueie o Raio-X Banca',
+    description: 'Entenda como a banca cobra, quais temas mais aparecem e onde concentrar seus estudos com mais objetividade.',
+    benefits: [
+      'Concentracao por materia',
+      'Topicos criticos da banca',
+      'Dificuldade dominante',
+      'Recomendacoes objetivas de estudo',
+    ],
+  },
+  'module.schedule': {
+    title: 'Desbloqueie o cronograma inteligente',
+    description: 'Organize sua rotina com trilhas, prioridades e revisoes pensadas para manter consistencia ate a prova.',
+    benefits: [
+      'Plano de estudos inteligente',
+      'Trilhas automaticas',
+      'Revisao por prioridade',
+      'Organizacao da rotina semanal',
+    ],
+  },
+  'module.marketplace': {
+    title: 'Desbloqueie a loja de materiais',
+    description: 'Acesse materiais, PDFs e produtos educacionais publicados na plataforma conforme a liberacao do seu plano.',
+    benefits: [
+      'Materiais publicados',
+      'Biblioteca de compras',
+      'Downloads protegidos',
+      'Acesso a produtos parceiros',
+    ],
+  },
+};
+
+const getRouteRequiredPlan = (
+  benefitKeys: PlanBenefitKey[],
+  configuredEntitlements: Parameters<typeof getBenefitRequiredPlan>[1],
+): CanonicalPlanName => {
+  return benefitKeys
+    .map((benefitKey) => getBenefitRequiredPlan(benefitKey, configuredEntitlements))
+    .sort((left, right) => getPlanTierFromName(left) - getPlanTierFromName(right))[0] || 'Elite';
+};
+
+const formatRequiredPlanLabel = (requiredPlan: CanonicalPlanName): string => {
+  if (requiredPlan === 'Gratuito') {
+    return 'Plano Gratuito';
+  }
+
+  if (requiredPlan === 'Elite') {
+    return 'Plano Elite';
+  }
+
+  return `Plano ${requiredPlan} ou superior`;
+};
+
+const formatAvailabilityLabel = (requiredPlan: CanonicalPlanName): string => (
+  requiredPlan === 'Elite'
+    ? 'Disponivel no Plano Elite'
+    : `Disponivel a partir do Plano ${requiredPlan}`
+);
+
+const getPlanUpgradePath = (requiredPlan: CanonicalPlanName): string => (
+  requiredPlan === 'Elite' ? '/elite' : `/plans?plan=${requiredPlan.toLowerCase()}`
+);
+
+const buildModuleUpgradeCopy = (planGate: RoutePlanGate, requiredPlan: CanonicalPlanName) => {
+  const baseCopy = MODULE_UPGRADE_COPY[planGate.copyKey] || {
+    title: `Desbloqueie ${planGate.label}`,
+    description: `Libere ${planGate.label} e continue estudando com os recursos disponiveis para o seu plano.`,
+    benefits: [
+      `${planGate.label} completo`,
+      'Recursos liberados pelo seu plano',
+      'Experiencia sem bloqueios artificiais',
+      'Upgrade aplicado automaticamente',
+    ],
+  };
+  const planLabel = formatRequiredPlanLabel(requiredPlan);
+
+  return {
+    eyebrow: formatAvailabilityLabel(requiredPlan),
+    title: baseCopy.title,
+    description: `${baseCopy.description} Este modulo esta disponivel no ${planLabel}.`,
+    benefits: baseCopy.benefits,
+    ctaTo: getPlanUpgradePath(requiredPlan),
+    ctaLabel: requiredPlan === 'Elite' ? 'Assinar Elite' : `Ver ${requiredPlan}`,
+  };
+};
+
 // Legacy hash navigation: traduz URLs antigas com #/ para o roteamento segmentado atual sem quebrar deep link.
 const resolveLegacyHashRoute = (rawHash: string): string | null => {
   if (!rawHash.startsWith('#/')) {
@@ -108,6 +270,7 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   const isMaintenance = resolveSystemFeatureFlag(systemSettings, 'maintenanceMode', false);
   const loginRequired = resolveSystemFeatureFlag(systemSettings, 'loginRequired', false);
   const featureGate = featureGateForPath(pathname);
+  const planGate = planGateForPath(pathname);
   const isPastDueSubscription = currentUser?.subscription?.status === 'past_due';
   const allowAuthLoadingPassThrough = (
     pathname.startsWith('/auth')
@@ -278,7 +441,36 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
   let framedChildren: React.ReactNode = children;
 
   if (featureGate && !canAccessAdmin && !resolveSystemFeatureFlag(systemSettings, featureGate.key)) {
-    framedChildren = <ModuleAccessFallback description={`O modulo ${featureGate.label} nao esta disponivel para o seu perfil.`} />;
+    framedChildren = (
+      <ModuleAccessFallback
+        tone="disabled"
+        eyebrow="Modulo indisponivel"
+        title={`${featureGate.label} indisponivel`}
+        description={`O modulo ${featureGate.label} nao esta disponivel no momento.`}
+        ctaTo="/"
+        ctaLabel="Voltar ao inicio"
+      />
+    );
+  }
+
+  if (
+    planGate
+    && !canAccessAdmin
+    && !planGate.keys.some((benefitKey) => hasPlanBenefit(currentUser, benefitKey, systemSettings.planEntitlements))
+  ) {
+    const requiredPlan = getRouteRequiredPlan(planGate.keys, systemSettings.planEntitlements);
+    const upgradeCopy = buildModuleUpgradeCopy(planGate, requiredPlan);
+
+    framedChildren = (
+      <ModuleAccessFallback
+        eyebrow={upgradeCopy.eyebrow}
+        title={upgradeCopy.title}
+        description={upgradeCopy.description}
+        ctaTo={upgradeCopy.ctaTo}
+        ctaLabel={upgradeCopy.ctaLabel}
+        benefits={upgradeCopy.benefits}
+      />
+    );
   }
 
   if (!pathname.startsWith('/admin') && !pathname.startsWith('/profile')) {

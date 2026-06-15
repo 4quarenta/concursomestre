@@ -341,11 +341,24 @@ const createContextInlineFigureHtml = (
   ].filter(Boolean).join('');
 };
 
+const getContextFigureImageData = (
+  context: ExtractedContextPreview,
+  figure?: NonNullable<ExtractedContextPreview['figures']>[number],
+) => (figure
+  ? (figure.imageData || figure.pageImageData || '')
+  : (context.imageData || context.pageImageData || '')
+);
+
+const getContextPrimaryFigureImageData = (context: ExtractedContextPreview) => (
+  context.imageData || context.pageImageData || ''
+);
+
 const renderContextTextWithInlineFigures = (context: ExtractedContextPreview) => {
   const rawText = asText(context.text);
   if (!rawText) {
-    return context.imageData
-      ? createContextInlineFigureHtml(context, `${context.tempId}-fig-01`, context.imageData)
+    const imageData = getContextFigureImageData(context);
+    return imageData
+      ? createContextInlineFigureHtml(context, `${context.tempId}-fig-01`, imageData)
       : '';
   }
 
@@ -362,7 +375,8 @@ const renderContextTextWithInlineFigures = (context: ExtractedContextPreview) =>
   const replaced = rawText.replace(figureMarkerPattern, (_marker, rawFigureKey) => {
     const figureKey = asText(rawFigureKey);
     const figure = figureByKey.get(figureKey);
-    const figureImageData = figure?.imageData || (!consumedPrimaryImage ? context.imageData : '');
+    const figureImageData = (figure ? getContextFigureImageData(context, figure) : '')
+      || (!consumedPrimaryImage ? getContextPrimaryFigureImageData(context) : '');
     consumedPrimaryImage = consumedPrimaryImage || Boolean(figureImageData);
     return createContextInlineFigureHtml(
       context,
@@ -376,8 +390,9 @@ const renderContextTextWithInlineFigures = (context: ExtractedContextPreview) =>
     return replaced;
   }
 
-  return context.imageData
-    ? [rawText, createContextInlineFigureHtml(context, `${context.tempId}-fig-01`, context.imageData)].join('\n\n')
+  const imageData = getContextFigureImageData(context);
+  return imageData
+    ? [rawText, createContextInlineFigureHtml(context, `${context.tempId}-fig-01`, imageData)].join('\n\n')
     : rawText;
 };
 
@@ -802,6 +817,7 @@ const AdminImportSection = ({
   const [editingStatementIndex, setEditingStatementIndex] = React.useState<number | null>(null);
   const [editingOptionKey, setEditingOptionKey] = React.useState<string | null>(null);
   const [activeOptionCropKey, setActiveOptionCropKey] = React.useState<string | null>(null);
+  const [contextPendingRemoval, setContextPendingRemoval] = React.useState<ExtractedContextPreview | null>(null);
   const [manualQuestionText, setManualQuestionText] = React.useState('');
   const [isParsingManualQuestionText, setIsParsingManualQuestionText] = React.useState(false);
   const metadata = importMetadata || {};
@@ -997,12 +1013,11 @@ const AdminImportSection = ({
     onExtractedContextImageChange(contextId, imageData, file.name);
   };
   const handleRemoveExtractedContext = (context: ExtractedContextPreview) => {
-    const linkedCount = context.questionNumbers.length;
-    const contextTitle = context.title || 'Texto de apoio';
-    const confirmed = typeof window === 'undefined' || window.confirm(
-      `Excluir o contexto "${contextTitle}"?${linkedCount > 0 ? ` Ele sera desvinculado de ${linkedCount} questao(oes).` : ''}`,
-    );
-    if (!confirmed) {
+    setContextPendingRemoval(context);
+  };
+  const confirmRemoveExtractedContext = () => {
+    const context = contextPendingRemoval;
+    if (!context) {
       return;
     }
 
@@ -1013,6 +1028,7 @@ const AdminImportSection = ({
     });
     setEditingContextId((current) => (current === context.tempId ? null : current));
     onExtractedContextRemove(context.tempId);
+    setContextPendingRemoval(null);
   };
   const handleParseManualQuestionText = async () => {
     if (manualTextParseBlocked) {
@@ -1028,6 +1044,7 @@ const AdminImportSection = ({
   };
 
   return (
+    <>
     <div className="space-y-6 animate-slide-up">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-6 lg:col-span-4">
@@ -2361,6 +2378,45 @@ const AdminImportSection = ({
         </div>
       </div>
     </div>
+
+    {contextPendingRemoval && (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-start gap-3">
+            <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
+              <AlertTriangle size={20} />
+            </span>
+            <div>
+              <p className="text-base font-black text-slate-900 dark:text-slate-100">Excluir contexto?</p>
+              <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">
+                O contexto <strong>{contextPendingRemoval.title || 'Texto de apoio'}</strong>
+                {contextPendingRemoval.questionNumbers.length > 0
+                  ? ` sera desvinculado de ${contextPendingRemoval.questionNumbers.length} questao(oes).`
+                  : ' nao possui questoes vinculadas.'}
+              </p>
+            </div>
+          </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setContextPendingRemoval(null)}
+              className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-widest`}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={confirmRemoveExtractedContext}
+              className="inline-flex items-center gap-2 rounded-sm border border-rose-300 bg-rose-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-rose-700 transition-colors hover:bg-rose-100 dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300"
+            >
+              <Trash2 size={13} />
+              Excluir
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 

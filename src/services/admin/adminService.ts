@@ -326,6 +326,27 @@ export interface AdminBillingHealthSnapshot {
   recoveredSubscribers: number;
   refundRequestedCount: number;
   refundedCount: number;
+  cardExpiredSubscribers?: number;
+  cardExpiringSubscribers?: number;
+  missingCardSubscribers?: number;
+  riskRows?: AdminBillingRiskRow[];
+}
+
+export interface AdminBillingRiskRow {
+  riskType: string;
+  severity: 'blocking' | 'warning' | 'attention' | 'error' | string;
+  source: string;
+  reason: string;
+  actionLabel?: string;
+  subscriptionId?: string;
+  userId?: string | null;
+  userName?: string | null;
+  userEmail: string;
+  planName?: string;
+  status?: string;
+  cardLabel?: string;
+  lastSignalAt?: string | null;
+  canSendEmail?: boolean;
 }
 
 export interface AdminAnalyticsAcquisitionCohort {
@@ -1125,6 +1146,10 @@ export const adminService = {
         recoveredSubscribers: 0,
         refundRequestedCount: 0,
         refundedCount: 0,
+        cardExpiredSubscribers: 0,
+        cardExpiringSubscribers: 0,
+        missingCardSubscribers: 0,
+        riskRows: [],
       },
       cohorts: {
         acquisition: [],
@@ -1140,6 +1165,19 @@ export const adminService = {
         items: [],
       },
     });
+  },
+
+  /**
+   * Envia ao aluno um email de regularizacao quando o financeiro detecta risco de cobranca.
+   * @since v1.0.0
+   */
+  async sendBillingRiskEmail(payload: { userId: string; reason?: string }): Promise<{ sent: boolean; email?: string }> {
+    const response = await requestApi<{ sent: boolean; email?: string }>(apiClient.post<ApiResponse<{ sent: boolean; email?: string }>>(
+      `${ENDPOINTS.admin.analyticsFinance}?action=send_billing_risk_email`,
+      payload,
+    ));
+
+    return readApiData(response, { sent: false });
   },
 
   /**
@@ -1180,6 +1218,10 @@ export const adminService = {
             recoveredSubscribers: 0,
             refundRequestedCount: 0,
             refundedCount: 0,
+            cardExpiredSubscribers: 0,
+            cardExpiringSubscribers: 0,
+            missingCardSubscribers: 0,
+            riskRows: [],
           },
         });
       },

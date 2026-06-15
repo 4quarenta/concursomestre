@@ -15,10 +15,13 @@ const joinPolicy = (directives: Record<string, string[]>) => (
     .join('; ')
 );
 
-export const DEFAULT_FRONTEND_API_BASE_URL = 'http://localhost/questao-pro-backend/api/';
+export const LOCAL_FRONTEND_API_BASE_URL = 'http://localhost/questao-pro-backend/api/';
+export const DEFAULT_FRONTEND_API_BASE_URL = process.env.NODE_ENV === 'production'
+  ? '/api/'
+  : LOCAL_FRONTEND_API_BASE_URL;
 
 const DEFAULT_LOCAL_API_BASE_URLS = [
-  DEFAULT_FRONTEND_API_BASE_URL,
+  LOCAL_FRONTEND_API_BASE_URL,
   'http://127.0.0.1/questao-pro-backend/api/',
 ];
 
@@ -42,6 +45,7 @@ export const buildFrontendContentSecurityPolicy = (apiBaseUrl?: string) => {
   const scriptSources = [
     "'self'",
     "'unsafe-inline'",
+    'blob:',
     'https://js.stripe.com',
     'https://checkout.stripe.com',
     'https://accounts.google.com',
@@ -51,6 +55,9 @@ export const buildFrontendContentSecurityPolicy = (apiBaseUrl?: string) => {
     'https://www.gstatic.com',
     'https://www.googletagmanager.com',
     'https://www.google-analytics.com',
+    'https://pagead2.googlesyndication.com',
+    'https://securepubads.g.doubleclick.net',
+    'https://static.cloudflareinsights.com',
   ];
 
   if (!isProduction) {
@@ -71,6 +78,12 @@ export const buildFrontendContentSecurityPolicy = (apiBaseUrl?: string) => {
     'https://www.googleapis.com',
     'https://www.google-analytics.com',
     'https://region1.google-analytics.com',
+    'https://pagead2.googlesyndication.com',
+    'https://securepubads.g.doubleclick.net',
+    'https://googleads.g.doubleclick.net',
+    'https://tpc.googlesyndication.com',
+    'https://*.adtrafficquality.google',
+    'https://cloudflareinsights.com',
   ];
 
   const assetSources = ["'self'", 'data:', 'blob:', 'https:'];
@@ -93,12 +106,12 @@ export const buildFrontendContentSecurityPolicy = (apiBaseUrl?: string) => {
     'form-action': ["'self'", 'https://checkout.stripe.com', 'https://accounts.google.com', 'https://www.facebook.com', 'https://appleid.apple.com'],
     'script-src': scriptSources,
     'script-src-elem': scriptSources,
-    'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com', 'https://accounts.google.com'],
     'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com'],
     'img-src': assetSources,
     'media-src': assetSources,
     'connect-src': connectSources,
-    'frame-src': ["'self'", 'https://js.stripe.com', 'https://checkout.stripe.com', 'https://accounts.google.com', 'https://www.facebook.com', 'https://appleid.apple.com', 'https://www.google.com', 'https://recaptcha.google.com'],
+    'frame-src': ["'self'", 'https://js.stripe.com', 'https://checkout.stripe.com', 'https://accounts.google.com', 'https://www.facebook.com', 'https://appleid.apple.com', 'https://www.google.com', 'https://recaptcha.google.com', 'https://googleads.g.doubleclick.net', 'https://tpc.googlesyndication.com'],
     'worker-src': ["'self'", 'blob:'],
     'manifest-src': ["'self'"],
     'upgrade-insecure-requests': [],

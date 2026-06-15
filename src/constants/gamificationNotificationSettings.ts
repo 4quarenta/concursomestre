@@ -489,6 +489,17 @@ export const DEFAULT_NOTIFICATION_RULES: NotificationRuleSettings[] = [
     enabled: true,
   },
   {
+    key: 'comment_submitted',
+    category: 'Comunidade',
+    label: 'Comentario enviado',
+    trigger: 'Quando o aluno envia um comentario que ainda precisa de moderacao.',
+    title: 'Comentario enviado',
+    message: 'Seu comentario foi enviado para moderacao. Voce ganhou XP pela contribuicao.',
+    type: 'success',
+    link: '/notifications',
+    enabled: true,
+  },
+  {
     key: 'comment_reply',
     category: 'Comunidade',
     label: 'Resposta em comentario',
@@ -898,6 +909,15 @@ export const normalizeNotificationSettings = (
     const incomingRule = incomingByKey.get(defaultRule.key) || {};
     return {
       ...defaultRule,
+      label: typeof incomingRule.label === 'string' ? incomingRule.label : defaultRule.label,
+      trigger: typeof incomingRule.trigger === 'string' ? incomingRule.trigger : defaultRule.trigger,
+      title: typeof incomingRule.title === 'string' ? incomingRule.title : defaultRule.title,
+      message: typeof incomingRule.message === 'string' ? incomingRule.message : defaultRule.message,
+      type: typeof incomingRule.type === 'string' && incomingRule.type.trim() ? incomingRule.type.trim() : defaultRule.type,
+      link: incomingRule.link === null
+        ? null
+        : (typeof incomingRule.link === 'string' ? incomingRule.link.trim() : defaultRule.link),
+      audience: typeof incomingRule.audience === 'string' && incomingRule.audience.trim() ? incomingRule.audience.trim() : defaultRule.audience,
       enabled: normalizeBoolean(incomingRule.enabled, defaultRule.enabled),
     };
   });

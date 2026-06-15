@@ -99,6 +99,7 @@ export interface QuestaoComentario {
   userName: string;
   userAvatar?: string;
   userPlan?: 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
+  userRole?: 'admin' | 'user' | 'partner' | 'staff' | string;
   text: string;
   date: string;
   likes: number;
@@ -167,6 +168,12 @@ export interface Prova {
   cargo: Cargo;
   cargos?: Cargo[];
   roles?: string[];
+  requisitos?: string[];
+  requirements?: string[];
+  remuneracoes?: string[];
+  remunerations?: string[];
+  conteudoProgramatico?: string[];
+  programmaticContent?: string[];
 }
 
 export type ExamFileKind = 'prova' | 'gabarito' | 'edital';
@@ -758,13 +765,51 @@ export interface PlanFeature {
 }
 
 export type PlanBenefitKey =
-  | 'unlimited_questions'
-  | 'basic_statistics'
-  | 'community_comments'
+    | 'module.dashboard'
+    | 'module.practice'
+    | 'module.lei_comentada'
+    | 'module.flashcards'
+    | 'module.simulations'
+    | 'module.xray'
+    | 'module.schedule'
+    | 'module.marketplace'
+    | 'practice.filter_keyword'
+    | 'practice.filter_subject'
+    | 'practice.filter_difficulty'
+    | 'practice.filter_bank'
+    | 'practice.filter_organization'
+    | 'practice.filter_year'
+    | 'practice.filter_level'
+    | 'practice.filter_role'
+    | 'practice.filter_modality'
+    | 'practice.filter_topic'
+    | 'practice.filter_saved'
+    | 'practice.filter_teacher_comment'
+    | 'practice.filter_detailed_analysis'
+    | 'practice.filter_answered_correct'
+    | 'practice.filter_answered_wrong'
+    | 'question.resolve'
+    | 'question.answer_key'
+    | 'question.basic_explanation'
+    | 'question.detailed_analysis'
+    | 'question.save'
+    | 'question.notes'
+    | 'question.share'
+    | 'question.full_statistics'
+    | 'ads.adsense_banner'
+    | 'ads.facebook_banner'
+    | 'ads.between_questions'
+    | 'ads.in_comments'
+    | 'ads.web_interstitial'
+    | 'ads.navigation_pop'
+    | 'ads.internal_sponsorships'
+    | 'ads.reduced'
+    | 'unlimited_questions'
+    | 'basic_statistics'
+    | 'community_comments'
   | 'no_ads'
   | 'teacher_comments'
   | 'detailed_analysis'
-  | 'ai_explanations'
   | 'error_notebook'
   | 'exclusive_simulations'
   | 'xray_banca'
@@ -772,15 +817,17 @@ export type PlanBenefitKey =
   | 'priority_support'
   | 'early_access'
   | 'lei.comentario_basico'
+  | 'lei.doutrina'
   | 'lei.macete'
   | 'lei.como_cai'
   | 'lei.jurisprudencia'
-  | 'lei.frequencia'
+  | 'lei.sumulas'
   | 'lei.questoes'
-  | 'lei.flashcards'
   | 'lei.raiox'
   | 'lei.anotacoes'
-  | 'lei.conexoes';
+  | 'lei.modo_foco'
+  | 'lei.favoritos'
+  | 'lei.solicitar_comentario';
 
 export interface PlanBenefitDefinition {
   key: PlanBenefitKey;
@@ -807,24 +854,26 @@ export type PlanUsageLimitKey =
   | 'comments_per_day'
   | 'simulations_per_week'
   | 'simulations_per_month'
-  | 'ai_explanations_per_day'
   | 'saved_questions_limit'
   | 'lei_related_questions_limit'
-  | 'lei_flashcards_limit'
-  | 'lei_annotations_limit';
+  | 'lei_annotations_limit'
+  | 'lei_favorites_limit'
+  | 'ad_interstitial_answer_interval';
 
 export type LegalCommentaryFeatureKey =
   | 'lei.texto'
   | 'lei.comentario_basico'
+  | 'lei.doutrina'
   | 'lei.macete'
   | 'lei.como_cai'
   | 'lei.jurisprudencia'
-  | 'lei.frequencia'
+  | 'lei.sumulas'
   | 'lei.questoes'
-  | 'lei.flashcards'
   | 'lei.raiox'
   | 'lei.anotacoes'
-  | 'lei.conexoes';
+  | 'lei.modo_foco'
+  | 'lei.favoritos'
+  | 'lei.solicitar_comentario';
 
 export type LegalCommentaryFeatureConfigurableKey = Exclude<LegalCommentaryFeatureKey, 'lei.texto'>;
 
@@ -1035,11 +1084,22 @@ export interface SystemSettings {
     autoRefundEnabled: boolean;
   };
   adsEnabled?: boolean;
+  adsenseTestMode?: boolean;
   adsenseClientId?: string;
+  adsenseTopSlotId?: string;
+  adsenseSidebarSlotId?: string;
+  adsenseBottomSlotId?: string;
+  adPlacementTopEnabled?: boolean;
+  adPlacementSidebarEnabled?: boolean;
+  adPlacementBottomEnabled?: boolean;
+  adPlacementInterstitialEnabled?: boolean;
+  adPlacementNavigationPopEnabled?: boolean;
   facebookAdsId?: string;
   adBannerTop?: string;
   adBannerSidebar?: string;
   adBannerBottom?: string;
+  adInterstitialSlotId?: string;
+  adNavigationPopUrl?: string;
   aiProvider?: 'gemini' | 'openai' | 'auto' | string;
   geminiApiKey?: string;
   hasGeminiApiKeyConfigured?: boolean;
@@ -1077,6 +1137,7 @@ export interface SystemSettings {
   hasSmtpPasswordConfigured?: boolean;
   mailFromAddress?: string;
   mailFromName?: string;
+  emailLogoUrl?: string;
   emailTemplates?: EmailTemplateModel[];
   gamification?: GamificationSettings;
   notificationSettings?: NotificationSettings;

@@ -13,14 +13,15 @@ import Image from 'next/image';
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Bell, BookOpen, CalendarDays, Clock, Cpu, Database, FileText, Flag, Globe, LayoutDashboard, Loader2,
-  Layers, Lock, Mail, Megaphone, MessageSquare, RefreshCcw, Repeat, Save, Settings, ShieldAlert, ShieldCheck,
+  Bell, BookOpen, CalendarDays, Clock, Copy, Cpu, Database, FileText, Flag, Globe, LayoutDashboard, Loader2,
+  CheckCircle2, Layers, Lock, Mail, Megaphone, MessageSquare, RefreshCcw, Repeat, Save, Settings, ShieldAlert, ShieldCheck,
   ShoppingBag, ShoppingCart, Sparkles, Terminal, Trash2, Trophy, Upload, Users, XCircle, Zap,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import type { AdminSecurityIpsPayload, AdminSettingsTestResult } from '@services/admin/adminService';
-import type { EmailTemplateModel, SeoSettings, SystemSettings } from '@types';
+import type { EmailTemplateModel, PlanBenefitKey, PlanUsageLimitKey, SeoSettings, SystemSettings } from '@types';
 import apiClient from '@services/api/client';
+import { readApiErrorMessage } from '@services/api';
 import { adminService } from '@services/admin/adminService';
 import { parseDailyMotivationMarkdown } from '@services/dashboard/dashboardInsightsService';
 import { normalizeEmailTemplates } from '@constants/email/defaultEmailTemplates';
@@ -44,10 +45,20 @@ import {
   ADMIN_PAGE_PANEL_CLASS,
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
+  ADMIN_TAB_BUTTON_ACTIVE_CLASS,
+  ADMIN_TAB_BUTTON_IDLE_CLASS,
   ADMIN_SURFACE_CLASS,
   ADMIN_SURFACE_HEADER_CLASS,
   ADMIN_TEXTAREA_CLASS,
 } from '../shared/adminPanelStyles';
+import {
+  PLAN_BENEFIT_DEFINITIONS,
+  PLAN_USAGE_LIMIT_DEFINITIONS,
+  DEFAULT_PLAN_USAGE_LIMITS,
+  PLAN_ORDER,
+  normalizePlanEntitlements,
+  normalizePlanUsageLimits,
+} from '@constants/subscriptions/planEntitlements';
 
 type AdminToastFn = (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 type AdminSettingsTab = 'general' | 'modules' | 'gamification' | 'notifications' | 'security' | 'integrations' | 'email' | 'email-templates' | 'ads' | 'seo' | 'performance' | 'logs';
@@ -61,6 +72,8 @@ interface AdminIntegrationCheck {
 
 interface AdminIntegrationChecksPayload {
   checks?: Record<string, AdminIntegrationCheck>;
+  critical_count?: number | string;
+  warning_count?: number | string;
 }
 
 type AdminIntegrationsTestResult = Omit<AdminSettingsTestResult, 'data'> & {
@@ -81,6 +94,20 @@ const inputClassName = `w-full ${ADMIN_FIELD_CLASS}`;
 const labelClassName = 'ml-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500';
 const RESET_TABLE_EXCLUSIONS = new Set(['settings', 'system_settings']);
 const DEFAULT_LIMITED_OFFER_EXTENSION_MS = 7 * 24 * 60 * 60 * 1000;
+const AD_PLAN_BENEFIT_KEYS: PlanBenefitKey[] = [
+  'ads.adsense_banner',
+  'ads.facebook_banner',
+  'ads.between_questions',
+  'ads.in_comments',
+  'ads.web_interstitial',
+  'ads.navigation_pop',
+  'ads.internal_sponsorships',
+  'ads.reduced',
+  'no_ads',
+];
+const AD_PLAN_LIMIT_KEYS: PlanUsageLimitKey[] = [
+  'ad_interstitial_answer_interval',
+];
 
 const resolveFutureLimitedOfferEndsAt = (value?: string | null) => {
   const timestamp = new Date(value || '').getTime();
@@ -92,6 +119,11 @@ const resolveFutureLimitedOfferEndsAt = (value?: string | null) => {
 };
 
 const getErrorMessage = (error: unknown, fallback: string) => {
+  const apiMessage = readApiErrorMessage(error, '');
+  if (apiMessage.trim()) {
+    return apiMessage;
+  }
+
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
@@ -260,6 +292,91 @@ const AdminSettings = ({
     setLocalSettings((current) => ({ ...current, [field]: value }));
   };
 
+  const toggleAdPlanEntitlement = (planName: (typeof PLAN_ORDER)[number], benefitKey: PlanBenefitKey) => {
+    setLocalSettings((current) => {
+      const resolvedEntitlements = normalizePlanEntitlements(current.planEntitlements || DEFAULT_SYSTEM_SETTINGS.planEntitlements);
+
+      return {
+        ...current,
+        planEntitlements: {
+          ...resolvedEntitlements,
+          [planName]: {
+            ...resolvedEntitlements[planName],
+            [benefitKey]: {
+              enabled: !resolvedEntitlements[planName][benefitKey].enabled,
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const setAdPlanUsageLimitMode = (
+    planName: (typeof PLAN_ORDER)[number],
+    limitKey: PlanUsageLimitKey,
+    mode: 'limited' | 'unlimited',
+  ) => {
+    setLocalSettings((current) => {
+      const resolvedLimits = normalizePlanUsageLimits(current.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS);
+      const currentLimit = resolvedLimits[planName][limitKey];
+
+      return {
+        ...current,
+        planUsageLimits: {
+          ...resolvedLimits,
+          [planName]: {
+            ...resolvedLimits[planName],
+            [limitKey]: {
+              mode,
+              value: mode === 'limited' ? Math.max(0, Number(currentLimit.value || 1)) : null,
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const setAdPlanUsageLimitValue = (
+    planName: (typeof PLAN_ORDER)[number],
+    limitKey: PlanUsageLimitKey,
+    value: number,
+  ) => {
+    setLocalSettings((current) => {
+      const resolvedLimits = normalizePlanUsageLimits(current.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS);
+
+      return {
+        ...current,
+        planUsageLimits: {
+          ...resolvedLimits,
+          [planName]: {
+            ...resolvedLimits[planName],
+            [limitKey]: {
+              mode: 'limited',
+              value: Math.max(0, Number.isFinite(value) ? value : 0),
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const handleCopyAdsenseMetaTag = async () => {
+    const publisherId = String(localSettings.adsenseClientId || '').trim();
+    if (!publisherId) {
+      addToast('Informe o ID ca-pub antes de copiar a metatag.', 'warning');
+      return;
+    }
+
+    const metaTag = `<meta name="google-adsense-account" content="${publisherId}">`;
+
+    try {
+      await navigator.clipboard.writeText(metaTag);
+      addToast('Metatag do AdSense copiada.', 'success');
+    } catch {
+      addToast('Nao foi possivel copiar automaticamente. Selecione e copie a metatag.', 'warning');
+    }
+  };
+
   const setFeature = (key: string, value: boolean) => {
     setLocalSettings((current) => ({
       ...(current as SystemSettings & Record<string, unknown>),
@@ -332,7 +449,7 @@ const AdminSettings = ({
       setLocalSeoSettings(mergeSeoSettings(persistedSettings.seo));
       addToast('Configuracoes salvas com sucesso.', 'success');
     } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel salvar as configuracoes.'), 'error');
+      console.error('Erro ao salvar configuracoes administrativas:', error);
     } finally {
       setIsSavingSettings(false);
     }
@@ -408,8 +525,20 @@ const AdminSettings = ({
     setIntegrationsTestResult(null);
     try {
       const result = await adminService.testIntegrations(buildSettingsPayload());
-      setIntegrationsTestResult(result as AdminIntegrationsTestResult);
-      addToast(result.message, 'success');
+      const integrationResult = result as AdminIntegrationsTestResult;
+      const checks = Object.values(integrationResult.data?.checks || {});
+      const criticalCount = Math.max(0, Number(integrationResult.data?.critical_count ?? checks.filter((check) => check.status === 'critical').length) || 0);
+      const warningCount = Math.max(0, Number(integrationResult.data?.warning_count ?? checks.filter((check) => check.status === 'warning').length) || 0);
+
+      setIntegrationsTestResult(integrationResult);
+
+      if (criticalCount > 0) {
+        addToast(integrationResult.message || 'Integracoes com falhas criticas.', 'error');
+      } else if (warningCount > 0) {
+        addToast(integrationResult.message || 'Integracoes verificadas com avisos.', 'warning');
+      } else {
+        addToast(integrationResult.message || 'Integracoes verificadas com sucesso.', 'success');
+      }
     } catch (error: unknown) {
       const message = getErrorMessage(error, 'Nao foi possivel validar as integracoes.');
       setIntegrationsTestResult({ message, data: null });
@@ -525,10 +654,87 @@ const AdminSettings = ({
     { id: 'performance', label: 'Performance', icon: Database },
     { id: 'logs', label: 'Logs', icon: FileText },
   ];
-  const integrationChecks = useMemo(
-    () => Object.entries(integrationsTestResult?.data?.checks || {}),
-    [integrationsTestResult],
+  const integrationChecks = useMemo<[string, AdminIntegrationCheck][]>(() => {
+    const statusOrder: Record<string, number> = {
+      critical: 0,
+      warning: 1,
+      ok: 2,
+    };
+
+    return Object.entries(integrationsTestResult?.data?.checks || {})
+      .sort(([, left], [, right]) => {
+        const leftOrder = statusOrder[left.status] ?? 3;
+        const rightOrder = statusOrder[right.status] ?? 3;
+
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+
+        return left.label.localeCompare(right.label, 'pt-BR');
+      });
+  }, [integrationsTestResult]);
+  const integrationCriticalCount = integrationsTestResult
+    ? Math.max(0, Number(integrationsTestResult.data?.critical_count ?? integrationChecks.filter(([, check]) => check.status === 'critical').length) || 0)
+    : 0;
+  const integrationWarningCount = integrationsTestResult
+    ? Math.max(0, Number(integrationsTestResult.data?.warning_count ?? integrationChecks.filter(([, check]) => check.status === 'warning').length) || 0)
+    : 0;
+  const hasIntegrationCriticalIssues = integrationCriticalCount > 0;
+  const hasIntegrationWarnings = integrationWarningCount > 0;
+  const integrationResultToneClassName = hasIntegrationCriticalIssues
+    ? 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/30 dark:bg-rose-900/10 dark:text-rose-200'
+    : hasIntegrationWarnings
+      ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200'
+      : 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/30 dark:bg-emerald-900/10 dark:text-emerald-200';
+  const IntegrationResultIcon = hasIntegrationCriticalIssues ? XCircle : hasIntegrationWarnings ? ShieldAlert : ShieldCheck;
+  const adsensePublisherId = String(localSettings.adsenseClientId || '').trim();
+  const adsenseMetaTag = adsensePublisherId
+    ? `<meta name="google-adsense-account" content="${adsensePublisherId}">`
+    : '<meta name="google-adsense-account" content="ca-pub-0000000000000000">';
+  const adPlacementCards = [
+    {
+      key: 'top',
+      label: 'Topo',
+      description: 'Exibido acima do conteudo principal e em paginas como dashboard, pratica e layout geral.',
+      enabledField: 'adPlacementTopEnabled',
+      slotField: 'adsenseTopSlotId',
+      htmlField: 'adBannerTop',
+      placeholder: 'Slot do banner horizontal',
+    },
+    {
+      key: 'sidebar',
+      label: 'Lateral',
+      description: 'Exibido em areas laterais como marketplace e cards de questoes quando houver espaco.',
+      enabledField: 'adPlacementSidebarEnabled',
+      slotField: 'adsenseSidebarSlotId',
+      htmlField: 'adBannerSidebar',
+      placeholder: 'Slot do retangulo lateral',
+    },
+    {
+      key: 'bottom',
+      label: 'Rodape / inline',
+      description: 'Exibido apos blocos de conteudo, principalmente em cards e paginas longas.',
+      enabledField: 'adPlacementBottomEnabled',
+      slotField: 'adsenseBottomSlotId',
+      htmlField: 'adBannerBottom',
+      placeholder: 'Slot do banner inferior',
+    },
+  ] as const;
+  const enabledAdPlacements = adPlacementCards.filter((placement) => localSettings[placement.enabledField] !== false).length
+    + (localSettings.adPlacementInterstitialEnabled !== false ? 1 : 0)
+    + (localSettings.adPlacementNavigationPopEnabled === true ? 1 : 0);
+  const hasConfiguredAdSource = Boolean(
+    localSettings.adsenseTestMode === true
+    || adsensePublisherId
+    || localSettings.adBannerTop
+    || localSettings.adBannerSidebar
+    || localSettings.adBannerBottom
+    || localSettings.adInterstitialSlotId
+    || localSettings.adNavigationPopUrl
   );
+  const resolvedAdPlanEntitlements = normalizePlanEntitlements(localSettings.planEntitlements || DEFAULT_SYSTEM_SETTINGS.planEntitlements);
+  const resolvedAdPlanUsageLimits = normalizePlanUsageLimits(localSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS);
+  const adPlanLimitDefinitions = PLAN_USAGE_LIMIT_DEFINITIONS.filter((definition) => AD_PLAN_LIMIT_KEYS.includes(definition.key));
 
   return (
     <div className="space-y-5 md:space-y-6">
@@ -887,7 +1093,62 @@ const AdminSettings = ({
             <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>reCAPTCHA v3 secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isRecaptchaSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isRecaptchaSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.recaptchaSecretKey || ''} onChange={(e) => setField('recaptchaSecretKey', e.target.value)} className={inputClassName} placeholder={isRecaptchaSecretConfigured ? 'Digite um novo segredo para substituir o atual' : 'reCAPTCHA v3 secret key'} /></div>
           </div>
           <div className="rounded-sm border border-sky-300 bg-sky-50 p-4 dark:border-sky-900/30 dark:bg-sky-900/10"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Webhook oficial</p><p className="mt-2 break-all text-xs font-mono text-sky-700 dark:text-sky-300">{stripeWebhookUrl}</p></div>
-          {integrationsTestResult && <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{integrationChecks.map(([key, check]) => <div key={key} className={`rounded-sm border p-4 ${check.status === 'ok' ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : check.status === 'critical' ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10' : 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10'}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{check.label}</p><p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{check.status}</p><p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{check.detail}</p></div>)}</div>}
+          {integrationsTestResult && (
+            <div className="space-y-4">
+              <div className={`flex flex-col gap-4 rounded-sm border p-4 md:flex-row md:items-center md:justify-between ${integrationResultToneClassName}`}>
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 rounded-full bg-white/70 p-2 text-current shadow-sm dark:bg-slate-950/30">
+                    <IntegrationResultIcon size={18} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black">{integrationsTestResult.message || 'Integracoes verificadas.'}</p>
+                    <p className="mt-1 text-xs font-semibold opacity-80">
+                      {hasIntegrationCriticalIssues
+                        ? 'Corrija os itens criticos antes de considerar as integracoes prontas para producao.'
+                        : hasIntegrationWarnings
+                          ? 'Nao ha falha critica, mas existem avisos que merecem revisao.'
+                          : 'Todas as integracoes testadas estao saudaveis.'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-black dark:bg-slate-950/30">
+                    {integrationCriticalCount} critica(s)
+                  </span>
+                  <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-black dark:bg-slate-950/30">
+                    {integrationWarningCount} aviso(s)
+                  </span>
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {integrationChecks.map(([key, check]) => (
+                  <div
+                    key={key}
+                    className={`rounded-sm border p-4 ${
+                      check.status === 'ok'
+                        ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10'
+                        : check.status === 'critical'
+                          ? 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10'
+                          : 'border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-900/10'
+                    }`}
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">{check.label}</p>
+                    <p className={`mt-2 text-sm font-black uppercase ${
+                      check.status === 'ok'
+                        ? 'text-emerald-700 dark:text-emerald-300'
+                        : check.status === 'critical'
+                          ? 'text-rose-700 dark:text-rose-300'
+                          : 'text-amber-700 dark:text-amber-300'
+                    }`}
+                    >
+                      {check.status === 'ok' ? 'OK' : check.status === 'critical' ? 'Critico' : 'Aviso'}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{check.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -914,6 +1175,34 @@ const AdminSettings = ({
             </div>
             <input value={localSettings.mailFromAddress || ''} onChange={(e) => setField('mailFromAddress', e.target.value)} className={inputClassName} placeholder="E-mail remetente" />
             <input value={localSettings.mailFromName || ''} onChange={(e) => setField('mailFromName', e.target.value)} className={inputClassName} placeholder="Nome remetente" />
+            <div className="grid gap-4 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 md:col-span-2 md:grid-cols-[minmax(0,1fr)_180px] md:items-center">
+              <div className="space-y-2">
+                <label className={labelClassName}>Logo padrao dos e-mails</label>
+                <input
+                  value={localSettings.emailLogoUrl || ''}
+                  onChange={(event) => setField('emailLogoUrl', event.target.value)}
+                  className={inputClassName}
+                  placeholder="https://concursomestre.com/branding/logo-light.png"
+                />
+                <p className="text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                  Use uma URL publica em HTTPS. Essa imagem substitui o bloco <strong>CM</strong> no cabecalho do modelo padrao dos e-mails.
+                </p>
+              </div>
+              <div className="flex h-24 items-center justify-center rounded-sm border border-slate-200 bg-slate-950 p-4 dark:border-slate-700">
+                {/^https?:\/\/\S+$/i.test(String(localSettings.emailLogoUrl || '').trim()) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={String(localSettings.emailLogoUrl || '').trim()}
+                    alt="Logo dos e-mails"
+                    className="max-h-14 max-w-[140px] object-contain"
+                  />
+                ) : (
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-600 text-sm font-black text-white">
+                    CM
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
           {smtpTestResult && <div className={`rounded-sm border p-4 ${smtpTestResult.ok ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-900/10' : 'border-rose-200 bg-rose-50 dark:border-rose-900/30 dark:bg-rose-900/10'}`}><p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Resultado do teste</p><p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{smtpTestResult.ok ? 'OK' : 'Falhou'}</p><p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{smtpTestResult.message}</p></div>}
         </div>
@@ -924,11 +1213,410 @@ const AdminSettings = ({
           templates={normalizeEmailTemplates(localSettings.emailTemplates)}
           onChange={(emailTemplates) => setField('emailTemplates', emailTemplates)}
           defaultTestEmail={localSettings.mailFromAddress || localSettings.smtpUser || currentUser?.email || ''}
+          emailLogoUrl={localSettings.emailLogoUrl || ''}
           onSendTest={handleTestEmailTemplate}
         />
       )}
 
-      {activeTab === 'ads' && <div className={`grid gap-4 ${ADMIN_PAGE_PANEL_CLASS} md:grid-cols-2`}><input value={localSettings.adsenseClientId || ''} onChange={(e) => setField('adsenseClientId', e.target.value)} className={inputClassName} placeholder="AdSense Client ID" /><input value={localSettings.facebookAdsId || ''} onChange={(e) => setField('facebookAdsId', e.target.value)} className={inputClassName} placeholder="Facebook Ads ID" /><textarea value={localSettings.adBannerTop || ''} onChange={(e) => setField('adBannerTop', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] resize-none font-mono text-xs md:col-span-2`} placeholder="Banner topo (HTML)" /><textarea value={localSettings.adBannerSidebar || ''} onChange={(e) => setField('adBannerSidebar', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] resize-none font-mono text-xs`} placeholder="Banner lateral" /><textarea value={localSettings.adBannerBottom || ''} onChange={(e) => setField('adBannerBottom', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px] resize-none font-mono text-xs`} placeholder="Banner rodape" /></div>}
+      {activeTab === 'ads' && (
+        <div className={`space-y-5 ${ADMIN_PAGE_PANEL_CLASS}`}>
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-700 dark:text-sky-300">Publicidade</p>
+              <h3 className="mt-2 flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100">
+                <Megaphone size={20} />
+                Controle de anuncios
+              </h3>
+              <p className="mt-2 max-w-2xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                Configure a conta AdSense, valide a propriedade do dominio e escolha exatamente onde os banners serao exibidos.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setField('adsEnabled', !localSettings.adsEnabled)}
+              className={`inline-flex items-center justify-center gap-2 rounded-sm border px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition-colors ${
+                localSettings.adsEnabled
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
+                  : 'border-slate-300 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${localSettings.adsEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+              {localSettings.adsEnabled ? 'Anuncios ativos' : 'Anuncios pausados'}
+            </button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className={ADMIN_MUTED_SURFACE_CLASS + ' p-4'}>
+              <p className={labelClassName}>Status</p>
+              <p className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">{enabledAdPlacements}/5</p>
+              <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">posicoes habilitadas</p>
+            </div>
+            <div className={ADMIN_MUTED_SURFACE_CLASS + ' p-4'}>
+              <p className={labelClassName}>Fonte</p>
+              <p className={`mt-3 text-sm font-black ${hasConfiguredAdSource ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                {localSettings.adsenseTestMode === true ? 'Teste Google' : hasConfiguredAdSource ? 'Configurada' : 'Pendente'}
+              </p>
+              <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">AdSense ou HTML customizado</p>
+            </div>
+            <div className={ADMIN_MUTED_SURFACE_CLASS + ' p-4'}>
+              <p className={labelClassName}>Verificacao AdSense</p>
+              <p className={`mt-3 text-sm font-black ${adsensePublisherId ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                {adsensePublisherId ? 'Metatag pronta' : 'Informe o ca-pub'}
+              </p>
+              <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">injetada no head do site</p>
+            </div>
+          </div>
+
+          <div className="rounded-sm border border-sky-200 bg-sky-50 p-4 text-sm font-semibold leading-relaxed text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-100">
+            Quando o publisher ou slot nao estiverem preenchidos, o site usa os IDs oficiais de teste do Google para validar renderizacao sem gerar trafego real. O interstitial respeita o frequency cap do Google e tambem o intervalo configurado em Controle de Acesso por Plano.
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="rounded-sm border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+              Use o modo teste para validar a implementacao. Ele ignora temporariamente os slots reais e HTML customizado, usa os IDs oficiais do Google e adiciona <span className="font-mono">data-adtest=&quot;on&quot;</span>. Desative para veicular os anuncios reais apos a verificacao/aprovacao do AdSense.
+            </div>
+            <button
+              type="button"
+              onClick={() => setField('adsenseTestMode', localSettings.adsenseTestMode !== true)}
+              className={`flex h-full min-h-[96px] flex-col items-start justify-center rounded-sm border p-4 text-left transition-colors ${
+                localSettings.adsenseTestMode === true
+                  ? 'border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100'
+                  : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              <span className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em]">
+                <Sparkles size={14} />
+                Modo teste Google
+              </span>
+              <span className="mt-3 text-2xl font-black">{localSettings.adsenseTestMode === true ? 'Ativo' : 'Desativado'}</span>
+              <span className="mt-1 text-xs font-semibold opacity-80">Forcar criativos oficiais de teste.</span>
+            </button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+            <div className="space-y-4">
+              <div>
+                <label className={labelClassName}>ID da conta AdSense</label>
+                <input
+                  value={localSettings.adsenseClientId || ''}
+                  onChange={(event) => setField('adsenseClientId', event.target.value)}
+                  className={inputClassName}
+                  placeholder="ca-pub-7995648525529106"
+                />
+                <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Use o mesmo valor da metatag exigida pelo Google AdSense.
+                </p>
+              </div>
+              <div>
+                <label className={labelClassName}>Meta/Facebook Ads ID</label>
+                <input
+                  value={localSettings.facebookAdsId || ''}
+                  onChange={(event) => setField('facebookAdsId', event.target.value)}
+                  className={inputClassName}
+                  placeholder="Opcional"
+                />
+              </div>
+            </div>
+
+            <div className={ADMIN_MUTED_SURFACE_CLASS + ' p-4'}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className={labelClassName}>Metatag de propriedade</p>
+                  <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                    O Google usa essa tag para confirmar que o dominio pertence a sua conta.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyAdsenseMetaTag()}
+                  className={`${ADMIN_SECONDARY_BUTTON_CLASS} shrink-0`}
+                >
+                  <Copy size={14} />
+                  Copiar
+                </button>
+              </div>
+              <pre className="mt-4 overflow-x-auto rounded-sm border border-slate-200 bg-white p-3 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+                {adsenseMetaTag}
+              </pre>
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            {adPlacementCards.map((placement) => {
+              const enabled = localSettings[placement.enabledField] !== false;
+              const slotValue = String(localSettings[placement.slotField] || '');
+              const htmlValue = String(localSettings[placement.htmlField] || '');
+
+              return (
+                <div key={placement.key} className={`${ADMIN_MUTED_SURFACE_CLASS} flex flex-col gap-4 p-4`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-900 dark:text-slate-100">{placement.label}</p>
+                      <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">{placement.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setField(placement.enabledField, !enabled)}
+                      className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
+                        enabled
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
+                          : 'border-slate-300 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+                      }`}
+                    >
+                      {enabled ? 'Ativo' : 'Off'}
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className={labelClassName}>Slot AdSense</label>
+                    <input
+                      value={slotValue}
+                      onChange={(event) => setField(placement.slotField, event.target.value)}
+                      className={inputClassName}
+                      placeholder={placement.placeholder}
+                    />
+                  </div>
+
+                  <div className="flex-1">
+                    <label className={labelClassName}>HTML customizado</label>
+                    <textarea
+                      value={htmlValue}
+                      onChange={(event) => setField(placement.htmlField, event.target.value)}
+                      className={`${ADMIN_TEXTAREA_CLASS} min-h-[150px] resize-y font-mono text-xs`}
+                      placeholder="<ins class='adsbygoogle' ...></ins>"
+                    />
+                    <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                      Se preencher HTML, ele substitui o slot automatico dessa posicao.
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">Interstitial GPT</p>
+                  <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                    Out-of-page ad gerenciado pelo Google. No plano gratuito, pode ser disparado apos respostas conforme o intervalo do plano.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setField('adPlacementInterstitialEnabled', localSettings.adPlacementInterstitialEnabled === false)}
+                  className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
+                    localSettings.adPlacementInterstitialEnabled !== false
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
+                      : 'border-slate-300 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+                  }`}
+                >
+                  {localSettings.adPlacementInterstitialEnabled !== false ? 'Ativo' : 'Off'}
+                </button>
+              </div>
+              <div className="mt-4">
+                <label className={labelClassName}>Slot interstitial</label>
+                <input
+                  value={localSettings.adInterstitialSlotId || ''}
+                  onChange={(event) => setField('adInterstitialSlotId', event.target.value)}
+                  className={inputClassName}
+                  placeholder="/6355419/Travel/Europe/France/Paris"
+                />
+                <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                  Se vazio, usa o slot oficial de teste do Google Publisher Tag.
+                </p>
+              </div>
+            </div>
+
+            <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">Pop de navegacao</p>
+                  <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                    Chamada controlada para campanha interna ou patrocinio. Mantida desligada por padrao para preservar experiencia.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setField('adPlacementNavigationPopEnabled', localSettings.adPlacementNavigationPopEnabled !== true)}
+                  className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
+                    localSettings.adPlacementNavigationPopEnabled === true
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
+                      : 'border-slate-300 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+                  }`}
+                >
+                  {localSettings.adPlacementNavigationPopEnabled === true ? 'Ativo' : 'Off'}
+                </button>
+              </div>
+              <div className="mt-4">
+                <label className={labelClassName}>URL do pop</label>
+                <input
+                  value={localSettings.adNavigationPopUrl || ''}
+                  onChange={(event) => setField('adNavigationPopUrl', event.target.value)}
+                  className={inputClassName}
+                  placeholder="/plans"
+                />
+                <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                  Use preferencialmente uma URL interna da plataforma. Navegadores podem bloquear popunder externo.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className={`${ADMIN_MUTED_SURFACE_CLASS} overflow-hidden`}>
+            <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-2`}>
+              <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Publicidade por plano</h4>
+              <p className="max-w-3xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                Defina quem ve anuncios, quem recebe experiencia reduzida e quais planos ficam completamente sem publicidade.
+              </p>
+            </div>
+
+            <div className="space-y-3 p-4">
+              <div className="hidden grid-cols-[minmax(220px,1.5fr)_repeat(4,minmax(92px,1fr))] gap-3 px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 xl:grid">
+                <span>Regra</span>
+                {PLAN_ORDER.map((planName) => (
+                  <span key={`ads-plan-header-${planName}`} className="text-center">{planName}</span>
+                ))}
+              </div>
+
+              {AD_PLAN_BENEFIT_KEYS.map((benefitKey) => {
+                const benefit = PLAN_BENEFIT_DEFINITIONS.find((item) => item.key === benefitKey);
+
+                return (
+                  <div
+                    key={`ads-plan-${benefitKey}`}
+                    className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900/50 xl:grid-cols-[minmax(220px,1.5fr)_repeat(4,minmax(92px,1fr))] xl:items-center"
+                  >
+                    <div>
+                      <div className="text-xs font-black text-slate-900 dark:text-slate-100">{benefit?.label || benefitKey}</div>
+                      <div className="mt-1 break-all text-[10px] font-mono text-slate-400 dark:text-slate-500">{benefitKey}</div>
+                      {benefit?.description ? (
+                        <p className="mt-2 text-[11px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">{benefit.description}</p>
+                      ) : null}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:contents">
+                      {PLAN_ORDER.map((planName) => {
+                        const enabled = resolvedAdPlanEntitlements[planName][benefitKey].enabled;
+
+                        return (
+                          <button
+                            key={`ads-plan-${benefitKey}-${planName}`}
+                            type="button"
+                            onClick={() => toggleAdPlanEntitlement(planName, benefitKey)}
+                            className={`flex min-h-[52px] items-center justify-center gap-2 rounded-sm border px-2 py-2 text-[10px] font-black uppercase tracking-[0.12em] transition-all ${
+                              enabled
+                                ? `${ADMIN_TAB_BUTTON_ACTIVE_CLASS} border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300`
+                                : `${ADMIN_TAB_BUTTON_IDLE_CLASS} text-slate-400 dark:text-slate-500`
+                            }`}
+                            title={`${enabled ? 'Desativar' : 'Ativar'} ${benefit?.label || benefitKey} para ${planName}`}
+                          >
+                            {enabled ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                            <span>{planName}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {adPlanLimitDefinitions.length > 0 ? (
+                <div className="mt-5 overflow-hidden rounded-sm border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50">
+                  <div className="border-b border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                    <h5 className="text-xs font-black uppercase tracking-[0.14em] text-slate-900 dark:text-slate-100">Limites de anuncios por plano</h5>
+                    <p className="mt-1 text-[11px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                      Controle a cadencia de formatos interruptivos, como interstitial apos resposta de questoes.
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[980px] text-left">
+                      <thead className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+                        <tr>
+                          <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Limite</th>
+                          <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descricao</th>
+                          {PLAN_ORDER.map((planName) => (
+                            <th key={`ads-limit-${planName}`} className="p-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                              {planName}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {adPlanLimitDefinitions.map((limitDefinition) => (
+                          <tr key={`ads-limit-${limitDefinition.key}`} className="bg-white dark:bg-slate-900/40">
+                            <td className="p-4 align-top">
+                              <div className="text-sm font-black text-slate-900 dark:text-slate-100">{limitDefinition.label}</div>
+                              <div className="mt-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">{limitDefinition.key}</div>
+                            </td>
+                            <td className="p-4 align-top text-xs font-medium text-slate-500 dark:text-slate-400">
+                              {limitDefinition.description}
+                            </td>
+                            {PLAN_ORDER.map((planName) => {
+                              const currentLimit = resolvedAdPlanUsageLimits[planName][limitDefinition.key];
+
+                              return (
+                                <td key={`ads-limit-${limitDefinition.key}-${planName}`} className="p-4 align-top">
+                                  <div className="mx-auto flex max-w-[170px] flex-col gap-2">
+                                    <div className="inline-flex rounded-sm border border-slate-300 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
+                                      <button
+                                        type="button"
+                                        onClick={() => setAdPlanUsageLimitMode(planName, limitDefinition.key, 'limited')}
+                                        className={`flex-1 rounded-sm px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                                          currentLimit.mode === 'limited'
+                                            ? 'bg-sky-700 text-white'
+                                            : 'text-slate-500 dark:text-slate-400'
+                                        }`}
+                                      >
+                                        Limite
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setAdPlanUsageLimitMode(planName, limitDefinition.key, 'unlimited')}
+                                        className={`flex-1 rounded-sm px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                                          currentLimit.mode === 'unlimited'
+                                            ? 'bg-emerald-600 text-white'
+                                            : 'text-slate-500 dark:text-slate-400'
+                                        }`}
+                                      >
+                                        Ilimitado
+                                      </button>
+                                    </div>
+
+                                    {currentLimit.mode === 'limited' ? (
+                                      <div>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          value={currentLimit.value ?? 0}
+                                          onChange={(event) => setAdPlanUsageLimitValue(planName, limitDefinition.key, Number(event.target.value))}
+                                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-black text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                        />
+                                        <div className="mt-1 text-center text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
+                                          {limitDefinition.inputLabel}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300">
+                                        Sem teto
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeTab === 'integrations' && <StripePaymentMethodsSettings value={localSettings.stripePaymentMethods} onChange={(stripePaymentMethods) => setField('stripePaymentMethods', stripePaymentMethods)} />}
       {activeTab === 'seo' && <AdminSeoSettingsSection seoSettings={localSeoSettings} onChange={setLocalSeoSettings} />}

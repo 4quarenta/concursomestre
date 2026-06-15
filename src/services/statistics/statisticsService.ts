@@ -9,7 +9,7 @@
 *
 */
 
-import { apiClient, ENDPOINTS } from '@services/api';
+import { apiClient, ENDPOINTS, readApiData } from '@services/api';
 import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { ApiResponse } from '@services/api';
 import type {
@@ -34,9 +34,10 @@ export const statisticsService = {
   async getUserStatistics(userId: string): Promise<UserStatistics> {
     return withRequestCoalescing(buildRequestCacheKey('statistics:user', { userId }), async () => {
       const response = await apiClient.get<ApiResponse<UserStatistics>>(
-        `${ENDPOINTS.statistics.user}/${userId}`,
+        ENDPOINTS.statistics.user,
+        { params: { user_id: userId } },
       ) as unknown as ApiResponse<UserStatistics>;
-      const payload = (response.data || response) as Partial<UserStatistics>;
+      const payload = readApiData<Partial<UserStatistics>>(response, {});
       return {
         userId,
         totalQuestionsAnswered: 0,
@@ -61,9 +62,10 @@ export const statisticsService = {
    */
   async getQuestionStatistics(questionId: number): Promise<QuestionStatistics> {
     const response = await apiClient.get<ApiResponse<QuestionStatistics>>(
-      `${ENDPOINTS.statistics.question}/${questionId}`,
+      ENDPOINTS.statistics.question,
+      { params: { question_id: questionId } },
     ) as unknown as ApiResponse<QuestionStatistics>;
-    return response.data;
+    return readApiData<QuestionStatistics>(response, {} as QuestionStatistics);
   },
 
   /**
@@ -75,7 +77,7 @@ export const statisticsService = {
     const response = await apiClient.get<ApiResponse<PlatformStatistics>>(
       ENDPOINTS.statistics.platform,
     ) as unknown as ApiResponse<PlatformStatistics>;
-    return response.data;
+    return readApiData<PlatformStatistics>(response, {} as PlatformStatistics);
   },
 
   /**
@@ -108,8 +110,8 @@ export const statisticsService = {
     timeSpent: number;
   }): Promise<{ success: boolean }> {
     const response = await apiClient.post<ApiResponse>(
-      `${ENDPOINTS.statistics.user}/${userId}/update`,
-      data,
+      ENDPOINTS.statistics.user,
+      { ...data, user_id: userId, action: 'update' },
     ) as unknown as ApiResponse;
     return { success: response.success };
   },

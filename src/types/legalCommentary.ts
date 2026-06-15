@@ -23,7 +23,7 @@ export type LegalAreaSlug =
   | 'ambiental'
   | 'eleitoral';
 
-export type LegalContentStatus = 'active' | 'draft' | 'scheduled' | 'revoked' | 'partially_revoked' | 'monitoring';
+export type LegalContentStatus = 'active' | 'published' | 'draft' | 'scheduled' | 'revoked' | 'partially_revoked' | 'monitoring';
 export type LegalFavoriteType = 'law' | 'section' | 'article' | 'jurisprudence' | 'teacher_comment';
 export type LegalUserCommentStatus = 'visible' | 'hidden' | 'reported' | 'deleted';
 export type LegalUpdateChangeType = 'created' | 'changed' | 'revoked' | 'renumbered';
@@ -325,6 +325,7 @@ export interface LegalUserComment {
   photoUrl?: string;
   userPhotoUrl?: string;
   userPlan?: 'Gratuito' | 'Essencial' | 'Pro' | 'Elite' | string;
+  userRole?: 'admin' | 'user' | 'partner' | 'staff' | string;
   body: string;
   status: LegalUserCommentStatus;
   moderationStatus?: 'pending' | 'approved' | 'spam';

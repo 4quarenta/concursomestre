@@ -19,6 +19,8 @@ import { NotificationsProvider } from './NotificationsProvider';
 import { MarketplaceProvider } from './MarketplaceProvider';
 import { PlatformMetadataProvider } from './PlatformMetadataProvider';
 import { ThemeProvider } from './ThemeProvider';
+import { SetupGate } from './SetupGate';
+import AdNavigationPopController from '@/components/shared/feedback/AdNavigationPopController';
 
 interface AppProvidersProps {
   children: React.ReactNode;
@@ -36,15 +38,18 @@ export const AppProviders: React.FC<AppProvidersProps> = ({ children }) => {
       <ThemeProvider>
         <QueryProvider>
           <ToastProvider>
-            <AuthProvider>
-              <AppConfigProvider>
-                <ModalProvider>
-                  <NotificationsProvider>
-                    <MarketplaceProvider>{children}</MarketplaceProvider>
-                  </NotificationsProvider>
-                </ModalProvider>
-              </AppConfigProvider>
-            </AuthProvider>
+            <SetupGate>
+              <AuthProvider>
+                <AppConfigProvider>
+                  <AdNavigationPopController />
+                  <ModalProvider>
+                    <NotificationsProvider>
+                      <MarketplaceProvider>{children}</MarketplaceProvider>
+                    </NotificationsProvider>
+                  </ModalProvider>
+                </AppConfigProvider>
+              </AuthProvider>
+            </SetupGate>
           </ToastProvider>
         </QueryProvider>
       </ThemeProvider>

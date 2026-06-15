@@ -1633,11 +1633,20 @@ const AdminLegalCommentaryEditPage = () => {
     };
 
     if (isNew) {
-      queueMicrotask(() => {
+      const initializeTimeoutId = window.setTimeout(() => {
         if (!isCurrent) return;
 
         setLoadError(null);
         const nextLaw = buildEmptyLaw();
+        setOpenStructureSectionIds(new Set());
+        setActiveSectionId('');
+        setSelectedTeacherCommentTargetId('');
+        setIsEditingOriginalText(false);
+        setIsUpdatesModalOpen(false);
+        setUpdatesModalItems([]);
+        setUpdatesModalLogs([]);
+        hasOpenedUpdatesFromQueryRef.current = false;
+        publicationFieldsHydratedRef.current = '';
         setAreas([]);
         setSubjects([]);
         setTopics([]);
@@ -1646,10 +1655,11 @@ const AdminLegalCommentaryEditPage = () => {
         setActiveArticleId(nextLaw.articles?.[0]?.id || '');
         setIsLoading(false);
         void hydrateKnowledgeTaxonomies();
-      });
+      }, 0);
 
       return () => {
         isCurrent = false;
+        window.clearTimeout(initializeTimeoutId);
       };
     }
 

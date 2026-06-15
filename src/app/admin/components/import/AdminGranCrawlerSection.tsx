@@ -12,6 +12,7 @@
 import React from 'react';
 import { ExternalLink, Shield, TerminalSquare } from 'lucide-react';
 import apiClient from '@services/api/client';
+import { resolveBackendRootFromApiBaseUrl } from '@services/api/baseUrl';
 import {
   ADMIN_MUTED_SURFACE_CLASS,
   ADMIN_PAGE_PANEL_CLASS,
@@ -23,17 +24,7 @@ const GRAN_CRAWLER_ENTRY_PATH = 'scripts/importers/questions/gran/index.php';
 const GRAN_CRAWLER_WORKER_PATH = 'scripts/importers/questions/gran/import_worker.php';
 
 const resolveBackendRootUrl = (): string => {
-  const rawBaseUrl = String(
-    apiClient.defaults.baseURL
-      || process.env.NEXT_PUBLIC_API_BASE_URL
-      || '/questao-pro-backend/api/',
-  );
-
-  const normalizedBaseUrl = typeof window === 'undefined'
-    ? rawBaseUrl
-    : new URL(rawBaseUrl, window.location.origin).toString();
-
-  return normalizedBaseUrl.replace(/\/api\/?$/i, '');
+  return resolveBackendRootFromApiBaseUrl(String(apiClient.defaults.baseURL || ''));
 };
 
 const appendBackendPath = (backendRoot: string, path: string) => (

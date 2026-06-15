@@ -3,6 +3,7 @@ import {
   buildQuestionTimelineData,
   buildSubjectPerformanceDataFromAnswers,
   filterAnswersByRange,
+  getRangeStartTimestamp,
   resolveDashboardAnswerTimestamp,
 } from '../dashboardInsightsService';
 import type { UserAnswer } from '@types';
@@ -32,7 +33,7 @@ describe('dashboardInsightsService', () => {
     expect(filtered.map((answer) => answer.questionId)).toEqual([1, 2, 3]);
   });
 
-  it('monta a semana atual de domingo a sabado', () => {
+  it('monta a janela semanal movel com 7 dias', () => {
     const now = new Date(2026, 5, 6, 15, 0, 0);
     const saturdayMorning = new Date(2026, 5, 6, 9, 0, 0).getTime();
 
@@ -43,6 +44,31 @@ describe('dashboardInsightsService', () => {
     expect(timeline).toHaveLength(7);
     expect(timeline[0].timestamp).toBe(new Date(2026, 4, 31).getTime());
     expect(timeline[6]).toMatchObject({ questions: 1, correct: 1, wrong: 0 });
+  });
+
+  it('usa ultimos 7 dias, 30 dias e 12 meses como recortes moveis', () => {
+    const now = new Date(2026, 5, 10, 14, 0, 0);
+
+    expect(getRangeStartTimestamp('week', now)).toBe(new Date(2026, 5, 4).getTime());
+    expect(getRangeStartTimestamp('month', now)).toBe(new Date(2026, 4, 12).getTime());
+    expect(getRangeStartTimestamp('year', now)).toBe(new Date(2025, 6, 1).getTime());
+
+    expect(buildQuestionTimelineData([], 'week', now)).toHaveLength(7);
+    expect(buildQuestionTimelineData([], 'month', now)).toHaveLength(30);
+    expect(buildQuestionTimelineData([], 'year', now)).toHaveLength(12);
+  });
+
+  it('remove respostas futuras dos recortes ativos sem afetar Tudo', () => {
+    const now = new Date(2026, 5, 10, 14, 0, 0);
+    const past = new Date(2026, 5, 10, 9, 0, 0).getTime();
+    const future = new Date(2026, 5, 10, 18, 0, 0).getTime();
+    const answers = [
+      makeAnswer({ questionId: 1, timestamp: past }),
+      makeAnswer({ questionId: 2, timestamp: future }),
+    ];
+
+    expect(filterAnswersByRange(answers, 'today', now).map((answer) => answer.questionId)).toEqual([1]);
+    expect(filterAnswersByRange(answers, 'all', now).map((answer) => answer.questionId)).toEqual([1, 2]);
   });
 
   it('usa materias das respostas filtradas antes de cair no agregado geral', () => {

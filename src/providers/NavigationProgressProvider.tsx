@@ -2,12 +2,6 @@
 
 import React from 'react';
 import { usePathname } from 'next/navigation';
-import {
-  AppRouterContext,
-  type AppRouterInstance,
-  type NavigateOptions,
-  type PrefetchOptions,
-} from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { useNavigationProgressStore } from '@/state/navigation-progress/navigationProgressStore';
 
 const buildRouteKey = (pathname: string) => pathname;
@@ -40,56 +34,7 @@ const normalizeInternalRoute = (href: string, currentRouteKey: string): string |
   }
 };
 
-const wrapRouter = (
-  router: AppRouterInstance,
-  currentRouteKey: string,
-  startNavigation: (targetRoute?: string | null) => void,
-): AppRouterInstance => ({
-  ...router,
-  back() {
-    startNavigation(currentRouteKey);
-    router.back();
-  },
-  forward() {
-    startNavigation(currentRouteKey);
-    router.forward();
-  },
-  refresh() {
-    router.refresh();
-  },
-  push(href: string, options?: NavigateOptions) {
-    const targetRoute = normalizeInternalRoute(href, currentRouteKey);
-    if (targetRoute) {
-      startNavigation(targetRoute);
-    }
-
-    router.push(href, options);
-  },
-  replace(href: string, options?: NavigateOptions) {
-    const targetRoute = normalizeInternalRoute(href, currentRouteKey);
-    if (targetRoute) {
-      startNavigation(targetRoute);
-    }
-
-    router.replace(href, options);
-  },
-  prefetch(href: string, options?: PrefetchOptions) {
-    router.prefetch(href, options);
-  },
-  experimental_gesturePush: router.experimental_gesturePush
-    ? (href: string, options?: NavigateOptions) => {
-        const targetRoute = normalizeInternalRoute(href, currentRouteKey);
-        if (targetRoute) {
-          startNavigation(targetRoute);
-        }
-
-        router.experimental_gesturePush?.(href, options);
-      }
-    : undefined,
-});
-
 export const NavigationProgressProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const router = React.useContext(AppRouterContext);
   const pathname = usePathname() || '/';
   const currentRouteKey = React.useMemo(() => buildRouteKey(pathname), [pathname]);
   const startNavigation = useNavigationProgressStore((store) => store.startNavigation);
@@ -139,19 +84,7 @@ export const NavigationProgressProvider: React.FC<{ children: React.ReactNode }>
     };
   }, [currentRouteKey, startNavigation]);
 
-  const wrappedRouter = React.useMemo(() => {
-    if (!router) {
-      return router;
-    }
-
-    return wrapRouter(router, currentRouteKey, startNavigation);
-  }, [currentRouteKey, router, startNavigation]);
-
-  return (
-    <AppRouterContext.Provider value={wrappedRouter}>
-      {children}
-    </AppRouterContext.Provider>
-  );
+  return <>{children}</>;
 };
 
 export default NavigationProgressProvider;

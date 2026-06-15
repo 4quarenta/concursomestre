@@ -21,11 +21,14 @@ vi.mock('@services/api', () => ({
     get: mockGet,
     post: mockPost,
   },
+  readApiData: (response: { data?: unknown } | undefined, fallback: unknown) => (
+    response?.data !== undefined ? response.data : (response ?? fallback)
+  ),
   ENDPOINTS: {
     statistics: {
-      user: 'statistics/user',
-      question: 'statistics/question',
-      platform: 'statistics/platform',
+      user: 'statistics/user.php',
+      question: 'statistics/question.php',
+      platform: 'statistics/platform.php',
       studySession: 'statistics/study-session.php',
     },
   },
@@ -54,7 +57,9 @@ describe('statisticsService', () => {
 
     const result = await statisticsService.getUserStatistics('user-1');
 
-    expect(mockGet).toHaveBeenCalledWith('statistics/user/user-1');
+    expect(mockGet).toHaveBeenCalledWith('statistics/user.php', {
+      params: { user_id: 'user-1' },
+    });
     expect(result.userId).toBe('user-1');
     expect(result.totalQuestionsAnswered).toBe(10);
     expect(result.questionStudyTime).toBe(120);
@@ -71,7 +76,9 @@ describe('statisticsService', () => {
 
     const result = await statisticsService.getQuestionStatistics(7);
 
-    expect(mockGet).toHaveBeenCalledWith('statistics/question/7');
+    expect(mockGet).toHaveBeenCalledWith('statistics/question.php', {
+      params: { question_id: 7 },
+    });
     expect(result.questionId).toBe(7);
     expect(result.totalAttempts).toBe(20);
   });
@@ -87,7 +94,7 @@ describe('statisticsService', () => {
 
     const result = await statisticsService.getPlatformStatistics();
 
-    expect(mockGet).toHaveBeenCalledWith('statistics/platform');
+    expect(mockGet).toHaveBeenCalledWith('statistics/platform.php');
     expect(result.totalUsers).toBe(100);
     expect(result.activeUsers).toBe(40);
   });
@@ -103,10 +110,12 @@ describe('statisticsService', () => {
       timeSpent: 12,
     });
 
-    expect(mockPost).toHaveBeenCalledWith('statistics/user/user-1/update', {
+    expect(mockPost).toHaveBeenCalledWith('statistics/user.php', {
       questionId: 7,
       isCorrect: true,
       timeSpent: 12,
+      user_id: 'user-1',
+      action: 'update',
     });
     expect(result.success).toBe(true);
   });

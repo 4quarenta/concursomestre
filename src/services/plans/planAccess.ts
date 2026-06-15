@@ -29,6 +29,23 @@ import {
 export type CanonicalPlanName = 'Gratuito' | 'Essencial' | 'Pro' | 'Elite';
 
 const ACTIVE_ACCESS_STATUSES = new Set(['active', 'trialing']);
+const BLOCKING_PAYMENT_ISSUE_CODES = new Set(['card_expired', 'payment_past_due']);
+
+const hasPaymentAccessBlock = (user?: UserProfile | null): boolean => {
+  const subscriptionBlockReason = String(user?.subscription?.payment_block_reason || '').trim();
+  const issueSeverity = String(user?.paymentIssue?.severity || '').trim().toLowerCase();
+  const issueCode = String(user?.paymentIssue?.code || '').trim().toLowerCase();
+  const issueType = String(user?.paymentIssue?.type || '').trim().toLowerCase();
+  const issueBlockingReason = String(user?.paymentIssue?.blockingReason || '').trim();
+
+  return Boolean(user?.subscription?.payment_blocking)
+    || subscriptionBlockReason !== ''
+    || Boolean(user?.paymentIssue?.interactionLock)
+    || issueSeverity === 'blocking'
+    || BLOCKING_PAYMENT_ISSUE_CODES.has(issueCode)
+    || BLOCKING_PAYMENT_ISSUE_CODES.has(issueType)
+    || issueBlockingReason !== '';
+};
 
 export const getCanonicalPlanName = (planName?: string | null): CanonicalPlanName => {
   const normalized = String(planName || '').trim().toLowerCase();
@@ -54,11 +71,12 @@ export const getPlanTierFromName = (planName?: string | null): number => {
 
 export const hasActivePlanAccess = (user?: UserProfile | null): boolean => {
   const status = String(user?.subscription?.status || '').trim().toLowerCase();
-  return ACTIVE_ACCESS_STATUSES.has(status);
+  return ACTIVE_ACCESS_STATUSES.has(status) && !hasPaymentAccessBlock(user);
 };
 
 export const getEffectivePlanName = (user?: UserProfile | null): CanonicalPlanName => {
   if (!user) return 'Gratuito';
+  if (hasPaymentAccessBlock(user)) return 'Gratuito';
 
   if (hasActivePlanAccess(user)) {
     return getCanonicalPlanName(user.subscription?.plan?.name || user.plan);
@@ -92,6 +110,7 @@ export const getEffectivePlanTier = (user?: UserProfile | null): number => {
   if (user?.isAdmin) return 4;
 
   if (!user) return 1;
+  if (hasPaymentAccessBlock(user)) return 1;
 
   const subscriptionPlanName = hasActivePlanAccess(user)
     ? (user.subscription?.plan?.name || user.plan)

@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import type { MarketingLandingPage } from '@types';
-import { buildSiteUrl, normalizeSiteUrl } from '../../config/siteUrl';
+import { buildSiteUrl } from '../../config/siteUrl';
 import { websiteManifest } from '../../config/platform';
+import { resolveAbsoluteApiBaseUrl } from '../api/baseUrl';
 import {
   buildMarketingLandingPath,
   getPublishedMarketingLandingBySlug,
@@ -25,11 +26,8 @@ const readEnv = (key: string): string => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
-const getApiBaseUrl = () => normalizeSiteUrl(
-  readEnv('NEXT_PUBLIC_API_BASE_URL')
-    || readEnv('API_BASE_URL')
-    || 'http://localhost/questao-pro-backend/api/',
-  'http://localhost/questao-pro-backend/api/',
+const getApiBaseUrl = () => resolveAbsoluteApiBaseUrl(
+  readEnv('NEXT_PUBLIC_API_BASE_URL') || readEnv('API_BASE_URL') || undefined,
 );
 
 const readEnvelopeData = (payload: unknown): Record<string, unknown> => {

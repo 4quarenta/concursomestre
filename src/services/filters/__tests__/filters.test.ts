@@ -96,6 +96,14 @@ describe('filtersService', () => {
     ]);
   });
 
+  it('canonicalizes ENEM focus labels without duplicating taxonomy values', () => {
+    expect(injectEnemFocusOption(['Enem', 'Policial', 'enem'])).toEqual([
+      ENEM_FOCUS_NAME,
+      'Policial',
+    ]);
+    expect(normalizeCareerSelectorLabel('Enem')).toBe(ENEM_FOCUS_NAME);
+  });
+
   it('normalizes focus labels to parent focus names', () => {
     expect(normalizeCareerSelectorLabel('Educação (Professores, Especialistas e outros)')).toBe(
       'Educação',

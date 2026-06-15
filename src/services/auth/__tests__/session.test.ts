@@ -201,8 +201,20 @@ describe('auth session manager', () => {
     expect(session.getAccessToken()).toBe(refreshedToken);
   });
 
+  it('não tenta bootstrap refresh quando existe apenas CSRF publico sem sinal de sessão', async () => {
+    cookieJar = 'cm_csrf=test-csrf';
+    const session = await importSessionModule();
+
+    const snapshot = await session.bootstrapAuthSession();
+
+    expect(snapshot.isBootstrapped).toBe(true);
+    expect(snapshot.isAuthenticated).toBe(false);
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
   it('faz bootstrap só com refresh quando a API já devolve o usuário', async () => {
     cookieJar = 'cm_csrf=test-csrf';
+    storageState.set('cm-auth-session-present', '1');
     const futureExp = Math.floor(Date.now() / 1000) + 1800;
 
     const refreshedToken =
@@ -242,6 +254,31 @@ describe('auth session manager', () => {
     expect(snapshot.isAuthenticated).toBe(true);
     expect(snapshot.currentUser?.id).toBe('user-bootstrap');
     expect(session.getAccessToken()).toBe(refreshedToken);
+  });
+
+  it('limpa hint antigo quando bootstrap encontra CSRF sem refresh token', async () => {
+    cookieJar = 'cm_csrf=test-csrf';
+    storageState.set('cm-auth-session-present', '1');
+    mockPost.mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 401,
+        data: {
+          success: false,
+          message: 'Refresh token ausente.',
+          error_code: 'unauthorized',
+        },
+      },
+    });
+
+    const session = await importSessionModule();
+    const snapshot = await session.bootstrapAuthSession();
+
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(snapshot.isBootstrapped).toBe(true);
+    expect(snapshot.isAuthenticated).toBe(false);
+    expect(session.getAccessToken()).toBeNull();
+    expect(storageState.get('cm-auth-session-present')).toBeUndefined();
   });
 
   it('aguarda refresh de outra aba quando encontra lock externo ativo', async () => {

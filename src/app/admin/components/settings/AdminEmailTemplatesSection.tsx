@@ -22,10 +22,200 @@ import {
   ADMIN_TEXTAREA_CLASS,
 } from '../shared/adminPanelStyles';
 
+const EMAIL_PREVIEW_VARIABLES: Record<string, string> = {
+  action_url: 'https://concursomestre.com/app',
+  admin_url: 'https://concursomestre.com/admin',
+  app_url: 'https://concursomestre.com',
+  billing_url: 'https://concursomestre.com/perfil/assinatura',
+  confirm_url: 'https://concursomestre.com/confirmar-email',
+  content: 'Mensagem principal do modelo com as informacoes importantes para o aluno.',
+  email: 'aluno@exemplo.com',
+  intro: 'Temos uma atualizacao sobre sua solicitacao.',
+  login_url: 'https://concursomestre.com/login',
+  message: 'Mensagem da campanha.',
+  message_html: 'Mensagem da campanha com detalhes importantes.',
+  name: 'Joao Silva',
+  reason: 'Ajuda com acesso',
+  receipt_url: 'https://concursomestre.com/recibo',
+  reset_url: 'https://concursomestre.com/redefinir-senha',
+  status_line: 'Em atendimento',
+  status_intro: 'Seu atendimento foi atualizado.',
+  support_url: 'https://concursomestre.com/suporte',
+  title: 'Atualizacao ConcursoMestre',
+  xp_bonus: '25',
+};
+
+const EMAIL_PREVIEW_BUTTONS: Record<string, string> = {
+  action_url: 'Abrir',
+  admin_url: 'Abrir painel',
+  app_url: 'Acessar plataforma',
+  billing_url: 'Abrir cobranca',
+  confirm_url: 'Confirmar e-mail',
+  login_url: 'Acessar plataforma',
+  receipt_url: 'Ver recibo',
+  reset_url: 'Redefinir senha',
+  support_url: 'Abrir suporte',
+};
+
+const escapeEmailHtmlAttribute = (value: string): string => (
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+);
+
+const isPublicEmailImageUrl = (value: string): boolean => /^https?:\/\/\S+$/i.test(value.trim());
+
+const buildEmailLogoBlock = (emailLogoUrl = ''): string => {
+  const normalizedLogoUrl = emailLogoUrl.trim();
+
+  if (isPublicEmailImageUrl(normalizedLogoUrl)) {
+    const safeLogoUrl = escapeEmailHtmlAttribute(normalizedLogoUrl);
+
+    return `<img src="${safeLogoUrl}" width="48" alt="ConcursoMestre" style="display:block;width:auto;max-width:132px;height:auto;max-height:46px;border:0;outline:none;text-decoration:none;object-fit:contain;" />`;
+  }
+
+  return '<div style="width:42px;height:42px;border-radius:14px;background:#2563eb;color:#ffffff;text-align:center;line-height:42px;font-size:16px;font-weight:900;letter-spacing:0.02em;">CM</div>';
+};
+
+const applyEmailPreviewBranding = (html: string, emailLogoUrl = ''): string => {
+  const logoBlock = buildEmailLogoBlock(emailLogoUrl);
+  let nextHtml = html.replace(/\{\{\s*email_logo_block\s*\}\}/gi, logoBlock);
+
+  if (isPublicEmailImageUrl(emailLogoUrl)) {
+    nextHtml = nextHtml.replace(
+      /<div\s+style=(["'])(?=[^"']*width:42px)(?=[^"']*height:42px)(?=[^"']*background:#2563eb)[^"']*\1>CM<\/div>/gi,
+      logoBlock,
+    );
+  }
+
+  return nextHtml;
+};
+
+const applyEmailPreviewVariables = (value: string): string => (
+  value.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key: string) => (
+    EMAIL_PREVIEW_VARIABLES[key] || match
+  ))
+);
+
+const isStandaloneEmailHtml = (html: string): boolean => {
+  const trimmed = html.trim();
+  if (/^(<!doctype\s+html|<html[\s>])/i.test(trimmed)) {
+    return true;
+  }
+
+  return /<table\b[^>]*role=["']presentation["']/i.test(trimmed)
+    && trimmed.includes('ConcursoMestre')
+    && trimmed.includes('max-width');
+};
+
+const resolveEmailPreviewButton = (template: EmailTemplateModel): { label: string; url: string } | null => {
+  const searchable = `${template.subject || ''} ${template.htmlBody || ''} ${template.textBody || ''}`;
+  const key = Object.keys(EMAIL_PREVIEW_BUTTONS).find((candidate) => (
+    searchable.includes(`{{${candidate}}}`) || searchable.includes(`{{ ${candidate} }}`)
+  ));
+
+  if (!key) {
+    return null;
+  }
+
+  return {
+    label: EMAIL_PREVIEW_BUTTONS[key],
+    url: EMAIL_PREVIEW_VARIABLES[key],
+  };
+};
+
+const buildEmailPreviewShell = (
+  title: string,
+  content: string,
+  button: { label: string; url: string } | null,
+  emailLogoUrl = '',
+): string => `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+</head>
+<body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${title} - ConcursoMestre</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#eef2f7;">
+    <tr>
+      <td align="center" style="padding:36px 14px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:660px;border-collapse:collapse;background:#ffffff;border:1px solid #dbe4ef;border-radius:20px;overflow:hidden;box-shadow:0 18px 50px rgba(15,23,42,0.10);">
+          <tr>
+            <td style="background:#111827;padding:0;color:#ffffff;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                <tr>
+                  <td style="padding:26px 30px 22px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                      <tr>
+                        <td style="width:52px;vertical-align:middle;">
+                          ${buildEmailLogoBlock(emailLogoUrl)}
+                        </td>
+                        <td style="vertical-align:middle;">
+                          <p style="margin:0;font-size:12px;font-weight:900;letter-spacing:0.18em;text-transform:uppercase;color:#93c5fd;">ConcursoMestre</p>
+                          <p style="margin:7px 0 0;font-size:13px;font-weight:600;color:#dbeafe;">Plataforma de estudos para concursos</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="height:4px;background:#2563eb;font-size:0;line-height:0;">&nbsp;</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:34px 32px 30px;">
+              <p style="margin:0 0 10px;font-size:11px;font-weight:900;letter-spacing:0.14em;text-transform:uppercase;color:#2563eb;">Comunicado</p>
+              <h1 style="margin:0 0 18px;font-size:25px;line-height:1.24;font-weight:900;color:#0f172a;">${title}</h1>
+              <div style="font-size:15px;line-height:1.75;color:#334155;">${content}</div>
+              ${button ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:30px 0 10px;"><tr><td align="left"><a href="${button.url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;border-radius:12px;background:#2563eb;color:#ffffff;text-decoration:none;font-size:14px;font-weight:800;letter-spacing:0.04em;padding:14px 22px;box-shadow:0 12px 24px rgba(37,99,235,0.24);">${button.label}</a></td></tr></table>` : ''}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:28px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;">
+                <tr>
+                  <td style="padding:14px 16px;font-size:12px;line-height:1.6;color:#64748b;">
+                    Se voce nao reconhece esta mensagem, ignore este e-mail ou fale com nosso suporte.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="border-top:1px solid #e2e8f0;background:#f8fafc;padding:20px 32px;color:#64748b;font-size:12px;line-height:1.6;">
+              <strong style="color:#334155;">Equipe ConcursoMestre</strong><br />
+              Este e-mail foi enviado automaticamente pela plataforma. Por seguranca, nunca compartilhe sua senha.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+const buildEmailPreviewHtml = (template: EmailTemplateModel, emailLogoUrl = ''): string => {
+  const subject = applyEmailPreviewVariables(template.subject || 'ConcursoMestre');
+  const htmlBody = applyEmailPreviewBranding(
+    applyEmailPreviewVariables(template.htmlBody || '<p>Conteudo do e-mail.</p>'),
+    emailLogoUrl,
+  );
+
+  if (isStandaloneEmailHtml(htmlBody)) {
+    return /^(<!doctype\s+html|<html[\s>])/i.test(htmlBody.trim())
+      ? htmlBody
+      : `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head><body style="margin:0;">${htmlBody}</body></html>`;
+  }
+
+  return buildEmailPreviewShell(subject, htmlBody, resolveEmailPreviewButton(template), emailLogoUrl);
+};
+
 type AdminEmailTemplatesSectionProps = {
   templates: EmailTemplateModel[];
   onChange: (templates: EmailTemplateModel[]) => void;
   defaultTestEmail?: string;
+  emailLogoUrl?: string;
   onSendTest?: (template: EmailTemplateModel, targetEmail: string) => Promise<string>;
 };
 
@@ -33,6 +223,7 @@ const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
   templates,
   onChange,
   defaultTestEmail = '',
+  emailLogoUrl = '',
   onSendTest,
 }) => {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -45,6 +236,10 @@ const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
   const editingTemplate = useMemo(
     () => templates.find((template) => template.key === editingKey) || null,
     [editingKey, templates],
+  );
+  const previewHtml = useMemo(
+    () => (draft ? buildEmailPreviewHtml(draft, emailLogoUrl) : ''),
+    [draft, emailLogoUrl],
   );
 
   const allSelected = templates.length > 0 && selectedKeys.size === templates.length;
@@ -248,7 +443,7 @@ const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
             }
           }}
         >
-          <div className="my-auto flex max-h-[calc(100vh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:max-h-[calc(100vh-2rem)]">
+          <div className="my-auto flex max-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 sm:max-h-[calc(100vh-2rem)]">
             <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex shrink-0 items-start justify-between gap-3`}>
               <div>
                 <h4 className="text-lg font-black text-slate-900 dark:text-slate-100">{editingTemplate.name}</h4>
@@ -273,22 +468,44 @@ const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
                 />
               </div>
 
-              <div className="grid gap-2">
-                <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">HTML</label>
-                <textarea
-                  value={draft.htmlBody}
-                  onChange={(event) => setDraft((current) => (current ? { ...current, htmlBody: event.target.value } : current))}
-                  className={`${ADMIN_TEXTAREA_CLASS} min-h-[170px]`}
-                />
-              </div>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
+                <div className="space-y-4">
+                  <div className="grid gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">HTML</label>
+                    <textarea
+                      value={draft.htmlBody}
+                      onChange={(event) => setDraft((current) => (current ? { ...current, htmlBody: event.target.value } : current))}
+                      className={`${ADMIN_TEXTAREA_CLASS} min-h-[230px]`}
+                    />
+                  </div>
 
-              <div className="grid gap-2">
-                <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Texto puro</label>
-                <textarea
-                  value={draft.textBody}
-                  onChange={(event) => setDraft((current) => (current ? { ...current, textBody: event.target.value } : current))}
-                  className={`${ADMIN_TEXTAREA_CLASS} min-h-[120px]`}
-                />
+                  <div className="grid gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Texto puro</label>
+                    <textarea
+                      value={draft.textBody}
+                      onChange={(event) => setDraft((current) => (current ? { ...current, textBody: event.target.value } : current))}
+                      className={`${ADMIN_TEXTAREA_CLASS} min-h-[130px]`}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-100 p-3 dark:border-slate-700 dark:bg-slate-950">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Previa do email</p>
+                      <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">Fragmentos simples recebem o layout profissional automaticamente.</p>
+                    </div>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">
+                      HTML
+                    </span>
+                  </div>
+                  <iframe
+                    title={`Previa do modelo ${editingTemplate.name}`}
+                    srcDoc={previewHtml}
+                    className="h-[430px] w-full rounded-xl border border-slate-200 bg-white dark:border-slate-800"
+                    sandbox=""
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950">
@@ -305,7 +522,7 @@ const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
-                Placeholders disponiveis: {'{{name}}'}, {'{{email}}'}, {'{{confirm_url}}'}, {'{{reset_url}}'}, {'{{login_url}}'}, {'{{app_url}}'}, {'{{xp_bonus}}'}, {'{{support_url}}'}, {'{{billing_url}}'}, {'{{admin_url}}'}, {'{{receipt_url}}'}, {'{{reason}}'}, {'{{status_line}}'}, {'{{content}}'}.
+                Placeholders disponiveis: {'{{name}}'}, {'{{email}}'}, {'{{email_logo_block}}'}, {'{{confirm_url}}'}, {'{{reset_url}}'}, {'{{login_url}}'}, {'{{app_url}}'}, {'{{xp_bonus}}'}, {'{{support_url}}'}, {'{{billing_url}}'}, {'{{admin_url}}'}, {'{{receipt_url}}'}, {'{{reason}}'}, {'{{status_line}}'}, {'{{content}}'}.
               </div>
 
               {onSendTest && (

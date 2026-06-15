@@ -62,5 +62,13 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.4"
-  }
+  },
+  "description": "Plataforma web principal do ConcursoMestre em Next.js App Router, consolidada diretamente na raiz do repositorio.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

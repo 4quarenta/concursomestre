@@ -40,7 +40,9 @@ describe('frontend security headers', () => {
     expect(csp).toContain('https://appleid.apple.com');
     expect(csp).toContain('https://www.google.com');
     expect(csp).toContain('https://www.gstatic.com');
-    expect(csp).toContain('script-src-elem');
+    expect(csp).toContain('https://*.adtrafficquality.google');
+    expect(csp).toMatch(/script-src [^;]*blob:/);
+    expect(csp).toMatch(/script-src-elem [^;]*blob:/);
     expect(csp).toContain('https://api.concursomestre.com');
   });
 

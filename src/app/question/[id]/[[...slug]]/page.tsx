@@ -1,9 +1,9 @@
 ﻿import type { Metadata } from 'next';
 import type { Question } from '@types';
 import { ENDPOINTS } from '@services/api/endpoints';
+import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
 import { isQuestionPubliclyVisible, withQuestionPublicationAliases } from '@services/questions/questionPublication';
 import { buildAbsoluteUrl, buildQuestionPath } from '@services/seo/slug';
-import { normalizeSiteUrl } from '@/config/siteUrl';
 import QuestionPublicPage from '../../QuestionPublicPage';
 import {
   buildQuestionKeywords,
@@ -21,9 +21,8 @@ const readEnv = (key: string) => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
-const getApiBaseUrl = () => normalizeSiteUrl(
-  readEnv('NEXT_PUBLIC_API_BASE_URL') || readEnv('API_BASE_URL') || 'http://localhost/questao-pro-backend/api/',
-  'http://localhost/questao-pro-backend/api/',
+const getApiBaseUrl = () => resolveAbsoluteApiBaseUrl(
+  readEnv('NEXT_PUBLIC_API_BASE_URL') || readEnv('API_BASE_URL') || undefined,
 );
 
 const readEnvelopeData = (payload: unknown): unknown => {

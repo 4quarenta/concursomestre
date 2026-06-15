@@ -29,49 +29,29 @@ import {
   Star,
   Target,
   Trophy,
-  Users,
   Zap,
 } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
+import { DEFAULT_GAMIFICATION_RULES } from '@constants/gamificationNotificationSettings';
 import { getAssetUrl } from '@services/api';
 import { profileService, type XpLeaderboardEntry } from '@services/profile';
 import { clientLog } from '@services/monitoring/clientLog';
+import type { GamificationRuleSettings } from '@types';
 
 const XP_PER_LEVEL = 1000;
 
 type XpRuleTone = 'emerald' | 'amber' | 'sky' | 'indigo' | 'rose' | 'violet';
 
 type XpRule = {
+  key: string;
   category: string;
   title: string;
   value: string;
   helper: string;
+  reputation: number;
   tone: XpRuleTone;
   icon: React.ComponentType<{ size?: number; className?: string }>;
 };
-
-const XP_RULES: XpRule[] = [
-  { category: 'Pratica', title: 'Acerto em questao', value: '+10 XP', helper: 'Recompensa principal da pratica diaria.', tone: 'emerald', icon: CheckCircle2 },
-  { category: 'Pratica', title: 'Erro revisado', value: '+2 XP', helper: 'Errar tambem conta como estudo real.', tone: 'sky', icon: BookOpenCheck },
-  { category: 'Pratica', title: 'Questao salva', value: '+3 XP', helper: 'Uma vez por questao salva para revisao.', tone: 'indigo', icon: BookmarkCheck },
-  { category: 'Constancia', title: 'Estudo do dia', value: '+5 XP', helper: 'Ao manter atividade diaria registrada.', tone: 'amber', icon: CalendarCheck2 },
-  { category: 'Constancia', title: 'Sequencias', value: '+15 a +250 XP', helper: 'Marcos de 3, 7, 15 e 30 dias.', tone: 'rose', icon: Flame },
-  { category: 'Marcos', title: 'Questoes respondidas', value: '+25 a +100 XP', helper: 'Bonus nos marcos de 25, 50 e 100 respostas.', tone: 'violet', icon: Target },
-  { category: 'Marcos', title: 'Acertos acumulados', value: '+75 a +150 XP', helper: 'Bonus nos marcos de 50 e 100 acertos.', tone: 'emerald', icon: Star },
-  { category: 'Simulados', title: 'Simulado concluido', value: 'ate +85 XP', helper: 'Conta conclusao, volume respondido e acertos.', tone: 'sky', icon: Zap },
-  { category: 'Comunidade', title: 'Comentario aprovado', value: '+5 a +10 XP', helper: 'Contribuicoes boas tambem evoluem o perfil.', tone: 'indigo', icon: MessageSquare },
-  { category: 'Comunidade', title: 'Curtida recebida', value: '+2 XP', helper: 'Quando outro aluno valoriza seu comentario.', tone: 'amber', icon: Users },
-  { category: 'Comunidade', title: 'Denuncia enviada', value: '+2 XP', helper: 'Sinalizacao inicial; se proceder, recebe bonus maior.', tone: 'rose', icon: ShieldCheck },
-  { category: 'Comunidade', title: 'Denuncia aceita', value: '+15 XP', helper: 'Quando a moderacao confirma que sua denuncia ajudou.', tone: 'emerald', icon: ShieldCheck },
-  { category: 'Suporte', title: 'Sugestao enviada', value: '+8 XP', helper: 'Ideias publicas entram no mural e contam como contribuicao.', tone: 'sky', icon: Sparkles },
-  { category: 'Suporte', title: 'Avaliacao da plataforma', value: '+20 XP', helper: 'Feedback estruturado ajuda o produto a melhorar.', tone: 'violet', icon: Star },
-  { category: 'Perfil', title: 'Foto e perfil completo', value: '+10 a +40 XP', helper: 'Personalizacao e dados completos liberam recompensas unicas.', tone: 'amber', icon: Crown },
-  { category: 'Lei comentada', title: 'Artigos lidos', value: '+2 XP', helper: 'Cada artigo novo lido conta uma vez no progresso.', tone: 'indigo', icon: BookOpenCheck },
-  { category: 'Lei comentada', title: 'Marcos de leitura', value: '+10 a +50 XP', helper: 'Bonus em 25%, 50%, 75% e 100% de leitura da lei.', tone: 'emerald', icon: Target },
-  { category: 'Lei comentada', title: 'Favorito/comentario', value: '+3 a +4 XP', helper: 'Organizar revisao e participar da discussao tambem contam.', tone: 'sky', icon: MessageSquare },
-  { category: 'Ranking pos-prova', title: 'Participacao', value: '+20 XP', helper: 'Registrado uma vez por ranking enviado.', tone: 'violet', icon: Trophy },
-  { category: 'Ranking pos-prova', title: 'Resultado oficial', value: '+10 a +60 XP', helper: 'Varia conforme colocacao apos o gabarito oficial.', tone: 'rose', icon: Medal },
-];
 
 const TONE_CLASSES: Record<XpRuleTone, { icon: string; badge: string; bar: string }> = {
   emerald: {
@@ -106,7 +86,68 @@ const TONE_CLASSES: Record<XpRuleTone, { icon: string; badge: string; bar: strin
   },
 };
 
+const CATEGORY_TONES: Record<string, XpRuleTone> = {
+  Pratica: 'emerald',
+  Constancia: 'amber',
+  Marcos: 'violet',
+  Simulados: 'sky',
+  Comunidade: 'indigo',
+  Moderacao: 'rose',
+  Suporte: 'sky',
+  Perfil: 'amber',
+  'Lei comentada': 'emerald',
+  'Ranking pos-prova': 'violet',
+  Marketplace: 'rose',
+};
+
+const RULE_ICONS: Array<[RegExp, XpRule['icon']]> = [
+  [/answer_correct|acerto/i, CheckCircle2],
+  [/incorrect|review|erro|artigo|lei/i, BookOpenCheck],
+  [/saved|favorite|favorito|salva/i, BookmarkCheck],
+  [/daily|study|estudo/i, CalendarCheck2],
+  [/streak|sequencia/i, Flame],
+  [/simulation|simulado/i, Zap],
+  [/comment|comentario|reply|resposta/i, MessageSquare],
+  [/report|denuncia|moderacao/i, ShieldCheck],
+  [/rating|avaliacao|acertos/i, Star],
+  [/suggestion|sugestao|support|suporte/i, Sparkles],
+  [/profile|perfil|photo|foto/i, Crown],
+  [/ranking/i, Trophy],
+  [/marketplace|purchase|sale|compra|venda/i, Medal],
+];
+
 const formatNumber = (value: number) => new Intl.NumberFormat('pt-BR').format(Math.max(0, Math.round(value || 0)));
+
+const formatXpValue = (rule: GamificationRuleSettings) => {
+  const xp = Math.max(0, Number(rule.xp || 0));
+  const maxXp = Math.max(0, Number(rule.maxXp || 0));
+
+  if (maxXp > xp) {
+    return `+${formatNumber(xp)} a +${formatNumber(maxXp)} XP`;
+  }
+
+  if (xp > 0) {
+    return `+${formatNumber(xp)} XP`;
+  }
+
+  return 'Sem XP';
+};
+
+const getRuleIcon = (rule: GamificationRuleSettings): XpRule['icon'] => {
+  const source = `${rule.key} ${rule.eventName} ${rule.label} ${rule.description}`;
+  return RULE_ICONS.find(([pattern]) => pattern.test(source))?.[1] || Target;
+};
+
+const XP_RULES: XpRule[] = DEFAULT_GAMIFICATION_RULES.map((rule) => ({
+  key: rule.key,
+  category: rule.category,
+  title: rule.label,
+  value: formatXpValue(rule),
+  helper: rule.description,
+  reputation: Math.max(0, Number(rule.reputation || 0)),
+  tone: CATEGORY_TONES[rule.category] || 'indigo',
+  icon: getRuleIcon(rule),
+}));
 
 const calculateLevelProgress = (xp: number) => {
   const currentLevelXp = Math.max(0, Number(xp || 0) % XP_PER_LEVEL);
@@ -230,6 +271,8 @@ const LevelsPage = () => {
   const topThree = entries.slice(0, 3);
   const totalAnswered = entries.reduce((total, entry) => total + Number(entry.answeredQuestions || 0), 0);
   const totalCorrect = entries.reduce((total, entry) => total + Number(entry.correctAnswers || 0), 0);
+  const totalReputation = entries.reduce((total, entry) => total + Number(entry.reputation || 0), 0);
+  const averageAccuracy = totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
   const topXp = entries[0]?.xp || 0;
 
   return (
@@ -244,7 +287,7 @@ const LevelsPage = () => {
             <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
               Este ranking mede progresso, constancia e contribuicao por XP. Ele e separado do ranking pos-prova, que classifica candidatos por pontuacao em uma prova especifica.
             </p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Alunos no ranking</p>
                 <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{formatNumber(entries.length)}</p>
@@ -256,6 +299,10 @@ const LevelsPage = () => {
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Acertos somados</p>
                 <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{formatNumber(totalCorrect)}</p>
+              </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Precisao media</p>
+                <p className="mt-2 text-2xl font-black text-slate-900 dark:text-slate-100">{averageAccuracy}%</p>
               </div>
             </div>
           </div>
@@ -313,7 +360,7 @@ const LevelsPage = () => {
                   </div>
                   <RankBadge rank={rank} />
                 </div>
-                <div className="mt-5 grid grid-cols-3 gap-2 text-center">
+                <div className="mt-5 grid grid-cols-4 gap-2 text-center">
                   <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950/50">
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">XP</p>
                     <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{formatNumber(entry.xp)}</p>
@@ -326,7 +373,20 @@ const LevelsPage = () => {
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Streak</p>
                     <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{entry.streakDays || 0}d</p>
                   </div>
+                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950/50">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rep.</p>
+                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{entry.reputation || 0}</p>
+                  </div>
                 </div>
+                {entry.badges && entry.badges.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {entry.badges.slice(0, 3).map((badge) => (
+                      <span key={`${entry.id}-podium-${badge.key}`} className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-700 dark:bg-amber-500/10 dark:text-amber-200">
+                        {badge.title}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-4">
                   <LevelProgressBar xp={entry.xp} tone={rank === 1 ? 'amber' : rank === 2 ? 'sky' : 'rose'} />
                 </div>
@@ -342,7 +402,13 @@ const LevelsPage = () => {
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Ranking por XP</p>
             <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">Alunos com maior progresso</h2>
           </div>
-          <Award className="text-amber-500" size={24} />
+          <div className="hidden items-center gap-3 text-right sm:flex">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Reputacao somada</p>
+              <p className="text-sm font-black text-slate-900 dark:text-slate-100">{formatNumber(totalReputation)}</p>
+            </div>
+            <Award className="text-amber-500" size={24} />
+          </div>
         </div>
 
         {isLoading ? (
@@ -365,7 +431,7 @@ const LevelsPage = () => {
               return (
                 <div
                   key={entry.id}
-                  className={`grid gap-4 p-4 md:grid-cols-[auto,1fr,320px] md:items-center ${isCurrentUser ? 'bg-indigo-50/80 dark:bg-indigo-500/10' : ''}`}
+                  className={`grid gap-4 p-4 md:grid-cols-[auto,1fr,430px] md:items-center ${isCurrentUser ? 'bg-indigo-50/80 dark:bg-indigo-500/10' : ''}`}
                 >
                   <RankBadge rank={rank} />
                   <div className="flex min-w-0 items-center gap-3">
@@ -392,7 +458,7 @@ const LevelsPage = () => {
                     </div>
                   </div>
                   <div className="grid gap-3">
-                    <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">XP</p>
                         <p className="text-sm font-black text-slate-900 dark:text-slate-100">{formatNumber(entry.xp)}</p>
@@ -409,8 +475,19 @@ const LevelsPage = () => {
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Acerto</p>
                         <p className="text-sm font-black text-slate-900 dark:text-slate-100">{accuracy || 0}%</p>
                       </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Resp.</p>
+                        <p className="text-sm font-black text-slate-900 dark:text-slate-100">{formatNumber(entry.answeredQuestions || 0)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Rep.</p>
+                        <p className="text-sm font-black text-slate-900 dark:text-slate-100">{formatNumber(entry.reputation || 0)}</p>
+                      </div>
                     </div>
                     <LevelProgressBar xp={entry.xp} tone={isCurrentUser ? 'indigo' : 'emerald'} />
+                    <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                      Faltam {formatNumber(getXpToNextLevel(entry.xp))} XP para o proximo nivel.
+                    </p>
                   </div>
                 </div>
               );
@@ -419,11 +496,21 @@ const LevelsPage = () => {
         )}
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Mapa de XP</p>
+            <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">Tudo que evolui o nivel do aluno</h2>
+          </div>
+          <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
+            {formatNumber(XP_RULES.length)} regras ativas no modelo padrao.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {XP_RULES.map((rule) => {
           const tone = TONE_CLASSES[rule.tone];
           return (
-            <article key={`${rule.category}-${rule.title}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <article key={rule.key} className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
               <div className="flex items-start justify-between gap-3">
                 <span className={`rounded-xl p-2 ${tone.icon}`}>
                   <rule.icon size={18} />
@@ -433,11 +520,19 @@ const LevelsPage = () => {
                 </span>
               </div>
               <p className="mt-4 text-sm font-black text-slate-900 dark:text-slate-100">{rule.title}</p>
-              <p className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">{rule.value}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-lg bg-white px-2.5 py-1 text-sm font-black text-slate-900 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-800">{rule.value}</span>
+                {rule.reputation > 0 && (
+                  <span className="rounded-lg bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500 ring-1 ring-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:ring-slate-800">
+                    +{rule.reputation} rep.
+                  </span>
+                )}
+              </div>
               <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">{rule.helper}</p>
             </article>
           );
         })}
+        </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">

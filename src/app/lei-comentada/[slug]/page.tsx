@@ -34,6 +34,7 @@ import {
   Highlighter,
   Italic,
   Lightbulb,
+  Lock,
   Loader2,
   MessageSquare,
   Minus,
@@ -55,6 +56,7 @@ import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import MathRichText from '@/components/shared/math/MathRichText';
 import RichTextEditor from '@/components/shared/ui/RichTextEditor';
+import UpgradeModal from '@/components/shared/overlays/UpgradeModal';
 import { getAssetUrl } from '@services/api';
 import {
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -66,9 +68,26 @@ import { supportService } from '@services/support';
 import { reportsService } from '@services/reports';
 import { questionService } from '@services/questions';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
+import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import {
+  getAccessPlanName,
+  getBenefitPlanLabel,
+  getBenefitRequiredPlan,
+  getPlanUsageLimitForPlanName,
+  hasPlanBenefit,
+  isPlanUsageUnlimitedForPlanName,
+  type CanonicalPlanName,
+} from '@services/plans/planAccess';
+import {
+  DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG,
+  normalizeLegalCommentaryFeatureConfig,
+} from '@constants/legal-commentary/featureAccess';
 import type {
   ArticleExamTip,
   ArticleJurisprudence,
+  LegalCommentaryFeatureConfigurableKey,
+  LegalCommentaryFeatureFallbackMode,
+  LegalCommentaryFeatureKey,
   LegalRichContentBlock,
   LegalUserComment,
   LawArticle,
@@ -76,6 +95,7 @@ import type {
   LawSection,
   LawSectionEditorial,
   LegalTargetedText,
+  PlanBenefitKey,
   Question,
   TeacherComment,
 } from '@types';
@@ -126,6 +146,10 @@ type InlineLegalNote = {
   userReaction?: 'like' | 'dislike' | null;
   targetBlockId?: string;
   blocks?: LegalRichContentBlock[];
+  actionLabel?: string;
+  isLocked?: boolean;
+  lockedFeatureLabel?: string;
+  lockedRequiredPlan?: string;
 };
 
 type RelatedQuestionsState = {
@@ -269,6 +293,11 @@ const stripRichText = (value: unknown) => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
+const normalizeLegalSearchText = (value: unknown) => normalizeText(stripRichText(value))
+  .replace(/[^a-z0-9]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
 const cleanLegalNoteText = (value: unknown) => String(value || '')
   .replace(/\s*\[(?:caput|par[aá]grafo(?:\s+u[nú]nico)?|inciso\s+[ivxlcdm]+|al[ií]nea\s+[a-z]|item\s+[a-z0-9]+)\]\s*/giu, ' ')
   .replace(/\s+/g, ' ')
@@ -281,6 +310,72 @@ const cleanLegalNoteTitle = (value: unknown) => cleanLegalNoteText(value)
 const truncateText = (value: unknown, maxLength = 220) => {
   const text = stripRichText(value);
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}…` : text;
+};
+
+const LEGAL_COMMENTARY_CONFIGURABLE_KEYS = new Set<LegalCommentaryFeatureConfigurableKey>([
+  'lei.comentario_basico',
+  'lei.doutrina',
+  'lei.macete',
+  'lei.como_cai',
+  'lei.jurisprudencia',
+  'lei.sumulas',
+  'lei.questoes',
+  'lei.raiox',
+  'lei.anotacoes',
+  'lei.modo_foco',
+  'lei.favoritos',
+  'lei.solicitar_comentario',
+]);
+
+const LEGAL_COMMENTARY_FEATURE_LABELS: Record<LegalCommentaryFeatureConfigurableKey, string> = {
+  'lei.comentario_basico': 'Comentario do professor',
+  'lei.doutrina': 'Doutrina',
+  'lei.macete': 'Macete',
+  'lei.como_cai': 'Como cai em prova',
+  'lei.jurisprudencia': 'Jurisprudencia',
+  'lei.sumulas': 'Sumulas',
+  'lei.questoes': 'Questoes relacionadas',
+  'lei.raiox': 'Analise detalhada',
+  'lei.anotacoes': 'Anotacoes',
+  'lei.modo_foco': 'Modo foco',
+  'lei.favoritos': 'Favoritos',
+  'lei.solicitar_comentario': 'Solicitar comentario',
+};
+
+const isConfigurableLegalFeatureKey = (
+  featureKey: LegalCommentaryFeatureKey,
+): featureKey is LegalCommentaryFeatureConfigurableKey => LEGAL_COMMENTARY_CONFIGURABLE_KEYS.has(
+  featureKey as LegalCommentaryFeatureConfigurableKey,
+);
+
+const resolveInlineLegalNoteFeatureKey = (note: InlineLegalNote): LegalCommentaryFeatureConfigurableKey => {
+  const title = normalizeText(note.title);
+
+  if (note.tone === 'doctrine' || title.includes('doutrina')) {
+    return 'lei.doutrina';
+  }
+
+  if (title.includes('sumula')) {
+    return 'lei.sumulas';
+  }
+
+  if (note.tone === 'juris' || title.includes('jurisprudencia')) {
+    return 'lei.jurisprudencia';
+  }
+
+  if (note.tone === 'tip' || title.includes('macete')) {
+    return 'lei.macete';
+  }
+
+  if (note.tone === 'question') {
+    return 'lei.questoes';
+  }
+
+  if (title.includes('como cai')) {
+    return 'lei.como_cai';
+  }
+
+  return 'lei.comentario_basico';
 };
 
 type SectionReadingEntry = { startedAt?: string; completedAt?: string; restartedAt?: string };
@@ -384,6 +479,10 @@ const getDateTimeValue = (value?: string) => {
 const isSectionReadingRestartPending = (entry?: SectionReadingEntry) => (
   getDateTimeValue(entry?.restartedAt) > getDateTimeValue(entry?.completedAt)
 );
+
+const getSectionArticleIds = (section: Pick<LawSectionSummary, 'articleIds'>) => (section.articleIds || [])
+  .map((articleId) => String(articleId || '').trim())
+  .filter(Boolean);
 
 const readFavoriteSectionIds = (userKey: string, lawId: string) => {
   if (typeof window === 'undefined' || !userKey || !lawId) return new Set<string>();
@@ -589,6 +688,188 @@ const buildArticleBlocks = (article: LawArticle): RenderableBlock[] => {
 
   return lines;
 };
+
+const collectLegalSearchValues = (value: unknown): string[] => {
+  if (value === null || value === undefined) {
+    return [];
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    const text = stripRichText(value);
+    return text ? [text] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap(collectLegalSearchValues);
+  }
+
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).flatMap(collectLegalSearchValues);
+  }
+
+  return [];
+};
+
+const extractArticleOrdinals = (value: unknown): number[] => (
+  String(value || '')
+    .match(/\d+/g)
+    ?.map((item) => Number.parseInt(item, 10))
+    .filter((item) => Number.isFinite(item)) || []
+);
+
+const getArticleOrdinal = (article: LawArticle): number | null => {
+  const [ordinal] = extractArticleOrdinals(getArticleNumber(article));
+  return ordinal || null;
+};
+
+const sectionContainsArticle = (section: LawSectionSummary, article: LawArticle): boolean => {
+  const articleId = String(article.id || '').trim();
+  if (articleId && (section.articleIds || []).map((id) => String(id)).includes(articleId)) {
+    return true;
+  }
+
+  if (article.sectionId && String(article.sectionId) === String(section.id)) {
+    return true;
+  }
+
+  const articleOrdinal = getArticleOrdinal(article);
+  if (!articleOrdinal) {
+    return false;
+  }
+
+  const [fromOrdinal] = extractArticleOrdinals(section.fromArticle);
+  const [toOrdinal] = extractArticleOrdinals(section.toArticle || section.fromArticle);
+  if (!fromOrdinal || !toOrdinal) {
+    return false;
+  }
+
+  return articleOrdinal >= Math.min(fromOrdinal, toOrdinal) && articleOrdinal <= Math.max(fromOrdinal, toOrdinal);
+};
+
+const getSectionSearchTitles = (section: LawSectionSummary) => [
+  section.title,
+  section.displayTitle,
+  section.chapterLabel,
+  section.chapterName,
+  section.titleLabel,
+  section.titleName,
+]
+  .map(normalizeLegalSearchText)
+  .filter(Boolean);
+
+const sectionEditorialMatchesArticle = (
+  editorial: LawSectionEditorial,
+  article: LawArticle,
+  sections: LawSectionSummary[],
+): boolean => {
+  const articleId = String(article.id || '').trim();
+  const articleNumber = normalizeLegalSearchText(getArticleNumber(article));
+  const articleOrdinal = getArticleOrdinal(article);
+  const matchingSections = sections.filter((section) => sectionContainsArticle(section, article));
+  const matchingSectionIds = new Set(matchingSections.map((section) => String(section.id)));
+
+  if (editorial.sectionId && (
+    String(editorial.sectionId) === String(article.sectionId || '')
+    || matchingSectionIds.has(String(editorial.sectionId))
+  )) {
+    return true;
+  }
+
+  if ((editorial.highlights || []).some((highlight) => (
+    (articleId && String(highlight.articleId || '') === articleId)
+    || (articleNumber && normalizeLegalSearchText(highlight.articleNumber) === articleNumber)
+  ))) {
+    return true;
+  }
+
+  const rangeOrdinals = extractArticleOrdinals(editorial.rangeLabel);
+  if (articleOrdinal && rangeOrdinals.length > 0) {
+    const fromOrdinal = rangeOrdinals[0];
+    const toOrdinal = rangeOrdinals.length > 1 ? rangeOrdinals[rangeOrdinals.length - 1] : fromOrdinal;
+    if (articleOrdinal >= Math.min(fromOrdinal, toOrdinal) && articleOrdinal <= Math.max(fromOrdinal, toOrdinal)) {
+      return true;
+    }
+  }
+
+  const editorialSectionTitle = normalizeLegalSearchText(editorial.sectionTitle);
+  return Boolean(editorialSectionTitle && matchingSections.some((section) => (
+    getSectionSearchTitles(section).includes(editorialSectionTitle)
+  )));
+};
+
+const buildSectionEditorialSearchValuesForArticle = (
+  law: LawDetail,
+  article: LawArticle,
+  sections: LawSectionSummary[],
+) => (Array.isArray(law.sectionEditorials) ? law.sectionEditorials : [])
+  .filter((editorial) => sectionEditorialMatchesArticle(editorial, article, sections))
+  .flatMap((editorial) => [
+    editorial.sectionTitle,
+    editorial.rangeLabel,
+    editorial.importance,
+    editorial.style,
+    editorial.summary,
+    editorial.examFocusText,
+    ...(editorial.examFocus || []),
+    ...(editorial.keywords || []),
+    ...(editorial.macetes || []),
+    ...(editorial.doctrine || []),
+    ...collectLegalSearchValues(editorial.blocks || []),
+    ...collectLegalSearchValues(editorial.highlights || []),
+    ...collectLegalSearchValues(editorial.jurisprudence || []),
+    ...collectLegalSearchValues(editorial.sumulas || []),
+  ]);
+
+const resolveArticleExamTips = (law: LawDetail, article: LawArticle): ArticleExamTip[] => (
+  Array.isArray(law.examTips)
+    ? law.examTips.filter((tip) => String(tip.articleId || '') === String(article.id))
+    : []
+);
+
+const resolveArticleUserCommentsForSearch = (
+  law: LawDetail,
+  article: LawArticle,
+  userId?: string | null,
+): LegalUserComment[] => (
+  Array.isArray(law.userComments)
+    ? law.userComments.filter((comment) => (
+      String(comment.articleId) === String(article.id)
+      && comment.status !== 'deleted'
+      && (comment.status !== 'hidden' || (comment.moderationStatus === 'pending' && String(comment.userId) === String(userId || '')))
+      && comment.moderationStatus !== 'spam'
+    ))
+    : []
+);
+
+const buildArticleSearchHaystack = (
+  law: LawDetail,
+  article: LawArticle,
+  sections: LawSectionSummary[],
+  userId?: string | null,
+) => normalizeLegalSearchText([
+  article.number,
+  article.numero,
+  article.title,
+  article.titulo,
+  article.text,
+  article.texto,
+  article.examTip,
+  article.macete,
+  ...getArticleTextLines(article),
+  ...buildArticleBlocks(article).flatMap((block) => [block.kind, block.label, block.text]),
+  ...collectLegalSearchValues(article.paragraphs || []),
+  ...collectLegalSearchValues(article.paragrafos || []),
+  ...collectLegalSearchValues(article.syllabi || []),
+  ...collectLegalSearchValues(article.sumulas || []),
+  ...collectLegalSearchValues(article.doctrine || []),
+  ...collectLegalSearchValues(article.doutrina || []),
+  ...collectLegalSearchValues(article.jurisprudenceNotes || []),
+  ...collectLegalSearchValues(resolveArticleTeacherComments(law, article)),
+  ...collectLegalSearchValues(resolveArticleJurisprudence(law, article)),
+  ...collectLegalSearchValues(resolveArticleExamTips(law, article)),
+  ...collectLegalSearchValues(resolveArticleUserCommentsForSearch(law, article, userId)),
+  ...buildSectionEditorialSearchValuesForArticle(law, article, sections),
+].join(' '));
 
 const getBlockReferenceTokens = (block: RenderableBlock) => {
   const label = normalizeReferenceText(block.label);
@@ -820,6 +1101,53 @@ const SpinnerBlock: React.FC<{ label: string }> = ({ label }) => (
   </div>
 );
 
+const LegalFeatureFallbackPanel: React.FC<{
+  title: string;
+  description: string;
+  requiredPlan: string;
+  mode: LegalCommentaryFeatureFallbackMode | 'full';
+  previewItems?: string[];
+}> = ({ title, description, requiredPlan, mode, previewItems = [] }) => {
+  if (mode === 'full') {
+    return null;
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/75 p-5 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-700 dark:text-amber-200">
+            <Crown size={14} />
+            {requiredPlan}
+          </p>
+          <h3 className="mt-2 text-lg font-black text-slate-900 dark:text-slate-50">{title}</h3>
+          <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-amber-900/85 dark:text-amber-50/85">
+            {description}
+          </p>
+          {previewItems.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {previewItems.slice(0, 4).map((item) => (
+                <span
+                  key={item}
+                  className="inline-flex rounded-full border border-amber-200 bg-white/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-800 dark:border-amber-400/20 dark:bg-slate-950/25 dark:text-amber-100"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <Link
+          href="/plans"
+          className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-[#615fff] px-4 text-xs font-black uppercase tracking-[0.12em] text-white transition-colors hover:bg-[#514dff]"
+        >
+          Ver planos
+        </Link>
+      </div>
+    </div>
+  );
+};
+
 const ToolbarButton: React.FC<{
   icon: React.ReactNode;
   label: string;
@@ -853,6 +1181,7 @@ const ReaderEditorButton: React.FC<{
     type="button"
     title={label}
     aria-label={label}
+    aria-pressed={Boolean(active)}
     disabled={disabled}
     onMouseDown={(event) => {
       event.preventDefault();
@@ -860,9 +1189,18 @@ const ReaderEditorButton: React.FC<{
         onPress();
       }
     }}
-    className={`grid h-8 min-w-8 shrink-0 place-items-center rounded-lg border px-2 text-xs font-black transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:h-9 sm:min-w-9 ${
+    onKeyDown={(event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+      event.preventDefault();
+      if (!disabled) {
+        onPress();
+      }
+    }}
+    className={`grid h-8 min-w-8 shrink-0 place-items-center rounded-lg border px-2 text-xs font-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#615fff]/45 disabled:cursor-not-allowed disabled:opacity-50 sm:h-9 sm:min-w-9 ${
       active
-        ? 'border-[#615fff]/35 bg-[#615fff]/10 text-[#514dff]'
+        ? 'border-[#615fff] bg-[#615fff] text-white shadow-sm shadow-[#615fff]/25'
         : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
     }`}
   >
@@ -880,12 +1218,20 @@ const ReaderColorButton: React.FC<{
     type="button"
     title={label}
     aria-label={label}
+    aria-pressed={Boolean(active)}
     onMouseDown={(event) => {
       event.preventDefault();
       onPress();
     }}
-    className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border bg-white transition-transform hover:scale-105 dark:bg-slate-900 sm:h-8 sm:w-8 ${
-      active ? 'border-[#615fff] ring-2 ring-[#615fff]/20' : 'border-slate-200 dark:border-slate-700'
+    onKeyDown={(event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+      event.preventDefault();
+      onPress();
+    }}
+    className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg border bg-white transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#615fff]/45 dark:bg-slate-900 sm:h-8 sm:w-8 ${
+      active ? 'border-[#615fff] shadow-sm shadow-[#615fff]/25 ring-2 ring-[#615fff]/35' : 'border-slate-200 dark:border-slate-700'
     }`}
   >
     <span className="h-3.5 w-3.5 rounded-full border border-slate-200 sm:h-4 sm:w-4" style={{ backgroundColor: color }} />
@@ -911,6 +1257,28 @@ const LegalCommentPlanBadge: React.FC<{ plan?: string }> = ({ plan }) => {
       return null;
   }
 };
+
+const LegalCommentAuthorRoleBadge: React.FC<{ role?: string | null }> = ({ role }) => {
+  const normalizedRole = String(role || '').toLowerCase();
+  if (normalizedRole !== 'admin' && normalizedRole !== 'staff') {
+    return null;
+  }
+
+  const isAdmin = normalizedRole === 'admin';
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ${
+        isAdmin
+          ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950'
+          : 'bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-200 dark:ring-blue-400/20'
+      }`}
+    >
+      {isAdmin ? 'Admin' : 'Staff'}
+    </span>
+  );
+};
+
+const legalReactionInFlightKeys = new Set<string>();
 
 const ReactionControls: React.FC<{
   storageKey: string;
@@ -948,7 +1316,7 @@ const ReactionControls: React.FC<{
   }, [initialDislikes, initialLikes, initialReaction, storageKey]);
 
   const updateReaction = (nextReaction: 'like' | 'dislike') => {
-    if (reactionRequestInFlightRef.current) {
+    if (reactionRequestInFlightRef.current || legalReactionInFlightKeys.has(storageKey)) {
       return;
     }
 
@@ -962,6 +1330,7 @@ const ReactionControls: React.FC<{
     const storageReactionKey = `cm:legal-reaction:${storageKey}`;
 
     reactionRequestInFlightRef.current = true;
+    legalReactionInFlightKeys.add(storageKey);
     setIsSavingReaction(true);
     setReaction(resolvedReaction);
     setCounts(optimisticCounts);
@@ -976,14 +1345,17 @@ const ReactionControls: React.FC<{
     void Promise.resolve()
       .then(() => legalCommentaryApiService.setContentReaction(storageKey, resolvedReaction))
       .then((result) => {
+        const persistedReaction = result.userReaction === 'like' || result.userReaction === 'dislike'
+          ? result.userReaction
+          : null;
         setCounts({
           likes: Math.max(0, Number(result.likes || 0)),
           dislikes: Math.max(0, Number(result.dislikes || 0)),
         });
-        setReaction(result.userReaction);
+        setReaction(persistedReaction);
         if (typeof window !== 'undefined') {
-          if (result.userReaction) {
-            window.localStorage.setItem(storageReactionKey, result.userReaction);
+          if (persistedReaction) {
+            window.localStorage.setItem(storageReactionKey, persistedReaction);
           } else {
             window.localStorage.removeItem(storageReactionKey);
           }
@@ -1002,6 +1374,7 @@ const ReactionControls: React.FC<{
       })
       .finally(() => {
         reactionRequestInFlightRef.current = false;
+        legalReactionInFlightKeys.delete(storageKey);
         setIsSavingReaction(false);
       });
   };
@@ -1010,7 +1383,11 @@ const ReactionControls: React.FC<{
     <div className="flex items-center gap-1.5">
       <button
         type="button"
-        onClick={() => updateReaction('like')}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          updateReaction('like');
+        }}
         disabled={isSavingReaction}
         className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[10px] font-black transition-colors ${
           reaction === 'like'
@@ -1024,7 +1401,11 @@ const ReactionControls: React.FC<{
       </button>
       <button
         type="button"
-        onClick={() => updateReaction('dislike')}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          updateReaction('dislike');
+        }}
         disabled={isSavingReaction}
         className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[10px] font-black transition-colors ${
           reaction === 'dislike'
@@ -1155,6 +1536,7 @@ const LegalCommentsPanel: React.FC<{
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <span className="truncate font-bold text-slate-700 dark:text-slate-200">{comment.userName || 'Aluno'}</span>
+                  <LegalCommentAuthorRoleBadge role={comment.userRole} />
                   <LegalCommentPlanBadge plan={comment.userPlan} />
                 </div>
                 <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500">{formatDateTime(comment.createdAt)}</span>
@@ -1391,11 +1773,29 @@ const CalloutBlock: React.FC<{
   body: string;
   blocks?: LegalRichContentBlock[];
   actionLabel?: string;
+  isLocked?: boolean;
+  lockedFeatureLabel?: string;
+  lockedRequiredPlan?: string;
   reactionKey?: string;
   initialLikes?: number;
   initialDislikes?: number;
   initialReaction?: 'like' | 'dislike' | null;
-}> = ({ tone, title, body, blocks, actionLabel, reactionKey, initialLikes = 0, initialDislikes = 0, initialReaction }) => {
+  hideReaction?: boolean;
+}> = ({
+  tone,
+  title,
+  body,
+  blocks,
+  actionLabel,
+  isLocked,
+  lockedFeatureLabel,
+  lockedRequiredPlan,
+  reactionKey,
+  initialLikes = 0,
+  initialDislikes = 0,
+  initialReaction,
+  hideReaction,
+}) => {
   const toneClass: Record<CalloutTone, string> = {
     teacher: 'border-indigo-200 bg-indigo-50/75 text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100',
     doctrine: 'border-amber-200 bg-amber-50/75 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100',
@@ -1421,25 +1821,53 @@ const CalloutBlock: React.FC<{
       tip: <Lightbulb size={14} aria-hidden="true" />,
       question: <FileText size={14} aria-hidden="true" />,
     } satisfies Record<CalloutTone, React.ReactNode>)[tone];
+  const unlockLabel = lockedRequiredPlan || actionLabel || 'Plano superior';
+  const lockedCtaLabel = unlockLabel.toLowerCase().startsWith('plano')
+    ? `Disponivel no ${unlockLabel}`
+    : unlockLabel;
+  const contentNode = hasRichBlocks && shouldFlattenBlocks ? (
+    <InlineLegalContentBlocks blocks={blocks} />
+  ) : hasRichBlocks ? (
+    <RichLegalContentBlocks blocks={blocks} />
+  ) : cleanBody ? (
+    <MathRichText content={cleanBody} className="mt-2 text-sm font-semibold leading-6" />
+  ) : null;
 
   return (
-    <aside className={`ml-4 rounded-xl border px-4 py-3 ${toneClass[tone]}`}>
+    <aside className={`ml-4 rounded-xl border px-4 py-3 ${isLocked ? 'py-3' : ''} ${toneClass[tone]}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em]">
           {icon}
           <span>{cleanTitle}</span>
         </p>
-        {actionLabel ? (
+        {actionLabel && !isLocked ? (
           <span className="text-xs font-bold">{actionLabel} <ArrowRight size={12} className="inline-block" /></span>
         ) : null}
       </div>
-      {hasRichBlocks && shouldFlattenBlocks ? (
-        <InlineLegalContentBlocks blocks={blocks} />
-      ) : hasRichBlocks ? (
-        <RichLegalContentBlocks blocks={blocks} />
-      ) : cleanBody ? (
-        <MathRichText content={cleanBody} className="mt-2 text-sm font-semibold leading-6" />
-      ) : null}
+      {isLocked ? (
+        <div className="relative mt-2 max-h-[118px] min-h-[82px] overflow-hidden rounded-xl border border-white/40 bg-white/20 dark:border-white/10 dark:bg-slate-950/10">
+          <div className="pointer-events-none select-none blur-[3px] opacity-60">
+            {contentNode || (
+              <MathRichText
+                content={`${lockedFeatureLabel || cleanTitle} disponivel para assinantes.`}
+                className="p-3 text-xs font-semibold leading-5"
+              />
+            )}
+          </div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/72 px-3 py-3 text-center backdrop-blur-[1px] dark:bg-slate-950/72">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] opacity-80">
+              {lockedFeatureLabel || cleanTitle}
+            </p>
+            <Link
+              href="/plans"
+              className="inline-flex min-h-9 items-center justify-center rounded-xl bg-[#615fff] px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-sm transition-colors hover:bg-[#514dff]"
+            >
+              {lockedCtaLabel}
+            </Link>
+          </div>
+        </div>
+      ) : contentNode}
+      {!hideReaction && !isLocked ? (
       <div className="mt-3 flex justify-end">
         <ReactionControls
           storageKey={reactionKey || `callout:${normalizeStorageKeyPart(cleanTitle)}:${normalizeStorageKeyPart(cleanBody).slice(0, 48)}`}
@@ -1448,6 +1876,7 @@ const CalloutBlock: React.FC<{
           initialReaction={initialReaction}
         />
       </div>
+      ) : null}
     </aside>
   );
 };
@@ -1458,6 +1887,7 @@ const LawDetailPage: React.FC = () => {
   const searchParams = useSearchParams();
   const { currentUser, updateUser } = useAuth();
   const { addToast } = useToast();
+  const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const readerEditorRef = React.useRef<HTMLDivElement>(null);
   const readingContentSectionRef = React.useRef<HTMLElement>(null);
   const readerToolbarAnchorRef = React.useRef<HTMLDivElement>(null);
@@ -1466,6 +1896,65 @@ const LawDetailPage: React.FC = () => {
 
   const slug = String(params?.slug || '').trim();
   const userId = React.useMemo(() => String(getUserId((currentUser as CurrentUserLike) || null) || ''), [currentUser]);
+  const legalFeatureConfig = React.useMemo(
+    () => normalizeLegalCommentaryFeatureConfig(
+      systemSettings.legalCommentaryFeatureConfig || DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG,
+    ),
+    [systemSettings.legalCommentaryFeatureConfig],
+  );
+  const canAccessLegalModule = hasPlanBenefit(currentUser, 'module.lei_comentada', systemSettings.planEntitlements);
+  const canAccessLegalFeature = React.useCallback((featureKey: LegalCommentaryFeatureKey) => {
+    if (featureKey === 'lei.texto') {
+      return true;
+    }
+
+    return hasPlanBenefit(currentUser, featureKey as PlanBenefitKey, systemSettings.planEntitlements);
+  }, [currentUser, systemSettings.planEntitlements]);
+  const getLegalFeatureFallbackMode = React.useCallback((featureKey: LegalCommentaryFeatureKey) => {
+    if (canAccessLegalFeature(featureKey)) {
+      return 'full' as const;
+    }
+
+    if (!isConfigurableLegalFeatureKey(featureKey)) {
+      return 'locked' as const;
+    }
+
+    return legalFeatureConfig[featureKey]?.fallbackMode || 'locked';
+  }, [canAccessLegalFeature, legalFeatureConfig]);
+  const getLegalFeatureRequiredPlanLabel = React.useCallback(
+    (featureKey: LegalCommentaryFeatureKey) => getBenefitPlanLabel(featureKey as PlanBenefitKey, systemSettings.planEntitlements),
+    [systemSettings.planEntitlements],
+  );
+  const openLegalFeatureUpgradeModal = React.useCallback((featureKey: LegalCommentaryFeatureKey, featureName: string) => {
+    setLegalFeatureUpgradeModal({
+      featureName,
+      requiredPlan: getBenefitRequiredPlan(featureKey as PlanBenefitKey, systemSettings.planEntitlements) as CanonicalPlanName,
+    });
+  }, [systemSettings.planEntitlements]);
+  const applyInlineLegalNoteAccess = React.useCallback((note: InlineLegalNote): InlineLegalNote | null => {
+    const featureKey = resolveInlineLegalNoteFeatureKey(note);
+    const mode = getLegalFeatureFallbackMode(featureKey);
+
+    if (mode === 'full') {
+      return note;
+    }
+
+    const requiredPlan = getLegalFeatureRequiredPlanLabel(featureKey);
+    const featureLabel = LEGAL_COMMENTARY_FEATURE_LABELS[featureKey] || note.title || 'Recurso';
+
+    return {
+      ...note,
+      id: `${note.id}-locked-${mode}`,
+      actionLabel: requiredPlan,
+      lockedFeatureLabel: featureLabel,
+      lockedRequiredPlan: requiredPlan,
+      likes: 0,
+      dislikes: 0,
+      userReaction: null,
+      reactionKey: undefined,
+      isLocked: true,
+    };
+  }, [getLegalFeatureFallbackMode, getLegalFeatureRequiredPlanLabel]);
   const applyUserProgressMutation = React.useCallback((progress?: { newXp?: number; newLevel?: number }) => {
     if (!progress || (progress.newXp === undefined && progress.newLevel === undefined)) {
       return;
@@ -1514,6 +2003,11 @@ const LawDetailPage: React.FC = () => {
     italic: false,
     underline: false,
   });
+  const [readerSaveUpgradeOpen, setReaderSaveUpgradeOpen] = React.useState(false);
+  const [legalFeatureUpgradeModal, setLegalFeatureUpgradeModal] = React.useState<{
+    featureName: string;
+    requiredPlan: CanonicalPlanName;
+  } | null>(null);
   const [readerActiveTextColor, setReaderActiveTextColor] = React.useState('');
   const [readerActiveHighlightColor, setReaderActiveHighlightColor] = React.useState('');
   const [readerFloatingToolbar, setReaderFloatingToolbar] = React.useState<{
@@ -1529,7 +2023,13 @@ const LawDetailPage: React.FC = () => {
   });
 
   const loadLaw = React.useCallback(async (options?: { force?: boolean }) => {
-    if (!slug) {
+    const identifiers = Array.from(new Set(
+      [slug, requestedLawId]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean),
+    ));
+
+    if (identifiers.length === 0) {
       setLaw(null);
       setIsLoading(false);
       setLoadError('Lei não encontrada.');
@@ -1539,7 +2039,22 @@ const LawDetailPage: React.FC = () => {
     setIsLoading(true);
     setLoadError('');
     try {
-      const detail = await legalCommentaryApiService.getLawDetail(slug, options);
+      let detail: LawDetail | null = null;
+
+      for (const identifier of identifiers) {
+        try {
+          detail = await legalCommentaryApiService.getLawDetail(identifier, options);
+        } catch (error) {
+          if (identifier === identifiers[identifiers.length - 1]) {
+            throw error;
+          }
+        }
+
+        if (detail) {
+          break;
+        }
+      }
+
       setLaw(detail);
       if (!detail) {
         setLoadError('Lei não encontrada.');
@@ -1550,7 +2065,7 @@ const LawDetailPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [slug]);
+  }, [requestedLawId, slug]);
 
   React.useEffect(() => {
     let active = true;
@@ -1734,9 +2249,13 @@ const LawDetailPage: React.FC = () => {
     () => (savedReaderMarkupHtml ? normalizeQuestionRichHtml(savedReaderMarkupHtml) : ''),
     [savedReaderMarkupHtml],
   );
-  const normalizedSearchTerm = React.useMemo(() => normalizeText(searchTerm), [searchTerm]);
+  const normalizedSearchTerm = React.useMemo(() => normalizeLegalSearchText(searchTerm), [searchTerm]);
   const isSearchingLegalContent = Boolean(normalizedSearchTerm);
-  const shouldRenderSavedReaderMarkup = Boolean(sanitizedHtml && !isSearchingLegalContent);
+  const shouldRenderSavedReaderMarkup = Boolean(
+    getLegalFeatureFallbackMode('lei.anotacoes') === 'full'
+    && sanitizedHtml
+    && !isSearchingLegalContent,
+  );
 
   const activeSectionArticles = React.useMemo(() => {
     if (!law || !activeSection) return [];
@@ -1766,6 +2285,28 @@ const LawDetailPage: React.FC = () => {
   );
   const backendProgressPercent = Number(law?.progress?.progressPercent || law?.progressPercent || 0);
 
+  const completedArticleIds = React.useMemo(() => {
+    const articleIds = new Set(backendViewedArticleIds);
+
+    sections.forEach((section) => {
+      const sectionArticleIds = getSectionArticleIds(section);
+      const readingEntry = getSectionReadingEntry(sectionReadingState, section);
+
+      if (isSectionReadingRestartPending(readingEntry)) {
+        sectionArticleIds.forEach((articleId) => articleIds.delete(articleId));
+        return;
+      }
+
+      if (!readingEntry?.completedAt) {
+        return;
+      }
+
+      sectionArticleIds.forEach((articleId) => articleIds.add(articleId));
+    });
+
+    return articleIds;
+  }, [backendViewedArticleIds, sectionReadingState, sections]);
+
   const completedSectionKeys = React.useMemo(() => new Set(sections
     .filter((section) => {
       const readingEntry = getSectionReadingEntry(sectionReadingState, section);
@@ -1778,47 +2319,33 @@ const LawDetailPage: React.FC = () => {
         return true;
       }
 
-      if (backendProgressPercent >= 100) {
-        return true;
-      }
-
-      const articleIds = (section.articleIds || []).map((id) => String(id)).filter(Boolean);
-      return articleIds.length > 0 && articleIds.every((id) => backendViewedArticleIds.has(id));
+      const articleIds = getSectionArticleIds(section);
+      return articleIds.length > 0 && articleIds.every((id) => completedArticleIds.has(id));
     })
-    .map((section) => buildSectionReadingKey(section))), [backendProgressPercent, backendViewedArticleIds, sectionReadingState, sections]);
+    .map((section) => buildSectionReadingKey(section))), [completedArticleIds, sectionReadingState, sections]);
 
-  const completedArticleIds = React.useMemo(() => {
-    const articleIds = new Set(backendViewedArticleIds);
-
-    sections.forEach((section) => {
-      const sectionArticleIds = (section.articleIds || [])
-        .map((articleId) => String(articleId || '').trim())
-        .filter(Boolean);
-
-      if (isSectionReadingRestartPending(getSectionReadingEntry(sectionReadingState, section))) {
-        sectionArticleIds.forEach((articleId) => articleIds.delete(articleId));
-        return;
-      }
-
-      if (!completedSectionKeys.has(buildSectionReadingKey(section))) {
-        return;
-      }
-
-      sectionArticleIds.forEach((articleId) => articleIds.add(articleId));
-    });
-
-    return articleIds;
-  }, [backendViewedArticleIds, completedSectionKeys, sectionReadingState, sections]);
+  const hasRestartedSectionReading = React.useMemo(
+    () => sections.some((section) => isSectionReadingRestartPending(getSectionReadingEntry(sectionReadingState, section))),
+    [sectionReadingState, sections],
+  );
 
   const articleProgressPercent = React.useMemo(() => {
-    const totalArticles = Array.isArray(law?.articles) ? law.articles.length : 0;
+    const expectedArticleCount = Number(law?.articleCount || law?.totalArtigos || 0);
+    const loadedArticleCount = Array.isArray(law?.articles) ? law.articles.length : 0;
+    const totalArticles = expectedArticleCount > 0 ? expectedArticleCount : loadedArticleCount;
     if (totalArticles <= 0) {
       return null;
     }
 
-    const visibleCompletedArticles = (law?.articles || []).filter((article) => completedArticleIds.has(String(article.id))).length;
-    return Math.round((visibleCompletedArticles / totalArticles) * 100);
-  }, [completedArticleIds, law]);
+    const completedArticles = Math.min(completedArticleIds.size, totalArticles);
+    const localProgressPercent = Math.round((completedArticles / totalArticles) * 100);
+
+    if (hasRestartedSectionReading || completedArticleIds.size > 0 || backendViewedArticleIds.size > 0) {
+      return localProgressPercent;
+    }
+
+    return backendProgressPercent;
+  }, [backendProgressPercent, backendViewedArticleIds.size, completedArticleIds, hasRestartedSectionReading, law]);
 
   const sectionProgressPercent = sections.length > 0
     ? Math.round((completedSectionKeys.size / sections.length) * 100)
@@ -1836,14 +2363,26 @@ const LawDetailPage: React.FC = () => {
     if (!law || activeSectionArticleIds.size === 0) return [];
 
     return (Array.isArray(law.userComments) ? law.userComments : [])
-      .filter((comment) => (
-        activeSectionArticleIds.has(String(comment.articleId))
-        && comment.status !== 'deleted'
-        && (comment.status !== 'hidden' || (comment.moderationStatus === 'pending' && String(comment.userId) === userId))
-        && comment.moderationStatus !== 'spam'
-      ))
+      .filter((comment) => {
+        const rawArticleId = String(comment.articleId || '').trim();
+        const rawSectionId = String(
+          (comment as Partial<LegalUserComment> & { sectionId?: string | number; section_id?: string | number }).sectionId
+          || (comment as Partial<LegalUserComment> & { sectionId?: string | number; section_id?: string | number }).section_id
+          || '',
+        ).trim();
+        const belongsToActiveArticle = rawArticleId !== '' && activeSectionArticleIds.has(rawArticleId);
+        const belongsToActiveSection = rawSectionId !== '' && activeSection && rawSectionId === String(activeSection.id);
+        const isSectionWideComment = rawArticleId === '' && rawSectionId === '' && activeSection;
+
+        return (
+          (belongsToActiveArticle || belongsToActiveSection || isSectionWideComment)
+          && comment.status !== 'deleted'
+          && (comment.status !== 'hidden' || (comment.moderationStatus === 'pending' && String(comment.userId) === userId))
+          && comment.moderationStatus !== 'spam'
+        );
+      })
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
-  }, [activeSectionArticleIds, law, userId]);
+  }, [activeSection, activeSectionArticleIds, law, userId]);
 
   const relatedQuestionScope = React.useMemo(() => {
     if (!law) {
@@ -1862,6 +2401,33 @@ const LawDetailPage: React.FC = () => {
       topics,
     };
   }, [activeSection?.title, activeSectionArticles, law]);
+  const analysisFeatureMode = getLegalFeatureFallbackMode('lei.raiox');
+  const questionsFeatureMode = getLegalFeatureFallbackMode('lei.questoes');
+  const annotationsFeatureMode = getLegalFeatureFallbackMode('lei.anotacoes');
+  const focusFeatureMode = getLegalFeatureFallbackMode('lei.modo_foco');
+  const favoritesFeatureMode = getLegalFeatureFallbackMode('lei.favoritos');
+  const teacherRequestFeatureMode = getLegalFeatureFallbackMode('lei.solicitar_comentario');
+  const canViewDeepAnalysis = analysisFeatureMode === 'full';
+  const canViewRelatedQuestions = questionsFeatureMode === 'full';
+  const canUseReaderAnnotations = annotationsFeatureMode === 'full';
+  const canUseFocusMode = focusFeatureMode === 'full';
+  const canUseLegalFavorites = favoritesFeatureMode === 'full';
+  const canRequestTeacherComment = teacherRequestFeatureMode === 'full';
+  const currentAccessPlanName = getAccessPlanName(currentUser);
+  const legalFavoritesLimit = getPlanUsageLimitForPlanName(
+    currentAccessPlanName,
+    'lei_favorites_limit',
+    systemSettings.planUsageLimits,
+  );
+  const legalFavoritesUnlimited = isPlanUsageUnlimitedForPlanName(
+    currentAccessPlanName,
+    'lei_favorites_limit',
+    systemSettings.planUsageLimits,
+  );
+  const readerAnnotationsRequiredPlan = getBenefitRequiredPlan(
+    'lei.anotacoes',
+    systemSettings.planEntitlements,
+  ) as CanonicalPlanName;
 
   const readingStorageLawId = law ? (requestedLawId || law.id) : '';
   const backendFavoriteSectionIds = React.useMemo(() => new Set((law?.sections || [])
@@ -1889,7 +2455,7 @@ const LawDetailPage: React.FC = () => {
   }, [backendFavoriteSectionIds, readingStorageLawId, userId]);
 
   React.useEffect(() => {
-    if (activeTab !== 'questions' || !law) {
+    if (activeTab !== 'questions' || !law || !canViewRelatedQuestions) {
       return;
     }
 
@@ -1934,7 +2500,7 @@ const LawDetailPage: React.FC = () => {
     return () => {
       isActive = false;
     };
-  }, [activeTab, law, relatedQuestionScope]);
+  }, [activeTab, canViewRelatedQuestions, law, relatedQuestionScope]);
 
   const practiceSectionHref = React.useMemo(() => {
     const params = new URLSearchParams();
@@ -1975,48 +2541,10 @@ const LawDetailPage: React.FC = () => {
       ? (Array.isArray(law.articles) ? law.articles : [])
       : activeSectionArticles;
 
-    return sourceArticles.filter((article) => {
-      if (!normalizedSearchTerm) return true;
-      const syllabi = [...(article.syllabi || []), ...(article.sumulas || [])];
-      const doctrine = [...(article.doctrine || []), ...(article.doutrina || [])];
-
-      const textHaystack = normalizeText([
-        article.number,
-        article.title,
-        article.titulo,
-        article.text,
-        article.texto,
-        ...getArticleTextLines(article),
-        article.examTip,
-        article.macete,
-        ...syllabi.flatMap((entry) => [
-          entry.court,
-          entry.tribunal,
-          entry.number,
-          entry.numero,
-          entry.text,
-          entry.texto,
-        ]),
-        ...doctrine.flatMap((entry) => (
-          typeof entry === 'string'
-            ? [entry]
-            : [entry.title, entry.body, entry.text, entry.author]
-        )),
-        ...resolveArticleTeacherComments(law, article).flatMap((entry) => [entry.title, entry.body, entry.texto, entry.authorName, entry.autor]),
-        ...resolveArticleJurisprudence(law, article).flatMap((entry) => [
-          entry.title,
-          entry.summary,
-          entry.texto,
-          entry.court,
-          entry.tribunal,
-          entry.precedentType,
-          entry.examImpact,
-        ]),
-      ].join(' '));
-
-      return textHaystack.includes(normalizedSearchTerm);
-    });
-  }, [activeSectionArticles, law, normalizedSearchTerm]);
+    return sourceArticles.filter((article) => (
+      !normalizedSearchTerm || buildArticleSearchHaystack(law, article, sections, userId).includes(normalizedSearchTerm)
+    ));
+  }, [activeSectionArticles, law, normalizedSearchTerm, sections, userId]);
 
   const sectionTargetOptions = React.useMemo<SectionTargetOption[]>(() => {
     const sectionLabel = activeSection
@@ -2126,7 +2654,6 @@ const LawDetailPage: React.FC = () => {
     || sectionJurisprudence.length
     || sectionSumulas.length,
   );
-
   const progressPercent = articleProgressPercent ?? (sections.length > 0
     ? sectionProgressPercent
     : backendProgressPercent);
@@ -2141,11 +2668,19 @@ const LawDetailPage: React.FC = () => {
     ? sections[currentSectionIndex + 1]
     : null;
 
+  const handleLegalSearchChange = React.useCallback((value: string) => {
+    setSearchTerm(value);
+    if (value.trim() && activeTab !== 'law') {
+      setActiveTab('law');
+    }
+  }, [activeTab]);
+
   const changeSection = React.useCallback((sectionId: string) => {
     if (!law) return;
     const section = sections.find((item) => String(item.id) === String(sectionId));
     if (!section) return;
 
+    setSearchTerm('');
     const query = new URLSearchParams(searchParams.toString());
     query.set('lawId', law.id);
     query.set('sectionId', String(section.id));
@@ -2163,9 +2698,18 @@ const LawDetailPage: React.FC = () => {
       addToast('Entre na sua conta para favoritar seções.', 'warning');
       return;
     }
+    if (!canUseLegalFavorites) {
+      openLegalFeatureUpgradeModal('lei.favoritos', 'favoritar seções da Lei Comentada');
+      return;
+    }
 
     setIsTogglingFavorite(true);
     const optimistic = !favoriteSectionIds.has(activeSection.id);
+    if (optimistic && !legalFavoritesUnlimited && legalFavoritesLimit !== null && favoriteSectionIds.size >= legalFavoritesLimit) {
+      openLegalFeatureUpgradeModal('lei.favoritos', 'mais favoritos na Lei Comentada');
+      setIsTogglingFavorite(false);
+      return;
+    }
     setFavoriteSectionIds((current) => {
       const next = new Set(current);
       if (optimistic) {
@@ -2211,7 +2755,19 @@ const LawDetailPage: React.FC = () => {
     } finally {
       setIsTogglingFavorite(false);
     }
-  }, [activeSection, addToast, applyUserProgressMutation, favoriteSectionIds, isTogglingFavorite, law, userId]);
+  }, [
+    activeSection,
+    addToast,
+    applyUserProgressMutation,
+    canUseLegalFavorites,
+    favoriteSectionIds,
+    isTogglingFavorite,
+    law,
+    legalFavoritesLimit,
+    legalFavoritesUnlimited,
+    openLegalFeatureUpgradeModal,
+    userId,
+  ]);
 
   const copyLawLink = React.useCallback(async () => {
     if (typeof window === 'undefined') return;
@@ -2249,13 +2805,18 @@ const LawDetailPage: React.FC = () => {
   }, []);
 
   const openTeacherCommentRequestModal = React.useCallback(() => {
+    if (!canRequestTeacherComment) {
+      openLegalFeatureUpgradeModal('lei.solicitar_comentario', 'solicitar comentário do professor');
+      return;
+    }
+
     setSectionSupportActionMode('teacher_request');
     setSectionReportTitle('Solicitar comentário do professor');
     setSectionReportReason('Solicitar comentário do professor');
     setSectionReportDetails('');
     setSectionSupportTargetId('section');
     setSectionReportModalOpen(true);
-  }, []);
+  }, [canRequestTeacherComment, openLegalFeatureUpgradeModal]);
 
   const openDetailedAnalysisRequestModal = React.useCallback(() => {
     setSectionSupportActionMode('analysis_request');
@@ -2442,9 +3003,14 @@ const LawDetailPage: React.FC = () => {
 
     try {
       const articleIds = activeSectionArticles.map((article) => String(article.id || '')).filter(Boolean);
-      const progressResults = articleIds.length > 0
-        ? await Promise.all(articleIds.map((articleId) => legalCommentaryApiService.recordArticleView(law.id, articleId)))
-        : [await legalCommentaryApiService.recordLawView(law.id)];
+      const progressResults = [];
+      if (articleIds.length > 0) {
+        for (const articleId of articleIds) {
+          progressResults.push(await legalCommentaryApiService.recordArticleView(law.id, articleId));
+        }
+      } else {
+        progressResults.push(await legalCommentaryApiService.recordLawView(law.id));
+      }
       const latestProgress = [...progressResults].reverse().find((progress) => (
         progress.newXp !== undefined || progress.newLevel !== undefined
       ));
@@ -2558,6 +3124,7 @@ const LawDetailPage: React.FC = () => {
         userName: String(currentUser?.name || currentUser?.email || 'Aluno'),
         userAvatar: currentUser?.photoUrl,
         userPlan: String(currentUser?.planDisplayName || currentUser?.plan || 'Gratuito'),
+        userRole: currentUser?.role,
         body,
         status: result.moderationStatus === 'approved' ? 'visible' : 'hidden',
         moderationStatus: result.moderationStatus,
@@ -2630,19 +3197,28 @@ const LawDetailPage: React.FC = () => {
     return range;
   }, []);
 
+  const clearReaderToolbarState = React.useCallback(() => {
+    setReaderActiveCommands({ bold: false, italic: false, underline: false });
+    setReaderActiveTextColor('');
+    setReaderActiveHighlightColor('');
+  }, []);
+
   const refreshReaderToolbarState = React.useCallback(() => {
     if (activeTab !== 'law' || typeof window === 'undefined') {
+      clearReaderToolbarState();
       return;
     }
 
     const range = getReaderSelectionRange();
     if (!range) {
+      clearReaderToolbarState();
       return;
     }
 
     const container = range.commonAncestorContainer;
     const element = container instanceof HTMLElement ? container : container.parentElement;
     if (!element) {
+      clearReaderToolbarState();
       return;
     }
 
@@ -2655,8 +3231,48 @@ const LawDetailPage: React.FC = () => {
       currentElement = currentElement.parentElement;
     }
 
+    const selectedTextElements: HTMLElement[] = [];
+    if (editor && typeof document !== 'undefined' && typeof NodeFilter !== 'undefined' && !range.collapsed) {
+      const walker = document.createTreeWalker(
+        editor,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) => (
+            range.intersectsNode(node) && String(node.textContent || '').trim()
+              ? NodeFilter.FILTER_ACCEPT
+              : NodeFilter.FILTER_REJECT
+          ),
+        },
+      );
+
+      let currentNode = walker.nextNode();
+      while (currentNode) {
+        const parentElement = currentNode.parentElement;
+        if (parentElement) {
+          selectedTextElements.push(parentElement);
+        }
+        currentNode = walker.nextNode();
+      }
+    }
+
+    const elementOrAncestorMatchesCommand = (baseElement: HTMLElement, command: 'bold' | 'italic' | 'underline') => {
+      let current: HTMLElement | null = baseElement;
+      while (current && current !== editor && (!editor || editor.contains(current))) {
+        if (matchesReaderCommandElement(current, command)) {
+          return true;
+        }
+        current = current.parentElement;
+      }
+
+      return false;
+    };
+
     const hasActiveCommand = (command: 'bold' | 'italic' | 'underline') => {
       if (ancestorElements.some((ancestor) => matchesReaderCommandElement(ancestor, command))) {
+        return true;
+      }
+
+      if (selectedTextElements.some((selectedElement) => elementOrAncestorMatchesCommand(selectedElement, command))) {
         return true;
       }
 
@@ -2711,7 +3327,7 @@ const LawDetailPage: React.FC = () => {
     });
     setReaderActiveTextColor(textColor);
     setReaderActiveHighlightColor(highlightColor);
-  }, [activeTab, getReaderSelectionRange]);
+  }, [activeTab, clearReaderToolbarState, getReaderSelectionRange]);
 
   const syncReaderMarkupFromDom = React.useCallback(() => {
     const editor = readerEditorRef.current;
@@ -2876,7 +3492,20 @@ const LawDetailPage: React.FC = () => {
       },
     );
 
-    const wrappers: HTMLElement[] = [];
+    const wrappers: HTMLElement[] = [
+      ...findReaderMarkupAncestors(range, matcher),
+    ];
+    const endElement = range.endContainer instanceof HTMLElement
+      ? range.endContainer
+      : range.endContainer.parentElement;
+    let currentEndElement: HTMLElement | null = endElement;
+    while (currentEndElement && currentEndElement !== editor && editor.contains(currentEndElement)) {
+      if (matcher(currentEndElement)) {
+        wrappers.push(currentEndElement);
+      }
+      currentEndElement = currentEndElement.parentElement;
+    }
+
     let currentNode = walker.nextNode();
     while (currentNode) {
       wrappers.push(currentNode as HTMLElement);
@@ -2907,6 +3536,8 @@ const LawDetailPage: React.FC = () => {
     const range = ensureReaderSelection(command !== 'removeFormat');
     if (!range || typeof document === 'undefined') return;
 
+    let forcedCommandState: { command: 'bold' | 'italic' | 'underline'; active: boolean } | null = null;
+
     if (command === 'removeFormat') {
       const removedCount = unwrapReaderMarkupInRange(range);
       if (removedCount === 0) {
@@ -2918,6 +3549,7 @@ const LawDetailPage: React.FC = () => {
     } else {
       const matcher = createReaderCommandMatcher(command);
       const shouldRemoveExistingFormat = unwrapReaderMarkupInRange(range, matcher) > 0;
+      const nextCommandActive = !shouldRemoveExistingFormat;
       let wrapper: HTMLElement | null = null;
       if (!shouldRemoveExistingFormat) {
         wrapper = wrapReaderRangeTextNodes(range, () => {
@@ -2940,12 +3572,21 @@ const LawDetailPage: React.FC = () => {
 
       setReaderActiveCommands((current) => ({
         ...current,
-        [command]: !shouldRemoveExistingFormat,
+        [command]: nextCommandActive,
       }));
+      forcedCommandState = { command, active: nextCommandActive };
     }
 
     syncReaderMarkupFromDom();
-    window.requestAnimationFrame(refreshReaderToolbarState);
+    window.requestAnimationFrame(() => {
+      refreshReaderToolbarState();
+      if (forcedCommandState) {
+        setReaderActiveCommands((current) => ({
+          ...current,
+          [forcedCommandState.command]: forcedCommandState.active,
+        }));
+      }
+    });
   }, [addToast, createReaderCommandMatcher, ensureReaderSelection, refreshReaderToolbarState, syncReaderMarkupFromDom, unwrapReaderMarkupInRange, wrapReaderRangeTextNodes]);
 
   const applyReaderInlineStyle = React.useCallback((styleName: 'color' | 'backgroundColor', value: string) => {
@@ -3013,9 +3654,13 @@ const LawDetailPage: React.FC = () => {
     if (!readerMarkupKey) return;
     clearReaderMarkupHtml(readerMarkupKey);
     setSavedReaderMarkupHtml('');
+    clearReaderToolbarState();
+    if (typeof window !== 'undefined') {
+      window.getSelection()?.removeAllRanges();
+    }
     setReaderMarkupVersion((current) => current + 1);
     addToast('Marcações removidas. Texto original restaurado.', 'success');
-  }, [addToast, readerMarkupKey]);
+  }, [addToast, clearReaderToolbarState, readerMarkupKey]);
 
   const totalRelatedQuestions = React.useMemo(() => activeSectionArticles.reduce(
     (sum, article) => sum + Number(article.relatedQuestionCount || article.questoesRelacionadas || 0),
@@ -3069,14 +3714,33 @@ const LawDetailPage: React.FC = () => {
     );
   }
 
-  const firstSectionArticle = activeSectionArticles[0] || visibleArticles[0] || null;
+  if (!canAccessLegalModule) {
+    return (
+      <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-8`}>
+        <LegalFeatureFallbackPanel
+          title="Lei Comentada bloqueada para este plano"
+          description="O acesso ao módulo de Lei Comentada está desativado para o seu plano no Controle de Acesso por Plano."
+          requiredPlan={getBenefitPlanLabel('module.lei_comentada', systemSettings.planEntitlements)}
+          mode="locked"
+        />
+      </section>
+    );
+  }
+
+  const firstSectionArticle = isSearchingLegalContent
+    ? (visibleArticles[0] || activeSectionArticles[0] || null)
+    : (activeSectionArticles[0] || visibleArticles[0] || null);
   const titleMarker = firstSectionArticle ? getTitleMarker(firstSectionArticle) : '';
   const sectionName = firstSectionArticle ? getSectionHeaderText(firstSectionArticle) : '';
   const readableActiveSectionTitle = getReadableSectionTitle(activeSection);
-  const contentHeaderTitle = sectionName || readableActiveSectionTitle;
-  const contentHeaderMarker = titleMarker && normalizeText(titleMarker) !== normalizeText(contentHeaderTitle)
-    ? titleMarker
-    : '';
+  const contentHeaderTitle = isSearchingLegalContent
+    ? 'Resultado da busca'
+    : (sectionName || readableActiveSectionTitle);
+  const contentHeaderMarker = isSearchingLegalContent
+    ? 'Busca em toda a lei'
+    : (titleMarker && normalizeText(titleMarker) !== normalizeText(contentHeaderTitle)
+      ? titleMarker
+      : '');
   const activeSectionLabel = activeSection
     ? (activeSection.fromArticle === activeSection.toArticle
       ? `Artigo ${activeSection.fromArticle}`
@@ -3139,7 +3803,7 @@ const LawDetailPage: React.FC = () => {
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(event) => handleLegalSearchChange(event.target.value)}
               placeholder="Buscar artigo, termo, comentário ou jurisprudência..."
               className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold text-slate-700 outline-none transition-colors focus:border-[#615fff]/40 focus:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
@@ -3211,12 +3875,23 @@ const LawDetailPage: React.FC = () => {
             </button>
           </div>
           <ToolbarButton
-            icon={<Eye size={14} />}
+            icon={canUseFocusMode ? <Eye size={14} /> : <Lock size={14} />}
             label={isFocusMode ? 'Sair do foco' : 'Modo foco'}
-            active={isFocusMode}
-            onClick={() => setIsFocusMode((state) => !state)}
+            active={isFocusMode && canUseFocusMode}
+            onClick={() => {
+              if (!canUseFocusMode) {
+                openLegalFeatureUpgradeModal('lei.modo_foco', 'modo foco na Lei Comentada');
+                return;
+              }
+              setIsFocusMode((state) => !state);
+            }}
           />
-          <ToolbarButton icon={<Bookmark size={14} className={isActiveSectionFavorite ? 'fill-current' : ''} />} label="Favoritar seção" onClick={toggleSectionFavorite} active={isActiveSectionFavorite} />
+          <ToolbarButton
+            icon={canUseLegalFavorites ? <Bookmark size={14} className={isActiveSectionFavorite ? 'fill-current' : ''} /> : <Lock size={14} />}
+            label="Favoritar seção"
+            onClick={toggleSectionFavorite}
+            active={isActiveSectionFavorite && canUseLegalFavorites}
+          />
           <ToolbarButton icon={<ExternalLink size={14} />} label="Planalto" onClick={openOfficialPdf} />
           <ToolbarButton
             icon={showLegalTextNotes ? <EyeOff size={14} /> : <FileText size={14} />}
@@ -3265,38 +3940,6 @@ const LawDetailPage: React.FC = () => {
             </div>
           </div>
         ) : null}
-        <div className={`${PLATFORM_SURFACE_CARD_CLASS} p-1`}>
-          <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">
-            {([
-              { key: 'comments', label: 'Comentários' },
-              { key: 'law', label: 'Conteúdo da lei' },
-              { key: 'analysis', label: 'Análise detalhada' },
-              { key: 'questions', label: 'Questões' },
-            ] as const).map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg px-2 text-[11px] font-bold transition-colors sm:h-10 sm:rounded-xl sm:text-sm ${
-                  activeTab === tab.key
-                    ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                    : 'text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                }`}
-              >
-                <span>{tab.label}</span>
-                {tab.key === 'comments' && sectionUserComments.length > 0 ? (
-                  <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-black ${
-                    activeTab === tab.key
-                      ? 'bg-white/20 text-current dark:bg-slate-900/20'
-                      : 'bg-[#615fff]/10 text-[#514dff] dark:bg-[#615fff]/20 dark:text-indigo-200'
-                  }`}>
-                    {sectionUserComments.length}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </div>
         {activeTab === 'law' ? (
           <div className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-nowrap items-center justify-between gap-2 overflow-x-auto px-2 py-1.5 sm:flex-wrap sm:gap-3 sm:px-3 sm:py-2`}>
             <div className="flex shrink-0 flex-nowrap items-center gap-1 sm:flex-wrap sm:gap-2">
@@ -3337,12 +3980,31 @@ const LawDetailPage: React.FC = () => {
               type="button"
               onMouseDown={(event) => {
                 event.preventDefault();
+                if (!canUseReaderAnnotations) {
+                  setReaderSaveUpgradeOpen(true);
+                  return;
+                }
                 saveReaderMarkup();
               }}
-              className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg bg-slate-900 px-3 text-xs font-black text-white transition-colors hover:bg-[#615fff] dark:bg-slate-100 dark:text-slate-950 sm:h-9 sm:px-4"
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                  return;
+                }
+                event.preventDefault();
+                if (!canUseReaderAnnotations) {
+                  setReaderSaveUpgradeOpen(true);
+                  return;
+                }
+                saveReaderMarkup();
+              }}
+              className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-black transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#615fff]/45 sm:h-9 sm:px-4 ${
+                canUseReaderAnnotations
+                  ? 'bg-slate-900 text-white hover:bg-[#615fff] dark:bg-slate-100 dark:text-slate-950'
+                  : 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200'
+              }`}
             >
-              <Save size={14} />
-              <span className="hidden sm:inline">Salvar</span>
+              {canUseReaderAnnotations ? <Save size={14} /> : <Lock size={14} />}
+              <span className="hidden sm:inline">{canUseReaderAnnotations ? 'Salvar' : `Salvar no ${getLegalFeatureRequiredPlanLabel('lei.anotacoes')}`}</span>
             </button>
           </div>
         ) : null}
@@ -3352,6 +4014,17 @@ const LawDetailPage: React.FC = () => {
       </div>
 
       {activeTab === 'questions' ? (
+        !canViewRelatedQuestions ? (
+          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6`}>
+            <LegalFeatureFallbackPanel
+              title="Treine esta seção com questões certas para o assunto"
+              description="As questões relacionadas conectam o artigo ao modo prática, para você revisar exatamente o que acabou de ler."
+              requiredPlan={getLegalFeatureRequiredPlanLabel('lei.questoes')}
+              mode={questionsFeatureMode}
+              previewItems={['Filtro automático', 'Prática por artigo', 'Revisão guiada']}
+            />
+          </section>
+        ) : (
         <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -3398,6 +4071,7 @@ const LawDetailPage: React.FC = () => {
             )}
           </div>
         </section>
+        )
       ) : activeTab === 'comments' ? (
         <LegalCommentsPanel
           comments={sectionUserComments}
@@ -3482,20 +4156,25 @@ const LawDetailPage: React.FC = () => {
                       : [];
                     const examTip = String(article.examTip || article.macete || '').trim();
                     const inlineNotesByBlock = activeTab === 'law' && showEditorialAnnotations
-                      ? groupInlineNotesByBlock(displayBlocks, buildInlineLegalNotes({
-                        article,
-                        teacherComments,
-                        doctrine,
-                        jurisprudenceNotes,
-                        jurisprudence,
-                        sumulas,
-                        examTips,
-                        fallbackExamTip: examTip,
-                      }))
+                      ? groupInlineNotesByBlock(
+                        displayBlocks,
+                        buildInlineLegalNotes({
+                          article,
+                          teacherComments,
+                          doctrine,
+                          jurisprudenceNotes,
+                          jurisprudence,
+                          sumulas,
+                          examTips,
+                          fallbackExamTip: examTip,
+                        })
+                          .map(applyInlineLegalNoteAccess)
+                          .filter((note): note is InlineLegalNote => Boolean(note)),
+                      )
                       : new Map<string, InlineLegalNote[]>();
 
                     return (
-                      <article key={article.id} className="space-y-4 border-b border-slate-100 pb-6 last:border-b-0 dark:border-slate-800" style={fontSizeStyle}>
+                      <article key={article.id} className="space-y-4 pb-6 outline-none focus:outline-none focus-visible:outline-none" style={fontSizeStyle}>
                         <div className="flex items-start justify-between gap-4">
                           <h3 className="text-xl font-black tracking-tight text-slate-900 dark:text-slate-100">
                             Art. {getArticleNumber(article) || '-'}
@@ -3512,7 +4191,7 @@ const LawDetailPage: React.FC = () => {
 
                             return (
                               <React.Fragment key={block.id}>
-                                <div className={`group rounded-xl border border-transparent p-2 transition-colors hover:bg-indigo-50/40 dark:hover:bg-indigo-500/10 ${blockIndentClass}`}>
+                                <div className={`group rounded-xl p-2 transition-colors hover:bg-indigo-50/40 focus:outline-none focus-visible:outline-none dark:hover:bg-indigo-500/10 ${blockIndentClass}`}>
                                   <div className="flex flex-col gap-2">
                                     {block.isLegalNote ? (
                                       <small className="block min-w-0 w-full text-justify text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
@@ -3549,6 +4228,11 @@ const LawDetailPage: React.FC = () => {
                                         initialLikes={Number(note.likes || 0)}
                                         initialDislikes={Number(note.dislikes || 0)}
                                         initialReaction={note.userReaction}
+                                        hideReaction={note.isLocked}
+                                        isLocked={note.isLocked}
+                                        lockedFeatureLabel={note.lockedFeatureLabel}
+                                        lockedRequiredPlan={note.lockedRequiredPlan}
+                                        actionLabel={note.actionLabel}
                                       />
                                     ))}
                                   </div>
@@ -3571,6 +4255,17 @@ const LawDetailPage: React.FC = () => {
 
       {activeTab === 'analysis' ? (
         hasSectionDeepAnalysis ? (
+        !canViewDeepAnalysis ? (
+          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6`}>
+            <LegalFeatureFallbackPanel
+              title="Desbloqueie a análise estratégica desta seção"
+              description="Veja resumo, pontos de prova, macetes, doutrina e jurisprudência organizados para transformar a leitura em revisão objetiva."
+              requiredPlan={getLegalFeatureRequiredPlanLabel('lei.raiox')}
+              mode={analysisFeatureMode}
+              previewItems={['Pontos-chave', 'Como cai em prova', 'Macetes', 'Jurisprudência']}
+            />
+          </section>
+        ) : (
         <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
           <button
             type="button"
@@ -3767,6 +4462,7 @@ const LawDetailPage: React.FC = () => {
             </div>
           ) : null}
         </section>
+        )
         ) : (
           <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6 text-center`}>
             <BookOpen size={28} className="mx-auto text-slate-300 dark:text-slate-600" />
@@ -3786,7 +4482,7 @@ const LawDetailPage: React.FC = () => {
         )
       ) : null}
 
-      <section className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-wrap items-center justify-between gap-2 px-4 py-3`}>
+      <section className={`${PLATFORM_SURFACE_CARD_CLASS} grid gap-3 px-4 py-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center`}>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -3804,6 +4500,39 @@ const LawDetailPage: React.FC = () => {
           >
             Voltar ao topo
           </button>
+        </div>
+        <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-900 sm:grid-cols-4">
+          {([
+            { key: 'comments', label: 'Comentários' },
+            { key: 'law', label: 'Conteúdo da lei' },
+            { key: 'analysis', label: 'Análise detalhada' },
+            { key: 'questions', label: 'Questões' },
+          ] as const).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => {
+                setActiveTab(tab.key);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className={`inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg px-2 text-[11px] font-bold transition-colors sm:text-xs ${
+                activeTab === tab.key
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                  : 'text-slate-500 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              <span className="truncate">{tab.label}</span>
+              {tab.key === 'comments' && sectionUserComments.length > 0 ? (
+                <span className={`inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-black ${
+                  activeTab === tab.key
+                    ? 'bg-white/20 text-current dark:bg-slate-900/20'
+                    : 'bg-[#615fff]/10 text-[#514dff] dark:bg-[#615fff]/20 dark:text-indigo-200'
+                }`}>
+                  {sectionUserComments.length}
+                </span>
+              ) : null}
+            </button>
+          ))}
         </div>
         <button
           type="button"
@@ -3933,6 +4662,20 @@ const LawDetailPage: React.FC = () => {
           </div>
         </div>
       ) : null}
+
+      <UpgradeModal
+        isOpen={readerSaveUpgradeOpen}
+        onClose={() => setReaderSaveUpgradeOpen(false)}
+        requiredPlan={readerAnnotationsRequiredPlan}
+        featureName="marcações e anotações na Lei Comentada"
+      />
+
+      <UpgradeModal
+        isOpen={Boolean(legalFeatureUpgradeModal)}
+        onClose={() => setLegalFeatureUpgradeModal(null)}
+        requiredPlan={legalFeatureUpgradeModal?.requiredPlan || 'Elite'}
+        featureName={legalFeatureUpgradeModal?.featureName || 'recurso da Lei Comentada'}
+      />
 
       <footer className="text-center text-xs font-semibold text-slate-400 dark:text-slate-500">
         Lei nº {law.number || '-'} - {law.shortTitle}. Este conteúdo não substitui o texto oficial da legislação.

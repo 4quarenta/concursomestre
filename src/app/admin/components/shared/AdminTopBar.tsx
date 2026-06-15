@@ -13,6 +13,7 @@ import React from 'react';
 import { Bell, Menu, Moon, Plus, Search, Sun } from 'lucide-react';
 import { NotificationDropdown, type AdminNotificationItem } from './NotificationDropdown';
 import { buildProfilePath } from '../../../profile/profileNavigation';
+import { clientLog } from '@services/monitoring/clientLog';
 
 export interface AdminTopBarSearchTarget {
   label: string;
@@ -30,6 +31,7 @@ interface AdminTopBarProps {
   onCloseNotifications: () => void;
   notifications: AdminNotificationItem[];
   markNotificationAsRead: (id: AdminNotificationItem['id']) => Promise<unknown> | unknown;
+  markAllNotificationsAsRead?: () => Promise<unknown> | unknown;
   unreadCount: number;
   navigate: (path: string) => void;
   currentUserName?: string;
@@ -61,6 +63,7 @@ const AdminTopBar = ({
   onCloseNotifications,
   notifications,
   markNotificationAsRead,
+  markAllNotificationsAsRead,
   unreadCount,
   navigate,
   currentUserName,
@@ -95,6 +98,18 @@ const AdminTopBar = ({
     setQuery('');
     navigate(path);
   }, [navigate]);
+
+  const handleNotificationsToggle = React.useCallback(() => {
+    setIsNotifOpen((current) => {
+      const next = !current;
+      if (next && unreadCount > 0 && markAllNotificationsAsRead) {
+        void Promise.resolve(markAllNotificationsAsRead()).catch((error) => {
+          clientLog.warn('[admin-notifications] Nao foi possivel marcar notificacoes como vistas ao abrir o box.', error);
+        });
+      }
+      return next;
+    });
+  }, [markAllNotificationsAsRead, setIsNotifOpen, unreadCount]);
 
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -192,7 +207,7 @@ const AdminTopBar = ({
           {notificationsEnabled ? (
             <div className="relative">
               <button
-                onClick={() => setIsNotifOpen((open) => !open)}
+                onClick={handleNotificationsToggle}
                 className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white"
                 aria-label="Abrir notificacoes"
               >
@@ -207,6 +222,11 @@ const AdminTopBar = ({
                     <NotificationDropdown
                       notifications={notifications}
                       markNotificationAsRead={markNotificationAsRead}
+                      markAllNotificationsAsRead={() => {
+                        void Promise.resolve(markAllNotificationsAsRead?.()).catch((error) => {
+                          clientLog.warn('[admin-notifications] Nao foi possivel marcar todas como vistas pelo botao.', error);
+                        });
+                      }}
                       unreadCount={unreadCount}
                       setIsNotifOpen={setIsNotifOpen}
                       navigate={navigate}

@@ -288,6 +288,26 @@ const getQuestionGroupTitle = (group: Partial<AdminQuestionGroupItem> | null | u
   return raw || (getQuestionGroupId(group) ? `Contexto #${getQuestionGroupId(group)}` : '');
 };
 
+const readImageFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onerror = () => reject(reader.error || new Error('Nao foi possivel ler a imagem.'));
+  reader.readAsDataURL(file);
+});
+
+const stripOptionImages = (html: string): string => (
+  String(html || '').replace(/<img\b[^>]*>/gi, '').trim()
+);
+
+const extractOptionImageSources = (html: string): string[] => {
+  const sources: string[] = [];
+  String(html || '').replace(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi, (_match, src: string) => {
+    sources.push(src);
+    return '';
+  });
+  return sources;
+};
+
 const normalizeQuestionGroupSelection = (
   group: Partial<AdminQuestionGroupItem> | Partial<GrupoQuestao> | null | undefined,
 ): QuestionGroupSelection | null => {
@@ -643,6 +663,50 @@ const AdminQuestionEditorPage = ({
         ...nextItems[index],
         corpo: value,
         corpo_clean: value.replace(/<[^>]*>?/gm, ''),
+      };
+
+      return { ...prev, itens: nextItems };
+    });
+  };
+
+  const handleOptionImageSelected = async (index: number, file: File | null) => {
+    if (!file) return;
+
+    const dataUrl = await readImageFileAsDataUrl(file);
+    const imageHtml = `<img src="${dataUrl}" alt="Imagem da alternativa ${manualItems[index]?.rotulo || index + 1}" />`;
+
+    setManualQ((prev) => {
+      const nextItems = [...(prev.itens || [])];
+      const current = nextItems[index];
+      if (!current) {
+        return prev;
+      }
+
+      const textWithoutImages = stripOptionImages(current.corpo);
+      const nextBody = [textWithoutImages, imageHtml].filter(Boolean).join('<br />');
+      nextItems[index] = {
+        ...current,
+        corpo: nextBody,
+        corpo_clean: textWithoutImages.replace(/<[^>]*>?/gm, ''),
+      };
+
+      return { ...prev, itens: nextItems };
+    });
+  };
+
+  const handleOptionImageRemove = (index: number) => {
+    setManualQ((prev) => {
+      const nextItems = [...(prev.itens || [])];
+      const current = nextItems[index];
+      if (!current) {
+        return prev;
+      }
+
+      const nextBody = stripOptionImages(current.corpo);
+      nextItems[index] = {
+        ...current,
+        corpo: nextBody,
+        corpo_clean: nextBody.replace(/<[^>]*>?/gm, ''),
       };
 
       return { ...prev, itens: nextItems };
@@ -1032,35 +1096,88 @@ const AdminQuestionEditorPage = ({
                 </div>
 
                 <div className="grid gap-3">
-                  {manualItems.map((item: ManualQuestionItem, index: number) => (
-                    <div key={item.id} className="flex items-start gap-3">
-                      <button
-                        type="button"
-                        onClick={() => updateManualQ({ resposta: index + 1 })}
-                        className={`flex h-10 w-10 items-center justify-center rounded-sm border text-sm font-bold transition-colors ${
-                          manualQ.resposta === index + 1
-                            ? 'border-emerald-600 bg-emerald-600 text-white'
-                            : 'border-slate-300 bg-white text-slate-500 hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300'
-                        }`}
-                      >
-                        {item.rotulo}
-                      </button>
-                      <input
-                        type="text"
-                        value={item.corpo}
-                        onChange={(event) => handleOptionChange(index, event.target.value)}
-                        className={`${ADMIN_FIELD_CLASS} h-10 flex-1`}
-                        placeholder={`Corpo da alternativa ${item.rotulo}...`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleOptionDelete(index)}
-                        className="rounded-sm border border-slate-300 bg-white p-2 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-rose-900/20 dark:hover:text-rose-300"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
+                  {manualItems.map((item: ManualQuestionItem, index: number) => {
+                    const optionImages = extractOptionImageSources(item.corpo);
+                    const optionTextValue = stripOptionImages(item.corpo);
+
+                    return (
+                      <div key={item.id} className="flex items-start gap-3">
+                        <button
+                          type="button"
+                          onClick={() => updateManualQ({ resposta: index + 1 })}
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border text-sm font-bold transition-colors ${
+                            manualQ.resposta === index + 1
+                              ? 'border-emerald-600 bg-emerald-600 text-white'
+                              : 'border-slate-300 bg-white text-slate-500 hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300'
+                          }`}
+                        >
+                          {item.rotulo}
+                        </button>
+
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <textarea
+                            value={optionTextValue}
+                            onChange={(event) => {
+                              const imagesHtml = optionImages.map((src) => `<img src="${src}" alt="Imagem da alternativa ${item.rotulo}" />`).join('<br />');
+                              handleOptionChange(index, [event.target.value, imagesHtml].filter(Boolean).join('<br />'));
+                            }}
+                            className={`${ADMIN_TEXTAREA_CLASS} min-h-[54px] font-medium`}
+                            placeholder={`Corpo da alternativa ${item.rotulo}...`}
+                          />
+
+                          {optionImages.length > 0 ? (
+                            <div className="flex flex-wrap items-center gap-3 rounded-sm border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-950/40">
+                              {optionImages.map((src, imageIndex) => (
+                                <Image
+                                  key={`${src}-${imageIndex}`}
+                                  src={src.startsWith('data:') ? src : resolveApiResourceUrl(src)}
+                                  alt={`Imagem da alternativa ${item.rotulo}`}
+                                  width={160}
+                                  height={96}
+                                  unoptimized
+                                  className="max-h-24 w-auto rounded-sm border border-slate-200 bg-white object-contain p-1 dark:border-slate-700 dark:bg-slate-900"
+                                />
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => handleOptionImageRemove(index)}
+                                className="rounded-sm border border-rose-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-900/40 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-900/20"
+                              >
+                                Remover imagem
+                              </button>
+                            </div>
+                          ) : null}
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="inline-flex cursor-pointer items-center gap-2 rounded-sm border border-slate-300 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 transition-colors hover:border-indigo-300 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-indigo-700 dark:hover:text-indigo-300">
+                              <ImageIcon size={13} />
+                              Imagem da alternativa
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(event) => {
+                                  void handleOptionImageSelected(index, event.target.files?.[0] || null);
+                                  event.currentTarget.value = '';
+                                }}
+                              />
+                            </label>
+                            <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">
+                              A imagem sera salva junto com a alternativa.
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOptionDelete(index)}
+                          className="shrink-0 rounded-sm border border-slate-300 bg-white p-2 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-rose-900/20 dark:hover:text-rose-300"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

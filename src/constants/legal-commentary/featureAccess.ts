@@ -22,9 +22,15 @@ export const LEGAL_COMMENTARY_FEATURE_DEFINITIONS: LegalCommentaryFeatureDefinit
   },
   {
     key: 'lei.comentario_basico',
-    label: 'Comentario basico',
-    description: 'Leitura guiada curta, mantendo valor real para quem ainda estuda no gratuito.',
-    defaultFallbackMode: 'hidden',
+    label: 'Comentario do professor',
+    description: 'Comentario editorial do professor dentro do artigo.',
+    defaultFallbackMode: 'preview',
+  },
+  {
+    key: 'lei.doutrina',
+    label: 'Doutrina',
+    description: 'Entendimentos doutrinarios vinculados ao item da lei.',
+    defaultFallbackMode: 'preview',
   },
   {
     key: 'lei.macete',
@@ -45,10 +51,10 @@ export const LEGAL_COMMENTARY_FEATURE_DEFINITIONS: LegalCommentaryFeatureDefinit
     defaultFallbackMode: 'preview',
   },
   {
-    key: 'lei.frequencia',
-    label: 'Frequencia de cobranca',
-    description: 'Intensidade de cobranca do artigo em prova, com barra e classificacao.',
-    defaultFallbackMode: 'locked',
+    key: 'lei.sumulas',
+    label: 'Sumulas',
+    description: 'Sumulas e enunciados relacionados ao artigo.',
+    defaultFallbackMode: 'preview',
   },
   {
     key: 'lei.questoes',
@@ -56,13 +62,6 @@ export const LEGAL_COMMENTARY_FEATURE_DEFINITIONS: LegalCommentaryFeatureDefinit
     description: 'Acesso ao bloco de pratica com questoes conectadas ao artigo.',
     defaultFallbackMode: 'preview',
     limitKey: 'lei_related_questions_limit',
-  },
-  {
-    key: 'lei.flashcards',
-    label: 'Flashcards',
-    description: 'Cartoes automaticos para memorizar o artigo com revisao rapida.',
-    defaultFallbackMode: 'preview',
-    limitKey: 'lei_flashcards_limit',
   },
   {
     key: 'lei.raiox',
@@ -78,10 +77,23 @@ export const LEGAL_COMMENTARY_FEATURE_DEFINITIONS: LegalCommentaryFeatureDefinit
     limitKey: 'lei_annotations_limit',
   },
   {
-    key: 'lei.conexoes',
-    label: 'Conexoes',
-    description: 'Liga o artigo a temas, leis e caminhos de revisao relacionados.',
-    defaultFallbackMode: 'preview',
+    key: 'lei.modo_foco',
+    label: 'Modo foco',
+    description: 'Leitura com menos distracoes dentro da Lei Comentada.',
+    defaultFallbackMode: 'locked',
+  },
+  {
+    key: 'lei.favoritos',
+    label: 'Favoritos',
+    description: 'Permite salvar leis, secoes e artigos da Lei Comentada.',
+    defaultFallbackMode: 'locked',
+    limitKey: 'lei_favorites_limit',
+  },
+  {
+    key: 'lei.solicitar_comentario',
+    label: 'Solicitar comentario',
+    description: 'Permite pedir comentario do professor para um item especifico da lei.',
+    defaultFallbackMode: 'locked',
   },
 ];
 

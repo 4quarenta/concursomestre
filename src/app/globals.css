@@ -323,6 +323,7 @@
 
   .dark .legal-reader-content mark,
   .dark .legal-reader-content [data-reader-highlight='true'],
+  .dark .legal-reader-content [style*='background:'],
   .dark .legal-reader-content [style*='background-color'],
   .dark .legal-reader-content [style*='backgroundColor'] {
     color: rgb(15 23 42) !important;
@@ -344,6 +345,16 @@
   .dark .legal-reader-content [data-reader-style='bold'],
   .dark .legal-reader-content span[style*='font-weight'] {
     color: rgb(248 250 252);
+  }
+
+  .dark .legal-reader-content mark *,
+  .dark .legal-reader-content [data-reader-highlight='true'] *,
+  .dark .legal-reader-content [style*='background:'] *,
+  .dark .legal-reader-content [style*='background-color'] *,
+  .dark .legal-reader-content [style*='backgroundColor'] * {
+    color: rgb(15 23 42) !important;
+    -webkit-text-stroke: 0 !important;
+    text-shadow: none !important;
   }
 
   .question-comment-math h4 {

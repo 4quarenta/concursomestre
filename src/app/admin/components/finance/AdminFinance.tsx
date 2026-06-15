@@ -51,8 +51,6 @@ import { useMarketplace } from '@providers/MarketplaceProvider';
 import { useToast } from '@providers/ToastProvider';
 import type {
   DiscountCode,
-  LegalCommentaryFeatureConfigurableKey,
-  LegalCommentaryFeatureFallbackMode,
   Material,
   PlanBenefitKey,
   PlanConfig,
@@ -63,7 +61,7 @@ import type {
   Transaction,
   UserProfile,
 } from '@types';
-import { adminService, type AdminPlanCatalogItem, type AdminRevenueProjectionPayload } from '@services/admin/adminService';
+import { adminService, type AdminPlanCatalogItem, type AdminRevenueProjectionItem, type AdminRevenueProjectionPayload } from '@services/admin/adminService';
 import { subscriptionsService } from '@services/subscriptions';
 import { readApiErrorMessage } from '@services/api';
 import { clientLog } from '@services/monitoring/clientLog';
@@ -77,13 +75,6 @@ import {
   normalizePlanEntitlements,
   normalizePlanUsageLimits,
 } from '@constants/subscriptions/planEntitlements';
-import {
-  DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG,
-  LEGAL_COMMENTARY_CONFIGURABLE_FEATURE_KEYS,
-  LEGAL_COMMENTARY_FEATURE_DEFINITIONS,
-  LEGAL_COMMENTARY_FEATURE_MODE_OPTIONS,
-  normalizeLegalCommentaryFeatureConfig,
-} from '@constants/legal-commentary/featureAccess';
 import { buildAdminMarketplaceSellerMetrics, type AdminMarketplaceSellerMetric } from '../shared/adminMarketplaceMetrics';
 import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 import AdminMarketing from './AdminMarketing';
@@ -119,6 +110,8 @@ interface AdminFinanceProps {
 }
 
 type FinanceSection = 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics';
+type PlansPanelTab = 'configuration' | 'access';
+type PlanAccessTab = 'general' | 'modules';
 
 type ExtendedPlanPricing = PlanPricing & {
   description?: string;
@@ -286,6 +279,124 @@ const mergePlanDetailsWithDefaults = (planDetails?: Partial<PlanDetailsByPlan>):
 
 const planNames = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
 const PAID_TRANSACTION_STATUSES = new Set(['completed', 'approved']);
+const PLAN_ACCESS_GENERAL_BENEFIT_KEYS: PlanBenefitKey[] = [
+  'module.dashboard',
+  'module.practice',
+  'module.lei_comentada',
+  'module.flashcards',
+  'module.simulations',
+  'module.xray',
+  'module.schedule',
+  'module.marketplace',
+];
+
+const PLAN_ACCESS_MODULE_GROUPS: Array<{
+  id: string;
+  label: string;
+  description: string;
+  strategy: string;
+  benefitKeys: PlanBenefitKey[];
+  limitKeys?: PlanUsageLimitKey[];
+}> = [
+  {
+    id: 'practice',
+    label: 'Pratica',
+    description: 'Controla filtros, card da questao e recursos internos do modulo de pratica.',
+    strategy: 'Trate a pratica como um unico produto: gratuito experimenta, Essencial libera o estudo comum, Pro libera inteligencia e Elite herda tudo.',
+    benefitKeys: [
+      'practice.filter_keyword',
+      'practice.filter_subject',
+      'practice.filter_difficulty',
+      'practice.filter_bank',
+      'practice.filter_organization',
+      'practice.filter_year',
+      'practice.filter_level',
+      'practice.filter_role',
+      'practice.filter_modality',
+      'practice.filter_topic',
+      'practice.filter_saved',
+      'practice.filter_teacher_comment',
+      'practice.filter_detailed_analysis',
+      'practice.filter_answered_correct',
+      'practice.filter_answered_wrong',
+      'question.resolve',
+      'question.answer_key',
+      'question.basic_explanation',
+      'question.detailed_analysis',
+      'question.save',
+      'question.notes',
+      'question.share',
+      'question.full_statistics',
+    ],
+    limitKeys: [
+      'questions_per_day',
+      'saved_questions_limit',
+    ],
+  },
+  {
+    id: 'legal-commentary',
+    label: 'Lei comentada',
+    description: 'Controla recursos editoriais, questoes, analise detalhada e anotacoes por artigo.',
+    strategy: 'A lei pode ser uma vitrine no gratuito e virar ferramenta completa nos planos maiores.',
+    benefitKeys: [
+      'lei.comentario_basico',
+      'lei.doutrina',
+      'lei.macete',
+      'lei.como_cai',
+      'lei.jurisprudencia',
+      'lei.sumulas',
+      'lei.questoes',
+      'lei.raiox',
+      'lei.anotacoes',
+      'lei.modo_foco',
+      'lei.favoritos',
+      'lei.solicitar_comentario',
+    ],
+    limitKeys: [
+      'lei_related_questions_limit',
+      'lei_annotations_limit',
+      'lei_favorites_limit',
+    ],
+  },
+  {
+    id: 'simulations',
+    label: 'Simulados',
+    description: 'Controla simulados e recorrencia de criacao/execucao por plano.',
+    strategy: 'Mantenha o gratuito como degustacao e libere volume maior conforme o plano avanca.',
+    benefitKeys: [
+      'exclusive_simulations',
+    ],
+    limitKeys: [
+      'simulations_per_week',
+      'simulations_per_month',
+    ],
+  },
+  {
+    id: 'community',
+    label: 'Comentarios',
+    description: 'Controla interacoes sociais e limites de participacao nos comentarios.',
+    strategy: 'Comentarios ajudam engajamento, mas limites evitam spam nos planos menores.',
+    benefitKeys: [
+      'community_comments',
+      'teacher_comments',
+    ],
+    limitKeys: [
+      'comments_per_day',
+    ],
+  },
+  {
+    id: 'premium',
+    label: 'Automacoes e premium',
+    description: 'Recursos de alto valor percebido, melhores para Pro e Elite.',
+    strategy: 'Elite deve vender inteligencia, prioridade, trilhas e novidades primeiro.',
+    benefitKeys: [
+      'xray_banca',
+      'mentor_chat',
+      'priority_support',
+      'early_access',
+    ],
+  },
+];
 
 const isPaidTransactionStatus = (status: unknown) => PAID_TRANSACTION_STATUSES.has(String(status || '').toLowerCase());
 
@@ -472,11 +583,42 @@ const isProjectionTimestampOverdue = (timestamp: number, referenceTimestamp: num
   && timestamp < referenceTimestamp
 );
 
+const resolveProjectionChargeInterval = (item: AdminRevenueProjectionItem): { unit: string; count: number } => {
+  const projectionMode = String(item.projectionMode || '').trim();
+  const explicitUnit = String(item.chargeIntervalUnit || '').trim().toLowerCase();
+  const explicitCount = Number(item.chargeIntervalCount || 0);
+  if (explicitUnit && explicitCount > 0) {
+    return { unit: explicitUnit, count: explicitCount };
+  }
+
+  if (projectionMode === 'installments') {
+    const totalInstallments = Math.max(1, Number(item.totalInstallments || item.remainingInstallments || 1));
+    const intervalUnit = String(item.intervalUnit || 'month').trim().toLowerCase();
+    const intervalCount = Math.max(1, Number(item.intervalCount || 1));
+
+    if (intervalUnit === 'year') {
+      return { unit: 'day', count: Math.max(1, Math.round((365 * intervalCount) / totalInstallments)) };
+    }
+
+    if (intervalUnit === 'month' && intervalCount > 1) {
+      return { unit: 'day', count: Math.max(1, Math.round((30.4375 * intervalCount) / totalInstallments)) };
+    }
+
+    return { unit: 'month', count: 1 };
+  }
+
+  return {
+    unit: String(item.intervalUnit || 'month').trim().toLowerCase() || 'month',
+    count: Math.max(1, Number(item.intervalCount || 1)),
+  };
+};
+
 const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload): ProjectionTransactionRow[] => (
   (projection.items || []).flatMap((item) => {
     const remaining = Math.max(0, Number(item.remainingInstallments || 0));
     const installmentAmount = Number(item.installmentAmount || 0);
     const baseTimestamp = parseProjectionTimestamp(item.nextBillingAt || item.currentPeriodEnd || null);
+    const chargeInterval = resolveProjectionChargeInterval(item);
 
     if (remaining <= 0 || installmentAmount <= 0) {
       return [];
@@ -487,8 +629,8 @@ const buildProjectedTransactionRows = (projection: AdminRevenueProjectionPayload
       const dueTimestamp = addProjectionInterval(
         baseTimestamp,
         index,
-        item.chargeIntervalUnit || item.intervalUnit || 'month',
-        Number(item.chargeIntervalCount || item.intervalCount || 1),
+        chargeInterval.unit,
+        chargeInterval.count,
       );
       const isAutoRenewProjection = item.projectionMode === 'auto_renew';
       if (isProjectionTimestampOverdue(dueTimestamp)) {
@@ -603,6 +745,9 @@ const AdminFinance = ({
   };
 
   const [activeSection, setActiveSection] = useState<FinanceSection>(normalizeSection(initialSection));
+  const [plansPanelTab, setPlansPanelTab] = useState<PlansPanelTab>('configuration');
+  const [planAccessTab, setPlanAccessTab] = useState<PlanAccessTab>('general');
+  const [activePlanAccessModuleGroupId, setActivePlanAccessModuleGroupId] = useState(PLAN_ACCESS_MODULE_GROUPS[0]?.id || 'practice');
   const [financeFilters, setFinanceFilters] = useState({ search: '', status: 'all', dateRange: 'all' });
   const [currentPage, setCurrentPage] = useState(1);
   const [refundActionKey, setRefundActionKey] = useState<string | null>(null);
@@ -642,9 +787,6 @@ const AdminFinance = ({
   const [draftCoupons, setDraftCoupons] = useState<CouponDraft[]>(() => Array.isArray(systemSettings.coupons) ? systemSettings.coupons : []);
   const [draftPlanEntitlements, setDraftPlanEntitlements] = useState(() => normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
   const [draftPlanUsageLimits, setDraftPlanUsageLimits] = useState(() => normalizePlanUsageLimits(systemSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
-  const [draftLegalCommentaryFeatureConfig, setDraftLegalCommentaryFeatureConfig] = useState(() => (
-    normalizeLegalCommentaryFeatureConfig(systemSettings.legalCommentaryFeatureConfig || DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG)
-  ));
   const [draftActiveTheme, setDraftActiveTheme] = useState(systemSettings.activeTheme || 'default');
   const [draftActivePromotion, setDraftActivePromotion] = useState(systemSettings.activePromotion || undefined);
   const [catalogPlans, setCatalogPlans] = useState<AdminPlanCatalogItem[]>([]);
@@ -700,6 +842,16 @@ const AdminFinance = ({
       : 'rose';
   const automationCronLastRunLabel = formatAutomationHealthDate(automationCronHealth?.last_run_at, 'Nunca executado');
   const automationWebhookLastEventLabel = formatAutomationHealthDate(automationWebhookHealth?.last_event_at, 'Nunca recebido');
+  const automationWebhookNeverReceived = !automationWebhookHealth?.last_event_at && automationWebhookStatus === 'unknown';
+  const automationCronNeedsAttention = automationCronStatus !== 'ok';
+  const automationOperationalWarnings = [
+    automationWebhookNeverReceived
+      ? 'Webhook Stripe nunca recebido: em ambiente local use Stripe CLI/ngrok para entregar eventos; na VPS configure o endpoint publico e o STRIPE_WEBHOOK_SECRET.'
+      : '',
+    automationCronNeedsAttention
+      ? 'Cron de reconciliacao sem status OK: agende a URL oficial com CRON_SECRET para materializar invoices pagas mesmo quando o aluno nao fizer login.'
+      : '',
+  ].filter(Boolean);
   const stripeTestingCases = Array.isArray(stripeTestingMatrix?.cases) ? stripeTestingMatrix.cases : [];
   const stripeTestingSummary: StripeTestingMatrixSummary = {
     total: Number(stripeTestingMatrix?.summary?.total || 0),
@@ -716,10 +868,9 @@ const AdminFinance = ({
     coupons: draftCoupons,
     planEntitlements: draftPlanEntitlements,
     planUsageLimits: draftPlanUsageLimits,
-    legalCommentaryFeatureConfig: draftLegalCommentaryFeatureConfig,
     activeTheme: draftActiveTheme,
     activePromotion: draftActivePromotion,
-  }), [draftActivePromotion, draftActiveTheme, draftCoupons, draftLegalCommentaryFeatureConfig, draftPlanDetails, draftPlanEntitlements, draftPlanUsageLimits, draftPricing, systemSettings]);
+  }), [draftActivePromotion, draftActiveTheme, draftCoupons, draftPlanDetails, draftPlanEntitlements, draftPlanUsageLimits, draftPricing, systemSettings]);
 
   const testCatalogPlan = useMemo(() => (
     catalogPlans.find((plan) => plan.is_test_plan)
@@ -798,9 +949,6 @@ const AdminFinance = ({
       setDraftCoupons(Array.isArray(systemSettings.coupons) ? systemSettings.coupons : []);
       setDraftPlanEntitlements(normalizePlanEntitlements(systemSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
       setDraftPlanUsageLimits(normalizePlanUsageLimits(systemSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
-      setDraftLegalCommentaryFeatureConfig(normalizeLegalCommentaryFeatureConfig(
-        systemSettings.legalCommentaryFeatureConfig || DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG,
-      ));
       setDraftActiveTheme(systemSettings.activeTheme || 'default');
       setDraftActivePromotion(systemSettings.activePromotion || undefined);
     });
@@ -810,7 +958,6 @@ const AdminFinance = ({
     systemSettings.activePromotion,
     systemSettings.activeTheme,
     systemSettings.coupons,
-    systemSettings.legalCommentaryFeatureConfig,
     systemSettings.planDetails,
     systemSettings.planEntitlements,
     systemSettings.planUsageLimits,
@@ -853,6 +1000,33 @@ const AdminFinance = ({
     };
   }, []);
 
+  const loadRevenueProjection = useCallback(async (options?: {
+    silent?: boolean;
+    isCancelled?: () => boolean;
+  }) => {
+    const isCancelled = options?.isCancelled || (() => false);
+
+    if (!options?.silent && !isCancelled()) {
+      setIsRevenueProjectionLoading(true);
+    }
+
+    try {
+      const payload = await adminService.getFinanceAnalytics({ period: 'all' });
+      if (!isCancelled()) {
+        setRevenueProjection(payload.revenueProjection || EMPTY_REVENUE_PROJECTION);
+      }
+    } catch (error) {
+      clientLog.warn('Failed to load confirmed revenue projection:', error);
+      if (!isCancelled()) {
+        setRevenueProjection(EMPTY_REVENUE_PROJECTION);
+      }
+    } finally {
+      if (!options?.silent && !isCancelled()) {
+        setIsRevenueProjectionLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (activeSection !== 'transactions') {
       return;
@@ -862,32 +1036,14 @@ const AdminFinance = ({
     const frameId = window.requestAnimationFrame(() => {
       if (cancelled) return;
 
-      setIsRevenueProjectionLoading(true);
-
-      adminService.getFinanceAnalytics({ period: 'all' })
-        .then((payload) => {
-          if (!cancelled) {
-            setRevenueProjection(payload.revenueProjection || EMPTY_REVENUE_PROJECTION);
-          }
-        })
-        .catch((error) => {
-          clientLog.warn('Failed to load confirmed revenue projection:', error);
-          if (!cancelled) {
-            setRevenueProjection(EMPTY_REVENUE_PROJECTION);
-          }
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setIsRevenueProjectionLoading(false);
-          }
-        });
+      void loadRevenueProjection({ isCancelled: () => cancelled });
     });
 
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(frameId);
     };
-  }, [activeSection]);
+  }, [activeSection, loadRevenueProjection]);
 
   const changeSection = (section: 'subscriptions' | 'transactions' | 'refunds' | 'plans' | 'coupons' | 'automation' | 'analytics') => {
     setActiveSection(section);
@@ -900,9 +1056,6 @@ const AdminFinance = ({
     setDraftCoupons(Array.isArray(nextSettings.coupons) ? nextSettings.coupons : []);
     setDraftPlanEntitlements(normalizePlanEntitlements(nextSettings.planEntitlements || DEFAULT_PLAN_ENTITLEMENTS));
     setDraftPlanUsageLimits(normalizePlanUsageLimits(nextSettings.planUsageLimits || DEFAULT_PLAN_USAGE_LIMITS));
-    setDraftLegalCommentaryFeatureConfig(normalizeLegalCommentaryFeatureConfig(
-      nextSettings.legalCommentaryFeatureConfig || DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG,
-    ));
     setDraftActiveTheme(nextSettings.activeTheme || 'default');
     setDraftActivePromotion(nextSettings.activePromotion || undefined);
   };
@@ -1704,16 +1857,6 @@ const AdminFinance = ({
     setDraftPlanUsageLimits(updatedLimits);
   };
 
-  const handleLegalCommentaryFallbackModeChange = (
-    featureKey: LegalCommentaryFeatureConfigurableKey,
-    fallbackMode: LegalCommentaryFeatureFallbackMode,
-  ) => {
-    setDraftLegalCommentaryFeatureConfig((currentConfig) => ({
-      ...currentConfig,
-      [featureKey]: { fallbackMode },
-    }));
-  };
-
   // --- REEMBOLSOS ---
   const { resolveRefund, moderateMaterial } = useMarketplace();
   const requestResolveRefund = (transactionId: string, resolution: 'approved' | 'retention_offer') => {
@@ -1746,7 +1889,10 @@ const AdminFinance = ({
       const nestedData = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : null;
       const summary = payload.summary ?? nestedData?.summary ?? payload;
       setAutomationRunResult(summary);
-      const refreshedHelper = await subscriptionsService.getAutomationHelperInfo();
+      const [refreshedHelper] = await Promise.all([
+        subscriptionsService.getAutomationHelperInfo(),
+        loadRevenueProjection({ silent: true }),
+      ]);
       setAutomationHelper(refreshedHelper);
       addToast(typeof payload.message === 'string' ? payload.message : 'Rotina de automacao executada com sucesso.', 'success');
     } catch (error: unknown) {
@@ -1942,6 +2088,12 @@ const AdminFinance = ({
       .filter((material) => readMarketplaceMaterialSellerId(material) === selectedSeller.id)
       .sort((left, right) => readMarketplaceMaterialTimestamp(right) - readMarketplaceMaterialTimestamp(left));
   }, [allMaterials, selectedSeller]);
+
+  const activePlanAccessModuleGroup = PLAN_ACCESS_MODULE_GROUPS.find((group) => group.id === activePlanAccessModuleGroupId)
+    || PLAN_ACCESS_MODULE_GROUPS[0];
+  const activePlanAccessLimitDefinitions = PLAN_USAGE_LIMIT_DEFINITIONS.filter((definition) => (
+    activePlanAccessModuleGroup.limitKeys?.includes(definition.key)
+  ));
 
   return (
     <div className="space-y-5 animate-slide-up md:space-y-6">
@@ -2756,9 +2908,9 @@ const AdminFinance = ({
             <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
               <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between`}>
                 <div>
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Projecao mes a mes</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Projecao futura mes a mes</p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Valores previstos das parcelas pre-aprovadas por competencia.
+                    Apenas parcelas futuras. Vencimentos passados aparecem no bloco de pagamentos em atraso para averiguacao.
                   </p>
                 </div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
@@ -2822,7 +2974,7 @@ const AdminFinance = ({
                         Composicao de {expandedProjectionMonth.label}
                       </p>
                       <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                        {expandedProjectionRows.length} cobranca(s) previstas somando {formatAdminMoney(Number(expandedProjectionMonth.amount || 0))}.
+                        {expandedProjectionRows.length} cobranca(s) futuras somando {formatAdminMoney(Number(expandedProjectionMonth.amount || 0))}.
                       </p>
                     </div>
                     {Number(expandedProjectionMonth.atRiskAmount || 0) > 0 ? (
@@ -3189,7 +3341,24 @@ const AdminFinance = ({
             <h3 className="text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">Configuração de Planos</h3>
             <p className="text-sm text-slate-500 font-medium">Defina preços, descontos e benefícios liberados para cada nível de assinatura.</p>
           </div>
-          <div className="flex justify-end mb-6">
+          <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className={ADMIN_SEGMENTED_TABS_CLASS}>
+              {[
+                { id: 'configuration' as const, label: 'Configuracao de Planos' },
+                { id: 'access' as const, label: 'Controle de Acesso por Plano' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setPlansPanelTab(tab.id)}
+                  className={`rounded-sm border px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition-colors ${
+                    plansPanelTab === tab.id ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => void handleSavePricing()}
               disabled={isSavingPricing}
@@ -3200,6 +3369,7 @@ const AdminFinance = ({
             </button>
           </div>
 
+          {plansPanelTab === 'configuration' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {(Object.entries(draftPricing) as Array<[PlanName, PlanPricing]>).map(([plan, config]) => (
               <div key={plan} className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-6 p-5`}>
@@ -3494,8 +3664,10 @@ const AdminFinance = ({
               )}
             </div>
           </div>
+          )}
 
-          <div className={`${ADMIN_SURFACE_CLASS} mt-8 overflow-hidden`}>
+          {plansPanelTab === 'access' && (
+          <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
             <div className={ADMIN_SURFACE_HEADER_CLASS}>
               <h4 className="text-lg font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <ShieldCheck size={18} className="text-sky-700 dark:text-sky-300" />
@@ -3506,6 +3678,34 @@ const AdminFinance = ({
               </p>
             </div>
 
+            <div className="border-b border-slate-100 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/30">
+              <div className={ADMIN_SEGMENTED_TABS_CLASS}>
+                {[
+                  { id: 'general' as const, label: 'Geral' },
+                  { id: 'modules' as const, label: 'Por modulo' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setPlanAccessTab(tab.id)}
+                    className={`rounded-sm border px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition-colors ${
+                      planAccessTab === tab.id ? ADMIN_TAB_BUTTON_ACTIVE_CLASS : ADMIN_TAB_BUTTON_IDLE_CLASS
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {planAccessTab === 'general' ? (
+            <>
+            <div className="border-b border-slate-100 bg-slate-50/40 p-6 dark:border-slate-800 dark:bg-slate-950/30">
+              <h5 className="text-sm font-black text-slate-900 dark:text-slate-100">Acesso completo por modulo</h5>
+              <p className="mt-1 max-w-3xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                Use esta area para liberar ou bloquear o modulo inteiro por plano. Recursos internos, filtros e acoes de tela ficam apenas em Por modulo.
+              </p>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[860px] text-left">
                 <thead className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
@@ -3520,8 +3720,13 @@ const AdminFinance = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {PLAN_BENEFIT_DEFINITIONS.map((benefit) => {
+                  {PLAN_ACCESS_GENERAL_BENEFIT_KEYS.map((benefitKey) => {
                     const resolvedEntitlements = normalizePlanEntitlements(draftPlanEntitlements);
+                    const benefit = PLAN_BENEFIT_DEFINITIONS.find((item) => item.key === benefitKey);
+
+                    if (!benefit) {
+                      return null;
+                    }
 
                     return (
                       <tr key={benefit.key} className="bg-white dark:bg-slate-900/40">
@@ -3558,173 +3763,194 @@ const AdminFinance = ({
               </table>
             </div>
 
-            <div className="border-t border-slate-100 bg-slate-50/40 p-6 dark:border-slate-800 dark:bg-slate-950/30">
-              <div className="mb-4">
-                <h5 className="text-sm font-black text-slate-900 dark:text-slate-100">Limites operacionais por plano</h5>
-                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Defina numeros maximos ou marque como ilimitado para controlar uso de questoes, comentarios, simulados e IA.
-                </p>
+            </>
+            ) : (
+            <div className="space-y-5 border-t border-slate-100 bg-slate-50/40 p-5 dark:border-slate-800 dark:bg-slate-950/30">
+              <div className="flex max-w-full gap-2 overflow-x-auto rounded-sm border border-slate-200 bg-white p-2 no-scrollbar dark:border-slate-800 dark:bg-slate-900">
+                {PLAN_ACCESS_MODULE_GROUPS.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => setActivePlanAccessModuleGroupId(group.id)}
+                    className={`shrink-0 rounded-sm border px-4 py-2 text-left text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
+                      activePlanAccessModuleGroup.id === group.id
+                        ? ADMIN_TAB_BUTTON_ACTIVE_CLASS
+                        : ADMIN_TAB_BUTTON_IDLE_CLASS
+                    }`}
+                  >
+                    {group.label}
+                  </button>
+                ))}
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] text-left">
-                  <thead className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
-                    <tr>
-                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Limite</th>
-                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descricao</th>
-                      {PLAN_ORDER.map((planName) => (
-                        <th key={`limit-${planName}`} className="p-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                          {planName}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {PLAN_USAGE_LIMIT_DEFINITIONS.map((limitDefinition) => {
-                      const resolvedLimits = normalizePlanUsageLimits(draftPlanUsageLimits);
-
-                      return (
-                        <tr key={limitDefinition.key} className="bg-white dark:bg-slate-900/40">
-                          <td className="p-4 align-top">
-                            <div className="text-sm font-black text-slate-900 dark:text-slate-100">{limitDefinition.label}</div>
-                            <div className="mt-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">{limitDefinition.key}</div>
-                          </td>
-                          <td className="p-4 align-top text-xs font-medium text-slate-500 dark:text-slate-400">
-                            {limitDefinition.description}
-                          </td>
-                          {PLAN_ORDER.map((planName) => {
-                            const currentLimit = resolvedLimits[planName][limitDefinition.key];
-
-                            return (
-                              <td key={`${limitDefinition.key}-${planName}`} className="p-4 align-top">
-                                <div className="mx-auto flex max-w-[170px] flex-col gap-2">
-                                  <div className="inline-flex rounded-sm border border-slate-300 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
-                                    <button
-                                      type="button"
-                                      onClick={() => handlePlanUsageLimitModeChange(planName, limitDefinition.key, 'limited')}
-                                      className={`flex-1 rounded-sm px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
-                                        currentLimit.mode === 'limited'
-                                          ? 'bg-sky-700 text-white'
-                                          : 'text-slate-500 dark:text-slate-400'
-                                      }`}
-                                    >
-                                      Limite
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handlePlanUsageLimitModeChange(planName, limitDefinition.key, 'unlimited')}
-                                      className={`flex-1 rounded-sm px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
-                                        currentLimit.mode === 'unlimited'
-                                          ? 'bg-emerald-600 text-white'
-                                          : 'text-slate-500 dark:text-slate-400'
-                                      }`}
-                                    >
-                                      Ilimitado
-                                    </button>
-                                  </div>
-
-                                  {currentLimit.mode === 'limited' ? (
-                                    <div className="relative">
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={currentLimit.value ?? 0}
-                                        onChange={(event) => handlePlanUsageLimitValueChange(planName, limitDefinition.key, Number(event.target.value))}
-                                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-black text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                                      />
-                                      <div className="mt-1 text-center text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
-                                        {limitDefinition.inputLabel}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300">
-                                      Sem teto
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-8">
-                <div className="mb-4">
-                  <h5 className="text-sm font-black text-slate-900 dark:text-slate-100">
-                    Fallback da Lei Comentada
-                  </h5>
-                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Define o comportamento visual quando o usuario nao possui acesso ao recurso pela matriz do plano.
-                  </p>
+              <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
+                <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between`}>
+                  <div>
+                    <h5 className="text-sm font-black text-slate-900 dark:text-slate-100">{activePlanAccessModuleGroup.label}</h5>
+                    <p className="mt-1 max-w-3xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                      {activePlanAccessModuleGroup.description}
+                    </p>
+                    <p className="mt-2 max-w-3xl text-[11px] font-semibold leading-relaxed text-slate-500 dark:text-slate-400">
+                      {activePlanAccessModuleGroup.strategy}
+                    </p>
+                  </div>
+                  <span className="inline-flex w-fit rounded-sm border border-sky-200 bg-sky-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300">
+                    {activePlanAccessModuleGroup.benefitKeys.length} regra(s)
+                  </span>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[860px] text-left">
-                    <thead className="border-b border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900">
-                      <tr>
-                        <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Recurso</th>
-                        <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descricao</th>
-                        <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Modo atual</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {LEGAL_COMMENTARY_CONFIGURABLE_FEATURE_KEYS.map((featureKey) => {
-                        const definition = LEGAL_COMMENTARY_FEATURE_DEFINITIONS.find((item) => item.key === featureKey);
-                        const currentMode = draftLegalCommentaryFeatureConfig[featureKey].fallbackMode;
+                <div className="space-y-3 p-4">
+                  <div className="hidden grid-cols-[minmax(220px,1.5fr)_repeat(4,minmax(92px,1fr))] gap-3 px-3 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 xl:grid">
+                    <span>Feature</span>
+                    {PLAN_ORDER.map((planName) => (
+                      <span key={`${activePlanAccessModuleGroup.id}-header-${planName}`} className="text-center">{planName}</span>
+                    ))}
+                  </div>
 
-                        return (
-                          <tr key={featureKey} className="bg-white dark:bg-slate-900/40">
-                            <td className="p-4 align-top">
-                              <div className="text-sm font-black text-slate-900 dark:text-slate-100">
-                                {definition?.label || featureKey}
-                              </div>
-                              <div className="mt-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">
-                                {featureKey}
-                              </div>
-                            </td>
-                            <td className="p-4 align-top text-xs font-medium text-slate-500 dark:text-slate-400">
-                              {definition?.description || 'Sem descricao cadastrada.'}
-                            </td>
-                            <td className="p-4 align-top">
-                              <div className="grid gap-2 sm:grid-cols-3">
-                                {LEGAL_COMMENTARY_FEATURE_MODE_OPTIONS.map((option) => {
-                                  const isActive = currentMode === option.value;
+                  {activePlanAccessModuleGroup.benefitKeys.map((benefitKey) => {
+                    const resolvedEntitlements = normalizePlanEntitlements(draftPlanEntitlements);
+                    const benefit = PLAN_BENEFIT_DEFINITIONS.find((item) => item.key === benefitKey);
 
-                                  return (
-                                    <button
-                                      key={`${featureKey}-${option.value}`}
-                                      type="button"
-                                      onClick={() => handleLegalCommentaryFallbackModeChange(featureKey, option.value)}
-                                      className={`rounded-2xl border px-3 py-2 text-left transition-all ${
-                                        isActive
-                                          ? 'border-[#615fff]/30 bg-[#615fff]/8 text-[#615fff] dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-200'
-                                          : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
-                                      }`}
-                                    >
-                                      <div className="text-[11px] font-black uppercase tracking-[0.14em]">
-                                        {option.label}
-                                      </div>
-                                      <div className="mt-1 text-[11px] font-medium leading-5">
-                                        {option.description}
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                    return (
+                      <div
+                        key={`${activePlanAccessModuleGroup.id}-${benefitKey}`}
+                        className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900/50 xl:grid-cols-[minmax(220px,1.5fr)_repeat(4,minmax(92px,1fr))] xl:items-center"
+                      >
+                        <div>
+                          <div className="text-xs font-black text-slate-900 dark:text-slate-100">{benefit?.label || benefitKey}</div>
+                          <div className="mt-1 break-all text-[10px] font-mono text-slate-400 dark:text-slate-500">{benefitKey}</div>
+                          {benefit?.description ? (
+                            <p className="mt-2 text-[11px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">{benefit.description}</p>
+                          ) : null}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:contents">
+                          {PLAN_ORDER.map((planName) => {
+                            const enabled = resolvedEntitlements[planName][benefitKey].enabled;
+
+                            return (
+                              <button
+                                key={`${activePlanAccessModuleGroup.id}-${benefitKey}-${planName}`}
+                                type="button"
+                                onClick={() => handleTogglePlanEntitlement(planName, benefitKey)}
+                                className={`flex min-h-[52px] items-center justify-center gap-2 rounded-sm border px-2 py-2 text-[10px] font-black uppercase tracking-[0.12em] transition-all ${
+                                  enabled
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
+                                    : 'border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500'
+                                }`}
+                                title={`${enabled ? 'Bloquear' : 'Liberar'} ${benefit?.label || benefitKey} para ${planName}`}
+                              >
+                                {enabled ? <Check size={13} /> : <X size={13} />}
+                                <span>{planName}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {activePlanAccessLimitDefinitions.length > 0 ? (
+                    <div className="mt-5 overflow-hidden rounded-sm border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50">
+                      <div className="border-b border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                        <h6 className="text-xs font-black uppercase tracking-[0.14em] text-slate-900 dark:text-slate-100">Limites deste modulo</h6>
+                        <p className="mt-1 text-[11px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                          Estes limites operacionais afetam apenas o modulo selecionado.
+                        </p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[980px] text-left">
+                          <thead className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
+                            <tr>
+                              <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Limite</th>
+                              <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Descricao</th>
+                              {PLAN_ORDER.map((planName) => (
+                                <th key={`${activePlanAccessModuleGroup.id}-limit-${planName}`} className="p-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                                  {planName}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {activePlanAccessLimitDefinitions.map((limitDefinition) => {
+                              const resolvedLimits = normalizePlanUsageLimits(draftPlanUsageLimits);
+
+                              return (
+                                <tr key={`${activePlanAccessModuleGroup.id}-${limitDefinition.key}`} className="bg-white dark:bg-slate-900/40">
+                                  <td className="p-4 align-top">
+                                    <div className="text-sm font-black text-slate-900 dark:text-slate-100">{limitDefinition.label}</div>
+                                    <div className="mt-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">{limitDefinition.key}</div>
+                                  </td>
+                                  <td className="p-4 align-top text-xs font-medium text-slate-500 dark:text-slate-400">
+                                    {limitDefinition.description}
+                                  </td>
+                                  {PLAN_ORDER.map((planName) => {
+                                    const currentLimit = resolvedLimits[planName][limitDefinition.key];
+
+                                    return (
+                                      <td key={`${activePlanAccessModuleGroup.id}-${limitDefinition.key}-${planName}`} className="p-4 align-top">
+                                        <div className="mx-auto flex max-w-[170px] flex-col gap-2">
+                                          <div className="inline-flex rounded-sm border border-slate-300 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
+                                            <button
+                                              type="button"
+                                              onClick={() => handlePlanUsageLimitModeChange(planName, limitDefinition.key, 'limited')}
+                                              className={`flex-1 rounded-sm px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                                                currentLimit.mode === 'limited'
+                                                  ? 'bg-sky-700 text-white'
+                                                  : 'text-slate-500 dark:text-slate-400'
+                                              }`}
+                                            >
+                                              Limite
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handlePlanUsageLimitModeChange(planName, limitDefinition.key, 'unlimited')}
+                                              className={`flex-1 rounded-sm px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                                                currentLimit.mode === 'unlimited'
+                                                  ? 'bg-emerald-600 text-white'
+                                                  : 'text-slate-500 dark:text-slate-400'
+                                              }`}
+                                            >
+                                              Ilimitado
+                                            </button>
+                                          </div>
+
+                                          {currentLimit.mode === 'limited' ? (
+                                            <div>
+                                              <input
+                                                type="number"
+                                                min={0}
+                                                value={currentLimit.value ?? 0}
+                                                onChange={(event) => handlePlanUsageLimitValueChange(planName, limitDefinition.key, Number(event.target.value))}
+                                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-black text-slate-900 outline-none transition-all focus:border-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                              />
+                                              <div className="mt-1 text-center text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
+                                                {limitDefinition.inputLabel}
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300">
+                                              Sem teto
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
+            )}
           </div>
+          )}
 
         </div>
       )}
@@ -3810,6 +4036,20 @@ const AdminFinance = ({
             {automationHelper?.warning && (
               <div className="rounded-sm border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
                 {String(automationHelper.warning)}
+              </div>
+            )}
+
+            {automationOperationalWarnings.length > 0 && (
+              <div className="rounded-sm border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-200">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start">
+                  <ShieldAlert size={18} className="mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-black">Renovacoes nao dependem do login do aluno.</p>
+                    {automationOperationalWarnings.map((warning) => (
+                      <p key={warning}>{warning}</p>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 

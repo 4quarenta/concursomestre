@@ -21,11 +21,19 @@ export type AuthFlowSuccessPayload = {
     token?: string | null;
     require2FA?: boolean;
     email?: string;
+    emailDelivery?: AuthEmailDelivery;
   };
   user?: UserProfile;
   token?: string | null;
   require2FA?: boolean;
   email?: string;
+  emailDelivery?: AuthEmailDelivery;
+};
+
+export type AuthEmailDelivery = {
+  status?: 'sent' | 'failed' | 'disabled' | string;
+  message?: string;
+  reason?: string;
 };
 
 type RegisterPayload = {
@@ -70,6 +78,7 @@ type AuthFlowApiData = {
   token?: string | null;
   require2FA?: boolean;
   email?: string;
+  emailDelivery?: AuthEmailDelivery;
 };
 
 type AuthFlowApiResponse = ApiResponse<AuthFlowApiData> | AuthFlowApiData;
@@ -88,11 +97,13 @@ const buildAuthFlowSuccessPayload = (data: AuthFlowApiData): AuthFlowSuccessPayl
     token: data.token ?? null,
     require2FA: Boolean(data.require2FA),
     email: data.email,
+    emailDelivery: data.emailDelivery,
   },
   user: data.user,
   token: data.token ?? null,
   require2FA: Boolean(data.require2FA),
   email: data.email,
+  emailDelivery: data.emailDelivery,
 });
 
 /**

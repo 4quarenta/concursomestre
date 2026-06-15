@@ -28,6 +28,26 @@ const COMMENT_REPORT_REASON_OPTIONS = [
     'Outro',
 ] as const;
 
+const CommentAuthorRoleBadge: React.FC<{ role?: string | null }> = ({ role }) => {
+    const normalizedRole = String(role || '').toLowerCase();
+    if (normalizedRole !== 'admin' && normalizedRole !== 'staff') {
+        return null;
+    }
+
+    const isAdmin = normalizedRole === 'admin';
+    return (
+        <span
+            className={`rounded-full px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ${
+                isAdmin
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950'
+                    : 'bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-200 dark:ring-blue-400/20'
+            }`}
+        >
+            {isAdmin ? 'Admin' : 'Staff'}
+        </span>
+    );
+};
+
 interface CommentItemProps {
     comment: Comment;
     onReply: (id: string, name: string) => void;
@@ -98,6 +118,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
                         <div className="flex flex-col">
                             <div className="flex items-center gap-1.5">
                                 <span className="font-bold text-slate-700 dark:text-slate-200">{comment.userName}</span>
+                                <CommentAuthorRoleBadge role={comment.userRole} />
                                 {getBadge(comment.userPlan)}
                             </div>
                             <span className="text-[9px] text-slate-400 dark:text-slate-500">{comment.date}</span>
@@ -170,6 +191,7 @@ const MemoizedCommentItem = React.memo(CommentItem, (prev, next) => {
         prev.comment.userAvatar === next.comment.userAvatar &&
         prev.comment.userName === next.comment.userName &&
         prev.comment.userPlan === next.comment.userPlan &&
+        prev.comment.userRole === next.comment.userRole &&
         prev.currentUserId === next.currentUserId &&
         prev.currentUserPhotoUrl === next.currentUserPhotoUrl &&
         prev.highlightedId === next.highlightedId &&

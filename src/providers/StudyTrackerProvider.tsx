@@ -14,6 +14,7 @@ import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
+import { getAccessToken, isAccessTokenExpired, refreshAuthSession } from '@services/auth';
 import { statisticsService } from '@services/statistics';
 import type { StudySessionPayload } from '@services/statistics/types';
 import {
@@ -75,6 +76,22 @@ const shouldSyncPersistedStatistics = (pathname: string): boolean => {
   return isLegalCommentaryReadingPath(pathname);
 };
 
+const ensureValidStatisticsSession = async (): Promise<boolean> => {
+  const currentToken = getAccessToken();
+  if (currentToken && !isAccessTokenExpired(currentToken, 15)) {
+    return true;
+  }
+
+  const refreshedSession = await refreshAuthSession({
+    reason: 'manual',
+    allowAnonymousFailure: true,
+    force: true,
+  });
+
+  const refreshedToken = refreshedSession?.accessToken || getAccessToken();
+  return Boolean(refreshedToken && !isAccessTokenExpired(refreshedToken, 15));
+};
+
 /**
  * Hook oficial para ler o estado atual do rastreador de estudos.
  *
@@ -94,7 +111,7 @@ export const useStudyTracker = () => useSyncExternalStore(
  */
 export const StudyTrackerBridge: React.FC = () => {
   const pathname = usePathname() || '/';
-  const { currentUser } = useAuth();
+  const { currentUser, isLoading: isAuthLoading } = useAuth();
   const { addToast } = useToast();
   const tracker = useStudyTracker();
   const lastInteractionAtRef = React.useRef<number>(0);
@@ -115,6 +132,10 @@ export const StudyTrackerBridge: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
+    if (isAuthLoading) {
+      return;
+    }
+
     if (!currentUser?.id) {
       resetStudyTrackerState();
       lastStatisticsSyncKeyRef.current = null;
@@ -136,10 +157,10 @@ export const StudyTrackerBridge: React.FC = () => {
     } else {
       resetStudyTrackerSession();
     }
-  }, [currentUser?.id]);
+  }, [currentUser?.id, isAuthLoading]);
 
   React.useEffect(() => {
-    if (!currentUser?.id) {
+    if (isAuthLoading || !currentUser?.id) {
       return;
     }
 
@@ -162,23 +183,45 @@ export const StudyTrackerBridge: React.FC = () => {
     lastStatisticsSyncKeyRef.current = syncKey;
     lastStatisticsSyncAtRef.current = now;
 
+    let isActive = true;
+
     setStudyTrackerLoading(true);
-    statisticsService.getUserStatistics(currentUser.id)
-      .then((statistics) => {
-        syncPersistedStudyTotals(statistics);
-      })
-      .catch(() => {
-        lastStatisticsSyncKeyRef.current = null;
-        lastStatisticsSyncAtRef.current = 0;
-        syncPersistedStudyTotals(null);
-      })
-      .finally(() => {
-        setStudyTrackerLoading(false);
-      });
-  }, [currentUser?.id, pathname, shouldLoadPersistedStatistics]);
+    void (async () => {
+      try {
+        const hasValidSession = await ensureValidStatisticsSession();
+        if (!isActive) {
+          return;
+        }
+
+        if (!hasValidSession) {
+          syncPersistedStudyTotals(null);
+          return;
+        }
+
+        const statistics = await statisticsService.getUserStatistics(currentUser.id);
+        if (isActive) {
+          syncPersistedStudyTotals(statistics);
+        }
+      } catch {
+        if (isActive) {
+          lastStatisticsSyncKeyRef.current = null;
+          lastStatisticsSyncAtRef.current = 0;
+          syncPersistedStudyTotals(null);
+        }
+      } finally {
+        if (isActive) {
+          setStudyTrackerLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentUser?.id, isAuthLoading, pathname, shouldLoadPersistedStatistics]);
 
   React.useEffect(() => {
-    if (!currentUser?.id) {
+    if (isAuthLoading || !currentUser?.id) {
       return;
     }
 
@@ -190,7 +233,7 @@ export const StudyTrackerBridge: React.FC = () => {
     });
 
     return unsubscribe;
-  }, [currentUser?.id]);
+  }, [currentUser?.id, isAuthLoading]);
 
   React.useEffect(() => {
     lastTickAtRef.current = Date.now();
@@ -222,7 +265,7 @@ export const StudyTrackerBridge: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
-    if (!currentUser?.id) {
+    if (isAuthLoading || !currentUser?.id) {
       return;
     }
 
@@ -261,7 +304,7 @@ export const StudyTrackerBridge: React.FC = () => {
     return () => {
       window.clearInterval(tickId);
     };
-  }, [currentUser?.id, pathname]);
+  }, [currentUser?.id, isAuthLoading, pathname]);
 
   const stopStudySession = React.useCallback(async () => {
     if (!currentUser?.id) {
@@ -329,23 +372,6 @@ export const StudyTrackerBridge: React.FC = () => {
       void stopStudySessionRef.current();
     }
   }, [currentUser?.id, pathname]);
-
-  React.useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      const snapshot = getStudyTrackerSnapshot();
-      if (snapshot.isSaving || snapshot.sessionTotals.totalSeconds <= 0) {
-        return;
-      }
-
-      event.preventDefault();
-      event.returnValue = '';
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, []);
 
   const handleWidgetToggle = React.useCallback(() => {
     setStudyTrackerWidgetExpanded(!getStudyTrackerSnapshot().isWidgetExpanded);

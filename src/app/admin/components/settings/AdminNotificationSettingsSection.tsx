@@ -14,11 +14,13 @@ import { Bell, CheckCircle2, MessageSquareText, SlidersHorizontal } from 'lucide
 import type { NotificationRuleSettings, NotificationSettings } from '@types';
 import { normalizeNotificationSettings } from '@constants/gamificationNotificationSettings';
 import {
+  ADMIN_FIELD_CLASS,
   ADMIN_MUTED_SURFACE_CLASS,
   ADMIN_PAGE_PANEL_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
   ADMIN_SURFACE_CLASS,
   ADMIN_SURFACE_HEADER_CLASS,
+  ADMIN_TEXTAREA_CLASS,
 } from '../shared/adminPanelStyles';
 
 interface AdminNotificationSettingsSectionProps {
@@ -89,6 +91,15 @@ const AdminNotificationSettingsSection = ({
       ...normalizedSettings,
       rules: normalizedSettings.rules.map((rule) => (
         rule.key === ruleKey ? { ...rule, enabled: !rule.enabled } : rule
+      )),
+    });
+  };
+
+  const updateRule = (ruleKey: string, patch: Partial<NotificationRuleSettings>) => {
+    emitChange({
+      ...normalizedSettings,
+      rules: normalizedSettings.rules.map((rule) => (
+        rule.key === ruleKey ? { ...rule, ...patch } : rule
       )),
     });
   };
@@ -166,11 +177,9 @@ const AdminNotificationSettingsSection = ({
 
           <div className="divide-y divide-slate-200 dark:divide-slate-800">
             {rules.map((rule) => (
-              <button
+              <div
                 key={rule.key}
-                type="button"
-                onClick={() => toggleRule(rule.key)}
-                className="grid w-full gap-4 px-4 py-4 text-left transition-colors hover:bg-slate-50 lg:grid-cols-[minmax(0,1fr)_minmax(260px,1fr)_120px_92px] lg:items-center dark:hover:bg-slate-950/60"
+                className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1.25fr)_180px_100px] lg:items-start"
               >
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -181,19 +190,59 @@ const AdminNotificationSettingsSection = ({
                   </div>
                   <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{rule.trigger}</p>
                 </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Mensagem</p>
-                  <p className="mt-1 text-xs font-black text-slate-900 dark:text-slate-100">{rule.title}</p>
-                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{rule.message}</p>
+                <div className="grid gap-2">
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Titulo</span>
+                    <input
+                      value={rule.title}
+                      onChange={(event) => updateRule(rule.key, { title: event.target.value })}
+                      className={`mt-1 w-full ${ADMIN_FIELD_CLASS}`}
+                    />
+                  </label>
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Mensagem</span>
+                    <textarea
+                      value={rule.message}
+                      onChange={(event) => updateRule(rule.key, { message: event.target.value })}
+                      className={`${ADMIN_TEXTAREA_CLASS} mt-1 min-h-[76px] resize-y text-xs`}
+                    />
+                  </label>
                 </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Destino</p>
-                  <p className="mt-1 break-all text-xs font-semibold text-slate-600 dark:text-slate-300">{rule.link || '-'}</p>
+                <div className="grid gap-2">
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Tipo</span>
+                    <select
+                      value={rule.type || 'info'}
+                      onChange={(event) => updateRule(rule.key, { type: event.target.value })}
+                      className={`mt-1 w-full ${ADMIN_FIELD_CLASS}`}
+                    >
+                      <option value="info">Info</option>
+                      <option value="success">Sucesso</option>
+                      <option value="warning">Alerta</option>
+                      <option value="error">Erro</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Destino</span>
+                    <input
+                      value={rule.link || ''}
+                      placeholder="/notifications"
+                      onChange={(event) => updateRule(rule.key, { link: event.target.value.trim() || null })}
+                      className={`mt-1 w-full ${ADMIN_FIELD_CLASS}`}
+                    />
+                  </label>
                 </div>
                 <div className="lg:text-right">
-                  <TogglePill enabled={normalizedSettings.enabled && rule.enabled} />
+                  <button
+                    type="button"
+                    onClick={() => toggleRule(rule.key)}
+                    className="inline-flex rounded-sm focus:outline-none focus:ring-2 focus:ring-sky-700 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+                    aria-pressed={normalizedSettings.enabled && rule.enabled}
+                  >
+                    <TogglePill enabled={normalizedSettings.enabled && rule.enabled} />
+                  </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </div>

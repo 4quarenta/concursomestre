@@ -5706,6 +5706,26 @@ export const useAdminImportWorkflow = ({
   const buildContextPublishContent = (context: ImportedContextDraft) => {
     const sourceText = String(context.text || '').trim();
     const existingFigures = Array.isArray(context.figures) ? context.figures : [];
+    const normalizeContextImageUri = (image?: string) => {
+      const value = String(image || '').trim();
+      if (!value) return '';
+      return value.startsWith('data:') ? value : `data:image/jpeg;base64,${value}`;
+    };
+    const createPublishedContextFigureHtml = (figureKey: string, image?: string, description?: string) => {
+      const imageUri = normalizeContextImageUri(image);
+      const caption = String(description || context.figureDescription || context.title || '').trim();
+
+      if (!imageUri) {
+        return `[FIGURA: ${figureKey}]`;
+      }
+
+      return [
+        '<figure class="question-support-figure cm-import-context-figure">',
+        `<img src="${escapeHtml(imageUri)}" alt="${escapeHtml(caption || 'Figura do contexto')}" loading="lazy" />`,
+        caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : '',
+        '</figure>',
+      ].filter(Boolean).join('');
+    };
     const publishedFigures = existingFigures.map((figure, index) => {
       const metadata = { ...figure };
       delete metadata.imageData;
@@ -5745,9 +5765,44 @@ export const useAdminImportWorkflow = ({
       .replace(/<img\b[^>]*\bsrc\s*=\s*["']data:image\/[^"']+["'][^>]*>/gi, replaceInlineFigure);
     const figureImageData = existingFigures.map((figure) => figure.imageData).find(Boolean) || '';
     const imageData = context.imageData || figureImageData || extractedImages[0] || '';
+    const figureMarkerPattern = /\[FIGURA:\s*([-\w]+)\]/gi;
+    let consumedPrimaryImage = false;
+    const richText = (() => {
+      if (!sourceText) {
+        return imageData
+          ? createPublishedContextFigureHtml(`${context.tempId}-fig-01`, imageData)
+          : '';
+      }
+
+      if (/<img\b/i.test(sourceText)) {
+        return sourceText;
+      }
+
+      const replaced = sourceText.replace(figureMarkerPattern, (_marker, rawFigureKey) => {
+        const figureKey = String(rawFigureKey || '').trim();
+        const figure = existingFigures.find((item) => String(item.figureKey || '') === figureKey);
+        const figureImageDataForKey = String(figure?.imageData || figure?.pageImageData || '').trim()
+          || (!consumedPrimaryImage ? imageData : '');
+        consumedPrimaryImage = consumedPrimaryImage || Boolean(figureImageDataForKey);
+        return createPublishedContextFigureHtml(
+          figureKey,
+          figureImageDataForKey,
+          figure?.description || context.figureDescription,
+        );
+      });
+
+      if (replaced !== sourceText) {
+        return replaced;
+      }
+
+      return imageData
+        ? [sourceText, createPublishedContextFigureHtml(`${context.tempId}-fig-01`, imageData)].join('\n\n')
+        : sourceText;
+    })();
 
     return {
       text: textWithoutInlineImages,
+      richText,
       imageData,
       figures: publishedFigures,
     };
@@ -7654,10 +7709,15 @@ export const useAdminImportWorkflow = ({
     const savedExam = normalizedExam
       ? { ...normalizedExam, ...bookletMetadata }
       : { ...examRecord, ...bookletMetadata, nome: examName, title: examName, examTitle: examName };
+    if (!getPublishedExamId(savedExam)) {
+      addLog('A API respondeu a publicacao da prova sem ID. As questoes nao serao liberadas para publicacao ate a prova retornar um ID valido.');
+      return null;
+    }
     setPublishedExam(savedExam as Record<string, unknown>);
 
     if (!normalizedExam) {
-      return normalizedExam;
+      addLog('Prova publicada, mas a lista local de provas nao foi normalizada agora. O ID retornado pelo backend foi preservado para publicar as questoes.');
+      return savedExam as Record<string, unknown>;
     }
 
     const previousExamBank = systemSettings.examBank || [];
@@ -7672,8 +7732,8 @@ export const useAdminImportWorkflow = ({
       useAppConfigStore.getState().replaceSystemSettings(nextSettings);
       await adminService.saveSystemSettings(nextSettings);
     } catch (error) {
-      useAppConfigStore.getState().replaceSystemSettings(systemSettings);
-      addLog(`Prova publicada, mas a lista local de provas nao foi sincronizada agora (${readErrorMessage(error)}).`);
+      useAppConfigStore.getState().replaceSystemSettings(nextSettings);
+      addLog(`Prova publicada e mantida na lista local, mas a sincronizacao persistente do banco de provas falhou (${readErrorMessage(error)}).`);
     }
     return normalizedExam;
   };
@@ -7806,7 +7866,7 @@ export const useAdminImportWorkflow = ({
       }
 
       const syncedExam = await syncPublishedExam(response.exam, examName);
-      if (!syncedExam) {
+      if (!syncedExam || !getPublishedExamId(syncedExam as Record<string, unknown>)) {
         throw new Error('A API salvou a prova, mas nao retornou um ID valido para o banco de provas.');
       }
       addToast('Prova publicada. Agora voce pode publicar as questoes vinculadas.', 'success');
@@ -7890,7 +7950,7 @@ export const useAdminImportWorkflow = ({
             texto: textFallback,
             referenceText: context.referenceText || '',
             reference_text: context.referenceText || '',
-            richText: context.richText || '',
+            richText: publishContent.richText || context.richText || '',
             questionNumbers: context.questionNumbers,
             imageData: publishContent.imageData,
             sourcePage: context.sourcePage || context.page,

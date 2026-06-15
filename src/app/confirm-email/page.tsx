@@ -52,6 +52,7 @@ const Page: React.FC = () => {
   const { addToast } = useToast();
   const token = searchParams.get('token');
   const hasFetched = useRef(false);
+  const currentUserRef = useRef(currentUser);
 
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState(pageCopy.loading);
@@ -59,29 +60,35 @@ const Page: React.FC = () => {
   const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
-    if (!token) {
-      if (authLoading) {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (token || authLoading) {
+      return undefined;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      if (currentUser && !currentUser.emailVerified) {
+        setStatus('loading');
+        setMessage(pageCopy.pendingConfirmation);
         return;
       }
 
-      let frameId = 0;
-      if (currentUser && !currentUser.emailVerified) {
-        frameId = window.requestAnimationFrame(() => {
-          setStatus('loading');
-          setMessage(pageCopy.pendingConfirmation);
-        });
-        return () => window.cancelAnimationFrame(frameId);
-      }
+      setStatus('error');
+      setMessage(pageCopy.missingToken);
+    });
 
-      frameId = window.requestAnimationFrame(() => {
-        setStatus('error');
-        setMessage(pageCopy.missingToken);
-      });
-      return () => window.cancelAnimationFrame(frameId);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [authLoading, currentUser, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return undefined;
     }
 
     if (hasFetched.current) {
-      return;
+      return undefined;
     }
 
     hasFetched.current = true;
@@ -101,7 +108,7 @@ const Page: React.FC = () => {
         setXpGained(result.newXp > 0 ? result.newXp : 50);
         addToast('Conta ativada! Voce ganhou bonus de XP.', 'success');
 
-        if (currentUser) {
+        if (currentUserRef.current) {
           await refreshUser();
         }
 
@@ -142,7 +149,7 @@ const Page: React.FC = () => {
         clearInterval(timer);
       }
     };
-  }, [addToast, authLoading, currentUser, refreshUser, router, token]);
+  }, [addToast, refreshUser, router, token]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-4">

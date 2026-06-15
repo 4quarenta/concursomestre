@@ -31,6 +31,9 @@ import {
   DEFAULT_SECTION_BY_TAB,
   TAB_DESCRIPTIONS,
   buildAdminPath,
+  filterAdminTabsForRole,
+  normalizeAdminUserRole,
+  resolveAdminRouteForRole,
   type AdminNavigationTab,
   type AdminPageTab,
 } from '../../config/adminPageNavigationConfig';
@@ -53,7 +56,9 @@ const buildSearchTargets = (adminTabs: AdminNavigationTab[]) => {
     group: tab.group || 'Admin',
   }));
 
+  const allowedTabKeys = new Set(adminTabs.map((tab) => tab.key));
   const sectionTargets = (Object.entries(ADMIN_SECTION_CONFIG) as [AdminPageTab, { key: string; label: string }[]][])
+    .filter(([tabKey]) => allowedTabKeys.has(tabKey))
     .flatMap(([tabKey, sections]) => (
       sections.map((section) => ({
         label: section.label,
@@ -76,13 +81,16 @@ const AdminStandaloneShell = ({
 }: AdminStandaloneShellProps) => {
   const router = useRouter();
   const { currentUser } = useAuth();
+  const adminUserRole = React.useMemo(() => normalizeAdminUserRole(
+    currentUser?.role || (currentUser?.isAdmin ? 'admin' : currentUser?.isStaff ? 'staff' : ''),
+  ), [currentUser?.isAdmin, currentUser?.isStaff, currentUser?.role]);
   const { theme, toggleTheme } = useTheme();
   const notifications = useNotificationsStore((store) => store.notifications);
-  const { markNotificationAsRead } = useNotificationsActions();
+  const { markNotificationAsRead, markAllNotificationsAsRead } = useNotificationsActions();
   const systemSettings = useAppConfigStore((store) => store.systemSettings);
   const [isNotifOpen, setIsNotifOpen] = React.useState(false);
 
-  const adminTabs = React.useMemo<AdminNavigationTab[]>(() => ([
+  const adminTabs = React.useMemo<AdminNavigationTab[]>(() => filterAdminTabsForRole([
     { key: 'panel', label: 'Dashboard', icon: LayoutDashboard, group: 'Conteudo', description: TAB_DESCRIPTIONS.panel },
     { key: 'operation', label: 'Conteudo', icon: BookOpen, group: 'Conteudo', description: TAB_DESCRIPTIONS.operation },
     { key: 'marketplace', label: 'Marketplace', icon: ShoppingBag, group: 'Comercial', description: TAB_DESCRIPTIONS.marketplace },
@@ -90,7 +98,7 @@ const AdminStandaloneShell = ({
     { key: 'marketing', label: 'Marketing', icon: Megaphone, group: 'Comercial', description: TAB_DESCRIPTIONS.marketing },
     { key: 'support', label: 'Suporte', icon: MessageSquare, group: 'Relacionamento', description: TAB_DESCRIPTIONS.support },
     { key: 'settings', label: 'Configuracoes', icon: Settings, group: 'Sistema', description: TAB_DESCRIPTIONS.settings },
-  ]), []);
+  ], adminUserRole), [adminUserRole]);
 
   const searchTargets = React.useMemo(() => buildSearchTargets(adminTabs), [adminTabs]);
   const adminNotifications = (notifications || []) as Notification[];
@@ -99,8 +107,17 @@ const AdminStandaloneShell = ({
 
   const navigateAdmin = React.useCallback((tab: string, section?: string) => {
     const nextTab = tab as AdminPageTab;
-    router.push(buildAdminPath(nextTab, section || DEFAULT_SECTION_BY_TAB[nextTab]));
-  }, [router]);
+    const resolved = resolveAdminRouteForRole(nextTab, section || DEFAULT_SECTION_BY_TAB[nextTab], adminUserRole);
+    router.push(buildAdminPath(resolved.tab, resolved.section));
+  }, [adminUserRole, router]);
+
+  React.useEffect(() => {
+    const resolved = resolveAdminRouteForRole(activeTab, activeSectionKey, adminUserRole);
+
+    if (resolved.tab !== activeTab) {
+      router.replace(buildAdminPath(resolved.tab, resolved.section));
+    }
+  }, [activeSectionKey, activeTab, adminUserRole, router]);
 
   const navigate = React.useCallback((path: string) => {
     router.push(path);
@@ -124,6 +141,7 @@ const AdminStandaloneShell = ({
         onCloseNotifications: () => setIsNotifOpen(false),
         notifications: adminNotifications,
         markNotificationAsRead,
+        markAllNotificationsAsRead,
         unreadCount,
         navigate,
         currentUserName: currentUser?.name,

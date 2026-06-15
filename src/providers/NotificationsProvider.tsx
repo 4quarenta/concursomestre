@@ -6,6 +6,7 @@ import { useAuth } from '@providers/AuthProvider';
 import { buildNotificationsQueryKey, fetchNotificationsList } from '@/state/notifications/notificationsQuery';
 import { useNotificationsStore } from '@/state/notifications/notificationsStore';
 import { clientLog } from '@services/monitoring/clientLog';
+import { getAccessToken, isAccessTokenExpired } from '@services/auth/session';
 
 interface NotificationsProviderProps {
   children: React.ReactNode;
@@ -53,12 +54,14 @@ export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({ ch
   const resetNotifications = useNotificationsStore((state) => state.resetNotifications);
 
   const currentUserId = currentUser?.id ?? null;
-  const shouldFetchNotifications = Boolean(currentUserId);
+  const hasValidAccessToken = Boolean(getAccessToken()) && !isAccessTokenExpired(getAccessToken(), 10);
+  const shouldFetchNotifications = Boolean(currentUserId && hasValidAccessToken);
   const fetchInFlightRef = React.useRef(false);
   const lastFetchAtRef = React.useRef(0);
 
   const fetchNotifications = React.useCallback(async (userId: string, force = false) => {
-    if (!userId || fetchInFlightRef.current) {
+    const accessToken = getAccessToken();
+    if (!userId || !accessToken || isAccessTokenExpired(accessToken, 10) || fetchInFlightRef.current) {
       return;
     }
 
@@ -88,10 +91,10 @@ export const NotificationsProvider: React.FC<NotificationsProviderProps> = ({ ch
       return;
     }
 
-    if (!currentUserId) {
+    if (!currentUserId || !hasValidAccessToken) {
       resetNotifications();
     }
-  }, [authIsLoading, currentUserId, resetNotifications]);
+  }, [authIsLoading, currentUserId, hasValidAccessToken, resetNotifications]);
 
   React.useEffect(() => {
     if (!shouldFetchNotifications || !currentUserId) {

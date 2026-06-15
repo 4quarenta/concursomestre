@@ -180,6 +180,18 @@ const buildLocalMonthKey = (date: Date): string => (
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 );
 
+const startOfLocalDay = (date: Date): Date => {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start;
+};
+
+const addLocalDays = (date: Date, days: number): Date => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
 const buildTimelineBucketKey = (date: Date, timeRange: DashboardTimeRange): string => {
   if (timeRange === 'today') {
     return `${buildLocalDateKey(date)}-${String(date.getHours()).padStart(2, '0')}`;
@@ -225,19 +237,17 @@ const normalizeSubjectNameCandidate = (value: unknown): string => {
  * @since 1.0.0
  */
 export const getRangeStartTimestamp = (timeRange: DashboardTimeRange, now: Date = new Date()): number => {
+  const todayStart = startOfLocalDay(now);
+
   switch (timeRange) {
     case 'today':
-      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    case 'week': {
-      const start = new Date(now);
-      start.setDate(start.getDate() - start.getDay());
-      start.setHours(0, 0, 0, 0);
-      return start.getTime();
-    }
+      return todayStart.getTime();
+    case 'week':
+      return addLocalDays(todayStart, -6).getTime();
     case 'month':
-      return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      return addLocalDays(todayStart, -29).getTime();
     case 'year':
-      return new Date(now.getFullYear(), 0, 1).getTime();
+      return new Date(now.getFullYear(), now.getMonth() - 11, 1).getTime();
     case 'all':
     default:
       return 0;
@@ -260,7 +270,11 @@ export const filterAnswersByRange = (
     return answers;
   }
 
-  return answers.filter((answer) => resolveDashboardAnswerTimestamp(answer) >= startTimestamp);
+  const endTimestamp = now.getTime();
+  return answers.filter((answer) => {
+    const timestamp = resolveDashboardAnswerTimestamp(answer);
+    return timestamp >= startTimestamp && timestamp <= endTimestamp;
+  });
 };
 
 /**
@@ -760,9 +774,8 @@ export const buildQuestionTimelineData = (
       );
     }
   } else if (timeRange === 'month') {
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    for (let dayOffset = 0; dayOffset < daysInMonth; dayOffset += 1) {
+    const monthStart = new Date(getRangeStartTimestamp('month', now));
+    for (let dayOffset = 0; dayOffset < 30; dayOffset += 1) {
       const pointDate = new Date(monthStart);
       pointDate.setDate(monthStart.getDate() + dayOffset);
       addTimelinePoint(
@@ -771,11 +784,12 @@ export const buildQuestionTimelineData = (
       );
     }
   } else if (timeRange === 'year') {
+    const yearStart = new Date(getRangeStartTimestamp('year', now));
     for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
-      const pointDate = new Date(now.getFullYear(), monthIndex, 1);
+      const pointDate = new Date(yearStart.getFullYear(), yearStart.getMonth() + monthIndex, 1);
       addTimelinePoint(
         pointDate,
-        pointDate.toLocaleDateString('pt-BR', { month: 'short' }),
+        pointDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
       );
     }
   }

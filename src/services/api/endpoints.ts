@@ -37,6 +37,11 @@ export const ENDPOINTS = {
         list: 'changelog/list.php',
     },
 
+    setup: {
+        status: 'setup/status.php',
+        install: 'setup/install.php',
+    },
+
     questions: {
         list: 'questionsList',
         show: 'questions/show.php',
@@ -71,14 +76,14 @@ export const ENDPOINTS = {
     },
 
     notifications: {
-        list: 'notificationsList',
-        markRead: 'notificationsMarkRead',
-        markAllRead: 'notificationsMarkAllRead',
-        delete: 'notificationsDelete',
-        clearAll: 'notificationsClearAll',
-        restore: 'notificationsRestore',
-        permanentDelete: 'notificationsPermanentDelete',
-        send: 'notificationsSend',
+        list: 'notifications/list.php',
+        markRead: 'notifications/mark_read.php',
+        markAllRead: 'notifications/mark_all_read.php',
+        delete: 'notifications/delete.php',
+        clearAll: 'notifications/clear_all.php',
+        restore: 'notifications/restore.php',
+        permanentDelete: 'notifications/permanent-delete.php',
+        send: 'notifications/send.php',
     },
 
     rankings: {
@@ -136,7 +141,7 @@ export const ENDPOINTS = {
         list: 'usersList',
         profile: 'users/profile.php',
         update: 'users/update.php',
-        comments: 'usersComments',
+        comments: 'users/comments.php',
         answers: 'users/answers.php',
         notes: 'users/notes.php',
         materials: 'users/materials.php',
@@ -275,9 +280,9 @@ export const ENDPOINTS = {
     },
 
     statistics: {
-        user: 'statistics/user',
-        question: 'statistics/question',
-        platform: 'statistics/platform',
+        user: 'statistics/user.php',
+        question: 'statistics/question.php',
+        platform: 'statistics/platform.php',
         xray: 'statistics/xray.php',
         bancaInfo: 'statistics/banca_info.php',
         studySession: 'statistics/study-session.php',

@@ -55,7 +55,7 @@ vi.mock('@services/api', () => ({
       handle: 'commentsHandle',
     },
     users: {
-      comments: 'usersComments',
+      comments: 'users/comments.php',
     },
   },
 }));
@@ -102,7 +102,7 @@ describe('commentService', () => {
 
     const comments = await commentService.getUserComments('user-7');
 
-    expect(mockGet).toHaveBeenCalledWith('usersComments', {
+    expect(mockGet).toHaveBeenCalledWith('users/comments.php', {
       params: { user_id: 'user-7' },
     });
     expect(comments[0].id).toBe('com-2');

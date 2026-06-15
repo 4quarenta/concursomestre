@@ -48,7 +48,7 @@ import {
   PLATFORM_PAGE_TITLE_CLASS,
   PLATFORM_SECTION_TITLE_CLASS,
 } from '@constants/layout';
-import { AdPlaceholder } from '../../components/shared/ui/AdPlaceholder';
+import AdBanner from '../../components/shared/feedback/AdBanner';
 import {
   buildAccuracyInsight,
   buildQuestionTimelineData,
@@ -65,7 +65,7 @@ import {
 import { loadDailyMotivationMarkdown } from '@services/dashboard/dailyMotivationContentService';
 import { getStudyStreakSnapshot, touchStudyStreak, type StudyStreakSnapshot } from '@services/dashboard/studyStreakService';
 import { formatStudyDuration } from '@services/statistics/studyTimeFormatting';
-import { isPlanAtLeast } from '@services/plans/planAccess';
+import { getBenefitRequiredPlan, hasPlanBenefit, type CanonicalPlanName } from '@services/plans/planAccess';
 import type { QuestaoComentario, UserAnswer } from '@types';
 
 const EMPTY_STREAK: StudyStreakSnapshot = {
@@ -229,7 +229,8 @@ const Dashboard: React.FC = () => {
   const [studyStreak, setStudyStreak] = useState<StudyStreakSnapshot>(() => (
     currentUser?.id ? getStudyStreakSnapshot(currentUser.id) : EMPTY_STREAK
   ));
-  const hasDashboardEliteAccess = isPlanAtLeast(currentUser, 'Elite');
+  const hasDashboardAccess = hasPlanBenefit(currentUser, 'module.dashboard', systemSettings.planEntitlements);
+  const dashboardRequiredPlan = getBenefitRequiredPlan('module.dashboard', systemSettings.planEntitlements) as CanonicalPlanName;
 
   /**
    * O dashboard precisa apenas das respostas para renderizar cards e grafico.
@@ -238,7 +239,7 @@ const Dashboard: React.FC = () => {
    * @since 1.0.0
    */
   React.useEffect(() => {
-    if (!currentUser?.id || !hasDashboardEliteAccess) {
+    if (!currentUser?.id || !hasDashboardAccess) {
       return;
     }
 
@@ -273,12 +274,12 @@ const Dashboard: React.FC = () => {
         cancelScheduledFetch();
       }
     };
-  }, [currentUser?.id, dashboardAnswersOwnerId, hasDashboardEliteAccess]);
+  }, [currentUser?.id, dashboardAnswersOwnerId, hasDashboardAccess]);
 
   React.useEffect(() => {
     if (
       !currentUser?.id
-      || !hasDashboardEliteAccess
+      || !hasDashboardAccess
       || timeRange === 'all'
     ) {
       return;
@@ -306,7 +307,7 @@ const Dashboard: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [currentUser?.id, dashboardCommentsOwnerId, hasDashboardEliteAccess, timeRange]);
+  }, [currentUser?.id, dashboardCommentsOwnerId, hasDashboardAccess, timeRange]);
 
   /**
    * Atualiza a base de motivacoes conforme o admin salva um markdown novo.
@@ -496,7 +497,7 @@ const Dashboard: React.FC = () => {
     [dailyMotivationMarkdown],
   );
   const formattedToday = useMemo(() => formatDashboardDate(new Date()), []);
-  if (!hasDashboardEliteAccess) {
+  if (!hasDashboardAccess) {
     return (
       <>
         <div className="space-y-6 animate-fade-in">
@@ -509,7 +510,7 @@ const Dashboard: React.FC = () => {
                 Dashboard premium
               </h1>
               <p className={PLATFORM_PAGE_DESCRIPTION_CLASS}>
-                O resumo completo de desempenho, tempo de estudo e evolução fica disponível no pacote Elite.
+                O resumo completo de desempenho, tempo de estudo e evolução fica disponível conforme o plano configurado no painel.
               </p>
             </div>
           </header>
@@ -522,7 +523,7 @@ const Dashboard: React.FC = () => {
               </div>
               <div className="space-y-2">
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600 dark:text-amber-300">
-                  Recurso Exclusivo Elite
+                  Recurso Premium
                 </p>
                 <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">
                   Desbloqueie o dashboard completo
@@ -563,7 +564,7 @@ const Dashboard: React.FC = () => {
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-amber-500 px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white shadow-lg shadow-amber-200 transition-all hover:bg-amber-600 dark:shadow-none"
               >
                 <Crown size={16} />
-                Quero ser Elite
+                Ver planos
               </button>
             </div>
           </div>
@@ -573,12 +574,12 @@ const Dashboard: React.FC = () => {
           isOpen={showAuthModal}
           onClose={() => setShowAuthModal(false)}
           title="Entre para desbloquear o dashboard premium"
-          description="Acesse o painel completo do ConcursoMestre e acompanhe sua evolução com o plano Elite."
+          description="Acesse o painel completo do ConcursoMestre e acompanhe sua evolução conforme o plano liberado."
         />
         <UpgradeModal
           isOpen={showUpgradeModal}
           onClose={() => setShowUpgradeModal(false)}
-          requiredPlan="Elite"
+          requiredPlan={dashboardRequiredPlan}
           featureName="Dashboard premium"
         />
       </>
@@ -603,9 +604,9 @@ const Dashboard: React.FC = () => {
         <div className="flex max-w-full gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm no-scrollbar dark:border-slate-800 dark:bg-slate-900">
           {[
             { id: 'today', label: 'Hoje' },
-            { id: 'week', label: 'Semana' },
-            { id: 'month', label: 'Mes' },
-            { id: 'year', label: 'Ano' },
+            { id: 'week', label: '7 dias' },
+            { id: 'month', label: '30 dias' },
+            { id: 'year', label: '12 meses' },
             { id: 'all', label: 'Tudo' },
           ].map((range) => (
             <button
@@ -763,11 +764,9 @@ const Dashboard: React.FC = () => {
         </section>
       </div>
 
-      {systemSettings.adsEnabled && (
-        <div className="animate-fade-in">
-          <AdPlaceholder type="banner" />
-        </div>
-      )}
+      <div className="animate-fade-in">
+        <AdBanner type="top" />
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.45fr_0.95fr]">
         <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6 xl:col-span-2`}>

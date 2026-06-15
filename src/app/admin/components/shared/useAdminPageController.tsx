@@ -37,10 +37,13 @@ import {
   isPanelSection,
   isSettingsSection,
   isSupportSection,
+  filterAdminTabsForRole,
+  normalizeAdminUserRole,
   resolveSupportLandingSection,
   TAB_DESCRIPTIONS,
   buildAdminPath,
   resolveAdminRoute,
+  resolveAdminRouteForRole,
   type AdminFinanceSection,
   type AdminMarketingSection,
   type AdminMarketplaceSection,
@@ -83,9 +86,12 @@ export const useAdminPageController = () => {
   const { updateSystemSettings, saveSystemSettingsNow } = useSystemSettingsActions();
   const { ensureUsersLoaded, ensureReportsLoaded, ensureRankingsLoaded, resolveReport, updateRanking } = useAdminDataActions();
   const { ensureTaxonomiesLoaded } = useTaxonomyActions();
-  const { markNotificationAsRead } = useNotificationsActions();
+  const { markNotificationAsRead, markAllNotificationsAsRead } = useNotificationsActions();
   const { materials, transactions, moderateMaterial, deleteMaterial } = useMarketplace();
   const { currentUser } = useAuth();
+  const adminUserRole = useMemo(() => normalizeAdminUserRole(
+    currentUser?.role || (currentUser?.isAdmin ? 'admin' : currentUser?.isStaff ? 'staff' : ''),
+  ), [currentUser?.isAdmin, currentUser?.isStaff, currentUser?.role]);
   const { theme, toggleTheme } = useTheme();
   const { addToast } = useToast();
   const router = useRouter();
@@ -103,11 +109,12 @@ export const useAdminPageController = () => {
   const routeTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
   const routeSection = Array.isArray(params.section) ? params.section.join('/') : params.section;
   const initialResolvedRoute = useMemo(() => (
-    resolveAdminRoute(
+    resolveAdminRouteForRole(
       routeTab || searchParams?.get('tab'),
       routeSection || searchParams?.get('section'),
+      adminUserRole,
     )
-  ), [routeSection, routeTab, searchParams]);
+  ), [adminUserRole, routeSection, routeTab, searchParams]);
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [activeTab, setActiveTabState] = useState<AdminPageTab>(initialResolvedRoute.tab);
@@ -303,7 +310,7 @@ export const useAdminPageController = () => {
   }), [feedbackCount, openReportsCount, pendingCommentsCount, pendingMarketplaceMaterialsCount, refundRequestsCount]);
   const supportLandingSection = useMemo(() => resolveSupportLandingSection(sectionBadges.support), [sectionBadges]);
 
-  const adminTabs = useMemo<AdminNavigationTab[]>(() => ([
+  const adminTabs = useMemo<AdminNavigationTab[]>(() => filterAdminTabsForRole([
     { key: 'panel', label: 'Dashboard', icon: LayoutDashboard, badge: panelAlertsCount > 0 ? panelAlertsCount : undefined, group: 'Conteudo', description: 'Visao geral e saude operacional' },
     { key: 'operation', label: 'Conteudo', icon: BookOpen, group: 'Conteudo', description: 'Questoes, provas, importacao, taxonomias, lei comentada e usuarios' },
     { key: 'marketplace', label: 'Marketplace', icon: ShoppingBag, group: 'Comercial', description: 'Vendedores, materiais publicados e revisao bloqueada' },
@@ -311,7 +318,7 @@ export const useAdminPageController = () => {
     { key: 'marketing', label: 'Marketing', icon: Megaphone, group: 'Comercial', description: 'Landing pages, campanhas, temas visuais e redes sociais' },
     { key: 'support', label: 'Suporte', icon: MessageSquare, badge: supportInboxCount > 0 ? supportInboxCount : undefined, group: 'Relacionamento', description: 'Feedback, comentarios, denuncias, rankings e reembolsos' },
     { key: 'settings', label: 'Configuracoes', icon: Settings, group: 'Sistema', description: 'Integracoes e controles globais' },
-  ]), [panelAlertsCount, supportInboxCount]);
+  ], adminUserRole), [adminUserRole, panelAlertsCount, supportInboxCount]);
 
   const activeTabLabel = adminTabs.find((tab) => tab.key === activeTab)?.label || 'Painel';
   const activeSections = ADMIN_SECTION_CONFIG[activeTab];
@@ -323,7 +330,9 @@ export const useAdminPageController = () => {
       group: tab.group || 'Admin',
     }));
 
+    const allowedTabKeys = new Set(adminTabs.map((tab) => tab.key));
     const sectionTargets = (Object.entries(ADMIN_SECTION_CONFIG) as [AdminPageTab, { key: string; label: string }[]][])
+      .filter(([tabKey]) => allowedTabKeys.has(tabKey))
       .flatMap(([tabKey, sections]) => (
         sections.map((section) => ({
           label: section.label,
@@ -371,7 +380,8 @@ export const useAdminPageController = () => {
   ), [activeTab, initialFinanceSection, initialMarketingSection, initialMarketplaceSection, initialOperationSection, initialPanelSection, initialSettingsSection, initialSupportSection]);
 
   const syncAdminUrl = (tab: AdminPageTab, section?: string, options?: { replace?: boolean; hash?: string }) => {
-    const nextPath = buildAdminPath(tab, section, options?.hash);
+    const resolved = resolveAdminRouteForRole(tab, section, adminUserRole);
+    const nextPath = buildAdminPath(resolved.tab, resolved.section, options?.hash);
     if (options?.replace ?? true) {
       router.replace(nextPath);
     } else {
@@ -420,9 +430,10 @@ export const useAdminPageController = () => {
    * @since 1.0.0
    */
   useEffect(() => {
-    const route = resolveAdminRoute(
+    const route = resolveAdminRouteForRole(
       routeTab || legacySearchParams.get('tab'),
       routeSection || legacySearchParams.get('section'),
+      adminUserRole,
     );
     const shouldPrefetchUsers = (
       route.tab === 'finance'
@@ -481,6 +492,7 @@ export const useAdminPageController = () => {
     ensureReportsLoaded,
     ensureRankingsLoaded,
     ensureTaxonomiesLoaded,
+    adminUserRole,
   ]);
 
   /**
@@ -580,6 +592,7 @@ export const useAdminPageController = () => {
     setIsNotifOpen,
     notifications,
     markNotificationAsRead,
+    markAllNotificationsAsRead,
     unreadCount,
     navigate,
     currentUser,
@@ -594,6 +607,7 @@ export const useAdminPageController = () => {
       onCloseNotifications: () => setIsNotifOpen(false),
       notifications,
       markNotificationAsRead,
+      markAllNotificationsAsRead,
       unreadCount,
       navigate,
       currentUserName: currentUser?.name,

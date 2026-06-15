@@ -1,6 +1,7 @@
 import type { MarketingLandingPage, Material, Question, Ranking } from '@types';
 import { buildMaterialPath, buildQuestionPath, buildRankingPath } from './slug';
-import { buildSiteUrl, getConfiguredSiteUrl, normalizeSiteUrl } from '../../config/siteUrl';
+import { buildSiteUrl, getConfiguredSiteUrl } from '../../config/siteUrl';
+import { resolveAbsoluteApiBaseUrl } from '../api/baseUrl';
 import { isQuestionPubliclyVisible } from '../questions/questionPublication';
 import { buildMarketingLandingPath, mergeMarketingLandingPages, normalizeLandingSlug } from '../marketing/landingPages';
 
@@ -152,11 +153,8 @@ const readEnv = (key: string): string => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
-const getApiBaseUrl = () => normalizeSiteUrl(
-  readEnv('NEXT_PUBLIC_API_BASE_URL')
-    || readEnv('API_BASE_URL')
-    || 'http://localhost/questao-pro-backend/api/',
-  'http://localhost/questao-pro-backend/api/',
+const getApiBaseUrl = () => resolveAbsoluteApiBaseUrl(
+  readEnv('NEXT_PUBLIC_API_BASE_URL') || readEnv('API_BASE_URL') || undefined,
 );
 
 const readEnvelopeData = <TData,>(payload: unknown, fallback: TData): TData => {

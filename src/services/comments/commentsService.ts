@@ -22,6 +22,7 @@ type AddCommentInput = {
   userName: string;
   userAvatar?: string;
   userPlan?: string;
+  userRole?: string;
   parentId?: string;
   targetType?: 'question' | 'material';
 };
@@ -79,6 +80,7 @@ const normalizeCommentRecord = (comment: QuestaoComentario): QuestaoComentario =
     userName: String(comment.userName || record.user_name || record.userName || 'Aluno'),
     userAvatar: String(comment.userAvatar || record.user_avatar || record.user_photo_url || record.photo_url || record.avatar_url || ''),
     userPlan: normalizeCommentPlan(comment.userPlan || record.user_plan || record.plan_name || record.plan || record.userPlan),
+    userRole: String(comment.userRole || record.user_role || record.role || record.userRole || ''),
     replies: Array.isArray(comment.replies) ? comment.replies.map(normalizeCommentRecord) : [],
   };
 };
@@ -152,6 +154,9 @@ export const commentService = {
     if (commentData.userPlan) {
       requestPayload.user_plan = commentData.userPlan;
     }
+    if (commentData.userRole) {
+      requestPayload.user_role = commentData.userRole;
+    }
 
     const response = await apiClient.post(
       ENDPOINTS.comments.create,
@@ -182,6 +187,7 @@ export const commentService = {
           userName: commentData.userName,
           userAvatar: commentData.userAvatar,
           userPlan: normalizeCommentPlan(commentData.userPlan),
+          userRole: commentData.userRole,
           text: commentData.content,
           date: 'Agora',
           likes: 0,

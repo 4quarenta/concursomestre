@@ -97,6 +97,11 @@ export const notificationService = {
    * @since 1.0.0
    */
   async getNotifications(): Promise<Notification[]> {
+    const accessToken = getAccessToken();
+    if (!accessToken || isAccessTokenExpired(accessToken, 10)) {
+      return [];
+    }
+
     try {
       const response = await apiClient.get<Notification[] | NotificationListPayload>(ENDPOINTS.notifications.list);
       return readNotifications(response);

@@ -7,33 +7,56 @@ type DefaultEmailHtmlInput = {
   ctaUrl?: string;
 };
 
+const DEFAULT_EMAIL_LOGO_BLOCK = '{{email_logo_block}}';
+
 const buildDefaultEmailHtml = ({
   title,
   body,
   ctaLabel,
   ctaUrl,
 }: DefaultEmailHtmlInput) => `
-<div style="margin:0;padding:0;background:#f1f5f9;font-family:Inter,Arial,sans-serif;color:#0f172a;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f1f5f9;">
+<div style="margin:0;padding:0;background:#eef2f7;font-family:Inter,Arial,sans-serif;color:#0f172a;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#eef2f7;">
     <tr>
-      <td align="center" style="padding:32px 16px;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;border-collapse:collapse;overflow:hidden;border-radius:18px;background:#ffffff;border:1px solid #e2e8f0;box-shadow:0 18px 45px rgba(15,23,42,.08);">
+      <td align="center" style="padding:36px 14px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:660px;border-collapse:collapse;overflow:hidden;border-radius:20px;background:#ffffff;border:1px solid #dbe4ef;box-shadow:0 18px 50px rgba(15,23,42,.10);">
           <tr>
-            <td style="background:#0f172a;padding:22px 28px;color:#ffffff;">
-              <p style="margin:0;font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#93c5fd;">ConcursoMestre</p>
-              <h1 style="margin:8px 0 0;font-size:24px;line-height:1.25;font-weight:900;color:#ffffff;">${title}</h1>
+            <td style="background:#111827;padding:0;color:#ffffff;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                <tr>
+                  <td style="padding:26px 30px 22px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                      <tr>
+                        <td style="width:52px;vertical-align:middle;">
+                          ${DEFAULT_EMAIL_LOGO_BLOCK}
+                        </td>
+                        <td style="vertical-align:middle;">
+                          <p style="margin:0;font-size:12px;font-weight:900;letter-spacing:.18em;text-transform:uppercase;color:#93c5fd;">ConcursoMestre</p>
+                          <p style="margin:7px 0 0;font-size:13px;font-weight:600;color:#dbeafe;">Plataforma de estudos para concursos</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="height:4px;background:#2563eb;font-size:0;line-height:0;">&nbsp;</td>
+                </tr>
+              </table>
             </td>
           </tr>
           <tr>
-            <td style="padding:28px;font-size:15px;line-height:1.7;color:#334155;">
+            <td style="padding:34px 32px 30px;font-size:15px;line-height:1.75;color:#334155;">
+              <p style="margin:0 0 10px;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#2563eb;">Comunicado</p>
+              <h1 style="margin:0 0 18px;font-size:25px;line-height:1.24;font-weight:900;color:#0f172a;">${title}</h1>
               ${body}
-              ${ctaLabel && ctaUrl ? `<p style="margin:26px 0 10px;"><a href="${ctaUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;border-radius:12px;background:#2563eb;color:#ffffff;text-decoration:none;font-size:13px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:13px 18px;">${ctaLabel}</a></p>` : ''}
-              <p style="margin:26px 0 0;font-size:12px;line-height:1.6;color:#64748b;">Se voce nao reconhece esta mensagem, ignore este e-mail ou fale com nosso suporte.</p>
+              ${ctaLabel && ctaUrl ? `<p style="margin:30px 0 10px;"><a href="${ctaUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;border-radius:12px;background:#2563eb;color:#ffffff;text-decoration:none;font-size:14px;font-weight:900;letter-spacing:.04em;padding:14px 22px;box-shadow:0 12px 24px rgba(37,99,235,.24);">${ctaLabel}</a></p>` : ''}
+              <div style="margin-top:28px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px 16px;font-size:12px;line-height:1.6;color:#64748b;">Se voce nao reconhece esta mensagem, ignore este e-mail ou fale com nosso suporte.</div>
             </td>
           </tr>
           <tr>
-            <td style="border-top:1px solid #e2e8f0;padding:18px 28px;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.6;">
-              Equipe ConcursoMestre<br />
+            <td style="border-top:1px solid #e2e8f0;padding:20px 32px;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.6;">
+              <strong style="color:#334155;">Equipe ConcursoMestre</strong><br />
+              Este e-mail foi enviado automaticamente pela plataforma.<br />
               <a href="{{app_url}}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:none;">Acessar plataforma</a>
             </td>
           </tr>
@@ -213,6 +236,20 @@ const DEFAULT_AUTH_EMAIL_TEMPLATES: EmailTemplateModel[] = [
     enabled: true,
   },
   {
+    key: 'subscription_manual_gift',
+    name: 'Assinatura - cortesia manual',
+    description: 'Enviado quando o admin concede dias ou upgrade gratuito de cortesia.',
+    subject: 'Você recebeu uma cortesia no ConcursoMestre',
+    htmlBody: buildDefaultEmailHtml({
+      title: 'Você ganhou uma cortesia',
+      body: '<p>Olá <strong>{{name}}</strong>,</p><p>Você recebeu <strong>{{days_label}}</strong> grátis no <strong>{{plan_name}}</strong>.</p><p>Seu acesso está liberado até <strong>{{end_date}}</strong>.</p><p>Para continuar usando os benefícios depois desse período, cadastre um cartão. Ele só será usado na renovação.</p>',
+      ctaLabel: 'Cadastrar cartão para renovar',
+      ctaUrl: '{{billing_url}}',
+    }),
+    textBody: 'Olá {{name}},\n\nVocê recebeu {{days_label}} grátis no {{plan_name}}.\nAcesso ativo até: {{end_date}}\n\nPara continuar depois, cadastre um cartão: {{billing_url}}',
+    enabled: true,
+  },
+  {
     key: 'subscription_payment_receipt',
     name: 'Assinatura - recibo',
     description: 'Enviado quando um pagamento recorrente e confirmado.',
@@ -238,6 +275,20 @@ const DEFAULT_AUTH_EMAIL_TEMPLATES: EmailTemplateModel[] = [
       ctaUrl: '{{billing_url}}',
     }),
     textBody: 'Ola {{name}},\n\nNao conseguimos concluir sua cobranca.\nRegularize em: {{billing_url}}',
+    enabled: true,
+  },
+  {
+    key: 'subscription_payment_method_update',
+    name: 'Assinatura - atualizar pagamento',
+    description: 'Enviado manualmente pelo financeiro quando ha cartao vencido, ausente ou risco de cobranca.',
+    subject: 'Atualize os dados de pagamento da sua assinatura',
+    htmlBody: buildDefaultEmailHtml({
+      title: 'Atualize seu pagamento',
+      body: '<p>Ola <strong>{{name}}</strong>,</p><p>Identificamos que os dados de pagamento da sua assinatura precisam de atencao.</p><p><strong>Plano:</strong> {{plan_name}}</p><p><strong>Cartao:</strong> {{card_label}}</p><p><strong>Motivo:</strong> {{reason}}</p><p>Atualize ou troque o cartao salvo para evitar bloqueios nos simulados e materiais premium.</p>',
+      ctaLabel: 'Atualizar pagamento',
+      ctaUrl: '{{billing_url}}',
+    }),
+    textBody: 'Ola {{name}},\n\nIdentificamos que os dados de pagamento da sua assinatura precisam de atencao.\nPlano: {{plan_name}}\nCartao: {{card_label}}\nMotivo: {{reason}}\n\nAtualize em: {{billing_url}}',
     enabled: true,
   },
   {
