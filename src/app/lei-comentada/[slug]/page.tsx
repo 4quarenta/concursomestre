@@ -2424,6 +2424,23 @@ const LawDetailPage: React.FC = () => {
     'lei_favorites_limit',
     systemSettings.planUsageLimits,
   );
+  const legalRelatedQuestionsLimit = getPlanUsageLimitForPlanName(
+    currentAccessPlanName,
+    'lei_related_questions_limit',
+    systemSettings.planUsageLimits,
+  );
+  const legalRelatedQuestionsUnlimited = isPlanUsageUnlimitedForPlanName(
+    currentAccessPlanName,
+    'lei_related_questions_limit',
+    systemSettings.planUsageLimits,
+  );
+  const relatedQuestionsPageSize = legalRelatedQuestionsUnlimited
+    ? 6
+    : Math.max(0, Math.min(6, Number(legalRelatedQuestionsLimit || 0)));
+  const canLoadRelatedQuestions = canViewRelatedQuestions && (legalRelatedQuestionsUnlimited || relatedQuestionsPageSize > 0);
+  const relatedQuestionsFallbackMode = canViewRelatedQuestions && !canLoadRelatedQuestions
+    ? 'locked'
+    : questionsFeatureMode;
   const readerAnnotationsRequiredPlan = getBenefitRequiredPlan(
     'lei.anotacoes',
     systemSettings.planEntitlements,
@@ -2455,7 +2472,7 @@ const LawDetailPage: React.FC = () => {
   }, [backendFavoriteSectionIds, readingStorageLawId, userId]);
 
   React.useEffect(() => {
-    if (activeTab !== 'questions' || !law || !canViewRelatedQuestions) {
+    if (activeTab !== 'questions' || !law || !canLoadRelatedQuestions) {
       return;
     }
 
@@ -2465,7 +2482,7 @@ const LawDetailPage: React.FC = () => {
       try {
         const baseFilters = {
           page: 1,
-          limit: 6,
+          limit: relatedQuestionsPageSize,
           excludeCanceled: true,
           subject: relatedQuestionScope.subject || undefined,
         };
@@ -2500,7 +2517,7 @@ const LawDetailPage: React.FC = () => {
     return () => {
       isActive = false;
     };
-  }, [activeTab, canViewRelatedQuestions, law, relatedQuestionScope]);
+  }, [activeTab, canLoadRelatedQuestions, law, relatedQuestionScope, relatedQuestionsPageSize]);
 
   const practiceSectionHref = React.useMemo(() => {
     const params = new URLSearchParams();
@@ -4014,13 +4031,15 @@ const LawDetailPage: React.FC = () => {
       </div>
 
       {activeTab === 'questions' ? (
-        !canViewRelatedQuestions ? (
+        !canLoadRelatedQuestions ? (
           <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6`}>
             <LegalFeatureFallbackPanel
               title="Treine esta seção com questões certas para o assunto"
-              description="As questões relacionadas conectam o artigo ao modo prática, para você revisar exatamente o que acabou de ler."
-              requiredPlan={getLegalFeatureRequiredPlanLabel('lei.questoes')}
-              mode={questionsFeatureMode}
+              description={canViewRelatedQuestions
+                ? 'Seu plano atual não possui cota disponível para abrir questões relacionadas a partir da Lei Comentada.'
+                : 'As questões relacionadas conectam o artigo ao modo prática, para você revisar exatamente o que acabou de ler.'}
+              requiredPlan={canViewRelatedQuestions ? 'Plano com cota disponível' : getLegalFeatureRequiredPlanLabel('lei.questoes')}
+              mode={relatedQuestionsFallbackMode}
               previewItems={['Filtro automático', 'Prática por artigo', 'Revisão guiada']}
             />
           </section>
