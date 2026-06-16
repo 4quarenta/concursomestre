@@ -78,6 +78,7 @@ type RoutePlanGate = {
 };
 
 const planGateForPath = (pathname: string): RoutePlanGate | null => {
+  if (pathname.startsWith('/dashboard')) return { keys: ['module.dashboard'], copyKey: 'module.dashboard', label: 'Dashboard premium' };
   if (pathname.startsWith('/practice')) return { keys: ['module.practice'], copyKey: 'module.practice', label: 'Pratica de questoes' };
   if (pathname.startsWith('/lei-comentada')) return { keys: ['module.lei_comentada'], copyKey: 'module.lei_comentada', label: 'Lei comentada' };
   if (pathname.startsWith('/flashcards')) return { keys: ['module.flashcards'], copyKey: 'module.flashcards', label: 'Flashcards' };

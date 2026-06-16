@@ -560,7 +560,11 @@ export const legalCommentaryApiService = {
         params: { slug: normalizedSlug },
       }));
       const lawDetail = unwrap<LawDetail | null>(response, null);
-      lawDetailCache.set(cacheKey, lawDetail);
+      if (lawDetail) {
+        lawDetailCache.set(cacheKey, lawDetail);
+      } else {
+        lawDetailCache.delete(cacheKey);
+      }
       return lawDetail;
     })();
 
@@ -599,7 +603,11 @@ export const legalCommentaryApiService = {
         timeout: OUTLINE_REQUEST_TIMEOUT_MS,
       }));
       const lawDetail = unwrap<LawDetail | null>(response, null);
-      lawOutlineCache.set(cacheKey, lawDetail);
+      if (lawDetail) {
+        lawOutlineCache.set(cacheKey, lawDetail);
+      } else {
+        lawOutlineCache.delete(cacheKey);
+      }
       return lawDetail;
     })();
 
