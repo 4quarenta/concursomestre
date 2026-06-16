@@ -1103,6 +1103,129 @@ const SpinnerBlock: React.FC<{ label: string }> = ({ label }) => (
   </div>
 );
 
+const LegalCommentaryDetailSkeleton: React.FC = () => {
+  const skeletonLine = (className: string) => (
+    <div className={`animate-pulse rounded-full bg-slate-200 dark:bg-slate-800 ${className}`} />
+  );
+
+  return (
+    <div className="space-y-4 pb-10" aria-busy="true" aria-label="Carregando lei comentada">
+      <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
+        <div className="flex flex-wrap items-center gap-2">
+          {skeletonLine('h-3 w-28')}
+          {skeletonLine('h-3 w-4')}
+          {skeletonLine('h-3 w-40')}
+          {skeletonLine('h-3 w-4')}
+          {skeletonLine('h-3 w-24')}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            {skeletonLine('h-8 w-72 max-w-full')}
+            {skeletonLine('mt-3 h-4 w-52 max-w-full')}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[0, 1, 2, 3, 4].map((item) => (
+              <div
+                key={`legal-skeleton-action-${item}`}
+                className="h-9 w-32 animate-pulse rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800"
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 max-w-md">
+          <div className="mb-2 flex items-center justify-between">
+            {skeletonLine('h-3 w-32')}
+            {skeletonLine('h-3 w-10')}
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-[#615fff]/70" />
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="h-11 animate-pulse rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800" />
+          <div className="h-11 animate-pulse rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800" />
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-wrap items-center gap-2 px-3 py-2`}>
+          {[0, 1, 2, 3, 4, 5, 6].map((item) => (
+            <div
+              key={`legal-skeleton-toolbar-${item}`}
+              className="h-9 w-24 animate-pulse rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800"
+            />
+          ))}
+        </div>
+        <div className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-wrap items-center justify-between gap-2 px-3 py-2`}>
+          <div className="flex flex-wrap gap-2">
+            {[0, 1, 2, 3, 4].map((item) => (
+              <div
+                key={`legal-skeleton-editor-${item}`}
+                className="h-9 w-10 animate-pulse rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800"
+              />
+            ))}
+          </div>
+          <div className="h-9 w-28 animate-pulse rounded-lg bg-slate-900 dark:bg-slate-100" />
+        </div>
+      </section>
+
+      <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
+        <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-700">
+          {skeletonLine('h-3 w-48')}
+        </div>
+        <div className="bg-slate-100/70 p-4 dark:bg-slate-950/50">
+          <div className="mx-auto max-w-[980px] rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-9">
+            <header className="mb-8 text-center">
+              {skeletonLine('mx-auto h-3 w-40')}
+              {skeletonLine('mx-auto mt-3 h-7 w-72 max-w-full')}
+            </header>
+
+            <div className="space-y-7">
+              {[0, 1, 2].map((article) => (
+                <article key={`legal-skeleton-article-${article}`} className="space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    {skeletonLine('h-7 w-20')}
+                    <div className="h-7 w-7 animate-pulse rounded-full bg-indigo-100 dark:bg-indigo-500/20" />
+                  </div>
+                  <div className="space-y-3">
+                    {skeletonLine('h-4 w-full')}
+                    {skeletonLine('h-4 w-[92%]')}
+                    {skeletonLine('h-4 w-[78%]')}
+                  </div>
+                  <div className="ml-6 space-y-3">
+                    {skeletonLine('h-4 w-[86%]')}
+                    {skeletonLine('h-4 w-[70%]')}
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+                    {skeletonLine('h-3 w-24')}
+                    {skeletonLine('mt-3 h-4 w-[82%]')}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={`${PLATFORM_SURFACE_CARD_CLASS} grid gap-3 px-4 py-3 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center`}>
+        <div className="flex flex-wrap gap-2">
+          {skeletonLine('h-9 w-36 rounded-lg')}
+          {skeletonLine('h-9 w-32 rounded-lg')}
+        </div>
+        <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-900 sm:grid-cols-4">
+          {[0, 1, 2, 3].map((item) => (
+            <div key={`legal-skeleton-tab-${item}`} className="h-9 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" />
+          ))}
+        </div>
+        {skeletonLine('h-9 w-36 rounded-lg')}
+      </section>
+    </div>
+  );
+};
+
 const LegalFeatureFallbackPanel: React.FC<{
   title: string;
   description: string;
@@ -1892,6 +2015,10 @@ const LawDetailPage: React.FC = () => {
   const systemSettings = useAppConfigStore((state) => state.systemSettings);
   const readerEditorRef = React.useRef<HTMLDivElement>(null);
   const readingContentSectionRef = React.useRef<HTMLElement>(null);
+  const commentsContentSectionRef = React.useRef<HTMLDivElement>(null);
+  const analysisContentSectionRef = React.useRef<HTMLElement>(null);
+  const questionsContentSectionRef = React.useRef<HTMLElement>(null);
+  const pendingTabScrollRef = React.useRef<ReadingTab | null>(null);
   const readerToolbarAnchorRef = React.useRef<HTMLDivElement>(null);
   const readerToolbarRef = React.useRef<HTMLElement>(null);
   const progressCompletionInFlightRef = React.useRef(false);
@@ -2023,6 +2150,48 @@ const LawDetailPage: React.FC = () => {
     rows: [],
     total: 0,
   });
+
+  const scrollToTabContent = React.useCallback((tab: ReadingTab) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const target = tab === 'comments'
+      ? commentsContentSectionRef.current
+      : tab === 'analysis'
+        ? analysisContentSectionRef.current
+        : tab === 'questions'
+          ? questionsContentSectionRef.current
+          : readingContentSectionRef.current;
+
+    if (!target) {
+      return;
+    }
+
+    const top = target.getBoundingClientRect().top + window.scrollY - 96;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  }, []);
+
+  const handleBottomTabChange = React.useCallback((tab: ReadingTab) => {
+    if (tab === activeTab) {
+      scrollToTabContent(tab);
+      return;
+    }
+
+    pendingTabScrollRef.current = tab;
+    setActiveTab(tab);
+  }, [activeTab, scrollToTabContent]);
+
+  React.useEffect(() => {
+    const tab = pendingTabScrollRef.current;
+    if (!tab || tab !== activeTab || typeof window === 'undefined') {
+      return undefined;
+    }
+
+    pendingTabScrollRef.current = null;
+    const frameId = window.requestAnimationFrame(() => scrollToTabContent(tab));
+    return () => window.cancelAnimationFrame(frameId);
+  }, [activeTab, scrollToTabContent]);
 
   const loadLaw = React.useCallback(async (options?: { force?: boolean }) => {
     const identifiers = Array.from(new Set(
@@ -3745,7 +3914,7 @@ const LawDetailPage: React.FC = () => {
   }, [activeTab, isActiveSectionCompleted, saveReadingProgress, userId]);
 
   if (isLoading) {
-    return <SpinnerBlock label="Carregando lei comentada..." />;
+    return <LegalCommentaryDetailSkeleton />;
   }
 
   if (!law) {
@@ -4066,7 +4235,7 @@ const LawDetailPage: React.FC = () => {
 
       {activeTab === 'questions' ? (
         !canLoadRelatedQuestions ? (
-          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6`}>
+          <section ref={questionsContentSectionRef} className={`${PLATFORM_SURFACE_CARD_CLASS} p-6`}>
             <LegalFeatureFallbackPanel
               title="Treine esta seção com questões certas para o assunto"
               description={canViewRelatedQuestions
@@ -4078,7 +4247,7 @@ const LawDetailPage: React.FC = () => {
             />
           </section>
         ) : (
-        <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6`}>
+        <section ref={questionsContentSectionRef} className={`${PLATFORM_SURFACE_CARD_CLASS} p-6`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-slate-900 dark:text-slate-100">Questões relacionadas</h2>
@@ -4126,17 +4295,19 @@ const LawDetailPage: React.FC = () => {
         </section>
         )
       ) : activeTab === 'comments' ? (
-        <LegalCommentsPanel
-          comments={sectionUserComments}
-          value={commentBody}
-          disabled={!userId}
-          isSubmitting={isSubmittingComment}
-          onChange={setCommentBody}
-          onSubmit={submitLegalComment}
-          onReport={reportLegalComment}
-          onDelete={deleteLegalComment}
-          currentUserId={userId}
-        />
+        <div ref={commentsContentSectionRef}>
+          <LegalCommentsPanel
+            comments={sectionUserComments}
+            value={commentBody}
+            disabled={!userId}
+            isSubmitting={isSubmittingComment}
+            onChange={setCommentBody}
+            onSubmit={submitLegalComment}
+            onReport={reportLegalComment}
+            onDelete={deleteLegalComment}
+            currentUserId={userId}
+          />
+        </div>
       ) : activeTab === 'analysis' ? (
         null
       ) : (
@@ -4309,7 +4480,7 @@ const LawDetailPage: React.FC = () => {
       {activeTab === 'analysis' ? (
         hasSectionDeepAnalysis ? (
         !canViewDeepAnalysis ? (
-          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6`}>
+          <section ref={analysisContentSectionRef} className={`${PLATFORM_SURFACE_CARD_CLASS} p-6`}>
             <LegalFeatureFallbackPanel
               title="Desbloqueie a análise estratégica desta seção"
               description="Veja resumo, pontos de prova, macetes, doutrina e jurisprudência organizados para transformar a leitura em revisão objetiva."
@@ -4319,7 +4490,7 @@ const LawDetailPage: React.FC = () => {
             />
           </section>
         ) : (
-        <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
+        <section ref={analysisContentSectionRef} className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
           <button
             type="button"
             onClick={() => setIsDeepAnalysisOpen((state) => !state)}
@@ -4517,7 +4688,7 @@ const LawDetailPage: React.FC = () => {
         </section>
         )
         ) : (
-          <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-6 text-center`}>
+          <section ref={analysisContentSectionRef} className={`${PLATFORM_SURFACE_CARD_CLASS} p-6 text-center`}>
             <BookOpen size={28} className="mx-auto text-slate-300 dark:text-slate-600" />
             <h2 className="mt-3 text-lg font-black text-slate-900 dark:text-slate-100">Análise detalhada indisponível</h2>
             <p className="mx-auto mt-2 max-w-xl text-sm font-medium text-slate-500 dark:text-slate-300">
@@ -4564,10 +4735,7 @@ const LawDetailPage: React.FC = () => {
             <button
               key={tab.key}
               type="button"
-              onClick={() => {
-                setActiveTab(tab.key);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
+              onClick={() => handleBottomTabChange(tab.key)}
               className={`inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded-lg px-2 text-[11px] font-bold transition-colors sm:text-xs ${
                 activeTab === tab.key
                   ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
