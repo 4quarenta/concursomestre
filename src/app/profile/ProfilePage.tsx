@@ -2838,7 +2838,7 @@ const Profile: React.FC = () => {
 
         return createPortal(
             <AnimatePresence>
-                <div className="fixed inset-0 z-[999] flex items-start justify-center overflow-y-auto p-3 sm:p-4">
+                <div className="fixed inset-0 z-[999] grid place-items-center overflow-hidden p-2 sm:p-3">
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -2851,27 +2851,27 @@ const Profile: React.FC = () => {
                         initial={{ opacity: 0, scale: 0.95, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="relative z-10 my-auto max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-rose-100 bg-white shadow-2xl dark:border-rose-900/20 dark:bg-slate-900 sm:max-h-[calc(100dvh-2rem)]"
+                        className="relative z-10 flex max-h-[calc(100dvh-1rem)] w-full max-w-[min(92vw,32rem)] flex-col overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-2xl dark:border-rose-900/20 dark:bg-slate-900"
                     >
                         <button
                             type="button"
                             onClick={closeCancelModal}
                             disabled={isCancelingSubscription}
-                            className="absolute right-5 top-5 rounded-2xl border border-slate-200 bg-white/90 p-2 text-slate-400 transition-all hover:border-slate-300 hover:text-slate-600 dark:border-slate-700 dark:bg-slate-900/80 dark:hover:text-slate-200"
+                            className="absolute right-3 top-3 z-20 rounded-xl border border-slate-200 bg-white/90 p-2 text-slate-400 transition-all hover:border-slate-300 hover:text-slate-600 dark:border-slate-700 dark:bg-slate-900/80 dark:hover:text-slate-200"
                         >
                             <X size={18} />
                         </button>
 
-                        <div className="p-8 text-center">
-                            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full border-2 border-rose-100 bg-rose-50 dark:border-rose-500/20 dark:bg-rose-500/10">
-                                <ShieldAlert size={38} className="text-rose-600 dark:text-rose-500" />
+                        <div className="overflow-y-auto px-4 py-4 text-center sm:px-5 sm:py-5">
+                            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-100 bg-rose-50 dark:border-rose-500/20 dark:bg-rose-500/10">
+                                <ShieldAlert size={24} className="text-rose-600 dark:text-rose-500" />
                             </div>
 
-                            <div className="space-y-3">
-                                <h3 className="text-2xl font-black italic text-slate-900 dark:text-slate-100">
+                            <div className="space-y-2">
+                                <h3 className="pr-8 text-xl font-black italic leading-tight text-slate-900 dark:text-slate-100">
                                     Já vai nos deixar, {currentUser?.name?.split(' ')[0] || 'aluno'}?
                                 </h3>
-                                <p className="mx-auto max-w-md text-sm font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                                <p className="mx-auto max-w-md text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
                                     {isWithinRefundWindow
                                         ? 'Você ainda esta no período de garantia. Se cancelar agora, o reembolso pode ser solicitado e seu acesso sera encerrado com segurança.'
                                         : (requiresOutstandingDebtConfirmation
@@ -2881,13 +2881,13 @@ const Profile: React.FC = () => {
                             </div>
 
                             {isWithinRefundWindow && (
-                                <div className="mt-6 flex items-start gap-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-left dark:border-indigo-500/10 dark:bg-indigo-500/5">
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg shadow-indigo-500/20">
-                                        <ShieldCheck size={18} />
+                                <div className="mt-4 flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-3 text-left dark:border-indigo-500/10 dark:bg-indigo-500/5">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-500/20">
+                                        <ShieldCheck size={16} />
                                     </div>
                                     <div className="space-y-1">
-                                        <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Garantia legal de 7 dias</h4>
-                                        <p className="text-[11px] font-medium leading-tight text-indigo-900/70 dark:text-indigo-300/70">
+                                        <h4 className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Garantia legal de 7 dias</h4>
+                                        <p className="text-[10px] font-semibold leading-snug text-indigo-900/70 dark:text-indigo-300/70">
                                             Sua satisfacao e prioridade. Cancelando dentro desse prazo, o sistema trata a solicitacao de reembolso com os dados da Stripe.
                                         </p>
                                     </div>
@@ -2895,19 +2895,19 @@ const Profile: React.FC = () => {
                             )}
 
                             {requiresOutstandingDebtConfirmation && (
-                                <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left dark:border-amber-500/20 dark:bg-amber-500/10">
+                                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-left dark:border-amber-500/20 dark:bg-amber-500/10">
                                     <div className="flex items-start gap-3">
-                                        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
-                                            <CreditCard size={17} />
+                                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+                                            <CreditCard size={15} />
                                         </div>
                                         <div className="space-y-2">
                                             <h4 className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">
                                                 Saldo do termo contratado
                                             </h4>
-                                            <p className="text-xs font-semibold leading-relaxed text-amber-900/80 dark:text-amber-100/80">
+                                            <p className="text-[11px] font-semibold leading-5 text-amber-900/80 dark:text-amber-100/80">
                                                 Existem {pendingInstallmentsCount} parcela(s) pre-aprovada(s) pendente(s), totalizando {outstandingTermDebtLabel}. Ao confirmar, esse saldo será debitado agora, a cobrança recorrente será encerrada e o acesso continuará até {formatDateTimeBR(subscriptionEndDate)}.
                                             </p>
-                                            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-white/70 p-3 text-[11px] font-bold leading-relaxed text-amber-900 transition hover:border-amber-300 dark:border-amber-500/20 dark:bg-slate-900/40 dark:text-amber-100">
+                                            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-white/70 p-2.5 text-[10px] font-bold leading-5 text-amber-900 transition hover:border-amber-300 dark:border-amber-500/20 dark:bg-slate-900/40 dark:text-amber-100">
                                                 <input
                                                     type="checkbox"
                                                     checked={confirmOutstandingDebtCharge}
@@ -2923,7 +2923,7 @@ const Profile: React.FC = () => {
                                 </div>
                             )}
 
-                            <div className="mt-6 space-y-4 rounded-2xl border border-slate-100 bg-slate-50 p-6 text-left dark:border-slate-800 dark:bg-slate-800/50">
+                            <div className="mt-4 space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-left dark:border-slate-800 dark:bg-slate-800/50">
                                 <div className="space-y-2">
                                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
                                         Motivo principal (opcional)
@@ -2931,7 +2931,7 @@ const Profile: React.FC = () => {
                                     <select
                                         value={cancelReason}
                                         onChange={(e) => setCancelReason(e.target.value)}
-                                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition-all focus:ring-2 focus:ring-rose-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                                        className="h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition-all focus:ring-2 focus:ring-rose-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                     >
                                         <option value="">Selecione uma opcao...</option>
                                         <option value="price">Valor da assinatura</option>
@@ -2949,14 +2949,14 @@ const Profile: React.FC = () => {
                                     <textarea
                                         value={cancelDetails}
                                         onChange={(event) => setCancelDetails(event.target.value)}
-                                        rows={4}
+                                        rows={2}
                                         placeholder="Se quiser, conte rapidamente o que motivou o cancelamento."
                                         className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-rose-400 focus:ring-2 focus:ring-rose-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                     />
                                 </div>
 
                                 {recaptchaEnabled ? (
-                                    <div className="space-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-900">
+                                    <div className="space-y-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-900">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
                                             Confirmacao de segurança
                                         </p>
@@ -2986,28 +2986,28 @@ const Profile: React.FC = () => {
                                 )}
                             </div>
 
-                            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <button
                                     type="button"
                                     onClick={closeCancelModal}
                                     disabled={isCancelingSubscription}
-                                    className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-xs font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    <Zap size={18} className="fill-current" />
+                                    <Zap size={15} className="fill-current" />
                                     Manter acesso VIP
                                 </button>
                                 <button
                                     type="button"
                                     onClick={handleCancelSubscription}
                                     disabled={isCancelingSubscription || isProfileSecurityCheckLoading || (requiresOutstandingDebtConfirmation && !confirmOutstandingDebtCharge)}
-                                    className="flex h-14 items-center justify-center gap-2 rounded-2xl border-2 border-slate-200 bg-transparent text-[10px] font-black uppercase tracking-widest text-slate-400 transition-all hover:border-rose-500/30 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800"
+                                    className="flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-transparent text-[9px] font-black uppercase tracking-widest text-slate-400 transition-all hover:border-rose-500/30 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800"
                                 >
                                     {isCancelingSubscription || isProfileSecurityCheckLoading ? <Loader2 size={16} className="animate-spin" /> : null}
                                     {isProfileSecurityCheckLoading ? 'Carregando segurança...' : isCancelingSubscription ? 'Processando...' : 'Confirmar cancelamento'}
                                 </button>
                             </div>
 
-                            <p className="mt-4 text-[9px] font-black uppercase tracking-tight text-slate-400">
+                            <p className="mt-3 text-[9px] font-black uppercase tracking-tight text-slate-400">
                                 Você manterá seu acesso até {formatDateTimeBR(subscriptionEndDate)}
                             </p>
                         </div>
