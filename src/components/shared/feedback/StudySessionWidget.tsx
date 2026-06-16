@@ -77,7 +77,7 @@ const StudySessionWidget: React.FC<StudySessionWidgetProps> = ({
           <p className="text-[9px] font-black uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Sessao atual</p>
           <h2 className="mt-1 text-base font-black text-slate-900 dark:text-slate-100">Tempo de estudos</h2>
           <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-            O contador soma pratica, tempo efetivo de simulado em andamento e leitura ativa.
+            O tempo e contado automaticamente enquanto voce resolve questoes, faz simulado ou le conteudos. Use o botao abaixo para salvar a sessao atual no historico.
           </p>
         </div>
 
@@ -136,12 +136,12 @@ const StudySessionWidget: React.FC<StudySessionWidgetProps> = ({
         className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-indigo-600 disabled:cursor-wait disabled:opacity-70 dark:bg-indigo-600 dark:hover:bg-indigo-500"
       >
         {isSaving ? <Loader2 size={14} className="animate-spin" /> : <PauseCircle size={14} />}
-        {isSaving ? 'Enviando estudos...' : 'Stop estudos'}
+        {isSaving ? 'Salvando tempo...' : 'Salvar tempo estudado'}
       </button>
 
       <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-medium text-slate-400 dark:text-slate-500">
         <TimerReset size={12} />
-        Ao parar, a sessao e salva e o contador recomeca do zero.
+        Ao salvar, a sessao e enviada para o seu historico e o contador recomeca do zero.
       </div>
     </aside>
   );

@@ -832,7 +832,7 @@ export const legalCommentaryApiService = {
     return readLegalMutationProgress(response);
   },
 
-  async addUserComment(input: { articleId: string; body: string }): Promise<LegalUserCommentSubmissionResult> {
+  async addUserComment(input: { articleId: string; body: string; parentCommentId?: string | null }): Promise<LegalUserCommentSubmissionResult> {
     const response = await apiClient.post(ENDPOINTS.legalCommentary.comment, {
       action: 'create',
       ...input,

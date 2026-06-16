@@ -318,6 +318,8 @@ export interface LegalUserFavorite {
 export interface LegalUserComment {
   id: string;
   articleId: string;
+  parentCommentId?: string | null;
+  parent_comment_id?: string | number | null;
   userId: string;
   userName: string;
   userAvatar?: string;

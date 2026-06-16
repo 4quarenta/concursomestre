@@ -39,6 +39,7 @@ import {
   MessageSquare,
   Minus,
   Plus,
+  Reply,
   RotateCcw,
   Save,
   Search,
@@ -1382,6 +1383,14 @@ const getLegalCommentAvatarUrl = (comment: LegalUserComment) => {
     || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.userName || 'Aluno')}&background=615fff&color=fff&size=64`;
 };
 
+const getLegalCommentParentId = (comment: LegalUserComment): string => String(
+  comment.parentCommentId
+  || comment.parent_comment_id
+  || (comment as LegalUserComment & { parentId?: string | number | null }).parentId
+  || (comment as LegalUserComment & { parent_id?: string | number | null }).parent_id
+  || '',
+).trim();
+
 const LegalCommentPlanBadge: React.FC<{ plan?: string }> = ({ plan }) => {
   switch (plan) {
     case 'Elite':
@@ -1604,98 +1613,115 @@ const RelatedQuestionPreviewCard: React.FC<{ question: Question; index: number }
 const LegalCommentsPanel: React.FC<{
   comments: LegalUserComment[];
   value: string;
+  replyValue: string;
+  replyTargetId: string | null;
   disabled: boolean;
   isSubmitting: boolean;
+  isSubmittingReply: boolean;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  onReplyChange: (value: string) => void;
+  onStartReply: (commentId: string) => void;
+  onCancelReply: () => void;
+  onSubmitReply: (commentId: string) => void;
   onReport: (commentId: string) => void;
   onDelete: (commentId: string) => void;
   currentUserId: string;
 }> = ({
   comments,
   value,
+  replyValue,
+  replyTargetId,
   disabled,
   isSubmitting,
+  isSubmittingReply,
   onChange,
   onSubmit,
+  onReplyChange,
+  onStartReply,
+  onCancelReply,
+  onSubmitReply,
   onReport,
   onDelete,
   currentUserId,
-}) => (
-  <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#615fff]">Comentários</p>
-        <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">Discussão da seção</h2>
-      </div>
-      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-        {comments.length} {comments.length === 1 ? 'comentário' : 'comentários'}
-      </span>
-    </div>
+}) => {
+  const repliesByParent = React.useMemo(() => {
+    const map = new Map<string, LegalUserComment[]>();
+    comments.forEach((comment) => {
+      const parentId = getLegalCommentParentId(comment);
+      if (!parentId) return;
+      map.set(parentId, [...(map.get(parentId) || []), comment]);
+    });
+    map.forEach((items, parentId) => {
+      map.set(
+        parentId,
+        [...items].sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()),
+      );
+    });
+    return map;
+  }, [comments]);
 
-    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/60">
-      <RichTextEditor
-        initialValue={value}
-        onChange={onChange}
-        disabled={disabled || isSubmitting}
-        placeholder={disabled ? 'Entre na sua conta para comentar.' : 'Escreva um comentário sobre esta seção...'}
-      />
-      <div className="mt-3 flex justify-end">
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={disabled || isSubmitting || !stripRichText(value)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#615fff] px-4 text-xs font-black text-white transition-colors hover:bg-[#514dff] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
-          Comentar
-        </button>
-      </div>
-    </div>
+  const rootComments = React.useMemo(() => (
+    comments.filter((comment) => !getLegalCommentParentId(comment))
+  ), [comments]);
 
-    <div className="mt-5 space-y-4">
-      {comments.length ? comments.map((comment) => (
-        <article
-          key={comment.id}
-          id={`legal-comment-${comment.id}`}
-          className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition-all dark:border-slate-700 dark:bg-slate-800"
-        >
-          <div className="flex items-start justify-between gap-3 text-[10px]">
-            <div className="flex min-w-0 items-center gap-2">
-              <Image
-                src={getLegalCommentAvatarUrl(comment)}
-                alt={comment.userName || 'Aluno'}
-                width={28}
-                height={28}
-                unoptimized
-                className="h-7 w-7 shrink-0 rounded-full border border-slate-200 object-cover dark:border-slate-700"
-              />
-              <div className="min-w-0">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate font-bold text-slate-700 dark:text-slate-200">{comment.userName || 'Aluno'}</span>
-                  <LegalCommentAuthorRoleBadge role={comment.userRole} />
-                  <LegalCommentPlanBadge plan={comment.userPlan} />
-                </div>
-                <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500">{formatDateTime(comment.createdAt)}</span>
-              </div>
-            </div>
-            {comment.moderationStatus === 'pending' ? (
-              <span className="shrink-0 rounded bg-amber-50 px-2 py-0.5 text-[8px] font-black uppercase text-amber-700 dark:bg-amber-500/10 dark:text-amber-200">
-                Pendente
-              </span>
-            ) : null}
-          </div>
+  const renderComment = (comment: LegalUserComment, depth = 0): React.ReactNode => {
+    const replies = repliesByParent.get(String(comment.id)) || [];
+    const isReplyEditorOpen = replyTargetId === String(comment.id);
 
-          <MathRichText content={normalizeQuestionRichHtml(comment.body)} className="mt-3 text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300" />
-
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <ReactionControls
-              storageKey={`comment:${comment.id}`}
-              initialLikes={Number(comment.likes || 0)}
-              initialDislikes={Number(comment.dislikes || 0)}
-              initialReaction={comment.userReaction}
+    return (
+      <article
+        key={comment.id}
+        id={`legal-comment-${comment.id}`}
+        className={`rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition-all dark:border-slate-700 dark:bg-slate-800 ${
+          depth > 0 ? 'ml-4 border-l-4 border-l-[#615fff]/25 sm:ml-8' : ''
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3 text-[10px]">
+          <div className="flex min-w-0 items-center gap-2">
+            <Image
+              src={getLegalCommentAvatarUrl(comment)}
+              alt={comment.userName || 'Aluno'}
+              width={28}
+              height={28}
+              unoptimized
+              className="h-7 w-7 shrink-0 rounded-full border border-slate-200 object-cover dark:border-slate-700"
             />
-            <div className="flex items-center gap-3">
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate font-bold text-slate-700 dark:text-slate-200">{comment.userName || 'Aluno'}</span>
+                <LegalCommentAuthorRoleBadge role={comment.userRole} />
+                <LegalCommentPlanBadge plan={comment.userPlan} />
+              </div>
+              <span className="text-[9px] font-semibold text-slate-400 dark:text-slate-500">{formatDateTime(comment.createdAt)}</span>
+            </div>
+          </div>
+          {comment.moderationStatus === 'pending' ? (
+            <span className="shrink-0 rounded bg-amber-50 px-2 py-0.5 text-[8px] font-black uppercase text-amber-700 dark:bg-amber-500/10 dark:text-amber-200">
+              Pendente
+            </span>
+          ) : null}
+        </div>
+
+        <MathRichText content={normalizeQuestionRichHtml(comment.body)} className="mt-3 text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300" />
+
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <ReactionControls
+            storageKey={`comment:${comment.id}`}
+            initialLikes={Number(comment.likes || 0)}
+            initialDislikes={Number(comment.dislikes || 0)}
+            initialReaction={comment.userReaction}
+          />
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => onStartReply(comment.id)}
+              disabled={disabled}
+              className="flex items-center gap-1 text-[10px] font-bold text-slate-400 transition-all hover:text-[#615fff] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:text-indigo-300"
+            >
+              <Reply size={11} />
+              Responder
+            </button>
             {comment.userId !== currentUserId ? (
               <button
                 type="button"
@@ -1715,18 +1741,94 @@ const LegalCommentsPanel: React.FC<{
                 Deletar
               </button>
             )}
+          </div>
+        </div>
+
+        {isReplyEditorOpen ? (
+          <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/45 p-3 dark:border-indigo-500/20 dark:bg-indigo-500/10">
+            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#615fff]">
+              Responder {comment.userName || 'comentário'}
+            </p>
+            <RichTextEditor
+              initialValue={replyValue}
+              onChange={onReplyChange}
+              disabled={disabled || isSubmittingReply}
+              placeholder="Escreva sua resposta..."
+            />
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={onCancelReply}
+                disabled={isSubmittingReply}
+                className="inline-flex h-9 items-center rounded-lg border border-slate-200 px-4 text-xs font-black text-slate-500 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => onSubmitReply(comment.id)}
+                disabled={disabled || isSubmittingReply || !stripRichText(replyValue)}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#615fff] px-4 text-xs font-black text-white transition-colors hover:bg-[#514dff] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSubmittingReply ? <Loader2 size={14} className="animate-spin" /> : <Reply size={14} />}
+                Responder
+              </button>
             </div>
           </div>
-        </article>
-      )) : (
-        <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center dark:border-slate-700 dark:bg-slate-900">
-          <MessageSquare size={26} className="mx-auto text-slate-300 dark:text-slate-600" />
-          <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-300">Ainda não há comentários nesta seção.</p>
+        ) : null}
+
+        {replies.length > 0 ? (
+          <div className="mt-4 space-y-3">
+            {replies.map((reply) => renderComment(reply, depth + 1))}
+          </div>
+        ) : null}
+      </article>
+    );
+  };
+
+  return (
+    <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#615fff]">Comentários</p>
+          <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">Discussão da seção</h2>
         </div>
-      )}
-    </div>
-  </section>
-);
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+          {comments.length} {comments.length === 1 ? 'comentário' : 'comentários'}
+        </span>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/60">
+        <RichTextEditor
+          initialValue={value}
+          onChange={onChange}
+          disabled={disabled || isSubmitting}
+          placeholder={disabled ? 'Entre na sua conta para comentar.' : 'Escreva um comentário sobre esta seção...'}
+        />
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={disabled || isSubmitting || !stripRichText(value)}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#615fff] px-4 text-xs font-black text-white transition-colors hover:bg-[#514dff] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
+            Comentar
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-4">
+        {rootComments.length ? rootComments.map((comment) => renderComment(comment)) : (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center dark:border-slate-700 dark:bg-slate-900">
+            <MessageSquare size={26} className="mx-auto text-slate-300 dark:text-slate-600" />
+            <p className="mt-3 text-sm font-bold text-slate-500 dark:text-slate-300">Ainda não há comentários nesta seção.</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
 
 const RichLegalContentBlocks: React.FC<{ blocks?: LegalRichContentBlock[] }> = ({ blocks }) => {
   const visibleBlocks = (blocks || []).filter((block) => (
@@ -2136,6 +2238,9 @@ const LawDetailPage: React.FC = () => {
   const [sectionSupportTargetId, setSectionSupportTargetId] = React.useState('section');
   const [commentBody, setCommentBody] = React.useState('');
   const [isSubmittingComment, setIsSubmittingComment] = React.useState(false);
+  const [replyTargetCommentId, setReplyTargetCommentId] = React.useState<string | null>(null);
+  const [replyBody, setReplyBody] = React.useState('');
+  const [isSubmittingCommentReply, setIsSubmittingCommentReply] = React.useState(false);
   const [requestedTeacherCommentKeys, setRequestedTeacherCommentKeys] = React.useState<Set<string>>(() => new Set());
   const [savedReaderMarkupHtml, setSavedReaderMarkupHtml] = React.useState('');
   const [readerMarkupVersion, setReaderMarkupVersion] = React.useState(0);
@@ -3384,6 +3489,85 @@ const LawDetailPage: React.FC = () => {
     userId,
   ]);
 
+  const submitLegalCommentReply = React.useCallback(async (parentCommentId: string) => {
+    if (!law || isSubmittingCommentReply) return;
+    if (!userId) {
+      addToast('Entre na sua conta para responder.', 'warning');
+      return;
+    }
+
+    const parentComment = (law.userComments || []).find((comment) => String(comment.id) === String(parentCommentId));
+    const targetArticleId = String(parentComment?.articleId || activeSection?.primaryArticleId || activeSectionArticles[0]?.id || '').trim();
+    const body = normalizeQuestionRichHtml(replyBody);
+    if (!targetArticleId || !parentCommentId || !stripRichText(body)) return;
+    if (!commentsPerDayUnlimited && commentsPerDayLimit !== null && readDailyUsageCount(userId, 'comments_per_day') >= commentsPerDayLimit) {
+      setLegalFeatureUpgradeModal({
+        featureName: 'mais comentários por dia',
+        requiredPlan: getNextPlanForHigherUsageLimit(currentAccessPlanName, 'comments_per_day', systemSettings.planUsageLimits),
+      });
+      return;
+    }
+
+    setIsSubmittingCommentReply(true);
+    try {
+      const result = await legalCommentaryApiService.addUserComment({
+        articleId: targetArticleId,
+        parentCommentId,
+        body,
+      });
+      applyUserProgressMutation(result);
+      const createdComment: LegalUserComment = result.comment || {
+        id: result.id || `legal-comment-reply-${Date.now()}`,
+        articleId: targetArticleId,
+        parentCommentId,
+        userId,
+        userName: String(currentUser?.name || currentUser?.email || 'Aluno'),
+        userAvatar: currentUser?.photoUrl,
+        userPlan: String(currentUser?.planDisplayName || currentUser?.plan || 'Gratuito'),
+        userRole: currentUser?.role,
+        body,
+        status: result.moderationStatus === 'approved' ? 'visible' : 'hidden',
+        moderationStatus: result.moderationStatus,
+        createdAt: new Date().toISOString(),
+      };
+
+      setLaw((current) => current ? {
+        ...current,
+        userComments: [
+          createdComment,
+          ...(current.userComments || []).filter((comment) => String(comment.id) !== String(createdComment.id)),
+        ],
+      } : current);
+      incrementDailyUsageCount(userId, 'comments_per_day');
+      setReplyBody('');
+      setReplyTargetCommentId(null);
+      addToast(
+        result.xpGain
+          ? `${result.requiresModeration ? 'Resposta enviada para moderação.' : 'Resposta publicada.'} +${result.xpGain} XP.`
+          : result.requiresModeration ? 'Resposta enviada para moderação.' : 'Resposta publicada.',
+        'success',
+      );
+    } catch {
+      addToast('Não foi possível enviar a resposta agora.', 'error');
+    } finally {
+      setIsSubmittingCommentReply(false);
+    }
+  }, [
+    activeSection,
+    activeSectionArticles,
+    addToast,
+    applyUserProgressMutation,
+    commentsPerDayLimit,
+    commentsPerDayUnlimited,
+    currentAccessPlanName,
+    currentUser,
+    isSubmittingCommentReply,
+    law,
+    replyBody,
+    systemSettings.planUsageLimits,
+    userId,
+  ]);
+
   const reportLegalComment = React.useCallback(async (commentId: string) => {
     if (!userId) {
       addToast('Entre na sua conta para reportar comentários.', 'warning');
@@ -4311,10 +4495,23 @@ const LawDetailPage: React.FC = () => {
           <LegalCommentsPanel
             comments={sectionUserComments}
             value={commentBody}
+            replyValue={replyBody}
+            replyTargetId={replyTargetCommentId}
             disabled={!userId}
             isSubmitting={isSubmittingComment}
+            isSubmittingReply={isSubmittingCommentReply}
             onChange={setCommentBody}
             onSubmit={submitLegalComment}
+            onReplyChange={setReplyBody}
+            onStartReply={(commentId) => {
+              setReplyTargetCommentId(commentId);
+              setReplyBody('');
+            }}
+            onCancelReply={() => {
+              setReplyTargetCommentId(null);
+              setReplyBody('');
+            }}
+            onSubmitReply={submitLegalCommentReply}
             onReport={reportLegalComment}
             onDelete={deleteLegalComment}
             currentUserId={userId}
