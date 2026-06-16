@@ -32,6 +32,16 @@ const eliteQuarterlyPlan: Plan = {
   interval_unit: 'month',
 };
 
+const eliteTwoDayPlan: Plan = {
+  ...eliteAnnualPlan,
+  id: 7,
+  name: 'Elite - Teste 2 dias',
+  description: 'Plano curto de teste',
+  price: 3.5,
+  interval_count: 2,
+  interval_unit: 'day',
+};
+
 const buildSubscription = (overrides: Partial<UserSubscription> = {}): UserSubscription => ({
   id: 10,
   user_id: 'u-admin',
@@ -116,5 +126,25 @@ describe('resolveProfileSubscriptionTimeline', () => {
     expect(timeline.usedDays).toBe(89);
     expect(timeline.remainingDays).toBe(0);
     expect(timeline.progressPercent).toBe(100);
+  });
+
+  it('counts progress for short two day subscriptions while the current day is in use', () => {
+    const timeline = resolveProfileSubscriptionTimeline({
+      now: new Date('2026-06-16T12:00:00-03:00'),
+      subscription: buildSubscription({
+        plan: eliteTwoDayPlan,
+        current_period_start: '2026-06-15 23:55:00',
+        current_period_end: '2026-06-17 23:55:00',
+        created_at: '2026-06-15 23:55:00',
+        total_installments: 1,
+        paid_installments: 1,
+        recurring_amount: 3.5,
+      }),
+    });
+
+    expect(timeline.totalDays).toBe(2);
+    expect(timeline.usedDays).toBe(1);
+    expect(timeline.remainingDays).toBe(1);
+    expect(timeline.progressPercent).toBeGreaterThan(0);
   });
 });

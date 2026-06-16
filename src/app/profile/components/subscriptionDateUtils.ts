@@ -395,12 +395,19 @@ export const resolveProfileSubscriptionTimeline = ({
   const totalDays = termStartAt && termEndAt
     ? Math.max(1, getCalendarDayDifference(termStartAt, termEndAt))
     : 0;
+  const totalDurationMs = termStartAt && termEndAt
+    ? Math.max(1, termEndAt.getTime() - termStartAt.getTime())
+    : 0;
+  const elapsedDurationMs = termStartAt && totalDurationMs > 0
+    ? Math.max(0, Math.min(totalDurationMs, now.getTime() - termStartAt.getTime()))
+    : 0;
+  const isShortCycle = expectedTermDuration.mode === 'days';
 
   const daysSinceStart = termStartAt
     ? Math.max(0, getCalendarDayDifference(termStartAt, now))
     : null;
 
-  const remainingDays = termEndAt
+  let remainingDays = termEndAt
     ? (
       termStartAt && getCalendarDayDifference(now, termStartAt) > 0
         ? totalDays
@@ -408,13 +415,34 @@ export const resolveProfileSubscriptionTimeline = ({
     )
     : 0;
 
-  const usedDays = totalDays > 0
+  let usedDays = totalDays > 0
     ? Math.min(totalDays, Math.max(0, totalDays - remainingDays))
     : 0;
 
-  const progressPercent = totalDays > 0
+  let progressPercent = totalDays > 0
     ? Math.min(100, Math.max(0, Math.round((usedDays / totalDays) * 100)))
     : 0;
+
+  if (isShortCycle && totalDays > 0 && termStartAt && termEndAt) {
+    const hasStarted = now.getTime() >= termStartAt.getTime();
+    const hasEnded = now.getTime() >= termEndAt.getTime();
+
+    usedDays = hasEnded
+      ? totalDays
+      : hasStarted && elapsedDurationMs > 0
+        ? Math.min(totalDays, Math.max(1, Math.round(elapsedDurationMs / MS_PER_DAY)))
+        : 0;
+    remainingDays = hasEnded
+      ? 0
+      : hasStarted
+        ? Math.max(0, totalDays - usedDays)
+        : totalDays;
+    progressPercent = hasEnded
+      ? 100
+      : hasStarted && totalDurationMs > 0
+        ? Math.min(99, Math.max(1, Math.round((elapsedDurationMs / totalDurationMs) * 100)))
+        : 0;
+  }
 
   return {
     termStartAt,
