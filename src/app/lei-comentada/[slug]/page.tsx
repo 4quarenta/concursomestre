@@ -1107,35 +1107,38 @@ const LegalCommentaryDetailSkeleton: React.FC = () => {
   const skeletonLine = (className: string) => (
     <div className={`animate-pulse rounded-full bg-slate-200 dark:bg-slate-800 ${className}`} />
   );
+  const skeletonBox = (className: string) => (
+    <div className={`animate-pulse rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800 ${className}`} />
+  );
 
   return (
     <div className="space-y-4 pb-10" aria-busy="true" aria-label="Carregando lei comentada">
       <section className={`${PLATFORM_SURFACE_CARD_CLASS} p-5`}>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           {skeletonLine('h-3 w-28')}
-          {skeletonLine('h-3 w-4')}
+          <ChevronRight size={12} className="text-slate-200 dark:text-slate-700" />
           {skeletonLine('h-3 w-40')}
-          {skeletonLine('h-3 w-4')}
-          {skeletonLine('h-3 w-24')}
+          <ChevronRight size={12} className="text-slate-200 dark:text-slate-700" />
+          {skeletonLine('h-3 w-32')}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+        <div className="mt-3 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            {skeletonLine('h-8 w-72 max-w-full')}
-            {skeletonLine('mt-3 h-4 w-52 max-w-full')}
+            {skeletonLine('h-8 w-64 max-w-full')}
+            {skeletonLine('mt-2 h-4 w-48 max-w-full')}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {[0, 1, 2, 3, 4].map((item) => (
               <div
                 key={`legal-skeleton-action-${item}`}
-                className="h-9 w-32 animate-pulse rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800"
+                className="h-9 w-28 animate-pulse rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800"
               />
             ))}
           </div>
         </div>
 
-        <div className="mt-5 max-w-md">
-          <div className="mb-2 flex items-center justify-between">
+        <div className="mt-4 max-w-md">
+          <div className="mb-1 flex items-center justify-between">
             {skeletonLine('h-3 w-32')}
             {skeletonLine('h-3 w-10')}
           </div>
@@ -1144,29 +1147,32 @@ const LegalCommentaryDetailSkeleton: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="h-11 animate-pulse rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800" />
-          <div className="h-11 animate-pulse rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800" />
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+          {skeletonBox('h-11')}
+          {skeletonBox('h-11')}
         </div>
       </section>
 
-      <section className="space-y-2">
-        <div className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-wrap items-center gap-2 px-3 py-2`}>
-          {[0, 1, 2, 3, 4, 5, 6].map((item) => (
-            <div
-              key={`legal-skeleton-toolbar-${item}`}
-              className="h-9 w-24 animate-pulse rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800"
-            />
-          ))}
+      <section className="space-y-1 sm:space-y-2">
+        <div className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-nowrap items-center gap-1 overflow-hidden px-2 py-1.5 sm:flex-wrap sm:gap-2 sm:px-3 sm:py-2`}>
+          {skeletonBox('h-9 w-24 shrink-0 rounded-lg')}
+          {skeletonBox('h-9 w-28 shrink-0 rounded-lg')}
+          {skeletonBox('h-9 w-24 shrink-0 rounded-lg')}
+          {skeletonBox('h-9 w-32 shrink-0 rounded-lg')}
+          {skeletonBox('h-9 w-24 shrink-0 rounded-lg')}
+          {skeletonBox('h-9 w-36 shrink-0 rounded-lg')}
         </div>
-        <div className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-wrap items-center justify-between gap-2 px-3 py-2`}>
-          <div className="flex flex-wrap gap-2">
-            {[0, 1, 2, 3, 4].map((item) => (
-              <div
-                key={`legal-skeleton-editor-${item}`}
-                className="h-9 w-10 animate-pulse rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800"
-              />
+        <div className={`${PLATFORM_SURFACE_CARD_CLASS} flex flex-nowrap items-center justify-between gap-2 overflow-hidden px-2 py-1.5 sm:flex-wrap sm:gap-3 sm:px-3 sm:py-2`}>
+          <div className="flex shrink-0 flex-nowrap items-center gap-1 sm:flex-wrap sm:gap-2">
+            {[0, 1, 2].map((item) => (
+              <div key={`legal-skeleton-editor-format-${item}`} className="h-9 w-10 animate-pulse rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800" />
             ))}
+            <div className="h-7 w-px bg-slate-200 dark:bg-slate-700" />
+            {[0, 1, 2, 3].map((item) => (
+              <div key={`legal-skeleton-editor-color-${item}`} className="h-9 w-9 animate-pulse rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800" />
+            ))}
+            <div className="h-7 w-px bg-slate-200 dark:bg-slate-700" />
+            {skeletonBox('h-9 w-28 shrink-0 rounded-lg')}
           </div>
           <div className="h-9 w-28 animate-pulse rounded-lg bg-slate-900 dark:bg-slate-100" />
         </div>
@@ -1178,14 +1184,14 @@ const LegalCommentaryDetailSkeleton: React.FC = () => {
         </div>
         <div className="bg-slate-100/70 p-4 dark:bg-slate-950/50">
           <div className="mx-auto max-w-[980px] rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-9">
-            <header className="mb-8 text-center">
-              {skeletonLine('mx-auto h-3 w-40')}
-              {skeletonLine('mx-auto mt-3 h-7 w-72 max-w-full')}
+            <header className="mb-7 text-center">
+              {skeletonLine('mx-auto h-3 w-36')}
+              {skeletonLine('mx-auto mt-3 h-7 w-80 max-w-full')}
             </header>
 
-            <div className="space-y-7">
+            <div className="space-y-6">
               {[0, 1, 2].map((article) => (
-                <article key={`legal-skeleton-article-${article}`} className="space-y-4">
+                <article key={`legal-skeleton-article-${article}`} className="space-y-4 pb-6">
                   <div className="flex items-start justify-between gap-4">
                     {skeletonLine('h-7 w-20')}
                     <div className="h-7 w-7 animate-pulse rounded-full bg-indigo-100 dark:bg-indigo-500/20" />
@@ -1195,13 +1201,19 @@ const LegalCommentaryDetailSkeleton: React.FC = () => {
                     {skeletonLine('h-4 w-[92%]')}
                     {skeletonLine('h-4 w-[78%]')}
                   </div>
-                  <div className="ml-6 space-y-3">
+                  <div className="ml-8 space-y-3">
                     {skeletonLine('h-4 w-[86%]')}
                     {skeletonLine('h-4 w-[70%]')}
                   </div>
-                  <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
-                    {skeletonLine('h-3 w-24')}
-                    {skeletonLine('mt-3 h-4 w-[82%]')}
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+                      {skeletonLine('h-3 w-24')}
+                      {skeletonLine('mt-3 h-4 w-[82%]')}
+                    </div>
+                    <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4 dark:border-sky-500/30 dark:bg-sky-500/10">
+                      {skeletonLine('h-3 w-24')}
+                      {skeletonLine('mt-3 h-4 w-[74%]')}
+                    </div>
                   </div>
                 </article>
               ))}

@@ -1381,11 +1381,66 @@ const AnnotatedLawsPage: React.FC = () => {
 
       <section className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
         {isLoading && groupedAreas.length === 0 ? (
-          <div className="space-y-4 p-5">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <div key={`law-loading-${index}`} className="animate-pulse rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
-                <div className="h-5 w-56 rounded bg-slate-200 dark:bg-slate-700" />
-                <div className="mt-3 h-3 w-40 rounded bg-slate-200 dark:bg-slate-700" />
+          <div className="divide-y divide-slate-100 dark:divide-slate-800" aria-busy="true" aria-label="Carregando acervo de leis comentadas">
+            {Array.from({ length: 2 }).map((_, groupIndex) => (
+              <div key={`law-area-loading-${groupIndex}`}>
+                <div className="flex w-full items-center justify-between gap-3 px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="h-4 w-4 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+                    <div className="h-6 w-48 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
+                    <div className="h-5 w-10 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+                  </div>
+                  <div className="h-5 w-5 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+                </div>
+                <div className="border-l-2 border-[#615fff] bg-slate-50/35 px-3 py-3 dark:bg-slate-900/20">
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                    {Array.from({ length: groupIndex === 0 ? 1 : 2 }).map((__, lawIndex) => (
+                      <article key={`law-row-loading-${groupIndex}-${lawIndex}`} className="border-b border-slate-100 last:border-b-0 dark:border-slate-800">
+                        <div className="flex w-full flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            <span className="inline-flex h-9 w-9 shrink-0 animate-pulse rounded-full bg-indigo-50 dark:bg-indigo-500/10" />
+                            <div className="min-w-0 flex-1">
+                              <div className="h-5 w-64 max-w-full animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
+                              <div className="mt-2 h-3 w-24 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
+                            </div>
+                          </div>
+                          <div className="flex w-full items-center gap-3 sm:w-[280px]">
+                            <div className="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-700">
+                              <div className="h-full w-1/4 animate-pulse rounded-full bg-[#2f6ff5]/70" />
+                            </div>
+                            <div className="h-4 w-9 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
+                            <div className="h-7 w-7 animate-pulse rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900" />
+                          </div>
+                        </div>
+                        {lawIndex === 0 ? (
+                          <div className="border-t border-slate-100 bg-white px-3 pb-3 pt-3 dark:border-slate-800 dark:bg-slate-950/40">
+                            <div className="space-y-2">
+                              {Array.from({ length: 3 }).map((___, sectionIndex) => (
+                                <div
+                                  key={`law-section-loading-${groupIndex}-${sectionIndex}`}
+                                  className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900 md:flex-row md:items-center md:justify-between"
+                                >
+                                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                                    <div className="h-7 w-7 animate-pulse rounded-md border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950" />
+                                    <div className="h-4 w-4 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="h-4 w-80 max-w-full animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
+                                      <div className="mt-2 h-3 w-32 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-9 w-32 animate-pulse rounded-lg bg-[#2f6ff5]/70" />
+                                    <div className="h-9 w-9 animate-pulse rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </article>
+                    ))}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
