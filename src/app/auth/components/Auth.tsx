@@ -510,6 +510,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     return executeRecaptcha(action);
   }, [executeRecaptcha, isRecaptchaReady, recaptchaEnabled, recaptchaLoadError]);
 
+  const isSecurityCheckLoading = recaptchaEnabled && isAuthForm && !isRecaptchaReady && !recaptchaLoadError;
+
   const handleLogin = async () => {
     if (!formData.email || !formData.password) {
       setError('Preencha e-mail e senha.');
@@ -1024,6 +1026,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSecurityCheckLoading) {
+      return;
+    }
+
     if (mode === 'login') void handleLogin();
     else if (mode === 'signup') void handleRegister();
     else if (mode === 'forgot') void handleForgotPassword();
@@ -1037,6 +1043,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       ? 'Comece gratuitamente e organize seus estudos.'
       : 'Faça login para continuar seus estudos.';
   const primaryLabel = isForgot ? 'Enviar instruções' : isSignup ? 'Criar conta grátis' : 'Entrar na plataforma';
+  const isPrimaryButtonBusy = isLoading || isSecurityCheckLoading;
+  const primaryBusyLabel = isSecurityCheckLoading
+    ? 'Carregando segurança...'
+    : isForgot
+      ? 'Enviando...'
+      : isSignup
+        ? 'Criando conta...'
+        : 'Entrando...';
 
   const renderMessage = () => error ? (
     <div className="space-y-3">
@@ -1576,10 +1590,16 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isPrimaryButtonBusy}
+              aria-busy={isPrimaryButtonBusy}
               className="flex h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#4b28ff] text-sm font-bold text-white shadow-lg shadow-indigo-200 transition hover:bg-[#3d20d6] active:scale-[0.99] disabled:opacity-60 dark:shadow-none"
             >
-              {isLoading ? <Loader2 size={20} className="animate-spin" /> : (
+              {isPrimaryButtonBusy ? (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  <span>{primaryBusyLabel}</span>
+                </>
+              ) : (
                 <>
                   {isForgot ? <Mail size={17} /> : <ArrowRight size={17} />}
                   {primaryLabel}
