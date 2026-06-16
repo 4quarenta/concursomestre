@@ -17,7 +17,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import ReCAPTCHA from 'react-google-recaptcha';
 import { useQueryClient } from '@tanstack/react-query';
 import {
    User, Star, Book, Shield,
@@ -72,6 +71,7 @@ import { clientLog } from '@services/monitoring/clientLog';
 import { buildQuestionPath } from '@services/seo';
 import { legalCommentaryApiService } from '@services/legal-commentary';
 import { normalizeCareerSelectorLabel } from '@services/filters';
+import { useRecaptchaV3 } from '@services/system/useRecaptchaV3';
 import {
     PLATFORM_PAGE_DESCRIPTION_CLASS,
     PLATFORM_PAGE_TITLE_CLASS,
@@ -435,9 +435,7 @@ const Profile: React.FC = () => {
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
     const [cancelDetails, setCancelDetails] = useState('');
-    const [cancelCaptchaToken, setCancelCaptchaToken] = useState<string | null>(null);
     const [accountDeletionReason, setAccountDeletionReason] = useState('');
-    const [accountDeletionCaptchaToken, setAccountDeletionCaptchaToken] = useState<string | null>(null);
     const [isRequestingAccountDeletion, setIsRequestingAccountDeletion] = useState(false);
     const [privacyPreferencesDraft, setPrivacyPreferencesDraft] = useState({
         isPublic: true,
@@ -456,6 +454,16 @@ const Profile: React.FC = () => {
     const [isOpeningBillingPortal, setIsOpeningBillingPortal] = useState(false);
     const [stripeSetupClientSecret, setStripeSetupClientSecret] = useState<string | null>(null);
     const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
+    const shouldPrepareProfileRecaptcha = recaptchaEnabled && (showCancelModal || activeTab === 'security');
+    const {
+        executeRecaptcha: executeProfileRecaptcha,
+        isReady: isProfileRecaptchaReady,
+        loadError: profileRecaptchaLoadError,
+    } = useRecaptchaV3({
+        enabled: shouldPrepareProfileRecaptcha,
+        siteKey: systemSettings?.recaptchaSiteKey,
+    });
+    const isProfileSecurityCheckLoading = shouldPrepareProfileRecaptcha && !isProfileRecaptchaReady && !profileRecaptchaLoadError;
     const cancelRequestInFlightRef = React.useRef(false);
     const renewalRequestInFlightRef = React.useRef(false);
     const billingSyncRequestInFlightRef = React.useRef(false);
@@ -1266,35 +1274,44 @@ const Profile: React.FC = () => {
         }
     };
 
+    const requestProfileRecaptchaToken = React.useCallback(async (action: string) => {
+        if (!recaptchaEnabled) {
+            return null;
+        }
+
+        if (!isProfileRecaptchaReady) {
+            throw new Error(profileRecaptchaLoadError || 'A verificação de segurança ainda está carregando.');
+        }
+
+        return executeProfileRecaptcha(action);
+    }, [executeProfileRecaptcha, isProfileRecaptchaReady, profileRecaptchaLoadError, recaptchaEnabled]);
+
     const handleCancelSubscription = async () => {
         if (!currentUser?.id || !currentUser.subscription || cancelRequestInFlightRef.current) return;
 
-        cancelRequestInFlightRef.current = true;
-        setIsCancelingSubscription(true);
-
-        if (recaptchaEnabled && !cancelCaptchaToken) {
-            addToast('Confirme o reCAPTCHA antes de cancelar a assinatura.', 'warning');
-            cancelRequestInFlightRef.current = false;
-            setIsCancelingSubscription(false);
+        if (isProfileSecurityCheckLoading) {
+            addToast('A verificação de segurança ainda está carregando. Aguarde alguns segundos.', 'warning');
             return;
         }
 
         if (requiresOutstandingDebtConfirmation && !confirmOutstandingDebtCharge) {
             addToast('Confirme a quitação das parcelas pre-aprovadas antes de cancelar.', 'warning');
-            cancelRequestInFlightRef.current = false;
-            setIsCancelingSubscription(false);
             return;
         }
+
+        cancelRequestInFlightRef.current = true;
+        setIsCancelingSubscription(true);
         
         const isRefundable = isWithinRefundWindow;
         const shouldSettleDebt = requiresOutstandingDebtConfirmation && confirmOutstandingDebtCharge;
 
         try {
+            const captchaToken = await requestProfileRecaptchaToken('profile_cancel_subscription');
             const res = await planService.cancelSubscription(
                 currentUser.id, 
                 cancelReason || (isRefundable ? 'arrependimento' : 'user_request'),
                 cancelDetails || undefined,
-                cancelCaptchaToken,
+                captchaToken,
                 shouldSettleDebt
             );
             if (res.success) {
@@ -1309,7 +1326,6 @@ const Profile: React.FC = () => {
                 setShowCancelModal(false);
                 setCancelReason('');
                 setCancelDetails('');
-                setCancelCaptchaToken(null);
                 setConfirmOutstandingDebtCharge(false);
                 await refreshUser();
                 setOptimisticAutoRenew(null);
@@ -1327,7 +1343,6 @@ const Profile: React.FC = () => {
     const closeCancelModal = () => {
         if (isCancelingSubscription) return;
         setShowCancelModal(false);
-        setCancelCaptchaToken(null);
         setConfirmOutstandingDebtCharge(false);
     };
 
@@ -1365,8 +1380,8 @@ const Profile: React.FC = () => {
             return;
         }
 
-        if (recaptchaEnabled && !accountDeletionCaptchaToken) {
-            addToast('Confirme o reCAPTCHA antes de solicitar a exclusao da conta.', 'warning');
+        if (isProfileSecurityCheckLoading) {
+            addToast('A verificação de segurança ainda está carregando. Aguarde alguns segundos.', 'warning');
             return;
         }
 
@@ -1382,7 +1397,8 @@ const Profile: React.FC = () => {
 
         setIsRequestingAccountDeletion(true);
         try {
-            const result = await profileService.requestAccountDeletion(reason, accountDeletionCaptchaToken);
+            const captchaToken = await requestProfileRecaptchaToken('profile_delete_account');
+            const result = await profileService.requestAccountDeletion(reason, captchaToken);
             addToast(result.message || 'Solicitacao de exclusao registrada.', 'success');
             await logout();
         } catch (error: unknown) {
@@ -2822,7 +2838,7 @@ const Profile: React.FC = () => {
 
         return createPortal(
             <AnimatePresence>
-                <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-[999] flex items-start justify-center overflow-y-auto p-3 sm:p-4">
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -2835,7 +2851,7 @@ const Profile: React.FC = () => {
                         initial={{ opacity: 0, scale: 0.95, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-2xl dark:border-rose-900/20 dark:bg-slate-900"
+                        className="relative z-10 my-auto max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-rose-100 bg-white shadow-2xl dark:border-rose-900/20 dark:bg-slate-900 sm:max-h-[calc(100dvh-2rem)]"
                     >
                         <button
                             type="button"
@@ -2944,12 +2960,23 @@ const Profile: React.FC = () => {
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
                                             Confirmacao de segurança
                                         </p>
-                                        <div className="flex justify-center">
-                                            <ReCAPTCHA
-                                                sitekey={systemSettings?.recaptchaSiteKey || ''}
-                                                onChange={setCancelCaptchaToken}
-                                                theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'}
-                                            />
+                                        <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-950/60">
+                                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                                                profileRecaptchaLoadError
+                                                    ? 'bg-rose-100 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300'
+                                                    : isProfileSecurityCheckLoading
+                                                        ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300'
+                                                        : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                            }`}>
+                                                {profileRecaptchaLoadError ? <AlertTriangle size={17} /> : isProfileSecurityCheckLoading ? <Loader2 size={17} className="animate-spin" /> : <ShieldCheck size={17} />}
+                                            </span>
+                                            <p className="text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-300">
+                                                {profileRecaptchaLoadError
+                                                    ? profileRecaptchaLoadError
+                                                    : isProfileSecurityCheckLoading
+                                                        ? 'Estamos preparando a verificação invisível. O botão será liberado em instantes.'
+                                                        : 'Verificação invisível pronta. Ao confirmar, validaremos a segurança automaticamente.'}
+                                            </p>
                                         </div>
                                     </div>
                                 ) : (
@@ -2972,11 +2999,11 @@ const Profile: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={handleCancelSubscription}
-                                    disabled={isCancelingSubscription || (recaptchaEnabled && !cancelCaptchaToken) || (requiresOutstandingDebtConfirmation && !confirmOutstandingDebtCharge)}
+                                    disabled={isCancelingSubscription || isProfileSecurityCheckLoading || (requiresOutstandingDebtConfirmation && !confirmOutstandingDebtCharge)}
                                     className="flex h-14 items-center justify-center gap-2 rounded-2xl border-2 border-slate-200 bg-transparent text-[10px] font-black uppercase tracking-widest text-slate-400 transition-all hover:border-rose-500/30 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800"
                                 >
-                                    {isCancelingSubscription ? <Loader2 size={16} className="animate-spin" /> : null}
-                                    {isCancelingSubscription ? 'Processando...' : 'Confirmar cancelamento'}
+                                    {isCancelingSubscription || isProfileSecurityCheckLoading ? <Loader2 size={16} className="animate-spin" /> : null}
+                                    {isProfileSecurityCheckLoading ? 'Carregando segurança...' : isCancelingSubscription ? 'Processando...' : 'Confirmar cancelamento'}
                                 </button>
                             </div>
 
@@ -5273,22 +5300,34 @@ const Profile: React.FC = () => {
                             />
                             {recaptchaEnabled ? (
                               <div className="rounded-2xl border border-rose-100 bg-white px-4 py-4 dark:border-rose-900/40 dark:bg-slate-900">
-                                <div className="flex justify-center">
-                                  <ReCAPTCHA
-                                    sitekey={systemSettings?.recaptchaSiteKey || ''}
-                                    onChange={setAccountDeletionCaptchaToken}
-                                    theme={document.documentElement.classList.contains('dark') ? 'dark' : 'light'}
-                                  />
+                                <div className="flex items-center gap-3 rounded-xl bg-rose-50/60 px-3 py-3 dark:bg-rose-950/20">
+                                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                                    profileRecaptchaLoadError
+                                      ? 'bg-rose-100 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300'
+                                      : isProfileSecurityCheckLoading
+                                        ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300'
+                                        : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                  }`}>
+                                    {profileRecaptchaLoadError ? <AlertTriangle size={17} /> : isProfileSecurityCheckLoading ? <Loader2 size={17} className="animate-spin" /> : <ShieldCheck size={17} />}
+                                  </span>
+                                  <p className="text-xs font-semibold leading-relaxed text-slate-500 dark:text-slate-300">
+                                    {profileRecaptchaLoadError
+                                      ? profileRecaptchaLoadError
+                                      : isProfileSecurityCheckLoading
+                                        ? 'Preparando a verificação invisível para liberar a solicitação.'
+                                        : 'Verificação invisível pronta. A segurança será validada automaticamente no envio.'}
+                                  </p>
                                 </div>
                               </div>
                             ) : null}
                           </div>
                           <button
                             onClick={handleRequestAccountDeletion}
-                            disabled={isRequestingAccountDeletion}
+                            disabled={isRequestingAccountDeletion || isProfileSecurityCheckLoading}
                             className="mt-4 text-[10px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest flex items-center gap-2 hover:bg-rose-600 hover:text-white px-4 py-2 rounded-xl border border-rose-200 dark:border-rose-900/50 transition-all disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                              {isRequestingAccountDeletion ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />} Solicitar Exclusão
+                              {isRequestingAccountDeletion || isProfileSecurityCheckLoading ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
+                              {isProfileSecurityCheckLoading ? 'Carregando segurança...' : 'Solicitar Exclusão'}
                           </button>
                       </div>
                   </div>
