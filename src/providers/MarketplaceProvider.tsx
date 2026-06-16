@@ -89,6 +89,7 @@ const TRANSACTION_ROUTE_PREFIXES = [
   '/marketplace',
   '/partner-dashboard',
   '/admin/finance',
+  '/admin/support/refunds',
   '/admin/marketplace',
 ] as const;
 

@@ -87,7 +87,7 @@ export const useAdminPageController = () => {
   const { ensureUsersLoaded, ensureReportsLoaded, ensureRankingsLoaded, resolveReport, updateRanking } = useAdminDataActions();
   const { ensureTaxonomiesLoaded } = useTaxonomyActions();
   const { markNotificationAsRead, markAllNotificationsAsRead } = useNotificationsActions();
-  const { materials, transactions, moderateMaterial, deleteMaterial } = useMarketplace();
+  const { materials, transactions, isLoadingTransactions, moderateMaterial, deleteMaterial } = useMarketplace();
   const { currentUser } = useAuth();
   const adminUserRole = useMemo(() => normalizeAdminUserRole(
     currentUser?.role || (currentUser?.isAdmin ? 'admin' : currentUser?.isStaff ? 'staff' : ''),
@@ -213,7 +213,10 @@ export const useAdminPageController = () => {
   const [pendingMaterialsModerationCount, setPendingMaterialsModerationCount] = useState(0);
   const refundRequestsCountFromTransactions = ((transactions || []) as Transaction[])
     .filter((transaction) => transaction.status === 'refund_requested').length;
-  const refundRequestsCount = Math.max(refundRequestsCountFromTransactions, pendingRefundRequestsCount);
+  const isViewingRefundQueue = activeTab === 'support' && initialSupportSection === 'refunds';
+  const refundRequestsCount = isViewingRefundQueue && !isLoadingTransactions
+    ? refundRequestsCountFromTransactions
+    : Math.max(refundRequestsCountFromTransactions, pendingRefundRequestsCount);
   const openReportsCountFromList = ((reports || []) as ErrorReport[])
     .filter((report) => !['resolved', 'ignored'].includes(String(report.status || '').toLowerCase())).length;
   const openReportsCount = Math.max(openReportsCountFromList, pendingReportsCount);

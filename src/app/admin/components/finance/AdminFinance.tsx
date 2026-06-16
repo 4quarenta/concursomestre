@@ -1858,7 +1858,7 @@ const AdminFinance = ({
   };
 
   // --- REEMBOLSOS ---
-  const { resolveRefund, moderateMaterial } = useMarketplace();
+  const { resolveRefund, moderateMaterial, isLoadingTransactions } = useMarketplace();
   const requestResolveRefund = (transactionId: string, resolution: 'approved' | 'retention_offer') => {
     if (refundActionKey) return;
     setPendingRefundDecision({ transactionId, resolution });
@@ -2764,7 +2764,16 @@ const AdminFinance = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
-                {refundRequests.length === 0 ? (
+                {isLoadingTransactions ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-slate-400">
+                      <span className="inline-flex items-center justify-center gap-2 font-bold">
+                        <Loader2 size={16} className="animate-spin" />
+                        Carregando solicitações de reembolso...
+                      </span>
+                    </td>
+                  </tr>
+                ) : refundRequests.length === 0 ? (
                   <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Nenhuma solicitação de reembolso pendente.</td></tr>
                 ) : (
                   refundRequests.map((t) => (
