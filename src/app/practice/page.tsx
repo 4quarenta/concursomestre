@@ -22,7 +22,16 @@ import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import AdBanner from '../../components/shared/feedback/AdBanner';
-import { getBenefitPlanLabel, getEffectivePlanName, hasPlanBenefit } from '@services/plans/planAccess';
+import {
+  getAccessPlanName,
+  getBenefitPlanLabel,
+  getEffectivePlanName,
+  getNextPlanForHigherUsageLimit,
+  getPlanUsageLimitForPlanName,
+  hasPlanBenefit,
+  isPlanUsageUnlimitedForPlanName,
+} from '@services/plans/planAccess';
+import { incrementDailyUsageCount, readDailyUsageCount } from '@services/plans/clientUsageQuota';
 import { questionService } from '@services/questions';
 import { reportsService } from '@services/reports';
 import { commentService } from '@services/comments';
@@ -711,6 +720,28 @@ const Practice: React.FC = () => {
   const lastCommentTimeRef = useRef<number>(0);
   const currentUserId = currentUser?.id ?? null;
   const currentUserName = currentUser?.name ?? '';
+  const currentAccessPlanName = getAccessPlanName(currentUser);
+  const commentsPerDayLimit = getPlanUsageLimitForPlanName(
+    currentAccessPlanName,
+    'comments_per_day',
+    systemSettings.planUsageLimits,
+  );
+  const commentsPerDayUnlimited = isPlanUsageUnlimitedForPlanName(
+    currentAccessPlanName,
+    'comments_per_day',
+    systemSettings.planUsageLimits,
+  );
+  const hasReachedDailyCommentLimit = useCallback(() => {
+    if (commentsPerDayUnlimited || commentsPerDayLimit === null) {
+      return false;
+    }
+
+    return readDailyUsageCount(currentUserId, 'comments_per_day') >= commentsPerDayLimit;
+  }, [commentsPerDayLimit, commentsPerDayUnlimited, currentUserId]);
+  const showCommentLimitToast = useCallback(() => {
+    const nextPlan = getNextPlanForHigherUsageLimit(currentAccessPlanName, 'comments_per_day', systemSettings.planUsageLimits);
+    addToast(`Você atingiu o limite diário de comentários. Mais comentários ficam disponíveis no Plano ${nextPlan} ou superior.`, 'warning');
+  }, [addToast, currentAccessPlanName, systemSettings.planUsageLimits]);
 
   const dispatchAnswer = useCallback((answer: UserAnswer) => {
     applyQuestionAnswer(answer.questionId, answer.isCorrect);
@@ -827,6 +858,10 @@ const Practice: React.FC = () => {
       addToast('Aguarde alguns segundos antes de comentar novamente.', 'warning');
       return;
     }
+    if (hasReachedDailyCommentLimit()) {
+      showCommentLimitToast();
+      return;
+    }
     lastCommentTimeRef.current = now;
 
     commentService.addComment({
@@ -867,6 +902,7 @@ const Practice: React.FC = () => {
       if (result.xpGain) {
         addToast(`Comentário registrado. +${result.xpGain} XP.`, 'success');
       }
+      incrementDailyUsageCount(currentUserId, 'comments_per_day');
     }).catch((error) => {
       clientLog.warn('Failed to save comment:', error);
       addToast((error as Error).message || 'Erro de conexão ao salvar comentário.', 'error');
@@ -879,6 +915,8 @@ const Practice: React.FC = () => {
     currentUser?.planDisplayName,
     currentUserId,
     currentUserName,
+    hasReachedDailyCommentLimit,
+    showCommentLimitToast,
     updateUser,
   ]);
 
@@ -2051,6 +2089,7 @@ const Practice: React.FC = () => {
                   onGuestAction={(action) => {
                     const titles: Record<string, string> = {
                       answer: "Responda Já!",
+                      'verify-email': "Confirme seu E-mail",
                       save: "Salve para Depois",
                       comment: "Participe da Comunidade",
                       note: "Faça Anotações",
@@ -2058,6 +2097,7 @@ const Practice: React.FC = () => {
                     };
                     const descriptions: Record<string, string> = {
                       answer: "Crie uma conta gratuita em segundos para salvar suas resoluções, ganhar XP e monitorar sua evolução.",
+                      'verify-email': "Para responder questões e ganhar XP, você precisa confirmar seu e-mail. Verifique sua caixa de entrada.",
                       save: "Crie seu próprio banco de questões favoritas para revisar quando quiser.",
                       comment: "Para comentar e tirar dúvidas com outros estudantes, você precisa estar conectado.",
                       note: "Organize seus estudos com anotações pessoais em cada questão.",
@@ -2168,6 +2208,7 @@ const Practice: React.FC = () => {
                 onGuestAction={(action) => {
                   const titles: Record<string, string> = {
                     answer: "Responda Já!",
+                    'verify-email': "Confirme seu E-mail",
                     save: "Salve para Depois",
                     comment: "Participe da Comunidade",
                     note: "Faça Anotações",
@@ -2175,6 +2216,7 @@ const Practice: React.FC = () => {
                   };
                   const descriptions: Record<string, string> = {
                     answer: "Crie uma conta gratuita em segundos para salvar suas resoluções, ganhar XP e monitorar sua evolução.",
+                    'verify-email': "Para responder questões e ganhar XP, você precisa confirmar seu e-mail. Verifique sua caixa de entrada.",
                     save: "Crie seu próprio banco de questões favoritas para revisar quando quiser.",
                     comment: "Para comentar e tirar dúvidas com outros estudantes, você precisa estar conectado.",
                     note: "Organize seus estudos com anotações pessoais em cada questão.",

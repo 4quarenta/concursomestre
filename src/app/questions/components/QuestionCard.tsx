@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import type { Assunto, Material, Question, Transaction, UserAnswer, ErrorReport, UserNote, QuestionStats, RelatedQuestionLawMatch, UserProfile, PlanBenefitKey } from '@types';
+import type { Assunto, Material, Question, Transaction, UserAnswer, ErrorReport, UserNote, QuestionStats, RelatedQuestionLawMatch, UserProfile, PlanBenefitKey, PlanUsageLimitKey } from '@types';
 import {
   CheckCircle2, XCircle, Flag, BookOpen, GraduationCap,
   Eye, EyeOff, Building2, Calendar, Briefcase, MessageSquare, BarChart3, AlertTriangle, Share2, Lock, StickyNote, Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Layers, Tag, History, PlusCircle, MinusCircle, FileText, Loader2, ThumbsUp, ThumbsDown
@@ -277,7 +277,16 @@ import { useMarketplace } from '@providers/MarketplaceProvider';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AdBanner from '../../../components/shared/feedback/AdBanner';
-import { getBenefitPlanLabel, getBenefitRequiredPlan, hasPlanBenefit } from '@services/plans/planAccess';
+import {
+  getAccessPlanName,
+  getBenefitPlanLabel,
+  getBenefitRequiredPlan,
+  getNextPlanForHigherUsageLimit,
+  getPlanUsageLimitForPlanName,
+  hasPlanBenefit,
+  isPlanUsageUnlimitedForPlanName,
+} from '@services/plans/planAccess';
+import { incrementDailyUsageCount, readDailyUsageCount } from '@services/plans/clientUsageQuota';
 import { buildQuestionPath } from '@services/seo';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
@@ -521,6 +530,43 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       planLabel: getBenefitPlanLabel(benefitKey, systemSettings.planEntitlements),
     });
   }, [systemSettings.planEntitlements]);
+
+  const currentAccessPlanName = getAccessPlanName(currentUser);
+  const questionsPerDayLimit = getPlanUsageLimitForPlanName(
+    currentAccessPlanName,
+    'questions_per_day',
+    systemSettings.planUsageLimits,
+  );
+  const questionsPerDayUnlimited = isPlanUsageUnlimitedForPlanName(
+    currentAccessPlanName,
+    'questions_per_day',
+    systemSettings.planUsageLimits,
+  );
+  const savedQuestionsLimit = getPlanUsageLimitForPlanName(
+    currentAccessPlanName,
+    'saved_questions_limit',
+    systemSettings.planUsageLimits,
+  );
+  const savedQuestionsUnlimited = isPlanUsageUnlimitedForPlanName(
+    currentAccessPlanName,
+    'saved_questions_limit',
+    systemSettings.planUsageLimits,
+  );
+  const openUsageLimitUpgrade = React.useCallback((featureName: string, limitKey: PlanUsageLimitKey) => {
+    const nextPlan = getNextPlanForHigherUsageLimit(currentAccessPlanName, limitKey, systemSettings.planUsageLimits);
+    setPlanUpgradeModal({
+      featureName,
+      requiredPlan: nextPlan,
+      planLabel: nextPlan === 'Elite' ? 'Plano Elite' : `Plano ${nextPlan} ou superior`,
+    });
+  }, [currentAccessPlanName, systemSettings.planUsageLimits]);
+  const hasReachedDailyQuestionLimit = React.useCallback(() => {
+    if (mode !== 'practice' || questionsPerDayUnlimited || questionsPerDayLimit === null) {
+      return false;
+    }
+
+    return readDailyUsageCount(authenticatedUserId, 'questions_per_day') >= questionsPerDayLimit;
+  }, [authenticatedUserId, mode, questionsPerDayLimit, questionsPerDayUnlimited]);
 
   useEffect(() => {
     if (!editorialFeedbackQuestionId) {
@@ -835,11 +881,19 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       onGuestAction?.('answer');
       return;
     }
+    if (!currentUser.emailVerified) {
+      onGuestAction?.('verify-email');
+      return;
+    }
     if (!canResolveQuestion) {
       openPlanUpgrade('Resolver questao', 'question.resolve');
       return;
     }
     if (selectedOptionId === null || isSubmitted) return;
+    if (hasReachedDailyQuestionLimit()) {
+      openUsageLimitUpgrade('Limite diário de questões', 'questions_per_day');
+      return;
+    }
 
     const selectedItemIndex = question.itens?.findIndex(item => item.id === selectedOptionId) ?? -1;
     const correctOption = resolveCorrectOption(question);
@@ -856,6 +910,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     };
     setSessionAnswer(newAnswer); // Lock interaction locally
     setShowAnswerFeedback(true); // Show correct/incorrect highlighting
+    incrementDailyUsageCount(authenticatedUserId, 'questions_per_day');
     onAnswerSubmit(newAnswer);
     if (!canSeeAnswerKey) {
       openPlanUpgrade('Ver gabarito', 'question.answer_key');
@@ -871,6 +926,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
     if (!currentUser) {
       onGuestAction?.('answer');
+      return;
+    }
+    if (!currentUser.emailVerified) {
+      onGuestAction?.('verify-email');
       return;
     }
     if (!canResolveQuestion) {
@@ -939,6 +998,11 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     }
     if (!canSaveQuestion) {
       openPlanUpgrade('Salvar questao', 'question.save');
+      return;
+    }
+    const savedQuestionCount = currentUser?.savedQuestionIds?.length || 0;
+    if (!isSaved && !savedQuestionsUnlimited && savedQuestionsLimit !== null && savedQuestionCount >= savedQuestionsLimit) {
+      openUsageLimitUpgrade('Limite de questões salvas', 'saved_questions_limit');
       return;
     }
     onToggleSave?.(String(question.id));

@@ -235,6 +235,29 @@ export const isPlanUsageUnlimitedForPlanName = (
   return resolvedLimits[getCanonicalPlanName(planName)][limitKey].mode === 'unlimited';
 };
 
+export const getNextPlanForHigherUsageLimit = (
+  planName: string | null | undefined,
+  limitKey: PlanUsageLimitKey,
+  configuredLimits?: Partial<PlanUsageLimits> | null,
+): CanonicalPlanName => {
+  const currentPlan = getCanonicalPlanName(planName);
+  const currentIndex = PLAN_ORDER.indexOf(currentPlan);
+  const currentLimit = getPlanUsageLimitForPlanName(currentPlan, limitKey, configuredLimits);
+
+  for (const candidatePlan of PLAN_ORDER.slice(Math.max(0, currentIndex + 1))) {
+    if (isPlanUsageUnlimitedForPlanName(candidatePlan, limitKey, configuredLimits)) {
+      return candidatePlan as CanonicalPlanName;
+    }
+
+    const candidateLimit = getPlanUsageLimitForPlanName(candidatePlan, limitKey, configuredLimits);
+    if (candidateLimit !== null && (currentLimit === null || candidateLimit > currentLimit)) {
+      return candidatePlan as CanonicalPlanName;
+    }
+  }
+
+  return 'Elite';
+};
+
 export const getBenefitPlanLabel = (
   benefitKey: PlanBenefitKey,
   configuredEntitlements?: Partial<PlanEntitlements> | null

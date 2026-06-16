@@ -73,11 +73,13 @@ import {
   getAccessPlanName,
   getBenefitPlanLabel,
   getBenefitRequiredPlan,
+  getNextPlanForHigherUsageLimit,
   getPlanUsageLimitForPlanName,
   hasPlanBenefit,
   isPlanUsageUnlimitedForPlanName,
   type CanonicalPlanName,
 } from '@services/plans/planAccess';
+import { incrementDailyUsageCount, readDailyUsageCount } from '@services/plans/clientUsageQuota';
 import {
   DEFAULT_LEGAL_COMMENTARY_FEATURE_CONFIG,
   normalizeLegalCommentaryFeatureConfig,
@@ -2414,6 +2416,16 @@ const LawDetailPage: React.FC = () => {
   const canUseLegalFavorites = favoritesFeatureMode === 'full';
   const canRequestTeacherComment = teacherRequestFeatureMode === 'full';
   const currentAccessPlanName = getAccessPlanName(currentUser);
+  const commentsPerDayLimit = getPlanUsageLimitForPlanName(
+    currentAccessPlanName,
+    'comments_per_day',
+    systemSettings.planUsageLimits,
+  );
+  const commentsPerDayUnlimited = isPlanUsageUnlimitedForPlanName(
+    currentAccessPlanName,
+    'comments_per_day',
+    systemSettings.planUsageLimits,
+  );
   const legalFavoritesLimit = getPlanUsageLimitForPlanName(
     currentAccessPlanName,
     'lei_favorites_limit',
@@ -3126,6 +3138,13 @@ const LawDetailPage: React.FC = () => {
     const targetArticleId = activeSection?.primaryArticleId || activeSectionArticles[0]?.id || '';
     const body = normalizeQuestionRichHtml(commentBody);
     if (!targetArticleId || !stripRichText(body)) return;
+    if (!commentsPerDayUnlimited && commentsPerDayLimit !== null && readDailyUsageCount(userId, 'comments_per_day') >= commentsPerDayLimit) {
+      setLegalFeatureUpgradeModal({
+        featureName: 'mais comentários por dia',
+        requiredPlan: getNextPlanForHigherUsageLimit(currentAccessPlanName, 'comments_per_day', systemSettings.planUsageLimits),
+      });
+      return;
+    }
 
     setIsSubmittingComment(true);
     try {
@@ -3155,6 +3174,7 @@ const LawDetailPage: React.FC = () => {
           ...(current.userComments || []).filter((comment) => String(comment.id) !== String(createdComment.id)),
         ],
       } : current);
+      incrementDailyUsageCount(userId, 'comments_per_day');
       setCommentBody('');
       addToast(
         result.xpGain
@@ -3167,7 +3187,21 @@ const LawDetailPage: React.FC = () => {
     } finally {
       setIsSubmittingComment(false);
     }
-  }, [activeSection, activeSectionArticles, addToast, applyUserProgressMutation, commentBody, currentUser, isSubmittingComment, law, userId]);
+  }, [
+    activeSection,
+    activeSectionArticles,
+    addToast,
+    applyUserProgressMutation,
+    commentBody,
+    commentsPerDayLimit,
+    commentsPerDayUnlimited,
+    currentAccessPlanName,
+    currentUser,
+    isSubmittingComment,
+    law,
+    systemSettings.planUsageLimits,
+    userId,
+  ]);
 
   const reportLegalComment = React.useCallback(async (commentId: string) => {
     if (!userId) {
