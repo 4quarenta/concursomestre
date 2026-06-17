@@ -468,7 +468,7 @@ const Profile: React.FC = () => {
     const renewalRequestInFlightRef = React.useRef(false);
     const billingSyncRequestInFlightRef = React.useRef(false);
     const lastBillingSyncAtRef = React.useRef(0);
-    const profileContentRef = React.useRef<HTMLElement>(null);
+    const profileActiveTabContentRef = React.useRef<HTMLDivElement>(null);
     const pendingProfileTabScrollRef = React.useRef(false);
     const personalDetailsSectionRef = React.useRef<HTMLDivElement>(null);
     const pendingPersonalDetailsScrollRef = React.useRef(false);
@@ -832,18 +832,27 @@ const Profile: React.FC = () => {
         setActiveTab(normalizedTab);
     }, [location.pathname, location.search, normalizeProfileTabForAccess, router]);
 
+    const scrollProfileActiveTabIntoView = React.useCallback(() => {
+        const target = profileActiveTabContentRef.current;
+        if (!target) return;
+
+        const stickyOffset = 96;
+        const targetTop = target.getBoundingClientRect().top + window.scrollY - stickyOffset;
+        window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+    }, []);
+
     React.useEffect(() => {
         if (!pendingProfileTabScrollRef.current) {
             return;
         }
 
         const frameId = window.requestAnimationFrame(() => {
-            profileContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            scrollProfileActiveTabIntoView();
             pendingProfileTabScrollRef.current = false;
         });
 
         return () => window.cancelAnimationFrame(frameId);
-    }, [activeTab]);
+    }, [activeTab, scrollProfileActiveTabIntoView]);
 
     const scrollToPersonalDetailsForm = React.useCallback(() => {
         pendingPersonalDetailsScrollRef.current = true;
@@ -3477,8 +3486,15 @@ const Profile: React.FC = () => {
                     onSelect();
                     return;
                 }
+                const shouldScrollCurrentTab = activeTab === id;
                 pendingProfileTabScrollRef.current = true;
                 changeActiveTab(id, { replace: true });
+                if (shouldScrollCurrentTab) {
+                    window.requestAnimationFrame(() => {
+                        scrollProfileActiveTabIntoView();
+                        pendingProfileTabScrollRef.current = false;
+                    });
+                }
             }}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === id ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/30 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'}`}
         >
@@ -3594,7 +3610,8 @@ const Profile: React.FC = () => {
                 </aside>
 
             {/* ÁREA DE CONTEÚDO */}
-            <main ref={profileContentRef} className="lg:col-span-9 space-y-6 scroll-mt-24">
+            <main className="lg:col-span-9">
+               <div ref={profileActiveTabContentRef} className="space-y-6 scroll-mt-24">
 
                {activeTab === 'evolution' && (
                   <div className="space-y-6">
@@ -5349,6 +5366,7 @@ const Profile: React.FC = () => {
                   </div>
                )}
 
+               </div>
             </main>
          </div>
 
