@@ -293,6 +293,17 @@ const applyEditorialFeedbackCountChange = (
   return nextCounts;
 };
 
+const mergeEditorialFeedbackSnapshotWithFallback = (
+  snapshot: QuestionEditorialFeedbackSnapshot,
+  fallbackFeedback: EditorialFeedbackState,
+): QuestionEditorialFeedbackSnapshot => ({
+  feedback: {
+    teacher: snapshot.feedback.teacher ?? fallbackFeedback.teacher ?? null,
+    detailed: snapshot.feedback.detailed ?? fallbackFeedback.detailed ?? null,
+  },
+  counts: snapshot.counts,
+});
+
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import CommentsSection from '../../../components/shared/feedback/CommentsSection';
@@ -617,10 +628,15 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           return;
         }
 
-        setEditorialFeedback(snapshot.feedback);
-        setEditorialFeedbackCounts(snapshot.counts);
+        const mergedSnapshot = mergeEditorialFeedbackSnapshotWithFallback(
+          snapshot,
+          storedFeedback || createEmptyEditorialFeedback(),
+        );
+
+        setEditorialFeedback(mergedSnapshot.feedback);
+        setEditorialFeedbackCounts(mergedSnapshot.counts);
         if (authenticatedUserId) {
-          persistStoredEditorialFeedback(editorialFeedbackQuestionId, authenticatedUserId, snapshot.feedback);
+          persistStoredEditorialFeedback(editorialFeedbackQuestionId, authenticatedUserId, mergedSnapshot.feedback);
         }
       })
       .catch((error) => {
@@ -1138,9 +1154,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 
     try {
       const snapshot = await questionService.setEditorialFeedback(editorialFeedbackQuestionId, kind, nextValue);
-      setEditorialFeedback(snapshot.feedback);
-      setEditorialFeedbackCounts(snapshot.counts);
-      persistStoredEditorialFeedback(editorialFeedbackQuestionId, authenticatedUserId, snapshot.feedback);
+      const mergedSnapshot = mergeEditorialFeedbackSnapshotWithFallback(snapshot, nextFeedback);
+      setEditorialFeedback(mergedSnapshot.feedback);
+      setEditorialFeedbackCounts(mergedSnapshot.counts);
+      persistStoredEditorialFeedback(editorialFeedbackQuestionId, authenticatedUserId, mergedSnapshot.feedback);
     } catch (error) {
       clientLog.warn('[QuestionCard] Failed to persist editorial feedback:', error);
       addToast('Nao foi possivel sincronizar sua avaliacao agora. Mantive neste dispositivo.', 'warning');
