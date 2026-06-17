@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import Script from 'next/script';
 import { websiteManifest } from '@/config/platform';
 import { getConfiguredSiteUrl } from '@/config/siteUrl';
 import { resolveAbsoluteApiBaseUrl } from '@services/api/baseUrl';
@@ -9,6 +10,7 @@ import './globals.css';
 
 const siteUrl = getConfiguredSiteUrl();
 const googleAdsenseAccount = process.env.NEXT_PUBLIC_GOOGLE_ADSENSE_ACCOUNT?.trim() || '';
+const googleAnalyticsId = process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID?.trim() || '';
 const PUBLIC_SETTINGS_FETCH_TIMEOUT_MS = 1800;
 const inter = Inter({
   subsets: ['latin'],
@@ -35,9 +37,14 @@ const normalizeAdsenseAccountId = (value?: string | null): string => {
   return /^ca-pub-\d{8,32}$/i.test(normalized) ? normalized : '';
 };
 
-const fetchAdsenseAccountFromPublicSettings = async (): Promise<string> => {
+const normalizeGoogleAnalyticsId = (value?: string | null): string => {
+  const normalized = String(value || '').trim();
+  return /^(G|GT|AW|DC)-[A-Z0-9-]{4,}$/i.test(normalized) ? normalized : '';
+};
+
+const fetchPublicMarketingSettings = async (): Promise<{ adsenseAccount: string; analyticsId: string }> => {
   if (typeof fetch !== 'function') {
-    return '';
+    return { adsenseAccount: '', analyticsId: '' };
   }
 
   const controller = new AbortController();
@@ -54,13 +61,16 @@ const fetchAdsenseAccountFromPublicSettings = async (): Promise<string> => {
     });
 
     if (!response.ok) {
-      return '';
+      return { adsenseAccount: '', analyticsId: '' };
     }
 
     const settings = readEnvelopeData(await response.json());
-    return normalizeAdsenseAccountId(settings.adsenseClientId as string | undefined);
+    return {
+      adsenseAccount: normalizeAdsenseAccountId(settings.adsenseClientId as string | undefined),
+      analyticsId: normalizeGoogleAnalyticsId(settings.googleAnalyticsId as string | undefined),
+    };
   } catch {
-    return '';
+    return { adsenseAccount: '', analyticsId: '' };
   } finally {
     clearTimeout(timeout);
   }
@@ -127,22 +137,42 @@ const buildBaseMetadata = (adsenseAccount: string): Metadata => ({
 
 export const generateMetadata = async (): Promise<Metadata> => {
   const adsenseAccount = normalizeAdsenseAccountId(googleAdsenseAccount)
-    || await fetchAdsenseAccountFromPublicSettings();
+    || (await fetchPublicMarketingSettings()).adsenseAccount;
 
   return buildBaseMetadata(adsenseAccount);
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const publicMarketingSettings = await fetchPublicMarketingSettings();
+  const resolvedGoogleAnalyticsId = normalizeGoogleAnalyticsId(googleAnalyticsId)
+    || publicMarketingSettings.analyticsId;
+
   return (
     <html lang="pt-BR" className="h-full antialiased" suppressHydrationWarning>
       <body
         className={`${inter.variable} min-h-full flex flex-col font-sans no-scrollbar bg-slate-50 text-slate-900 transition-colors dark:bg-slate-900 dark:text-slate-100`}
         suppressHydrationWarning
       >
+        {resolvedGoogleAnalyticsId ? (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(resolvedGoogleAnalyticsId)}`}
+              strategy="afterInteractive"
+            />
+            <Script id="google-analytics" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${resolvedGoogleAnalyticsId}');
+              `}
+            </Script>
+          </>
+        ) : null}
         <NextAppProviders>{children}</NextAppProviders>
       </body>
     </html>

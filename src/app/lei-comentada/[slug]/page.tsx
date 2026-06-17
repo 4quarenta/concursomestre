@@ -4191,7 +4191,12 @@ const LawDetailPage: React.FC = () => {
             <p className={`${PLATFORM_PAGE_DESCRIPTION_CLASS} mt-1`}>{law.shortTitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <ToolbarButton icon={<Bookmark size={14} className={isActiveSectionFavorite ? 'fill-current' : ''} />} label="Favoritar seção" onClick={toggleSectionFavorite} active={isActiveSectionFavorite} />
+            <ToolbarButton
+              icon={canUseLegalFavorites ? <Bookmark size={14} className={isActiveSectionFavorite ? 'fill-current' : ''} /> : <Lock size={14} />}
+              label="Favoritar seção"
+              onClick={toggleSectionFavorite}
+              active={isActiveSectionFavorite && canUseLegalFavorites}
+            />
             <ToolbarButton
               icon={isActiveSectionCompleted ? <RotateCcw size={14} /> : activeSectionReading?.startedAt ? <CheckCircle2 size={14} /> : <Save size={14} />}
               label={activeSectionActionLabel}
@@ -4199,7 +4204,7 @@ const LawDetailPage: React.FC = () => {
               active={isActiveSectionCompleted}
             />
             <ToolbarButton icon={<Share2 size={14} />} label="Compartilhar" onClick={shareLaw} />
-            <ToolbarButton icon={<MessageSquare size={14} />} label="Solicitar comentário" onClick={openTeacherCommentRequestModal} />
+            <ToolbarButton icon={canRequestTeacherComment ? <MessageSquare size={14} /> : <Lock size={14} />} label="Solicitar comentário" onClick={openTeacherCommentRequestModal} />
             <ToolbarButton icon={<Flag size={14} />} label="Reportar erro" onClick={openSectionReportModal} />
           </div>
         </div>

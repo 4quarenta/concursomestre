@@ -13,7 +13,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Bookmark, ChevronDown, ChevronUp, FileText, Gavel, GripVertical, Loader2, Search } from 'lucide-react';
+import { Bookmark, ChevronDown, ChevronUp, FileText, Gavel, GripVertical, Loader2, Lock, Search } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
 import { useToast } from '@providers/ToastProvider';
 import {
@@ -24,9 +24,11 @@ import {
 } from '@constants/layout';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { legalCommentaryApiService } from '@services/legal-commentary';
+import { getBenefitRequiredPlan, hasPlanBenefit, type CanonicalPlanName } from '@services/plans/planAccess';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import type { LawArticle, LawSection, LawSummary, LegalHomeSnapshot, LegalTaxonomySummary } from '@types';
 import BetaFeaturePage from '../../components/shared/feedback/BetaFeaturePage';
+import UpgradeModal from '../../components/shared/overlays/UpgradeModal';
 
 type UserLike = {
   id?: string;
@@ -642,6 +644,8 @@ const AnnotatedLawsPage: React.FC = () => {
     || (currentUser as UserLike)?.role === 'editor',
   );
   const isFeatureEnabled = resolveSystemFeatureFlag(systemSettings, 'annotatedLawsEnabled', true);
+  const canUseLegalFavorites = hasPlanBenefit(currentUser, 'lei.favoritos', systemSettings.planEntitlements);
+  const favoriteRequiredPlan = getBenefitRequiredPlan('lei.favoritos', systemSettings.planEntitlements) as CanonicalPlanName;
 
   const [snapshot, setSnapshot] = React.useState<LegalHomeSnapshot>(EMPTY_LEGAL_HOME);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -657,6 +661,7 @@ const AnnotatedLawsPage: React.FC = () => {
   const [sectionFavoriteBusyMap, setSectionFavoriteBusyMap] = React.useState<Record<string, boolean>>({});
   const [sectionReadBusyMap, setSectionReadBusyMap] = React.useState<Record<string, boolean>>({});
   const [sectionReadingByLawId, setSectionReadingByLawId] = React.useState<Record<string, SectionReadingState>>({});
+  const [isFavoriteUpgradeOpen, setIsFavoriteUpgradeOpen] = React.useState(false);
   const lawOutlineByIdRef = React.useRef<Record<string, LawOutlineEntry>>({});
   const pendingOutlineIdsRef = React.useRef<Set<string>>(new Set());
   const isMountedRef = React.useRef(true);
@@ -1134,6 +1139,10 @@ const AnnotatedLawsPage: React.FC = () => {
       addToast('Entre na sua conta para salvar favoritos.', 'warning');
       return;
     }
+    if (!canUseLegalFavorites) {
+      setIsFavoriteUpgradeOpen(true);
+      return;
+    }
 
     const favoriteKey = buildSectionFavoriteKey(lawId, section.id);
     if (sectionFavoriteBusyMap[favoriteKey]) {
@@ -1212,7 +1221,7 @@ const AnnotatedLawsPage: React.FC = () => {
         return next;
       });
     }
-  }, [addToast, sectionFavoriteBusyMap, userId]);
+  }, [addToast, canUseLegalFavorites, sectionFavoriteBusyMap, userId]);
 
   const handleMarkSectionAsRead = React.useCallback(async (
     law: LawSummary,
@@ -1661,13 +1670,17 @@ const AnnotatedLawsPage: React.FC = () => {
                                               }}
                                               disabled={Boolean(sectionFavoriteBusyMap[buildSectionFavoriteKey(law.id, section.id)])}
                                               className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition-colors hover:border-amber-200 hover:text-amber-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900"
-                                              title={section.isFavorite ? 'Remover favorito' : 'Salvar favorito'}
-                                              aria-label={section.isFavorite ? 'Remover favorito' : 'Salvar favorito'}
+                                              title={!canUseLegalFavorites ? 'Favoritos disponíveis em plano superior' : section.isFavorite ? 'Remover favorito' : 'Salvar favorito'}
+                                              aria-label={!canUseLegalFavorites ? 'Favoritos bloqueados para este plano' : section.isFavorite ? 'Remover favorito' : 'Salvar favorito'}
                                             >
-                                              <Bookmark
-                                                size={16}
-                                                className={section.isFavorite ? 'fill-amber-400 text-amber-500' : ''}
-                                              />
+                                              {canUseLegalFavorites ? (
+                                                <Bookmark
+                                                  size={16}
+                                                  className={section.isFavorite ? 'fill-amber-400 text-amber-500' : ''}
+                                                />
+                                              ) : (
+                                                <Lock size={16} className="text-amber-500" />
+                                              )}
                                             </button>
                                           </div>
                                         </div>
@@ -1729,6 +1742,12 @@ const AnnotatedLawsPage: React.FC = () => {
           })
         )}
       </section>
+      <UpgradeModal
+        isOpen={isFavoriteUpgradeOpen}
+        onClose={() => setIsFavoriteUpgradeOpen(false)}
+        requiredPlan={favoriteRequiredPlan}
+        featureName="favoritar seções da Lei Comentada"
+      />
     </div>
   );
 };

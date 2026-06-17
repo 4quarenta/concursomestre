@@ -76,6 +76,30 @@ type QuestionSourceMetadata = Question & {
   source_type?: string;
 };
 
+type QuestionEditorialAliases = Question & {
+  teacher_comment?: string | null;
+  comentarioProfessor?: string | null;
+  professorComment?: string | null;
+  professor_comment?: string | null;
+  gabaritoComentado?: string | null;
+  gabarito_comentado?: string | null;
+};
+
+const resolveTeacherCommentContent = (question: Question): string => {
+  const record = question as QuestionEditorialAliases;
+  return [
+    record.teacherComment,
+    record.teacher_comment,
+    record.comentarioProfessor,
+    record.professorComment,
+    record.professor_comment,
+    record.gabaritoComentado,
+    record.gabarito_comentado,
+  ]
+    .map((value) => String(value || '').trim())
+    .find(Boolean) || '';
+};
+
 const readCurrentTimeMs = () => Date.now();
 
 type UserAnswerWithLegacyAliases = UserAnswer & {
@@ -509,6 +533,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       || (isLoadingAnnotatedLaws && hasQuestionTaxonomy)
     );
   const canShowStudyMaterialsButton = hasRelatedMaterials;
+  const teacherCommentContent = resolveTeacherCommentContent(question);
+  const hasTeacherCommentContent = teacherCommentContent !== '';
 
   const [showTeacherComment, setShowTeacherComment] = useState(false);
   const [showDetailedComment, setShowDetailedComment] = useState(false);
@@ -1480,7 +1506,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="px-6 py-4 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 items-center justify-between transition-colors duration-300">
           <div className="flex gap-2 items-center flex-wrap">
             {/* Gabarito Comentado - sempre visível, bloqueado por plano */}
-            {(question.hasTeacherComment || question.teacherComment) && (
+            {(question.hasTeacherComment || hasTeacherCommentContent) && (
               <button
                 onClick={() => {
                   if (!canSeeTeacher) {
@@ -1669,10 +1695,10 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                 <div className="flex items-center gap-2 text-amber-800 dark:text-amber-400 font-bold text-[9px] uppercase tracking-widest mb-3">
                   <GraduationCap size={14} /> Comentário do Professor
                 </div>
-                {question.teacherComment ? (
+                {hasTeacherCommentContent ? (
                   <>
                     <MathRichText
-                      content={question.teacherComment}
+                      content={teacherCommentContent}
                       className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-amber-100/50 dark:border-amber-900/30 shadow-sm text-sm text-slate-700 dark:text-slate-300 leading-relaxed"
                     />
                     {renderEditorialFeedbackControls('teacher')}

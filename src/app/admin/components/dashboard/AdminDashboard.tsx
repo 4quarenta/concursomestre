@@ -689,6 +689,10 @@ const AdminDashboard = ({
                   <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
                     {new Date(thread.created_at).toLocaleDateString('pt-BR')}
                   </p>
+                  <span className="mt-3 inline-flex items-center gap-1 text-xs font-black uppercase tracking-[0.12em] text-blue-600 dark:text-blue-300">
+                    Abrir conversa
+                    <ArrowRight size={13} />
+                  </span>
                 </button>
               );
             })}

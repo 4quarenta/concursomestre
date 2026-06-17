@@ -76,6 +76,7 @@ export const buildFrontendContentSecurityPolicy = (apiBaseUrl?: string) => {
     'https://www.gstatic.com',
     'https://recaptcha.google.com',
     'https://www.googleapis.com',
+    'https://www.googletagmanager.com',
     'https://www.google-analytics.com',
     'https://region1.google-analytics.com',
     'https://pagead2.googlesyndication.com',
