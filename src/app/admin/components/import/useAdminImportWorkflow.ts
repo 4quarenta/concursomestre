@@ -822,6 +822,18 @@ const normalizePdfTextForParsing = (
         }
         return keptLines;
       }
+      if (/^\d{1,3}\s+\d{1,3}$/.test(clean)) {
+        const nextLine = list.slice(lineIndex + 1).find((candidate) => candidate.replace(/\s+/g, ' ').trim()) || '';
+        const cleanNextLine = nextLine.replace(/\s+/g, ' ').trim();
+        const likelyTwoColumnQuestionNumbers = cleanNextLine.length >= 10
+          && !headerPattern.test(cleanNextLine)
+          && !footerPattern.test(cleanNextLine)
+          && !isLikelyInstructionText(cleanNextLine);
+        if (likelyTwoColumnQuestionNumbers) {
+          keptLines.push(clean);
+        }
+        return keptLines;
+      }
       if (/^(?:rascunho|assinatura\s+do\s+candidato|caderno\s+de\s+quest[oõ]es)$/i.test(clean)) {
         return keptLines;
       }
@@ -1978,6 +1990,7 @@ const extractQuestionNumbersFromText = (value: string, parserProfile: ExamParser
 
 const normalizeQuestionMarkerText = (value: string) => String(value || '')
   .replace(/\bQ\s*U\s*E\s*S\s*T\s*\S\s*O\b/gi, 'Questao')
+  .replace(/(^|\n)\s*0*(\d{1,3})\s+0*(\d{1,3})\s*(?=\n\s*\S)/g, '$1$2)\n$3) ')
   .replace(/(^|[^\d])0*(\d{1,3})\s*[.)]\s*(?=(?:Relativamente|Ticio|Tício|Apresenta-se|Dentre|A\s+conduta|Leia|Como|Assinale|No\s+que|Em\s+relacao|Em\s+rela[cç][aã]o|De\s+acordo|Considerando|Com\s+base|Sobre|Qual|Quais|Julgue|Acerca|No\s+tocante|Quanto)\b)/gi, '$1$2) ');
 
 const isTrueFalseExamText = (value: string) => (

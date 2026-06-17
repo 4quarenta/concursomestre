@@ -319,6 +319,32 @@ describe('exam import parser profiles', () => {
     expect(result.questions.every((question) => question.options?.length === 4)).toBe(true);
   });
 
+  it('splits two-column FGV numeric headers into independent questions', () => {
+    const result = createMechanicalExtractionFromText(
+      [
+        'CORPO DE BOMBEIROS MILITAR DO ESTADO DO RIO DE JANEIRO - CBMERJ FGV',
+        '7 12',
+        'Assinale a frase em que ha uma metafora corretamente analisada.',
+        '(A) Alternativa A da questao 7.',
+        '(B) Alternativa B da questao 7.',
+        '(C) Alternativa C da questao 7.',
+        '(D) Alternativa D da questao 7.',
+        '(E) Alternativa E da questao 7.',
+        'Assinale a opcao em que todas as formas estao corretamente grafadas.',
+        '(A) Alternativa A da questao 12.',
+        '(B) Alternativa B da questao 12.',
+        '(C) Alternativa C da questao 12.',
+        '(D) Alternativa D da questao 12.',
+        '(E) Alternativa E da questao 12.',
+      ].join('\n'),
+      4,
+      'fgv-2022-cbm-rj-cadete-do-corpo-de-bombeiro-prova.pdf',
+    );
+
+    expect(result.questions.map((question) => getExtractedQuestionNumber(question, 0))).toEqual([7, 12]);
+    expect(result.questions.some((question) => question.extractionStatus !== 'ok')).toBe(true);
+  });
+
   it('keeps non-monotonic and incomplete numbered drafts instead of dropping them', () => {
     const outOfOrder = createMechanicalExtractionFromText(
       [
