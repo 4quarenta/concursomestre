@@ -847,7 +847,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="shrink-0 space-y-3 border-t border-slate-100 p-3 dark:border-slate-800">
               {user && (
                 <div className={currentPlanTheme.box}>
-                <Link href="/plans" prefetch={false} className="block text-inherit hover:opacity-80 transition-opacity">
+                <Link href={currentTier > 0 ? buildProfilePath('billing') : '/plans'} prefetch={false} className="block text-inherit hover:opacity-80 transition-opacity">
                     <p className="text-xs font-semibold opacity-80 uppercase tracking-wider mb-1">Status da Conta</p>
                     <p className="text-sm font-bold flex items-center gap-2">
                       <currentPlanTheme.icon size={14} className={currentTier === 4 ? 'fill-current' : ''} />

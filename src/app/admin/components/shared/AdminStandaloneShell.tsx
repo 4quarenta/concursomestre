@@ -31,6 +31,7 @@ import {
   DEFAULT_SECTION_BY_TAB,
   TAB_DESCRIPTIONS,
   buildAdminPath,
+  filterAdminSectionsForRole,
   filterAdminTabsForRole,
   normalizeAdminUserRole,
   resolveAdminRouteForRole,
@@ -48,7 +49,7 @@ interface AdminStandaloneShellProps {
   children: React.ReactNode;
 }
 
-const buildSearchTargets = (adminTabs: AdminNavigationTab[]) => {
+const buildSearchTargets = (adminTabs: AdminNavigationTab[], role?: string | null) => {
   const tabTargets = adminTabs.map((tab) => ({
     label: tab.label,
     description: tab.description,
@@ -60,7 +61,7 @@ const buildSearchTargets = (adminTabs: AdminNavigationTab[]) => {
   const sectionTargets = (Object.entries(ADMIN_SECTION_CONFIG) as [AdminPageTab, { key: string; label: string }[]][])
     .filter(([tabKey]) => allowedTabKeys.has(tabKey))
     .flatMap(([tabKey, sections]) => (
-      sections.map((section) => ({
+      filterAdminSectionsForRole(tabKey, sections, role).map((section) => ({
         label: section.label,
         description: adminTabs.find((tab) => tab.key === tabKey)?.label || tabKey,
         path: buildAdminPath(tabKey, section.key),
@@ -100,7 +101,7 @@ const AdminStandaloneShell = ({
     { key: 'settings', label: 'Configuracoes', icon: Settings, group: 'Sistema', description: TAB_DESCRIPTIONS.settings },
   ], adminUserRole), [adminUserRole]);
 
-  const searchTargets = React.useMemo(() => buildSearchTargets(adminTabs), [adminTabs]);
+  const searchTargets = React.useMemo(() => buildSearchTargets(adminTabs, adminUserRole), [adminTabs, adminUserRole]);
   const adminNotifications = (notifications || []) as Notification[];
   const unreadCount = adminNotifications.filter((notification) => !notification.isRead && !notification.deletedAt).length;
   const activeSectionLabel = ADMIN_SECTION_CONFIG[activeTab]?.find((section) => section.key === activeSectionKey)?.label || '';

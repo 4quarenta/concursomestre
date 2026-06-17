@@ -17,7 +17,12 @@ import { useAuth } from '@providers/AuthProvider';
 import LogoutConfirmButton from '../../../../components/shared/layout/LogoutConfirmButton';
 import BrandLogo from '../../../../components/shared/layout/BrandLogo';
 import { ADMIN_DATABASE_CATEGORIES, ADMIN_DATABASE_SUBTAB_META } from '../database/adminDatabaseNavigationConfig';
-import { ADMIN_SECTION_CONFIG, type AdminPageTab } from '../../config/adminPageNavigationConfig';
+import {
+  ADMIN_SECTION_CONFIG,
+  filterAdminSectionsForRole,
+  normalizeAdminUserRole,
+  type AdminPageTab,
+} from '../../config/adminPageNavigationConfig';
 
 type AdminTabItem = {
   key: string;
@@ -61,7 +66,11 @@ interface AdminNavigationSidebarProps {
   onRequestClose?: () => void;
 }
 
-const buildSidebarSubmenuGroups = (tabKey: string, sectionBadges: Record<string, number> = {}): SidebarSubmenuGroup[] => {
+const buildSidebarSubmenuGroups = (
+  tabKey: string,
+  sectionBadges: Record<string, number> = {},
+  role?: string | null,
+): SidebarSubmenuGroup[] => {
   const getSectionBadge = (section: string) => {
     const count = Number(sectionBadges[section] || 0);
     return count > 0 ? count : undefined;
@@ -72,6 +81,7 @@ const buildSidebarSubmenuGroups = (tabKey: string, sectionBadges: Record<string,
       id: category.id,
       label: category.label,
       items: category.tabs
+        .filter((tab) => filterAdminSectionsForRole('operation', [{ key: tab }], role).length > 0)
         .map((tab) => {
           const meta = ADMIN_DATABASE_SUBTAB_META[tab];
           if (!meta) {
@@ -97,7 +107,7 @@ const buildSidebarSubmenuGroups = (tabKey: string, sectionBadges: Record<string,
         items: [
           { section: 'vendors', label: 'Vendedores', description: '', badge: getSectionBadge('vendors') },
           { section: 'materials', label: 'Materiais', description: '', badge: getSectionBadge('materials') },
-          { section: 'blocked', label: 'Revisao bloqueada', description: '', badge: getSectionBadge('blocked') },
+          { section: 'blocked', label: 'Revisão bloqueada', description: '', badge: getSectionBadge('blocked') },
         ],
       },
     ];
@@ -110,15 +120,15 @@ const buildSidebarSubmenuGroups = (tabKey: string, sectionBadges: Record<string,
         label: 'Atendimento',
         items: [
           { section: 'feedback', label: 'Feedback', description: '', badge: getSectionBadge('feedback') },
-          { section: 'reports', label: 'Denuncias', description: '', badge: getSectionBadge('reports') },
+          { section: 'reports', label: 'Denúncias', description: '', badge: getSectionBadge('reports') },
           { section: 'threads', label: 'Threads', description: '', badge: getSectionBadge('threads') },
         ],
       },
       {
         id: 'support-moderation',
-        label: 'Moderacao',
+        label: 'Moderação',
         items: [
-          { section: 'comments', label: 'Comentarios', description: '', badge: getSectionBadge('comments') },
+          { section: 'comments', label: 'Comentários', description: '', badge: getSectionBadge('comments') },
           { section: 'rankings', label: 'Rankings', description: '', badge: getSectionBadge('rankings') },
         ],
       },
@@ -129,17 +139,24 @@ const buildSidebarSubmenuGroups = (tabKey: string, sectionBadges: Record<string,
           { section: 'refunds', label: 'Reembolsos', description: '', badge: getSectionBadge('refunds') },
         ],
       },
-    ];
+    ].map((group) => ({
+      ...group,
+      items: group.items.filter((item) => filterAdminSectionsForRole('support', [{ key: item.section }], role).length > 0),
+    })).filter((group) => group.items.length > 0);
   }
 
-  const sections = ADMIN_SECTION_CONFIG[tabKey as AdminPageTab] || [];
+  const sections = filterAdminSectionsForRole(
+    tabKey as AdminPageTab,
+    ADMIN_SECTION_CONFIG[tabKey as AdminPageTab] || [],
+    role,
+  );
   if (!sections.length) {
     return [];
   }
 
   return [{
     id: `${tabKey}-sections`,
-    label: 'Secoes',
+    label: 'Seções',
     items: sections.map((section) => ({
       section: section.key,
       label: section.label,
@@ -167,6 +184,9 @@ const AdminNavigationSidebar = ({
   } | null>(null);
   const [mobileExpandedKeys, setMobileExpandedKeys] = React.useState<string[]>([]);
   const closeFlyoutTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const adminUserRole = React.useMemo(() => normalizeAdminUserRole(
+    currentUser?.role || (currentUser?.isAdmin ? 'admin' : currentUser?.isStaff ? 'staff' : ''),
+  ), [currentUser?.isAdmin, currentUser?.isStaff, currentUser?.role]);
 
   const clearCloseFlyoutTimeout = React.useCallback(() => {
     if (closeFlyoutTimeoutRef.current) {
@@ -259,8 +279,8 @@ const AdminNavigationSidebar = ({
   }, [tabs]);
 
   const submenuGroupsByTab = React.useMemo(() => Object.fromEntries(
-    tabs.map((tab) => [tab.key, buildSidebarSubmenuGroups(tab.key, sectionBadges[tab.key] || {})]),
-  ) as Record<string, SidebarSubmenuGroup[]>, [tabs, sectionBadges]);
+    tabs.map((tab) => [tab.key, buildSidebarSubmenuGroups(tab.key, sectionBadges[tab.key] || {}, adminUserRole)]),
+  ) as Record<string, SidebarSubmenuGroup[]>, [adminUserRole, tabs, sectionBadges]);
 
   const toggleMobileExpansion = (tabKey: string) => {
     setMobileExpandedKeys((current) => (
@@ -436,7 +456,7 @@ const AdminNavigationSidebar = ({
       <div className="border-t border-slate-700/80 px-4 py-4">
         <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-3">
           <p className="truncate text-sm font-semibold text-white">{currentUser?.name || 'Administrador'}</p>
-          <p className="mt-1 truncate text-xs text-slate-400">{currentUser?.email || 'Sem email carregado'}</p>
+          <p className="mt-1 truncate text-xs text-slate-400">{currentUser?.email || 'Sem e-mail carregado'}</p>
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -447,7 +467,7 @@ const AdminNavigationSidebar = ({
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-700"
           >
             <Home size={14} />
-            Inicio
+            Início
           </Link>
 
           <LogoutConfirmButton>

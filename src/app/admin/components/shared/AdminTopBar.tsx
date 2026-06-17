@@ -217,21 +217,19 @@ const AdminTopBar = ({
 
               {isNotifOpen ? (
                 <>
-                  <div className="fixed inset-0 z-40" onClick={onCloseNotifications} />
-                  <div className="absolute right-0 top-full z-50 mt-2">
-                    <NotificationDropdown
-                      notifications={notifications}
-                      markNotificationAsRead={markNotificationAsRead}
-                      markAllNotificationsAsRead={() => {
-                        void Promise.resolve(markAllNotificationsAsRead?.()).catch((error) => {
-                          clientLog.warn('[admin-notifications] Nao foi possivel marcar todas como vistas pelo botao.', error);
-                        });
-                      }}
-                      unreadCount={unreadCount}
-                      setIsNotifOpen={setIsNotifOpen}
-                      navigate={navigate}
-                    />
-                  </div>
+                  <div className="fixed inset-0 z-40 bg-slate-950/20 backdrop-blur-[1px]" onClick={onCloseNotifications} />
+                  <NotificationDropdown
+                    notifications={notifications}
+                    markNotificationAsRead={markNotificationAsRead}
+                    markAllNotificationsAsRead={() => {
+                      void Promise.resolve(markAllNotificationsAsRead?.()).catch((error) => {
+                        clientLog.warn('[admin-notifications] Não foi possível marcar todas como vistas pelo botão.', error);
+                      });
+                    }}
+                    unreadCount={unreadCount}
+                    setIsNotifOpen={setIsNotifOpen}
+                    navigate={navigate}
+                  />
                 </>
               ) : null}
             </div>

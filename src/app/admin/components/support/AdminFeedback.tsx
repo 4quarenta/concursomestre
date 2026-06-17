@@ -10,7 +10,7 @@
 */
 
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { Filter, Loader2, MessageSquare, Search, Send } from 'lucide-react';
+import { CheckCircle2, Filter, Loader2, MessageSquare, Search, Send, Star } from 'lucide-react';
 import { adminService, type AdminFeedbackReply, type AdminFeedbackThread } from '@services/admin/adminService';
 import { clientLog } from '@services/monitoring/clientLog';
 import { useToast } from '@providers/ToastProvider';
@@ -35,51 +35,45 @@ const STATUS_TONE: Record<AdminFeedbackThread['status'], string> = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  cancellation: 'Cancelamento',
   support: 'Suporte',
-  report: 'Denuncia',
-  'platform-rating': 'Avaliacao',
-  platform_rating: 'Avaliacao',
-  testimonial: 'Avaliacao',
-  rating: 'Avaliacao',
-  suggestion: 'Sugestao',
+  report: 'Denúncia',
+  'platform-rating': 'Avaliação',
+  platform_rating: 'Avaliação',
+  testimonial: 'Avaliação',
+  rating: 'Avaliação',
+  suggestion: 'Sugestão',
   bug: 'Bug',
   other: 'Outro',
 };
 
 const FEEDBACK_REPLY_TEMPLATES: Record<string, Array<{ label: string; message: string }>> = {
   'platform-rating': [
-    { label: 'Avaliacao recebida', message: 'Obrigado por avaliar a plataforma. Seu feedback ajuda a direcionar as proximas melhorias.' },
-    { label: 'Avaliacao em analise', message: 'Recebemos sua avaliacao e ela esta em analise pela equipe.' },
-    { label: 'Agradecimento publico', message: 'Obrigado pelo depoimento. Se aprovado, ele podera aparecer nas areas publicas da plataforma.' },
+    { label: 'Avaliação recebida', message: 'Obrigado por avaliar a plataforma. Seu feedback ajuda a direcionar as próximas melhorias.' },
+    { label: 'Avaliação em análise', message: 'Recebemos sua avaliação e ela está em análise pela equipe.' },
+    { label: 'Agradecimento público', message: 'Obrigado pelo depoimento. Se aprovado, ele poderá aparecer nas áreas públicas da plataforma.' },
   ],
   bug: [
-    { label: 'Bug em analise', message: 'Recebemos o bug e ele ja esta em analise pelo time tecnico.' },
-    { label: 'Correcao aplicada', message: 'Ajuste concluido. Se ainda houver erro, envie mais contexto por esta conversa.' },
-    { label: 'Mais contexto', message: 'Precisamos de mais contexto (pagina, horario, navegador e passos para reproduzir).' },
+    { label: 'Bug em análise', message: 'Recebemos o bug e ele já está em análise pelo time técnico.' },
+    { label: 'Correção aplicada', message: 'Ajuste concluído. Se ainda houver erro, envie mais contexto por esta conversa.' },
+    { label: 'Mais contexto', message: 'Precisamos de mais contexto (página, horário, navegador e passos para reproduzir).' },
   ],
   suggestion: [
-    { label: 'Sugestao recebida', message: 'Obrigado pela sugestao. Ela foi registrada e entrou na fila de avaliacao.' },
-    { label: 'Sugestao aprovada', message: 'Sua sugestao entrou no planejamento. Avisaremos por aqui quando houver previsao.' },
-    { label: 'Sugestao em estudo', message: 'Sua sugestao esta em estudo junto com melhorias relacionadas.' },
-  ],
-  cancellation: [
-    { label: 'Cancelamento em analise', message: 'Recebemos seu pedido e ele esta em analise.' },
-    { label: 'Cancelamento orientado', message: 'Pedido registrado. Se houver pendencia de cobranca, detalhe por aqui.' },
-    { label: 'Retencao amigavel', message: 'Podemos analisar uma alternativa antes do encerramento final, se voce quiser.' },
+    { label: 'Sugestão recebida', message: 'Obrigado pela sugestão. Ela foi registrada e entrou na fila de avaliação.' },
+    { label: 'Sugestão aprovada', message: 'Sua sugestão entrou no planejamento. Avisaremos por aqui quando houver previsão.' },
+    { label: 'Sugestão em estudo', message: 'Sua sugestão está em estudo junto com melhorias relacionadas.' },
   ],
   report: [
-    { label: 'Denuncia recebida', message: 'Recebemos a denuncia e ela ja foi enviada para moderacao.' },
-    { label: 'Denuncia em validacao', message: 'Estamos validando as informacoes antes da decisao final.' },
-    { label: 'Solicitar prova', message: 'Se voce tiver imagem, link ou outro contexto, envie por aqui para reforcar o caso.' },
+    { label: 'Denúncia recebida', message: 'Recebemos a denúncia e ela já foi enviada para moderação.' },
+    { label: 'Denúncia em validação', message: 'Estamos validando as informações antes da decisão final.' },
+    { label: 'Solicitar prova', message: 'Se você tiver imagem, link ou outro contexto, envie por aqui para reforçar o caso.' },
   ],
   support: [
-    { label: 'Atendimento iniciado', message: 'Recebemos sua mensagem e seu atendimento ja foi iniciado.' },
-    { label: 'Orientacao enviada', message: 'Deixamos acima a orientacao principal para o seu caso.' },
-    { label: 'Aguardando retorno', message: 'Precisamos de mais informacoes para concluir o atendimento.' },
+    { label: 'Atendimento iniciado', message: 'Recebemos sua mensagem e seu atendimento já foi iniciado.' },
+    { label: 'Orientação enviada', message: 'Deixamos acima a orientação principal para o seu caso.' },
+    { label: 'Aguardando retorno', message: 'Precisamos de mais informações para concluir o atendimento.' },
   ],
   other: [
-    { label: 'Atendimento iniciado', message: 'Recebemos sua mensagem e seu atendimento ja foi iniciado.' },
+    { label: 'Atendimento iniciado', message: 'Recebemos sua mensagem e seu atendimento já foi iniciado.' },
   ],
 };
 
@@ -142,6 +136,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   const [loadingRepliesId, setLoadingRepliesId] = useState<number | null>(null);
   const [sendingReplyId, setSendingReplyId] = useState<number | null>(null);
   const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
+  const [publishingHomeId, setPublishingHomeId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AdminFeedbackThread['status']>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | string>('all');
@@ -156,7 +151,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       setFeedbacks(items);
     } catch (error) {
       clientLog.warn('Error fetching feedback:', error);
-      addToast('Nao foi possivel carregar os feedbacks.', 'error');
+      addToast('Não foi possível carregar os feedbacks.', 'error');
     } finally {
       setLoading(false);
     }
@@ -186,7 +181,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
     if (mode === 'threads') {
       return feedbacks.filter((item) => Number(item.reply_count || 0) > 0 || item.status !== 'new');
     }
-    return feedbacks;
+    return feedbacks.filter((item) => getEffectiveFeedbackType(item) !== 'cancellation');
   }, [feedbacks, mode]);
 
   const filteredFeedbacks = useMemo(() => {
@@ -242,7 +237,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       addToast('Status do feedback atualizado.', 'success');
     } catch (error) {
       clientLog.warn('Error updating feedback status:', error);
-      addToast('Nao foi possivel atualizar o status do feedback.', 'error');
+      addToast('Não foi possível atualizar o status do feedback.', 'error');
     } finally {
       setUpdatingStatusId(null);
     }
@@ -265,7 +260,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       setReplies((current) => ({ ...current, [id]: threadReplies }));
     } catch (error) {
       clientLog.warn('Error fetching feedback replies:', error);
-      addToast('Nao foi possivel carregar a conversa.', 'error');
+      addToast('Não foi possível carregar a conversa.', 'error');
     } finally {
       setLoadingRepliesId(null);
     }
@@ -285,7 +280,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
       addToast('Resposta enviada com sucesso.', 'success');
     } catch (error) {
       clientLog.warn('Error sending feedback reply:', error);
-      addToast('Nao foi possivel enviar a resposta.', 'error');
+      addToast('Não foi possível enviar a resposta.', 'error');
     } finally {
       setSendingReplyId(null);
     }
@@ -294,6 +289,20 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   const applyReplyTemplate = useCallback((threadId: number, message: string) => {
     setReplyDrafts((current) => ({ ...current, [threadId]: message }));
   }, []);
+
+  const updateHomePublication = useCallback(async (id: number, published: boolean) => {
+    setPublishingHomeId(id);
+    try {
+      await adminService.updateFeedbackHomePublication(id, published);
+      await fetchFeedback();
+      addToast(published ? 'Avaliação aprovada para exibição na home.' : 'Avaliação removida da home.', 'success');
+    } catch (error) {
+      clientLog.warn('Error updating testimonial publication:', error);
+      addToast(published ? 'Não foi possível aprovar a avaliação na home.' : 'Não foi possível remover a avaliação da home.', 'error');
+    } finally {
+      setPublishingHomeId(null);
+    }
+  }, [addToast, fetchFeedback]);
 
   if (loading) {
     return (
@@ -312,8 +321,8 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
         </h3>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           {mode === 'threads'
-            ? 'Fila com conversas ja iniciadas para acompanhamento.'
-            : 'Central de mensagens, bugs, sugestoes e cancelamentos.'}
+            ? 'Fila com conversas já iniciadas para acompanhamento.'
+            : 'Central de avaliações da plataforma, bugs, sugestões e suporte.'}
         </p>
       </div>
 
@@ -350,12 +359,11 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
               className={`${ADMIN_FIELD_CLASS} min-w-[180px]`}
             >
               <option value="all">{mode === 'threads' ? 'Todos os contextos' : 'Todos os tipos'}</option>
-              <option value="platform-rating">Avaliacao</option>
+              <option value="platform-rating">Avaliação</option>
               <option value="bug">Bug</option>
-              <option value="suggestion">Sugestao</option>
+              <option value="suggestion">Sugestão</option>
               <option value="support">Suporte</option>
-              <option value="report">Denuncia</option>
-              <option value="cancellation">Cancelamento</option>
+              <option value="report">Denúncia</option>
               <option value="other">Outro</option>
             </select>
           </div>
@@ -411,6 +419,10 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                 const itemReplies = replies[item.id] || [];
                 const isSendingReply = sendingReplyId === item.id;
                 const isUpdatingStatus = updatingStatusId === item.id;
+                const isPublishingHome = publishingHomeId === item.id;
+                const isPlatformRating = isPlatformRatingFeedback(item);
+                const rating = Math.max(0, Math.min(5, Number(item.public_rating || 0)));
+                const isHomePublished = Boolean(item.home_published_at);
                 const draft = replyDrafts[item.id] || '';
 
                 return (
@@ -428,6 +440,20 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                           {compactText(cleanFeedbackDetails(item), 140)}
                         </p>
+                        {isPlatformRating ? (
+                          <div className="mt-2 flex items-center gap-1 text-amber-400">
+                            {Array.from({ length: 5 }).map((_, index) => (
+                              <Star
+                                key={`${item.id}-star-${index}`}
+                                size={13}
+                                className={index < rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-700'}
+                              />
+                            ))}
+                            <span className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                              {rating || '-'} / 5
+                            </span>
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-3 py-3">
                         <p className="font-semibold text-slate-900 dark:text-slate-100">{item.user_name || '-'}</p>
@@ -461,14 +487,27 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                         </span>
                       </td>
                       <td className="px-3 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => void toggleExpand(item.id)}
-                          className={ADMIN_SECONDARY_BUTTON_CLASS}
-                        >
-                          <MessageSquare size={14} />
-                          {isExpanded ? 'Fechar' : 'Ver conversa'}
-                        </button>
+                        <div className="flex flex-col items-end gap-2">
+                          {isPlatformRating ? (
+                            <button
+                              type="button"
+                              onClick={() => void updateHomePublication(item.id, !isHomePublished)}
+                              disabled={isPublishingHome}
+                              className={ADMIN_SECONDARY_BUTTON_CLASS}
+                            >
+                              {isPublishingHome ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                              {isHomePublished ? 'Remover da home' : 'Aprovar na home'}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => void toggleExpand(item.id)}
+                            className={ADMIN_SECONDARY_BUTTON_CLASS}
+                          >
+                            <MessageSquare size={14} />
+                            {isExpanded ? 'Fechar' : 'Ver conversa'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
 

@@ -101,7 +101,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                     <button
                         onClick={() => {
                             onClose();
-                            // Se estiver logado vai para profile (onde tem change plan), se não, auth com register
+                            // Se estiver logado vai para o perfil; se não, abre o cadastro.
                             if (currentUser) {
                                 router.push(buildProfilePath('billing'));
                             } else {

@@ -1638,6 +1638,14 @@ export const adminService = {
     assertApiSuccess(response, 'Não foi possível atualizar o feedback.');
   },
 
+  async updateFeedbackHomePublication(id: number, published: boolean): Promise<void> {
+    const response = await requestApi<unknown>(apiClient.put<ApiResponse>(ENDPOINTS.admin.feedback, {
+      id,
+      action: published ? 'publish_home' : 'unpublish_home',
+    }));
+    assertApiSuccess(response, published ? 'Não foi possível aprovar a avaliação na home.' : 'Não foi possível remover a avaliação da home.');
+  },
+
   /**
    * Carrega as respostas de uma thread de feedback para o painel de suporte.
    * @since v1.0.0

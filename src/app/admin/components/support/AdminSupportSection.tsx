@@ -430,6 +430,28 @@ const AdminSupportSection = ({
                   <p className="mt-3 text-sm font-medium leading-6 text-slate-600 dark:text-slate-400">{moderatingReport.details || 'Sem detalhes adicionais.'}</p>
                 </div>
 
+                <div className={`${ADMIN_MUTED_SURFACE_CLASS} bg-white p-4 dark:bg-slate-950`}>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    Conteúdo denunciado
+                  </p>
+                  <p className="mt-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                    {moderatingReport.targetLabel || getReportTargetLabel(moderatingReport.targetType)}
+                    {moderatingReport.targetContext ? ` · ${moderatingReport.targetContext}` : ''}
+                  </p>
+                  <div className="mt-3 max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium leading-6 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                    {moderatingReport.targetContent || 'Não foi possível carregar o conteúdo original deste alvo. Ele pode ter sido removido.'}
+                  </div>
+                  {moderatingReport.targetUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push(moderatingReport.targetUrl || '')}
+                      className="mt-3 text-[10px] font-black uppercase tracking-[0.16em] text-sky-600 hover:text-sky-700 dark:text-sky-300 dark:hover:text-sky-200"
+                    >
+                      Abrir conteúdo relacionado
+                    </button>
+                  ) : null}
+                </div>
+
                 <div className={`${ADMIN_MUTED_SURFACE_CLASS} bg-white p-4 text-xs font-medium text-slate-500 dark:bg-slate-950 dark:text-slate-400`}>
                   <p><strong className="text-slate-800 dark:text-slate-200">Alvo:</strong> {getReportTargetLabel(moderatingReport.targetType)}</p>
                   <p className="mt-2"><strong className="text-slate-800 dark:text-slate-200">Usuario:</strong> {moderatingReport.userName || 'Nao informado'}</p>

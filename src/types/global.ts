@@ -134,6 +134,10 @@ export interface ErrorReport {
   status: 'pending' | 'resolved' | 'ignored';
   timestamp: number;
   evidenceUrl?: string; // Evidência enviada pelo usuário na denúncia
+  targetContent?: string;
+  targetLabel?: string;
+  targetContext?: string;
+  targetUrl?: string;
   resolution?: string;
   resolvedAt?: number;
 }

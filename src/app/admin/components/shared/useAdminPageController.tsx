@@ -38,6 +38,7 @@ import {
   isSettingsSection,
   isSupportSection,
   filterAdminTabsForRole,
+  filterAdminSectionsForRole,
   normalizeAdminUserRole,
   resolveSupportLandingSection,
   TAB_DESCRIPTIONS,
@@ -324,7 +325,7 @@ export const useAdminPageController = () => {
   ], adminUserRole), [adminUserRole, panelAlertsCount, supportInboxCount]);
 
   const activeTabLabel = adminTabs.find((tab) => tab.key === activeTab)?.label || 'Painel';
-  const activeSections = ADMIN_SECTION_CONFIG[activeTab];
+  const activeSections = filterAdminSectionsForRole(activeTab, ADMIN_SECTION_CONFIG[activeTab], adminUserRole);
   const searchTargets = useMemo(() => {
     const tabTargets = adminTabs.map((tab) => ({
       label: tab.label,
@@ -337,7 +338,7 @@ export const useAdminPageController = () => {
     const sectionTargets = (Object.entries(ADMIN_SECTION_CONFIG) as [AdminPageTab, { key: string; label: string }[]][])
       .filter(([tabKey]) => allowedTabKeys.has(tabKey))
       .flatMap(([tabKey, sections]) => (
-        sections.map((section) => ({
+        filterAdminSectionsForRole(tabKey, sections, adminUserRole).map((section) => ({
           label: section.label,
           description: `${adminTabs.find((tab) => tab.key === tabKey)?.label || tabKey} - ${TAB_DESCRIPTIONS[tabKey]}`,
           path: buildAdminPath(tabKey, section.key),
@@ -346,7 +347,7 @@ export const useAdminPageController = () => {
       ));
 
     return [...tabTargets, ...sectionTargets];
-  }, [adminTabs]);
+  }, [adminTabs, adminUserRole]);
   const legacySearchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const activeSectionLabel = useMemo(() => {
     const currentKey = activeTab === 'panel'

@@ -42,7 +42,12 @@ export type AdminNavigationSection = {
 
 export type SupportPendingCounts = Partial<Record<'feedback' | 'reports' | 'comments' | 'refunds', number>>;
 
-export const STAFF_ADMIN_ALLOWED_TABS: AdminPageTab[] = ['panel', 'operation', 'support'];
+export const STAFF_ADMIN_ALLOWED_TABS: AdminPageTab[] = ['operation', 'support'];
+
+const STAFF_ADMIN_ALLOWED_SECTIONS: Partial<Record<AdminPageTab, string[]>> = {
+  operation: ['questions', 'question-groups', 'exams', 'import', 'gran-crawler', 'filters', 'lei-comentada'],
+  support: ['feedback', 'threads', 'reports', 'rankings', 'comments'],
+};
 
 export const normalizeAdminUserRole = (role?: string | null) =>
   String(role || '').trim().toLowerCase();
@@ -59,6 +64,59 @@ export const canAccessAdminTabForRole = (tab: AdminPageTab, role?: string | null
   }
 
   return false;
+};
+
+export const canAccessAdminSectionForRole = (
+  tab: AdminPageTab,
+  section?: string | null,
+  role?: string | null,
+) => {
+  const normalizedRole = normalizeAdminUserRole(role);
+
+  if (!canAccessAdminTabForRole(tab, normalizedRole)) {
+    return false;
+  }
+
+  if (normalizedRole !== 'staff') {
+    return true;
+  }
+
+  const allowedSections = STAFF_ADMIN_ALLOWED_SECTIONS[tab];
+  if (!allowedSections?.length) {
+    return true;
+  }
+
+  return allowedSections.includes(normalizeAdminRouteSegment(section));
+};
+
+export const getDefaultAdminSectionForRole = (
+  tab: AdminPageTab,
+  role?: string | null,
+) => {
+  const normalizedRole = normalizeAdminUserRole(role);
+
+  if (normalizedRole === 'staff') {
+    const firstAllowedSection = STAFF_ADMIN_ALLOWED_SECTIONS[tab]?.[0];
+    if (firstAllowedSection) {
+      return firstAllowedSection;
+    }
+  }
+
+  return DEFAULT_SECTION_BY_TAB[tab];
+};
+
+export const filterAdminSectionsForRole = <T extends { key: string }>(
+  tab: AdminPageTab,
+  sections: T[],
+  role?: string | null,
+) => {
+  const normalizedRole = normalizeAdminUserRole(role);
+
+  if (!normalizedRole || normalizedRole === 'admin') {
+    return sections;
+  }
+
+  return sections.filter((section) => canAccessAdminSectionForRole(tab, section.key, normalizedRole));
 };
 
 export const filterAdminTabsForRole = <T extends { key: AdminPageTab }>(
@@ -84,13 +142,13 @@ export const resolveSupportLandingSection = (counts: SupportPendingCounts = {}):
 };
 
 export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
-  panel: 'Visao executiva, alertas operacionais e saude do billing.',
-  operation: 'Questoes, provas, importacao, taxonomias, lei comentada e usuarios.',
-  marketplace: 'Vendedores, catalogo publicado e revisoes bloqueadas do marketplace.',
-  finance: 'Transacoes, planos, cupons, analytics e automacao financeira.',
+  panel: 'Visão executiva, alertas operacionais e saúde do billing.',
+  operation: 'Questões, provas, importação, taxonomias e Lei Comentada.',
+  marketplace: 'Vendedores, catálogo publicado e revisões bloqueadas do marketplace.',
+  finance: 'Transações, planos, cupons, analytics e automação financeira.',
   marketing: 'Landing pages, campanhas, temas visuais e redes sociais da homepage.',
-  support: 'Feedbacks, denuncias, comentarios moderados, rankings e reembolsos operacionais.',
-  settings: 'Controles globais, integracoes, email, ads, SEO e logs.',
+  support: 'Feedbacks, denúncias, comentários moderados e rankings.',
+  settings: 'Controles globais, integrações, e-mail, ads, SEO e logs.',
 };
 
 export const PANEL_SECTION_KEYS = ['dashboard', 'alerts', 'billing-health'] as const;
@@ -243,29 +301,29 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
   panel: [
     { key: 'dashboard', label: 'Dashboard' },
     { key: 'alerts', label: 'Alertas' },
-    { key: 'billing-health', label: 'Saude do billing' },
+    { key: 'billing-health', label: 'Saúde do billing' },
   ],
   operation: [
-    { key: 'questions', label: 'Questoes' },
-    { key: 'question-groups', label: 'Contexto de questoes' },
+    { key: 'questions', label: 'Questões' },
+    { key: 'question-groups', label: 'Contextos de questões' },
     { key: 'exams', label: 'Banco de provas' },
     { key: 'import', label: 'Importador' },
     { key: 'gran-crawler', label: 'Crawler Gran' },
     { key: 'filters', label: 'Filtros' },
     { key: 'lei-comentada', label: 'Lei Comentada' },
-    { key: 'users', label: 'Usuarios' },
+    { key: 'users', label: 'Usuários' },
   ],
   marketplace: [
     { key: 'vendors', label: 'Vendedores' },
     { key: 'materials', label: 'Materiais' },
-    { key: 'blocked', label: 'Revisao bloqueada' },
+    { key: 'blocked', label: 'Revisão bloqueada' },
   ],
   finance: [
-    { key: 'transactions', label: 'Transacoes' },
+    { key: 'transactions', label: 'Transações' },
     { key: 'plans', label: 'Planos' },
     { key: 'coupons', label: 'Cupons' },
     { key: 'analytics', label: 'Analytics' },
-    { key: 'automation', label: 'Automacao' },
+    { key: 'automation', label: 'Automação' },
   ],
   marketing: [
     { key: 'landing-pages', label: 'Landing Pages' },
@@ -275,21 +333,21 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
   ],
   support: [
     { key: 'feedback', label: 'Feedback' },
-    { key: 'comments', label: 'Comentarios' },
-    { key: 'reports', label: 'Denuncias' },
+    { key: 'comments', label: 'Comentários' },
+    { key: 'reports', label: 'Denúncias' },
     { key: 'threads', label: 'Threads' },
     { key: 'rankings', label: 'Rankings' },
     { key: 'refunds', label: 'Reembolsos' },
   ],
   settings: [
     { key: 'general', label: 'Geral' },
-    { key: 'modules', label: 'Modulos' },
-    { key: 'gamification', label: 'Gamificacao' },
-    { key: 'notifications', label: 'Notificacoes' },
-    { key: 'security', label: 'Seguranca' },
-    { key: 'integrations', label: 'Integracoes' },
-    { key: 'email', label: 'Email' },
-    { key: 'email-templates', label: 'Modelos de Email' },
+    { key: 'modules', label: 'Módulos' },
+    { key: 'gamification', label: 'Gamificação' },
+    { key: 'notifications', label: 'Notificações' },
+    { key: 'security', label: 'Segurança' },
+    { key: 'integrations', label: 'Integrações' },
+    { key: 'email', label: 'E-mail' },
+    { key: 'email-templates', label: 'Modelos de E-mail' },
     { key: 'ads', label: 'Ads' },
     { key: 'seo', label: 'SEO' },
     { key: 'performance', label: 'Performance' },
@@ -448,14 +506,31 @@ export const resolveAdminRouteForRole = (
   role?: string | null,
 ) => {
   const resolved = resolveAdminRoute(rawTab, rawSection);
+  const normalizedRole = normalizeAdminUserRole(role);
 
-  if (canAccessAdminTabForRole(resolved.tab, role) || !normalizeAdminUserRole(role)) {
+  if (!normalizedRole) {
     return resolved;
   }
 
+  if (canAccessAdminSectionForRole(resolved.tab, resolved.section, normalizedRole)) {
+    return resolved;
+  }
+
+  if (canAccessAdminTabForRole(resolved.tab, normalizedRole)) {
+    return {
+      tab: resolved.tab,
+      section: getDefaultAdminSectionForRole(resolved.tab, normalizedRole),
+    };
+  }
+
+  const fallbackTab = filterAdminTabsForRole(
+    (['panel', 'operation', 'marketplace', 'finance', 'marketing', 'support', 'settings'] as AdminPageTab[]).map((key) => ({ key })),
+    normalizedRole,
+  )[0]?.key || 'operation';
+
   return {
-    tab: 'panel' as const,
-    section: DEFAULT_SECTION_BY_TAB.panel as AdminPanelSection,
+    tab: fallbackTab,
+    section: getDefaultAdminSectionForRole(fallbackTab, normalizedRole),
   };
 };
 

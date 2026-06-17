@@ -25,11 +25,13 @@ import AdBanner from '../../components/shared/feedback/AdBanner';
 import {
   getAccessPlanName,
   getBenefitPlanLabel,
+  getBenefitRequiredPlan,
   getEffectivePlanName,
   getNextPlanForHigherUsageLimit,
   getPlanUsageLimitForPlanName,
   hasPlanBenefit,
   isPlanUsageUnlimitedForPlanName,
+  type CanonicalPlanName,
 } from '@services/plans/planAccess';
 import { incrementDailyUsageCount, readDailyUsageCount } from '@services/plans/clientUsageQuota';
 import { questionService } from '@services/questions';
@@ -54,6 +56,7 @@ import { useQuestionBankStore } from '@/state/question-bank/questionBankStore';
 import { useUserProgressActions } from '@/state/user-progress/useUserProgressActions';
 import { useUserProgressStore } from '@/state/user-progress/userProgressStore';
 import { useAdminDataStore } from '@/state/admin-data/adminDataStore';
+import UpgradeModal from '@/components/shared/overlays/UpgradeModal';
 
 const PAGE_SIZE = 10;
 const PRACTICE_PROGRESS_BOOTSTRAP_DELAY_MS = 3200;
@@ -162,6 +165,26 @@ const PRACTICE_FILTER_BENEFITS: Partial<Record<PracticeFilterKey, PlanBenefitKey
   excludeWrong: 'practice.filter_answered_wrong',
   onlyCorrect: 'practice.filter_answered_correct',
   onlyWrong: 'practice.filter_answered_wrong',
+};
+
+const PRACTICE_FILTER_FEATURE_LABELS: Partial<Record<PracticeFilterKey, string>> = {
+  keyword: 'pesquisa por palavra-chave',
+  subject: 'filtro por matéria',
+  difficulty: 'filtro por dificuldade',
+  agency: 'filtro por banca',
+  organization: 'filtro por órgão',
+  year: 'filtro por ano',
+  level: 'filtro por nível',
+  topic: 'filtro por assunto',
+  role: 'filtro por cargo',
+  modality: 'filtro por modalidade',
+  onlySaved: 'questões salvas',
+  hasTeacherComment: 'filtro com comentário do professor',
+  hasDetailedComment: 'filtro com análise detalhada',
+  excludeCorrect: 'filtro para ocultar questões que acertei',
+  excludeWrong: 'filtro para ocultar questões que errei',
+  onlyCorrect: 'filtro de questões que acertei',
+  onlyWrong: 'filtro de questões que errei',
 };
 
 const isMultiFilterKey = (key: string): key is typeof MULTI_FILTER_KEYS[number] => (
@@ -353,6 +376,7 @@ const SearchableFilterSelect = ({
   searchPlaceholder = 'Busca rapida',
   helperText,
   disabledText,
+  onDisabledClick,
   multiple = true,
 }: {
   label: string;
@@ -364,6 +388,7 @@ const SearchableFilterSelect = ({
   searchPlaceholder?: string;
   helperText?: string;
   disabledText?: string;
+  onDisabledClick?: () => void;
   multiple?: boolean;
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -471,8 +496,14 @@ const SearchableFilterSelect = ({
       <label className="ml-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{label}</label>
       <button
         type="button"
-        disabled={disabled}
-        onClick={() => setIsOpen((current) => !current)}
+        aria-disabled={disabled}
+        onClick={() => {
+          if (disabled) {
+            onDisabledClick?.();
+            return;
+          }
+          setIsOpen((current) => !current);
+        }}
         className={`flex h-11 w-full items-center justify-between gap-2 rounded-xl border px-3 text-left text-sm font-medium outline-none transition-all ${disabled ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 opacity-70 dark:border-slate-800 dark:bg-slate-800/70 dark:text-slate-500' : 'cursor-pointer border-slate-200 bg-white text-slate-700 hover:border-indigo-200 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-800'}`}
       >
         <span className="truncate">{disabled ? (disabledText || selectedLabel) : selectedLabel}</span>
@@ -569,9 +600,10 @@ type FilterSelectProps = {
   options: unknown[];
   disabled?: boolean;
   helperText?: string;
+  onDisabledClick?: () => void;
 };
 
-const FilterSelect = ({ label, value, onChange, options, disabled = false, helperText }: FilterSelectProps) => (
+const FilterSelect = ({ label, value, onChange, options, disabled = false, helperText, onDisabledClick }: FilterSelectProps) => (
   <SearchableFilterSelect
     label={label}
     value={value}
@@ -579,6 +611,7 @@ const FilterSelect = ({ label, value, onChange, options, disabled = false, helpe
     groups={buildSearchableOptionGroup(String(label), (options || []).map(String))}
     disabled={disabled}
     helperText={helperText}
+    onDisabledClick={onDisabledClick}
   />
 );
 
@@ -624,6 +657,7 @@ type CheckboxFilterProps = {
   colorClass?: CheckboxFilterTone;
   disabled?: boolean;
   disabledTitle?: string;
+  onDisabledClick?: () => void;
 };
 
 const CheckboxFilter = ({
@@ -634,12 +668,18 @@ const CheckboxFilter = ({
   colorClass = 'indigo',
   disabled = false,
   disabledTitle,
+  onDisabledClick,
 }: CheckboxFilterProps) => {
   const tone = CHECKBOX_FILTER_TONE_CLASSES[colorClass] || CHECKBOX_FILTER_TONE_CLASSES.indigo;
 
   return (
     <label
       title={disabled ? disabledTitle : undefined}
+      onClick={(event) => {
+        if (!disabled) return;
+        event.preventDefault();
+        onDisabledClick?.();
+      }}
       className={`flex items-center gap-2 rounded-xl border px-4 py-2 transition-all select-none ${disabled ? 'cursor-not-allowed opacity-55' : 'cursor-pointer'} ${checked ? tone.checked : tone.unchecked}`}
     >
       <div className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${checked ? tone.boxChecked : tone.boxUnchecked}`}>
@@ -692,7 +732,7 @@ const Practice: React.FC = () => {
       return fallback;
     }
 
-    return `Disponivel no ${getBenefitPlanLabel(benefitKey, systemSettings.planEntitlements)}.`;
+    return `Disponível no ${getBenefitPlanLabel(benefitKey, systemSettings.planEntitlements)}.`;
   }, [isPracticeFilterLocked, systemSettings.planEntitlements]);
   const sanitizeFiltersForCurrentPlan = useCallback(
     (nextFilters: PracticeFilters) => sanitizePracticeFiltersForPlan(nextFilters, canUsePracticeBenefit),
@@ -831,8 +871,8 @@ const Practice: React.FC = () => {
 
       void notificationService.sendNotification(
         'admin',
-        'Nova Denuncia',
-        `O usuario ${report.userName} reportou um problema.`,
+        'Nova denúncia',
+        `O usuário ${report.userName} reportou um problema.`,
         'warning',
         'moderation',
         undefined,
@@ -842,8 +882,8 @@ const Practice: React.FC = () => {
 
       addToast(
         result.xpGain
-          ? `${result.message || 'Denuncia enviada com sucesso!'} +${result.xpGain} XP.`
-          : result.message || 'Denuncia enviada com sucesso!',
+          ? `${result.message || 'Denúncia enviada com sucesso!'} +${result.xpGain} XP.`
+          : result.message || 'Denúncia enviada com sucesso!',
         'success',
       );
     }).catch((error) => {
@@ -1010,6 +1050,10 @@ const Practice: React.FC = () => {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalConfig, setAuthModalConfig] = useState({ title: '', description: '' });
+  const [lockedFilterModal, setLockedFilterModal] = useState<{
+    featureName: string;
+    requiredPlan: CanonicalPlanName;
+  } | null>(null);
   const [lastFetchedPage, setLastFetchedPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const hasBootstrappedQuestionsRef = useRef('');
@@ -1428,6 +1472,18 @@ const Practice: React.FC = () => {
     });
   }, [isPracticeFilterLocked, sanitizeFiltersForFocus]);
 
+  const openLockedFilterUpgrade = useCallback((key: PracticeFilterKey) => {
+    const benefitKey = PRACTICE_FILTER_BENEFITS[key];
+    if (!benefitKey || !isPracticeFilterLocked(key)) {
+      return;
+    }
+
+    setLockedFilterModal({
+      featureName: PRACTICE_FILTER_FEATURE_LABELS[key] || 'este filtro',
+      requiredPlan: getBenefitRequiredPlan(benefitKey, systemSettings.planEntitlements) as CanonicalPlanName,
+    });
+  }, [isPracticeFilterLocked, systemSettings.planEntitlements]);
+
   const applyFilters = useCallback(() => {
     setIsFiltering(true);
     setTimeout(() => {
@@ -1827,6 +1883,14 @@ const Practice: React.FC = () => {
                 title={getLockedFilterHelperText('keyword')}
                 className="w-full h-12 pl-12 pr-4 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 font-medium text-sm text-slate-900 dark:text-slate-100 transition-all disabled:cursor-not-allowed disabled:opacity-60"
               />
+              {isPracticeFilterLocked('keyword') ? (
+                <button
+                  type="button"
+                  aria-label="Desbloquear pesquisa por palavra-chave"
+                  onClick={() => openLockedFilterUpgrade('keyword')}
+                  className="absolute inset-0 rounded-2xl"
+                />
+              ) : null}
             </div>
 
             <div className="flex items-center justify-end gap-2">
@@ -1866,9 +1930,10 @@ const Practice: React.FC = () => {
               onChange={(v) => handleFilterChange('subject', v)}
               groups={subjectOptionGroups}
               disabled={isPracticeFilterLocked('subject')}
-              helperText={getLockedFilterHelperText('subject', isEnemPendingFocus ? 'No foco ENEM, a materia usa as areas oficiais de conhecimento.' : undefined)}
+              helperText={getLockedFilterHelperText('subject', isEnemPendingFocus ? 'No foco ENEM, a matéria usa as áreas oficiais de conhecimento.' : undefined)}
+              onDisabledClick={() => openLockedFilterUpgrade('subject')}
             />
-            <FilterSelect label="Dificuldade" value={pendingFilters.difficulty} onChange={(v) => handleFilterChange('difficulty', v)} options={Object.values(Difficulty)} disabled={isPracticeFilterLocked('difficulty')} helperText={getLockedFilterHelperText('difficulty')} />
+            <FilterSelect label="Dificuldade" value={pendingFilters.difficulty} onChange={(v) => handleFilterChange('difficulty', v)} options={Object.values(Difficulty)} disabled={isPracticeFilterLocked('difficulty')} helperText={getLockedFilterHelperText('difficulty')} onDisabledClick={() => openLockedFilterUpgrade('difficulty')} />
             <SearchableFilterSelect
               label="Banca"
               value={pendingFilters.agency}
@@ -1876,8 +1941,9 @@ const Practice: React.FC = () => {
               groups={agencyOptionGroups}
               disabled={isEnemPendingFocus || isPracticeFilterLocked('agency')}
               helperText={getLockedFilterHelperText('agency', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)}
+              onDisabledClick={() => openLockedFilterUpgrade('agency')}
             />
-            <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus || isPracticeFilterLocked('organization')} helperText={getLockedFilterHelperText('organization', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} />
+            <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus || isPracticeFilterLocked('organization')} helperText={getLockedFilterHelperText('organization', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('organization')} />
             <SearchableFilterSelect
               label="Ano"
               value={pendingFilters.year}
@@ -1885,8 +1951,9 @@ const Practice: React.FC = () => {
               groups={yearOptionGroups}
               disabled={isPracticeFilterLocked('year')}
               helperText={getLockedFilterHelperText('year')}
+              onDisabledClick={() => openLockedFilterUpgrade('year')}
             />
-            <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus || isPracticeFilterLocked('level')} helperText={getLockedFilterHelperText('level', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} />
+            <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus || isPracticeFilterLocked('level')} helperText={getLockedFilterHelperText('level', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('level')} />
             <SearchableFilterSelect
               label="Assunto"
               value={pendingFilters.topic}
@@ -1894,6 +1961,7 @@ const Practice: React.FC = () => {
               groups={topicOptionGroups}
               disabled={!hasAnyFilterValue(pendingFilters.subject) || isPracticeFilterLocked('topic')}
               helperText={getLockedFilterHelperText('topic')}
+              onDisabledClick={() => openLockedFilterUpgrade('topic')}
             />
             <SearchableFilterSelect
               label="Cargo"
@@ -1902,8 +1970,9 @@ const Practice: React.FC = () => {
               groups={roleOptionGroups}
               disabled={isEnemPendingFocus || isPracticeFilterLocked('role')}
               helperText={getLockedFilterHelperText('role', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)}
+              onDisabledClick={() => openLockedFilterUpgrade('role')}
             />
-            <FilterSelect label="Modalidade" value={pendingFilters.modality} onChange={(v) => handleFilterChange('modality', v)} options={uniqueModalities} disabled={isEnemPendingFocus || isPracticeFilterLocked('modality')} helperText={getLockedFilterHelperText('modality', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} />
+            <FilterSelect label="Modalidade" value={pendingFilters.modality} onChange={(v) => handleFilterChange('modality', v)} options={uniqueModalities} disabled={isEnemPendingFocus || isPracticeFilterLocked('modality')} helperText={getLockedFilterHelperText('modality', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('modality')} />
           </div>
 
           {isEnemPendingFocus ? (
@@ -1957,6 +2026,7 @@ const Practice: React.FC = () => {
                   colorClass="emerald"
                   disabled={isPracticeFilterLocked('excludeCorrect')}
                   disabledTitle={getLockedFilterHelperText('excludeCorrect')}
+                  onDisabledClick={() => openLockedFilterUpgrade('excludeCorrect')}
                 />
                 <CheckboxFilter
                   label="Errei"
@@ -1966,6 +2036,7 @@ const Practice: React.FC = () => {
                   colorClass="red"
                   disabled={isPracticeFilterLocked('excludeWrong')}
                   disabledTitle={getLockedFilterHelperText('excludeWrong')}
+                  onDisabledClick={() => openLockedFilterUpgrade('excludeWrong')}
                 />
               </div>
             </div>
@@ -1982,6 +2053,7 @@ const Practice: React.FC = () => {
                   colorClass="emerald"
                   disabled={isPracticeFilterLocked('onlySaved')}
                   disabledTitle={getLockedFilterHelperText('onlySaved')}
+                  onDisabledClick={() => openLockedFilterUpgrade('onlySaved')}
                 />
                 <CheckboxFilter
                   label="Acertei"
@@ -1991,6 +2063,7 @@ const Practice: React.FC = () => {
                   colorClass="emerald"
                   disabled={isPracticeFilterLocked('onlyCorrect')}
                   disabledTitle={getLockedFilterHelperText('onlyCorrect')}
+                  onDisabledClick={() => openLockedFilterUpgrade('onlyCorrect')}
                 />
                 <CheckboxFilter
                   label="Errei"
@@ -2000,6 +2073,7 @@ const Practice: React.FC = () => {
                   colorClass="red"
                   disabled={isPracticeFilterLocked('onlyWrong')}
                   disabledTitle={getLockedFilterHelperText('onlyWrong')}
+                  onDisabledClick={() => openLockedFilterUpgrade('onlyWrong')}
                 />
                 <CheckboxFilter
                   label="Comentário do Professor"
@@ -2009,6 +2083,7 @@ const Practice: React.FC = () => {
                   colorClass="amber"
                   disabled={isPracticeFilterLocked('hasTeacherComment')}
                   disabledTitle={getLockedFilterHelperText('hasTeacherComment')}
+                  onDisabledClick={() => openLockedFilterUpgrade('hasTeacherComment')}
                 />
                 <CheckboxFilter
                     label="Análise detalhada"
@@ -2018,6 +2093,7 @@ const Practice: React.FC = () => {
                   colorClass="indigo"
                   disabled={isPracticeFilterLocked('hasDetailedComment')}
                   disabledTitle={getLockedFilterHelperText('hasDetailedComment')}
+                  onDisabledClick={() => openLockedFilterUpgrade('hasDetailedComment')}
                 />
               </div>
             </div>
@@ -2276,6 +2352,15 @@ const Practice: React.FC = () => {
         title={authModalConfig.title}
         description={authModalConfig.description}
       />
+
+      {lockedFilterModal ? (
+        <UpgradeModal
+          isOpen
+          onClose={() => setLockedFilterModal(null)}
+          requiredPlan={lockedFilterModal.requiredPlan}
+          featureName={lockedFilterModal.featureName}
+        />
+      ) : null}
 
       <button
         type="button"
