@@ -779,6 +779,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   // Gabarito Comentado: Pro ou Elite
   const canSeeTeacher = hasPlanBenefit(currentUser, 'question.basic_explanation', systemSettings.planEntitlements)
     || hasPlanBenefit(currentUser, 'teacher_comments', systemSettings.planEntitlements);
+  const canOpenTeacherComment = canSeeTeacher && hasTeacherCommentContent;
+  const hasTeacherCommentSignal = Boolean(question.hasTeacherComment || hasTeacherCommentContent);
   // Análise Detalhada: apenas Elite
   const [showStats, setShowStats] = useState(false);
   const [localStats, setLocalStats] = useState<QuestionStats | null>(question.stats || null);
@@ -1506,10 +1508,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="px-6 py-4 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 items-center justify-between transition-colors duration-300">
           <div className="flex gap-2 items-center flex-wrap">
             {/* Gabarito Comentado - sempre visível, bloqueado por plano */}
-            {(question.hasTeacherComment || hasTeacherCommentContent) && (
+            {hasTeacherCommentSignal && (
               <button
                 onClick={() => {
                   if (!canSeeTeacher) {
+                    setPlanUpgradeModal({ featureName: 'Gabarito Comentado', requiredPlan: teacherRequiredPlan, planLabel: teacherPlanLabel });
+                    return;
+                  }
+                  if (!hasTeacherCommentContent) {
                     setPlanUpgradeModal({ featureName: 'Gabarito Comentado', requiredPlan: teacherRequiredPlan, planLabel: teacherPlanLabel });
                     return;
                   }
@@ -1517,9 +1523,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   setShowDetailedComment(false);
                   setShowAnnotatedLaws(false);
                 }}
-                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showTeacherComment ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : canSeeTeacher ? 'text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-700 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
+                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showTeacherComment && canOpenTeacherComment ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : canOpenTeacherComment ? 'text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-700 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
               >
-                {canSeeTeacher ? <GraduationCap size={14} /> : <Lock size={12} />}
+                {canOpenTeacherComment ? <GraduationCap size={14} /> : <Lock size={12} />}
                 Gabarito Comentado
               </button>
             )}
@@ -1567,7 +1573,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
             )}
 
             <button onClick={() => { handleToggleStats(); setShowMaterials(false); setShowAnnotatedLaws(false); }} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all ${showStats ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : canSeeFullStats ? 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-300' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
-              <BarChart3 size={14} /> Estatísticas
+              {canSeeFullStats ? <BarChart3 size={14} /> : <Lock size={12} />} Estatísticas
             </button>
 
             {canShowStudyMaterialsButton && (
@@ -1582,7 +1588,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                     disabled={isPreparingNoteModal}
                     className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-bold text-[9px] uppercase border transition-all disabled:opacity-70 disabled:cursor-not-allowed ${!canUseQuestionNotes ? 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700' : noteText ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 border-yellow-200 dark:border-yellow-900/50' : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/10'}`}
                   >
-                    {isPreparingNoteModal ? <Loader2 size={14} className="animate-spin" /> : <StickyNote size={14} />} {noteText ? 'Anotação ✅' : 'Anotar'}
+                    {isPreparingNoteModal ? <Loader2 size={14} className="animate-spin" /> : canUseQuestionNotes ? <StickyNote size={14} /> : <Lock size={12} />} {noteText ? 'Anotação ✅' : 'Anotar'}
                   </button>
 
             {isSubmitted && (
