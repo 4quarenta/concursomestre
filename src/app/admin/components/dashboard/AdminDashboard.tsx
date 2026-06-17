@@ -188,7 +188,7 @@ const getThreadStatusMeta = (status: string) => {
   }
 
   if (normalized === 'read') {
-    return { label: 'Em analise', tone: 'amber' as const };
+    return { label: 'Em análise', tone: 'amber' as const };
   }
 
   return { label: 'Novo', tone: 'blue' as const };
@@ -436,7 +436,7 @@ const AdminDashboard = ({
       value: formatNumber(periodQuestionsCount),
       helper: isAllPeriod
         ? `${formatNumber(platformTotals.exams)} provas cadastradas`
-        : `${formatNumber(platformTotals.questions)} questoes no banco`,
+        : `${formatNumber(platformTotals.questions)} questões no banco`,
       icon: FileQuestion,
       iconClassName: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300',
     },
@@ -445,21 +445,21 @@ const AdminDashboard = ({
       value: formatNumber(periodUsersCount),
       helper: isAllPeriod
         ? `${formatNumber(stats.new_users || 0)} novos nos ultimos 30 dias`
-        : `${formatNumber(platformTotals.users)} usuarios no total`,
+        : `${formatNumber(platformTotals.users)} usuários no total`,
       icon: Users,
       iconClassName: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300',
     },
     {
       label: 'Comentarios pendentes',
       value: formatNumber(platformTotals.pendingComments),
-      helper: `${formatNumber(platformTotals.comments)} comentarios no total`,
+      helper: `${formatNumber(platformTotals.comments)} comentários no total`,
       icon: MessageSquare,
       iconClassName: 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-300',
     },
     {
       label: 'Receita bruta',
       value: formatCurrency(periodGrossRevenue),
-      helper: `Disponivel ${formatCurrency(periodAvailableRevenue)}`,
+      helper: `Disponível ${formatCurrency(periodAvailableRevenue)}`,
       icon: DollarSign,
       iconClassName: 'bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-300',
     },
@@ -476,7 +476,7 @@ const AdminDashboard = ({
 
   const quickAlerts = useMemo(() => ([
     {
-      label: 'Denuncias aguardando moderacao',
+      label: 'Denúncias aguardando moderação',
       value: unresolvedReportsCount,
       description: 'Itens que ainda exigem decisao da equipe.',
       onClick: () => onNavigate?.('support', 'reports'),
@@ -488,9 +488,9 @@ const AdminDashboard = ({
       onClick: () => onNavigate?.('support', 'refunds'),
     },
     {
-      label: 'Materiais aguardando analise',
+      label: 'Materiais aguardando análise',
       value: pendingMaterialsCount,
-      description: 'Fila de marketplace em revisao administrativa.',
+      description: 'Fila de marketplace em revisão administrativa.',
       onClick: () => onNavigate?.('marketplace', 'materials'),
     },
     {
@@ -502,11 +502,11 @@ const AdminDashboard = ({
   ]), [dashboardAnalytics.counts, onNavigate, pendingMaterialsCount, refundRequestsCount, unresolvedReportsCount]);
 
   const quickLinks = useMemo(() => ([
-    { label: 'Gerenciar questoes', description: 'Banco principal e edicao manual.', onClick: () => onNavigate?.('operation', 'questions') },
+    { label: 'Gerenciar questões', description: 'Banco principal e edição manual.', onClick: () => onNavigate?.('operation', 'questions') },
     { label: 'Banco de provas', description: 'Cadastros e simulados.', onClick: () => onNavigate?.('operation', 'exams') },
-    { label: 'Lei comentada', description: 'Acervo legislativo e conteudo editorial.', onClick: () => onNavigate?.('operation', 'lei-comentada') },
-    { label: 'Moderar comentarios', description: 'Fila unificada de comentarios do ecossistema.', onClick: () => onNavigate?.('support', 'comments') },
-    { label: 'SEO e indexacao', description: 'Ajustes tecnicos e visibilidade.', onClick: () => onNavigate?.('settings', 'seo') },
+    { label: 'Lei comentada', description: 'Acervo legislativo e conteúdo editorial.', onClick: () => onNavigate?.('operation', 'lei-comentada') },
+    { label: 'Moderar comentários', description: 'Fila unificada de comentários do ecossistema.', onClick: () => onNavigate?.('support', 'comments') },
+    { label: 'SEO e indexação', description: 'Ajustes técnicos e visibilidade.', onClick: () => onNavigate?.('settings', 'seo') },
   ]), [onNavigate]);
 
   return (
@@ -643,10 +643,10 @@ const AdminDashboard = ({
                 Panorama do ecossistema
               </p>
               <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-                A plataforma hoje opera com {formatNumber(platformTotals.questions)} questoes, {formatNumber(platformTotals.laws)} leis comentadas, {formatNumber(platformTotals.exams)} provas cadastradas, {formatNumber(platformTotals.rankings)} rankings e {formatNumber(platformTotals.publishedMaterials)} materiais publicados no marketplace.
+                A plataforma hoje opera com {formatNumber(platformTotals.questions)} questões, {formatNumber(platformTotals.laws)} leis comentadas, {formatNumber(platformTotals.exams)} provas cadastradas, {formatNumber(platformTotals.rankings)} rankings e {formatNumber(platformTotals.publishedMaterials)} materiais publicados no marketplace.
               </p>
               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                No relacionamento, ha {formatNumber(platformTotals.comments)} comentarios registrados, sendo {formatNumber(platformTotals.pendingComments)} pendentes, {formatNumber(platformTotals.approvedComments)} aprovados e {formatNumber(platformTotals.spamComments)} marcados como spam.
+                No relacionamento, ha {formatNumber(platformTotals.comments)} comentários registrados, sendo {formatNumber(platformTotals.pendingComments)} pendentes, {formatNumber(platformTotals.approvedComments)} aprovados e {formatNumber(platformTotals.spamComments)} marcados como spam.
               </p>
             </div>
           </div>
@@ -823,10 +823,10 @@ const AdminDashboard = ({
         <section className={ADMIN_PAGE_PANEL_CLASS}>
           <div className="flex items-center gap-3">
             <AlertTriangle size={18} className="text-amber-500" />
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Moderacao</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Moderação</p>
           </div>
           <p className="mt-4 text-2xl font-black text-slate-900 dark:text-slate-100">{formatNumber(unresolvedReportsCount)}</p>
-          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Denuncias ainda abertas no painel.</p>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Denúncias ainda abertas no painel.</p>
         </section>
 
         <section className={ADMIN_PAGE_PANEL_CLASS}>

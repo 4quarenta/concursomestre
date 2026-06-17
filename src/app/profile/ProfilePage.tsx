@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 /*
 * ----------------------------------------------------
@@ -126,7 +126,7 @@ type ProfilePhotoCropDraft = {
 const loadImageForCrop = (src: string): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
     const image = new window.Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Nao foi possivel carregar a imagem selecionada.'));
+    image.onerror = () => reject(new Error('Não foi possível carregar a imagem selecionada.'));
     image.src = src;
 });
 
@@ -138,7 +138,7 @@ const buildCircularProfilePhotoFile = async (draft: ProfilePhotoCropDraft): Prom
 
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-        throw new Error('Nao foi possivel preparar o recorte da foto.');
+        throw new Error('Não foi possível preparar o recorte da foto.');
     }
 
     const center = PROFILE_PHOTO_CROP_SIZE / 2;
@@ -169,7 +169,7 @@ const buildCircularProfilePhotoFile = async (draft: ProfilePhotoCropDraft): Prom
                 return;
             }
 
-            reject(new Error('Nao foi possivel gerar a foto recortada.'));
+            reject(new Error('Não foi possível gerar a foto recortada.'));
         }, 'image/png', 0.94);
     });
 
@@ -903,7 +903,7 @@ const Profile: React.FC = () => {
             if (res.success) setUserCards(res.cards || []);
         } catch (err) {
             clientLog.warn('Failed to fetch cards', err);
-            setCardsLoadError('Nao foi possivel sincronizar seus cartoes salvos na Stripe agora.');
+            setCardsLoadError('Não foi possível sincronizar seus cartões salvos na Stripe agora.');
         } finally {
             setIsLoadingCards(false);
         }
@@ -1334,8 +1334,8 @@ const Profile: React.FC = () => {
                     res.message || (res.debt_settled
                         ? 'Saldo contratado quitado. A renovação foi desligada e seu acesso segue até o fim do termo.'
                         : (isRefundable
-                            ? 'Solicitacao de cancelamento com reembolso registrada.'
-                            : 'Renovacao automatica atualizada.')),
+                            ? 'Solicitação de cancelamento com reembolso registrada.'
+                            : 'Renovação automática atualizada.')),
                     'success'
                 );
                 setShowCancelModal(false);
@@ -1380,7 +1380,7 @@ const Profile: React.FC = () => {
 
             await updateUser({ preferences: nextPreferences });
         } catch (error: unknown) {
-            addToast(readApiErrorMessage(error, 'Nao foi possivel salvar suas preferencias.'), 'error');
+            addToast(readApiErrorMessage(error, 'Não foi possível salvar suas preferências.'), 'error');
         } finally {
             setIsSavingPrivacyPreferences(false);
         }
@@ -1402,7 +1402,7 @@ const Profile: React.FC = () => {
 
         const confirmed = await confirm({
             title: 'Excluir conta',
-            description: 'Sua conta sera marcada para exclusao e voce sera desconectado. Esta acao exige tratamento interno e nao deve ser usada para pausar assinatura.',
+            description: 'Sua conta será marcada para exclusão e você será desconectado. Esta ação exige tratamento interno e não deve ser usada para pausar assinatura.',
             confirmText: 'Solicitar exclusao',
             cancelText: 'Cancelar',
             type: 'danger',
@@ -1414,10 +1414,10 @@ const Profile: React.FC = () => {
         try {
             const captchaToken = await requestProfileRecaptchaToken('profile_delete_account');
             const result = await profileService.requestAccountDeletion(reason, captchaToken);
-            addToast(result.message || 'Solicitacao de exclusao registrada.', 'success');
+            addToast(result.message || 'Solicitação de exclusão registrada.', 'success');
             await logout();
         } catch (error: unknown) {
-            addToast(readApiErrorMessage(error, 'Nao foi possivel solicitar a exclusao da conta.'), 'error');
+            addToast(readApiErrorMessage(error, 'Não foi possível solicitar a exclusão da conta.'), 'error');
         } finally {
             setIsRequestingAccountDeletion(false);
         }
@@ -1464,7 +1464,7 @@ const Profile: React.FC = () => {
                 setOptimisticAutoRenew(null);
             }
         } catch (err: unknown) {
-            addToast(readApiErrorMessage(err, 'Erro ao processar solicitacao.'), 'error');
+            addToast(readApiErrorMessage(err, 'Erro ao processar solicitação.'), 'error');
             setOptimisticAutoRenew(null);
         } finally {
             renewalRequestInFlightRef.current = false;
@@ -1944,11 +1944,11 @@ const Profile: React.FC = () => {
 
         try {
             const res: ProfileServiceActionResponse = await planService.cancelRefundRequest();
-            addToast(res.message || 'Solicitacao cancelada com sucesso.', 'success');
+            addToast(res.message || 'Solicitação cancelada com sucesso.', 'success');
             await refreshUser();
             await fetchUserTransactions();
         } catch (err: unknown) {
-            addToast(readApiErrorMessage(err, 'Erro ao cancelar solicitacao.'), 'error');
+            addToast(readApiErrorMessage(err, 'Erro ao cancelar solicitação.'), 'error');
         }
     };
 
@@ -2060,7 +2060,7 @@ const Profile: React.FC = () => {
                             </p>
                             <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                 {hasPendingRefundRequest
-                                    ? 'Sua solicitacao esta em andamento e atualizaremos o histórico assim que houver retorno do gateway.'
+                                    ? 'Sua solicitação está em andamento e atualizaremos o histórico assim que houver retorno do gateway.'
                                     : hasBlockingPaymentIssue
                                         ? 'Regularize a forma de pagamento para desbloquear novamente os recursos premium.'
                                         : isNextRenewalOverdue
@@ -2136,8 +2136,8 @@ const Profile: React.FC = () => {
                         <div className={`${PLATFORM_SURFACE_CARD_CLASS} px-4 py-4 md:px-5 md:py-4`}>
                             <div className="flex items-start justify-between gap-4">
                                 <div className="space-y-2.5">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Renovacao</p>
-                                    <h3 className="text-base font-black leading-tight text-slate-900 dark:text-slate-100">Renovacao automatica</h3>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Renovação</p>
+                                    <h3 className="text-base font-black leading-tight text-slate-900 dark:text-slate-100">Renovação automatica</h3>
                                     <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                         {renewalCardDescription}
                                     </p>
@@ -2168,7 +2168,7 @@ const Profile: React.FC = () => {
                                         disabled={!hasActiveSubscription || isUpdatingRenewal}
                                         role="switch"
                                         aria-checked={resolvedAutoRenew}
-                                        aria-label={resolvedAutoRenew ? 'Desativar renovacao automatica' : 'Ativar renovacao automatica'}
+                                        aria-label={resolvedAutoRenew ? 'Desativar renovação automática' : 'Ativar renovação automática'}
                                         className={`relative inline-flex h-7 w-12 items-center rounded-full border transition-all ${resolvedAutoRenew ? 'border-emerald-500 bg-emerald-500/90' : 'border-slate-200 bg-slate-200 dark:border-slate-700 dark:bg-slate-800'} ${(!hasActiveSubscription || isUpdatingRenewal) ? 'cursor-not-allowed opacity-60' : 'hover:scale-[1.02] active:scale-[0.98]'}`}
                                     >
                                         <span className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white shadow transition-transform ${resolvedAutoRenew ? 'translate-x-6' : 'translate-x-1'}`}>
@@ -2196,7 +2196,7 @@ const Profile: React.FC = () => {
                                     </h3>
                                     <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                         {isWithinRefundWindow
-                                            ? 'Voce ainda esta dentro dos 7 dias da primeira assinatura para cancelar com reembolso.'
+                                            ? 'Você ainda está dentro dos 7 dias da primeira assinatura para cancelar com reembolso.'
                                             : cancellationImpactMessage}
                                     </p>
                                 </div>
@@ -2204,14 +2204,14 @@ const Profile: React.FC = () => {
                                 {hasPendingRefundRequest ? (
                                     <div className="flex flex-wrap items-center gap-3">
                                         <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                                            Reembolso em analise
+                                            Reembolso em análise
                                         </span>
                                         <button
                                             type="button"
                                             onClick={handleCancelRefundRequest}
                                             className="h-10 rounded-xl border border-slate-200 px-4 text-[9px] font-black uppercase tracking-[0.14em] text-slate-600 transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                                         >
-                                            Cancelar solicitacao
+                                            Cancelar solicitação
                                         </button>
                                     </div>
                                 ) : isCanceledButStillActive ? (
@@ -2268,7 +2268,7 @@ const Profile: React.FC = () => {
 
                     {cardsLoadError ? (
                         <div className="mt-4 rounded-[1.2rem] border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/20 dark:bg-amber-500/10">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Sincronizacao Stripe</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-700 dark:text-amber-300">Sincronização Stripe</p>
                             <p className="mt-1 text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
                                 {cardsLoadError}
                             </p>
@@ -2329,7 +2329,7 @@ const Profile: React.FC = () => {
                                         <ul className="mt-3 space-y-2">
                                             {[
                                                 { label: 'Acesso premium ativo', enabled: hasActiveSubscription },
-                                                { label: 'Renovacao configuravel', enabled: hasActiveSubscription },
+                                                { label: 'Renovação configuravel', enabled: hasActiveSubscription },
                                                 { label: 'Cartao salvo no cofre Stripe', enabled: userCards.length > 0 },
                                                 { label: 'Pacote completo Elite', enabled: isElitePlan },
                                             ].map((item) => (
@@ -2348,7 +2348,7 @@ const Profile: React.FC = () => {
                                         <ul className="mt-3 space-y-2">
                                             {[
                                                 'Acesso premium ativo',
-                                                'Renovacao configuravel',
+                                                'Renovação configuravel',
                                                 'Cartao salvo no cofre Stripe',
                                                 'Pacote completo Elite',
                                             ].map((label) => (
@@ -2888,10 +2888,10 @@ const Profile: React.FC = () => {
                                 </h3>
                                 <p className="mx-auto max-w-md text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
                                     {isWithinRefundWindow
-                                        ? 'Você ainda esta no período de garantia. Se cancelar agora, o reembolso pode ser solicitado e seu acesso sera encerrado com segurança.'
+                                        ? 'Você ainda está no período de garantia. Se cancelar agora, o reembolso pode ser solicitado e seu acesso será encerrado com segurança.'
                                         : (requiresOutstandingDebtConfirmation
                                             ? 'Este plano possui parcelas pre-aprovadas do termo contratado. Para cancelar agora, o saldo pendente precisa ser quitado e seu acesso seguirá até o fim do contrato.'
-                                            : 'Sua aprovação esta cada dia mais proxima. Cancelando agora, a renovação automática sera desligada e o acesso seguira somente ate o fim do ciclo vigente.')}
+                                            : 'Sua aprovação está cada dia mais próxima. Cancelando agora, a renovação automática será desligada e o acesso seguirá somente até o fim do ciclo vigente.')}
                                 </p>
                             </div>
 
@@ -2903,7 +2903,7 @@ const Profile: React.FC = () => {
                                     <div className="space-y-1">
                                         <h4 className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Garantia legal de 7 dias</h4>
                                         <p className="text-[10px] font-semibold leading-snug text-indigo-900/70 dark:text-indigo-300/70">
-                                            Sua satisfacao e prioridade. Cancelando dentro desse prazo, o sistema trata a solicitacao de reembolso com os dados da Stripe.
+                                            Sua satisfação é prioridade. Cancelando dentro desse prazo, o sistema trata a solicitação de reembolso com os dados da Stripe.
                                         </p>
                                     </div>
                                 </div>
@@ -2920,7 +2920,7 @@ const Profile: React.FC = () => {
                                                 Saldo do termo contratado
                                             </h4>
                                             <p className="text-[11px] font-semibold leading-5 text-amber-900/80 dark:text-amber-100/80">
-                                                Existem {pendingInstallmentsCount} parcela(s) pre-aprovada(s) pendente(s), totalizando {outstandingTermDebtLabel}. Ao confirmar, esse saldo será debitado agora, a cobrança recorrente será encerrada e o acesso continuará até {formatDateTimeBR(subscriptionEndDate)}.
+                                                Existem {pendingInstallmentsCount} parcela(s) pré-aprovada(s) pendente(s), totalizando {outstandingTermDebtLabel}. Ao confirmar, esse saldo será debitado agora, a cobrança recorrente será encerrada e o acesso continuará até {formatDateTimeBR(subscriptionEndDate)}.
                                             </p>
                                             <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-white/70 p-2.5 text-[10px] font-bold leading-5 text-amber-900 transition hover:border-amber-300 dark:border-amber-500/20 dark:bg-slate-900/40 dark:text-amber-100">
                                                 <input
@@ -2948,11 +2948,11 @@ const Profile: React.FC = () => {
                                         onChange={(e) => setCancelReason(e.target.value)}
                                         className="h-10 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition-all focus:ring-2 focus:ring-rose-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                                     >
-                                        <option value="">Selecione uma opcao...</option>
+                                        <option value="">Selecione uma opção...</option>
                                         <option value="price">Valor da assinatura</option>
                                         <option value="usage">Não estou usando o suficiente</option>
                                         <option value="technical">Problemas técnicos</option>
-                                        <option value="content">Falta de conteúdos especificos</option>
+                                        <option value="content">Falta de conteúdos específicos</option>
                                         <option value="other">Outros motivos</option>
                                     </select>
                                 </div>
@@ -2973,7 +2973,7 @@ const Profile: React.FC = () => {
                                 {recaptchaEnabled ? (
                                     <div className="space-y-2 rounded-2xl border border-slate-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-900">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                                            Confirmacao de segurança
+                                            Confirmação de segurança
                                         </p>
                                         <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-3 dark:bg-slate-950/60">
                                             <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
@@ -2996,7 +2996,7 @@ const Profile: React.FC = () => {
                                     </div>
                                 ) : (
                                     <p className="text-[11px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                                        A confirmacao por reCAPTCHA esta desativada nas configurações da plataforma.
+                                        A confirmação por reCAPTCHA está desativada nas configurações da plataforma.
                                     </p>
                                 )}
                             </div>
@@ -4476,7 +4476,7 @@ const Profile: React.FC = () => {
                                                             </p>
                                                             {Number(card.locked_by_recurring) === 1 && (
                                                                 <p className="mt-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
-                                                                    Este cartao esta vinculado a renovacao atual. Defina outro como padrao para liberar a remocao.
+                                                                    Este cartão está vinculado à renovação atual. Defina outro como padrão para liberar a remoção.
                                                                 </p>
                                                             )}
                                                         </div>
@@ -5305,7 +5305,7 @@ const Profile: React.FC = () => {
                       {/* Zona de Perigo */}
                       <div className="bg-rose-50/50 dark:bg-rose-950/10 p-8 rounded-2xl border border-rose-100 dark:border-rose-900/30 transition-colors">
                           <h3 className="text-sm font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest mb-2">Excluir Conta</h3>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-4">Esta acao registra uma solicitacao real de exclusao, marca sua conta para tratamento interno e desconecta a sessao.</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-4">Esta ação registra uma solicitação real de exclusão, marca sua conta para tratamento interno e desconecta a sessão.</p>
                           <div className="space-y-4">
                             <textarea
                               value={accountDeletionReason}
@@ -5406,4 +5406,3 @@ const Profile: React.FC = () => {
 };
 
 export default Profile;
-

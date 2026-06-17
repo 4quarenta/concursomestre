@@ -104,7 +104,7 @@ const AdminTopBar = ({
       const next = !current;
       if (next && unreadCount > 0 && markAllNotificationsAsRead) {
         void Promise.resolve(markAllNotificationsAsRead()).catch((error) => {
-          clientLog.warn('[admin-notifications] Nao foi possivel marcar notificacoes como vistas ao abrir o box.', error);
+          clientLog.warn('[admin-notifications] Não foi possível marcar notificações como vistas ao abrir o box.', error);
         });
       }
       return next;
@@ -148,7 +148,7 @@ const AdminTopBar = ({
               }}
               onFocus={() => setIsSearchOpen(true)}
               onBlur={() => window.setTimeout(() => setIsSearchOpen(false), 120)}
-              placeholder="Buscar questoes, usuarios, provas..."
+              placeholder="Buscar questões, usuários, provas..."
               className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 pl-9 pr-4 text-sm font-medium text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-500 focus:bg-white dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-400"
             />
           </form>
@@ -209,7 +209,7 @@ const AdminTopBar = ({
               <button
                 onClick={handleNotificationsToggle}
                 className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-white"
-                aria-label="Abrir notificacoes"
+                aria-label="Abrir notificações"
               >
                 <Bell size={18} />
                 {renderNotificationDot(unreadCount)}

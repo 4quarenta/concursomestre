@@ -150,7 +150,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         return next.size === current.size ? current : next;
       });
     } catch {
-      addToast('Nao foi possivel carregar as leis comentadas.', 'error');
+      addToast('Não foi possível carregar as leis comentadas.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -222,7 +222,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
       addToast('Lei removida com sucesso.', 'success');
       await loadLaws(query);
     } catch {
-      addToast('Nao foi possivel remover a lei.', 'error');
+      addToast('Não foi possível remover a lei.', 'error');
     } finally {
       setDeletingId(null);
     }
@@ -253,7 +253,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
       addToast(`${succeeded} lei(s) movida(s) para a lixeira.`, 'success');
       await loadLaws(query);
     } catch {
-      addToast('Nao foi possivel concluir a acao em massa.', 'error');
+      addToast('Não foi possível concluir a ação em massa.', 'error');
       await loadLaws(query);
     } finally {
       setIsBulkDeleting(false);
@@ -268,13 +268,13 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
       const hasChanges = sync.insertedArticles > 0 || sync.changedArticles > 0 || sync.revokedArticles > 0;
       addToast(
         hasChanges
-          ? `Sincronizacao concluida: ${sync.changedArticles} alterado(s), ${sync.insertedArticles} novo(s), ${sync.revokedArticles} revogado(s).`
-          : 'Sincronizacao concluida sem alteracoes.',
+          ? `Sincronização concluida: ${sync.changedArticles} alterado(s), ${sync.insertedArticles} novo(s), ${sync.revokedArticles} revogado(s).`
+          : 'Sincronização concluida sem alteracoes.',
         hasChanges ? 'success' : 'info',
       );
       await loadLaws(query);
     } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel sincronizar esta lei.'), 'error');
+      addToast(getErrorMessage(error, 'Não foi possível sincronizar esta lei.'), 'error');
     } finally {
       setSyncingId(null);
     }
@@ -299,7 +299,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         } : current);
       }
     } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel carregar o historico de atualizacoes.'), 'error');
+      addToast(getErrorMessage(error, 'Não foi possível carregar o histórico de atualizacoes.'), 'error');
     } finally {
       setIsUpdatesModalLoading(false);
     }
@@ -358,7 +358,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         appendSyncLog({
           label: item.platformTitle || item.label,
           status: 'error',
-          message: getErrorMessage(error, 'Nao foi possivel verificar atualizacoes desta lei.'),
+          message: getErrorMessage(error, 'Não foi possível verificar atualizacoes desta lei.'),
         });
       } finally {
         completed += 1;
@@ -416,11 +416,11 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
         message: `${sources.length} fonte(s) oficiais prontas para consulta. Selecione as categorias desejadas e inicie a varredura.`,
       });
     } catch (error: unknown) {
-      const message = getErrorMessage(error, 'Nao foi possivel consultar as leis do Planalto.');
+      const message = getErrorMessage(error, 'Não foi possível consultar as leis do Planalto.');
       appendSyncLog({
         label: 'Catalogo oficial',
         status: 'error',
-        message: getErrorMessage(error, 'Nao foi possivel montar o catalogo do Planalto.'),
+        message: getErrorMessage(error, 'Não foi possível montar o catalogo do Planalto.'),
       });
       addToast(message, 'error');
     } finally {
@@ -487,11 +487,11 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
       });
       void runUpdateCheck(items, runId);
     } catch (error: unknown) {
-      const message = getErrorMessage(error, 'Nao foi possivel consultar as leis do Planalto.');
+      const message = getErrorMessage(error, 'Não foi possível consultar as leis do Planalto.');
       appendSyncLog({
         label: 'Catalogo oficial',
         status: 'error',
-        message: getErrorMessage(error, 'Nao foi possivel consultar as categorias selecionadas.'),
+        message: getErrorMessage(error, 'Não foi possível consultar as categorias selecionadas.'),
       });
       addToast(message, 'error');
       setIsConsultingCatalog(false);
@@ -569,7 +569,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
     setBusyUrls([]);
     setImportProgress((current) => ({ ...current, currentLabel: '' }));
     await loadLaws(query);
-    addToast(`Importacao concluida: ${succeeded} sucesso(s) e ${failed} falha(s).`, failed > 0 ? 'warning' : 'success');
+    addToast(`Importação concluida: ${succeeded} sucesso(s) e ${failed} falha(s).`, failed > 0 ? 'warning' : 'success');
   };
 
   const pendingItems = React.useMemo(() => catalogItems.filter((item) => !item.exists), [catalogItems]);
@@ -611,10 +611,10 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
 
       <AdminCollectionToolbar
         title="Lei Comentada"
-        description="Gerencie leis, artigos, comentarios editoriais, jurisprudencia, sumulas e vinculos com materias."
+        description="Gerencie leis, artigos, comentários editoriais, jurisprudencia, sumulas e vinculos com materias."
         searchValue={query}
         onSearchChange={setQuery}
-        searchPlaceholder="Buscar por nome, numero, apelido, area ou ementa"
+        searchPlaceholder="Buscar por nome, numero, apelido, área ou ementa"
         primaryActionLabel="Adicionar nova"
         primaryActionHref={getLawEditPath('new')}
         itemCount={laws.length}
@@ -666,7 +666,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
               Mover para lixeira
             </button>
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              {selectedLawIds.size > 0 ? `${selectedLawIds.size} lei(s) selecionada(s)` : 'Selecione leis para aplicar a acao em massa.'}
+              {selectedLawIds.size > 0 ? `${selectedLawIds.size} lei(s) selecionada(s)` : 'Selecione leis para aplicar a ação em massa.'}
             </span>
           </div>
         </div>
@@ -825,7 +825,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                   {updatesModalLaw.shortTitle || updatesModalLaw.title}
                 </h3>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  Ultima sincronizacao: {formatDateTime(updatesModalLaw.lastSyncedAt)}
+                  Ultima sincronização: {formatDateTime(updatesModalLaw.lastSyncedAt)}
                 </p>
               </div>
               <button
@@ -842,9 +842,9 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
               <section className="min-h-[420px] border-b border-slate-300 p-5 dark:border-slate-700 lg:border-b-0 lg:border-r">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h4 className="text-base font-semibold text-slate-900 dark:text-slate-100">Eventos de alteracao</h4>
+                    <h4 className="text-base font-semibold text-slate-900 dark:text-slate-100">Eventos de alteração</h4>
                     <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                      Historico em formato editorial, sem sair da listagem.
+                      Histórico em formato editorial, sem sair da listagem.
                     </p>
                   </div>
                   <span className="inline-flex w-fit rounded-sm border border-slate-300 bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
@@ -855,7 +855,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                 <div className="mt-4 max-h-[62vh] space-y-3 overflow-y-auto pr-1">
                   {isUpdatesModalLoading ? (
                     <div className="flex min-h-[260px] items-center justify-center text-sm font-semibold text-slate-500 dark:text-slate-400">
-                      <Loader2 className="mr-2 animate-spin" size={16} /> Carregando historico...
+                      <Loader2 className="mr-2 animate-spin" size={16} /> Carregando histórico...
                     </div>
                   ) : updatesModalItems.length > 0 ? updatesModalItems.map((update) => (
                     <article key={update.id} className="rounded-sm border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
@@ -886,13 +886,13 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                           <div className="border-b border-slate-200 p-4 dark:border-slate-800 md:border-b-0 md:border-r">
                             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-600 dark:text-rose-300">Antes</p>
                             <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
-                              {update.previousText || 'Sem redacao anterior registrada.'}
+                              {update.previousText || 'Sem redação anterior registrada.'}
                             </p>
                           </div>
                           <div className="p-4">
                             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">Depois</p>
                             <p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
-                              {update.currentText || 'Sem redacao atual registrada.'}
+                              {update.currentText || 'Sem redação atual registrada.'}
                             </p>
                           </div>
                         </div>
@@ -901,9 +901,9 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                   )) : (
                     <div className="rounded-sm border border-dashed border-slate-300 bg-slate-50 p-8 text-center dark:border-slate-700 dark:bg-slate-950">
                       <FileText className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={30} />
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Nenhuma alteracao registrada.</p>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Nenhuma alteração registrada.</p>
                       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                        Quando uma sincronizacao detectar mudanca no texto oficial, o diff aparece aqui.
+                        Quando uma sincronização detectar mudanca no texto oficial, o diff aparece aqui.
                       </p>
                     </div>
                   )}
@@ -998,7 +998,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
             <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Portal do Planalto</p>
-                <h3 className="mt-2 text-xl font-black text-slate-900 dark:text-slate-100">Consulta e sincronizacao de leis</h3>
+                <h3 className="mt-2 text-xl font-black text-slate-900 dark:text-slate-100">Consulta e sincronização de leis</h3>
                 <p className="mt-1 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">
                   Primeiro voce escolhe as categorias oficiais do acervo. Depois o modal consulta apenas essas fontes, mostra o que ainda nao foi adicionado na plataforma e detecta atualizacoes nas leis ja salvas.
                 </p>
@@ -1150,7 +1150,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
             {importProgress.total > 0 ? (
               <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">Progresso da importacao</p>
+                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">Progresso da importação</p>
                   <p className="text-sm font-black text-emerald-700 dark:text-emerald-300">{importProgressPercent}%</p>
                 </div>
                 <div className="mt-3 h-3 overflow-hidden rounded-full bg-emerald-200/70 dark:bg-emerald-950/60">
@@ -1233,7 +1233,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                     <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Atualizacoes</p>
                     <h4 className="mt-1 text-lg font-black text-slate-900 dark:text-slate-100">Leis com mudancas disponiveis</h4>
                     <p className="mt-1 text-sm font-medium text-slate-500 dark:text-slate-400">
-                      A comparacao considera as leis ja salvas na plataforma e a ultima sincronizacao registrada para cada uma.
+                      A comparação considera as leis ja salvas na plataforma e a ultima sincronização registrada para cada uma.
                     </p>
                   </div>
                   {stableUpdateCandidates.length > 0 ? (
@@ -1263,7 +1263,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                               </p>
                             ) : null}
                             <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                              Ultima sincronizacao: {formatDateTime(candidate.item.lastSyncedAt)}
+                              Ultima sincronização: {formatDateTime(candidate.item.lastSyncedAt)}
                             </p>
                             <p className="mt-1 text-xs font-bold text-amber-700 dark:text-amber-300">
                               {candidate.sync.changedArticles} alterados, {candidate.sync.insertedArticles} novos, {candidate.sync.revokedArticles} revogados
@@ -1284,9 +1284,9 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                   }) : (
                     <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
                       {isCheckingUpdates
-                        ? 'A verificacao ainda esta em andamento.'
+                        ? 'A verificação ainda esta em andamento.'
                         : hasCatalogConsulted
-                          ? 'Nenhuma atualizacao disponivel foi encontrada nesta rodada.'
+                          ? 'Nenhuma atualização disponivel foi encontrada nesta rodada.'
                           : 'Consulte primeiro as categorias selecionadas para verificar atualizacoes.'}
                     </div>
                   )}
@@ -1319,7 +1319,7 @@ const AdminLegalCommentarySection = ({ filter = '' }: AdminLegalCommentarySectio
                   </div>
                 )) : (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-                    O modal vai registrar aqui a consulta, a verificacao de atualizacoes e o andamento das importacoes.
+                    O modal vai registrar aqui a consulta, a verificação de atualizacoes e o andamento das importacoes.
                   </div>
                 )}
               </div>

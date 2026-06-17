@@ -70,7 +70,7 @@ export type { AdminFinanceSection, AdminMarketingSection, AdminMarketplaceSectio
 /**
  * Controller principal da pagina administrativa.
  * Ele converte links legados para os cinco dominios oficiais do admin,
- * centraliza o estado de navegacao e prepara os shells menores do painel.
+ * centraliza o estado de navegação e prepara os shells menores do painel.
  *
  * @since 1.0.0
  */
@@ -163,14 +163,14 @@ export const useAdminPageController = () => {
 
     const createdQuestion = response.created?.[0] || payload;
     prependQuestion(createdQuestion);
-    addToast('Questao adicionada!', 'success');
+    addToast('Questão adicionada!', 'success');
     return response;
   }, [addToast, prependQuestion]);
 
   const addQuestions = useCallback(async (payload: Question[]) => {
     const response = await questionService.createQuestions(payload);
     if (!response.success) {
-      throw new Error('Falha ao salvar questoes.');
+      throw new Error('Falha ao salvar questões.');
     }
 
     const createdQuestions = response.created && response.created.length > 0
@@ -180,7 +180,7 @@ export const useAdminPageController = () => {
     createdQuestions.forEach((question) => {
       upsertQuestion(question);
     });
-    addToast(`${createdQuestions.length} questoes salvas!`, 'success');
+    addToast(`${createdQuestions.length} questões salvas!`, 'success');
     return response;
   }, [addToast, upsertQuestion]);
 
@@ -191,7 +191,7 @@ export const useAdminPageController = () => {
     }
 
     upsertQuestion(payload);
-    addToast('Questao atualizada!', 'success');
+    addToast('Questão atualizada!', 'success');
     return response;
   }, [addToast, upsertQuestion]);
 
@@ -202,7 +202,7 @@ export const useAdminPageController = () => {
     }
 
     removeQuestionFromBank(questionId);
-    addToast('Questao removida.', 'info');
+    addToast('Questão removida.', 'info');
     return response;
   }, [addToast, removeQuestionFromBank]);
 
@@ -315,13 +315,13 @@ export const useAdminPageController = () => {
   const supportLandingSection = useMemo(() => resolveSupportLandingSection(sectionBadges.support), [sectionBadges]);
 
   const adminTabs = useMemo<AdminNavigationTab[]>(() => filterAdminTabsForRole([
-    { key: 'panel', label: 'Dashboard', icon: LayoutDashboard, badge: panelAlertsCount > 0 ? panelAlertsCount : undefined, group: 'Conteudo', description: 'Visao geral e saude operacional' },
-    { key: 'operation', label: 'Conteudo', icon: BookOpen, group: 'Conteudo', description: 'Questoes, provas, importacao, taxonomias, lei comentada e usuarios' },
-    { key: 'marketplace', label: 'Marketplace', icon: ShoppingBag, group: 'Comercial', description: 'Vendedores, materiais publicados e revisao bloqueada' },
-    { key: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Comercial', description: 'Transacoes, planos, cupons, analytics e automacao' },
+    { key: 'panel', label: 'Dashboard', icon: LayoutDashboard, badge: panelAlertsCount > 0 ? panelAlertsCount : undefined, group: 'Conteúdo', description: 'Visão geral e saúde operacional' },
+    { key: 'operation', label: 'Conteúdo', icon: BookOpen, group: 'Conteúdo', description: 'Questões, provas, importação, taxonomias, lei comentada e usuários' },
+    { key: 'marketplace', label: 'Marketplace', icon: ShoppingBag, group: 'Comercial', description: 'Vendedores, materiais publicados e revisão bloqueada' },
+    { key: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Comercial', description: 'Transações, planos, cupons, analytics e automação' },
     { key: 'marketing', label: 'Marketing', icon: Megaphone, group: 'Comercial', description: 'Landing pages, campanhas, temas visuais e redes sociais' },
-    { key: 'support', label: 'Suporte', icon: MessageSquare, badge: supportInboxCount > 0 ? supportInboxCount : undefined, group: 'Relacionamento', description: 'Feedback, comentarios, denuncias, rankings e reembolsos' },
-    { key: 'settings', label: 'Configuracoes', icon: Settings, group: 'Sistema', description: 'Integracoes e controles globais' },
+    { key: 'support', label: 'Suporte', icon: MessageSquare, badge: supportInboxCount > 0 ? supportInboxCount : undefined, group: 'Relacionamento', description: 'Feedback, comentários, denúncias, rankings e reembolsos' },
+    { key: 'settings', label: 'Configurações', icon: Settings, group: 'Sistema', description: 'Integrações e controles globais' },
   ], adminUserRole), [adminUserRole, panelAlertsCount, supportInboxCount]);
 
   const activeTabLabel = adminTabs.find((tab) => tab.key === activeTab)?.label || 'Painel';
@@ -686,7 +686,7 @@ export const useAdminPageController = () => {
       pendingFeedbackCount: feedbackCount,
       onPendingFeedbackCountChange: setPendingFeedbackCount,
       onPendingCommentsCountChange: setPendingCommentsCount,
-      onResolveReport: (report: ErrorReport) => resolveReport(report.id, 'resolved', report.resolution || report.reason || 'Denuncia tratada pela equipe administrativa.'),
+      onResolveReport: (report: ErrorReport) => resolveReport(report.id, 'resolved', report.resolution || report.reason || 'Denúncia tratada pela equipe administrativa.'),
       onSectionChange: (section: AdminSupportSection) => handleSectionChange('support', section),
       standaloneSection: true,
     },

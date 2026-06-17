@@ -622,7 +622,7 @@ const EMPTY_COMMENT_MODERATION_COUNTS: AdminCommentModerationCounts = {
 };
 
 /**
- * Normaliza a resposta da fila de comentarios para aceitar backends antigos e novos.
+ * Normaliza a resposta da fila de comentários para aceitar backends antigos e novos.
  * O admin usa essa base para tabs WordPress-like e acoes em massa sem depender de shape perfeito.
  * @since v1.0.0
  */
@@ -684,7 +684,7 @@ export const adminService = {
   },
 
   /**
-   * Carrega as configuracoes publicas usadas no bootstrap da aplicacao.
+   * Carrega as configurações públicas usadas no bootstrap da aplicação.
    * @since v1.0.0
    */
   async getPublicSystemSettings(): Promise<Partial<SystemSettings>> {
@@ -699,7 +699,7 @@ export const adminService = {
   },
 
   /**
-   * Carrega as configuracoes globais exibidas na aba de settings do admin.
+   * Carrega as configurações globais exibidas na aba de settings do admin.
    * @since v1.0.0
    */
   async getSystemSettings(): Promise<Partial<SystemSettings>> {
@@ -781,7 +781,7 @@ export const adminService = {
       ENDPOINTS.admin.plansCatalog,
       payload,
     ));
-    const envelope = assertApiSuccess(response, 'Nao foi possivel atualizar o plano.');
+    const envelope = assertApiSuccess(response, 'Não foi possível atualizar o plano.');
     const item = readApiData<AdminPlanCatalogItem>(envelope.raw, {
       id: payload.plan_id,
       name: '',
@@ -820,7 +820,7 @@ export const adminService = {
   },
 
   /**
-   * Lista as denúncias/reportes visiveis na operação administrativa.
+   * Lista as denúncias/reportes visíveis na operação administrativa.
    * @since v1.0.0
    */
   async getReports(): Promise<ErrorReport[]> {
@@ -899,13 +899,13 @@ export const adminService = {
   },
 
   /**
-   * Persiste as configuracoes de cache com confirmacao do backend.
+   * Persiste as configurações de cache com confirmação do backend.
    * @since v1.0.0
    */
   async saveCacheSettings(payload: { enabled: boolean; default_ttl: number }): Promise<string> {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(`${ENDPOINTS.cache.manage}?action=settings`, payload));
     clearRequestCoalescing();
-    return assertApiSuccess(response, 'Nao foi possivel salvar as configuracoes de cache.').message || 'Configuracoes do cache atualizadas.';
+    return assertApiSuccess(response, 'Não foi possível salvar as configurações de cache.').message || 'Configurações do cache atualizadas.';
   },
 
   /**
@@ -965,7 +965,7 @@ export const adminService = {
    */
   async clearSystemLogs(): Promise<SystemLogsPayload> {
     const response = await requestApi<SystemLogsPayload>(apiClient.post<ApiResponse<SystemLogsPayload>>(`${ENDPOINTS.admin.logs}?action=clear`, {}));
-    assertApiSuccess(response, 'Nao foi possivel limpar os logs.');
+    assertApiSuccess(response, 'Não foi possível limpar os logs.');
     return readApiData(response, {
       lines: [],
       path: '',
@@ -1007,7 +1007,7 @@ export const adminService = {
       ipAddress,
       reason,
     }));
-    assertApiSuccess(response, 'Nao foi possivel bloquear o IP.');
+    assertApiSuccess(response, 'Não foi possível bloquear o IP.');
   },
 
   /**
@@ -1019,7 +1019,7 @@ export const adminService = {
       action: 'unban',
       ipAddress,
     }));
-    assertApiSuccess(response, 'Nao foi possivel desbloquear o IP.');
+    assertApiSuccess(response, 'Não foi possível desbloquear o IP.');
   },
 
   /**
@@ -1168,7 +1168,7 @@ export const adminService = {
   },
 
   /**
-   * Envia ao aluno um email de regularizacao quando o financeiro detecta risco de cobranca.
+   * Envia ao aluno um email de regularização quando o financeiro detecta risco de cobranca.
    * @since v1.0.0
    */
   async sendBillingRiskEmail(payload: { userId: string; reason?: string }): Promise<{ sent: boolean; email?: string }> {
@@ -1230,7 +1230,7 @@ export const adminService = {
   },
 
   /**
-   * Carrega o funil e a conversao por ciclo para a area comercial.
+   * Carrega o funil e a conversao por ciclo para a área comercial.
    * @since v1.0.0
    */
   async getFunnelAnalytics(params: {
@@ -1298,7 +1298,7 @@ export const adminService = {
   },
 
   /**
-   * Lista a fila unificada de moderacao de comentarios.
+   * Lista a fila unificada de moderação de comentários.
    * @since v1.0.0
    */
   async getModerationComments(params: {
@@ -1335,12 +1335,12 @@ export const adminService = {
   },
 
   /**
-   * Atualiza um comentario individual na caixa de moderacao.
+   * Atualiza um comentário individual na caixa de moderação.
    * @since v1.0.0
    */
   async updateModerationComment(id: string, status: AdminCommentModerationStatus): Promise<AdminCommentModerationItem> {
     const response = await requestApi<AdminCommentModerationItem>(apiClient.post<ApiResponse<AdminCommentModerationItem>>(ENDPOINTS.admin.commentsModeration, { id, status }));
-    const envelope = assertApiSuccess<AdminCommentModerationItem>(response, 'Nao foi possivel atualizar o comentario.');
+    const envelope = assertApiSuccess<AdminCommentModerationItem>(response, 'Não foi possível atualizar o comentário.');
     return readApiData<AdminCommentModerationItem>(envelope.raw, {
       id,
       origin: 'question',
@@ -1357,13 +1357,13 @@ export const adminService = {
   },
 
   /**
-   * Atualiza varios comentarios de uma vez.
+   * Atualiza varios comentários de uma vez.
    * @since v1.0.0
    */
   async bulkUpdateModerationComments(ids: string[], status: AdminCommentModerationStatus): Promise<{ updated: number }> {
     const response = await requestApi<{ updated: number }>(apiClient.post<ApiResponse<{ updated: number }>>(ENDPOINTS.admin.commentsModerationBulk, { ids, status }));
     return readApiData(
-      assertApiSuccess(response, 'Nao foi possivel atualizar os comentarios selecionados.').raw,
+      assertApiSuccess(response, 'Não foi possível atualizar os comentários selecionados.').raw,
       { updated: 0 },
     );
   },
@@ -1401,7 +1401,7 @@ export const adminService = {
   },
 
   /**
-   * Lista contextos reutilizaveis por questoes.
+   * Lista contextos reutilizaveis por questões.
    * @since v1.0.0
    */
   async getQuestionGroups(params: { keyword?: string } = {}): Promise<AdminQuestionGroupItem[]> {
@@ -1427,12 +1427,12 @@ export const adminService = {
   },
 
   /**
-   * Cria ou atualiza um contexto do banco de questoes.
+   * Cria ou atualiza um contexto do banco de questões.
    * @since v1.0.0
    */
   async saveQuestionGroup(payload: AdminQuestionGroupPayload): Promise<AdminQuestionGroupItem> {
     const response = await requestApi<AdminQuestionGroupItem>(apiClient.post<ApiResponse<AdminQuestionGroupItem>>(ENDPOINTS.questions.groups, payload));
-    const envelope = assertApiSuccess<AdminQuestionGroupItem>(response, 'Nao foi possivel salvar o contexto de questoes.');
+    const envelope = assertApiSuccess<AdminQuestionGroupItem>(response, 'Não foi possível salvar o contexto de questões.');
     return readApiData<AdminQuestionGroupItem>(envelope.raw, {
       id: Number(payload.id || 0),
       enunciado: payload.enunciado || '',
@@ -1444,7 +1444,7 @@ export const adminService = {
   },
 
   /**
-   * Envia imagem para um contexto de questoes.
+   * Envia imagem para um contexto de questões.
    * @since v1.0.0
    */
   async uploadQuestionContextImage(file: File): Promise<string> {
@@ -1458,7 +1458,7 @@ export const adminService = {
     ));
     const envelope = assertApiSuccess<{ url?: string; image_url?: string; imageUrl?: string }>(
       response,
-      'Nao foi possivel enviar a imagem do contexto.',
+      'Não foi possível enviar a imagem do contexto.',
     );
     const payload = readApiData<{ url?: string; image_url?: string; imageUrl?: string }>(envelope.raw, {});
     const imageUrl = payload.url || payload.image_url || payload.imageUrl || '';
@@ -1471,12 +1471,12 @@ export const adminService = {
   },
 
   /**
-   * Remove um contexto e desvincula as questoes associadas.
+   * Remove um contexto e desvincula as questões associadas.
    * @since v1.0.0
    */
   async deleteQuestionGroup(id: string | number): Promise<void> {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.questions.groups, { action: 'delete', id }));
-    assertApiSuccess(response, 'Nao foi possivel remover o contexto de questoes.');
+    assertApiSuccess(response, 'Não foi possível remover o contexto de questões.');
   },
 
   /**
@@ -1511,12 +1511,12 @@ export const adminService = {
   },
 
   /**
-   * Executa a acao administrativa e devolve a mensagem confirmada pelo backend.
+   * Executa a ação administrativa e devolve a mensagem confirmada pelo backend.
    * @since v1.0.0
    */
   async performUserActionWithResult(payload: AdminUserActionPayload): Promise<AdminUserActionResult> {
     const response = await requestApi<AdminLooseRecord>(apiClient.post<ApiResponse>(ENDPOINTS.admin.userActions, payload));
-    const result = assertApiSuccess(response, 'Nao foi possivel executar a acao administrativa.');
+    const result = assertApiSuccess(response, 'Não foi possível executar a ação administrativa.');
     return {
       message: result.message,
       data: toLooseRecord(result.data),
@@ -1554,7 +1554,7 @@ export const adminService = {
   },
 
   /**
-   * Confirma a ativacao do 2FA com o código informado pelo administrador.
+   * Confirma a ativação do 2FA com o código informado pelo administrador.
    * @since v1.0.0
    */
   async enableTwoFactor(secret: string, code: string): Promise<string> {
@@ -1581,7 +1581,7 @@ export const adminService = {
    */
   async testSmtpSettings(payload: object): Promise<AdminSettingsTestResult> {
     const response = await requestApi<AdminLooseRecord>(apiClient.post<ApiResponse>(`${ENDPOINTS.settings.update}?action=test_smtp`, payload));
-    const result = assertApiSuccess(response, 'Nao foi possivel testar o SMTP.');
+    const result = assertApiSuccess(response, 'Não foi possível testar o SMTP.');
     return {
       message: result.message || 'SMTP validado com sucesso.',
       data: toLooseRecord(result.data),
@@ -1594,7 +1594,7 @@ export const adminService = {
    */
   async testEmailTemplate(payload: object): Promise<AdminSettingsTestResult> {
     const response = await requestApi<AdminLooseRecord>(apiClient.post<ApiResponse>(`${ENDPOINTS.settings.update}?action=test_email_template`, payload));
-    const result = assertApiSuccess(response, 'Nao foi possivel testar o modelo de e-mail.');
+    const result = assertApiSuccess(response, 'Não foi possível testar o modelo de e-mail.');
     return {
       message: result.message || 'Modelo de e-mail testado com sucesso.',
       data: toLooseRecord(result.data),
@@ -1602,14 +1602,14 @@ export const adminService = {
   },
 
   /**
-   * Executa uma checagem administrativa das integracoes configuradas.
+   * Executa uma checagem administrativa das integrações configuradas.
    * @since v1.0.0
    */
   async testIntegrations(payload: object): Promise<AdminSettingsTestResult> {
     const response = await requestApi<AdminLooseRecord>(apiClient.post<ApiResponse>(`${ENDPOINTS.settings.update}?action=test_integrations`, payload));
-    const result = assertApiSuccess(response, 'Nao foi possivel validar as integracoes.');
+    const result = assertApiSuccess(response, 'Não foi possível validar as integrações.');
     return {
-      message: result.message || 'Integracoes verificadas com sucesso.',
+      message: result.message || 'Integrações verificadas com sucesso.',
       data: toLooseRecord(result.data),
     };
   },

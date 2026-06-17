@@ -68,7 +68,7 @@ const TABS: Array<{ key: AdminCommentModerationFilter; label: string }> = [
 ];
 
 const ORIGIN_LABELS: Record<AdminCommentModerationItem['origin'], string> = {
-  question: 'Questao',
+  question: 'Questão',
   material: 'Material',
   law: 'Lei',
 };
@@ -167,8 +167,8 @@ const ModerationBadge = ({ status }: { status: AdminCommentModerationStatus }) =
 );
 
 /**
- * Caixa de entrada unificada de comentarios no padrao de list table do admin.
- * A secao consolida questoes, materiais e Lei Comentada dentro da area Suporte.
+ * Caixa de entrada unificada de comentários no padrao de list table do admin.
+ * A seção consolida questões, materiais e Lei Comentada dentro da área Suporte.
  *
  * @since 1.0.0
  */
@@ -224,7 +224,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
 
     lastErrorKeyRef.current = requestKey;
     clientLog.warn('Failed to load moderation comments:', moderationQuery.error);
-    addToastRef.current('Nao foi possivel carregar a fila de comentarios.', 'error');
+    addToastRef.current('Não foi possível carregar a fila de comentários.', 'error');
   }, [moderationQuery.error, moderationQuery.isError, requestParams]);
 
   useEffect(() => {
@@ -238,7 +238,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
 
   const selectedSummary = selectedIds.length > 0
     ? `${selectedIds.length} selecionado(s)`
-    : `${payload.total} comentario(s)`;
+    : `${payload.total} comentário(s)`;
 
   const changeTab = (tab: AdminCommentModerationFilter) => {
     setSelectedIds([]);
@@ -277,7 +277,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
       await queryClient.invalidateQueries({ queryKey: ['admin', 'comments-moderation'] });
     } catch (error) {
       clientLog.warn('Failed to update moderation item:', error);
-      addToast('Nao foi possivel atualizar o comentario.', 'error');
+      addToast('Não foi possível atualizar o comentário.', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -285,12 +285,12 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
 
   const applyBulkAction = async () => {
     if (!bulkAction) {
-      addToast('Escolha uma acao em massa.', 'warning');
+      addToast('Escolha uma ação em massa.', 'warning');
       return;
     }
 
     if (selectedIds.length === 0) {
-      addToast('Selecione pelo menos um comentario.', 'warning');
+      addToast('Selecione pelo menos um comentário.', 'warning');
       return;
     }
 
@@ -302,7 +302,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
       await queryClient.invalidateQueries({ queryKey: ['admin', 'comments-moderation'] });
     } catch (error) {
       clientLog.warn('Failed to bulk update moderation items:', error);
-      addToast('Nao foi possivel atualizar os comentarios selecionados.', 'error');
+      addToast('Não foi possível atualizar os comentários selecionados.', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -310,10 +310,10 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
 
   const handleExport = async () => {
     try {
-      await downloadAuthenticatedFile(buildExportUrl(activeTab, origin, search), 'moderacao-comentarios.csv');
+      await downloadAuthenticatedFile(buildExportUrl(activeTab, origin, search), 'moderação-comentários.csv');
     } catch (error) {
       clientLog.warn('Failed to export moderation comments:', error);
-      addToast('Nao foi possivel exportar os comentarios agora.', 'error');
+      addToast('Não foi possível exportar os comentários agora.', 'error');
     }
   };
 
@@ -339,7 +339,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
             Comentarios
           </h3>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Modere comentarios de questoes, materiais e Lei Comentada na mesma fila.
+            Modere comentários de questões, materiais e Lei Comentada na mesma fila.
           </p>
         </div>
 
@@ -425,7 +425,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
               type="text"
               value={searchDraft}
               onChange={(event) => setSearchDraft(event.target.value)}
-              placeholder="Buscar comentarios"
+              placeholder="Buscar comentários"
               className={`${ADMIN_FIELD_CLASS} w-full sm:w-72`}
             />
             <button type="submit" className={ADMIN_PRIMARY_BUTTON_CLASS}>
@@ -444,7 +444,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
       <div className={ADMIN_SURFACE_CLASS}>
         <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between`}>
           <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
-            {selectedSummary} na visualizacao atual
+            {selectedSummary} na visualização atual
           </p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Pagina {payload.page} de {payload.pages}
@@ -468,7 +468,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
                     type="checkbox"
                     checked={allVisibleSelected}
                     onChange={toggleSelectAllVisible}
-                    aria-label="Selecionar comentarios visiveis"
+                    aria-label="Selecionar comentários visiveis"
                     className="h-4 w-4 rounded-sm border-slate-300 text-sky-700 focus:ring-sky-700"
                   />
                 </th>
@@ -486,14 +486,14 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
                   <td colSpan={6} className="px-4 py-16">
                     <div className="flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                       <Loader2 size={16} className="animate-spin" />
-                      Carregando fila de comentarios...
+                      Carregando fila de comentários...
                     </div>
                   </td>
                 </tr>
               ) : payload.items.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-16 text-center text-sm text-slate-500 dark:text-slate-400">
-                    Nenhum comentario encontrado para esse recorte.
+                    Nenhum comentário encontrado para esse recorte.
                   </td>
                 </tr>
               ) : payload.items.map((item) => {
@@ -510,7 +510,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
                         type="checkbox"
                         checked={selectedIds.includes(item.id)}
                         onChange={() => toggleSelection(item.id)}
-                        aria-label={`Selecionar comentario ${item.id}`}
+                        aria-label={`Selecionar comentário ${item.id}`}
                         className="h-4 w-4 rounded-sm border-slate-300 text-sky-700 focus:ring-sky-700"
                       />
                     </td>

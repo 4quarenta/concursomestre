@@ -1,4 +1,4 @@
-﻿/*
+/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -24,7 +24,7 @@ import { AdminConfirmDialog } from '../ui/AdminConfirmDialog';
 
 /**
  * Controle operacional do cache administrativo.
- * Mantem leitura, limpeza e configuracao de TTL dentro do service oficial.
+ * Mantem leitura, limpeza e configuração de TTL dentro do service oficial.
  */
 const AdminCacheManagement = () => {
   const { addToast } = useToast();
@@ -53,7 +53,7 @@ const AdminCacheManagement = () => {
         supports_expiration: false,
         supports_size_estimate: false,
       });
-      addToast('Nao foi possivel carregar as estatisticas de cache.', 'error');
+      addToast('Não foi possível carregar as estatisticas de cache.', 'error');
     } finally {
       setLoadingKey(null);
     }
@@ -82,7 +82,7 @@ const AdminCacheManagement = () => {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error && error.message
         ? error.message
-        : 'Nao foi possivel executar a operacao de cache.';
+        : 'Não foi possível executar a operação de cache.';
       setMessage(errorMessage);
       addToast(errorMessage, 'error');
     } finally {
@@ -106,7 +106,7 @@ const AdminCacheManagement = () => {
       <AdminConfirmDialog
         isOpen={isClearCacheDialogOpen}
         title="Limpar todo o cache"
-        description="Essa acao remove todas as entradas do cache administrativo e operacional. Use apenas quando precisar forcar uma nova reconstrucao do runtime."
+        description="Essa ação remove todas as entradas do cache administrativo e operacional. Use apenas quando precisar forcar uma nova reconstrucao do runtime."
         confirmLabel="Limpar cache"
         tone="danger"
         loading={loadingKey === 'clear'}
@@ -151,7 +151,7 @@ const AdminCacheManagement = () => {
             <div>
               <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Status do cache</h4>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                {cacheStats.enabled ? 'Cache ativo e pronto para servir respostas.' : 'Cache desligado. As respostas serao calculadas sem armazenamento intermediario.'}
+                {cacheStats.enabled ? 'Cache ativo e pronto para servir respostas.' : 'Cache desligado. As respostas seráo calculadas sem armazenamento intermediario.'}
               </p>
             </div>
             <button
@@ -190,12 +190,12 @@ const AdminCacheManagement = () => {
 
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Expiracao por linha</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Expiração por linha</p>
               <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_expiration ? 'Suportada' : 'Nao suportada'}</p>
             </div>
             <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Estimativa de tamanho</p>
-              <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_size_estimate ? 'Disponivel' : 'Nao suportada'}</p>
+              <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{cacheStats.supports_size_estimate ? 'Disponível' : 'Nao suportada'}</p>
             </div>
           </div>
         </div>

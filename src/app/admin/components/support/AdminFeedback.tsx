@@ -333,7 +333,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por usuario, e-mail, motivo ou conteudo"
+              placeholder="Buscar por usuário, e-mail, motivo ou conteúdo"
               className={`${ADMIN_FIELD_CLASS} w-full pl-9`}
             />
           </div>

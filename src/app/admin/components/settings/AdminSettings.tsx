@@ -1,4 +1,4 @@
-﻿/*
+/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -153,7 +153,7 @@ const featureItems = [
   { id: 'communityEnabled', label: 'Comunidade', icon: MessageSquare },
   { id: 'aiCommentsEnabled', label: 'Comentarios com IA', icon: Sparkles },
   { id: 'bulkImportEnabled', label: 'Importador', icon: Upload },
-  { id: 'reportsEnabled', label: 'Denuncias', icon: Flag },
+  { id: 'reportsEnabled', label: 'Denúncias', icon: Flag },
   { id: 'notificationsEnabled', label: 'Notificacoes', icon: Bell },
   { id: 'maintenanceMode', label: 'Manutencao', icon: ShieldAlert },
   { id: 'registrationEnabled', label: 'Novos cadastros', icon: Users },
@@ -280,7 +280,7 @@ const AdminSettings = ({
 
       setDbTables(resettableTables);
       setSelectedTables(new Set(resettableTables));
-    }).catch(() => addToast('Nao foi possivel carregar as tabelas do reset.', 'error'));
+    }).catch(() => addToast('Não foi possível carregar as tabelas do reset.', 'error'));
   }, [isResetModalOpen, addToast]);
 
   const changeSection = (section: AdminSettingsTab) => {
@@ -373,7 +373,7 @@ const AdminSettings = ({
       await navigator.clipboard.writeText(metaTag);
       addToast('Metatag do AdSense copiada.', 'success');
     } catch {
-      addToast('Nao foi possivel copiar automaticamente. Selecione e copie a metatag.', 'warning');
+      addToast('Não foi possível copiar automaticamente. Selecione e copie a metatag.', 'warning');
     }
   };
 
@@ -447,9 +447,9 @@ const AdminSettings = ({
       const persistedSettings = await saveSystemSettingsNow(nextSettings);
       setLocalSettings(persistedSettings);
       setLocalSeoSettings(mergeSeoSettings(persistedSettings.seo));
-      addToast('Configuracoes salvas com sucesso.', 'success');
+      addToast('Configurações salvas com sucesso.', 'success');
     } catch (error: unknown) {
-      console.error('Erro ao salvar configuracoes administrativas:', error);
+      console.error('Erro ao salvar configurações administrativas:', error);
     } finally {
       setIsSavingSettings(false);
     }
@@ -511,7 +511,7 @@ const AdminSettings = ({
       setSmtpTestResult({ ok: true, message: result.message });
       addToast(result.message, 'success');
     } catch (error: unknown) {
-      const message = getErrorMessage(error, 'Nao foi possivel testar o SMTP.');
+      const message = getErrorMessage(error, 'Não foi possível testar o SMTP.');
       setSmtpTestResult({ ok: false, message });
       addToast(message, 'error');
     } finally {
@@ -533,14 +533,14 @@ const AdminSettings = ({
       setIntegrationsTestResult(integrationResult);
 
       if (criticalCount > 0) {
-        addToast(integrationResult.message || 'Integracoes com falhas criticas.', 'error');
+        addToast(integrationResult.message || 'Integrações com falhas criticas.', 'error');
       } else if (warningCount > 0) {
-        addToast(integrationResult.message || 'Integracoes verificadas com avisos.', 'warning');
+        addToast(integrationResult.message || 'Integrações verificadas com avisos.', 'warning');
       } else {
-        addToast(integrationResult.message || 'Integracoes verificadas com sucesso.', 'success');
+        addToast(integrationResult.message || 'Integrações verificadas com sucesso.', 'success');
       }
     } catch (error: unknown) {
-      const message = getErrorMessage(error, 'Nao foi possivel validar as integracoes.');
+      const message = getErrorMessage(error, 'Não foi possível validar as integrações.');
       setIntegrationsTestResult({ message, data: null });
       addToast(message, 'error');
     } finally {
@@ -564,7 +564,7 @@ const AdminSettings = ({
       addToast(result.message, 'success');
       return result.message;
     } catch (error: unknown) {
-      const message = getErrorMessage(error, 'Nao foi possivel testar o modelo de e-mail.');
+      const message = getErrorMessage(error, 'Não foi possível testar o modelo de e-mail.');
       addToast(message, 'error');
       throw new Error(message);
     }
@@ -576,7 +576,7 @@ const AdminSettings = ({
       const payload = await adminService.getSecurityIps(searchValue, 80);
       setSecurityIpsPayload(payload);
     } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel carregar os IPs suspeitos.'), 'error');
+      addToast(getErrorMessage(error, 'Não foi possível carregar os IPs suspeitos.'), 'error');
     } finally {
       setSecurityIpsLoading(false);
     }
@@ -603,7 +603,7 @@ const AdminSettings = ({
       }
       await fetchSecurityIps();
     } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel bloquear o IP.'), 'error');
+      addToast(getErrorMessage(error, 'Não foi possível bloquear o IP.'), 'error');
     } finally {
       setSecurityIpActionLoading(null);
     }
@@ -617,7 +617,7 @@ const AdminSettings = ({
       addToast('IP desbloqueado com sucesso.', 'success');
       await fetchSecurityIps();
     } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel desbloquear o IP.'), 'error');
+      addToast(getErrorMessage(error, 'Não foi possível desbloquear o IP.'), 'error');
     } finally {
       setSecurityIpActionLoading(null);
     }
@@ -643,10 +643,10 @@ const AdminSettings = ({
   const settingsTabs: AdminSettingsTabs = [
     { id: 'general', label: 'Geral', icon: Settings },
     { id: 'modules', label: 'Modulos', icon: LayoutDashboard },
-    { id: 'gamification', label: 'Gamificacao', icon: Trophy },
+    { id: 'gamification', label: 'Gamificação', icon: Trophy },
     { id: 'notifications', label: 'Notificacoes', icon: Bell },
     { id: 'security', label: 'Seguranca', icon: ShieldAlert },
-    { id: 'integrations', label: 'Integracoes', icon: Cpu },
+    { id: 'integrations', label: 'Integrações', icon: Cpu },
     { id: 'email', label: 'E-mail', icon: Mail },
     { id: 'email-templates', label: 'Modelos de e-mail', icon: MessageSquare },
     { id: 'ads', label: 'Anuncios', icon: Megaphone },
@@ -695,7 +695,7 @@ const AdminSettings = ({
     {
       key: 'top',
       label: 'Topo',
-      description: 'Exibido acima do conteudo principal e em paginas como dashboard, pratica e layout geral.',
+      description: 'Exibido acima do conteúdo principal e em paginas como dashboard, pratica e layout geral.',
       enabledField: 'adPlacementTopEnabled',
       slotField: 'adsenseTopSlotId',
       htmlField: 'adBannerTop',
@@ -704,7 +704,7 @@ const AdminSettings = ({
     {
       key: 'sidebar',
       label: 'Lateral',
-      description: 'Exibido em areas laterais como marketplace e cards de questoes quando houver espaco.',
+      description: 'Exibido em áreas laterais como marketplace e cards de questões quando houver espaco.',
       enabledField: 'adPlacementSidebarEnabled',
       slotField: 'adsenseSidebarSlotId',
       htmlField: 'adBannerSidebar',
@@ -713,7 +713,7 @@ const AdminSettings = ({
     {
       key: 'bottom',
       label: 'Rodape / inline',
-      description: 'Exibido apos blocos de conteudo, principalmente em cards e paginas longas.',
+      description: 'Exibido após blocos de conteúdo, principalmente em cards e paginas longas.',
       enabledField: 'adPlacementBottomEnabled',
       slotField: 'adsenseBottomSlotId',
       htmlField: 'adBannerBottom',
@@ -769,7 +769,7 @@ const AdminSettings = ({
                   <Terminal size={18} className="text-sky-700 dark:text-sky-300" />
                   Ambiente
                 </h3>
-                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Configuracoes principais da plataforma.</p>
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Configurações principais da plataforma.</p>
               </div>
               <button type="button" onClick={() => setIsLogViewerOpen(true)} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>
                 <Terminal size={14} />
@@ -816,7 +816,7 @@ const AdminSettings = ({
               <div>
                 <h3 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
                   <Sparkles size={18} className="text-sky-700 dark:text-sky-300" />
-                  Motivacao diaria
+                  Motivação diaria
                 </h3>
                 <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Arquivo Markdown usado nos cards motivacionais.</p>
               </div>
@@ -828,7 +828,7 @@ const AdminSettings = ({
             </div>
             <div className="divide-y divide-slate-200 dark:divide-slate-800">
               <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)]">
-                <label className={labelClassName}>Conteudo</label>
+                <label className={labelClassName}>Conteúdo</label>
                 <textarea value={localSettings.dailyMotivationMarkdown || ''} onChange={(e) => setField('dailyMotivationMarkdown', e.target.value)} className={`${ADMIN_TEXTAREA_CLASS} min-h-[220px] resize-y font-mono text-xs`} />
               </div>
               <div className="grid gap-2 px-5 py-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
@@ -874,8 +874,8 @@ const AdminSettings = ({
           </div>
           <div className="rounded-sm border border-rose-200 bg-rose-50 p-4 sm:p-5 md:p-6 dark:border-rose-900/30 dark:bg-rose-900/10">
             <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-rose-700 dark:text-rose-300"><Trash2 size={20} /> Reset geral</h3>
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Apaga conteudo operacional com autenticacao forte.</p>
-            <button type="button" onClick={() => setIsResetModalOpen(true)} className="mt-5 rounded-sm border border-rose-700 bg-rose-700 px-6 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">Resetar conteudo</button>
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Apaga conteúdo operacional com autenticação forte.</p>
+            <button type="button" onClick={() => setIsResetModalOpen(true)} className="mt-5 rounded-sm border border-rose-700 bg-rose-700 px-6 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">Resetar conteúdo</button>
           </div>
           <div className={`${ADMIN_PAGE_PANEL_CLASS} lg:col-span-2`}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -998,7 +998,7 @@ const AdminSettings = ({
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() => void handleBanIp(item.ipAddress, `Bloqueio manual pelo admin apos alerta de seguranca (score ${item.score}).`)}
+                                  onClick={() => void handleBanIp(item.ipAddress, `Bloqueio manual pelo admin após alerta de seguranca (score ${item.score}).`)}
                                   disabled={securityIpActionLoading === `ban:${item.ipAddress}`}
                                   className="rounded-sm border border-rose-600 bg-rose-600 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:cursor-not-allowed disabled:opacity-60"
                                 >
@@ -1059,7 +1059,7 @@ const AdminSettings = ({
               </div>
             </div>
           </div>
-          {isResetModalOpen && createPortal(<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md"><div className="w-full max-w-2xl rounded-2xl border border-rose-100 bg-white p-8 shadow-2xl dark:border-rose-900/30 dark:bg-slate-900"><h3 className="text-xl font-black text-slate-900 dark:text-slate-100">Confirmacao de reset</h3>{resetError && <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4 dark:border-rose-900/30 dark:bg-rose-900/20"><XCircle size={18} className="mt-0.5 text-rose-600" /><p className="text-xs font-bold text-rose-800 dark:text-rose-300">{resetError}</p></div>}<div className="mt-6 space-y-4"><div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">{dbTables.map((table) => <label key={table} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300"><input type="checkbox" checked={selectedTables.has(table)} onChange={() => setSelectedTables((current) => { const next = new Set(current); if (next.has(table)) { next.delete(table); } else { next.add(table); } return next; })} /><span className="font-mono">{table}</span></label>)}</div><div className="grid gap-4 md:grid-cols-2"><input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Senha do admin" className={inputClassName} /><input type="text" value={reset2FACode} onChange={(e) => setReset2FACode(e.target.value)} placeholder="Codigo 2FA" className={inputClassName} /></div><input type="text" value={resetConfirmText} onChange={(e) => setResetConfirmText(e.target.value)} placeholder="Digite RESETAR" className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-600 outline-none dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300" /></div><div className="mt-8 flex gap-3"><button type="button" onClick={() => { setIsResetModalOpen(false); setResetError(null); }} className="flex-1 py-4 text-[10px] font-black uppercase text-slate-400">Cancelar</button><button type="button" onClick={handleSystemReset} disabled={isResetting || resetConfirmText !== 'RESETAR'} className={`flex-[2] rounded-2xl py-4 text-[10px] font-black uppercase tracking-[0.18em] text-white ${resetConfirmText === 'RESETAR' ? 'bg-rose-600' : 'bg-slate-300'}`}>{isResetting ? <Loader2 size={14} className="mx-auto animate-spin" /> : 'Executar reset'}</button></div></div></div>, document.body)}
+          {isResetModalOpen && createPortal(<div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md"><div className="w-full max-w-2xl rounded-2xl border border-rose-100 bg-white p-8 shadow-2xl dark:border-rose-900/30 dark:bg-slate-900"><h3 className="text-xl font-black text-slate-900 dark:text-slate-100">Confirmação de reset</h3>{resetError && <div className="mt-4 flex items-start gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4 dark:border-rose-900/30 dark:bg-rose-900/20"><XCircle size={18} className="mt-0.5 text-rose-600" /><p className="text-xs font-bold text-rose-800 dark:text-rose-300">{resetError}</p></div>}<div className="mt-6 space-y-4"><div className="grid max-h-48 grid-cols-2 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">{dbTables.map((table) => <label key={table} className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300"><input type="checkbox" checked={selectedTables.has(table)} onChange={() => setSelectedTables((current) => { const next = new Set(current); if (next.has(table)) { next.delete(table); } else { next.add(table); } return next; })} /><span className="font-mono">{table}</span></label>)}</div><div className="grid gap-4 md:grid-cols-2"><input type="password" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Senha do admin" className={inputClassName} /><input type="text" value={reset2FACode} onChange={(e) => setReset2FACode(e.target.value)} placeholder="Codigo 2FA" className={inputClassName} /></div><input type="text" value={resetConfirmText} onChange={(e) => setResetConfirmText(e.target.value)} placeholder="Digite RESETAR" className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-600 outline-none dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300" /></div><div className="mt-8 flex gap-3"><button type="button" onClick={() => { setIsResetModalOpen(false); setResetError(null); }} className="flex-1 py-4 text-[10px] font-black uppercase text-slate-400">Cancelar</button><button type="button" onClick={handleSystemReset} disabled={isResetting || resetConfirmText !== 'RESETAR'} className={`flex-[2] rounded-2xl py-4 text-[10px] font-black uppercase tracking-[0.18em] text-white ${resetConfirmText === 'RESETAR' ? 'bg-rose-600' : 'bg-slate-300'}`}>{isResetting ? <Loader2 size={14} className="mx-auto animate-spin" /> : 'Executar reset'}</button></div></div></div>, document.body)}
         </div>
       )}
 
@@ -1067,10 +1067,10 @@ const AdminSettings = ({
         <div className={`space-y-6 ${ADMIN_PAGE_PANEL_CLASS}`}>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Cpu size={20} className="text-sky-700 dark:text-sky-300" /> Integracoes</h3>
+              <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><Cpu size={20} className="text-sky-700 dark:text-sky-300" /> Integrações</h3>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Diagnostico oficial do backend.</p>
             </div>
-            <button type="button" onClick={() => void handleTestIntegrations()} disabled={isTestingIntegrations} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>{isTestingIntegrations ? 'Testando...' : 'Testar integracoes'}</button>
+            <button type="button" onClick={() => void handleTestIntegrations()} disabled={isTestingIntegrations} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}>{isTestingIntegrations ? 'Testando...' : 'Testar integrações'}</button>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <select value={localSettings.paymentCheckoutMode || 'internal'} onChange={(e) => setField('paymentCheckoutMode', e.target.value as 'internal' | 'redirect')} className={inputClassName}><option value="internal">Checkout interno</option><option value="redirect">Checkout externo</option></select>
@@ -1101,13 +1101,13 @@ const AdminSettings = ({
                     <IntegrationResultIcon size={18} />
                   </div>
                   <div>
-                    <p className="text-sm font-black">{integrationsTestResult.message || 'Integracoes verificadas.'}</p>
+                    <p className="text-sm font-black">{integrationsTestResult.message || 'Integrações verificadas.'}</p>
                     <p className="mt-1 text-xs font-semibold opacity-80">
                       {hasIntegrationCriticalIssues
-                        ? 'Corrija os itens criticos antes de considerar as integracoes prontas para producao.'
+                        ? 'Corrija os itens criticos antes de considerar as integrações prontas para producao.'
                         : hasIntegrationWarnings
-                          ? 'Nao ha falha critica, mas existem avisos que merecem revisao.'
-                          : 'Todas as integracoes testadas estao saudaveis.'}
+                          ? 'Nao ha falha critica, mas existem avisos que merecem revisão.'
+                          : 'Todas as integrações testadas estao saudaveis.'}
                     </p>
                   </div>
                 </div>
@@ -1225,10 +1225,10 @@ const AdminSettings = ({
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-700 dark:text-sky-300">Publicidade</p>
               <h3 className="mt-2 flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100">
                 <Megaphone size={20} />
-                Controle de anuncios
+                Controle de anúncios
               </h3>
               <p className="mt-2 max-w-2xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                Configure a conta AdSense, valide a propriedade do dominio e escolha exatamente onde os banners serao exibidos.
+                Configure a conta AdSense, valide a propriedade do dominio e escolha exatamente onde os banners seráo exibidos.
               </p>
             </div>
             <button
@@ -1259,7 +1259,7 @@ const AdminSettings = ({
               <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">AdSense ou HTML customizado</p>
             </div>
             <div className={ADMIN_MUTED_SURFACE_CLASS + ' p-4'}>
-              <p className={labelClassName}>Verificacao AdSense</p>
+              <p className={labelClassName}>Verificação AdSense</p>
               <p className={`mt-3 text-sm font-black ${adsensePublisherId ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                 {adsensePublisherId ? 'Metatag pronta' : 'Informe o ca-pub'}
               </p>
@@ -1268,12 +1268,12 @@ const AdminSettings = ({
           </div>
 
           <div className="rounded-sm border border-sky-200 bg-sky-50 p-4 text-sm font-semibold leading-relaxed text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-100">
-            Quando o publisher ou slot nao estiverem preenchidos, o site usa os IDs oficiais de teste do Google para validar renderizacao sem gerar trafego real. O interstitial respeita o frequency cap do Google e tambem o intervalo configurado em Controle de Acesso por Plano.
+            Quando o publisher ou slot nao estiverem preenchidos, o site usa os IDs oficiais de teste do Google para validar renderização sem gerar tráfego real. O interstitial respeita o frequency cap do Google e também o intervalo configurado em Controle de Acesso por Plano.
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="rounded-sm border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
-              Use o modo teste para validar a implementacao. Ele ignora temporariamente os slots reais e HTML customizado, usa os IDs oficiais do Google e adiciona <span className="font-mono">data-adtest=&quot;on&quot;</span>. Desative para veicular os anuncios reais apos a verificacao/aprovacao do AdSense.
+              Use o modo teste para validar a implementação. Ele ignora temporariamente os slots reais e HTML customizado, usa os IDs oficiais do Google e adiciona <span className="font-mono">data-adtest=&quot;on&quot;</span>. Desative para veicular os anúncios reais após a verificação/aprovação do AdSense.
             </div>
             <button
               type="button"
@@ -1400,7 +1400,7 @@ const AdminSettings = ({
                 <div>
                   <p className="text-sm font-black text-slate-900 dark:text-slate-100">Interstitial GPT</p>
                   <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                    Out-of-page ad gerenciado pelo Google. No plano gratuito, pode ser disparado apos respostas conforme o intervalo do plano.
+                    Out-of-page ad gerenciado pelo Google. No plano gratuito, pode ser disparado após respostas conforme o intervalo do plano.
                   </p>
                 </div>
                 <button
@@ -1432,7 +1432,7 @@ const AdminSettings = ({
             <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">Pop de navegacao</p>
+                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">Pop de navegação</p>
                   <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
                     Chamada controlada para campanha interna ou patrocinio. Mantida desligada por padrao para preservar experiencia.
                   </p>
@@ -1468,7 +1468,7 @@ const AdminSettings = ({
             <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-2`}>
               <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">Publicidade por plano</h4>
               <p className="max-w-3xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                Defina quem ve anuncios, quem recebe experiencia reduzida e quais planos ficam completamente sem publicidade.
+                Defina quem ve anúncios, quem recebe experiencia reduzida e quais planos ficam completamente sem publicidade.
               </p>
             </div>
 
@@ -1525,9 +1525,9 @@ const AdminSettings = ({
               {adPlanLimitDefinitions.length > 0 ? (
                 <div className="mt-5 overflow-hidden rounded-sm border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50">
                   <div className="border-b border-slate-100 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40">
-                    <h5 className="text-xs font-black uppercase tracking-[0.14em] text-slate-900 dark:text-slate-100">Limites de anuncios por plano</h5>
+                    <h5 className="text-xs font-black uppercase tracking-[0.14em] text-slate-900 dark:text-slate-100">Limites de anúncios por plano</h5>
                     <p className="mt-1 text-[11px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                      Controle a cadencia de formatos interruptivos, como interstitial apos resposta de questoes.
+                      Controle a cadência de formatos interruptivos, como interstitial após resposta de questões.
                     </p>
                   </div>
                   <div className="overflow-x-auto">
@@ -1627,4 +1627,3 @@ const AdminSettings = ({
 };
 
 export default AdminSettings;
-

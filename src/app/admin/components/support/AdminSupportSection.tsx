@@ -1,4 +1,4 @@
-﻿/*
+/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -64,7 +64,7 @@ const SUPPORT_SECTIONS: Array<{
   {
     key: 'feedback',
     label: 'Feedback',
-    description: 'Triagem de opinioes, bugs e pendencias vindas dos usuarios.',
+    description: 'Triagem de opiniões, bugs e pendências vindas dos usuários.',
   },
   {
     key: 'comments',
@@ -73,13 +73,13 @@ const SUPPORT_SECTIONS: Array<{
   },
   {
     key: 'reports',
-    label: 'Denuncias',
-    description: 'Fila oficial de denuncias com atalho para a area responsavel.',
+    label: 'Denúncias',
+    description: 'Fila oficial de denúncias com atalho para a área responsável.',
   },
   {
     key: 'threads',
     label: 'Threads',
-    description: 'Acompanhe conversas abertas, retornos e historico do atendimento.',
+    description: 'Acompanhe conversas abertas, retornos e histórico do atendimento.',
   },
 ];
 
@@ -90,8 +90,8 @@ const renderSupportHeader = (label: string) => (
 );
 
 /**
- * Consolida a area de suporte em feedback, denuncias e threads.
- * Denuncias saiu da operacao e passa a centralizar a triagem de atendimento.
+ * Consolida a área de suporte em feedback, denúncias e threads.
+ * Denúncias saiu da operação e passa a centralizar a triagem de atendimento.
  *
  * @since 1.0.0
  */
@@ -224,10 +224,10 @@ const AdminSupportSection = ({
         ...report,
         resolution: getQuickReportResolutionReason(report),
       });
-      addToast('Denuncia resolvida com sucesso.', 'success');
+      addToast('Denúncia resolvida com sucesso.', 'success');
     } catch (error) {
       clientLog.warn('Error resolving report from support:', error);
-      addToast('Nao foi possivel resolver a denuncia.', 'error');
+      addToast('Não foi possível resolver a denúncia.', 'error');
     } finally {
       setResolvingReportId(null);
     }
@@ -238,7 +238,7 @@ const AdminSupportSection = ({
       const questionId = getReportTargetId(report);
 
       if (!questionId) {
-        addToast('Nao foi possivel identificar a questao denunciada.', 'error');
+        addToast('Não foi possível identificar a questão denunciada.', 'error');
         return;
       }
 
@@ -264,7 +264,7 @@ const AdminSupportSection = ({
 
     const resolution = moderationResolution.trim();
     if (!resolution) {
-      addToast('Informe a decisao da moderacao antes de concluir.', 'warning');
+      addToast('Informe a decisão da moderação antes de concluir.', 'warning');
       return;
     }
 
@@ -274,12 +274,12 @@ const AdminSupportSection = ({
         ...moderatingReport,
         resolution,
       });
-      addToast('Denuncia moderada com sucesso.', 'success');
+      addToast('Denúncia moderada com sucesso.', 'success');
       setModeratingReport(null);
       setModerationResolution('');
     } catch (error) {
       clientLog.warn('Error moderating report from support:', error);
-      addToast('Nao foi possivel moderar a denuncia.', 'error');
+      addToast('Não foi possível moderar a denúncia.', 'error');
     } finally {
       setResolvingReportId(null);
     }
@@ -365,14 +365,14 @@ const AdminSupportSection = ({
               <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{pendingReportsCount}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Acao</p>
-              <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Moderacao no alvo</p>
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Em questoes, Moderar abre a pagina de edicao da questao denunciada.</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Ação</p>
+              <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Moderação no alvo</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Em questões, Moderar abre a página de edição da questão denunciada.</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Estado</p>
               <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">
-                {resolvingReportId ? 'Processando resolucao...' : 'Fila pronta para tratamento'}
+                {resolvingReportId ? 'Processando resolução...' : 'Fila pronta para tratamento'}
               </p>
             </div>
           </div>
@@ -403,20 +403,20 @@ const AdminSupportSection = ({
             <div className={ADMIN_MODAL_HEADER_CLASS}>
               <div>
                 <p className="inline-flex items-center gap-2 rounded-sm bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-                  <Shield size={12} /> Moderacao de denuncia
+                  <Shield size={12} /> Moderação de denúncia
                 </p>
                 <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-slate-100">
                   {getReportTargetLabel(moderatingReport.targetType)} denunciado
                 </h3>
                 <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Analise, registre a decisao e conclua sem sair desta pagina.
+                  Analise, registre a decisão e conclua sem sair desta página.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={closeReportModerationModal}
                 className="rounded-sm border border-slate-300 p-2 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-700 dark:border-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                aria-label="Fechar moderacao"
+                aria-label="Fechar moderação"
               >
                 <X size={18} />
               </button>
@@ -454,14 +454,14 @@ const AdminSupportSection = ({
 
                 <div className={`${ADMIN_MUTED_SURFACE_CLASS} bg-white p-4 text-xs font-medium text-slate-500 dark:bg-slate-950 dark:text-slate-400`}>
                   <p><strong className="text-slate-800 dark:text-slate-200">Alvo:</strong> {getReportTargetLabel(moderatingReport.targetType)}</p>
-                  <p className="mt-2"><strong className="text-slate-800 dark:text-slate-200">Usuario:</strong> {moderatingReport.userName || 'Nao informado'}</p>
+                  <p className="mt-2"><strong className="text-slate-800 dark:text-slate-200">Usuário:</strong> {moderatingReport.userName || 'Não informado'}</p>
                   <p className="mt-2"><strong className="text-slate-800 dark:text-slate-200">Data:</strong> {new Date(moderatingReport.timestamp).toLocaleDateString('pt-BR')}</p>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Decisao rapida</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Decisão rápida</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {getReportModerationTemplates(moderatingReport).map((template) => (
                       <button
@@ -477,7 +477,7 @@ const AdminSupportSection = ({
                 </div>
 
                 <label className="block">
-                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Registro da moderacao</span>
+                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Registro da moderação</span>
                   <textarea
                     value={moderationResolution}
                     onChange={(event) => setModerationResolution(event.target.value)}
@@ -503,7 +503,7 @@ const AdminSupportSection = ({
                 className={ADMIN_PRIMARY_BUTTON_CLASS}
               >
                 <CheckCircle2 size={14} />
-                {resolvingReportId === moderatingReport.id ? 'Concluindo...' : 'Concluir moderacao'}
+                {resolvingReportId === moderatingReport.id ? 'Concluindo...' : 'Concluir moderação'}
               </button>
             </div>
           </div>

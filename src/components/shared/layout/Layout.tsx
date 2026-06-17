@@ -1,4 +1,4 @@
-﻿/*
+/*
 * ----------------------------------------------------
 * @author: 4quarenta
 * @author URI: https://github.com/4quarenta
@@ -484,25 +484,25 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {
         tab: 'personal',
         label: 'Dados pessoais',
-        description: 'Foto, dados da conta e cartoes salvos.',
+        description: 'Foto, dados da conta e cartões salvos.',
         icon: User,
       },
       {
         tab: 'billing',
         label: 'Assinatura',
-        description: 'Plano ativo, renovacao e cobrancas.',
+        description: 'Plano ativo, renovação e cobranças.',
         icon: CreditCard,
       },
       {
         tab: 'support-history',
-        label: 'Historico de suporte',
-        description: 'Chamados, sugestoes e respostas.',
+        label: 'Histórico de suporte',
+        description: 'Chamados, sugestões e respostas.',
         icon: MessageSquare,
       },
       {
         tab: 'billing-history',
-        label: 'Transacoes',
-        description: 'Historico financeiro e comprovantes.',
+        label: 'Transações',
+        description: 'Histórico financeiro e comprovantes.',
         icon: BarChart3,
       },
       {
@@ -513,14 +513,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       },
       {
         tab: 'notebook',
-        label: 'Minhas anotacoes',
-        description: 'Anotacoes e registros salvos.',
+        label: 'Minhas anotações',
+        description: 'Anotações e registros salvos.',
         icon: StickyNote,
       },
       {
         tab: 'security',
         label: 'Privacidade',
-        description: 'Seguranca, protecao e acesso.',
+        description: 'Segurança, proteção e acesso.',
         icon: ShieldCheck,
       },
     ];
@@ -529,7 +529,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       items.splice(5, 0, {
         tab: 'referral',
         label: 'Indique e ganhe',
-        description: 'Convites, beneficios e afiliacao.',
+        description: 'Convites, benefícios e afiliação.',
         icon: Gift,
       });
     }
@@ -543,7 +543,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         return {
           box: 'bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl p-4 text-white shadow-lg',
           icon: Crown,
-          badge: 'Maximo',
+          badge: 'Máximo',
         };
       case 3:
         return {
@@ -561,7 +561,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         return {
           box: 'bg-slate-100 dark:bg-slate-800/80 rounded-xl p-4 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/50 shadow-sm',
           icon: Lock,
-          badge: 'Gratis',
+          badge: 'Grátis',
         };
     }
   };
@@ -591,7 +591,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       const next = !current;
       if (next && unreadCount > 0) {
         void markAllNotificationsAsRead(user?.id ? String(user.id) : undefined).catch((error) => {
-          clientLog.warn('[notifications] Nao foi possivel marcar notificacoes como vistas ao abrir o box.', error);
+          clientLog.warn('[notifications] Não foi possível marcar notificações como vistas ao abrir o box.', error);
         });
       }
       return next;
@@ -636,7 +636,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <Mail size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
               <p className="leading-relaxed">
                 Confirme o e-mail <strong>{user.email}</strong> para liberar todos os recursos e receber +50 XP.
-                {hasFailedEmailDeliveryNotice ? ' O envio automatico ainda precisa ser refeito.' : ''}
+                {hasFailedEmailDeliveryNotice ? ' O envio automático ainda precisa ser refeito.' : ''}
               </p>
             </div>
             <button
@@ -813,9 +813,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     className={`${styles} ${isLocked ? 'opacity-75' : ''}`}
                     title={
                       shouldShowDevBadge
-                        ? 'Desativado no admin (visivel apenas para Admin)'
+                        ? 'Desativado no admin (visível apenas para Admin)'
                         : isLocked && item.benefitKey && !Array.isArray(item.benefitKey)
-                          ? `Disponivel no ${getBenefitPlanLabel(item.benefitKey, systemSettings.planEntitlements)}`
+                          ? `Disponível no ${getBenefitPlanLabel(item.benefitKey, systemSettings.planEntitlements)}`
                           : ''
                     }
                   >
@@ -1073,4 +1073,3 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 };
 
 export default React.memo(Layout);
-
