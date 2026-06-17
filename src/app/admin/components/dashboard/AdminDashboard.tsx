@@ -485,13 +485,13 @@ const AdminDashboard = ({
       label: 'Reembolsos pendentes',
       value: refundRequestsCount,
       description: 'Pedidos financeiros aguardando tratamento.',
-      onClick: () => onNavigate?.('finance', 'refunds'),
+      onClick: () => onNavigate?.('support', 'refunds'),
     },
     {
       label: 'Materiais aguardando analise',
       value: pendingMaterialsCount,
       description: 'Fila de marketplace em revisao administrativa.',
-      onClick: () => onNavigate?.('support', 'materials'),
+      onClick: () => onNavigate?.('marketplace', 'materials'),
     },
     {
       label: 'Comentários aguardando moderação',

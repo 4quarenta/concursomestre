@@ -290,7 +290,7 @@ const AdminPanelSection = ({
           </button>
 
           <button
-            onClick={() => onNavigate?.('finance', 'refunds')}
+            onClick={() => onNavigate?.('support', 'refunds')}
             className="rounded-md border border-rose-200 bg-rose-50 p-5 text-left transition-all hover:border-rose-300 dark:border-rose-900/30 dark:bg-rose-900/10"
           >
             <RefreshCcw size={18} className="text-rose-600 dark:text-rose-300" />
