@@ -209,7 +209,7 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
     description: 'Permite visualizar gabarito e resultado.',
   },
   {
-    key: 'question.basic_explanation',
+    key: 'teacher_comments',
     label: 'Card: comentario do professor',
     description: 'Permite visualizar o comentario do professor quando disponivel.',
   },
@@ -301,11 +301,6 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
     key: 'no_ads',
     label: 'Sem anuncios',
     description: 'Oculta banners e blocos de publicidade durante o estudo.',
-  },
-  {
-    key: 'teacher_comments',
-    label: 'Comentario do professor',
-    description: 'Libera o gabarito comentado assinado por professor.',
   },
   {
     key: 'detailed_analysis',
@@ -490,7 +485,6 @@ export const DEFAULT_PLAN_ENTITLEMENTS: PlanEntitlements = {
     'practice.filter_answered_wrong',
     'question.resolve',
     'question.answer_key',
-    'question.basic_explanation',
     'question.save',
     'question.notes',
     'question.share',
@@ -532,7 +526,6 @@ export const DEFAULT_PLAN_ENTITLEMENTS: PlanEntitlements = {
     'practice.filter_answered_wrong',
     'question.resolve',
     'question.answer_key',
-    'question.basic_explanation',
     'question.detailed_analysis',
     'question.save',
     'question.notes',
@@ -582,7 +575,6 @@ export const DEFAULT_PLAN_ENTITLEMENTS: PlanEntitlements = {
     'practice.filter_answered_wrong',
     'question.resolve',
     'question.answer_key',
-    'question.basic_explanation',
     'question.detailed_analysis',
     'question.save',
     'question.notes',
@@ -665,7 +657,7 @@ export const DEFAULT_PLAN_USAGE_LIMITS: PlanUsageLimits = {
 export const PUBLIC_PLAN_FEATURE_BENEFIT_KEYS: PlanBenefitKey[] = [
   'module.practice',
   'question.resolve',
-  'question.basic_explanation',
+  'teacher_comments',
   'question.detailed_analysis',
   'question.full_statistics',
   'question.save',
@@ -691,7 +683,7 @@ export const PUBLIC_PLAN_FEATURE_BENEFIT_KEYS: PlanBenefitKey[] = [
 const PUBLIC_PLAN_FEATURE_LABELS: Partial<Record<PlanBenefitKey, string>> = {
   'module.practice': 'Pratica de questoes',
   'question.resolve': 'Resolver questoes',
-  'question.basic_explanation': 'Comentario do professor',
+  teacher_comments: 'Comentario do professor',
   'question.detailed_analysis': 'Analise detalhada',
   'question.full_statistics': 'Estatisticas completas',
   'question.save': 'Salvar questoes',

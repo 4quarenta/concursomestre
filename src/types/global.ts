@@ -790,7 +790,6 @@ export type PlanBenefitKey =
     | 'practice.filter_answered_wrong'
     | 'question.resolve'
     | 'question.answer_key'
-    | 'question.basic_explanation'
     | 'question.detailed_analysis'
     | 'question.save'
     | 'question.notes'

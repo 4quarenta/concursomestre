@@ -321,7 +321,7 @@ const PLAN_ACCESS_MODULE_GROUPS: Array<{
       'practice.filter_answered_wrong',
       'question.resolve',
       'question.answer_key',
-      'question.basic_explanation',
+      'teacher_comments',
       'question.detailed_analysis',
       'question.save',
       'question.notes',
@@ -378,7 +378,6 @@ const PLAN_ACCESS_MODULE_GROUPS: Array<{
     strategy: 'Comentarios ajudam engajamento, mas limites evitam spam nos planos menores.',
     benefitKeys: [
       'community_comments',
-      'teacher_comments',
     ],
     limitKeys: [
       'comments_per_day',

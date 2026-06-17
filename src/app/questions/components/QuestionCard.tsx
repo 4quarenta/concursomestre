@@ -732,9 +732,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const [sessionAnswer, setSessionAnswer] = useState<UserAnswer | null>(null);
   const [showAnswerFeedback, setShowAnswerFeedback] = useState(false);
 
-  const teacherRequiredPlan = getBenefitRequiredPlan('question.basic_explanation', systemSettings.planEntitlements);
+  const teacherRequiredPlan = getBenefitRequiredPlan('teacher_comments', systemSettings.planEntitlements);
   const detailedRequiredPlan = getBenefitRequiredPlan('question.detailed_analysis', systemSettings.planEntitlements);
-  const teacherPlanLabel = getBenefitPlanLabel('question.basic_explanation', systemSettings.planEntitlements);
+  const teacherPlanLabel = getBenefitPlanLabel('teacher_comments', systemSettings.planEntitlements);
   const detailedPlanLabel = getBenefitPlanLabel('question.detailed_analysis', systemSettings.planEntitlements);
   const canResolveQuestion = hasPlanBenefit(currentUser, 'question.resolve', systemSettings.planEntitlements);
   const canSeeAnswerKey = hasPlanBenefit(currentUser, 'question.answer_key', systemSettings.planEntitlements);
@@ -777,8 +777,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   // Normaliza o plano para comparação (podem vir em minúsculas do backend)
   // Hierarquia e regras de acesso de plano
   // Gabarito Comentado: Pro ou Elite
-  const canSeeTeacher = hasPlanBenefit(currentUser, 'question.basic_explanation', systemSettings.planEntitlements)
-    || hasPlanBenefit(currentUser, 'teacher_comments', systemSettings.planEntitlements);
+  const canSeeTeacher = hasPlanBenefit(currentUser, 'teacher_comments', systemSettings.planEntitlements);
   const canOpenTeacherComment = canSeeTeacher && hasTeacherCommentContent;
   const hasTeacherCommentSignal = Boolean(question.hasTeacherComment || hasTeacherCommentContent);
   // Análise Detalhada: apenas Elite
