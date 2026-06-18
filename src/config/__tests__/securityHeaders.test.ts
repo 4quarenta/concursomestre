@@ -33,6 +33,9 @@ describe('frontend security headers', () => {
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain('https://checkout.stripe.com');
+    expect(csp).toContain('https://hooks.stripe.com');
+    expect(csp).toContain('https://m.stripe.com');
+    expect(csp).toContain('https://m.stripe.network');
     expect(csp).toContain('https://accounts.google.com');
     expect(csp).toContain('https://connect.facebook.net');
     expect(csp).toContain('https://appleid.cdn-apple.com');

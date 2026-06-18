@@ -23,7 +23,7 @@ import { hasActivePlanAccess } from '@services/plans/planAccess';
 import { clientLog } from '@services/monitoring/clientLog';
 import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import { readApiErrorMessage } from '@services/api';
-import { Address, DiscountCode, Plan, PlanConfig, PlanEntitlements, PlanName, UserProfile } from '@types';
+import { Address, DiscountCode, Plan, PlanEntitlements, UserProfile } from '@types';
 import { authFlowService } from '@services/auth';
 import { cardsService, type SavedCard } from '@services/billing';
 import { getEnabledStripePaymentMethods } from '@services/payments/stripePaymentMethodsConfig';
@@ -36,6 +36,7 @@ import {
 import CheckoutHeader from './components/CheckoutHeader';
 import CheckoutPaymentStage from './components/CheckoutPaymentStage';
 import CheckoutStepTracker from './components/CheckoutStepTracker';
+import { shouldHideCheckoutForExistingSubscription } from './checkoutVisibility';
 import useCheckoutSummaryAction from './hooks/useCheckoutSummaryAction';
 import type { CheckoutAuthMode, CheckoutStep } from './types';
 import { buildProfilePath } from '../profile/profileNavigation';
@@ -179,6 +180,7 @@ const CheckoutPage: React.FC = () => {
     const [plan, setPlan] = useState<Plan | null>(null);
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false);
+    const [checkoutCompletionInProgress, setCheckoutCompletionInProgress] = useState(false);
     const [proRatedCredit, setProRatedCredit] = useState(0);
     const [showDowngradeModal, setShowDowngradeModal] = useState(false);
 
@@ -1215,8 +1217,19 @@ const CheckoutPage: React.FC = () => {
 
         const payload = response?.data || response;
         checkoutCompletionInProgressRef.current = true;
-        await refreshUser();
-        await loadSavedCards();
+        setCheckoutCompletionInProgress(true);
+
+        const [userRefreshResult, cardsRefreshResult] = await Promise.allSettled([
+            refreshUser(),
+            loadSavedCards(),
+        ]);
+
+        if (userRefreshResult.status === 'rejected') {
+            clientLog.warn('Checkout completed, but user refresh failed:', userRefreshResult.reason);
+        }
+        if (cardsRefreshResult.status === 'rejected') {
+            clientLog.warn('Checkout completed, but saved cards refresh failed:', cardsRefreshResult.reason);
+        }
 
         setPendingStripeSubscriptionId(null);
         setPendingStripePaymentMethodId(null);
@@ -1231,13 +1244,14 @@ const CheckoutPage: React.FC = () => {
         }
 
         if (payload?.approved === false) {
-                addToast('O pagamento foi bloqueado pela validacao antifraude da Stripe.', 'error');
+            checkoutCompletionInProgressRef.current = false;
+            setCheckoutCompletionInProgress(false);
+            addToast('O pagamento foi bloqueado pela validação antifraude da Stripe.', 'error');
             return;
         }
 
         if (payload?.access_granted === false) {
-            addToast('Pagamento confirmado. Estamos concluindo a sincronizacao final da assinatura com a Stripe.', 'info');
-            return;
+            addToast('Pagamento confirmado. Estamos concluindo a sincronização final da assinatura com a Stripe.', 'info');
         }
 
         if (!checkoutAnalyticsRef.current.purchaseCompleted) {
@@ -1605,7 +1619,14 @@ const CheckoutPage: React.FC = () => {
         handlePayment,
     });
 
-    if (isAuthLoading || hasExactCurrentPlanMatch || hasBillingMirrorPlanMatch || hasRepeatedActivePlanPurchase) {
+    const shouldHideCheckout = shouldHideCheckoutForExistingSubscription({
+        isAuthLoading,
+        hasCurrentPlanMatch: hasExactCurrentPlanMatch || hasBillingMirrorPlanMatch || hasRepeatedActivePlanPurchase,
+        checkoutCompletionInProgress,
+        step,
+    });
+
+    if (shouldHideCheckout) {
         return null;
     }
 
