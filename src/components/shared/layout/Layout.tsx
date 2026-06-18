@@ -36,8 +36,8 @@ import { resolveSystemFeatureFlag } from '@services/system/moduleFlags';
 import PublicBrandLink from './PublicBrandLink';
 import {
   getBenefitPlanLabel,
-  getEffectivePlanName,
-  getEffectivePlanTier,
+  getAccessPlanName,
+  getPlanTierFromName,
   hasPlanBenefit,
 } from '@services/plans/planAccess';
 import type { PlanBenefitKey } from '@types';
@@ -465,8 +465,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // Only consider the plan active if there is a valid subscription status (active or trialing)
   // Otherwise, fallback to 'Gratuito'. This mirrors the logic in Profile.tsx
-  const currentCanonicalPlan = getEffectivePlanName(user);
-  const currentTier = React.useMemo(() => getEffectivePlanTier(user), [user]);
+  const currentCanonicalPlan = getAccessPlanName(user);
+  const currentTier = React.useMemo(
+    () => getPlanTierFromName(getAccessPlanName(user)),
+    [user],
+  );
+  const accountStatusHref = currentCanonicalPlan === 'Gratuito'
+    ? '/plans'
+    : buildProfilePath('billing');
   const resolvePlanLocked = React.useCallback((benefitKey?: PlanBenefitKey | PlanBenefitKey[]) => {
     if (!benefitKey || isStrictAdmin) {
       return false;
@@ -863,7 +869,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="shrink-0 space-y-3 border-t border-slate-100 p-3 dark:border-slate-800">
               {user && (
                 <div className={currentPlanTheme.box}>
-                <Link href={currentTier > 0 ? buildProfilePath('billing') : '/plans'} prefetch={false} className="block text-inherit hover:opacity-80 transition-opacity">
+                <Link href={accountStatusHref} prefetch={false} className="block text-inherit hover:opacity-80 transition-opacity">
                     <p className="text-xs font-semibold opacity-80 uppercase tracking-wider mb-1">Status da Conta</p>
                     <p className="text-sm font-bold flex items-center gap-2">
                       <currentPlanTheme.icon size={14} className={currentTier === 4 ? 'fill-current' : ''} />
