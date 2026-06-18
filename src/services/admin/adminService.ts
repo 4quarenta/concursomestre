@@ -13,6 +13,7 @@ import { apiClient, ENDPOINTS, assertApiSuccess, downloadAuthenticatedFile, read
 import type { ApiResponse } from '@services/api';
 import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
 import { withQuestionPublicationAliases } from '@services/questions/questionPublication';
+import { getSupportReasonLabel } from '@services/support/supportReasonLabels';
 import type { ErrorReport, Question, Ranking, SystemSettings, UserProfile } from '@types';
 
 type FeedbackStatus = 'new' | 'read' | 'resolved';
@@ -138,6 +139,11 @@ export interface AdminFeedbackThread {
 export interface AdminFeedbackReply extends AdminFeedbackThread {
   parent_id: number;
 }
+
+const normalizeAdminFeedbackThread = <T extends AdminFeedbackThread>(thread: T): T => ({
+  ...thread,
+  reason: getSupportReasonLabel(thread.reason),
+});
 
 export interface CacheStatsPayload {
   total_files: number;
@@ -1623,7 +1629,7 @@ export const adminService = {
       buildRequestCacheKey('admin:feedback-threads'),
       async () => {
         const response = await requestApi<{ items: AdminFeedbackThread[] }>(apiClient.get<ApiResponse<{ items: AdminFeedbackThread[] }>>(ENDPOINTS.admin.feedback));
-        return readApiData(response, { items: [] }).items || [];
+        return (readApiData(response, { items: [] }).items || []).map(normalizeAdminFeedbackThread);
       },
       15_000,
     );
@@ -1652,7 +1658,7 @@ export const adminService = {
    */
   async getFeedbackReplies(parentId: number): Promise<AdminFeedbackReply[]> {
     const response = await requestApi<{ replies: AdminFeedbackReply[] }>(apiClient.get<ApiResponse<{ replies: AdminFeedbackReply[] }>>(`${ENDPOINTS.admin.feedback}?id=${parentId}`));
-    return readApiData(response, { replies: [] }).replies || [];
+    return (readApiData(response, { replies: [] }).replies || []).map(normalizeAdminFeedbackThread);
   },
 
   /**

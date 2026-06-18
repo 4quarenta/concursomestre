@@ -1472,9 +1472,12 @@ const Practice: React.FC = () => {
     });
   }, [isPracticeFilterLocked, sanitizeFiltersForFocus]);
 
-  const openLockedFilterUpgrade = useCallback((key: PracticeFilterKey) => {
+  const openLockedFilterUpgrade = useCallback((key: PracticeFilterKey, fallbackMessage?: string) => {
     const benefitKey = PRACTICE_FILTER_BENEFITS[key];
     if (!benefitKey || !isPracticeFilterLocked(key)) {
+      if (fallbackMessage) {
+        addToast(fallbackMessage, 'info');
+      }
       return;
     }
 
@@ -1482,7 +1485,7 @@ const Practice: React.FC = () => {
       featureName: PRACTICE_FILTER_FEATURE_LABELS[key] || 'este filtro',
       requiredPlan: getBenefitRequiredPlan(benefitKey, systemSettings.planEntitlements) as CanonicalPlanName,
     });
-  }, [isPracticeFilterLocked, systemSettings.planEntitlements]);
+  }, [addToast, isPracticeFilterLocked, systemSettings.planEntitlements]);
 
   const applyFilters = useCallback(() => {
     setIsFiltering(true);
@@ -1941,9 +1944,9 @@ const Practice: React.FC = () => {
               groups={agencyOptionGroups}
               disabled={isEnemPendingFocus || isPracticeFilterLocked('agency')}
               helperText={getLockedFilterHelperText('agency', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)}
-              onDisabledClick={() => openLockedFilterUpgrade('agency')}
+              onDisabledClick={() => openLockedFilterUpgrade('agency', isEnemPendingFocus ? 'No foco ENEM, a banca é fixa e este filtro fica desativado.' : undefined)}
             />
-            <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus || isPracticeFilterLocked('organization')} helperText={getLockedFilterHelperText('organization', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('organization')} />
+            <FilterSelect label="Órgão" value={pendingFilters.organization} onChange={(v) => handleFilterChange('organization', v)} options={uniqueOrganizations} disabled={isEnemPendingFocus || isPracticeFilterLocked('organization')} helperText={getLockedFilterHelperText('organization', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('organization', isEnemPendingFocus ? 'No foco ENEM, órgão não se aplica a essa seleção.' : undefined)} />
             <SearchableFilterSelect
               label="Ano"
               value={pendingFilters.year}
@@ -1953,15 +1956,15 @@ const Practice: React.FC = () => {
               helperText={getLockedFilterHelperText('year')}
               onDisabledClick={() => openLockedFilterUpgrade('year')}
             />
-            <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus || isPracticeFilterLocked('level')} helperText={getLockedFilterHelperText('level', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('level')} />
+            <FilterSelect label="Nível" value={pendingFilters.level} onChange={(v) => handleFilterChange('level', v)} options={['Superior', 'Médio', 'Fundamental']} disabled={isEnemPendingFocus || isPracticeFilterLocked('level')} helperText={getLockedFilterHelperText('level', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('level', isEnemPendingFocus ? 'No foco ENEM, nível não se aplica a essa seleção.' : undefined)} />
             <SearchableFilterSelect
               label="Assunto"
               value={pendingFilters.topic}
               onChange={(v) => handleFilterChange('topic', v)}
               groups={topicOptionGroups}
               disabled={!hasAnyFilterValue(pendingFilters.subject) || isPracticeFilterLocked('topic')}
-              helperText={getLockedFilterHelperText('topic')}
-              onDisabledClick={() => openLockedFilterUpgrade('topic')}
+              helperText={getLockedFilterHelperText('topic', !hasAnyFilterValue(pendingFilters.subject) ? 'Selecione uma matéria antes de filtrar por assunto.' : undefined)}
+              onDisabledClick={() => openLockedFilterUpgrade('topic', !hasAnyFilterValue(pendingFilters.subject) ? 'Selecione uma matéria antes de filtrar por assunto.' : undefined)}
             />
             <SearchableFilterSelect
               label="Cargo"
@@ -1970,9 +1973,9 @@ const Practice: React.FC = () => {
               groups={roleOptionGroups}
               disabled={isEnemPendingFocus || isPracticeFilterLocked('role')}
               helperText={getLockedFilterHelperText('role', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)}
-              onDisabledClick={() => openLockedFilterUpgrade('role')}
+              onDisabledClick={() => openLockedFilterUpgrade('role', isEnemPendingFocus ? 'No foco ENEM, cargo não se aplica a essa seleção.' : undefined)}
             />
-            <FilterSelect label="Modalidade" value={pendingFilters.modality} onChange={(v) => handleFilterChange('modality', v)} options={uniqueModalities} disabled={isEnemPendingFocus || isPracticeFilterLocked('modality')} helperText={getLockedFilterHelperText('modality', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('modality')} />
+            <FilterSelect label="Modalidade" value={pendingFilters.modality} onChange={(v) => handleFilterChange('modality', v)} options={uniqueModalities} disabled={isEnemPendingFocus || isPracticeFilterLocked('modality')} helperText={getLockedFilterHelperText('modality', isEnemPendingFocus ? 'Desativado para ENEM.' : undefined)} onDisabledClick={() => openLockedFilterUpgrade('modality', isEnemPendingFocus ? 'No foco ENEM, modalidade não se aplica a essa seleção.' : undefined)} />
           </div>
 
           {isEnemPendingFocus ? (

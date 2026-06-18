@@ -40,6 +40,59 @@ type TabType = 'all' | 'system' | 'social' | 'marketplace' | 'report' | 'trash';
 
 const TRASH_RETENTION_DAYS = 30;
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const CATEGORY_LABELS: Record<Exclude<TabType, 'all' | 'trash'>, string> = {
+  system: 'Sistema',
+  social: 'Interações',
+  marketplace: 'Loja',
+  report: 'Suporte',
+};
+
+const normalizeNotificationText = (value: string): string => (
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+);
+
+const resolveNotificationCategory = (notification: Notification): Exclude<TabType, 'all' | 'trash'> => {
+  const rawCategory = String(notification.category || '').toLowerCase();
+  const haystack = normalizeNotificationText([
+    rawCategory,
+    notification.title,
+    notification.message,
+    notification.link || '',
+  ].join(' '));
+
+  if (/(pagamento|assinatura|plano|checkout|compra|cartao|fatura|loja|marketplace|material|cortesia|voucher)/.test(haystack)) {
+    return 'marketplace';
+  }
+
+  if (/(suporte|atendimento|denuncia|denuncias|report|reembolso|feedback|avaliacao|moderacao|moderar|erro|bug|cancelamento)/.test(haystack)) {
+    return 'report';
+  }
+
+  if (/(comentario|resposta|curtiu|like|favorito|salvo|anotacao|social|ranking|xp|sequencia|estudo)/.test(haystack)) {
+    return 'social';
+  }
+
+  if (rawCategory === 'marketplace') {
+    return 'marketplace';
+  }
+
+  if (rawCategory === 'report') {
+    return 'report';
+  }
+
+  if (rawCategory === 'social') {
+    return 'social';
+  }
+
+  return 'system';
+};
+
+const getNotificationCategoryLabel = (notification: Notification): string => (
+  CATEGORY_LABELS[resolveNotificationCategory(notification)]
+);
 
 const getTrashDaysLeft = (deletedAt: number, referenceTimeMs: number): number | null => {
   if (!referenceTimeMs) {
@@ -47,6 +100,22 @@ const getTrashDaysLeft = (deletedAt: number, referenceTimeMs: number): number | 
   }
 
   return Math.max(0, TRASH_RETENTION_DAYS - Math.floor((referenceTimeMs - deletedAt) / MS_PER_DAY));
+};
+
+const formatNotificationDateTime = (timestamp: string | number | Date): string => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 };
 
 type TabButtonProps = {
@@ -112,7 +181,7 @@ const Page: React.FC = () => {
       return visibleNotifications;
     }
 
-    return visibleNotifications.filter((notification) => notification.category === activeTab);
+    return visibleNotifications.filter((notification) => resolveNotificationCategory(notification) === activeTab);
   };
 
   const filteredNotifications = getFilteredNotifications();
@@ -215,9 +284,9 @@ const Page: React.FC = () => {
       <div className="flex flex-wrap gap-2 pb-2 overflow-x-auto no-scrollbar">
         <TabButton id="all" label="Geral" icon={Inbox} activeTab={activeTab} onSelect={handleSelectTab} />
         <TabButton id="system" label="Sistema" icon={Info} activeTab={activeTab} onSelect={handleSelectTab} />
-        <TabButton id="social" label="Social" icon={MessageSquare} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="social" label="Interações" icon={MessageSquare} activeTab={activeTab} onSelect={handleSelectTab} />
         <TabButton id="marketplace" label="Loja" icon={ShoppingBag} activeTab={activeTab} onSelect={handleSelectTab} />
-        <TabButton id="report" label="Relatorios" icon={Shield} activeTab={activeTab} onSelect={handleSelectTab} />
+        <TabButton id="report" label="Suporte" icon={Shield} activeTab={activeTab} onSelect={handleSelectTab} />
         <TabButton id="trash" label="Lixeira" icon={Trash2} activeTab={activeTab} onSelect={handleSelectTab} />
       </div>
 
@@ -264,7 +333,7 @@ const Page: React.FC = () => {
 
                 <div className="flex items-center gap-3 pt-1">
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider transition-colors">
-                    {new Date(notification.timestamp).toLocaleString()}
+                    {formatNotificationDateTime(notification.timestamp)}
                   </p>
                   {notification.link && (
                     <span className="flex items-center gap-1 text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
@@ -272,7 +341,7 @@ const Page: React.FC = () => {
                     </span>
                   )}
                   <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase transition-colors">
-                    {notification.category}
+                    {getNotificationCategoryLabel(notification)}
                   </span>
                   {activeTab === 'trash' && notification.deletedAt && (
                     <span className="flex items-center gap-1 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-md border border-amber-100 dark:border-amber-800/30 transition-colors">

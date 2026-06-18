@@ -361,6 +361,20 @@ const DEFAULT_AUTH_EMAIL_TEMPLATES: EmailTemplateModel[] = [
     textBody: 'Ola {{name}},\n\nHa um estorno de assinatura pendente.\nAbrir painel: {{admin_url}}',
     enabled: true,
   },
+  {
+    key: 'subscription_new_admin',
+    name: 'Assinatura - alerta admin de nova assinatura',
+    description: 'Enviado para admin quando uma nova assinatura Stripe e confirmada.',
+    subject: 'Nova assinatura confirmada - ConcursoMestre',
+    htmlBody: buildDefaultEmailHtml({
+      title: 'Nova assinatura confirmada',
+      body: '<p>Ola <strong>{{name}}</strong>,</p><p>{{content}}</p>',
+      ctaLabel: 'Abrir financeiro',
+      ctaUrl: '{{admin_url}}',
+    }),
+    textBody: 'Ola {{name}},\n\nNova assinatura confirmada.\nAluno: {{buyer_name}}\nPlano: {{plan_name}}\nValor: {{amount_label}}\nInvoice: {{invoice_id}}\n\nAbrir financeiro: {{admin_url}}',
+    enabled: true,
+  },
 ];
 
 const normalizeTemplateString = (value: unknown, fallback: string): string => {

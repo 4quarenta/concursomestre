@@ -98,6 +98,7 @@ export const planService = {
     payment_method_id?: string;
     billing_mode?: StripeBillingMode;
     installment_count?: number;
+    checkout_attempt_id?: string;
   }): Promise<StripeCheckoutSessionResponse> {
     return subscriptionsService.createStripeCheckoutSession(payload) as Promise<StripeCheckoutSessionResponse>;
   },
@@ -115,6 +116,7 @@ export const planService = {
     save_card?: boolean;
     billing_mode?: StripeBillingMode;
     installment_count?: number;
+    checkout_attempt_id?: string;
   }): Promise<StripeSubscriptionResponse> {
     return subscriptionsService.createStripeSubscription(payload) as Promise<StripeSubscriptionResponse>;
   },

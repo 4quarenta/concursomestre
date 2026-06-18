@@ -113,6 +113,22 @@ type NotificationDropdownProps = {
   onOpenAll: () => void;
 };
 
+const formatNotificationDateTime = (timestamp: string | number | Date): string => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+};
+
 const NotificationDropdownPanel: React.FC<NotificationDropdownProps> = ({
   notifications,
   unreadCount,
@@ -177,7 +193,7 @@ const NotificationDropdownPanel: React.FC<NotificationDropdownProps> = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start mb-1">
                       <span className={`text-xs font-bold ${notification.type === 'error' ? 'text-red-600 dark:text-red-400' : notification.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>{notification.title}</span>
-                      <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{new Date(notification.timestamp).toLocaleDateString()}</span>
+                      <span className="text-[9px] text-slate-400 dark:text-slate-500 flex-shrink-0 ml-2">{formatNotificationDateTime(notification.timestamp)}</span>
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">{notification.message}</p>
                     {notification.evidenceUrl ? (

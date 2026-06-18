@@ -72,6 +72,7 @@ import {
   PLAN_BENEFIT_DEFINITIONS,
   PLAN_ORDER,
   PLAN_USAGE_LIMIT_DEFINITIONS,
+  getPublicPlanFeaturesForPlan,
   normalizePlanEntitlements,
   normalizePlanUsageLimits,
 } from '@constants/subscriptions/planEntitlements';
@@ -3486,51 +3487,28 @@ const AdminFinance = ({
                   </div>
 
                   <div className="space-y-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Recursos do Plano</p>
-                    {draftPlanDetails[plan].features.map((feature, idx: number) => (
-                      <div key={idx} className="flex items-center gap-2 group/feature">
-                        <button
-                          onClick={() => handleTogglePlanFeature(plan, idx)}
-                          className={`p-1 rounded-md transition-colors ${feature.included ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'text-slate-300 bg-slate-50 dark:bg-slate-800'}`}
-                        >
+                    <div className="ml-1 mb-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Recursos do Plano</p>
+                      <p className="mt-1 text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                        Prévia gerada automaticamente pelo Controle de Acesso por Plano.
+                      </p>
+                    </div>
+                    {getPublicPlanFeaturesForPlan(plan, draftPlanEntitlements, { maxItems: 12, includeDisabled: true, usageLimits: draftPlanUsageLimits }).map((feature, idx: number) => (
+                      <div key={`${plan}-${feature.text}-${idx}`} className="flex items-center gap-2 rounded-sm bg-slate-50 px-2 py-1.5 dark:bg-slate-900/60">
+                        <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md ${feature.included ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-500'}`}>
                           {feature.included ? <Check size={12} /> : <X size={12} />}
-                        </button>
-                        <input
-                          type="text"
-                          value={feature.text}
-                          onChange={(e) => handleUpdatePlanFeatureText(plan, idx, e.target.value)}
-                          className="flex-1 bg-transparent text-[11px] font-bold text-slate-600 outline-none transition-colors focus:text-sky-700 dark:text-slate-300 dark:focus:text-sky-300"
-                        />
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover/feature:opacity-100 transition-all">
-                          <button
-                            onClick={() => handleMovePlanFeature('up', idx)}
-                            disabled={idx === 0}
-                            className="p-1 text-slate-300 hover:text-sky-700 disabled:opacity-30 dark:hover:text-sky-300"
-                          >
-                            <ChevronUp size={12} />
-                          </button>
-                          <button
-                            onClick={() => handleMovePlanFeature('down', idx)}
-                            disabled={idx === draftPlanDetails[plan].features.length - 1}
-                            className="p-1 text-slate-300 hover:text-sky-700 disabled:opacity-30 dark:hover:text-sky-300"
-                          >
-                            <ChevronDown size={12} />
-                          </button>
-                          <button
-                            onClick={() => handleRemovePlanFeature(plan, idx)}
-                            className="p-1 text-slate-300 hover:text-red-500"
-                          >
-                            <Trash2 size={10} />
-                          </button>
-                        </div>
+                        </span>
+                        <span className={`text-[11px] font-bold ${feature.included ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 line-through decoration-slate-300 dark:text-slate-500 dark:decoration-slate-600'}`}>
+                          {feature.text}
+                        </span>
                       </div>
                     ))}
-                    <button
-                      onClick={() => handleAddPlanFeature(plan)}
-                      className="mt-2 flex w-full items-center justify-center gap-1 rounded-sm border border-dashed border-slate-300 py-2 text-[10px] font-bold text-slate-400 transition-all hover:border-sky-300 hover:text-sky-700 dark:border-slate-700"
+                    <Link
+                      href="/admin/finance/plans?tab=access"
+                      className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-sm border border-dashed border-slate-300 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 transition-all hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:text-slate-400 dark:hover:text-sky-300"
                     >
-                      <Plus size={12} /> Adicionar Recurso
-                    </button>
+                      Ajustar no controle de acesso <ArrowRight size={12} />
+                    </Link>
                   </div>
                 </div>
               </div>

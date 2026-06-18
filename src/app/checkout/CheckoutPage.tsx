@@ -211,8 +211,19 @@ const CheckoutPage: React.FC = () => {
         checkoutAbandoned: false,
     });
     const checkoutCompletionInProgressRef = useRef(false);
+    const checkoutAttemptIdRef = useRef('');
     const trackedCheckoutEmailsRef = useRef<Set<string>>(new Set());
     const trackedPaymentFailuresRef = useRef<Set<string>>(new Set());
+
+    const getCheckoutAttemptId = useCallback(() => {
+        if (checkoutAttemptIdRef.current) return checkoutAttemptIdRef.current;
+
+        checkoutAttemptIdRef.current = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `attempt_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+
+        return checkoutAttemptIdRef.current;
+    }, []);
     
     // Coupon & Review State
     const [couponCode, setCouponCode] = useState('');
@@ -1107,6 +1118,7 @@ const CheckoutPage: React.FC = () => {
                 payment_method_id: selectedCheckoutPaymentMethod?.id || undefined,
                 billing_mode: stripeBillingMode,
                 installment_count: selectedStripeInstallmentCount,
+                checkout_attempt_id: getCheckoutAttemptId(),
             });
 
             const redirectUrl = response?.data?.url || response?.url || response?.data?.redirect_url;
@@ -1140,6 +1152,7 @@ const CheckoutPage: React.FC = () => {
                 save_card: saveCard || stripeRequiresSavedCard,
                 billing_mode: stripeBillingMode,
                 installment_count: selectedStripeInstallmentCount,
+                checkout_attempt_id: getCheckoutAttemptId(),
             });
 
             if (!response?.success) {
@@ -1207,6 +1220,7 @@ const CheckoutPage: React.FC = () => {
 
         setPendingStripeSubscriptionId(null);
         setPendingStripePaymentMethodId(null);
+        checkoutAttemptIdRef.current = '';
 
         if (payload?.card_saved && !options?.savedCardId) {
         addToast('Cartão salvo com sucesso para compras futuras.', 'success');
@@ -1260,6 +1274,7 @@ const CheckoutPage: React.FC = () => {
                 save_card: true,
                 billing_mode: stripeBillingMode,
                 installment_count: selectedStripeInstallmentCount,
+                checkout_attempt_id: getCheckoutAttemptId(),
             });
 
             if (!response?.success) {

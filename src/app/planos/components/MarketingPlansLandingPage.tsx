@@ -36,6 +36,7 @@ import {
   resolvePlanOffer,
 } from '@services/plans';
 import { themeConfig } from '@constants/themes';
+import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
 import { websiteManifest } from '../../../config/platform';
 import LimitedOfferCountdown from '../../../components/shared/marketing/LimitedOfferCountdown';
 import LandingSectionHeader from '../../landing/components/LandingSectionHeader';
@@ -239,10 +240,11 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
       const configuredMonthlyAmount = cycleCount > 0 ? configuredCycleAmount / cycleCount : configuredCycleAmount;
       const offer = plan ? offersByPlanId[plan.id] : null;
       const displayName = getConfiguredPlanDisplayName(canonicalPlanName, systemSettings.planDetails, card.title);
-      const includedConfiguredFeatures = (systemSettings.planDetails?.[canonicalPlanName]?.features || [])
-        .filter((feature) => feature?.included)
-        .map((feature) => String(feature.text || '').trim())
-        .filter(Boolean);
+      const entitlementFeatures = getPublicPlanFeaturesForPlan(canonicalPlanName, systemSettings.planEntitlements, {
+        maxItems: 6,
+        includeDisabled: false,
+        usageLimits: systemSettings.planUsageLimits,
+      }).map((feature) => feature.text);
 
       return {
         ...card,
@@ -260,10 +262,10 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
           ? (Number(plan.price || 0) === 0 ? appendTracking('/auth?register=true') : appendTracking(`/checkout/${plan.id}`))
           : appendTracking('/plans'),
         isAvailable: Boolean(plan),
-        featureList: card.summaryBenefits.length > 0 ? card.summaryBenefits : includedConfiguredFeatures.slice(0, 5),
+        featureList: entitlementFeatures.length > 0 ? entitlementFeatures : card.summaryBenefits,
       };
     });
-  }, [appendTracking, availablePlansByCanonical, billingCycle, landingPage, offersByPlanId, systemSettings.planDetails, systemSettings.pricing]);
+  }, [appendTracking, availablePlansByCanonical, billingCycle, landingPage, offersByPlanId, systemSettings.planDetails, systemSettings.planEntitlements, systemSettings.planUsageLimits, systemSettings.pricing]);
 
   const featuredCard = landingPlanCards.find((card) => card.featured) || landingPlanCards.find((card) => card.planName === 'Elite') || landingPlanCards[0] || null;
   const comparisonColumns = landingPage?.planCards.map((card) => ({

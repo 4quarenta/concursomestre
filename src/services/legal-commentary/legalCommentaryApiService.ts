@@ -842,8 +842,8 @@ export const legalCommentaryApiService = {
     const envelope = assertApiSuccess<LegalUserCommentSubmissionResult>(response, 'Nao foi possivel criar o comentario.');
     const payload = unwrap<LegalUserCommentSubmissionResult>(envelope.raw, {
       id: '',
-      moderationStatus: 'pending',
-      requiresModeration: true,
+      moderationStatus: 'approved',
+      requiresModeration: false,
     });
     invalidateLegalUserStateCaches();
     return {

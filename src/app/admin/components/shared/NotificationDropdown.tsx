@@ -10,7 +10,7 @@
 */
 
 import React from 'react';
-import { ArrowRight, Check, X } from 'lucide-react';
+import { ArrowRight, Bell, Check, X } from 'lucide-react';
 
 export interface AdminNotificationItem {
   id: string | number;
@@ -32,6 +32,22 @@ interface NotificationDropdownProps {
   navigate: (path: string) => void;
 }
 
+const formatNotificationDateTime = (timestamp: string | number | Date): string => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+};
+
 export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   notifications,
   markNotificationAsRead,
@@ -43,8 +59,8 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
   const visibleNotifications = notifications.filter((notification) => !notification.deletedAt);
 
   return (
-    <aside className="fixed inset-y-0 right-0 z-50 flex w-[min(420px,calc(100vw-1rem))] flex-col overflow-hidden border-l border-slate-200 bg-white text-left shadow-2xl dark:border-slate-800 dark:bg-slate-950 animate-slide-left">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
+    <aside className="fixed right-0 top-0 z-[90] flex h-dvh max-h-dvh w-full max-w-[420px] flex-col overflow-hidden border-l border-slate-200 bg-white text-left shadow-2xl dark:border-slate-800 dark:bg-slate-950 sm:w-[420px]">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
         <div className="min-w-0">
           <h3 className="text-xs font-black uppercase tracking-widest text-slate-800 dark:text-slate-200">
             Notificações
@@ -80,10 +96,13 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto no-scrollbar">
+      <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">
         {visibleNotifications.length === 0 ? (
-          <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-500">
-            Nenhuma notificação.
+          <div className="flex min-h-full flex-col items-center justify-center px-8 py-12 text-center text-xs text-slate-400 dark:text-slate-500">
+            <span className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-600">
+              <Bell size={20} />
+            </span>
+            Nenhuma notificação administrativa por enquanto.
           </div>
         ) : (
           visibleNotifications.map((notification) => (
@@ -104,7 +123,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                   {notification.title}
                 </span>
                 <span className="shrink-0 text-[9px] text-slate-400 dark:text-slate-500">
-                  {new Date(notification.timestamp).toLocaleDateString('pt-BR')}
+                  {formatNotificationDateTime(notification.timestamp)}
                 </span>
               </div>
               <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
@@ -115,7 +134,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         )}
       </div>
 
-      <div className="border-t border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
+      <div className="shrink-0 border-t border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900">
         <button
           type="button"
           onClick={() => {

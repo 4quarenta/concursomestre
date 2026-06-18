@@ -54,6 +54,7 @@ import {
 import { BILLING_CYCLE_OPTIONS, PLAN_COPY_BY_TIER, type LandingBillingCycle } from '../homepageContent';
 import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
 
 const NAV_ITEMS = [
   { label: 'Recursos', href: '#recursos' },
@@ -178,32 +179,6 @@ const getPlanTotalLabel = (plan: Plan) => {
   if (plan.interval_unit === 'year') return `${formatCurrency(Number(plan.price || 0))} por ano`;
   if (plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 3) return `${formatCurrency(Number(plan.price || 0))} a cada 3 meses`;
   return `${formatCurrency(Number(plan.price || 0))} por mês`;
-};
-
-type PlanFeatureSource = {
-  included?: boolean;
-  text?: string | null;
-};
-
-const getConfiguredPlanFeatureItems = (
-  plan: Plan,
-  configuredPlanDetails?: Partial<Record<string, { features?: PlanFeatureSource[] }>> | null,
-) => {
-  const canonicalPlan = getCanonicalPlanName(plan.name);
-  const configuredFeatures = configuredPlanDetails?.[canonicalPlan]?.features;
-  const sourceFeatures = Array.isArray(configuredFeatures) && configuredFeatures.length > 0
-    ? configuredFeatures
-    : Array.isArray(plan.features)
-      ? plan.features
-      : [];
-
-  return sourceFeatures
-    .map((feature) => ({
-      included: Boolean(feature?.included),
-      text: String(feature?.text || '').trim(),
-    }))
-    .filter((feature: { text: string }) => feature.text)
-    .slice(0, 6);
 };
 
 const FINAL_BENEFITS = [
@@ -828,7 +803,11 @@ export const PricingSection = () => {
             const canonicalName = getCanonicalPlanName(plan.name);
             const displayName = getConfiguredPlanDisplayName(plan.name, systemSettings.planDetails, plan.name);
             const planCopy = PLAN_COPY_BY_TIER[canonicalName] || PLAN_COPY_BY_TIER.Gratuito;
-            const featureItems = getConfiguredPlanFeatureItems(plan, systemSettings.planDetails);
+            const featureItems = getPublicPlanFeaturesForPlan(canonicalName, systemSettings.planEntitlements, {
+              maxItems: 6,
+              includeDisabled: true,
+              usageLimits: systemSettings.planUsageLimits,
+            });
             const offer = planOffersById[plan.id];
             const isFeatured = plan.id === featuredPlanId;
             const showOffer = Boolean(offer?.hasDiscount && Number(plan.price || 0) > 0);

@@ -836,7 +836,7 @@ const Profile: React.FC = () => {
         const target = profileActiveTabContentRef.current;
         if (!target) return;
 
-        const stickyOffset = 96;
+        const stickyOffset = window.innerWidth < 1024 ? 18 : 96;
         const targetTop = target.getBoundingClientRect().top + window.scrollY - stickyOffset;
         window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
     }, []);
@@ -847,12 +847,15 @@ const Profile: React.FC = () => {
         }
 
         const frameId = window.requestAnimationFrame(() => {
-            scrollProfileActiveTabIntoView();
-            pendingProfileTabScrollRef.current = false;
+            window.requestAnimationFrame(() => {
+                scrollProfileActiveTabIntoView();
+                window.setTimeout(scrollProfileActiveTabIntoView, 120);
+                pendingProfileTabScrollRef.current = false;
+            });
         });
 
         return () => window.cancelAnimationFrame(frameId);
-    }, [activeTab, scrollProfileActiveTabIntoView]);
+    }, [activeTab, location.pathname, scrollProfileActiveTabIntoView]);
 
     const scrollToPersonalDetailsForm = React.useCallback(() => {
         pendingPersonalDetailsScrollRef.current = true;

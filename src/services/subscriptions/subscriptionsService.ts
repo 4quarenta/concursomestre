@@ -195,6 +195,7 @@ export const subscriptionsService = {
     payment_method_id?: string;
     billing_mode?: 'single_installment' | 'term_recurring';
     installment_count?: number;
+    checkout_attempt_id?: string;
   }): Promise<SubscriptionApiPayloadWithUrl> {
     try {
       const response = await apiClient.post<SubscriptionApiPayloadWithUrl>(
@@ -226,6 +227,7 @@ export const subscriptionsService = {
     save_card?: boolean;
     billing_mode?: 'single_installment' | 'term_recurring';
     installment_count?: number;
+    checkout_attempt_id?: string;
   }): Promise<SubscriptionApiPayload> {
     try {
       const response = await apiClient.post<SubscriptionApiPayload>(

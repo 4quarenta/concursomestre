@@ -28,50 +28,50 @@ export const PLAN_ORDER: PlanName[] = ['Gratuito', 'Essencial', 'Pro', 'Elite'];
 export const PLAN_USAGE_LIMIT_DEFINITIONS: PlanUsageLimitDefinition[] = [
   {
     key: 'questions_per_day',
-    label: 'Questoes por dia',
-    description: 'Controla quantas questoes podem ser respondidas por dia dentro do plano.',
-    inputLabel: 'questoes/dia',
+    label: 'Questões por dia',
+    description: 'Controla quantas questões podem ser respondidas por dia dentro do plano.',
+    inputLabel: 'questões/dia',
   },
   {
     key: 'comments_per_day',
-    label: 'Comentarios por dia',
-    description: 'Define quantos comentarios o usuario pode publicar por dia.',
-    inputLabel: 'comentarios/dia',
+    label: 'Comentários por dia',
+    description: 'Define quantos comentários o usuário pode publicar por dia.',
+    inputLabel: 'comentários/dia',
   },
   {
     key: 'simulations_per_week',
     label: 'Simulados por semana',
-    description: 'Limite operacional semanal para criacao ou execucao de simulados.',
+    description: 'Limite operacional semanal para criação ou execução de simulados.',
     inputLabel: 'simulados/semana',
   },
   {
     key: 'simulations_per_month',
-    label: 'Simulados por mes',
-    description: 'Limite mensal complementar para controlar recorrencia de simulados.',
-    inputLabel: 'simulados/mes',
+    label: 'Simulados por mês',
+    description: 'Limite mensal complementar para controlar recorrência de simulados.',
+    inputLabel: 'simulados/mês',
   },
   {
     key: 'saved_questions_limit',
-    label: 'Questoes salvas',
-    description: 'Define a capacidade maxima de questoes favoritas ou salvas no perfil.',
+    label: 'Questões salvas',
+    description: 'Define a capacidade máxima de questões favoritas ou salvas no perfil.',
     inputLabel: 'itens',
   },
   {
     key: 'lei_related_questions_limit',
-    label: 'Questoes da lei',
-    description: 'Controla quantas questoes relacionadas podem ser abertas a partir da Lei Comentada.',
-    inputLabel: 'questoes',
+    label: 'Questões da lei',
+    description: 'Controla quantas questões relacionadas podem ser abertas a partir da Lei Comentada.',
+    inputLabel: 'questões',
   },
   {
     key: 'lei_annotations_limit',
-    label: 'Anotacoes na lei',
-    description: 'Limita a quantidade de anotacoes salvas dentro da leitura da Lei Comentada.',
-    inputLabel: 'anotacoes',
+    label: 'Anotações na lei',
+    description: 'Limita a quantidade de anotações salvas dentro da leitura da Lei Comentada.',
+    inputLabel: 'anotações',
   },
   {
     key: 'lei_favorites_limit',
     label: 'Favoritos na lei',
-    description: 'Limita quantas leis, secoes ou artigos podem ficar favoritados na Lei Comentada.',
+    description: 'Limita quantas leis, seções ou artigos podem ficar favoritados na Lei Comentada.',
     inputLabel: 'favoritos',
   },
   {
@@ -85,53 +85,53 @@ export const PLAN_USAGE_LIMIT_DEFINITIONS: PlanUsageLimitDefinition[] = [
 export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   {
     key: 'module.dashboard',
-    label: 'Modulo: dashboard premium',
+    label: 'Módulo: dashboard premium',
     description: 'Controla acesso completo ao painel premium de desempenho e insights.',
   },
   {
     key: 'module.practice',
-    label: 'Modulo: pratica',
-    description: 'Controla acesso ao modulo principal de resolucao de questoes.',
+    label: 'Módulo: prática',
+    description: 'Controla acesso ao módulo principal de resolução de questões.',
   },
   {
     key: 'module.lei_comentada',
-    label: 'Modulo: lei comentada',
+    label: 'Módulo: lei comentada',
     description: 'Controla acesso ao acervo de leis comentadas.',
   },
   {
     key: 'module.flashcards',
-    label: 'Modulo: flashcards',
-    description: 'Controla acesso ao modulo de flashcards.',
+    label: 'Módulo: flashcards',
+    description: 'Controla acesso ao módulo de flashcards.',
   },
   {
     key: 'module.simulations',
-    label: 'Modulo: simulados',
-    description: 'Controla acesso ao modulo de simulados, respeitando os limites configurados.',
+    label: 'Módulo: simulados',
+    description: 'Controla acesso ao módulo de simulados, respeitando os limites configurados.',
   },
   {
     key: 'module.xray',
-    label: 'Modulo: raio-X',
+    label: 'Módulo: raio-X',
     description: 'Controla acesso completo ao raio-X de banca.',
   },
   {
     key: 'module.schedule',
-    label: 'Modulo: cronograma',
+    label: 'Módulo: cronograma',
     description: 'Controla acesso ao cronograma e trilhas de estudo.',
   },
   {
     key: 'module.marketplace',
-    label: 'Modulo: marketplace',
+    label: 'Módulo: marketplace',
     description: 'Controla acesso ao marketplace de materiais.',
   },
   {
     key: 'practice.filter_keyword',
     label: 'Filtro: palavra-chave',
-    description: 'Libera busca textual no modulo de questoes.',
+    description: 'Libera busca textual no módulo de questões.',
   },
   {
     key: 'practice.filter_subject',
-    label: 'Filtro: materia',
-    description: 'Libera filtro por materia/disciplina.',
+    label: 'Filtro: matéria',
+    description: 'Libera filtro por matéria/disciplina.',
   },
   {
     key: 'practice.filter_difficulty',
@@ -145,18 +145,18 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'practice.filter_organization',
-    label: 'Filtro: orgao',
-    description: 'Libera filtro por orgao/instituicao.',
+    label: 'Filtro: órgão',
+    description: 'Libera filtro por órgão/instituição.',
   },
   {
     key: 'practice.filter_year',
     label: 'Filtro: ano',
-    description: 'Libera filtro por ano da questao/prova.',
+    description: 'Libera filtro por ano da questão/prova.',
   },
   {
     key: 'practice.filter_level',
-    label: 'Filtro: nivel',
-    description: 'Libera filtro por nivel de escolaridade.',
+    label: 'Filtro: nível',
+    description: 'Libera filtro por nível de escolaridade.',
   },
   {
     key: 'practice.filter_role',
@@ -171,37 +171,37 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   {
     key: 'practice.filter_topic',
     label: 'Filtro: assunto',
-    description: 'Libera filtro por topico/assunto.',
+    description: 'Libera filtro por tópico/assunto.',
   },
   {
     key: 'practice.filter_saved',
-    label: 'Filtro: questoes salvas',
-    description: 'Libera recorte de questoes salvas pelo aluno.',
+    label: 'Filtro: questões salvas',
+    description: 'Libera recorte de questões salvas pelo aluno.',
   },
   {
     key: 'practice.filter_teacher_comment',
-    label: 'Filtro: comentario do professor',
-    description: 'Libera filtro apenas com comentario do professor.',
+    label: 'Filtro: comentário do professor',
+    description: 'Libera filtro apenas com comentário do professor.',
   },
   {
     key: 'practice.filter_detailed_analysis',
-    label: 'Filtro: analise detalhada',
-    description: 'Libera filtro apenas com analise detalhada.',
+    label: 'Filtro: análise detalhada',
+    description: 'Libera filtro apenas com análise detalhada.',
   },
   {
     key: 'practice.filter_answered_correct',
     label: 'Filtro: acertei',
-    description: 'Libera filtro de questoes que o aluno acertou.',
+    description: 'Libera filtro de questões que o aluno acertou.',
   },
   {
     key: 'practice.filter_answered_wrong',
     label: 'Filtro: errei',
-    description: 'Libera filtro de questoes que o aluno errou.',
+    description: 'Libera filtro de questões que o aluno errou.',
   },
   {
     key: 'question.resolve',
-    label: 'Card: resolver questao',
-    description: 'Permite responder questoes no card.',
+    label: 'Card: resolver questão',
+    description: 'Permite responder questões no card.',
   },
   {
     key: 'question.answer_key',
@@ -210,24 +210,24 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'teacher_comments',
-    label: 'Card: comentario do professor',
-    description: 'Permite visualizar o comentario do professor quando disponivel.',
+    label: 'Card: comentário do professor',
+    description: 'Permite visualizar o comentário do professor quando disponível.',
   },
   {
     key: 'question.detailed_analysis',
-    label: 'Card: analise detalhada',
-    description: 'Permite abrir a analise detalhada dentro do card da questao.',
+    label: 'Card: análise detalhada',
+    description: 'Permite abrir a análise detalhada dentro do card da questão.',
   },
   {
     key: 'question.save',
-    label: 'Card: salvar questao',
-    description: 'Permite salvar/favoritar questoes.',
+    label: 'Card: salvar questão',
+    description: 'Permite salvar/favoritar questões.',
     limitKey: 'saved_questions_limit',
   },
   {
     key: 'question.notes',
-    label: 'Card: anotacoes',
-    description: 'Permite criar anotacoes pessoais na questao.',
+    label: 'Card: anotações',
+    description: 'Permite criar anotações pessoais na questão.',
   },
   {
     key: 'question.share',
@@ -236,8 +236,8 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'question.full_statistics',
-    label: 'Card: estatisticas completas',
-    description: 'Libera estatisticas completas da questao.',
+    label: 'Card: estatísticas completas',
+    description: 'Libera estatísticas completas da questão.',
   },
   {
     key: 'ads.adsense_banner',
@@ -251,18 +251,18 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'ads.between_questions',
-    label: 'Ads: entre questoes',
-    description: 'Permite inserir anuncios entre cards de questoes.',
+    label: 'Ads: entre questões',
+    description: 'Permite inserir anúncios entre cards de questões.',
   },
   {
     key: 'ads.in_comments',
-    label: 'Ads: em comentarios',
-    description: 'Permite inserir publicidade na area de comentarios.',
+    label: 'Ads: em comentários',
+    description: 'Permite inserir publicidade na área de comentários.',
   },
   {
     key: 'ads.web_interstitial',
     label: 'Ads: interstitial web',
-    description: 'Permite exibir anuncio interstitial GPT apos acoes do usuario, como responder questoes.',
+    description: 'Permite exibir anúncio interstitial GPT após ações do usuário, como responder questões.',
     limitKey: 'ad_interstitial_answer_interval',
   },
   {
@@ -278,12 +278,12 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   {
     key: 'ads.reduced',
     label: 'Ads: exibicao reduzida',
-    description: 'Aplica uma experiencia com menos anuncios, sem interrupcoes laterais/entre questoes.',
+    description: 'Aplica uma experiência com menos anúncios, sem interrupções laterais/entre questões.',
   },
   {
     key: 'unlimited_questions',
-    label: 'Questoes liberadas',
-    description: 'Libera o modulo de questoes e usa o limite diario configurado abaixo para controlar o volume.',
+    label: 'Questões liberadas',
+    description: 'Libera o módulo de questões e usa o limite diário configurado abaixo para controlar o volume.',
     limitKey: 'questions_per_day',
   },
   {
@@ -293,19 +293,19 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'community_comments',
-    label: 'Comentarios da comunidade',
-    description: 'Libera leitura e participacao nos comentarios dos alunos.',
+    label: 'Comentários da comunidade',
+    description: 'Libera leitura e participação nos comentários dos alunos.',
     limitKey: 'comments_per_day',
   },
   {
     key: 'no_ads',
-    label: 'Sem anuncios',
+    label: 'Sem anúncios',
     description: 'Oculta banners e blocos de publicidade durante o estudo.',
   },
   {
     key: 'detailed_analysis',
     label: 'Analise detalhada',
-    description: 'Libera analises premium mais profundas por questao.',
+    description: 'Libera análises premium mais profundas por questão.',
   },
   {
     key: 'error_notebook',
@@ -321,7 +321,7 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   {
     key: 'xray_banca',
     label: 'Raio-X da banca',
-    description: 'Libera a inteligencia de banca com analises e recomendacoes.',
+    description: 'Libera a inteligência de banca com análises e recomendações.',
   },
   {
     key: 'mentor_chat',
@@ -340,8 +340,8 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'lei.comentario_basico',
-    label: 'Lei comentada: comentario do professor',
-    description: 'Libera o comentario editorial do professor dentro do artigo.',
+    label: 'Lei comentada: comentário do professor',
+    description: 'Libera o comentário editorial do professor dentro do artigo.',
   },
   {
     key: 'lei.doutrina',
@@ -381,8 +381,8 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'lei.anotacoes',
-    label: 'Lei comentada: anotacoes',
-    description: 'Libera o card de anotacoes pessoais dentro do artigo.',
+    label: 'Lei comentada: anotações',
+    description: 'Libera o card de anotações pessoais dentro do artigo.',
     limitKey: 'lei_annotations_limit',
   },
   {
@@ -393,13 +393,13 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   {
     key: 'lei.favoritos',
     label: 'Lei comentada: favoritar lei/secao',
-    description: 'Permite favoritar leis, secoes e artigos da Lei Comentada.',
+    description: 'Permite favoritar leis, seções e artigos da Lei Comentada.',
     limitKey: 'lei_favorites_limit',
   },
   {
     key: 'lei.solicitar_comentario',
-    label: 'Lei comentada: solicitar comentario',
-    description: 'Permite solicitar comentario do professor para artigo, inciso, paragrafo ou alinea.',
+    label: 'Lei comentada: solicitar comentário',
+    description: 'Permite solicitar comentário do professor para artigo, inciso, parágrafo ou alínea.',
   },
 ];
 
@@ -681,44 +681,130 @@ export const PUBLIC_PLAN_FEATURE_BENEFIT_KEYS: PlanBenefitKey[] = [
 ];
 
 const PUBLIC_PLAN_FEATURE_LABELS: Partial<Record<PlanBenefitKey, string>> = {
-  'module.practice': 'Pratica de questoes',
-  'question.resolve': 'Resolver questoes',
-  teacher_comments: 'Comentario do professor',
-  'question.detailed_analysis': 'Analise detalhada',
-  'question.full_statistics': 'Estatisticas completas',
-  'question.save': 'Salvar questoes',
+  'module.practice': 'Prática de questões',
+  'question.resolve': 'Resolver questões',
+  teacher_comments: 'Comentário do professor',
+  'question.detailed_analysis': 'Análise detalhada',
+  'question.full_statistics': 'Estatísticas completas',
+  'question.save': 'Salvar questões',
   'module.lei_comentada': 'Lei comentada',
-  'lei.comentario_basico': 'Comentarios na lei',
+  'lei.comentario_basico': 'Comentários na lei',
   'lei.doutrina': 'Doutrina na lei comentada',
   'lei.macete': 'Macetes na lei comentada',
-  'lei.jurisprudencia': 'Jurisprudencia e sumulas',
-  'lei.sumulas': 'Sumulas relacionadas',
-  'lei.questoes': 'Questoes da lei comentada',
+  'lei.jurisprudencia': 'Jurisprudência e súmulas',
+  'lei.sumulas': 'Súmulas relacionadas',
+  'lei.questoes': 'Questões da lei comentada',
   'lei.modo_foco': 'Modo foco na lei',
-  'lei.favoritos': 'Favoritar leis e secoes',
+  'lei.favoritos': 'Favoritar leis e seções',
   'module.simulations': 'Simulados',
   'exclusive_simulations': 'Simulados exclusivos',
   'module.xray': 'Raio-X da banca',
   'module.dashboard': 'Dashboard premium',
-  no_ads: 'Sem anuncios',
+  no_ads: 'Sem anúncios',
   mentor_chat: 'Chat mentor',
-  priority_support: 'Suporte prioritario',
+  priority_support: 'Suporte prioritário',
   early_access: 'Acesso antecipado',
+};
+
+type PublicPlanFeatureOptions = {
+  maxItems?: number;
+  includeDisabled?: boolean;
+  usageLimits?: Partial<PlanUsageLimits> | null;
+};
+
+const buildUsageLimitFeature = (
+  usageLimits: PlanUsageLimits,
+  planName: PlanName,
+  key: PlanUsageLimitKey,
+  unlimitedText: string,
+  limitedText: (value: number) => string,
+): PlanFeature | null => {
+  const limit = usageLimits[planName]?.[key];
+  if (!limit) {
+    return null;
+  }
+
+  if (limit.mode === 'unlimited') {
+    return { text: unlimitedText, included: true };
+  }
+
+  const value = Number(limit.value || 0);
+  return value > 0 ? { text: limitedText(value), included: true } : null;
+};
+
+const buildCommercialPlanFeatures = (
+  planName: PlanName,
+  planBenefits: PlanBenefitMatrix,
+  usageLimits: PlanUsageLimits,
+): PlanFeature[] => {
+  const features: PlanFeature[] = [];
+  const addFeature = (feature: PlanFeature | null | false) => {
+    if (!feature) return;
+    if (features.some((item) => item.text === feature.text)) return;
+    features.push(feature);
+  };
+
+  addFeature(buildUsageLimitFeature(
+    usageLimits,
+    planName,
+    'questions_per_day',
+    'Questões ilimitadas',
+    (value) => `${value} questões por dia`,
+  ));
+
+  addFeature(buildUsageLimitFeature(
+    usageLimits,
+    planName,
+    'simulations_per_month',
+    'Simulados ilimitados',
+    (value) => `${value} simulado${value === 1 ? '' : 's'} por mês`,
+  ));
+
+  addFeature(planBenefits.teacher_comments?.enabled && { text: 'Comentário do professor', included: true });
+  addFeature(planBenefits['question.detailed_analysis']?.enabled && { text: 'Análise detalhada IA', included: true });
+  addFeature(planBenefits['question.full_statistics']?.enabled && { text: 'Estatísticas completas', included: true });
+  addFeature(planBenefits['module.lei_comentada']?.enabled && { text: 'Lei comentada', included: true });
+  addFeature(planBenefits['lei.doutrina']?.enabled && { text: 'Doutrina, súmulas e jurisprudência', included: true });
+  addFeature(buildUsageLimitFeature(
+    usageLimits,
+    planName,
+    'saved_questions_limit',
+    'Questões salvas ilimitadas',
+    (value) => `${value} questões salvas`,
+  ));
+  addFeature(planBenefits.no_ads?.enabled && { text: 'Sem anúncios', included: true });
+  addFeature(planBenefits['module.xray']?.enabled && { text: 'Raio-X da banca', included: true });
+  addFeature(planBenefits['module.dashboard']?.enabled && { text: 'Dashboard premium', included: true });
+  addFeature(planBenefits.priority_support?.enabled && { text: 'Suporte prioritário', included: true });
+  addFeature(planBenefits.early_access?.enabled && { text: 'Novas funcionalidades primeiro', included: true });
+
+  return features;
 };
 
 export const getPublicPlanFeaturesForPlan = (
   planName: PlanName,
   entitlements?: Partial<PlanEntitlements> | null,
-  maxItems = 10,
+  optionsOrMaxItems: number | PublicPlanFeatureOptions = 10,
 ): PlanFeature[] => {
+  const options = typeof optionsOrMaxItems === 'number'
+    ? { maxItems: optionsOrMaxItems, includeDisabled: true }
+    : {
+        maxItems: optionsOrMaxItems.maxItems ?? 10,
+        includeDisabled: optionsOrMaxItems.includeDisabled ?? true,
+        usageLimits: optionsOrMaxItems.usageLimits ?? null,
+      };
   const resolved = normalizePlanEntitlements(entitlements);
+  const resolvedUsageLimits = normalizePlanUsageLimits(options.usageLimits || DEFAULT_PLAN_USAGE_LIMITS);
   const planBenefits = resolved[planName];
+  const commercialFeatures = buildCommercialPlanFeatures(planName, planBenefits, resolvedUsageLimits);
+  const commercialFeatureTexts = new Set(commercialFeatures.map((feature) => feature.text));
   const enabledFeatures = PUBLIC_PLAN_FEATURE_BENEFIT_KEYS
     .filter((key) => planBenefits[key]?.enabled)
     .map((key) => ({
       text: PUBLIC_PLAN_FEATURE_LABELS[key] || getBenefitDefinition(key).label,
       included: true,
-    }));
+    }))
+    .filter((feature) => !commercialFeatureTexts.has(feature.text));
   const disabledFeatures = PUBLIC_PLAN_FEATURE_BENEFIT_KEYS
     .filter((key) => !planBenefits[key]?.enabled)
     .map((key) => ({
@@ -726,7 +812,15 @@ export const getPublicPlanFeaturesForPlan = (
       included: false,
     }));
 
-  return [...enabledFeatures, ...disabledFeatures].slice(0, maxItems);
+  const features = options.includeDisabled
+    ? [...commercialFeatures, ...enabledFeatures, ...disabledFeatures]
+    : [...commercialFeatures, ...enabledFeatures];
+
+  if (features.length === 0) {
+    return [{ text: 'Recursos essenciais do plano', included: true }];
+  }
+
+  return features.slice(0, options.maxItems);
 };
 
 const normalizePlanBenefitAccess = (

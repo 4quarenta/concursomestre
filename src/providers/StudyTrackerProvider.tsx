@@ -339,6 +339,12 @@ export const StudyTrackerBridge: React.FC = () => {
     };
 
     try {
+      const hasValidSession = await ensureValidStatisticsSession();
+      if (!hasValidSession) {
+        addToast('Sua sessão precisa ser renovada antes de salvar o tempo. Faça login novamente para registrar este estudo.', 'warning');
+        return;
+      }
+
       const result = await statisticsService.recordStudySession(payload);
       syncPersistedStudyTotals(result.statistics);
       resetStudyTrackerSession();

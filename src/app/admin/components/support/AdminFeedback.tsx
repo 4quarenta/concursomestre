@@ -91,6 +91,11 @@ const compactText = (value: unknown, maxLength = 140) => {
   return `${normalized.slice(0, maxLength - 1).trim()}...`;
 };
 
+const formatExpandedSupportText = (value: unknown) => {
+  const normalized = String(value || '').replace(/\r\n/g, '\n').trim();
+  return normalized || 'Sem informação registrada.';
+};
+
 const cleanFeedbackDetails = (item: AdminFeedbackThread) => {
   const rawDetails = String(item.details || '').trim();
   if (!rawDetails) return 'Sem detalhes fornecidos.';
@@ -398,11 +403,11 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
               <tr className="text-left text-[10px] font-semibold uppercase tracking-widest text-slate-500 dark:text-slate-400">
                 <th className="px-3 py-2">Tipo</th>
                 <th className="px-3 py-2">Assunto</th>
-                <th className="px-3 py-2">Usuario</th>
+                <th className="px-3 py-2">Usuário</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2 text-center">Respostas</th>
                 <th className="px-3 py-2">Data</th>
-                <th className="px-3 py-2 text-right">Acoes</th>
+                <th className="px-3 py-2 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
@@ -521,6 +526,54 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                             </div>
                           ) : (
                             <div className="space-y-4">
+                              <div className="grid gap-3 rounded-sm border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,0.7fr)]">
+                                <div className="space-y-3">
+                                  <div>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Assunto completo</p>
+                                    <p className="mt-1 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-slate-900 dark:text-slate-100">
+                                      {formatExpandedSupportText(item.reason || getFeedbackTypeLabel(item) || 'Feedback')}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Conteúdo enviado</p>
+                                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                                      {formatExpandedSupportText(cleanFeedbackDetails(item))}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="space-y-2 rounded-sm bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
+                                  <p>
+                                    <span className="font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Tipo: </span>
+                                    <span className="font-semibold text-slate-700 dark:text-slate-200">{getFeedbackTypeLabel(item)}</span>
+                                  </p>
+                                  <p>
+                                    <span className="font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Usuário: </span>
+                                    <span className="font-semibold text-slate-700 dark:text-slate-200">{item.user_name || '-'}</span>
+                                  </p>
+                                  <p>
+                                    <span className="font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">E-mail: </span>
+                                    <span className="font-semibold text-slate-700 dark:text-slate-200">{item.user_email || '-'}</span>
+                                  </p>
+                                  {isPlatformRating ? (
+                                    <div>
+                                      <span className="font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Avaliação: </span>
+                                      <div className="mt-1 flex items-center gap-1 text-amber-400">
+                                        {Array.from({ length: 5 }).map((_, index) => (
+                                          <Star
+                                            key={`${item.id}-expanded-star-${index}`}
+                                            size={14}
+                                            className={index < rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-700'}
+                                          />
+                                        ))}
+                                        <span className="ml-1 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                                          {rating || '-'} / 5
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
+
                               <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
                                 {itemReplies.length > 0 ? itemReplies.map((reply) => {
                                   const isUserReply = reply.user_id === item.user_id;

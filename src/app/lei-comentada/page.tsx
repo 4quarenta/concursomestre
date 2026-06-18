@@ -66,6 +66,7 @@ type LawSectionArticleSummary = {
   number: string;
   title: string;
   isFavorite: boolean;
+  searchText?: string;
 };
 
 type LawSubjectGroup = {
@@ -168,6 +169,20 @@ const UNCATEGORIZED_LEGAL_SUBJECT: LawSubjectGroup = {
 const normalizeSubjectSlug = (value: unknown) => normalizeText(value)
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '');
+
+const matchesNormalizedSearch = (haystack: string, query: string) => {
+  const normalizedHaystack = normalizeText(haystack);
+  const normalizedQuery = normalizeText(query);
+  if (!normalizedQuery) return true;
+  if (normalizedHaystack.includes(normalizedQuery)) return true;
+
+  const tokens = normalizedQuery
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+
+  return tokens.length > 0 && tokens.every((token) => normalizedHaystack.includes(token));
+};
 
 const isTruthyTaxonomyFlag = (value: unknown) => (
   value === true
@@ -402,6 +417,126 @@ const buildLawDisplayTitle = (law: LawSummary) => {
 };
 
 const formatArticleCount = (value: number) => `${formatNumber(value)} artigos`;
+
+const collectLegalHomeSearchValues = (value: unknown): string[] => {
+  if (value === null || value === undefined) {
+    return [];
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    const text = String(value).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    return text ? [text] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap(collectLegalHomeSearchValues);
+  }
+
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).flatMap(collectLegalHomeSearchValues);
+  }
+
+  return [];
+};
+
+const buildArticleSearchText = (article: LawArticle) => [
+  String(article.number || article.numero || '').trim(),
+  String(article.title || article.titulo || '').trim(),
+  article.text,
+  article.texto,
+  article.examTip,
+  article.macete,
+  ...(article.paragraphs || []),
+  ...(article.paragrafos || []),
+  ...(article.blocks || []),
+  ...(article.jurisprudenceNotes || []),
+  ...(article.doutrina || article.doctrine || []),
+  ...(article.sumulas || article.syllabi || []),
+  ...(article.comentarios || []),
+  ...(article.jurisprudencia || []),
+].flatMap(collectLegalHomeSearchValues).join(' ');
+
+const articleMatchesLegalHomeSearch = (article: LawSectionArticleSummary, query: string) => (
+  matchesNormalizedSearch([
+    article.number,
+    article.title,
+    article.searchText,
+  ].join(' '), query)
+);
+
+const sectionMatchesLegalHomeSearch = (section: LawSectionSummary, query: string) => {
+  if (!query) return true;
+  if (matchesNormalizedSearch([
+    section.title,
+    section.fromArticle,
+    section.toArticle,
+  ].join(' '), query)) {
+    return true;
+  }
+
+  return (section.articlePreviews || []).some((article) => articleMatchesLegalHomeSearch(article, query));
+};
+
+const getVisibleSectionArticlesForSearch = (section: LawSectionSummary, query: string) => {
+  const articles = section.articlePreviews || [];
+  if (!query) return articles;
+
+  const sectionHeaderMatches = matchesNormalizedSearch([
+    section.title,
+    section.fromArticle,
+    section.toArticle,
+  ].join(' '), query);
+
+  return sectionHeaderMatches
+    ? articles
+    : articles.filter((article) => articleMatchesLegalHomeSearch(article, query));
+};
+
+const buildLawHomeSearchHaystack = (
+  law: LawSummary,
+  subjectGroups: LawSubjectGroup[],
+  outline?: LawOutlineEntry,
+) => normalizeText([
+  buildLawDisplayTitle(law),
+  law.title,
+  law.shortTitle,
+  law.nome,
+  law.number,
+  law.numero,
+  law.year,
+  law.ano,
+  law.acronym,
+  law.sigla,
+  law.description,
+  law.descricao,
+  law.summary,
+  law.ementa,
+  law.preamble,
+  law.sourceName,
+  law.officialUrl,
+  law.urlPlanalto,
+  law.subjectName,
+  law.materiaName,
+  law.disciplinaName,
+  law.lawTopicName,
+  law.topicName,
+  ...collectLegalHomeSearchValues(law.aliases || []),
+  ...collectLegalHomeSearchValues(law.assuntos || []),
+  ...collectLegalHomeSearchValues(law.subjects || []),
+  ...collectLegalHomeSearchValues(law.materias || []),
+  ...collectLegalHomeSearchValues(law.disciplinas || []),
+  ...subjectGroups.flatMap((subject) => [subject.name, subject.description]),
+  ...((outline?.sections || []).flatMap((section) => [
+    section.title,
+    section.fromArticle,
+    section.toArticle,
+    ...(section.articlePreviews || []).flatMap((article) => [
+      article.number,
+      article.title,
+    ]),
+  ])),
+].join(' '));
+
 const formatProgressPercent = (value?: number) => `${Math.max(0, Math.min(100, Math.round(Number(value || 0))))}%`;
 const getLawBackendProgressPercent = (law: LawSummary) => Number(law.progress?.progressPercent ?? law.progressPercent ?? 0);
 const getLawViewedArticleIds = (law: LawSummary) => new Set(
@@ -579,6 +714,7 @@ const buildSectionsFromLawDetail = (_law: LawSummary, detail: { articles?: LawAr
         number: getArticleNumber(article),
         title: getArticleTitle(article),
         isFavorite: Boolean(article.isFavorite),
+        searchText: buildArticleSearchText(article),
       })),
       isFavorite: false,
     }];
@@ -613,6 +749,7 @@ const buildSectionsFromLawDetail = (_law: LawSummary, detail: { articles?: LawAr
         number: getArticleNumber(article),
         title: getArticleTitle(article),
         isFavorite: Boolean(article.isFavorite),
+        searchText: buildArticleSearchText(article),
       })),
       isFavorite: Boolean(section.isFavorite),
     };
@@ -779,23 +916,15 @@ const AnnotatedLawsPage: React.FC = () => {
         const laws = areaLaws
           .filter((law) => {
             if (!normalizedQuery) return true;
-            if (groupHaystack.includes(normalizedQuery)) return true;
-            const subjectHaystack = normalizeText(getLawSubjectGroups(law)
-              .flatMap((subject) => [subject.name, subject.description])
-              .join(' '));
-            const haystack = normalizeText([
-              law.shortTitle,
-              law.title,
-              law.number,
-              law.summary,
-              law.description,
-              law.acronym,
-              law.subjectName,
-              law.materiaName,
-              law.disciplinaName,
-              subjectHaystack,
-            ].join(' '));
-            return haystack.includes(normalizedQuery);
+            if (matchesNormalizedSearch(groupHaystack, normalizedQuery)) return true;
+            const subjectGroups = getLawSubjectGroups(law);
+            const outline = lawOutlineById[law.id];
+            if (outline?.status === 'loading') return true;
+            if (outline?.sections?.length) {
+              return outline.sections.some((section) => sectionMatchesLegalHomeSearch(section, normalizedQuery));
+            }
+            const haystack = buildLawHomeSearchHaystack(law, subjectGroups);
+            return matchesNormalizedSearch(haystack, normalizedQuery);
           })
           .sort((left, right) => {
             if (sortMode === 'access') {
@@ -822,7 +951,7 @@ const AnnotatedLawsPage: React.FC = () => {
         };
       })
       .filter((group) => group.laws.length > 0);
-  }, [query, selectedArea, sortMode, subjectBuckets]);
+  }, [lawOutlineById, query, selectedArea, sortMode, subjectBuckets]);
 
   React.useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -1001,6 +1130,46 @@ const AnnotatedLawsPage: React.FC = () => {
       pendingOutlineIdsRef.current.delete(law.id);
     }
   }, []);
+
+  React.useEffect(() => {
+    const normalizedQuery = normalizeText(query);
+    if (!normalizedQuery) {
+      return undefined;
+    }
+
+    const searchableLaws = subjectBuckets
+      .filter((group) => selectedArea === 'all' || String(group.area.id) === String(selectedArea))
+      .flatMap((group) => group.laws || [])
+      .filter((law, index, collection) => collection.findIndex((item) => item.id === law.id) === index)
+      .filter((law) => {
+        const outline = lawOutlineById[law.id];
+        return outline?.status !== 'ready' && outline?.status !== 'loading' && !pendingOutlineIdsRef.current.has(law.id);
+      })
+      .slice(0, 8);
+
+    if (searchableLaws.length === 0) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timeoutIds: number[] = [];
+    const frameId = window.requestAnimationFrame(() => {
+      searchableLaws.forEach((law, index) => {
+        const timeoutId = window.setTimeout(() => {
+          if (!cancelled) {
+            void ensureLawOutline(law, false);
+          }
+        }, index * 160);
+        timeoutIds.push(timeoutId);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frameId);
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
+  }, [ensureLawOutline, lawOutlineById, query, selectedArea, subjectBuckets]);
 
   React.useEffect(() => {
     if (!userId || homeLaws.length === 0) {
@@ -1498,9 +1667,13 @@ const AnnotatedLawsPage: React.FC = () => {
                   <div className="border-l-2 border-[#615fff] bg-slate-50/35 px-3 py-3 dark:bg-slate-900/20">
                     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                       {group.laws.map((law) => {
-                        const isLawOpen = expandedLawByArea[group.area.id] === law.id;
+                        const hasHomeSearchQuery = Boolean(normalizeText(query));
+                        const isLawOpen = hasHomeSearchQuery || expandedLawByArea[group.area.id] === law.id;
                         const outline = lawOutlineById[law.id] || { status: 'idle', sections: [] };
                         const effectiveSections = outline.sections;
+                        const visibleSections = normalizeText(query)
+                          ? effectiveSections.filter((section) => sectionMatchesLegalHomeSearch(section, query))
+                          : effectiveSections;
                         const lawReading = sectionReadingByLawId[law.id] || {};
                         const effectiveProgressPercent = resolveLawProgressPercent(law, effectiveSections, lawReading);
                         const completedArticleIds = buildCompletedArticleIdsForLaw(law, effectiveSections, lawReading);
@@ -1571,9 +1744,15 @@ const AnnotatedLawsPage: React.FC = () => {
                                   </p>
                                 ) : null}
 
-                                {effectiveSections.length > 0 ? (
+                                {outline.status === 'ready' && effectiveSections.length > 0 && visibleSections.length === 0 && normalizeText(query) ? (
+                                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                    Nenhuma seção ou artigo desta lei contém o termo pesquisado.
+                                  </p>
+                                ) : null}
+
+                                {visibleSections.length > 0 ? (
                                   <div className="space-y-2">
-                                    {effectiveSections.map((section, index) => {
+                                    {visibleSections.map((section, index) => {
                                       const sectionReadingKey = buildSectionReadingKey(section);
                                       const readingState = getSectionReadingEntry(lawReading, section);
                                       const isSectionCompleted = isSectionCompletedForProgress(section, completedArticleIds, lawReading);
@@ -1581,8 +1760,8 @@ const AnnotatedLawsPage: React.FC = () => {
                                       const shouldMarkAsRead = Boolean(readingState?.startedAt && !isSectionCompleted);
                                       const readBusyKey = `${law.id}:${section.id}`;
                                       const isMarkingSectionAsRead = Boolean(sectionReadBusyMap[readBusyKey]);
-                                      const sectionArticles = section.articlePreviews || [];
-                                      const isSectionArticlesOpen = expandedSectionByLawId[law.id] === section.id;
+                                      const sectionArticles = getVisibleSectionArticlesForSearch(section, query);
+                                      const isSectionArticlesOpen = hasHomeSearchQuery || expandedSectionByLawId[law.id] === section.id;
 
                                       return (
                                       <div

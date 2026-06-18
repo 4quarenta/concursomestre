@@ -10,6 +10,7 @@
 */
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Bell, Menu, Moon, Plus, Search, Sun } from 'lucide-react';
 import { NotificationDropdown, type AdminNotificationItem } from './NotificationDropdown';
 import { buildProfilePath } from '../../../profile/profileNavigation';
@@ -77,6 +78,11 @@ const AdminTopBar = ({
 }: AdminTopBarProps) => {
   const [query, setQuery] = React.useState('');
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
+  const [isMounted, setIsMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const filteredTargets = React.useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -214,24 +220,6 @@ const AdminTopBar = ({
                 <Bell size={18} />
                 {renderNotificationDot(unreadCount)}
               </button>
-
-              {isNotifOpen ? (
-                <>
-                  <div className="fixed inset-0 z-40 bg-slate-950/20 backdrop-blur-[1px]" onClick={onCloseNotifications} />
-                  <NotificationDropdown
-                    notifications={notifications}
-                    markNotificationAsRead={markNotificationAsRead}
-                    markAllNotificationsAsRead={() => {
-                      void Promise.resolve(markAllNotificationsAsRead?.()).catch((error) => {
-                        clientLog.warn('[admin-notifications] Não foi possível marcar todas como vistas pelo botão.', error);
-                      });
-                    }}
-                    unreadCount={unreadCount}
-                    setIsNotifOpen={setIsNotifOpen}
-                    navigate={navigate}
-                  />
-                </>
-              ) : null}
             </div>
           ) : null}
 
@@ -249,6 +237,30 @@ const AdminTopBar = ({
           </button>
         </div>
       </div>
+
+      {notificationsEnabled && isNotifOpen && isMounted ? createPortal(
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[80] cursor-default bg-slate-950/30 backdrop-blur-[1px]"
+            onClick={onCloseNotifications}
+            aria-label="Fechar notificações"
+          />
+          <NotificationDropdown
+            notifications={notifications}
+            markNotificationAsRead={markNotificationAsRead}
+            markAllNotificationsAsRead={() => {
+              void Promise.resolve(markAllNotificationsAsRead?.()).catch((error) => {
+                clientLog.warn('[admin-notifications] Não foi possível marcar todas como vistas pelo botão.', error);
+              });
+            }}
+            unreadCount={unreadCount}
+            setIsNotifOpen={setIsNotifOpen}
+            navigate={navigate}
+          />
+        </>,
+        document.body,
+      ) : null}
     </header>
   );
 };

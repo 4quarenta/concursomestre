@@ -10,6 +10,7 @@
 */
 
 import { apiClient, assertApiSuccess, readApiData, ENDPOINTS } from '@services/api';
+import { getSupportReasonLabel } from './supportReasonLabels';
 
 export type SupportThread = {
   id: number;
@@ -115,6 +116,11 @@ const readMutationProgress = (payload: unknown) => {
   };
 };
 
+const normalizeSupportThread = <T extends SupportThread>(thread: T): T => ({
+  ...thread,
+  reason: getSupportReasonLabel(thread.reason),
+});
+
 const getSupportGamificationEvent = (type: string) => {
   const normalizedType = String(type || '').trim().toLowerCase();
   if (normalizedType === 'suggestion') return 'suggestion_submitted';
@@ -149,15 +155,15 @@ export const supportService = {
     const responsePayload = asSupportRecord(response) as SupportPayload;
 
     if (Array.isArray(payload)) {
-      return payload;
+      return payload.map(normalizeSupportThread);
     }
 
     if (Array.isArray(payload?.feedback)) {
-      return payload.feedback;
+      return payload.feedback.map(normalizeSupportThread);
     }
 
     if (Array.isArray(responsePayload.feedback)) {
-      return responsePayload.feedback;
+      return responsePayload.feedback.map(normalizeSupportThread);
     }
 
     return [];
@@ -174,11 +180,11 @@ export const supportService = {
     const responsePayload = asSupportRecord(response) as SupportPayload;
 
     if (Array.isArray(payload?.suggestions)) {
-      return payload.suggestions;
+      return payload.suggestions.map(normalizeSupportThread);
     }
 
     if (Array.isArray(responsePayload.suggestions)) {
-      return responsePayload.suggestions;
+      return responsePayload.suggestions.map(normalizeSupportThread);
     }
 
     return [];

@@ -9,7 +9,7 @@
 *
 */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Image from 'next/image';
 import type { Assunto, Material, Question, Transaction, UserAnswer, ErrorReport, UserNote, QuestionStats, RelatedQuestionLawMatch, UserProfile, PlanBenefitKey, PlanUsageLimitKey } from '@types';
 import {
@@ -301,7 +301,16 @@ const mergeEditorialFeedbackSnapshotWithFallback = (
     teacher: snapshot.feedback.teacher ?? fallbackFeedback.teacher ?? null,
     detailed: snapshot.feedback.detailed ?? fallbackFeedback.detailed ?? null,
   },
-  counts: snapshot.counts,
+  counts: {
+    teacher: {
+      likes: Math.max(0, Number(snapshot.counts.teacher?.likes || 0)),
+      dislikes: Math.max(0, Number(snapshot.counts.teacher?.dislikes || 0)),
+    },
+    detailed: {
+      likes: Math.max(0, Number(snapshot.counts.detailed?.likes || 0)),
+      dislikes: Math.max(0, Number(snapshot.counts.detailed?.dislikes || 0)),
+    },
+  },
 });
 
 import { useAuth } from '@providers/AuthProvider';
@@ -795,11 +804,40 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   // Gabarito Comentado: Pro ou Elite
   const canSeeTeacher = hasPlanBenefit(currentUser, 'teacher_comments', systemSettings.planEntitlements);
   const canOpenTeacherComment = canSeeTeacher && hasTeacherCommentContent;
-  const hasTeacherCommentSignal = Boolean(question.hasTeacherComment || hasTeacherCommentContent);
+  const isTeacherCommentUnavailable = canSeeTeacher && !hasTeacherCommentContent;
   // Análise Detalhada: apenas Elite
   const [showStats, setShowStats] = useState(false);
   const [localStats, setLocalStats] = useState<QuestionStats | null>(question.stats || null);
   const [loadingStats, setLoadingStats] = useState(false);
+  const statsOptionRows = useMemo(() => {
+    const distribution = localStats?.optionDistribution || {};
+
+    return (question.itens || []).map((item, index) => {
+      const candidateKeys = [
+        String(index),
+        String(index + 1),
+        String(item.rotulo || '').trim(),
+        String(item.rotulo || '').trim().toUpperCase(),
+        String(item.id || '').trim(),
+      ].filter(Boolean);
+
+      const matchedKey = candidateKeys.find((key) => Object.prototype.hasOwnProperty.call(distribution, key));
+      const count = matchedKey ? Math.max(0, Number(distribution[matchedKey] || 0)) : 0;
+
+      return {
+        item,
+        index,
+        count,
+      };
+    });
+  }, [localStats?.optionDistribution, question.itens]);
+
+  const displayedStatsTotal = useMemo(() => {
+    const apiTotal = Math.max(0, Number(localStats?.totalAttempts || 0));
+    const distributionTotal = statsOptionRows.reduce((sum, row) => sum + row.count, 0);
+
+    return distributionTotal > 0 ? distributionTotal : apiTotal;
+  }, [localStats?.totalAttempts, statsOptionRows]);
 
   useEffect(() => {
     // Reset session state ONLY when question changes
@@ -1524,14 +1562,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         <div className="px-6 py-4 bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 items-center justify-between transition-colors duration-300">
           <div className="flex gap-2 items-center flex-wrap">
             {/* Gabarito Comentado - sempre visível, bloqueado por plano */}
-            {hasTeacherCommentSignal && (
               <button
                 onClick={() => {
                   if (!canSeeTeacher) {
-                    setPlanUpgradeModal({ featureName: 'Gabarito Comentado', requiredPlan: teacherRequiredPlan, planLabel: teacherPlanLabel });
-                    return;
-                  }
-                  if (!hasTeacherCommentContent) {
                     setPlanUpgradeModal({ featureName: 'Gabarito Comentado', requiredPlan: teacherRequiredPlan, planLabel: teacherPlanLabel });
                     return;
                   }
@@ -1539,12 +1572,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   setShowDetailedComment(false);
                   setShowAnnotatedLaws(false);
                 }}
-                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showTeacherComment && canOpenTeacherComment ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : canOpenTeacherComment ? 'text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-700 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}
+                title={isTeacherCommentUnavailable ? 'Comentario do professor ainda nao disponivel para esta questao.' : undefined}
+                className={`flex items-center gap-1.5 font-bold text-[9px] uppercase px-3 py-2 rounded-lg border transition-all ${showTeacherComment && canOpenTeacherComment ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : canOpenTeacherComment ? 'text-amber-700 dark:text-amber-400 bg-white dark:bg-slate-700 border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-slate-600' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-amber-200 dark:hover:border-amber-900/50'}`}
               >
                 {canOpenTeacherComment ? <GraduationCap size={14} /> : <Lock size={12} />}
                 Gabarito Comentado
               </button>
-            )}
 
             {/* Análise Detalhada - sempre visível, bloqueado por plano */}
             {(question.hasDetailedComment || question.detailedComment) && (
@@ -1641,28 +1674,24 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center gap-2">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total de Respostas</span>
-                      <span className="text-3xl font-black text-slate-800 dark:text-slate-200">{localStats?.totalAttempts || 0}</span>
+                      <span className="text-3xl font-black text-slate-800 dark:text-slate-200">{displayedStatsTotal}</span>
 
                       {(() => {
                         const correctOption = resolveCorrectOption(question);
                         const correctItem = correctOption?.item;
                         const correctIndex = correctOption?.index ?? -1;
 
-                        const dist = localStats?.optionDistribution || {};
                         let calculatedCorrect = 0;
 
-                        // 2. Calculate Count for that item using established fallback chain
-                        if (correctItem) {
-                          calculatedCorrect = dist[String(correctItem.id)] ||
-                            dist[correctItem.rotulo] ||
-                            dist[String(correctIndex)] || 0;
-                        } else {
-                          // Fallback if item not found but answer might be a raw index
-                          calculatedCorrect = dist[String(question.resposta)] || 0;
-                        }
+                        const correctRow = statsOptionRows.find((row) => (
+                          row.index === correctIndex
+                          || String(row.item.id) === String(correctItem?.id || '')
+                          || String(row.item.rotulo || '').trim().toUpperCase() === String(correctItem?.rotulo || '').trim().toUpperCase()
+                        ));
+                        calculatedCorrect = correctRow?.count || 0;
 
                         // Safety: Cannot be more than total
-                        const total = localStats?.totalAttempts || 0;
+                        const total = displayedStatsTotal;
                         if (calculatedCorrect > total) calculatedCorrect = total;
 
                         const calculatedWrong = total - calculatedCorrect;
@@ -1683,9 +1712,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                     </div>
 
                     <div className="space-y-3">
-                      {(question.itens || []).map((item, idx) => {
-                        const count = localStats?.optionDistribution?.[String(item.id)] || localStats?.optionDistribution?.[item.rotulo] || localStats?.optionDistribution?.[String(idx)] || 0;
-                        const total = localStats?.totalAttempts || 1;
+                      {statsOptionRows.map(({ item, index: idx, count }) => {
+                        const total = displayedStatsTotal || 1;
                         const percent = total > 0 ? Math.round((count / total) * 100) : 0;
 
                         return (

@@ -58,6 +58,7 @@ import { useToast } from '@providers/ToastProvider';
 import MathRichText from '@/components/shared/math/MathRichText';
 import RichTextEditor from '@/components/shared/ui/RichTextEditor';
 import UpgradeModal from '@/components/shared/overlays/UpgradeModal';
+import CommentsSection from '@/components/shared/feedback/CommentsSection';
 import { getAssetUrl } from '@services/api';
 import {
   PLATFORM_PAGE_DESCRIPTION_CLASS,
@@ -99,6 +100,7 @@ import type {
   LawSectionEditorial,
   LegalTargetedText,
   PlanBenefitKey,
+  QuestaoComentario,
   Question,
   TeacherComment,
 } from '@types';
@@ -300,6 +302,20 @@ const normalizeLegalSearchText = (value: unknown) => normalizeText(stripRichText
   .replace(/[^a-z0-9]+/g, ' ')
   .replace(/\s+/g, ' ')
   .trim();
+
+const matchesLegalSearch = (haystack: string, query: string) => {
+  const normalizedHaystack = normalizeLegalSearchText(haystack);
+  const normalizedQuery = normalizeLegalSearchText(query);
+  if (!normalizedQuery) return true;
+  if (normalizedHaystack.includes(normalizedQuery)) return true;
+
+  const tokens = normalizedQuery
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+
+  return tokens.length > 0 && tokens.every((token) => normalizedHaystack.includes(token));
+};
 
 const cleanLegalNoteText = (value: unknown) => String(value || '')
   .replace(/\s*\[(?:caput|par[aá]grafo(?:\s+u[nú]nico)?|inciso\s+[ivxlcdm]+|al[ií]nea\s+[a-z]|item\s+[a-z0-9]+)\]\s*/giu, ' ')
@@ -1391,6 +1407,40 @@ const getLegalCommentParentId = (comment: LegalUserComment): string => String(
   || '',
 ).trim();
 
+const mapLegalCommentToQuestionComment = (comment: LegalUserComment): QuestaoComentario => ({
+  id: String(comment.id),
+  userId: String(comment.userId || ''),
+  userName: String(comment.userName || 'Aluno'),
+  userAvatar: getLegalCommentAvatarUrl(comment),
+  userPlan: comment.userPlan as QuestaoComentario['userPlan'],
+  userRole: comment.userRole,
+  text: String(comment.body || ''),
+  date: formatDateTime(comment.createdAt),
+  likes: Math.max(0, Number(comment.likes || 0)),
+  isLiked: comment.userReaction === 'like',
+  parentId: getLegalCommentParentId(comment) || undefined,
+  moderationStatus: comment.moderationStatus,
+  replies: [],
+});
+
+const buildLegalQuestionCommentTree = (comments: LegalUserComment[]): QuestaoComentario[] => {
+  const mappedComments = comments.map(mapLegalCommentToQuestionComment);
+  const byId = new Map(mappedComments.map((comment) => [String(comment.id), comment]));
+  const roots: QuestaoComentario[] = [];
+
+  mappedComments.forEach((comment) => {
+    const parentId = String(comment.parentId || '').trim();
+    const parent = parentId ? byId.get(parentId) : null;
+    if (parent) {
+      parent.replies.push(comment);
+      return;
+    }
+    roots.push(comment);
+  });
+
+  return roots;
+};
+
 const LegalCommentPlanBadge: React.FC<{ plan?: string }> = ({ plan }) => {
   switch (plan) {
     case 'Elite':
@@ -1526,7 +1576,7 @@ const ReactionControls: React.FC<{
   };
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-2">
       <button
         type="button"
         onClick={(event) => {
@@ -1535,7 +1585,7 @@ const ReactionControls: React.FC<{
           updateReaction('like');
         }}
         disabled={isSavingReaction}
-        className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[10px] font-black transition-colors ${
+        className={`inline-flex h-8 min-w-[3rem] items-center justify-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-black transition-colors ${
           reaction === 'like'
             ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
             : 'border-slate-200 bg-white/70 text-slate-500 hover:border-emerald-200 hover:text-emerald-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300'
@@ -1543,7 +1593,7 @@ const ReactionControls: React.FC<{
         aria-label="Curtir"
       >
         <ThumbsUp size={12} />
-        {counts.likes}
+        <span className="tabular-nums">{counts.likes}</span>
       </button>
       <button
         type="button"
@@ -1553,7 +1603,7 @@ const ReactionControls: React.FC<{
           updateReaction('dislike');
         }}
         disabled={isSavingReaction}
-        className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2 text-[10px] font-black transition-colors ${
+        className={`inline-flex h-8 min-w-[3rem] items-center justify-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-black transition-colors ${
           reaction === 'dislike'
             ? 'border-red-200 bg-red-50 text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
             : 'border-slate-200 bg-white/70 text-slate-500 hover:border-red-200 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300'
@@ -1561,7 +1611,7 @@ const ReactionControls: React.FC<{
         aria-label="Não curtir"
       >
         <ThumbsDown size={12} />
-        {counts.dislikes}
+        <span className="tabular-nums">{counts.dislikes}</span>
       </button>
     </div>
   );
@@ -2285,7 +2335,8 @@ const LawDetailPage: React.FC = () => {
       return;
     }
 
-    const top = target.getBoundingClientRect().top + window.scrollY - 96;
+    const stickyOffset = window.innerWidth < 1024 ? 18 : 96;
+    const top = target.getBoundingClientRect().top + window.scrollY - stickyOffset;
     window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   }, []);
 
@@ -2306,7 +2357,12 @@ const LawDetailPage: React.FC = () => {
     }
 
     pendingTabScrollRef.current = null;
-    const frameId = window.requestAnimationFrame(() => scrollToTabContent(tab));
+    const frameId = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        scrollToTabContent(tab);
+        window.setTimeout(() => scrollToTabContent(tab), 120);
+      });
+    });
     return () => window.cancelAnimationFrame(frameId);
   }, [activeTab, scrollToTabContent]);
 
@@ -2672,12 +2728,36 @@ const LawDetailPage: React.FC = () => {
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
   }, [activeSection, activeSectionArticleIds, law, userId]);
 
+  const sectionQuestionComments = React.useMemo(
+    () => buildLegalQuestionCommentTree(sectionUserComments),
+    [sectionUserComments],
+  );
+
   const relatedQuestionScope = React.useMemo(() => {
     if (!law) {
       return { subject: '', topics: [] as string[] };
     }
 
+    const sectionTaxonomy = activeSection as typeof activeSection & {
+      titleName?: string | null;
+      chapterName?: string | null;
+      subtopicName?: string | null;
+      assuntoName?: string | null;
+    };
+    const lawTaxonomy = law as typeof law & {
+      subjectName?: string | null;
+      materiaName?: string | null;
+      disciplinaName?: string | null;
+      lawTopicName?: string | null;
+      topicName?: string | null;
+    };
     const topics = Array.from(new Set([
+      sectionTaxonomy?.chapterName,
+      sectionTaxonomy?.assuntoName,
+      sectionTaxonomy?.titleName,
+      sectionTaxonomy?.subtopicName,
+      lawTaxonomy.lawTopicName,
+      lawTaxonomy.topicName,
       activeSection?.title,
       ...activeSectionArticles.flatMap(getArticleTaxonomyNames),
     ]
@@ -2685,10 +2765,16 @@ const LawDetailPage: React.FC = () => {
       .filter(Boolean)));
 
     return {
-      subject: String(law.area?.name || '').trim(),
+      subject: String(
+        lawTaxonomy.subjectName
+        || lawTaxonomy.materiaName
+        || lawTaxonomy.disciplinaName
+        || law.area?.name
+        || '',
+      ).trim(),
       topics,
     };
-  }, [activeSection?.title, activeSectionArticles, law]);
+  }, [activeSection, activeSectionArticles, law]);
   const analysisFeatureMode = getLegalFeatureFallbackMode('lei.raiox');
   const questionsFeatureMode = getLegalFeatureFallbackMode('lei.questoes');
   const annotationsFeatureMode = getLegalFeatureFallbackMode('lei.anotacoes');
@@ -2857,7 +2943,10 @@ const LawDetailPage: React.FC = () => {
       : activeSectionArticles;
 
     return sourceArticles.filter((article) => (
-      !normalizedSearchTerm || buildArticleSearchHaystack(law, article, sections, userId).includes(normalizedSearchTerm)
+      !normalizedSearchTerm || matchesLegalSearch(
+        buildArticleSearchHaystack(law, article, sections, userId),
+        normalizedSearchTerm,
+      )
     ));
   }, [activeSectionArticles, law, normalizedSearchTerm, sections, userId]);
 
@@ -3187,6 +3276,19 @@ const LawDetailPage: React.FC = () => {
           notificationEvent: 'support_opened',
         });
 
+        if (result.duplicate) {
+          setRequestedTeacherCommentKeys((current) => {
+            const next = new Set(current);
+            next.add(actionRequestKey);
+            saveTeacherCommentRequestKeys(userId, scopedLawId, next);
+            return next;
+          });
+          addToast('Você já abriu uma solicitação para este item. Aguarde a resposta do suporte.', 'info');
+          setSectionReportModalOpen(false);
+          setSectionReportDetails('');
+          return;
+        }
+
         applyUserProgressMutation(result);
         setRequestedTeacherCommentKeys((current) => {
           const next = new Set(current);
@@ -3414,7 +3516,7 @@ const LawDetailPage: React.FC = () => {
     startSectionReading();
   }, [activeSectionReading?.startedAt, isActiveSectionCompleted, restartSectionReading, saveReadingProgress, startSectionReading]);
 
-  const submitLegalComment = React.useCallback(async () => {
+  const submitLegalComment = React.useCallback(async (bodyOverride?: string) => {
     if (!law || isSubmittingComment) return;
     if (!userId) {
       addToast('Entre na sua conta para comentar.', 'warning');
@@ -3422,7 +3524,7 @@ const LawDetailPage: React.FC = () => {
     }
 
     const targetArticleId = activeSection?.primaryArticleId || activeSectionArticles[0]?.id || '';
-    const body = normalizeQuestionRichHtml(commentBody);
+    const body = normalizeQuestionRichHtml(typeof bodyOverride === 'string' ? bodyOverride : commentBody);
     if (!targetArticleId || !stripRichText(body)) return;
     if (!commentsPerDayUnlimited && commentsPerDayLimit !== null && readDailyUsageCount(userId, 'comments_per_day') >= commentsPerDayLimit) {
       setLegalFeatureUpgradeModal({
@@ -3489,7 +3591,7 @@ const LawDetailPage: React.FC = () => {
     userId,
   ]);
 
-  const submitLegalCommentReply = React.useCallback(async (parentCommentId: string) => {
+  const submitLegalCommentReply = React.useCallback(async (parentCommentId: string, bodyOverride?: string) => {
     if (!law || isSubmittingCommentReply) return;
     if (!userId) {
       addToast('Entre na sua conta para responder.', 'warning');
@@ -3498,7 +3600,7 @@ const LawDetailPage: React.FC = () => {
 
     const parentComment = (law.userComments || []).find((comment) => String(comment.id) === String(parentCommentId));
     const targetArticleId = String(parentComment?.articleId || activeSection?.primaryArticleId || activeSectionArticles[0]?.id || '').trim();
-    const body = normalizeQuestionRichHtml(replyBody);
+    const body = normalizeQuestionRichHtml(typeof bodyOverride === 'string' ? bodyOverride : replyBody);
     if (!targetArticleId || !parentCommentId || !stripRichText(body)) return;
     if (!commentsPerDayUnlimited && commentsPerDayLimit !== null && readDailyUsageCount(userId, 'comments_per_day') >= commentsPerDayLimit) {
       setLegalFeatureUpgradeModal({
@@ -3598,6 +3700,30 @@ const LawDetailPage: React.FC = () => {
       addToast('Não foi possível excluir o comentário agora.', 'error');
     }
   }, [addToast]);
+
+  const likeLegalComment = React.useCallback(async (commentId: string) => {
+    const currentComment = (law?.userComments || []).find((comment) => String(comment.id) === String(commentId));
+    const nextReaction: 'like' | null = currentComment?.userReaction === 'like' ? null : 'like';
+
+    try {
+      const result = await legalCommentaryApiService.setContentReaction(`comment:${commentId}`, nextReaction);
+      setLaw((current) => current ? {
+        ...current,
+        userComments: (current.userComments || []).map((comment) => (
+          String(comment.id) === String(commentId)
+            ? {
+                ...comment,
+                likes: Math.max(0, Number(result.likes || 0)),
+                dislikes: Math.max(0, Number(result.dislikes || 0)),
+                userReaction: result.userReaction,
+              }
+            : comment
+        )),
+      } : current);
+    } catch {
+      addToast('Não foi possível registrar a curtida agora.', 'error');
+    }
+  }, [addToast, law?.userComments]);
 
   const getReaderSelectionRange = React.useCallback(() => {
     if (typeof window === 'undefined') return null;
@@ -4496,30 +4622,22 @@ const LawDetailPage: React.FC = () => {
         </section>
         )
       ) : activeTab === 'comments' ? (
-        <div ref={commentsContentSectionRef}>
-          <LegalCommentsPanel
-            comments={sectionUserComments}
-            value={commentBody}
-            replyValue={replyBody}
-            replyTargetId={replyTargetCommentId}
-            disabled={!userId}
-            isSubmitting={isSubmittingComment}
-            isSubmittingReply={isSubmittingCommentReply}
-            onChange={setCommentBody}
-            onSubmit={submitLegalComment}
-            onReplyChange={setReplyBody}
-            onStartReply={(commentId) => {
-              setReplyTargetCommentId(commentId);
-              setReplyBody('');
+        <div ref={commentsContentSectionRef} className={`${PLATFORM_SURFACE_CARD_CLASS} overflow-hidden`}>
+          <CommentsSection
+            targetId={String(activeSection?.id || activeSection?.primaryArticleId || law.id)}
+            title="Discussão da seção"
+            comments={sectionQuestionComments}
+            onAddComment={(text, parentId) => {
+              if (parentId) {
+                void submitLegalCommentReply(parentId, text);
+                return;
+              }
+              void submitLegalComment(text);
             }}
-            onCancelReply={() => {
-              setReplyTargetCommentId(null);
-              setReplyBody('');
-            }}
-            onSubmitReply={submitLegalCommentReply}
-            onReport={reportLegalComment}
-            onDelete={deleteLegalComment}
-            currentUserId={userId}
+            onLikeComment={(commentId) => likeLegalComment(commentId)}
+            onReportComment={(commentId) => reportLegalComment(commentId)}
+            onDeleteComment={deleteLegalComment}
+            isExpanded
           />
         </div>
       ) : activeTab === 'analysis' ? (
