@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { ArrowRight, CheckCircle2, Clock3, CreditCard, ShieldCheck, XCircle } from 'lucide-react';
@@ -10,7 +10,36 @@ import { buildProfilePath } from '../../profile/profileNavigation';
 const successStatuses = new Set(['success', 'approved', 'paid', 'complete', 'completed']);
 const failureStatuses = new Set(['failure', 'failed', 'error', 'cancel', 'cancelled', 'canceled']);
 
-export default function SubscriptionStatusPage() {
+function SubscriptionStatusFallback() {
+  return (
+    <main className="min-h-screen bg-slate-50 px-5 py-10 text-slate-950 dark:bg-[#070b1a] dark:text-white sm:px-8">
+      <section className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-4xl items-center justify-center">
+        <div className="w-full overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/70 dark:border-slate-800 dark:bg-[#111827] dark:shadow-none">
+          <div className="relative overflow-hidden bg-slate-950 px-8 py-12 text-center text-white sm:px-12">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.22),transparent_38%)]" />
+            <div className="relative z-10">
+              <div className="mx-auto h-20 w-20 animate-pulse rounded-[1.75rem] bg-slate-800" />
+              <div className="mx-auto mt-6 h-3 w-44 animate-pulse rounded-full bg-slate-800" />
+              <div className="mx-auto mt-4 h-9 w-80 max-w-full animate-pulse rounded-full bg-slate-800" />
+              <div className="mx-auto mt-4 h-5 w-[28rem] max-w-full animate-pulse rounded-full bg-slate-800" />
+            </div>
+          </div>
+          <div className="grid gap-px bg-slate-100 dark:bg-slate-800 md:grid-cols-3">
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="bg-white px-6 py-5 dark:bg-[#111827]">
+                <div className="h-3 w-20 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+                <div className="mt-3 h-5 w-28 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+                <div className="mt-2 h-4 w-40 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function SubscriptionStatusContent() {
   const params = useParams<{ status?: string }>();
   const searchParams = useSearchParams();
   const { currentUser, isLoading, refreshUser } = useAuth();
@@ -19,6 +48,7 @@ export default function SubscriptionStatusPage() {
   const isFailure = failureStatuses.has(rawStatus);
   const isSuccess = successStatuses.has(rawStatus) || !isFailure;
   const provider = String(searchParams.get('provider') || 'Stripe');
+  const sessionId = String(searchParams.get('session_id') || '');
 
   React.useEffect(() => {
     if (!currentUser || refreshAttempted) {
@@ -34,7 +64,7 @@ export default function SubscriptionStatusPage() {
     ? 'Recebemos o retorno do pagamento e estamos sincronizando seu acesso premium.'
     : 'Não foi possível confirmar sua assinatura neste retorno.';
   const description = isSuccess
-    ? 'Se o pagamento já foi aprovado, seus recursos ficam disponíveis automaticamente. Você pode acompanhar o plano, cartões e transações em Minha assinatura.'
+    ? 'Se o pagamento já foi aprovado, seus recursos ficam disponíveis automaticamente. Você pode acompanhar plano, cartões e transações em Minha assinatura.'
     : 'Você pode tentar novamente ou escolher outro método de pagamento. Nenhum acesso premium novo foi liberado por esta tentativa.';
 
   return (
@@ -87,7 +117,9 @@ export default function SubscriptionStatusPage() {
             <div className="border-t border-slate-100 px-6 py-5 dark:border-slate-800 md:border-l md:border-t-0">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Próximo passo</p>
               <p className="mt-3 text-lg font-black leading-none">{isSuccess ? 'Minha assinatura' : 'Planos'}</p>
-              <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">Acompanhe os detalhes.</p>
+              <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                {sessionId ? `Sessão ${sessionId.slice(0, 14)}...` : 'Acompanhe os detalhes.'}
+              </p>
             </div>
           </div>
 
@@ -113,15 +145,13 @@ export default function SubscriptionStatusPage() {
                   hint: isSuccess ? 'Pode levar alguns segundos.' : 'Você pode tentar novamente.',
                   Icon: Clock3,
                 },
-              ].map(({ label, hint, Icon: LucideIcon }) => {
-                return (
-                  <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                    <LucideIcon size={18} className={isSuccess ? 'text-emerald-500' : 'text-red-400'} />
-                    <p className="mt-3 text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
-                    <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">{hint}</p>
-                  </div>
-                );
-              })}
+              ].map(({ label, hint, Icon: LucideIcon }) => (
+                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                  <LucideIcon size={18} className={isSuccess ? 'text-emerald-500' : 'text-red-400'} />
+                  <p className="mt-3 text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">{hint}</p>
+                </div>
+              ))}
             </div>
 
             <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -145,5 +175,13 @@ export default function SubscriptionStatusPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function SubscriptionStatusPage() {
+  return (
+    <Suspense fallback={<SubscriptionStatusFallback />}>
+      <SubscriptionStatusContent />
+    </Suspense>
   );
 }
