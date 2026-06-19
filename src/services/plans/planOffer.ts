@@ -86,10 +86,20 @@ const getConfiguredCycleAmount = (
   }
 
   if (plan.interval_unit === 'year') {
+    const monthlyAmount = Number(configuredPricing.monthly || 0);
+    if (monthlyAmount > 0 && configuredPricing.annualDiscountPercent !== undefined) {
+      return monthlyAmount * 12 * (1 - Number(configuredPricing.annualDiscountPercent || 0) / 100);
+    }
+
     return Number(configuredPricing.annual || 0);
   }
 
   if (plan.interval_unit === 'month' && Number(plan.interval_count || 1) === 3) {
+    const monthlyAmount = Number(configuredPricing.monthly || 0);
+    if (monthlyAmount > 0 && configuredPricing.quarterlyDiscountPercent !== undefined) {
+      return monthlyAmount * 3 * (1 - Number(configuredPricing.quarterlyDiscountPercent || 0) / 100);
+    }
+
     return Number(configuredPricing.quarterly || 0);
   }
 

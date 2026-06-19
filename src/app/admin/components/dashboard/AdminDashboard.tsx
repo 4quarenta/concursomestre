@@ -427,7 +427,7 @@ const AdminDashboard = ({
   const periodQuestionsCount = isAllPeriod ? platformTotals.questions : Number(stats.new_questions || 0);
   const periodUsersCount = isAllPeriod ? platformTotals.users : Number(stats.new_users || 0);
   const periodGrossRevenue = Number(stats.total_revenue || 0);
-  const periodAvailableRevenue = Number(stats.available_total_revenue || stats.available_platform_revenue || 0);
+  const periodAvailableRevenue = Number(stats.available_total_revenue ?? stats.available_platform_revenue ?? 0);
   const periodPlatformRevenue = Number(stats.platform_revenue || 0);
 
   const summaryCards = useMemo(() => ([
@@ -759,11 +759,11 @@ const AdminDashboard = ({
 
             <div className="border-t border-slate-100 pt-4 dark:border-slate-800">
               <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-slate-500 dark:text-slate-400">Receita disponivel</span>
+                <span className="text-slate-500 dark:text-slate-400">Receita disponível após garantia</span>
                 <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(periodAvailableRevenue)}</span>
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                <span className="text-slate-500 dark:text-slate-400">Comissao da plataforma</span>
+                <span className="text-slate-500 dark:text-slate-400">Receita da plataforma</span>
                 <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(periodPlatformRevenue)}</span>
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm">
@@ -771,12 +771,12 @@ const AdminDashboard = ({
                 <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(stats.mrr || 0)}</span>
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                <span className="text-slate-500 dark:text-slate-400">Saldo retido</span>
+                <span className="text-slate-500 dark:text-slate-400">Saldo em garantia</span>
                 <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(stats.held_balance || 0)}</span>
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                 <span className="text-slate-500 dark:text-slate-400">Repasses a vendedores</span>
-                <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(stats.available_seller_payout || stats.seller_payout || 0)}</span>
+                <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(stats.available_seller_payout ?? stats.seller_payout ?? 0)}</span>
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                 <span className="text-slate-500 dark:text-slate-400">Reembolsos solicitados</span>

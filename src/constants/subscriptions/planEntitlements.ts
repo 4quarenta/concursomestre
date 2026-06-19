@@ -761,7 +761,7 @@ const buildCommercialPlanFeatures = (
   ));
 
   addFeature(planBenefits.teacher_comments?.enabled && { text: 'Comentário do professor', included: true });
-  addFeature(planBenefits['question.detailed_analysis']?.enabled && { text: 'Análise detalhada IA', included: true });
+  addFeature(planBenefits['question.detailed_analysis']?.enabled && { text: 'Análise detalhada', included: true });
   addFeature(planBenefits['question.full_statistics']?.enabled && { text: 'Estatísticas completas', included: true });
   addFeature(planBenefits['module.lei_comentada']?.enabled && { text: 'Lei comentada', included: true });
   addFeature(planBenefits['lei.doutrina']?.enabled && { text: 'Doutrina, súmulas e jurisprudência', included: true });

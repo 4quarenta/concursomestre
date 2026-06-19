@@ -1681,22 +1681,26 @@ const AdminFinance = ({
 
   const handlePriceChange = (plan: string, monthlyValue: number) => {
     const updatedPricing = { ...draftPricing };
-    const planConfig = updatedPricing[plan];
-    planConfig.monthly = monthlyValue;
-    const qDesc = planConfig.quarterlyDiscountPercent || 10;
-    const aDesc = planConfig.annualDiscountPercent || 30;
-    planConfig.quarterly = (monthlyValue * 3) * (1 - qDesc / 100);
-    planConfig.annual = (monthlyValue * 12) * (1 - aDesc / 100);
+    const planConfig = { ...updatedPricing[plan] };
+    const qDesc = Number(planConfig.quarterlyDiscountPercent ?? 10);
+    const aDesc = Number(planConfig.annualDiscountPercent ?? 30);
+    updatedPricing[plan] = {
+      ...planConfig,
+      monthly: monthlyValue,
+      quarterly: (monthlyValue * 3) * (1 - qDesc / 100),
+      annual: (monthlyValue * 12) * (1 - aDesc / 100),
+    };
     setDraftPricing(updatedPricing);
   };
 
   const handleDiscountPercentChange = (plan: string, type: 'quarterly' | 'annual', percent: number) => {
     const updatedPricing = { ...draftPricing };
-    const planConfig = updatedPricing[plan];
+    const planConfig = { ...updatedPricing[plan] };
     if (type === 'quarterly') planConfig.quarterlyDiscountPercent = percent;
     else planConfig.annualDiscountPercent = percent;
-    planConfig.quarterly = (planConfig.monthly * 3) * (1 - (planConfig.quarterlyDiscountPercent || 0) / 100);
-    planConfig.annual = (planConfig.monthly * 12) * (1 - (planConfig.annualDiscountPercent || 0) / 100);
+    planConfig.quarterly = (planConfig.monthly * 3) * (1 - Number(planConfig.quarterlyDiscountPercent ?? 0) / 100);
+    planConfig.annual = (planConfig.monthly * 12) * (1 - Number(planConfig.annualDiscountPercent ?? 0) / 100);
+    updatedPricing[plan] = planConfig;
     setDraftPricing(updatedPricing);
   };
 

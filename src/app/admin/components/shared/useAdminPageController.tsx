@@ -555,6 +555,11 @@ export const useAdminPageController = () => {
       return;
     }
 
+    if (tab === 'support') {
+      handleSectionChange('support', subTab && isSupportSection(subTab) ? subTab : supportLandingSection);
+      return;
+    }
+
     if (tab === 'feedback') {
       handleSectionChange('support', 'feedback');
       return;
