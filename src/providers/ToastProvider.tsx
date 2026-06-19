@@ -11,17 +11,37 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  AUTH_SESSION_EXPIRED_EVENT,
+  AUTH_SESSION_EXPIRED_MESSAGE,
+  AUTH_SESSION_EXPIRED_TOAST_KEY,
+  type AuthSessionExpiredNoticeDetail,
+  isSessionExpiredMessage,
+} from '@services/auth/sessionExpiredNotice';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+type ToastAction = {
+  label: string;
+  onClick: () => void;
+};
 
 interface Toast {
   id: number;
   message: string;
   type: ToastType;
+  action?: ToastAction;
+  dedupeKey?: string;
+}
+
+type ToastOptions = {
+  action?: ToastAction;
+  durationMs?: number;
+  dedupeKey?: string;
 }
 
 interface ToastContextType {
-  addToast: (message: string, type?: ToastType) => void;
+  addToast: (message: string, type?: ToastType, options?: ToastOptions) => void;
   removeToast: (id: number) => void;
 }
 
@@ -56,11 +76,66 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  const addToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => removeToast(id), 5000);
-  }, [removeToast]);
+  const startLoginRecovery = useCallback(() => {
+    const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (!currentPath.startsWith('/auth')) {
+      window.sessionStorage.setItem('redirectAfterLogin', currentPath);
+    }
+
+    window.location.assign('/auth');
+  }, []);
+
+  const addToast = useCallback((message: string, type: ToastType = 'info', options: ToastOptions = {}) => {
+    const isSessionExpiredToast = isSessionExpiredMessage(message);
+    const nextMessage = isSessionExpiredToast ? AUTH_SESSION_EXPIRED_MESSAGE : message;
+    const nextType = isSessionExpiredToast ? 'warning' : type;
+    const nextOptions: ToastOptions = isSessionExpiredToast
+      ? {
+          ...options,
+          action: {
+            label: 'Entrar novamente',
+            onClick: startLoginRecovery,
+          },
+          dedupeKey: AUTH_SESSION_EXPIRED_TOAST_KEY,
+          durationMs: options.durationMs ?? 12000,
+        }
+      : options;
+
+    const id = Date.now() + Math.round(Math.random() * 1000);
+    let shouldScheduleRemoval = true;
+
+    setToasts((prev) => {
+      if (nextOptions.dedupeKey && prev.some((toast) => toast.dedupeKey === nextOptions.dedupeKey)) {
+        shouldScheduleRemoval = false;
+        return prev;
+      }
+
+      return [...prev, {
+        id,
+        message: nextMessage,
+        type: nextType,
+        action: nextOptions.action,
+        dedupeKey: nextOptions.dedupeKey,
+      }];
+    });
+
+    if (shouldScheduleRemoval && nextOptions.durationMs !== 0) {
+      setTimeout(() => removeToast(id), nextOptions.durationMs ?? 5000);
+    }
+  }, [removeToast, startLoginRecovery]);
+
+  React.useEffect(() => {
+    const handleAuthSessionExpired = (event: Event) => {
+      const customEvent = event as CustomEvent<AuthSessionExpiredNoticeDetail>;
+      addToast(customEvent.detail?.message || AUTH_SESSION_EXPIRED_MESSAGE, 'warning');
+    };
+
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, handleAuthSessionExpired);
+
+    return () => {
+      window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, handleAuthSessionExpired);
+    };
+  }, [addToast]);
 
   return (
     <ToastContext.Provider value={{ addToast, removeToast }}>
@@ -77,6 +152,18 @@ export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) =
               ].join(' ')}
             >
               <span className="leading-relaxed">{toast.message}</span>
+              {toast.action ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast.action?.onClick();
+                    removeToast(toast.id);
+                  }}
+                  className="shrink-0 rounded-md bg-white/20 px-2 py-1 text-xs font-black uppercase tracking-widest text-current transition hover:bg-white/30"
+                >
+                  {toast.action.label}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => removeToast(toast.id)}

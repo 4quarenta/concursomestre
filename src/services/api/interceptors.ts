@@ -12,6 +12,7 @@
 import type { AxiosError, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { logger } from '../../utils/helpers/DebugLogger';
 import { getAccessToken, isAccessTokenExpired, refreshAuthSession } from '@services/auth/session';
+import { dispatchAuthSessionExpiredNotice } from '@services/auth/sessionExpiredNotice';
 import { clientLog } from '@services/monitoring/clientLog';
 
 export interface AuthAwareRequestConfig extends InternalAxiosRequestConfig {
@@ -216,6 +217,12 @@ export const registerApiInterceptors = (apiClient: AxiosInterceptorClient): void
                 switch (status) {
                     case 401:
                         clientLog.error('Unauthorized request:', error.config?.url, readResponseMessage(data));
+                        if (!isAuthEndpoint(error.config?.url)) {
+                            dispatchAuthSessionExpiredNotice({
+                                status,
+                                url: error.config?.url,
+                            });
+                        }
                         break;
                     case 403:
                         clientLog.error('Access forbidden:', readResponseMessage(data));

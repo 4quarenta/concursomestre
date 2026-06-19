@@ -11,6 +11,10 @@
 
 import axios from 'axios';
 import { getAccessToken, isAccessTokenExpired, refreshAuthSession } from '@services/auth/session';
+import {
+    AUTH_SESSION_EXPIRED_MESSAGE,
+    dispatchAuthSessionExpiredNotice,
+} from '@services/auth/sessionExpiredNotice';
 import { registerApiInterceptors } from './interceptors';
 import { ENDPOINTS } from './endpoints';
 import { API_BASE_URL, resolveAbsoluteApiBaseUrl, resolveBackendRootFromApiBaseUrl } from './baseUrl';
@@ -85,17 +89,22 @@ const ensureAuthenticatedAccessToken = async (): Promise<string> => {
         return currentToken;
     }
 
-    const refreshedSession = await refreshAuthSession({
-        reason: 'manual',
-        force: true,
-    });
+    try {
+        const refreshedSession = await refreshAuthSession({
+            reason: 'manual',
+            force: true,
+        });
 
-    const refreshedToken = refreshedSession?.accessToken ?? getAccessToken();
-    if (!refreshedToken) {
-        throw new Error('Sessão expirada. Faca login novamente.');
+        const refreshedToken = refreshedSession?.accessToken ?? getAccessToken();
+        if (refreshedToken) {
+            return refreshedToken;
+        }
+    } catch {
+        // O aviso acionavel abaixo centraliza a recuperacao da sessao na interface.
     }
 
-    return refreshedToken;
+    dispatchAuthSessionExpiredNotice();
+    throw new Error(AUTH_SESSION_EXPIRED_MESSAGE);
 };
 
 /**
@@ -146,13 +155,25 @@ const fetchAuthenticatedResource = async (
         credentials: 'include',
     });
 
-    if (response.status === 401 && !hasRetried) {
-        await refreshAuthSession({
-            reason: 'http-401',
-            force: true,
-        });
+    if (response.status === 401) {
+        if (!hasRetried) {
+            try {
+                await refreshAuthSession({
+                    reason: 'http-401',
+                    force: true,
+                });
 
-        return fetchAuthenticatedResource(resource, init, true);
+                return fetchAuthenticatedResource(resource, init, true);
+            } catch {
+                // A falha final e tratada pelo aviso global logo abaixo.
+            }
+        }
+
+        dispatchAuthSessionExpiredNotice({
+            status: response.status,
+            url,
+        });
+        throw new Error(AUTH_SESSION_EXPIRED_MESSAGE);
     }
 
     if (!response.ok) {
