@@ -91,6 +91,25 @@ describe('plan auto coupon offers', () => {
     expect(couponsByPlanId[19].discountAmount).toBe(0);
   });
 
+  it('does not expose user-restricted auto coupons on public plan cards', () => {
+    const coupon = {
+      code: 'VIPONLY',
+      discountPercentage: 80,
+      uses: 0,
+      maxUses: 100,
+      expiresAt: '2099-04-21T01:00:00.000Z',
+      autoApply: true,
+      targetType: 'plan',
+      targetId: '19',
+      allowedUserEmails: ['aluno@teste.com'],
+    } as unknown as DiscountCode;
+
+    const couponsByPlanId = resolvePlanAutoCouponsById([eliteAnnualPlan], [coupon]);
+
+    expect(couponsByPlanId[19].coupon).toBeNull();
+    expect(couponsByPlanId[19].discountAmount).toBe(0);
+  });
+
   it('supports snake_case coupon payload fields from backend', () => {
     const coupon = {
       code: 'SNAKE60',

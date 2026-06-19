@@ -553,6 +553,10 @@ export interface DiscountCode {
   autoApply?: boolean;
   targetType?: 'all' | 'plan' | 'item';
   targetId?: string | null;
+  newUsersOnly?: boolean;
+  firstPurchaseOnly?: boolean;
+  allowedUserIds?: string[];
+  allowedUserEmails?: string[];
 }
 
 export interface PlanPricing {

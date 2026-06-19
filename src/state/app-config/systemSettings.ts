@@ -184,6 +184,19 @@ const normalizeDiscountCodes = (value: unknown): DiscountCode[] => {
     return [];
   }
 
+  const normalizeStringList = (listValue: unknown, lowercase = false) => {
+    const source = typeof listValue === 'string'
+      ? listValue.split(/[\r\n,;]+/)
+      : Array.isArray(listValue)
+        ? listValue
+        : [];
+
+    return Array.from(new Set(source
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .map((item) => (lowercase ? item.toLowerCase() : item))));
+  };
+
   return value
     .map<DiscountCode | null>((coupon) => {
       const rawCoupon = (coupon || {}) as Partial<DiscountCode> & Record<string, unknown>;
@@ -213,6 +226,10 @@ const normalizeDiscountCodes = (value: unknown): DiscountCode[] => {
         autoApply: Boolean(rawCoupon.autoApply),
         targetType,
         targetId,
+        newUsersOnly: Boolean(rawCoupon.newUsersOnly ?? rawCoupon.new_users_only),
+        firstPurchaseOnly: Boolean(rawCoupon.firstPurchaseOnly ?? rawCoupon.first_purchase_only),
+        allowedUserIds: normalizeStringList(rawCoupon.allowedUserIds ?? rawCoupon.allowed_user_ids),
+        allowedUserEmails: normalizeStringList(rawCoupon.allowedUserEmails ?? rawCoupon.allowed_user_emails, true),
       };
 
       return normalizedCoupon;

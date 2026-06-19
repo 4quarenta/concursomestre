@@ -69,6 +69,28 @@ const getCouponDiscountAmount = (coupon?: DiscountCode | null) => {
   return Math.max(0, toNumber(rawCoupon.discountAmount ?? rawCoupon.discount_amount, 0));
 };
 
+const getCouponAudienceList = (coupon: DiscountCode | null | undefined, key: 'allowedUserIds' | 'allowedUserEmails') => {
+  const rawCoupon = (coupon || {}) as DiscountCode & Record<string, unknown>;
+  const snakeKey = key === 'allowedUserIds' ? 'allowed_user_ids' : 'allowed_user_emails';
+  const value = rawCoupon[key] ?? rawCoupon[snakeKey];
+
+  if (typeof value === 'string') {
+    return value.split(/[\r\n,;]+/).map((item) => item.trim()).filter(Boolean);
+  }
+
+  return Array.isArray(value)
+    ? value.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+};
+
+const couponRequiresUserContext = (coupon?: DiscountCode | null) => {
+  const rawCoupon = (coupon || {}) as DiscountCode & Record<string, unknown>;
+  return toBoolean(rawCoupon.newUsersOnly ?? rawCoupon.new_users_only)
+    || toBoolean(rawCoupon.firstPurchaseOnly ?? rawCoupon.first_purchase_only)
+    || getCouponAudienceList(coupon, 'allowedUserIds').length > 0
+    || getCouponAudienceList(coupon, 'allowedUserEmails').length > 0;
+};
+
 /**
  * Verifica se o cupom automatico ainda pode ser exibido/aplicado no frontend.
  * @since v1.0.0
@@ -86,6 +108,10 @@ export const isPlanAutoCouponActive = (coupon?: DiscountCode | null) => {
   const maxUses = getCouponMaxUses(coupon);
   const uses = getCouponUses(coupon);
   if (maxUses > 0 && uses >= maxUses) {
+    return false;
+  }
+
+  if (couponRequiresUserContext(coupon)) {
     return false;
   }
 

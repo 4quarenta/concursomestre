@@ -69,22 +69,32 @@ const CAMPAIGN_CHANNELS: Array<{ value: MarketingCampaignAutomationRule['channel
 interface CouponDraft extends DiscountCode {
   code: string;
   discountPercentage: number;
+  discountAmount?: number;
   maxUses: number;
   uses: number;
   autoApply: boolean;
   targetType: CouponTargetType;
   targetId: string | null;
+  newUsersOnly: boolean;
+  firstPurchaseOnly: boolean;
+  allowedUserIds: string[];
+  allowedUserEmails: string[];
 }
 
 const createDefaultCouponDraft = (): CouponDraft => ({
   code: '',
   discountPercentage: 10,
+  discountAmount: 0,
   maxUses: 100,
   uses: 0,
   autoApply: false,
   expiresAt: undefined,
   targetType: 'all',
   targetId: null,
+  newUsersOnly: false,
+  firstPurchaseOnly: false,
+  allowedUserIds: [],
+  allowedUserEmails: [],
 });
 
 const createCampaignEntityId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -183,6 +193,28 @@ const getCouponRuntimeStatus = (coupon: CouponDraft) => {
   };
 };
 
+const normalizeCouponAudienceList = (value: unknown, lowercase = false) => {
+  const source = typeof value === 'string'
+    ? value.split(/[\r\n,;]+/)
+    : Array.isArray(value)
+      ? value
+      : [];
+
+  return Array.from(new Set(source
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .map((item) => (lowercase ? item.toLowerCase() : item))));
+};
+
+const formatCouponDiscount = (coupon: CouponDraft) => {
+  const fixedAmount = Number(coupon.discountAmount || 0);
+  if (fixedAmount > 0) {
+    return `R$ ${fixedAmount.toFixed(2).replace('.', ',')} OFF`;
+  }
+
+  return `${Number(coupon.discountPercentage || 0)}% OFF`;
+};
+
 const normalizeCouponDraft = (coupon?: Partial<DiscountCode> | null): CouponDraft => {
   const targetType = (() => {
     const candidate = String(coupon?.targetType || 'all').trim().toLowerCase();
@@ -195,13 +227,17 @@ const normalizeCouponDraft = (coupon?: Partial<DiscountCode> | null): CouponDraf
   return {
     code: String(coupon?.code || '').trim().toUpperCase(),
     discountPercentage: Number(coupon?.discountPercentage || 0),
-    discountAmount: coupon?.discountAmount !== undefined ? Number(coupon.discountAmount) : undefined,
+    discountAmount: coupon?.discountAmount !== undefined ? Number(coupon.discountAmount) : 0,
     maxUses: Math.max(0, Number(coupon?.maxUses || 0)),
     uses: Math.max(0, Number(coupon?.uses || 0)),
     expiresAt: coupon?.expiresAt || undefined,
     autoApply: Boolean(coupon?.autoApply),
     targetType,
     targetId,
+    newUsersOnly: Boolean(coupon?.newUsersOnly),
+    firstPurchaseOnly: Boolean(coupon?.firstPurchaseOnly),
+    allowedUserIds: normalizeCouponAudienceList(coupon?.allowedUserIds),
+    allowedUserEmails: normalizeCouponAudienceList(coupon?.allowedUserEmails, true),
   };
 };
 
@@ -306,6 +342,21 @@ const AdminMarketing = ({
     return 'Todos os alvos';
   };
 
+  const describeCouponAudience = (coupon: CouponDraft) => {
+    const parts: string[] = [];
+    if (coupon.newUsersOnly) {
+      parts.push('somente novos usuarios');
+    }
+    if (coupon.firstPurchaseOnly) {
+      parts.push('sem compra anterior');
+    }
+    if (coupon.allowedUserIds.length || coupon.allowedUserEmails.length) {
+      parts.push(`${coupon.allowedUserIds.length + coupon.allowedUserEmails.length} usuario(s) autorizado(s)`);
+    }
+
+    return parts.length ? parts.join(' · ') : 'Sem restricao de usuario';
+  };
+
   const persistMarketingSettings = async (nextSettings: SystemSettings, successMessage: string, actionKey: string) => {
     if (savingKey) {
       return false;
@@ -331,6 +382,8 @@ const AdminMarketing = ({
     const normalizedTargetId = newCoupon.targetType === 'all'
       ? null
       : String(newCoupon.targetId || '').trim() || null;
+    const discountPercentage = Number(newCoupon.discountPercentage || 0);
+    const discountAmount = Number(newCoupon.discountAmount || 0);
 
     if (!nextCode) {
       addToast('Informe um código para o cupom.', 'warning');
@@ -342,13 +395,23 @@ const AdminMarketing = ({
       return;
     }
 
-    if (newCoupon.discountPercentage <= 0) {
+    if (discountPercentage <= 0 && discountAmount <= 0) {
       addToast('O desconto precisa ser maior que zero.', 'warning');
       return;
     }
 
-    if (newCoupon.maxUses <= 0) {
-      addToast('O limite de usos precisa ser maior que zero.', 'warning');
+    if (discountPercentage > 0 && discountAmount > 0) {
+      addToast('Use desconto percentual ou fixo, nao os dois no mesmo cupom.', 'warning');
+      return;
+    }
+
+    if (discountPercentage > 100) {
+      addToast('O desconto percentual nao pode passar de 100%.', 'warning');
+      return;
+    }
+
+    if (newCoupon.maxUses < 0) {
+      addToast('O limite de usos nao pode ser negativo.', 'warning');
       return;
     }
 
@@ -361,13 +424,18 @@ const AdminMarketing = ({
       ...draftCoupons,
       normalizeCouponDraft({
         code: nextCode,
-        discountPercentage: Number(newCoupon.discountPercentage),
+        discountPercentage,
+        discountAmount,
         maxUses: Number(newCoupon.maxUses),
         uses: 0,
         autoApply: Boolean(newCoupon.autoApply),
         expiresAt: newCoupon.expiresAt || undefined,
         targetType: newCoupon.targetType,
         targetId: normalizedTargetId,
+        newUsersOnly: Boolean(newCoupon.newUsersOnly),
+        firstPurchaseOnly: Boolean(newCoupon.firstPurchaseOnly),
+        allowedUserIds: newCoupon.allowedUserIds,
+        allowedUserEmails: newCoupon.allowedUserEmails,
       }),
     ];
     const nextSettings = { ...systemSettings, coupons: nextCoupons };
@@ -537,13 +605,26 @@ const AdminMarketing = ({
                 />
               </div>
               <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Desconto fixo (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newCoupon.discountAmount || 0}
+                  onChange={(event) => setNewCoupon((current) => ({ ...current, discountAmount: Number(event.target.value) }))}
+                  className={`${ADMIN_FIELD_CLASS} w-full`}
+                />
+              </div>
+              <div className="space-y-1">
                 <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Max usos</label>
                 <input
                   type="number"
+                  min="0"
                   value={newCoupon.maxUses}
                   onChange={(event) => setNewCoupon((current) => ({ ...current, maxUses: Number(event.target.value) }))}
                   className={`${ADMIN_FIELD_CLASS} w-full`}
                 />
+                <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">0 = ilimitado</span>
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Aplicacao</label>
@@ -614,6 +695,38 @@ const AdminMarketing = ({
                     expiresAt: toIsoDateTimeValue(event.target.value) || undefined,
                   }))}
                   className={`${ADMIN_FIELD_CLASS} w-full`}
+                />
+              </div>
+              <label className="flex min-h-10 items-center gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={newCoupon.newUsersOnly}
+                  onChange={(event) => setNewCoupon((current) => ({ ...current, newUsersOnly: event.target.checked }))}
+                />
+                Somente novos usuarios
+              </label>
+              <label className="flex min-h-10 items-center gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={newCoupon.firstPurchaseOnly}
+                  onChange={(event) => setNewCoupon((current) => ({ ...current, firstPurchaseOnly: event.target.checked }))}
+                />
+                Sem compra anterior
+              </label>
+              <div className="space-y-1 md:col-span-2">
+                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Usuarios autorizados</label>
+                <textarea
+                  value={[...newCoupon.allowedUserEmails, ...newCoupon.allowedUserIds].join('\n')}
+                  onChange={(event) => {
+                    const values = normalizeCouponAudienceList(event.target.value);
+                    setNewCoupon((current) => ({
+                      ...current,
+                      allowedUserEmails: values.filter((value) => value.includes('@')).map((value) => value.toLowerCase()),
+                      allowedUserIds: values.filter((value) => !value.includes('@')),
+                    }));
+                  }}
+                  className={`${ADMIN_FIELD_CLASS} min-h-24 w-full resize-y py-3`}
+                  placeholder="E-mails ou IDs, um por linha"
                 />
               </div>
             </div>
@@ -723,11 +836,14 @@ const AdminMarketing = ({
                     )}
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {coupon.discountPercentage}% OFF · {coupon.uses || 0}/{coupon.maxUses} usos
+                    {formatCouponDiscount(coupon)} · {coupon.uses || 0}/{coupon.maxUses || 'ilimitado'} usos
                     {coupon.expiresAt ? ` · expira ${new Date(coupon.expiresAt).toLocaleDateString('pt-BR')}` : ''}
                   </p>
                   <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                     {describeCouponTarget(coupon)}
+                  </p>
+                  <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                    {describeCouponAudience(coupon)}
                   </p>
                 </div>
                 <button
