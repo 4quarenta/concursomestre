@@ -121,6 +121,35 @@ type PricingByPlan = Record<PlanName, ExtendedPlanPricing>;
 type PlanDetailsByPlan = Record<PlanName, PlanConfig>;
 type CouponDraft = DiscountCode;
 
+const clampDiscountPercent = (value: unknown): number => {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(100, Math.max(0, parsed));
+};
+
+const normalizePlanPricingConfig = (config: ExtendedPlanPricing): ExtendedPlanPricing => {
+  const monthly = Number(config.monthly ?? 0);
+  const safeMonthly = Number.isFinite(monthly) ? Math.max(0, monthly) : 0;
+  const quarterlyDiscountPercent = clampDiscountPercent(config.quarterlyDiscountPercent);
+  const annualDiscountPercent = clampDiscountPercent(config.annualDiscountPercent);
+
+  return {
+    ...config,
+    monthly: safeMonthly,
+    quarterlyDiscountPercent,
+    annualDiscountPercent,
+    quarterly: safeMonthly * 3 * (1 - quarterlyDiscountPercent / 100),
+    annual: safeMonthly * 12 * (1 - annualDiscountPercent / 100),
+  };
+};
+
+const normalizePricingByPlan = (pricing: PricingByPlan): PricingByPlan => Object.fromEntries(
+  Object.entries(pricing).map(([plan, config]) => [
+    plan,
+    normalizePlanPricingConfig(config),
+  ]),
+) as PricingByPlan;
+
 type AdminFinanceTransaction = {
   id?: string;
   buyerId?: string;
@@ -139,6 +168,7 @@ type AdminFinanceTransaction = {
   referenceId?: string;
   providerTransactionId?: string;
   providerInvoiceId?: string;
+  providerRefundId?: string;
   transactionName?: string;
   planName?: string;
   description?: string;
@@ -160,6 +190,8 @@ type AdminFinanceTransaction = {
   installmentNumber?: number;
   installmentCount?: number;
   isRevenueProjection?: boolean;
+  refundRequestedAt?: string;
+  refundedAt?: string;
 };
 
 type AutomationHelperData = {
@@ -249,10 +281,10 @@ const clonePlanDetails = (source?: Partial<PlanDetailsByPlan>): PlanDetailsByPla
 const mergePricingWithDefaults = (pricing?: Partial<PricingByPlan>): PricingByPlan => Object.fromEntries(
   Object.entries(PRICING).map(([plan, config]) => [
     plan,
-    {
+    normalizePlanPricingConfig({
       ...config,
       ...(pricing?.[plan] || {}),
-    },
+    }),
   ]),
 ) as PricingByPlan;
 
@@ -279,7 +311,22 @@ const mergePlanDetailsWithDefaults = (planDetails?: Partial<PlanDetailsByPlan>):
 };
 
 const planNames = ['Gratuito', 'Essencial', 'Pro', 'Elite'] as const;
-const PAID_TRANSACTION_STATUSES = new Set(['completed', 'approved']);
+const REVENUE_RECOGNIZED_TRANSACTION_STATUSES = new Set(['completed', 'approved']);
+type TransactionStatusFilter = {
+  id: string;
+  label: string;
+  statuses: string[];
+};
+
+const TRANSACTION_STATUS_FILTERS: TransactionStatusFilter[] = [
+  { id: 'paid', label: 'Concluído', statuses: ['completed', 'approved'] },
+  { id: 'pending', label: 'Pendente', statuses: ['pending'] },
+  { id: 'pre-approved', label: 'Pré-aprovado', statuses: ['pre-approved', 'scheduled'] },
+  { id: 'refund_requested', label: 'Reembolso em análise', statuses: ['refund_requested'] },
+  { id: 'refunded', label: 'Reembolsado', statuses: ['refunded'] },
+  { id: 'cancelled', label: 'Cancelado', statuses: ['cancelled', 'canceled'] },
+  { id: 'failed', label: 'Falhou', statuses: ['failed', 'rejected'] },
+];
 const PLAN_ACCESS_GENERAL_BENEFIT_KEYS: PlanBenefitKey[] = [
   'module.dashboard',
   'module.practice',
@@ -398,7 +445,40 @@ const PLAN_ACCESS_MODULE_GROUPS: Array<{
   },
 ];
 
-const isPaidTransactionStatus = (status: unknown) => PAID_TRANSACTION_STATUSES.has(String(status || '').toLowerCase());
+const normalizeTransactionStatus = (status: unknown) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'canceled') return 'cancelled';
+  if (normalized === 'succeeded' || normalized === 'paid') return 'approved';
+  return normalized;
+};
+
+const resolveTransactionStatus = (transaction: Partial<AdminFinanceTransaction>) => {
+  if (transaction?.isRevenueProjection) {
+    return 'pre-approved';
+  }
+
+  if (String(transaction?.providerRefundId || '').trim() || String(transaction?.refundedAt || '').trim()) {
+    return 'refunded';
+  }
+
+  return normalizeTransactionStatus(transaction?.status);
+};
+
+const isRevenueRecognizedTransaction = (transaction: Partial<AdminFinanceTransaction>) => (
+  !transaction?.isRevenueProjection
+  && REVENUE_RECOGNIZED_TRANSACTION_STATUSES.has(resolveTransactionStatus(transaction))
+);
+
+const findTransactionStatusFilter = (status: string) => TRANSACTION_STATUS_FILTERS.find((option) => (
+  option.id === status || option.statuses.includes(status)
+));
+
+const transactionMatchesStatusFilter = (transaction: Partial<AdminFinanceTransaction>, filter: string) => {
+  if (filter === 'all') return true;
+  const normalizedStatus = resolveTransactionStatus(transaction);
+  const statusFilter = findTransactionStatusFilter(filter);
+  return statusFilter ? statusFilter.statuses.includes(normalizedStatus) : normalizedStatus === filter;
+};
 
 const readTransactionAmount = (transaction: Partial<AdminFinanceTransaction>) => Number(transaction?.amount || 0);
 
@@ -863,7 +943,7 @@ const AdminFinance = ({
   const isAdminViewer = String(currentUser?.role || '').toLowerCase() === 'admin';
   const financeSettings = useMemo<SystemSettings>(() => ({
     ...systemSettings,
-    pricing: draftPricing,
+    pricing: normalizePricingByPlan(draftPricing),
     planDetails: draftPlanDetails,
     coupons: draftCoupons,
     planEntitlements: draftPlanEntitlements,
@@ -1294,17 +1374,22 @@ const AdminFinance = ({
   );
 
   const statusOptions = useMemo(() => {
-    const statuses = new Set<string>(['completed', 'approved', 'pending', 'pre-approved', 'refunded', 'refund_requested', 'cancelled']);
+    const statuses = new Set<string>();
     (financeTransactionRows || []).forEach((transaction) => {
-      const status = String(transaction.status || '').trim();
+      const status = resolveTransactionStatus(transaction);
       if (status) statuses.add(status);
     });
 
-    return Array.from(statuses);
+    return TRANSACTION_STATUS_FILTERS.filter((option) => option.statuses.some((status) => statuses.has(status)));
   }, [financeTransactionRows]);
 
   const formatTransactionStatusLabel = (status: string) => {
-    switch (status) {
+    const groupedStatus = findTransactionStatusFilter(status);
+    if (groupedStatus) {
+      return groupedStatus.label;
+    }
+
+    switch (normalizeTransactionStatus(status)) {
       case 'completed':
       case 'approved':
         return 'Concluído';
@@ -1329,7 +1414,7 @@ const AdminFinance = ({
 
     return financeTransactionRows
       .filter((transaction) => {
-        const transactionStatus = String(transaction.status || '');
+        const transactionStatus = resolveTransactionStatus(transaction);
 
         if (activeSection === 'refunds' && transactionStatus !== 'refund_requested') {
           return false;
@@ -1366,7 +1451,7 @@ const AdminFinance = ({
           }
         }
 
-        if (financeFilters.status !== 'all' && transactionStatus !== financeFilters.status) {
+        if (!transactionMatchesStatusFilter(transaction, financeFilters.status)) {
           return false;
         }
 
@@ -1401,7 +1486,7 @@ const AdminFinance = ({
   }, [activeSection, financeFilters, financeTransactionRows]);
 
   const financeStats = useMemo<{ totalRevenue: number; totalFees: number; netRevenue: number }>(() => filteredTransactions.reduce((accumulator, transaction) => {
-    if (isPaidTransactionStatus(transaction.status)) {
+    if (isRevenueRecognizedTransaction(transaction)) {
       const amount = readTransactionAmount(transaction);
       const fee = isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount;
       accumulator.totalRevenue += amount;
@@ -1420,12 +1505,12 @@ const AdminFinance = ({
   );
   const completedVolume = useMemo(
     () => (allTransactions || [])
-      .filter((transaction) => ['approved', 'completed'].includes(String(transaction.status || '').toLowerCase()))
+      .filter((transaction) => isRevenueRecognizedTransaction(transaction))
       .reduce((acc: number, transaction) => acc + Number(transaction.amount || 0), 0),
     [allTransactions],
   );
   const failedTransactionsCount = useMemo(
-    () => (allTransactions || []).filter((transaction) => ['rejected', 'failed'].includes(String(transaction.status || '').toLowerCase())).length,
+    () => (allTransactions || []).filter((transaction) => ['rejected', 'failed'].includes(resolveTransactionStatus(transaction))).length,
     [allTransactions],
   );
   const financeOverviewCards = [
@@ -1477,9 +1562,9 @@ const AdminFinance = ({
       metodo: transaction.paymentMethodLabel || transaction.paymentMethod || '',
       referencia: transaction.providerTransactionId || transaction.referenceId || transaction.externalId || '',
       valor: readTransactionAmount(transaction).toFixed(2),
-      taxa: (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : readTransactionAmount(transaction)).toFixed(2),
-      liquido: Number(transaction.netAmount ?? (readTransactionAmount(transaction) - (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : readTransactionAmount(transaction)))).toFixed(2),
-      status: formatTransactionStatusLabel(transaction.status || ''),
+      taxa: (isRevenueRecognizedTransaction(transaction) ? (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : readTransactionAmount(transaction)) : 0).toFixed(2),
+      liquido: (isRevenueRecognizedTransaction(transaction) ? Number(transaction.netAmount ?? (readTransactionAmount(transaction) - (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : readTransactionAmount(transaction)))) : 0).toFixed(2),
+      status: formatTransactionStatusLabel(resolveTransactionStatus(transaction)),
       invoice: transaction.invoiceNumber || transaction.providerInvoiceId || '',
     }));
 
@@ -1682,14 +1767,10 @@ const AdminFinance = ({
   const handlePriceChange = (plan: string, monthlyValue: number) => {
     const updatedPricing = { ...draftPricing };
     const planConfig = { ...updatedPricing[plan] };
-    const qDesc = Number(planConfig.quarterlyDiscountPercent ?? 10);
-    const aDesc = Number(planConfig.annualDiscountPercent ?? 30);
-    updatedPricing[plan] = {
+    updatedPricing[plan] = normalizePlanPricingConfig({
       ...planConfig,
       monthly: monthlyValue,
-      quarterly: (monthlyValue * 3) * (1 - qDesc / 100),
-      annual: (monthlyValue * 12) * (1 - aDesc / 100),
-    };
+    });
     setDraftPricing(updatedPricing);
   };
 
@@ -1698,9 +1779,7 @@ const AdminFinance = ({
     const planConfig = { ...updatedPricing[plan] };
     if (type === 'quarterly') planConfig.quarterlyDiscountPercent = percent;
     else planConfig.annualDiscountPercent = percent;
-    planConfig.quarterly = (planConfig.monthly * 3) * (1 - Number(planConfig.quarterlyDiscountPercent ?? 0) / 100);
-    planConfig.annual = (planConfig.monthly * 12) * (1 - Number(planConfig.annualDiscountPercent ?? 0) / 100);
-    updatedPricing[plan] = planConfig;
+    updatedPricing[plan] = normalizePlanPricingConfig(planConfig);
     setDraftPricing(updatedPricing);
   };
 
@@ -2706,6 +2785,7 @@ const AdminFinance = ({
                     </tr>
                   ) : selectedSeller.transactions.map((t) => {
                     const transaction = t as AdminFinanceTransaction;
+                    const transactionStatus = resolveTransactionStatus(transaction);
                     const isHeld = isAdminTransactionHeld(transaction);
                     const amount = readTransactionAmount(transaction);
                     return (
@@ -2714,9 +2794,9 @@ const AdminFinance = ({
                         <td className="p-6 font-mono text-[10px] text-slate-500">{String(transaction.id || '').substring(0, 12).toUpperCase()}...</td>
                         <td className="p-6 font-bold text-slate-800 dark:text-slate-200">{String(transaction.materialTitle || '')}</td>
                         <td className="p-6 text-right">R$ {amount.toFixed(2)}</td>
-                        <td className="p-6 text-right font-bold text-slate-900 dark:text-slate-100">R$ {Math.max(0, readTransactionAmount(transaction) - readTransactionPlatformFee(transaction)).toFixed(2)}</td>
+                        <td className="p-6 text-right font-bold text-slate-900 dark:text-slate-100">R$ {isRevenueRecognizedTransaction(transaction) ? Math.max(0, readTransactionAmount(transaction) - readTransactionPlatformFee(transaction)).toFixed(2) : '0.00'}</td>
                         <td className="p-6 text-center">
-                          {transaction.status === 'refunded' ? (
+                          {transactionStatus === 'refunded' ? (
                             <span className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-1 rounded text-[10px] font-black uppercase border border-slate-200 dark:border-slate-700">Reembolsado</span>
                           ) : isHeld ? (
                             <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded text-[10px] font-black uppercase">Preso (7d)</span>
@@ -3072,9 +3152,9 @@ const AdminFinance = ({
                   className={`${ADMIN_FIELD_CLASS} py-0 pl-3 pr-8 text-xs font-bold`}
                 >
                   <option value="all">Todos os status</option>
-                  {statusOptions.map((status: string) => (
-                    <option key={status} value={status}>
-                      {formatTransactionStatusLabel(status)}
+                  {statusOptions.map((status) => (
+                    <option key={status.id} value={status.id}>
+                      {status.label}
                     </option>
                   ))}
                 </select>
@@ -3153,10 +3233,12 @@ const AdminFinance = ({
                     const referenceCode = transaction.providerTransactionId || transaction.referenceId || transaction.externalId || transaction.id;
                     const invoiceUrl = transaction.invoicePdfUrl || transaction.hostedInvoiceUrl || '';
                     const amount = readTransactionAmount(transaction);
-                    const fee = isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount;
-                    const net = Number(transaction.netAmount ?? (amount - fee));
+                    const transactionStatus = resolveTransactionStatus(transaction);
+                    const revenueRecognized = isRevenueRecognizedTransaction(transaction);
+                    const fee = revenueRecognized ? (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount) : 0;
+                    const net = revenueRecognized ? Number(transaction.netAmount ?? (amount - fee)) : 0;
                     const description = transaction.transactionName || transaction.materialTitle || transaction.planName || 'Plano de assinatura';
-                    const statusLabel = formatTransactionStatusLabel(transaction.status || '');
+                    const statusLabel = formatTransactionStatusLabel(transactionStatus);
                     const isRefundActionLocked = refundActionKey !== null;
                     const displayTimestamp = resolveTransactionDisplayTimestamp(transaction, adminFinanceNowMs);
 
@@ -3247,20 +3329,22 @@ const AdminFinance = ({
                         <td className="p-4">
                           <div className="flex flex-col items-center gap-2">
                             <span className={`inline-flex rounded-sm px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
-                              transaction.status === 'refund_requested'
+                              transactionStatus === 'refund_requested'
                                 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                              : transaction.status === 'refunded'
+                              : transactionStatus === 'refunded'
                                   ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                                  : transaction.status === 'pre-approved' || transaction.status === 'scheduled'
+                                  : transactionStatus === 'pre-approved' || transactionStatus === 'scheduled'
                                     ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
-                                    : transaction.status === 'pending'
+                                    : transactionStatus === 'pending'
                                       ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                      : transactionStatus === 'failed' || transactionStatus === 'rejected' || transactionStatus === 'cancelled'
+                                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
                             }`}>
                               {statusLabel}
                             </span>
 
-                            {transaction.status === 'refund_requested' && (
+                            {transactionStatus === 'refund_requested' && (
                               <div className="flex flex-col items-center gap-1">
                                 <button
                                   onClick={(e) => {
@@ -3384,7 +3468,12 @@ const AdminFinance = ({
 
           {plansPanelTab === 'configuration' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {(Object.entries(draftPricing) as Array<[PlanName, PlanPricing]>).map(([plan, config]) => (
+            {(Object.entries(draftPricing) as Array<[PlanName, PlanPricing]>).map(([plan, config]) => {
+              const previewConfig = normalizePlanPricingConfig(config);
+              const quarterlySavings = Math.max(0, previewConfig.monthly * 3 - previewConfig.quarterly);
+              const annualSavings = Math.max(0, previewConfig.monthly * 12 - previewConfig.annual);
+
+              return (
               <div key={plan} className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-6 p-5`}>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
@@ -3454,7 +3543,7 @@ const AdminFinance = ({
                       <div className="relative">
                         <input
                           type="number"
-                          value={config.quarterlyDiscountPercent || 0}
+                          value={config.quarterlyDiscountPercent ?? 0}
                           onChange={e => handleDiscountPercentChange(plan, 'quarterly', Number(e.target.value))}
                           className={`${ADMIN_FIELD_CLASS} w-full font-bold`}
                         />
@@ -3466,7 +3555,7 @@ const AdminFinance = ({
                       <div className="relative">
                         <input
                           type="number"
-                          value={config.annualDiscountPercent || 0}
+                          value={config.annualDiscountPercent ?? 0}
                           onChange={e => handleDiscountPercentChange(plan, 'annual', Number(e.target.value))}
                           className={`${ADMIN_FIELD_CLASS} w-full font-bold`}
                         />
@@ -3478,15 +3567,15 @@ const AdminFinance = ({
                   <div className="grid grid-cols-2 gap-4 pt-4">
                     <div className={`${ADMIN_SURFACE_CLASS} space-y-1 p-4 dark:bg-slate-900/50`}>
                       <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Total Trimestral</p>
-                      <p className="text-sm font-black text-slate-700 dark:text-slate-300">R$ {config.quarterly.toFixed(2)}</p>
-                      <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold">≈ R$ {(config.quarterly / 3).toFixed(2)}/mês</p>
-                      <p className="text-[9px] text-emerald-500 font-bold">Economia de R$ {(config.monthly * 3 - config.quarterly).toFixed(2)}</p>
+                      <p className="text-sm font-black text-slate-700 dark:text-slate-300">R$ {previewConfig.quarterly.toFixed(2)}</p>
+                      <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold">≈ R$ {(previewConfig.quarterly / 3).toFixed(2)}/mês</p>
+                      <p className="text-[9px] text-emerald-500 font-bold">Economia de R$ {quarterlySavings.toFixed(2)}</p>
                     </div>
                     <div className={`${ADMIN_SURFACE_CLASS} space-y-1 p-4 dark:bg-slate-900/50`}>
                       <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Total Anual</p>
-                      <p className="text-sm font-black text-slate-700 dark:text-slate-300">R$ {config.annual.toFixed(2)}</p>
-                      <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold">≈ R$ {(config.annual / 12).toFixed(2)}/mês</p>
-                      <p className="text-[9px] font-bold text-sky-700 dark:text-sky-300">Economia de R$ {(config.monthly * 12 - config.annual).toFixed(2)}</p>
+                      <p className="text-sm font-black text-slate-700 dark:text-slate-300">R$ {previewConfig.annual.toFixed(2)}</p>
+                      <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold">≈ R$ {(previewConfig.annual / 12).toFixed(2)}/mês</p>
+                      <p className="text-[9px] font-bold text-sky-700 dark:text-sky-300">Economia de R$ {annualSavings.toFixed(2)}</p>
                     </div>
                   </div>
 
@@ -3516,7 +3605,8 @@ const AdminFinance = ({
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
 
             <div className={`${ADMIN_MUTED_SURFACE_CLASS} space-y-6 p-5`}>
               <div className="flex items-start justify-between gap-4">

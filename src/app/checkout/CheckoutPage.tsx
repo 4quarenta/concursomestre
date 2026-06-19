@@ -62,6 +62,13 @@ type StripeSavedCardPaymentArgs = {
     cvcElement: StripeCardCvcElement;
 };
 
+type ConfirmedCheckoutSummary = {
+    displayName: string;
+    billingCycle: string;
+    totalDue: number;
+    billingLabel: string;
+};
+
 const roundCurrency = (value: number) => Number(Number(value || 0).toFixed(2));
 
 const resolveStripeTermAmounts = (totalAmount: number, installmentCount: number) => {
@@ -213,6 +220,7 @@ const CheckoutPage: React.FC = () => {
         checkoutAbandoned: false,
     });
     const checkoutCompletionInProgressRef = useRef(false);
+    const stripeFinalizationInProgressRef = useRef(false);
     const checkoutAttemptIdRef = useRef('');
     const trackedCheckoutEmailsRef = useRef<Set<string>>(new Set());
     const trackedPaymentFailuresRef = useRef<Set<string>>(new Set());
@@ -233,6 +241,7 @@ const CheckoutPage: React.FC = () => {
     const [appliedCoupon, setAppliedCoupon] = useState<AppliedCheckoutCoupon | null>(null);
     const [discountAmount, setDiscountAmount] = useState(0);
     const [appliedCouponSource, setAppliedCouponSource] = useState<'auto' | 'manual' | null>(null);
+    const [confirmedCheckoutSummary, setConfirmedCheckoutSummary] = useState<ConfirmedCheckoutSummary | null>(null);
     const [showCheckoutRequirementsModal, setShowCheckoutRequirementsModal] = useState(false);
     const [isSavingCheckoutRequirements, setIsSavingCheckoutRequirements] = useState(false);
     const [isResendingConfirmation, setIsResendingConfirmation] = useState(false);
@@ -1175,6 +1184,9 @@ const CheckoutPage: React.FC = () => {
                 saveCard: payload?.save_card ?? (saveCard || stripeRequiresSavedCard),
             };
         } catch (error) {
+            if (checkoutCompletionInProgressRef.current || step === 'success') {
+                return undefined;
+            }
             clientLog.error('Stripe internal checkout error:', error);
             const errorMsg = readApiErrorMessage(error, 'Erro ao processar assinatura Stripe.');
             trackPaymentFailure('stripe_internal', errorMsg);
@@ -1193,6 +1205,9 @@ const CheckoutPage: React.FC = () => {
         saveCard?: boolean;
     }) => {
         if (!plan) return;
+        if (stripeFinalizationInProgressRef.current || checkoutCompletionInProgressRef.current || step === 'success') {
+            return;
+        }
 
         const subscriptionId = options?.subscriptionId || pendingStripeSubscriptionId;
         if (!subscriptionId) {
@@ -1201,23 +1216,61 @@ const CheckoutPage: React.FC = () => {
 
         const resolvedSaveCard = options?.saveCard ?? (saveCard || stripeRequiresSavedCard);
 
-        const response = await planService.finalizeStripeSubscription({
-            subscription_id: subscriptionId,
-            plan_id: plan.id,
-            auto_renew: autoRenew,
-            payment_method_id: options?.paymentMethodId || pendingStripePaymentMethodId || undefined,
-            payment_intent_id: options?.paymentIntentId || undefined,
-            saved_card_id: options?.savedCardId || undefined,
-            save_card: resolvedSaveCard,
-        });
-
-        if (!response?.success) {
-      throw new Error(response?.message || 'Não foi possível finalizar a assinatura Stripe.');
-        }
-
-        const payload = response?.data || response;
+        stripeFinalizationInProgressRef.current = true;
         checkoutCompletionInProgressRef.current = true;
         setCheckoutCompletionInProgress(true);
+
+        let payload: any = null;
+
+        try {
+            const response = await planService.finalizeStripeSubscription({
+                subscription_id: subscriptionId,
+                plan_id: plan.id,
+                auto_renew: autoRenew,
+                payment_method_id: options?.paymentMethodId || pendingStripePaymentMethodId || undefined,
+                payment_intent_id: options?.paymentIntentId || undefined,
+                saved_card_id: options?.savedCardId || undefined,
+                save_card: resolvedSaveCard,
+            });
+
+            if (!response?.success) {
+      throw new Error(response?.message || 'Não foi possível finalizar a assinatura Stripe.');
+            }
+
+            payload = response?.data || response;
+        } catch (error) {
+            stripeFinalizationInProgressRef.current = false;
+            checkoutCompletionInProgressRef.current = false;
+            setCheckoutCompletionInProgress(false);
+            throw error;
+        }
+
+        const backendChargeAmount = Number(
+            payload?.first_charge_amount
+            ?? payload?.charged_amount
+            ?? payload?.amount
+            ?? payload?.transaction?.amount
+            ?? payload?.transaction_amount
+            ?? 0,
+        );
+        const fallbackChargeAmount = Number(
+            monetaryTotals.totalDue
+            || selectedInstallment.first_charge_amount
+            || selectedInstallment.installment_amount
+            || checkoutFinalCycleAmount
+            || plan.price
+            || 0,
+        );
+        const confirmedChargeAmount = roundCurrency(backendChargeAmount > 0 ? backendChargeAmount : fallbackChargeAmount);
+
+        setConfirmedCheckoutSummary({
+            displayName,
+            billingCycle,
+            totalDue: confirmedChargeAmount,
+            billingLabel: supportsStripeBillingChoices && selectedStripeInstallmentCount > 1
+                ? `${selectedStripeInstallmentCount}x de ${formatCurrency(confirmedChargeAmount)}`
+                : `1x de ${formatCurrency(confirmedChargeAmount)}`,
+        });
 
         const [userRefreshResult, cardsRefreshResult] = await Promise.allSettled([
             refreshUser(),
@@ -1244,8 +1297,10 @@ const CheckoutPage: React.FC = () => {
         }
 
         if (payload?.approved === false) {
+            stripeFinalizationInProgressRef.current = false;
             checkoutCompletionInProgressRef.current = false;
             setCheckoutCompletionInProgress(false);
+            setConfirmedCheckoutSummary(null);
             addToast('O pagamento foi bloqueado pela validação antifraude da Stripe.', 'error');
             return;
         }
@@ -1337,6 +1392,9 @@ const CheckoutPage: React.FC = () => {
                 });
             }
         } catch (error) {
+            if (checkoutCompletionInProgressRef.current || step === 'success') {
+                return;
+            }
             clientLog.error('Stripe saved card checkout error:', error);
     const errorMsg = readApiErrorMessage(error, 'Erro ao processar o cartão salvo.');
             trackPaymentFailure('stripe_saved_card', errorMsg);
@@ -1565,7 +1623,15 @@ const CheckoutPage: React.FC = () => {
         </p>
     );
 
-    const renderSuccessStep = () => (
+    const renderSuccessStep = () => {
+        const successSummary = confirmedCheckoutSummary ?? {
+            displayName,
+            billingCycle,
+            totalDue: monetaryTotals.totalDue,
+            billingLabel: checkoutBillingLabel,
+        };
+
+        return (
         <div className="overflow-hidden rounded-[2.25rem] border border-slate-200 bg-white shadow-xl shadow-slate-200/60 dark:border-slate-800 dark:bg-[#1a1c2e] dark:shadow-none">
             <div className="relative overflow-hidden bg-slate-950 px-8 py-10 text-center text-white md:px-12">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.28),transparent_36%)]" />
@@ -1577,7 +1643,7 @@ const CheckoutPage: React.FC = () => {
                         <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200">Pagamento aprovado</p>
                         <h2 className="text-3xl font-black leading-tight tracking-tight md:text-4xl">Parabéns pela aquisição</h2>
                         <p className="mx-auto max-w-xl text-base font-semibold leading-relaxed text-slate-300">
-          O plano <span className="font-black text-white">{displayName}</span> foi confirmado e seu acesso já está pronto para uso.
+          O plano <span className="font-black text-white">{successSummary.displayName}</span> foi confirmado e seu acesso já está pronto para uso.
                         </p>
                     </div>
                 </div>
@@ -1585,8 +1651,8 @@ const CheckoutPage: React.FC = () => {
 
             <div className="grid border-b border-slate-100 dark:border-slate-800 md:grid-cols-3">
                 {[
-                    ['Plano', displayName, billingCycle],
-      ['Cobrança confirmada', formatCurrency(monetaryTotals.totalDue), checkoutBillingLabel],
+                    ['Plano', successSummary.displayName, successSummary.billingCycle],
+      ['Cobrança confirmada', formatCurrency(successSummary.totalDue), successSummary.billingLabel],
       ['Próximo passo', 'Minha assinatura', 'Status, transações e renovação.'],
                 ].map(([label, value, hint]) => (
                     <div key={label} className="border-t border-slate-100 px-6 py-5 first:border-t-0 dark:border-slate-800 md:border-l md:border-t-0 md:first:border-l-0">
@@ -1610,7 +1676,8 @@ const CheckoutPage: React.FC = () => {
                 </p>
             </div>
         </div>
-    );
+        );
+    };
 
     const { handleSummaryPaymentAction, summaryConfirmLabel } = useCheckoutSummaryAction({
         isStripeInternalCheckout: isStripeInternalCheckoutActive,

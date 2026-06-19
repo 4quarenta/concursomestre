@@ -428,6 +428,7 @@ const AdminDashboard = ({
   const periodUsersCount = isAllPeriod ? platformTotals.users : Number(stats.new_users || 0);
   const periodGrossRevenue = Number(stats.total_revenue || 0);
   const periodAvailableRevenue = Number(stats.available_total_revenue ?? stats.available_platform_revenue ?? 0);
+  const periodSubscriptionRevenue = Number(stats.subscription_revenue || 0);
   const periodPlatformRevenue = Number(stats.platform_revenue || 0);
 
   const summaryCards = useMemo(() => ([
@@ -723,7 +724,7 @@ const AdminDashboard = ({
           </div>
         </DashboardCard>
 
-        <DashboardCard title="Fluxos que pedem atencao">
+        <DashboardCard title="Fluxos que pedem atenção">
           <div className="space-y-3">
             {quickAlerts.map((item) => (
               <button
@@ -745,11 +746,11 @@ const AdminDashboard = ({
           </div>
         </DashboardCard>
 
-        <DashboardCard title="Financeiro rapido">
+        <DashboardCard title="Financeiro rápido">
           <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Receita bruta do periodo</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Receita bruta do período</p>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Pagamentos aprovados no recorte selecionado.</p>
               </div>
               <span className="text-right text-lg font-black text-slate-900 dark:text-slate-100">
@@ -763,7 +764,11 @@ const AdminDashboard = ({
                 <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(periodAvailableRevenue)}</span>
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                <span className="text-slate-500 dark:text-slate-400">Receita da plataforma</span>
+                <span className="text-slate-500 dark:text-slate-400">Receita de assinaturas</span>
+                <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(periodSubscriptionRevenue)}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Comissão do marketplace</span>
                 <span className="font-semibold text-slate-900 dark:text-slate-100">{formatCurrency(periodPlatformRevenue)}</span>
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 text-sm">
