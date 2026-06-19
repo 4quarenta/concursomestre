@@ -750,7 +750,7 @@ const AdminMarketing = ({
               <div className="space-y-2">
                 <h3 className="flex items-center gap-2 text-lg font-black text-amber-700 dark:text-amber-300"><Clock size={20} /> Oferta por tempo limitado</h3>
                 <p className="max-w-2xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                  Countdown exibido na home e no checkout quando houver desconto aplicado.
+                  Countdown exibido na home, nos planos e no checkout enquanto estiver ativo e com data futura.
                 </p>
               </div>
               <label className="flex items-center justify-between gap-3 rounded-sm border border-amber-200 bg-white px-4 py-3 dark:border-amber-900/30 dark:bg-slate-900">
@@ -791,7 +791,7 @@ const AdminMarketing = ({
                     {limitedOfferCountdown?.enabled ? 'Ativo' : 'Desativado'}
                   </p>
                   <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                    O contador so aparece com desconto ativo e data final futura.
+                    O contador aparece quando estiver ativo e tiver uma data final futura.
                   </p>
                 </div>
                 <div className="rounded-sm border border-white/80 bg-white/80 p-4 shadow-none dark:border-slate-800 dark:bg-slate-900/70">

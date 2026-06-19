@@ -53,6 +53,7 @@ import {
 } from '@services/plans';
 import { BILLING_CYCLE_OPTIONS, PLAN_COPY_BY_TIER, type LandingBillingCycle } from '../homepageContent';
 import PublicBrandLink from '../../../components/shared/layout/PublicBrandLink';
+import LimitedOfferCountdown from '../../../components/shared/marketing/LimitedOfferCountdown';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { getPublicPlanFeaturesForPlan } from '@constants/subscriptions/planEntitlements';
 
@@ -759,11 +760,18 @@ export const PricingSection = () => {
       planDetails: systemSettings.planDetails,
     })
   ), [planCatalog, systemSettings.coupons, systemSettings.planDetails, systemSettings.pricing]);
+  const limitedOfferEndsAt = systemSettings.limitedOfferCountdown?.endsAt || '';
 
   return (
     <section id="planos" className="mx-auto w-full max-w-6xl px-5 py-16 sm:px-8">
       <SectionTitle>Escolha o plano ideal para você</SectionTitle>
       <p className="mt-4 text-center text-sm font-medium text-slate-500">Planos oficiais do catálogo, com ciclos e descontos aplicados automaticamente.</p>
+
+      <LimitedOfferCountdown
+        enabled={Boolean(systemSettings.limitedOfferCountdown?.enabled)}
+        endsAt={limitedOfferEndsAt}
+        className="mx-auto mt-8 max-w-4xl"
+      />
 
       <div className="mt-8 flex justify-center">
         <div className="inline-flex flex-wrap items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1">

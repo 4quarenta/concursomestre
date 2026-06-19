@@ -273,7 +273,6 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
     label: card.title,
     featured: Boolean(card.featured || card.planName === 'Elite'),
   })) || [];
-  const hasVisibleOffer = landingPlanCards.some((card) => card.hasDiscount);
   const limitedOfferEndsAt = systemSettings.limitedOfferCountdown?.endsAt || '';
   const hasActiveLimitedOfferCountdown = Boolean(
     systemSettings.limitedOfferCountdown?.enabled
@@ -564,7 +563,7 @@ const MarketingPlansLandingPage = ({ slug }: MarketingPlansLandingPageProps) => 
             })}
           </div>
 
-          {hasVisibleOffer && hasActiveLimitedOfferCountdown && (
+          {hasActiveLimitedOfferCountdown && (
             <LimitedOfferCountdown enabled endsAt={limitedOfferEndsAt} className="mx-auto mt-10 max-w-5xl" />
           )}
         </div>

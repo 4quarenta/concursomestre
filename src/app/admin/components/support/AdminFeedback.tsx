@@ -10,7 +10,8 @@
 */
 
 import React, { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Filter, Loader2, MessageSquare, Search, Send, Star } from 'lucide-react';
+import Link from 'next/link';
+import { BookOpenCheck, CheckCircle2, Filter, Loader2, MessageSquare, Search, Send, Star } from 'lucide-react';
 import { adminService, type AdminFeedbackReply, type AdminFeedbackThread } from '@services/admin/adminService';
 import { clientLog } from '@services/monitoring/clientLog';
 import { useToast } from '@providers/ToastProvider';
@@ -21,6 +22,7 @@ import {
   ADMIN_SURFACE_HEADER_CLASS,
   ADMIN_TEXTAREA_CLASS,
 } from '../shared/adminPanelStyles';
+import { buildAdminLawEditPath } from '../../config/adminPageNavigationConfig';
 
 const STATUS_LABELS: Record<AdminFeedbackThread['status'], string> = {
   new: 'Novo',
@@ -36,6 +38,8 @@ const STATUS_TONE: Record<AdminFeedbackThread['status'], string> = {
 
 const TYPE_LABELS: Record<string, string> = {
   support: 'Suporte',
+  'teacher-request': 'Comentário do professor',
+  'analysis-request': 'Análise detalhada',
   report: 'Denúncia',
   'platform-rating': 'Avaliação',
   platform_rating: 'Avaliação',
@@ -71,6 +75,16 @@ const FEEDBACK_REPLY_TEMPLATES: Record<string, Array<{ label: string; message: s
     { label: 'Atendimento iniciado', message: 'Recebemos sua mensagem e seu atendimento já foi iniciado.' },
     { label: 'Orientação enviada', message: 'Deixamos acima a orientação principal para o seu caso.' },
     { label: 'Aguardando retorno', message: 'Precisamos de mais informações para concluir o atendimento.' },
+  ],
+  'teacher-request': [
+    { label: 'Solicitação recebida', message: 'Recebemos sua solicitação de comentário do professor e ela entrou na fila editorial.' },
+    { label: 'Comentário em produção', message: 'O comentário do professor está sendo preparado para o item solicitado.' },
+    { label: 'Comentário publicado', message: 'O comentário do professor foi publicado. Você já pode consultá-lo na Lei Comentada.' },
+  ],
+  'analysis-request': [
+    { label: 'Solicitação recebida', message: 'Recebemos sua solicitação de análise detalhada e ela entrou na fila editorial.' },
+    { label: 'Análise em produção', message: 'A análise detalhada está sendo preparada para a seção solicitada.' },
+    { label: 'Análise publicada', message: 'A análise detalhada foi publicada. Você já pode consultá-la na Lei Comentada.' },
   ],
   other: [
     { label: 'Atendimento iniciado', message: 'Recebemos sua mensagem e seu atendimento já foi iniciado.' },
@@ -120,13 +134,66 @@ const isPlatformRatingFeedback = (item: AdminFeedbackThread) => (
   || ['platform-rating', 'platform_rating', 'testimonial', 'rating'].includes(String(item.type || ''))
 );
 
-const getEffectiveFeedbackType = (item: AdminFeedbackThread) => (
-  isPlatformRatingFeedback(item) ? 'platform-rating' : String(item.type || 'other')
+type EditorialRequestKind = 'teacher-request' | 'analysis-request';
+
+interface EditorialRequestContext {
+  kind: EditorialRequestKind;
+  lawId: string;
+  sectionId: string;
+  targetId: string;
+}
+
+export const parseEditorialRequestContext = (item: AdminFeedbackThread): EditorialRequestContext | null => {
+  const details = String(item.details || '');
+  const match = details.match(/C[oó]digo do pedido:\s*(teacher_request|analysis_request):([^:\s]+):([^:\s]+):([^\s]+)/i);
+  if (!match) return null;
+
+  return {
+    kind: match[1].toLowerCase() === 'analysis_request' ? 'analysis-request' : 'teacher-request',
+    lawId: match[2],
+    sectionId: match[3],
+    targetId: match[4],
+  };
+};
+
+const getEditorialRequestKind = (item: AdminFeedbackThread): EditorialRequestKind | null => {
+  const parsed = parseEditorialRequestContext(item);
+  if (parsed) return parsed.kind;
+
+  const reason = String(item.reason || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (reason.includes('solicitar comentario')) return 'teacher-request';
+  if (reason.includes('solicitar analise')) return 'analysis-request';
+  return null;
+};
+
+export const getEffectiveFeedbackType = (item: AdminFeedbackThread) => (
+  isPlatformRatingFeedback(item)
+    ? 'platform-rating'
+    : getEditorialRequestKind(item) || String(item.type || 'other')
 );
 
 const getFeedbackTypeLabel = (item: AdminFeedbackThread) => (
   TYPE_LABELS[getEffectiveFeedbackType(item)] || getEffectiveFeedbackType(item)
 );
+
+export const getEditorialAdminAction = (item: AdminFeedbackThread) => {
+  const context = parseEditorialRequestContext(item);
+  if (!context) return null;
+
+  const query = new URLSearchParams({
+    supportRequest: String(item.id),
+    sectionId: context.sectionId,
+    targetId: context.targetId,
+  });
+
+  return {
+    href: `${buildAdminLawEditPath(context.lawId)}?${query.toString()}`,
+    label: context.kind === 'teacher-request' ? 'Abrir lei e comentar' : 'Abrir lei e analisar',
+  };
+};
 
 export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   mode = 'feedback',
@@ -368,6 +435,8 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
               <option value="bug">Bug</option>
               <option value="suggestion">Sugestão</option>
               <option value="support">Suporte</option>
+              <option value="teacher-request">Comentário do professor</option>
+              <option value="analysis-request">Análise detalhada</option>
               <option value="report">Denúncia</option>
               <option value="other">Outro</option>
             </select>
@@ -429,6 +498,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                 const rating = Math.max(0, Math.min(5, Number(item.public_rating || 0)));
                 const isHomePublished = Boolean(item.home_published_at);
                 const draft = replyDrafts[item.id] || '';
+                const editorialAdminAction = getEditorialAdminAction(item);
 
                 return (
                   <React.Fragment key={item.id}>
@@ -493,6 +563,12 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                       </td>
                       <td className="px-3 py-3 text-right">
                         <div className="flex flex-col items-end gap-2">
+                          {editorialAdminAction ? (
+                            <Link href={editorialAdminAction.href} className={ADMIN_SECONDARY_BUTTON_CLASS}>
+                              <BookOpenCheck size={14} />
+                              {editorialAdminAction.label}
+                            </Link>
+                          ) : null}
                           {isPlatformRating ? (
                             <button
                               type="button"

@@ -679,7 +679,7 @@ const CheckoutPage: React.FC = () => {
         && limitedOfferEndsAt
         && new Date(limitedOfferEndsAt).getTime() > checkoutNowMs,
     );
-    const showCheckoutCountdown = Boolean(checkoutOffer?.hasDiscount && hasActiveLimitedOfferCountdown);
+    const showCheckoutCountdown = hasActiveLimitedOfferCountdown;
 
     const resetAppliedCoupon = useCallback(() => {
         setAppliedCoupon(null);
