@@ -604,6 +604,10 @@ const CheckoutPage: React.FC = () => {
         return `Voce ja possui ${currentPlanName} ativo nesta conta. Para evitar cobranca repetida, essa compra foi bloqueada.`;
     }, [currentActiveSubscription?.plan?.name, currentComparablePlanName, currentSubscriptionPlan?.name, hasRepeatedActivePlanPurchase]);
 
+    const shouldBlockRepeatedActivePlanPurchase = hasRepeatedActivePlanPurchase
+        && !checkoutCompletionInProgress
+        && step !== 'success';
+
     const hasTriggeredRepeatedPurchaseRedirectRef = useRef(false);
 
     const ensurePlanPurchaseAllowed = React.useCallback(() => {
@@ -1245,6 +1249,15 @@ const CheckoutPage: React.FC = () => {
             throw error;
         }
 
+        if (payload?.approved === false) {
+            stripeFinalizationInProgressRef.current = false;
+            checkoutCompletionInProgressRef.current = false;
+            setCheckoutCompletionInProgress(false);
+            setConfirmedCheckoutSummary(null);
+            addToast('O pagamento foi bloqueado pela validação antifraude da Stripe.', 'error');
+            return;
+        }
+
         const backendChargeAmount = Number(
             payload?.first_charge_amount
             ?? payload?.charged_amount
@@ -1271,6 +1284,7 @@ const CheckoutPage: React.FC = () => {
                 ? `${selectedStripeInstallmentCount}x de ${formatCurrency(confirmedChargeAmount)}`
                 : `1x de ${formatCurrency(confirmedChargeAmount)}`,
         });
+        setStep('success');
 
         const [userRefreshResult, cardsRefreshResult] = await Promise.allSettled([
             refreshUser(),
@@ -1296,15 +1310,6 @@ const CheckoutPage: React.FC = () => {
             addToast(payload.card_save_warning, 'warning');
         }
 
-        if (payload?.approved === false) {
-            stripeFinalizationInProgressRef.current = false;
-            checkoutCompletionInProgressRef.current = false;
-            setCheckoutCompletionInProgress(false);
-            setConfirmedCheckoutSummary(null);
-            addToast('O pagamento foi bloqueado pela validação antifraude da Stripe.', 'error');
-            return;
-        }
-
         if (payload?.access_granted === false) {
             addToast('Pagamento confirmado. Estamos concluindo a sincronização final da assinatura com a Stripe.', 'info');
         }
@@ -1319,7 +1324,6 @@ const CheckoutPage: React.FC = () => {
             });
         }
 
-        setStep('success');
     };
 
     const handleStripeSavedCardPayment = async ({ stripe, cvcElement }: StripeSavedCardPaymentArgs) => {
@@ -1842,7 +1846,7 @@ const CheckoutPage: React.FC = () => {
                                                         </p>
                                                     </div>
 
-                                                    {hasRepeatedActivePlanPurchase ? (
+                                                    {shouldBlockRepeatedActivePlanPurchase ? (
                                                         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
                                                             <div className="flex items-start gap-2.5">
                                                                 <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
@@ -1862,13 +1866,13 @@ const CheckoutPage: React.FC = () => {
                                                             if (!ensurePlanPurchaseAllowed()) return;
                                                             setStep('payment');
                                                         }}
-                                                        disabled={hasRepeatedActivePlanPurchase}
+                                                        disabled={shouldBlockRepeatedActivePlanPurchase}
                                                         className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:bg-indigo-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none dark:disabled:bg-slate-700"
                                                     >
-                                                        {hasRepeatedActivePlanPurchase ? 'Assinatura ja ativa' : 'Continuar para pagamento'}
+                                                        {shouldBlockRepeatedActivePlanPurchase ? 'Assinatura ja ativa' : 'Continuar para pagamento'}
                                                         <ArrowRight size={18} />
                                                     </button>
-                                                    {hasRepeatedActivePlanPurchase ? (
+                                                    {shouldBlockRepeatedActivePlanPurchase ? (
                                                         <button
                                                             type="button"
                                                             onClick={() => router.push(buildProfilePath('billing'))}
@@ -1984,7 +1988,7 @@ const CheckoutPage: React.FC = () => {
 
                         {step === 'payment' && (
                             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                {hasRepeatedActivePlanPurchase ? (
+                                {shouldBlockRepeatedActivePlanPurchase ? (
                                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-500/20 dark:bg-amber-500/10">
                                         <div className="flex items-start gap-3">
                                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">

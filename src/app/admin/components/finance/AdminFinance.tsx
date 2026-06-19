@@ -480,11 +480,40 @@ const transactionMatchesStatusFilter = (transaction: Partial<AdminFinanceTransac
   return statusFilter ? statusFilter.statuses.includes(normalizedStatus) : normalizedStatus === filter;
 };
 
-const readTransactionAmount = (transaction: Partial<AdminFinanceTransaction>) => Number(transaction?.amount || 0);
+const parseFinanceNumber = (value: unknown) => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value
+      .replace(/[^\d,.-]/g, '')
+      .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+      .replace(',', '.');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const readRecordValue = (record: object | null | undefined, key: string) => (
   (record as Record<string, unknown> | null | undefined)?.[key]
 );
+
+const readTransactionAmount = (transaction: Partial<AdminFinanceTransaction>) => parseFinanceNumber(
+  transaction?.amount
+  ?? readRecordValue(transaction, 'grossAmount')
+  ?? readRecordValue(transaction, 'gross_amount')
+  ?? readRecordValue(transaction, 'totalAmount')
+  ?? readRecordValue(transaction, 'total_amount')
+);
+
+const readTransactionNetAmount = (transaction: Partial<AdminFinanceTransaction>, amount: number, fee: number) => {
+  const explicitNet = parseFinanceNumber(transaction?.netAmount ?? readRecordValue(transaction, 'net_amount'));
+  return explicitNet > 0 ? explicitNet : Math.max(0, amount - fee);
+};
 
 const readMarketplaceMaterialSellerId = (material: Material | null | undefined) => String(
   material?.authorId
@@ -506,7 +535,7 @@ const readMarketplaceMaterialTimestamp = (material: Material | null | undefined)
 
 const readTransactionPlatformFee = (transaction: Partial<AdminFinanceTransaction>) => {
   const amount = readTransactionAmount(transaction);
-  const platformFee = Number(transaction?.platformFee ?? transaction?.platform_fee);
+  const platformFee = parseFinanceNumber(transaction?.platformFee ?? transaction?.platform_fee);
   return Number.isFinite(platformFee) && platformFee > 0 ? platformFee : amount * 0.20;
 };
 
@@ -1485,17 +1514,18 @@ const AdminFinance = ({
       .sort((left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0));
   }, [activeSection, financeFilters, financeTransactionRows]);
 
-  const financeStats = useMemo<{ totalRevenue: number; totalFees: number; netRevenue: number }>(() => filteredTransactions.reduce((accumulator, transaction) => {
+  const financeStats = useMemo<{ grossTotal: number; feeTotal: number; netTotal: number }>(() => filteredTransactions.reduce((accumulator, transaction) => {
+    const amount = readTransactionAmount(transaction);
+    accumulator.grossTotal += amount;
+
     if (isRevenueRecognizedTransaction(transaction)) {
-      const amount = readTransactionAmount(transaction);
       const fee = isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount;
-      accumulator.totalRevenue += amount;
-      accumulator.totalFees += fee;
-      accumulator.netRevenue += Number(transaction.netAmount ?? (amount - fee));
+      accumulator.feeTotal += fee;
+      accumulator.netTotal += readTransactionNetAmount(transaction, amount, fee);
     }
 
     return accumulator;
-  }, { totalRevenue: 0, totalFees: 0, netRevenue: 0 }), [filteredTransactions]);
+  }, { grossTotal: 0, feeTotal: 0, netTotal: 0 }), [filteredTransactions]);
 
   const ITEMS_PER_PAGE = 10;
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE));
@@ -1562,8 +1592,15 @@ const AdminFinance = ({
       metodo: transaction.paymentMethodLabel || transaction.paymentMethod || '',
       referencia: transaction.providerTransactionId || transaction.referenceId || transaction.externalId || '',
       valor: readTransactionAmount(transaction).toFixed(2),
-      taxa: (isRevenueRecognizedTransaction(transaction) ? (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : readTransactionAmount(transaction)) : 0).toFixed(2),
-      liquido: (isRevenueRecognizedTransaction(transaction) ? Number(transaction.netAmount ?? (readTransactionAmount(transaction) - (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : readTransactionAmount(transaction)))) : 0).toFixed(2),
+      taxa: (() => {
+        const amount = readTransactionAmount(transaction);
+        return (isRevenueRecognizedTransaction(transaction) ? (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount) : 0).toFixed(2);
+      })(),
+      liquido: (() => {
+        const amount = readTransactionAmount(transaction);
+        const fee = isRevenueRecognizedTransaction(transaction) ? (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount) : 0;
+        return (isRevenueRecognizedTransaction(transaction) ? readTransactionNetAmount(transaction, amount, fee) : 0).toFixed(2);
+      })(),
       status: formatTransactionStatusLabel(resolveTransactionStatus(transaction)),
       invoice: transaction.invoiceNumber || transaction.providerInvoiceId || '',
     }));
@@ -2906,21 +2943,21 @@ const AdminFinance = ({
             <div className={`${ADMIN_SURFACE_CLASS} p-5`}>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Volume filtrado</p>
               <p className="mt-3 text-2xl font-black text-slate-900 dark:text-slate-100">
-                R$ {financeStats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                R$ {financeStats.grossTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">{filteredTransactions.length} registros no recorte atual.</p>
             </div>
             <div className={`${ADMIN_SURFACE_CLASS} p-5`}>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Taxa da plataforma</p>
               <p className="mt-3 text-2xl font-black text-emerald-600 dark:text-emerald-400">
-                R$ {financeStats.totalFees.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                R$ {financeStats.feeTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Usa o valor real retornado pelo backend.</p>
             </div>
             <div className={`${ADMIN_SURFACE_CLASS} p-5`}>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Líquido consolidado</p>
               <p className="mt-3 text-2xl font-black text-sky-700 dark:text-sky-300">
-                R$ {financeStats.netRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                R$ {financeStats.netTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
               <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">Inclui apenas transacoes pagas e aprovadas.</p>
             </div>
@@ -3236,7 +3273,7 @@ const AdminFinance = ({
                     const transactionStatus = resolveTransactionStatus(transaction);
                     const revenueRecognized = isRevenueRecognizedTransaction(transaction);
                     const fee = revenueRecognized ? (isMarketplaceTransaction(transaction) ? readTransactionPlatformFee(transaction) : amount) : 0;
-                    const net = revenueRecognized ? Number(transaction.netAmount ?? (amount - fee)) : 0;
+                    const net = revenueRecognized ? readTransactionNetAmount(transaction, amount, fee) : 0;
                     const description = transaction.transactionName || transaction.materialTitle || transaction.planName || 'Plano de assinatura';
                     const statusLabel = formatTransactionStatusLabel(transactionStatus);
                     const isRefundActionLocked = refundActionKey !== null;
@@ -3393,13 +3430,13 @@ const AdminFinance = ({
                       Totais do recorte
                     </td>
                     <td className="p-4 text-right text-sm font-black text-slate-900 dark:text-slate-100">
-                      R$ {financeStats.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      R$ {financeStats.grossTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="p-4 text-right text-sm font-black text-emerald-600 dark:text-emerald-400">
-                      R$ {financeStats.totalFees.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      R$ {financeStats.feeTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="p-4 text-right text-sm font-black text-sky-700 dark:text-sky-300">
-                      R$ {financeStats.netRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      R$ {financeStats.netTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                     <td colSpan={2} />
                   </tr>
