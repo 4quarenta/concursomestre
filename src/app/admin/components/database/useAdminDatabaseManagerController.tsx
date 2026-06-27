@@ -114,7 +114,7 @@ export interface AdminDatabaseManagerControllerProps {
 
 /**
  * Controller central da aba "Base de Dados".
- * Ele orquestra navegacao interna, datasets filtrados, workbenches de questões/importacao, moderação, perfil de usuário, ranking e taxonomias.
+ * Ele orquestra navegação interna, datasets filtrados, workbenches de questões/importação, moderação, perfil de usuário, ranking e taxonomias.
  */
 export const useAdminDatabaseManagerController = ({
   questions,
@@ -193,7 +193,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Padroniza ordenacao compartilhada entre tabelas da feature.
+   * Padroniza ordenação compartilhada entre tabelas da feature.
    */
   const { sortConfig, requestSort, sortData } = useAdminTableSorting();
 
@@ -260,7 +260,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Carrega a listagem administrativa de questões com paginacao e reload da pagina atual.
+   * Carrega a listagem administrativa de questões com paginação e reload da página atual.
    */
   const {
     adminQuestions,
@@ -312,7 +312,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Unifica o fluxo de importacao e de criacao/edicao manual de questoes.
+   * Unifica o fluxo de importação e de criação/edição manual de questões.
    */
   const {
     isManualQuestionModalOpen,
@@ -336,7 +336,7 @@ export const useAdminDatabaseManagerController = ({
     const questionId = question?.id ?? report?.questionId;
 
     if (!questionId) {
-      addToast('Nao foi possivel identificar a questao para edicao.', 'error');
+      addToast('Não foi possível identificar a questão para edição.', 'error');
       return;
     }
 
@@ -347,7 +347,7 @@ export const useAdminDatabaseManagerController = ({
     const result = await onDeleteQuestion(questionId);
 
     if (isMutationFailure(result) && result.success === false) {
-      throw new Error(result.message || 'Nao foi possivel remover a questao.');
+      throw new Error(result.message || 'Não foi possível remover a questão.');
     }
 
     removeQuestionFromPage(questionId);
@@ -361,7 +361,7 @@ export const useAdminDatabaseManagerController = ({
     const userId = String(user?.id || '');
 
     if (!userId) {
-      addToast('Nao foi possivel identificar o usuario para remocao.', 'error');
+      addToast('Não foi possível identificar o usuário para remoção.', 'error');
       return null;
     }
 
@@ -371,10 +371,10 @@ export const useAdminDatabaseManagerController = ({
         user_id: userId,
       });
       await ensureUsersLoaded(true);
-      addToast(result.message || 'Usuario removido com sucesso.', 'success');
+      addToast(result.message || 'Usuário removido com sucesso.', 'success');
       return result;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Nao foi possivel remover o usuario.';
+      const message = error instanceof Error ? error.message : 'Não foi possível remover o usuário.';
       addToast(message, 'error');
       throw error;
     }
@@ -401,7 +401,7 @@ export const useAdminDatabaseManagerController = ({
   });
 
   /**
-   * Props prontas da navegacao lateral/interna da aba de base de dados.
+   * Props prontas da navegação lateral/interna da aba de base de dados.
    */
   const navigationProps: React.ComponentProps<typeof AdminDatabaseNavigation> = {
     categories: ADMIN_DATABASE_CATEGORIES,
@@ -455,8 +455,8 @@ export const useAdminDatabaseManagerController = ({
     onDeleteUser: handleDeleteUser,
     onModerateMaterial: openMaterialModerationFromList,
     onDeleteMaterial,
-    onInspectReport: inspectReportTarget,
-    onResolveReport: (report: ErrorReport) => Promise.resolve(resolveReportQuickly(report)),
+    onInspectReport: (group) => inspectReportTarget(group.lastReport),
+    onResolveReport: (group) => Promise.all(group.reports.map((report) => Promise.resolve(resolveReportQuickly(report)))),
     onEditRanking: openRankingEditor,
     onReanalyzeBlockedMaterial: openBlockedMaterialForReview,
     onActiveFilterTypeChange: setActiveFilterType,

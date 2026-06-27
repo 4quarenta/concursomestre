@@ -689,7 +689,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   const [isReporting, setIsReporting] = useState(false);
-  const [reportDetails, setReportDetails] = useState({ reason: 'Gabarito Errado', details: '' });
+  const [reportDetails, setReportDetails] = useState({ reason: 'Gabarito incorreto', details: '' });
 
   const fetchComments = React.useCallback(async (questionId: number) => {
     try {
@@ -715,8 +715,14 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
           ...(result.newLevel !== undefined ? { level: result.newLevel } : {}),
         });
       }
+      if (result.duplicate) {
+        addToast(result.message || 'Você já denunciou este comentário. A moderação ainda está analisando.', 'warning');
+        return true;
+      }
       addToast(
-        result.xpGain ? `Denuncia enviada com sucesso. +${result.xpGain} XP.` : 'Denuncia enviada com sucesso.',
+        result.xpGain
+          ? `${result.message || 'Denúncia enviada com sucesso.'} +${result.xpGain} XP.`
+          : result.message || 'Denúncia enviada com sucesso.',
         'success',
       );
       return true;
@@ -1068,7 +1074,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
         details: reportDetails.details
       });
       setIsReporting(false);
-      setReportDetails({ reason: 'Gabarito Errado', details: '' });
+      setReportDetails({ reason: 'Gabarito incorreto', details: '' });
     }
   };
 
@@ -1357,11 +1363,12 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   onChange={e => setReportDetails({ ...reportDetails, reason: e.target.value })}
                   className="w-full h-11 px-4 bg-white dark:bg-slate-800 border border-red-100 dark:border-red-900/30 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-red-200"
                 >
-                  <option>Gabarito Errado</option>
-                  <option>Erro de Digitação</option>
-                  <option>Matéria Incorreta</option>
-                  <option>Desatualizada / Anulada</option>
-                  <option>Imagem com Erro</option>
+                  <option>Gabarito incorreto</option>
+                  <option>Enunciado incorreto</option>
+                  <option>Erro de formatação</option>
+                  <option>Classificação incorreta</option>
+                  <option>Questão desatualizada</option>
+                  <option>Imagem ou mídia com problema</option>
                   <option>Outro</option>
                 </select>
               </div>

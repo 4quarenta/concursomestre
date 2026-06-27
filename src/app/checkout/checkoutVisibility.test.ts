@@ -39,4 +39,13 @@ describe('checkout visibility after payment', () => {
       step: 'success',
     })).toBe(false);
   });
+
+  it('keeps the congratulations step visible while the user session refreshes', () => {
+    expect(shouldHideCheckoutForExistingSubscription({
+      isAuthLoading: true,
+      hasCurrentPlanMatch: true,
+      checkoutCompletionInProgress: true,
+      step: 'success',
+    })).toBe(false);
+  });
 });

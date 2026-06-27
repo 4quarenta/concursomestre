@@ -53,7 +53,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     emailEnabled: false,
     emailSubject: 'Sua preparacao pode ficar mais leve hoje',
     emailPreview: 'Veja a campanha ativa antes que ela termine.',
-    emailBody: 'Selecionamos uma oferta para ajudar voce a continuar estudando com mais recursos.',
+    emailBody: 'Selecionamos uma oferta para ajudar você a continuar estudando com mais recursos.',
     siteBanners: [
       {
         id: 'banner-topbar-default',
@@ -122,6 +122,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   adsEnabled: false,
   adsenseTestMode: false,
   adsenseClientId: '',
+  adsTxtContent: '',
   adsenseTopSlotId: '',
   adsenseSidebarSlotId: '',
   adsenseBottomSlotId: '',

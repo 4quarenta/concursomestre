@@ -10,7 +10,7 @@
 */
 
 /**
- * Define os dominios e secoes oficiais do painel administrativo.
+ * Define os domínios e seções oficiais do painel administrativo.
  * Essa estrutura alimenta o shell, as tabs e a compatibilidade com links legados.
  *
  * @since 1.0.0
@@ -40,7 +40,7 @@ export type AdminNavigationSection = {
   label: string;
 };
 
-export type SupportPendingCounts = Partial<Record<'feedback' | 'reports' | 'comments' | 'refunds', number>>;
+export type SupportPendingCounts = Partial<Record<'feedback' | 'threads' | 'reports' | 'comments' | 'refunds', number>>;
 
 export const STAFF_ADMIN_ALLOWED_TABS: AdminPageTab[] = ['operation', 'support'];
 
@@ -135,6 +135,7 @@ export const filterAdminTabsForRole = <T extends { key: AdminPageTab }>(
 export const resolveSupportLandingSection = (counts: SupportPendingCounts = {}): AdminSupportSection => {
   if (Number(counts.comments || 0) > 0) return 'comments';
   if (Number(counts.reports || 0) > 0) return 'reports';
+  if (Number(counts.threads || 0) > 0) return 'threads';
   if (Number(counts.feedback || 0) > 0) return 'feedback';
   if (Number(counts.refunds || 0) > 0) return 'refunds';
 
@@ -147,7 +148,7 @@ export const TAB_DESCRIPTIONS: Record<AdminPageTab, string> = {
   marketplace: 'Vendedores, catálogo publicado e revisões bloqueadas do marketplace.',
   finance: 'Transações, planos, cupons, analytics e automação financeira.',
   marketing: 'Landing pages, campanhas, temas visuais e redes sociais da homepage.',
-  support: 'Feedbacks, denúncias, comentários moderados e rankings.',
+  support: 'Solicitações, feedbacks, avaliações, denúncias e comentários moderados.',
   settings: 'Controles globais, integrações, e-mail, ads, SEO e logs.',
 };
 
@@ -160,49 +161,49 @@ export const SUPPORT_SECTION_KEYS = ['feedback', 'threads', 'reports', 'rankings
 export const SETTINGS_SECTION_KEYS = ['general', 'modules', 'gamification', 'notifications', 'security', 'integrations', 'email', 'email-templates', 'ads', 'seo', 'performance', 'logs'] as const;
 
 /**
- * Valida a secao do grupo Painel.
+ * Valida a seção do grupo Painel.
  *
  * @since 1.0.0
  */
 export const isPanelSection = (tab: string): tab is AdminPanelSection => PANEL_SECTION_KEYS.includes(tab as AdminPanelSection);
 
 /**
- * Valida a secao do grupo Operacao.
+ * Valida a seção do grupo Operação.
  *
  * @since 1.0.0
  */
 export const isOperationSection = (tab: string): tab is AdminOperationSection => OPERATION_SECTION_KEYS.includes(tab as AdminOperationSection);
 
 /**
- * Valida a secao do grupo Marketplace.
+ * Valida a seção do grupo Marketplace.
  *
  * @since 1.0.0
  */
 export const isMarketplaceSection = (tab: string): tab is AdminMarketplaceSection => MARKETPLACE_SECTION_KEYS.includes(tab as AdminMarketplaceSection);
 
 /**
- * Valida a secao do grupo Financeiro.
+ * Valida a seção do grupo Financeiro.
  *
  * @since 1.0.0
  */
 export const isFinanceSection = (tab: string): tab is AdminFinanceSection => FINANCE_SECTION_KEYS.includes(tab as AdminFinanceSection);
 
 /**
- * Valida a secao do grupo Marketing.
+ * Valida a seção do grupo Marketing.
  *
  * @since 1.0.0
  */
 export const isMarketingSection = (tab: string): tab is AdminMarketingSection => MARKETING_SECTION_KEYS.includes(tab as AdminMarketingSection);
 
 /**
- * Valida a secao do grupo Suporte.
+ * Valida a seção do grupo Suporte.
  *
  * @since 1.0.0
  */
 export const isSupportSection = (tab: string): tab is AdminSupportSection => SUPPORT_SECTION_KEYS.includes(tab as AdminSupportSection);
 
 /**
- * Valida a secao do grupo Configuracoes.
+ * Valida a seção do grupo Configurações.
  *
  * @since 1.0.0
  */
@@ -216,7 +217,7 @@ export const isSettingsSection = (tab: string): tab is AdminSettingsSection => S
 export const isAdminPageTab = (tab: string): tab is AdminPageTab => ['panel', 'operation', 'marketplace', 'finance', 'marketing', 'support', 'settings'].includes(tab);
 
 /**
- * Mantem compatibilidade com links e atalhos legados do admin.
+ * Mantém compatibilidade com links e atalhos legados do admin.
  *
  * @since 1.0.0
  */
@@ -332,10 +333,10 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
     { key: 'social-links', label: 'Redes sociais' },
   ],
   support: [
-    { key: 'feedback', label: 'Feedback' },
+    { key: 'feedback', label: 'Feedback e avaliações' },
     { key: 'comments', label: 'Comentários' },
     { key: 'reports', label: 'Denúncias' },
-    { key: 'threads', label: 'Threads' },
+    { key: 'threads', label: 'Solicitações' },
     { key: 'rankings', label: 'Rankings' },
     { key: 'refunds', label: 'Reembolsos' },
   ],
@@ -356,7 +357,7 @@ export const ADMIN_SECTION_CONFIG: Record<AdminPageTab, AdminNavigationSection[]
 };
 
 /**
- * Define a subsecao inicial de cada dominio.
+ * Define a subseção inicial de cada domínio.
  *
  * @since 1.0.0
  */

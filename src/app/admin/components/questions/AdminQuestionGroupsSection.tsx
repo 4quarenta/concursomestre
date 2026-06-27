@@ -267,7 +267,7 @@ const AdminQuestionGroupsSection = () => {
 
   const handleBulkApply = () => {
     if (bulkAction !== 'delete') {
-      setNotice({ type: 'error', message: 'Selecione uma acao em massa.' });
+      setNotice({ type: 'error', message: 'Selecione uma ação em massa.' });
       return;
     }
 

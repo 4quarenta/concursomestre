@@ -31,6 +31,19 @@ const SUPPORT_REASON_LABELS: Record<string, string> = {
   user_request: 'Solicitado pelo usuário',
   waiting_for_stripe_reconciliation: 'Aguardando conciliação com a Stripe',
   local_period_ended_without_expected_renewal: 'Período local encerrado sem renovação confirmada',
+  bug: 'Reportar problema',
+  reportar_problema: 'Reportar problema',
+  estabilidade: 'Estabilidade',
+  produto: 'Produto',
+  suporte: 'Suporte',
+  ajuda: 'Ajuda',
+  sugestao: 'Sugestão',
+  avaliacao: 'Avaliação',
+  avaliar_plataforma: 'Avaliar plataforma',
+  cancelamento: 'Cancelamento',
+  solicitar_comentario_do_professor: 'Solicitar comentário do professor',
+  comentario_do_professor: 'Comentário do professor',
+  analise_detalhada: 'Análise detalhada',
 };
 
 export const getSupportReasonLabel = (reason: unknown) => {

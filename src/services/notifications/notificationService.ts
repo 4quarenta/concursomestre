@@ -163,7 +163,7 @@ export const notificationService = {
   },
 
   /**
-   * Restaura uma notificacao que estava na lixeira.
+   * Restaura uma notificação que estava na lixeira.
    * @since 1.0.0
    */
   async restoreNotification(notificationId: string): Promise<{ success: boolean }> {
@@ -172,12 +172,12 @@ export const notificationService = {
       { notification_id: notificationId },
     );
 
-    assertApiSuccess(response, 'Nao foi possivel restaurar a notificacao.');
+    assertApiSuccess(response, 'Não foi possível restaurar a notificação.');
     return { success: true };
   },
 
   /**
-   * Exclui uma notificacao definitivamente.
+   * Exclui uma notificação definitivamente.
    * @since 1.0.0
    */
   async permanentDeleteNotification(notificationId: string): Promise<{ success: boolean }> {
@@ -186,12 +186,12 @@ export const notificationService = {
       { notification_id: notificationId },
     );
 
-    assertApiSuccess(response, 'Nao foi possivel excluir definitivamente a notificacao.');
+    assertApiSuccess(response, 'Não foi possível excluir definitivamente a notificação.');
     return { success: true };
   },
 
   /**
-   * Remove todas as notificacoes do usuario atual.
+   * Remove todas as notificações do usuário atual.
    * @since 1.0.0
    */
   async clearAll(): Promise<{ success: boolean }> {

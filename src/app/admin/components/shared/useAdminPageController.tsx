@@ -223,14 +223,15 @@ export const useAdminPageController = () => {
   const openReportsCount = Math.max(openReportsCountFromList, pendingReportsCount);
   const settingsFeedbackCount = Math.max(0, Number((systemSettings as AdminSettingsWithFeedbackCount | undefined)?.adminFeedbackCount || 0));
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(settingsFeedbackCount);
+  const [pendingSupportThreadsCount, setPendingSupportThreadsCount] = useState(0);
   const [pendingCommentsCount, setPendingCommentsCount] = useState(0);
   const lastSupportCountersSyncRef = useRef<{ userId: string; timestamp: number } | null>(null);
   const feedbackCount = pendingFeedbackCount;
-  const panelAlertsCount = openReportsCount + refundRequestsCount;
-  const supportInboxCount = feedbackCount + openReportsCount + refundRequestsCount + pendingCommentsCount;
   const pendingMaterialsCountFromList = ((materials || []) as Array<{ status?: string | null }>)
     .filter((material) => String(material.status || '').toLowerCase() === 'pending').length;
   const pendingMarketplaceMaterialsCount = Math.max(pendingMaterialsModerationCount, pendingMaterialsCountFromList);
+  const supportInboxCount = feedbackCount + pendingSupportThreadsCount + openReportsCount + refundRequestsCount + pendingCommentsCount;
+  const panelAlertsCount = supportInboxCount + pendingMarketplaceMaterialsCount;
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
@@ -245,6 +246,7 @@ export const useAdminPageController = () => {
       lastSupportCountersSyncRef.current = null;
       const frameId = window.requestAnimationFrame(() => {
         setPendingFeedbackCount(settingsFeedbackCount);
+        setPendingSupportThreadsCount(0);
         setPendingCommentsCount(0);
         setPendingRefundRequestsCount(0);
         setPendingReportsCount(0);
@@ -279,6 +281,7 @@ export const useAdminPageController = () => {
               timestamp: Date.now(),
             };
             setPendingFeedbackCount(Number(stats.feedback_count || settingsFeedbackCount || 0));
+            setPendingSupportThreadsCount(Number((stats as { support_threads_count?: number }).support_threads_count || 0));
             setPendingCommentsCount(Number(stats.pending_comments_count || 0));
             setPendingRefundRequestsCount(Number(stats.refund_requests_count || 0));
             setPendingReportsCount(Number((stats as { reports_count?: number }).reports_count || 0));
@@ -288,6 +291,7 @@ export const useAdminPageController = () => {
         .catch(() => {
           if (isCurrent) {
             setPendingFeedbackCount(settingsFeedbackCount);
+            setPendingSupportThreadsCount(0);
             setPendingCommentsCount(0);
             setPendingRefundRequestsCount(0);
             setPendingReportsCount(0);
@@ -304,6 +308,7 @@ export const useAdminPageController = () => {
   const sectionBadges = useMemo(() => ({
     support: {
       feedback: feedbackCount,
+      threads: pendingSupportThreadsCount,
       reports: openReportsCount,
       comments: pendingCommentsCount,
       refunds: refundRequestsCount,
@@ -311,7 +316,7 @@ export const useAdminPageController = () => {
     marketplace: {
       materials: pendingMarketplaceMaterialsCount,
     },
-  }), [feedbackCount, openReportsCount, pendingCommentsCount, pendingMarketplaceMaterialsCount, refundRequestsCount]);
+  }), [feedbackCount, openReportsCount, pendingCommentsCount, pendingMarketplaceMaterialsCount, pendingSupportThreadsCount, refundRequestsCount]);
   const supportLandingSection = useMemo(() => resolveSupportLandingSection(sectionBadges.support), [sectionBadges]);
 
   const adminTabs = useMemo<AdminNavigationTab[]>(() => filterAdminTabsForRole([
@@ -320,7 +325,7 @@ export const useAdminPageController = () => {
     { key: 'marketplace', label: 'Marketplace', icon: ShoppingBag, group: 'Comercial', description: 'Vendedores, materiais publicados e revisão bloqueada' },
     { key: 'finance', label: 'Financeiro', icon: DollarSign, group: 'Comercial', description: 'Transações, planos, cupons, analytics e automação' },
     { key: 'marketing', label: 'Marketing', icon: Megaphone, group: 'Comercial', description: 'Landing pages, campanhas, temas visuais e redes sociais' },
-    { key: 'support', label: 'Suporte', icon: MessageSquare, badge: supportInboxCount > 0 ? supportInboxCount : undefined, group: 'Relacionamento', description: 'Feedback, comentários, denúncias, rankings e reembolsos' },
+    { key: 'support', label: 'Solicitações', icon: MessageSquare, badge: supportInboxCount > 0 ? supportInboxCount : undefined, group: 'Relacionamento', description: 'Solicitações, feedbacks, avaliações, denúncias e comentários moderados' },
     { key: 'settings', label: 'Configurações', icon: Settings, group: 'Sistema', description: 'Integrações e controles globais' },
   ], adminUserRole), [adminUserRole, panelAlertsCount, supportInboxCount]);
 
@@ -689,9 +694,30 @@ export const useAdminPageController = () => {
       initialSection: initialSupportSection,
       allReports: reports,
       pendingFeedbackCount: feedbackCount,
+      pendingSupportThreadsCount,
       onPendingFeedbackCountChange: setPendingFeedbackCount,
+      onPendingSupportThreadsCountChange: setPendingSupportThreadsCount,
       onPendingCommentsCountChange: setPendingCommentsCount,
-      onResolveReport: (report: ErrorReport) => resolveReport(report.id, 'resolved', report.resolution || report.reason || 'Denúncia tratada pela equipe administrativa.'),
+      onResolveReport: (report: ErrorReport) => {
+        const moderationPayload = report as ErrorReport & {
+          moderationAction?: 'resolved' | 'ignored';
+          userResponse?: string;
+          internalNote?: string;
+          moderationActionApplied?: string;
+        };
+        const moderationAction = moderationPayload.moderationAction;
+        return resolveReport(
+          report.id,
+          moderationAction === 'ignored' ? 'ignored' : 'resolved',
+          report.resolution || report.reason || 'Denúncia tratada pela equipe administrativa.',
+          report.evidenceUrl,
+          {
+            userResponse: moderationPayload.userResponse,
+            internalNote: moderationPayload.internalNote,
+            moderationAction: moderationPayload.moderationActionApplied,
+          },
+        );
+      },
       onSectionChange: (section: AdminSupportSection) => handleSectionChange('support', section),
       standaloneSection: true,
     },

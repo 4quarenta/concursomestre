@@ -28,8 +28,8 @@ interface AdminQuestionAiGenerationModalProps {
 }
 
 const KIND_LABEL: Record<AdminQuestionAiGenerationKind, string> = {
-  teacher: 'Comentario do professor',
-  detailed: 'Analise detalhada',
+  teacher: 'Comentário do professor',
+  detailed: 'Análise detalhada',
 };
 
 const statusIcon = (item: AdminQuestionAiGenerationResult) => {
@@ -76,11 +76,11 @@ const AdminQuestionAiGenerationModal = ({
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/50">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-              Geracao IA
+              Geração IA
             </p>
             <h2 className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">{KIND_LABEL[kind]}</h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              {isRunning ? currentLabel || 'Preparando questoes selecionadas...' : `${completedCount} resultado(s) gerado(s).`}
+              {isRunning ? currentLabel || 'Preparando questões selecionadas...' : `${completedCount} resultado(s) gerado(s).`}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">

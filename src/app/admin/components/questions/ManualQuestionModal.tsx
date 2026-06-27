@@ -281,12 +281,12 @@ const ManualQuestionModal = ({
             <div className="flex flex-col gap-2">
               {manualQ.anulada && (
                 <div className="flex items-center gap-3 rounded-sm border border-red-200 bg-red-50 p-4 text-xs font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-400">
-                  <AlertCircle size={18} /> Esta questão sera exibida como ANULADA para os alunos.
+                  <AlertCircle size={18} /> Esta questão será exibida como ANULADA para os alunos.
                 </div>
               )}
               {manualQ.desatualizada && (
                 <div className="flex items-center gap-3 rounded-sm border border-amber-200 bg-amber-50 p-4 text-xs font-bold text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-400">
-                  <AlertTriangle size={18} /> Esta questão sera exibida como DESATUALIZADA.
+                  <AlertTriangle size={18} /> Esta questão será exibida como DESATUALIZADA.
                 </div>
               )}
             </div>

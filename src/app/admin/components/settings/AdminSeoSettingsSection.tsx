@@ -121,7 +121,7 @@ const AdminSeoSettingsSection = ({
               Cobertura do sitemap
             </h3>
             <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-              Visualize quantas URLs publicas ja foram materializadas no sitemap oficial. Isso mede cobertura operacional, nao confirmacao do Google.
+              Visualize quantas URLs públicas já foram materializadas no sitemap oficial. Isso mede cobertura operacional, não confirmação do Google.
             </p>
           </div>
           <button

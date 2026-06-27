@@ -19,6 +19,7 @@ import { useAppConfigStore } from '@/state/app-config/appConfigStore';
 import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import {
   AlertCircle,
+  AlertTriangle,
   BookOpen,
   CheckCircle2,
   ChevronDown,
@@ -47,6 +48,8 @@ import MathRichText from '@/components/shared/math/MathRichText';
 import RichTextEditor from '@/components/shared/ui/RichTextEditor';
 import { filtersService } from '@services/filters';
 import { legalCommentaryApiService } from '@services/legal-commentary';
+import { adminService, type AdminFeedbackThread } from '@services/admin/adminService';
+import { getSupportThreadPreview, getSupportThreadTitle } from '@services/support';
 import type {
   ArticleExamTip,
   ArticleJurisprudence,
@@ -65,6 +68,7 @@ import type {
   LegalRichContentBlock,
   LegalSyncLog,
   TeacherComment,
+  ErrorReport,
 } from '@types';
 import {
   ADMIN_MODAL_FOOTER_CLASS,
@@ -1499,6 +1503,10 @@ const AdminLegalCommentaryEditPage = () => {
   const isNew = ['new', 'novo', 'add'].includes(normalizeTaxonomyText(rawLawId));
   const lawId = isNew ? 'new' : rawLawId;
   const shouldOpenUpdatesFromQuery = searchParams.get('updates') === '1';
+  const supportRequestId = Number(searchParams.get('supportRequest') || 0);
+  const linkedReportId = String(searchParams.get('report') || '').trim();
+  const requestedSectionId = String(searchParams.get('sectionId') || '').trim();
+  const requestedTargetId = String(searchParams.get('targetId') || '').trim();
   const [areas, setAreas] = React.useState<LegalArea[]>([]);
   const [subjects, setSubjects] = React.useState<TaxonomyOption[]>([]);
   const [topics, setTopics] = React.useState<TaxonomyOption[]>([]);
@@ -1532,9 +1540,14 @@ const AdminLegalCommentaryEditPage = () => {
   const [lawAiBulkProgress, setLawAiBulkProgress] = React.useState<LegalAiBulkProgress | null>(null);
   const [isUpdatesModalOpen, setIsUpdatesModalOpen] = React.useState(false);
   const [isUpdatesModalLoading, setIsUpdatesModalLoading] = React.useState(false);
+  const [linkedSupportRequest, setLinkedSupportRequest] = React.useState<AdminFeedbackThread | null>(null);
+  const [linkedLawReports, setLinkedLawReports] = React.useState<ErrorReport[]>([]);
+  const [isModerationContextLoading, setIsModerationContextLoading] = React.useState(false);
+  const [resolvingLinkedReportId, setResolvingLinkedReportId] = React.useState('');
   const [updatesModalItems, setUpdatesModalItems] = React.useState<LawUpdate[]>([]);
   const [updatesModalLogs, setUpdatesModalLogs] = React.useState<LegalSyncLog[]>([]);
   const hasOpenedUpdatesFromQueryRef = React.useRef(false);
+  const focusedModerationContextRef = React.useRef('');
   const publicationFieldsHydratedRef = React.useRef('');
 
   const renderAdminShell = (children: React.ReactNode) => (
@@ -1595,6 +1608,49 @@ const AdminLegalCommentaryEditPage = () => {
   React.useEffect(() => {
     addToastRef.current = addToast;
   }, [addToast]);
+
+  React.useEffect(() => {
+    if (isNew || (!supportRequestId && !linkedReportId)) {
+      setLinkedSupportRequest(null);
+      setLinkedLawReports([]);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsModerationContextLoading(true);
+
+    void Promise.allSettled([
+      supportRequestId ? adminService.getFeedbackThreads() : Promise.resolve([]),
+      linkedReportId ? adminService.getReports() : Promise.resolve([]),
+    ]).then(([feedbackResult, reportsResult]) => {
+      if (!isCurrent) return;
+
+      if (feedbackResult.status === 'fulfilled') {
+        setLinkedSupportRequest(
+          feedbackResult.value.find((item) => Number(item.id) === supportRequestId) || null,
+        );
+      }
+
+      if (reportsResult.status === 'fulfilled') {
+        const requestedReport = reportsResult.value.find((report) => String(report.id) === linkedReportId) || null;
+        const requestedLawSectionId = String(requestedReport?.lawSectionId || requestedSectionId || '').trim();
+        const lawPathMarker = `/lei-comentada/${lawId}/`;
+        const related = reportsResult.value.filter((report) => {
+          if (report.targetType !== 'law_section' || report.status !== 'pending') return false;
+          if (String(report.id) === linkedReportId) return true;
+          if (requestedLawSectionId && String(report.lawSectionId || '') === requestedLawSectionId) return true;
+          return Boolean(report.targetUrl && String(report.targetUrl).includes(lawPathMarker));
+        });
+        setLinkedLawReports(related);
+      }
+    }).finally(() => {
+      if (isCurrent) setIsModerationContextLoading(false);
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [isNew, lawId, linkedReportId, requestedSectionId, supportRequestId]);
 
   React.useEffect(() => {
     if (isAuthLoading) {
@@ -1772,6 +1828,48 @@ const AdminLegalCommentaryEditPage = () => {
     || sectionOverviews[0]
     || null
   ), [activeArticleId, activeSectionId, sectionOverviews]);
+
+  React.useEffect(() => {
+    const focusKey = `${supportRequestId}:${linkedReportId}:${requestedSectionId}:${requestedTargetId}`;
+    if (
+      (!supportRequestId && !linkedReportId)
+      || (linkedReportId && isModerationContextLoading)
+      || focusedModerationContextRef.current === focusKey
+      || sectionOverviews.length === 0
+    ) {
+      return;
+    }
+
+    const reportSectionId = String(linkedLawReports[0]?.lawSectionId || '').trim();
+    const sectionIdToFocus = requestedSectionId || reportSectionId;
+    const section = sectionOverviews.find((item) => (
+      String(item.id) === sectionIdToFocus || String(item.resolvedSectionId) === sectionIdToFocus
+    )) || sectionOverviews[0];
+    const targetArticle = section.articlesList.find((article) => String(article.id) === requestedTargetId)
+      || section.articlesList.find((article) => normalizeArticleBlocks(article).some((block) => String(block.id || '') === requestedTargetId))
+      || section.articlesList[0]
+      || null;
+
+    focusedModerationContextRef.current = focusKey;
+    setActiveSectionId(section.resolvedSectionId);
+    setOpenStructureSectionIds((current) => new Set(current).add(section.resolvedSectionId));
+    if (targetArticle) {
+      setActiveArticleId(String(targetArticle.id));
+      const blocks = normalizeArticleBlocks(targetArticle);
+      const requestedBlockIndex = /^block-(\d+)$/i.test(requestedTargetId)
+        ? Number(requestedTargetId.match(/^block-(\d+)$/i)?.[1] || 0)
+        : -1;
+      const targetBlock = blocks.find((block) => String(block.id || '') === requestedTargetId)
+        || (requestedBlockIndex >= 0 ? blocks[requestedBlockIndex] : null);
+      if (targetBlock?.id) {
+        setSelectedTeacherCommentTargetId(String(targetBlock.id));
+      }
+    }
+
+    window.requestAnimationFrame(() => {
+      document.getElementById('admin-law-moderation-context')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [isModerationContextLoading, linkedLawReports, linkedReportId, requestedSectionId, requestedTargetId, sectionOverviews, supportRequestId]);
 
   const lawAiCoverage = React.useMemo(() => {
     const currentDraft = draft;
@@ -2948,12 +3046,12 @@ const AdminLegalCommentaryEditPage = () => {
   ) => {
     if (!draft || !activeArticle) {
       addToast('Nenhum artigo ativo para gerar conteudo.', 'info');
-      return;
+      return false;
     }
 
     if (isLikelyEditoriallyIrrelevantArticle(activeArticle)) {
       addToast('Este artigo parece ser bloco final, assinatura ou expediente sem relevancia recorrente para prova. Nao e necessario gerar conteudo editorial.', 'info');
-      return;
+      return false;
     }
 
     const loadingKey = options?.loadingKey || kind;
@@ -2968,14 +3066,54 @@ const AdminLegalCommentaryEditPage = () => {
 
       if (result.summary.approvedBlocks > 0) {
         addToast(`${label} gerado${result.persisted ? ' e salvo' : ''}. Revise o resultado.`, 'success');
+        return true;
       } else {
         addToast(warnings[0] || `Nada seguro para adicionar em ${label.toLowerCase()}.`, 'info');
+        return false;
       }
     } catch (error: unknown) {
       addToast(getErrorMessage(error, 'Nao foi possivel gerar com IA agora.'), 'error');
+      return false;
     } finally {
       finishAiProgress(loadingKey);
       setAiLoading(null);
+    }
+  };
+
+  const generateRequestedTeacherComment = async () => {
+    if (!linkedSupportRequest || linkedSupportRequest.status === 'resolved') return;
+    const target = activeArticleTargetOptions
+      .find((option) => option.id === selectedTeacherCommentTargetId)?.target || null;
+    const generated = await generateWithAi('teacher-comment', {
+      target,
+      loadingKey: `support-request-${linkedSupportRequest.id}`,
+      label: 'Comentario do professor solicitado',
+    });
+    if (!generated) return;
+
+    try {
+      await adminService.updateFeedbackStatus(linkedSupportRequest.id, 'resolved');
+      setLinkedSupportRequest((current) => current ? { ...current, status: 'resolved' } : current);
+      addToast('Comentario gerado e solicitacao marcada como resolvida.', 'success');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'O comentario foi gerado, mas a solicitacao nao foi encerrada.'), 'warning');
+    }
+  };
+
+  const moderateLinkedLawReport = async (report: ErrorReport, action: 'resolved' | 'ignored') => {
+    if (resolvingLinkedReportId) return;
+    setResolvingLinkedReportId(String(report.id));
+    try {
+      const resolution = action === 'resolved'
+        ? 'A denuncia foi revisada no editor da Lei Comentada e recebeu o tratamento indicado pela moderacao.'
+        : 'A denuncia foi revisada no editor da Lei Comentada e o conteudo foi mantido pela moderacao.';
+      await adminService.moderateReport(String(report.id), action, resolution, report.evidenceUrl);
+      setLinkedLawReports((current) => current.filter((item) => String(item.id) !== String(report.id)));
+      addToast(action === 'resolved' ? 'Denuncia resolvida.' : 'Denuncia ignorada.', 'success');
+    } catch (error: unknown) {
+      addToast(getErrorMessage(error, 'Nao foi possivel concluir a moderacao.'), 'error');
+    } finally {
+      setResolvingLinkedReportId('');
     }
   };
 
@@ -4596,6 +4734,82 @@ const AdminLegalCommentaryEditPage = () => {
               Ver leis
             </Link>
           </header>
+
+          {(supportRequestId || linkedReportId) ? (
+            <section
+              id="admin-law-moderation-context"
+              className="scroll-mt-6 overflow-hidden rounded-sm border border-amber-300 bg-amber-50 shadow-sm"
+            >
+              <div className="flex flex-col gap-3 border-b border-amber-200 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-amber-700">
+                    <AlertTriangle size={14} /> Contexto da moderação
+                  </p>
+                  <h2 className="mt-1 text-base font-black text-slate-900">
+                    {linkedSupportRequest ? getSupportThreadTitle(linkedSupportRequest) : 'Denúncia vinculada à Lei Comentada'}
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    {linkedSupportRequest
+                      ? getSupportThreadPreview(linkedSupportRequest, 260)
+                      : 'Revise o item destacado abaixo e conclua as denúncias relacionadas após a correção.'}
+                  </p>
+                </div>
+                {linkedSupportRequest && linkedSupportRequest.status !== 'resolved' ? (
+                  <button
+                    type="button"
+                    onClick={() => void generateRequestedTeacherComment()}
+                    disabled={Boolean(aiLoading)}
+                    className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-sm bg-[#2271b1] px-4 text-sm font-bold text-white hover:bg-[#135e96] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {aiLoading === `support-request-${linkedSupportRequest.id}` ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                    Gerar comentário solicitado
+                  </button>
+                ) : linkedSupportRequest ? (
+                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">
+                    Solicitação resolvida
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="space-y-2 bg-white/70 p-4">
+                {isModerationContextLoading ? (
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-500">
+                    <Loader2 size={15} className="animate-spin" /> Carregando contexto completo...
+                  </div>
+                ) : linkedLawReports.length > 0 ? linkedLawReports.map((report) => (
+                  <div key={report.id} className="flex flex-col gap-3 rounded-sm border border-amber-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-[0.12em] text-amber-700">Denúncia #{report.id}</p>
+                      <p className="mt-1 text-sm font-bold text-slate-900">{report.reason || 'Problema informado pelo aluno'}</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-600">{report.details || 'Sem detalhes adicionais.'}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Denunciante: {report.userName || 'Não informado'}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void moderateLinkedLawReport(report, 'ignored')}
+                        disabled={Boolean(resolvingLinkedReportId)}
+                        className={ADMIN_SECONDARY_BUTTON_CLASS}
+                      >
+                        Ignorar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void moderateLinkedLawReport(report, 'resolved')}
+                        disabled={Boolean(resolvingLinkedReportId)}
+                        className={ADMIN_PRIMARY_BUTTON_CLASS}
+                      >
+                        {resolvingLinkedReportId === report.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                        Resolver denúncia
+                      </button>
+                    </div>
+                  </div>
+                )) : linkedReportId ? (
+                  <p className="text-sm font-semibold text-slate-500">Nenhuma denúncia pendente permanece vinculada a esta lei.</p>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
             <main className="space-y-4">

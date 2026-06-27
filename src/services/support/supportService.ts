@@ -39,6 +39,8 @@ export type PublicSuggestion = SupportThread & {
 export type SupportReply = {
   id: number;
   user_id: string;
+  user_name?: string | null;
+  user_role?: string | null;
   details: string;
   created_at: string;
 };
@@ -138,14 +140,14 @@ const getSupportNotificationEvent = (type: string) => {
 };
 
 /**
- * Centraliza o fluxo da central de suporte/feedback do usuario.
- * Essa camada e consumida pela pagina publica de suporte e pelo historico de conversas.
+ * Centraliza o fluxo da central de suporte/feedback do usuário.
+ * Essa camada é consumida pela página pública de suporte e pelo histórico de conversas.
  *
  * @since 1.0.0
  */
 export const supportService = {
   /**
-   * Lista os chamados do usuario autenticado.
+   * Lista os chamados do usuário autenticado.
    *
    * @since 1.0.0
    */
@@ -170,7 +172,7 @@ export const supportService = {
   },
 
   /**
-   * Lista sugestoes enviadas pela comunidade para votacao.
+   * Lista sugestões enviadas pela comunidade para votação.
    *
    * @since 1.0.0
    */
@@ -191,7 +193,7 @@ export const supportService = {
   },
 
   /**
-   * Registra like/dislike em uma sugestao publica.
+   * Registra like/dislike em uma sugestão pública.
    *
    * @since 1.0.0
    */
@@ -203,7 +205,7 @@ export const supportService = {
       notification_event: value ? 'suggestion_vote' : '',
     }) as unknown;
 
-    assertApiSuccess(response, 'Nao foi possivel registrar o voto.');
+    assertApiSuccess(response, 'Não foi possível registrar o voto.');
     const payload = readApiData<SupportPayload>(response, {});
     const responsePayload = asSupportRecord(response) as SupportPayload;
 
@@ -232,7 +234,7 @@ export const supportService = {
   },
 
   /**
-   * Abre um novo chamado/sugestao para o suporte.
+   * Abre um novo chamado/sugestão para o suporte.
    * Retorna o payload persistido para a UI materializar a thread sem depender do refresh imediato.
    *
    * @since 1.0.0
@@ -244,7 +246,7 @@ export const supportService = {
       gamification_event: gamificationEvent || getSupportGamificationEvent(input.type),
       notification_event: notificationEvent || getSupportNotificationEvent(input.type),
     }) as unknown;
-    assertApiSuccess(response, 'Nao foi possivel enviar a solicitacao.');
+    assertApiSuccess(response, 'Não foi possível enviar a solicitação.');
 
     const payload = readApiData<SupportPayload>(response, {});
     const progress = readMutationProgress(payload);
@@ -270,13 +272,13 @@ export const supportService = {
     const response = await apiClient.post(ENDPOINTS.feedback.create, {
       parent_id: parentId,
       type,
-      reason: 'Resposta do usuario',
+      reason: 'Resposta do usuário',
       details,
       gamification_event: 'support_thread_reply',
       notification_event: 'support_reply',
     }) as unknown;
 
-    assertApiSuccess(response, 'Nao foi possivel enviar a solicitacao.');
+    assertApiSuccess(response, 'Não foi possível enviar a solicitação.');
 
     const payload = readApiData<SupportPayload>(response, {});
     const progress = readMutationProgress(payload);

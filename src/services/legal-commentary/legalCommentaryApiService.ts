@@ -117,6 +117,7 @@ type LegalMutationProgress = {
   xpGain?: number;
   newXp?: number;
   newLevel?: number;
+  duplicate?: boolean;
 };
 
 const toOptionalNumber = (value: unknown): number | undefined => {
@@ -269,7 +270,7 @@ const normalizeAiGenerationErrorMessage = (message: string): string => {
     || normalized.includes('exceeded your current quota')
     || normalized.includes('check your plan and billing')
   ) {
-    return 'A chave OpenAI/ChatGPT configurada esta sem cota ou faturamento ativo. Ative billing/quota na OpenAI, use outra chave ou altere o provedor para Automatico/Gemini nas configuracoes.';
+    return 'A chave OpenAI/ChatGPT configurada está sem cota ou faturamento ativo. Ative billing/quota na OpenAI, use outra chave ou altere o provedor para Automático/Gemini nas configurações.';
   }
 
   if (
@@ -282,15 +283,15 @@ const normalizeAiGenerationErrorMessage = (message: string): string => {
   }
 
   if (normalized.includes('gemini api key nao esta configurada')) {
-    return 'A Gemini API Key ainda nao está configurada no backend. Salve a chave nas configuracoes do sistema e tente novamente.';
+    return 'A Gemini API Key ainda não está configurada no backend. Salve a chave nas configurações do sistema e tente novamente.';
   }
 
   if (normalized.includes('openai api key nao esta configurada')) {
-    return 'A OpenAI API Key ainda nao esta configurada no backend. Salve a chave nas configuracoes do sistema e tente novamente.';
+    return 'A OpenAI API Key ainda não está configurada no backend. Salve a chave nas configurações do sistema e tente novamente.';
   }
 
   if (normalized.includes('openai indisponivel por falha de rede')) {
-    return 'O backend nao conseguiu se conectar a OpenAI API. Verifique conectividade externa, DNS e regras de firewall do servidor.';
+    return 'O backend não conseguiu se conectar à OpenAI API. Verifique conectividade externa, DNS e regras de firewall do servidor.';
   }
 
   if (
@@ -310,7 +311,7 @@ const normalizeAiGenerationErrorMessage = (message: string): string => {
     || normalized.includes('econnaborted')
     || normalized.includes('timeout exceeded')
   ) {
-    return 'A geracao demorou mais que o esperado. A analise de capitulo e mais pesada; tente novamente em instantes.';
+    return 'A geração demorou mais que o esperado. A análise de capítulo é mais pesada; tente novamente em instantes.';
   }
 
   if (
@@ -624,7 +625,7 @@ export const legalCommentaryApiService = {
     try {
       await this.getLawDetail(slug);
     } catch {
-      // Prefetch nao deve bloquear a navegacao.
+      // Prefetch não deve bloquear a navegação.
     }
   },
 
@@ -802,7 +803,7 @@ export const legalCommentaryApiService = {
       gamification_event: 'legal_favorite_added',
       notification_event: 'legal_favorite',
     });
-    const envelope = assertApiSuccess<{ isFavorite: boolean }>(response, 'Nao foi possivel atualizar o favorito.');
+    const envelope = assertApiSuccess<{ isFavorite: boolean }>(response, 'Não foi possível atualizar o favorito.');
     const payload = unwrap(envelope.raw, { isFavorite: false });
     invalidateLegalUserStateCaches();
     return {
@@ -839,7 +840,7 @@ export const legalCommentaryApiService = {
       gamification_event: 'legal_comment_submitted',
       notification_event: 'legal_comment',
     });
-    const envelope = assertApiSuccess<LegalUserCommentSubmissionResult>(response, 'Nao foi possivel criar o comentario.');
+    const envelope = assertApiSuccess<LegalUserCommentSubmissionResult>(response, 'Não foi possível criar o comentário.');
     const payload = unwrap<LegalUserCommentSubmissionResult>(envelope.raw, {
       id: '',
       moderationStatus: 'approved',
@@ -858,7 +859,7 @@ export const legalCommentaryApiService = {
       commentId,
       body,
     });
-    const envelope = assertApiSuccess<LegalUserComment>(response, 'Nao foi possivel atualizar o comentario.');
+    const envelope = assertApiSuccess<LegalUserComment>(response, 'Não foi possível atualizar o comentário.');
     const payload = unwrap<LegalUserComment>(envelope.raw, {} as LegalUserComment);
     invalidateLegalUserStateCaches();
     return payload;
@@ -869,7 +870,7 @@ export const legalCommentaryApiService = {
       action: 'delete',
       commentId,
     });
-    assertApiSuccess(response, 'Nao foi possivel excluir o comentario.');
+    assertApiSuccess(response, 'Não foi possível excluir o comentário.');
     invalidateLegalUserStateCaches();
   },
 
@@ -880,8 +881,15 @@ export const legalCommentaryApiService = {
       gamification_event: 'report_submitted',
       notification_event: 'report_received',
     });
-    assertApiSuccess(response, 'Nao foi possivel denunciar o comentario.');
-    return readLegalMutationProgress(response);
+    const envelope = assertApiSuccess<{ reported?: boolean; duplicate?: boolean }>(
+      response,
+      'Não foi possível denunciar o comentário.',
+    );
+    const payload = unwrap(envelope.raw, {} as { reported?: boolean; duplicate?: boolean });
+    return {
+      ...readLegalMutationProgress(payload, envelope.raw),
+      duplicate: Boolean(payload.duplicate),
+    };
   },
 
   async setContentReaction(
@@ -895,7 +903,7 @@ export const legalCommentaryApiService = {
     });
     const envelope = assertApiSuccess<{ targetKey: string; likes: number; dislikes: number; userReaction: 'like' | 'dislike' | null }>(
       response,
-      'Nao foi possivel registrar a reacao.',
+      'Não foi possível registrar a reação.',
     );
     return unwrap(envelope.raw, {
       targetKey,
@@ -939,7 +947,7 @@ export const legalCommentaryApiService = {
 
   async saveAdminLaw(payload: Partial<LawDetail> & Record<string, unknown>): Promise<LawDetail> {
     const response = await apiClient.post(ENDPOINTS.legalCommentary.adminSave, payload);
-    const envelope = assertApiSuccess<LawDetail>(response, 'Nao foi possivel salvar a lei.');
+    const envelope = assertApiSuccess<LawDetail>(response, 'Não foi possível salvar a lei.');
     const law = unwrap<LawDetail>(envelope.raw, {} as LawDetail);
     invalidateLegalUserStateCaches();
     return law;
@@ -947,7 +955,7 @@ export const legalCommentaryApiService = {
 
   async deleteAdminLaw(id: string): Promise<void> {
     const response = await apiClient.post(`${ENDPOINTS.legalCommentary.adminDelete}?id=${encodeURIComponent(id)}`);
-    assertApiSuccess(response, 'Nao foi possivel remover a lei.');
+    assertApiSuccess(response, 'Não foi possível remover a lei.');
     invalidateLegalUserStateCaches();
   },
 
@@ -967,7 +975,7 @@ export const legalCommentaryApiService = {
       url,
       persist,
     });
-    const envelope = assertApiSuccess<PlanaltoImportPayload>(response, 'Nao foi possivel importar a lei do Planalto.');
+    const envelope = assertApiSuccess<PlanaltoImportPayload>(response, 'Não foi possível importar a lei do Planalto.');
     const payload = unwrap<PlanaltoImportPayload>(envelope.raw, {} as PlanaltoImportPayload);
     if (persist) {
       invalidateLegalUserStateCaches();
@@ -977,7 +985,7 @@ export const legalCommentaryApiService = {
 
   async syncAdminLaw(id: string): Promise<PlanaltoImportPayload> {
     const response = await apiClient.post(ENDPOINTS.legalCommentary.adminSync, { id });
-    const envelope = assertApiSuccess<PlanaltoImportPayload>(response, 'Nao foi possivel sincronizar esta lei.');
+    const envelope = assertApiSuccess<PlanaltoImportPayload>(response, 'Não foi possível sincronizar esta lei.');
     const payload = unwrap<PlanaltoImportPayload>(envelope.raw, {} as PlanaltoImportPayload);
     invalidateLegalUserStateCaches();
     return payload;
@@ -1014,7 +1022,7 @@ export const legalCommentaryApiService = {
       }, {
         timeout: LEGAL_AI_GENERATION_TIMEOUT_MS,
       });
-      const envelope = assertApiSuccess<LegalEditorialGenerationResult>(response, 'Nao foi possivel gerar o conteudo com IA.');
+      const envelope = assertApiSuccess<LegalEditorialGenerationResult>(response, 'Não foi possível gerar o conteúdo com IA.');
       const payload = unwrap<LegalEditorialGenerationResult>(envelope.raw, {} as LegalEditorialGenerationResult);
       return {
         ...payload,
@@ -1022,7 +1030,7 @@ export const legalCommentaryApiService = {
         sectionEditorial: normalizeSectionEditorial(asRecord(payload).sectionEditorial),
       };
     } catch (error: unknown) {
-      const message = readApiErrorMessage(error, 'Nao foi possivel gerar o conteudo com IA.');
+      const message = readApiErrorMessage(error, 'Não foi possível gerar o conteúdo com IA.');
       throw new Error(normalizeAiGenerationErrorMessage(message));
     }
   },
@@ -1032,7 +1040,7 @@ export const legalCommentaryApiService = {
       lawId,
       articleIds,
     });
-    const envelope = assertApiSuccess<{ run: LegalEditorialBatchRun }>(response, 'Nao foi possivel iniciar o lote editorial.');
+    const envelope = assertApiSuccess<{ run: LegalEditorialBatchRun }>(response, 'Não foi possível iniciar o lote editorial.');
     return unwrap<{ run: LegalEditorialBatchRun }>(envelope.raw, { run: {} as LegalEditorialBatchRun }).run;
   },
 
@@ -1054,7 +1062,7 @@ export const legalCommentaryApiService = {
     const response = await apiClient.post(ENDPOINTS.legalCommentary.adminBatchRetry, {
       runId,
     });
-    const envelope = assertApiSuccess<{ run: LegalEditorialBatchRun }>(response, 'Nao foi possivel reprocessar os artigos falhados.');
+    const envelope = assertApiSuccess<{ run: LegalEditorialBatchRun }>(response, 'Não foi possível reprocessar os artigos falhados.');
     return unwrap<{ run: LegalEditorialBatchRun }>(envelope.raw, { run: {} as LegalEditorialBatchRun }).run;
   },
 
@@ -1062,7 +1070,7 @@ export const legalCommentaryApiService = {
     const response = await apiClient.post(ENDPOINTS.legalCommentary.adminBatchStop, {
       runId,
     });
-    const envelope = assertApiSuccess<{ run: LegalEditorialBatchRun }>(response, 'Nao foi possivel interromper o lote editorial.');
+    const envelope = assertApiSuccess<{ run: LegalEditorialBatchRun }>(response, 'Não foi possível interromper o lote editorial.');
     return unwrap<{ run: LegalEditorialBatchRun }>(envelope.raw, { run: {} as LegalEditorialBatchRun }).run;
   },
 };

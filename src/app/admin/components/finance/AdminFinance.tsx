@@ -2222,8 +2222,8 @@ const AdminFinance = ({
         title={pendingRefundDecision?.resolution === 'approved' ? 'Aprovar reembolso' : 'Enviar proposta para continuar'}
         description={
           pendingRefundDecision?.resolution === 'approved'
-            ? 'A transacao selecionada sera marcada como reembolsada e o estado local sera recarregado pelo fluxo oficial.'
-            : 'O usuario recebera um email com uma proposta de permanencia baseada no motivo informado. A solicitacao continuara em analise.'
+            ? 'A transação selecionada será marcada como reembolsada e o estado local será recarregado pelo fluxo oficial.'
+            : 'O usuário receberá um e-mail com uma proposta de permanência baseada no motivo informado. A solicitação continuará em análise.'
         }
         confirmLabel={pendingRefundDecision?.resolution === 'approved' ? 'Aprovar reembolso' : 'Enviar proposta'}
         tone="primary"

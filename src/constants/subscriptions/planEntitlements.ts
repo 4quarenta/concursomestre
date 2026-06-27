@@ -77,7 +77,7 @@ export const PLAN_USAGE_LIMIT_DEFINITIONS: PlanUsageLimitDefinition[] = [
   {
     key: 'ad_interstitial_answer_interval',
     label: 'Intervalo do interstitial',
-    description: 'Exibe um interstitial apos X questoes respondidas. Use 1 para tentar exibir a cada resposta.',
+    description: 'Exibe um interstitial após X questões respondidas. Use 1 para tentar exibir a cada resposta.',
     inputLabel: 'respostas',
   },
 ];
@@ -232,7 +232,7 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   {
     key: 'question.share',
     label: 'Card: compartilhar',
-    description: 'Permite compartilhar questoes.',
+    description: 'Permite compartilhar questões.',
   },
   {
     key: 'question.full_statistics',
@@ -267,17 +267,17 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'ads.navigation_pop',
-    label: 'Ads: pop de navegacao',
-    description: 'Permite abrir uma chamada publicitaria controlada durante navegacao entre paginas.',
+    label: 'Ads: pop de navegação',
+    description: 'Permite abrir uma chamada publicitária controlada durante navegação entre páginas.',
   },
   {
     key: 'ads.internal_sponsorships',
-    label: 'Ads: patrocinio interno',
+    label: 'Ads: patrocínio interno',
     description: 'Permite chamadas comerciais internas da plataforma.',
   },
   {
     key: 'ads.reduced',
-    label: 'Ads: exibicao reduzida',
+    label: 'Ads: exibição reduzida',
     description: 'Aplica uma experiência com menos anúncios, sem interrupções laterais/entre questões.',
   },
   {
@@ -288,8 +288,8 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'basic_statistics',
-    label: 'Estatisticas basicas',
-    description: 'Permite ver desempenho e historico essencial de resolucao.',
+    label: 'Estatísticas básicas',
+    description: 'Permite ver desempenho e histórico essencial de resolução.',
   },
   {
     key: 'community_comments',
@@ -304,13 +304,13 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'detailed_analysis',
-    label: 'Analise detalhada',
+    label: 'Análise detalhada',
     description: 'Libera análises premium mais profundas por questão.',
   },
   {
     key: 'error_notebook',
     label: 'Caderno de erros',
-    description: 'Libera recursos avancados para revisar erros e recorrencias.',
+    description: 'Libera recursos avançados para revisar erros e recorrências.',
   },
   {
     key: 'exclusive_simulations',
@@ -330,7 +330,7 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'priority_support',
-    label: 'Suporte prioritario',
+    label: 'Suporte prioritário',
     description: 'Prioriza o atendimento do assinante em filas e suporte.',
   },
   {
@@ -346,38 +346,38 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   {
     key: 'lei.doutrina',
     label: 'Lei comentada: doutrina',
-    description: 'Libera os cards de doutrina e entendimento doutrinario no artigo.',
+    description: 'Libera os cards de doutrina e entendimento doutrinário no artigo.',
   },
   {
     key: 'lei.macete',
     label: 'Lei comentada: macete',
-    description: 'Libera o card premium de memorizacao e macete rapido.',
+    description: 'Libera o card premium de memorização e macete rápido.',
   },
   {
     key: 'lei.como_cai',
     label: 'Lei comentada: como cai em prova',
-    description: 'Libera o bloco com estrategia e padrao de cobranca.',
+    description: 'Libera o bloco com estratégia e padrão de cobrança.',
   },
   {
     key: 'lei.jurisprudencia',
-    label: 'Lei comentada: jurisprudencia',
+    label: 'Lei comentada: jurisprudência',
     description: 'Libera o resumo jurisprudencial relevante do artigo.',
   },
   {
     key: 'lei.sumulas',
-    label: 'Lei comentada: sumulas',
-    description: 'Libera sumulas e enunciados relacionados ao artigo.',
+    label: 'Lei comentada: súmulas',
+    description: 'Libera súmulas e enunciados relacionados ao artigo.',
   },
   {
     key: 'lei.questoes',
-    label: 'Lei comentada: questoes relacionadas',
-    description: 'Libera o bloco de pratica conectado ao artigo.',
+    label: 'Lei comentada: questões relacionadas',
+    description: 'Libera o bloco de prática conectado ao artigo.',
     limitKey: 'lei_related_questions_limit',
   },
   {
     key: 'lei.raiox',
     label: 'Lei comentada: raio-X do artigo',
-    description: 'Libera o mapa estrategico de importancia, tema e conexoes do artigo.',
+    description: 'Libera o mapa estratégico de importância, tema e conexões do artigo.',
   },
   {
     key: 'lei.anotacoes',
@@ -392,7 +392,7 @@ export const PLAN_BENEFIT_DEFINITIONS: PlanBenefitDefinition[] = [
   },
   {
     key: 'lei.favoritos',
-    label: 'Lei comentada: favoritar lei/secao',
+    label: 'Lei comentada: favoritar lei/seção',
     description: 'Permite favoritar leis, seções e artigos da Lei Comentada.',
     limitKey: 'lei_favorites_limit',
   },

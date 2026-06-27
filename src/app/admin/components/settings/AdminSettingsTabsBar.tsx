@@ -33,7 +33,7 @@ interface AdminSettingsTabsBarProps {
 }
 
 /**
- * Renderiza a navegacao local e o CTA de persistencia da aba de configuracoes.
+ * Renderiza a navegação local e o CTA de persistência da aba de configurações.
  * Mantem o header da tela enxuto e reaproveitavel sem mover regra de negocio.
  *
  * @since 1.0.0

@@ -336,7 +336,7 @@ describe('adminService', () => {
 
     const logs = await adminService.getSystemLogs();
 
-    expect(mockGet).toHaveBeenCalledWith('admin/logs.php');
+    expect(mockGet).toHaveBeenCalledWith('system/logs.php');
     expect(logs).toEqual(['linha 1', 'linha 2']);
   });
 
@@ -353,7 +353,7 @@ describe('adminService', () => {
 
     const payload = await adminService.getSystemLogPayload();
 
-    expect(mockGet).toHaveBeenCalledWith('admin/logs.php');
+    expect(mockGet).toHaveBeenCalledWith('system/logs.php');
     expect(payload.size_bytes).toBe(120);
     expect(payload.lines).toEqual(['linha 1']);
   });
@@ -369,7 +369,7 @@ describe('adminService', () => {
 
     const payload = await adminService.clearSystemLogs();
 
-    expect(mockPost).toHaveBeenCalledWith('admin/logs.php?action=clear', {});
+    expect(mockPost).toHaveBeenCalledWith('system/logs.php?action=clear', {});
     expect(payload.cleared).toBe(true);
   });
 
@@ -378,7 +378,7 @@ describe('adminService', () => {
 
     await adminService.downloadSystemLogs();
 
-    expect(mockDownloadAuthenticatedFile).toHaveBeenCalledWith('admin/logs.php?action=download', 'concurso-mestre-logs.log');
+    expect(mockDownloadAuthenticatedFile).toHaveBeenCalledWith('system/logs.php?action=download', 'concurso-mestre-logs.log');
   });
 
   it('loads user details through the official admin endpoint', async () => {

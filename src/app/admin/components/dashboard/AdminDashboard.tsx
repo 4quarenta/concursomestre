@@ -352,6 +352,13 @@ const AdminDashboard = ({
   }, []);
 
   const unresolvedReportsCount = Number(dashboardAnalytics.counts.reports_count || 0);
+  const pendingFeedbackAlertsCount = Number(dashboardAnalytics.counts.feedback_count || stats.feedback_count || 0);
+  const pendingSupportThreadsAlertsCount = Number(
+    (dashboardAnalytics.counts as { support_threads_count?: number }).support_threads_count
+      || stats.support_threads_count
+      || feedbackThreads.filter((thread) => !['resolved', 'closed'].includes(String(thread.status || '').toLowerCase())).length
+      || 0,
+  );
   const activeCouponsCount = Number(systemSettings?.coupons?.length || 0);
 
   const refundRequestsCount = useMemo(() => (
@@ -442,7 +449,7 @@ const AdminDashboard = ({
       iconClassName: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300',
     },
     {
-      label: 'Usuarios cadastrados',
+      label: 'Usuários cadastrados',
       value: formatNumber(periodUsersCount),
       helper: isAllPeriod
         ? `${formatNumber(stats.new_users || 0)} novos nos ultimos 30 dias`
@@ -451,7 +458,7 @@ const AdminDashboard = ({
       iconClassName: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-300',
     },
     {
-      label: 'Comentarios pendentes',
+      label: 'Comentários pendentes',
       value: formatNumber(platformTotals.pendingComments),
       helper: `${formatNumber(platformTotals.comments)} comentários no total`,
       icon: MessageSquare,
@@ -472,7 +479,7 @@ const AdminDashboard = ({
     { label: 'Rankings', value: formatNumber(platformTotals.rankings), helper: 'Estruturas competitivas ativas' },
     { label: 'Materiais publicados', value: formatNumber(platformTotals.publishedMaterials), helper: `${formatNumber(platformTotals.materials)} materiais totais` },
     { label: 'Vendedores ativos', value: formatNumber(platformTotals.vendors), helper: 'Marketplace habilitado para venda' },
-    { label: 'Comentarios aprovados', value: formatNumber(platformTotals.approvedComments), helper: `${formatNumber(platformTotals.spamComments)} em spam` },
+    { label: 'Comentários aprovados', value: formatNumber(platformTotals.approvedComments), helper: `${formatNumber(platformTotals.spamComments)} em spam` },
   ]), [platformTotals.approvedComments, platformTotals.exams, platformTotals.laws, platformTotals.materials, platformTotals.publishedMaterials, platformTotals.rankings, platformTotals.spamComments, platformTotals.vendors]);
 
   const quickAlerts = useMemo(() => ([
@@ -481,6 +488,18 @@ const AdminDashboard = ({
       value: unresolvedReportsCount,
       description: 'Itens que ainda exigem decisao da equipe.',
       onClick: () => onNavigate?.('support', 'reports'),
+    },
+    {
+      label: 'Solicitacoes aguardando resposta',
+      value: pendingSupportThreadsAlertsCount,
+      description: 'Pedidos de ajuda e comentários do professor em aberto.',
+      onClick: () => onNavigate?.('support', 'threads'),
+    },
+    {
+      label: 'Feedbacks e avaliacoes novas',
+      value: pendingFeedbackAlertsCount,
+      description: 'Avaliacoes, sugestoes e relatos recentes para triagem.',
+      onClick: () => onNavigate?.('support', 'feedback'),
     },
     {
       label: 'Reembolsos pendentes',
@@ -500,7 +519,15 @@ const AdminDashboard = ({
       description: 'Fila editorial de comentários em análise.',
       onClick: () => onNavigate?.('support', 'comments'),
     },
-  ]), [dashboardAnalytics.counts, onNavigate, pendingMaterialsCount, refundRequestsCount, unresolvedReportsCount]);
+  ]), [
+    dashboardAnalytics.counts,
+    onNavigate,
+    pendingFeedbackAlertsCount,
+    pendingMaterialsCount,
+    pendingSupportThreadsAlertsCount,
+    refundRequestsCount,
+    unresolvedReportsCount,
+  ]);
 
   const quickLinks = useMemo(() => ([
     { label: 'Gerenciar questões', description: 'Banco principal e edição manual.', onClick: () => onNavigate?.('operation', 'questions') },
@@ -647,7 +674,7 @@ const AdminDashboard = ({
                 A plataforma hoje opera com {formatNumber(platformTotals.questions)} questões, {formatNumber(platformTotals.laws)} leis comentadas, {formatNumber(platformTotals.exams)} provas cadastradas, {formatNumber(platformTotals.rankings)} rankings e {formatNumber(platformTotals.publishedMaterials)} materiais publicados no marketplace.
               </p>
               <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                No relacionamento, ha {formatNumber(platformTotals.comments)} comentários registrados, sendo {formatNumber(platformTotals.pendingComments)} pendentes, {formatNumber(platformTotals.approvedComments)} aprovados e {formatNumber(platformTotals.spamComments)} marcados como spam.
+                No relacionamento, há {formatNumber(platformTotals.comments)} comentários registrados, sendo {formatNumber(platformTotals.pendingComments)} pendentes, {formatNumber(platformTotals.approvedComments)} aprovados e {formatNumber(platformTotals.spamComments)} marcados como spam.
               </p>
             </div>
           </div>
@@ -666,7 +693,7 @@ const AdminDashboard = ({
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {isFeedbackLoading
                   ? 'Carregando conversas recentes do suporte...'
-                  : 'Ainda nao houve conversas recentes para exibir aqui.'}
+                  : 'Ainda não houve conversas recentes para exibir aqui.'}
               </p>
             ) : recentFeedback.map((thread) => {
               const status = getThreadStatusMeta(thread.status);
@@ -679,7 +706,7 @@ const AdminDashboard = ({
                   className="w-full border-b border-slate-100 pb-4 text-left last:border-b-0 last:pb-0 dark:border-slate-800"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{thread.user_name || 'Usuario'}</p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{thread.user_name || 'Usuário'}</p>
                     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusBadgeClassName(status.tone)}`}>
                       {status.label}
                     </span>

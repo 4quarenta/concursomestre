@@ -3,12 +3,56 @@
 import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { ArrowRight, CheckCircle2, Clock3, CreditCard, ShieldCheck, XCircle } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Clock3, CreditCard, Loader2, ShieldCheck, XCircle } from 'lucide-react';
 import { useAuth } from '@providers/AuthProvider';
+import { hasActivePlanAccess } from '@services/plans/planAccess';
+import type { Plan, UserSubscription } from '@types';
 import { buildProfilePath } from '../../profile/profileNavigation';
 
 const successStatuses = new Set(['success', 'approved', 'paid', 'complete', 'completed']);
 const failureStatuses = new Set(['failure', 'failed', 'error', 'cancel', 'cancelled', 'canceled']);
+
+const formatCurrency = (value?: number | null): string | null => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(value);
+};
+
+const formatPlanCycle = (plan?: Plan | null): string => {
+  const count = Number(plan?.interval_count || 1);
+  const unit = String(plan?.interval_unit || '').toLowerCase();
+
+  if (unit === 'year') return count > 1 ? `${count} anos` : 'Anual';
+  if (unit === 'month') {
+    if (count === 3) return 'Trimestral';
+    if (count === 6) return 'Semestral';
+    return count > 1 ? `${count} meses` : 'Mensal';
+  }
+  if (unit === 'week') return count > 1 ? `${count} semanas` : 'Semanal';
+  if (unit === 'day') return count > 1 ? `${count} dias` : 'Diário';
+
+  return 'Ciclo ativo';
+};
+
+const resolveSubscriptionAmount = (subscription?: UserSubscription | null): string | null => {
+  const candidates = [
+    subscription?.recurring_amount,
+    subscription?.next_renewal_amount,
+    subscription?.plan?.price,
+  ];
+
+  for (const candidate of candidates) {
+    const formatted = formatCurrency(Number(candidate));
+    if (formatted) return formatted;
+  }
+
+  return null;
+};
 
 function SubscriptionStatusFallback() {
   return (
@@ -43,28 +87,69 @@ function SubscriptionStatusContent() {
   const params = useParams<{ status?: string }>();
   const searchParams = useSearchParams();
   const { currentUser, isLoading, refreshUser } = useAuth();
-  const [refreshAttempted, setRefreshAttempted] = React.useState(false);
+  const [refreshingSubscription, setRefreshingSubscription] = React.useState(false);
+  const refreshAttemptsRef = React.useRef(0);
   const rawStatus = String(params.status || 'success').toLowerCase();
   const isFailure = failureStatuses.has(rawStatus);
   const isSuccess = successStatuses.has(rawStatus) || !isFailure;
   const provider = String(searchParams.get('provider') || 'Stripe');
   const sessionId = String(searchParams.get('session_id') || '');
+  const activeSubscription = hasActivePlanAccess(currentUser) ? currentUser?.subscription : null;
+  const planName = activeSubscription?.plan?.name || currentUser?.planDisplayName || currentUser?.billing?.plan || 'Premium';
+  const planCycle = formatPlanCycle(activeSubscription?.plan);
+  const confirmedAmount = resolveSubscriptionAmount(activeSubscription);
+  const hasSyncedSubscription = Boolean(activeSubscription);
 
   React.useEffect(() => {
-    if (!currentUser || refreshAttempted) {
+    if (!isSuccess || !currentUser || refreshAttemptsRef.current > 0) {
       return;
     }
 
-    setRefreshAttempted(true);
-    void refreshUser();
-  }, [currentUser, refreshAttempted, refreshUser]);
+    let isMounted = true;
+
+    const runRefresh = async () => {
+      setRefreshingSubscription(true);
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        refreshAttemptsRef.current += 1;
+
+        try {
+          await refreshUser();
+        } catch {
+          // A tela de retorno nao deve virar erro visual por instabilidade momentanea.
+        }
+
+        if (!isMounted) return;
+
+        if (attempt < 2) {
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, 1200);
+          });
+        }
+      }
+
+      if (isMounted) {
+        setRefreshingSubscription(false);
+      }
+    };
+
+    void runRefresh();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, isSuccess, refreshUser]);
 
   const title = isSuccess ? 'Parabéns pela assinatura' : 'Checkout não concluído';
   const subtitle = isSuccess
-    ? 'Recebemos o retorno do pagamento e estamos sincronizando seu acesso premium.'
+    ? hasSyncedSubscription
+      ? `O plano ${planName} foi confirmado e seu acesso já está pronto para uso.`
+      : 'Recebemos o retorno do pagamento e estamos sincronizando seu acesso premium.'
     : 'Não foi possível confirmar sua assinatura neste retorno.';
   const description = isSuccess
-    ? 'Se o pagamento já foi aprovado, seus recursos ficam disponíveis automaticamente. Você pode acompanhar plano, cartões e transações em Minha assinatura.'
+    ? hasSyncedSubscription
+      ? 'Você pode acompanhar plano, cartões, transações e renovação em Minha assinatura.'
+      : 'Se o pagamento já foi aprovado, seus recursos ficam disponíveis automaticamente em alguns segundos. Você pode acompanhar plano, cartões e transações em Minha assinatura.'
     : 'Você pode tentar novamente ou escolher outro método de pagamento. Nenhum acesso premium novo foi liberado por esta tentativa.';
 
   return (
@@ -103,16 +188,20 @@ function SubscriptionStatusContent() {
 
           <div className="grid border-b border-slate-100 dark:border-slate-800 md:grid-cols-3">
             <div className="border-t border-slate-100 px-6 py-5 first:border-t-0 dark:border-slate-800 md:border-l md:border-t-0 md:first:border-l-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Status</p>
-              <p className="mt-3 text-lg font-black leading-none">{isSuccess ? 'Em sincronização' : 'Não concluído'}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Plano</p>
+              <p className="mt-3 text-lg font-black leading-none">{isSuccess ? planName : 'Não concluído'}</p>
               <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
-                {isLoading ? 'Carregando sessão...' : currentUser ? 'Sessão identificada.' : 'Faça login para ver sua assinatura.'}
+                {isSuccess ? planCycle : 'Nenhuma assinatura nova foi ativada.'}
               </p>
             </div>
             <div className="border-t border-slate-100 px-6 py-5 dark:border-slate-800 md:border-l md:border-t-0">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Provedor</p>
-              <p className="mt-3 text-lg font-black leading-none">{provider}</p>
-              <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">Checkout seguro.</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Cobrança confirmada</p>
+              <p className="mt-3 text-lg font-black leading-none">
+                {isSuccess ? confirmedAmount || 'Sincronizando' : 'Não confirmada'}
+              </p>
+              <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                {isSuccess && !confirmedAmount ? 'O valor aparece assim que o backend concluir a conciliação.' : provider}
+              </p>
             </div>
             <div className="border-t border-slate-100 px-6 py-5 dark:border-slate-800 md:border-l md:border-t-0">
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Próximo passo</p>
@@ -132,7 +221,9 @@ function SubscriptionStatusContent() {
               {[
                 {
                   label: 'Acesso',
-                  hint: isSuccess ? 'Liberado assim que a Stripe confirmar.' : 'Nada foi alterado no seu plano.',
+                  hint: isSuccess
+                    ? hasSyncedSubscription ? 'Plano ativo na sua conta.' : 'Liberado assim que a Stripe confirmar.'
+                    : 'Nada foi alterado no seu plano.',
                   Icon: ShieldCheck,
                 },
                 {
@@ -160,7 +251,7 @@ function SubscriptionStatusContent() {
                 className="inline-flex h-14 items-center justify-center gap-3 rounded-2xl bg-indigo-600 px-8 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-indigo-700"
               >
                 {isSuccess ? 'Ir para minha assinatura' : 'Escolher plano'}
-                <ArrowRight size={16} />
+                {refreshingSubscription || isLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
               </Link>
               {!currentUser && (
                 <Link

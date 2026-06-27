@@ -44,7 +44,7 @@ interface AdminDatabaseNavigationProps {
 }
 
 /**
- * Navegacao interna da aba Operacao.
+ * Navegação interna da aba Operação.
  * Organiza as secoes por dominio para deixar claro o que pertence a cada grupo.
  *
  * @since 1.0.0
@@ -103,14 +103,14 @@ const AdminDatabaseNavigation = ({
 
         <div className={ADMIN_PAGE_PANEL_CLASS}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Pertence a</p>
-          <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">{activeCategoryConfig?.label || 'Conteudo'}</p>
+          <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">{activeCategoryConfig?.label || 'Conteúdo'}</p>
           <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
             {activeCategoryConfig?.description}
           </p>
 
           {activeSectionMeta ? (
             <div className={`mt-4 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Secao ativa</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Seção ativa</p>
               <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">{activeSectionMeta.label}</p>
               <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
                 {activeSectionMeta.description}
@@ -122,9 +122,9 @@ const AdminDatabaseNavigation = ({
 
       <div className={ADMIN_PAGE_PANEL_CLASS}>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Secoes do dominio</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Seções do domínio</p>
           <p className="mt-2 text-sm font-black text-slate-900 dark:text-slate-100">
-            {activeCategoryConfig?.label || 'Conteudo'} organizado por responsabilidade
+            {activeCategoryConfig?.label || 'Conteúdo'} organizado por responsabilidade
           </p>
         </div>
 

@@ -3,6 +3,9 @@ import type { AdminFeedbackThread } from '@services/admin/adminService';
 import {
   getEditorialAdminAction,
   getEffectiveFeedbackType,
+  countPendingFeedback,
+  isFeedbackInboxItem,
+  isSupportThreadItem,
   parseEditorialRequestContext,
 } from '../AdminFeedback';
 
@@ -51,5 +54,39 @@ describe('AdminFeedback editorial request classification', () => {
 
     expect(getEffectiveFeedbackType(feedback)).toBe('support');
     expect(getEditorialAdminAction(feedback)).toBeNull();
+  });
+
+  it('counts only requests that are not resolved', () => {
+    expect(countPendingFeedback([
+      makeFeedback({ id: 1, status: 'new' }),
+      makeFeedback({ id: 2, status: 'read' }),
+      makeFeedback({ id: 3, status: 'resolved' }),
+    ])).toBe(2);
+  });
+
+  it('keeps feedback inbox and support threads in separate admin queues', () => {
+    const teacherRequest = makeFeedback();
+    const supportThread = makeFeedback({ reason: 'Ajuda com a conta', details: 'Preciso de ajuda.' });
+    const platformRating = makeFeedback({
+      type: 'platform-rating',
+      reason: 'Avaliar plataforma',
+      public_rating: 5,
+      details: 'Gostei bastante.',
+    });
+    const bugReport = makeFeedback({
+      type: 'bug',
+      reason: 'Bug',
+      details: 'Algo quebrou na tela.',
+    });
+
+    expect(isSupportThreadItem(teacherRequest)).toBe(true);
+    expect(isSupportThreadItem(supportThread)).toBe(true);
+    expect(isSupportThreadItem(platformRating)).toBe(false);
+    expect(isSupportThreadItem(bugReport)).toBe(true);
+
+    expect(isFeedbackInboxItem(teacherRequest)).toBe(false);
+    expect(isFeedbackInboxItem(supportThread)).toBe(false);
+    expect(isFeedbackInboxItem(platformRating)).toBe(true);
+    expect(isFeedbackInboxItem(bugReport)).toBe(false);
   });
 });

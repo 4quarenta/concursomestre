@@ -291,7 +291,7 @@ const getQuestionGroupTitle = (group: Partial<AdminQuestionGroupItem> | null | u
 const readImageFileAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => resolve(String(reader.result || ''));
-  reader.onerror = () => reject(reader.error || new Error('Nao foi possivel ler a imagem.'));
+  reader.onerror = () => reject(reader.error || new Error('Não foi possível ler a imagem.'));
   reader.readAsDataURL(file);
 });
 
@@ -1163,7 +1163,7 @@ const AdminQuestionEditorPage = ({
                               />
                             </label>
                             <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">
-                              A imagem sera salva junto com a alternativa.
+                              A imagem será salva junto com a alternativa.
                             </span>
                           </div>
                         </div>
@@ -1353,8 +1353,8 @@ const AdminQuestionEditorPage = ({
                     {publicationDateLabel
                       ? `${publishState === 'scheduled' ? 'Programada para' : 'Publicada em'} ${publicationDateLabel}`
                       : editingQuestion
-                        ? 'Ainda sem data de publicacao registrada.'
-                        : 'A data sera registrada ao publicar.'}
+                        ? 'Ainda sem data de publicação registrada.'
+                        : 'A data será registrada ao publicar.'}
                   </p>
                 </div>
               </div>

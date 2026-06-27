@@ -29,6 +29,7 @@ import AdminQuestionEditorPage from '../../../../components/questions/AdminQuest
 import AdminStandaloneShell from '../../../../components/shared/AdminStandaloneShell';
 import { useAdminManualQuestionEditor } from '../../../../components/questions/useAdminManualQuestionEditor';
 import { buildAdminPath, buildAdminQuestionEditPath } from '../../../../config/adminPageNavigationConfig';
+import { getReportTargetId } from '../../../../components/reports/reportModeration';
 import {
   ADMIN_PRIMARY_BUTTON_CLASS,
   ADMIN_SECONDARY_BUTTON_CLASS,
@@ -79,6 +80,25 @@ const AdminQuestionEditPage = () => {
     () => reports.find((report: ErrorReport) => String(report.id) === String(reportId || '')) || null,
     [reportId, reports],
   );
+
+  const linkedReports = React.useMemo(() => {
+    if (!reportId || !questionId || isNewQuestion) {
+      return linkedReport ? [linkedReport] : [];
+    }
+
+    const normalizedQuestionId = String(questionId || '');
+    const relatedReports = reports.filter((report: ErrorReport) => (
+      report.targetType === 'question'
+      && report.status === 'pending'
+      && String(getReportTargetId(report) || '') === normalizedQuestionId
+    ));
+
+    if (linkedReport && !relatedReports.some((report) => String(report.id) === String(linkedReport.id))) {
+      return [linkedReport, ...relatedReports];
+    }
+
+    return relatedReports;
+  }, [isNewQuestion, linkedReport, questionId, reportId, reports]);
 
   React.useEffect(() => {
     if (!isAuthLoading && !canAccessAdminPanel(currentUser)) {
@@ -247,13 +267,14 @@ const AdminQuestionEditPage = () => {
       }
       upsertQuestion(payload);
 
-      if (linkedReport && linkedReport.status === 'pending') {
-        await resolveReport(
-          linkedReport.id,
+      const pendingLinkedReports = linkedReports.filter((report) => report.status === 'pending');
+      if (pendingLinkedReports.length > 0) {
+        await Promise.all(pendingLinkedReports.map((report) => resolveReport(
+          report.id,
           'resolved',
-          getReportResolutionText(linkedReport),
-          linkedReport.evidenceUrl,
-        );
+          getReportResolutionText(report),
+          report.evidenceUrl,
+        )));
       }
 
       router.push(returnPath);
@@ -287,28 +308,29 @@ const AdminQuestionEditPage = () => {
   };
 
   const handleResolveLinkedReportInline = React.useCallback(async (
+    report: ErrorReport,
     status: 'resolved' | 'ignored',
   ) => {
-    if (!linkedReport || linkedReport.status !== 'pending') {
+    if (!report || report.status !== 'pending') {
       return;
     }
 
     setIsResolvingReportInline(true);
     try {
       await resolveReport(
-        linkedReport.id,
+        report.id,
         status,
         status === 'resolved'
-          ? getReportResolutionText(linkedReport)
+          ? getReportResolutionText(report)
           : 'Denúncia analisada e ignorada pela moderação administrativa.',
-        linkedReport.evidenceUrl,
+        report.evidenceUrl,
       );
     } catch (error) {
       clientLog.warn('Error resolving linked report inline:', error);
     } finally {
       setIsResolvingReportInline(false);
     }
-  }, [linkedReport, resolveReport]);
+  }, [resolveReport]);
 
   const renderAdminShell = (children: React.ReactNode) => (
     <AdminStandaloneShell
@@ -367,7 +389,7 @@ const AdminQuestionEditPage = () => {
           <>
             <button
               type="button"
-              onClick={() => void handleResolveLinkedReportInline('ignored')}
+              onClick={() => linkedReport && void handleResolveLinkedReportInline(linkedReport, 'ignored')}
               disabled={isResolvingReportInline}
               className="inline-flex items-center gap-2 rounded-sm border border-rose-300 bg-rose-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-300"
             >
@@ -376,7 +398,7 @@ const AdminQuestionEditPage = () => {
             </button>
             <button
               type="button"
-              onClick={() => void handleResolveLinkedReportInline('resolved')}
+              onClick={() => linkedReport && void handleResolveLinkedReportInline(linkedReport, 'resolved')}
               disabled={isResolvingReportInline}
               className={ADMIN_PRIMARY_BUTTON_CLASS}
             >
@@ -388,6 +410,49 @@ const AdminQuestionEditPage = () => {
       </div>
     </div>
   );
+
+  const additionalLinkedReportsContext = linkedReports.length > 1 ? (
+    <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+      <p className="mb-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+        Outras denúncias desta questão
+      </p>
+      <div className="divide-y divide-slate-200 border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950">
+        {linkedReports.slice(1).map((report) => (
+          <div key={report.id} className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-black text-slate-900 dark:text-slate-100">{report.reason}</p>
+              <p className="mt-1 max-w-4xl text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
+                {report.details || 'Sem detalhes adicionais.'}
+              </p>
+              <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                Denunciante: {report.userName || 'Não informado'} - ID #{report.id}
+              </p>
+            </div>
+            {report.status === 'pending' ? (
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleResolveLinkedReportInline(report, 'ignored')}
+                  disabled={isResolvingReportInline}
+                  className="inline-flex items-center gap-2 rounded-sm border border-rose-300 bg-rose-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-300"
+                >
+                  Ignorar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleResolveLinkedReportInline(report, 'resolved')}
+                  disabled={isResolvingReportInline}
+                  className={ADMIN_PRIMARY_BUTTON_CLASS}
+                >
+                  Resolver
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : null;
 
   if (isAuthLoading || isQuestionLoading) {
     return renderAdminShell(
@@ -441,7 +506,12 @@ const AdminQuestionEditPage = () => {
   return renderAdminShell(
     <AdminQuestionEditorPage
       {...editor.manualQuestionModalProps}
-      reportContext={reportId ? reportContext : undefined}
+      reportContext={reportId ? (
+        <>
+          {reportContext}
+          {additionalLinkedReportsContext}
+        </>
+      ) : undefined}
       onClose={closeEditor}
     />,
   );

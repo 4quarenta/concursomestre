@@ -54,6 +54,7 @@ export interface CommentSubmissionResult {
 export interface CommentMutationResult {
   success: boolean;
   message?: string;
+  duplicate?: boolean;
   xpGain?: number;
   newXp?: number;
   newLevel?: number;
@@ -81,6 +82,7 @@ const normalizeCommentRecord = (comment: QuestaoComentario): QuestaoComentario =
     userAvatar: String(comment.userAvatar || record.user_avatar || record.user_photo_url || record.photo_url || record.avatar_url || ''),
     userPlan: normalizeCommentPlan(comment.userPlan || record.user_plan || record.plan_name || record.plan || record.userPlan),
     userRole: String(comment.userRole || record.user_role || record.role || record.userRole || ''),
+    userHasPendingReport: Boolean(comment.userHasPendingReport || record.user_has_pending_report || record.userHasPendingReport),
     replies: Array.isArray(comment.replies) ? comment.replies.map(normalizeCommentRecord) : [],
   };
 };
@@ -258,6 +260,7 @@ export const commentService = {
     return {
       success: true,
       message: result.message,
+      duplicate: result.duplicate,
       xpGain: result.xpGain,
       newXp: result.newXp,
       newLevel: result.newLevel,

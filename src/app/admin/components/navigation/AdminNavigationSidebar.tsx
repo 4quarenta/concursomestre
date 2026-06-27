@@ -117,11 +117,11 @@ const buildSidebarSubmenuGroups = (
     return [
       {
         id: 'support-care',
-        label: 'Atendimento',
+        label: 'Solicitações',
         items: [
-          { section: 'feedback', label: 'Feedback', description: '', badge: getSectionBadge('feedback') },
+          { section: 'feedback', label: 'Feedback e avaliações', description: '', badge: getSectionBadge('feedback') },
           { section: 'reports', label: 'Denúncias', description: '', badge: getSectionBadge('reports') },
-          { section: 'threads', label: 'Threads', description: '', badge: getSectionBadge('threads') },
+          { section: 'threads', label: 'Solicitações', description: '', badge: getSectionBadge('threads') },
         ],
       },
       {

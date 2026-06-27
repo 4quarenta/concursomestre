@@ -363,17 +363,17 @@ const deriveGeneratedSpecificSubjectLabel = (
     generatedQuestion.detailedComment,
   ].filter(Boolean).join(' '));
   const rules = [
-    { tokens: ['progressao aritmetica', ' soma dos termos da pa', ' pa '], label: 'Progressao Aritmetica' },
-    { tokens: ['progressao geometrica', ' pg '], label: 'Progressao Geometrica' },
-    { tokens: ['dialogo competitivo'], label: 'Dialogo Competitivo' },
-    { tokens: ['lei 14 133', 'licitacao', 'contratacao publica'], label: 'Nova Lei de Licitacoes' },
+    { tokens: ['progressao aritmetica', ' soma dos termos da pa', ' pa '], label: 'Progressão Aritmética' },
+    { tokens: ['progressao geometrica', ' pg '], label: 'Progressão Geométrica' },
+    { tokens: ['dialogo competitivo'], label: 'Diálogo Competitivo' },
+    { tokens: ['lei 14 133', 'licitacao', 'contratacao publica'], label: 'Nova Lei de Licitações' },
     { tokens: ['exercicio profissional', 'profissao', 'profissional'], label: 'Liberdade Profissional' },
     { tokens: ['direitos fundamentais'], label: 'Direitos Fundamentais' },
     { tokens: ['controle de constitucionalidade'], label: 'Controle de Constitucionalidade' },
     { tokens: ['ato administrativo'], label: 'Atos Administrativos' },
-    { tokens: ['administracao publica', 'principios administrativos'], label: 'Principios da Administracao Publica' },
-    { tokens: ['concordancia verbal'], label: 'Concordancia Verbal' },
-    { tokens: ['regencia verbal'], label: 'Regencia Verbal' },
+    { tokens: ['administracao publica', 'principios administrativos'], label: 'Princípios da Administração Pública' },
+    { tokens: ['concordancia verbal'], label: 'Concordância Verbal' },
+    { tokens: ['regencia verbal'], label: 'Regência Verbal' },
   ];
   const matchedRule = rules.find((rule) => rule.tokens.some((token) => sourceText.includes(token.trim())));
 
@@ -381,7 +381,7 @@ const deriveGeneratedSpecificSubjectLabel = (
     return matchedRule.label;
   }
 
-  return `Aspectos especificos de ${topicLabel || subjectLabel}`;
+  return `Aspectos específicos de ${topicLabel || subjectLabel}`;
 };
 
 const buildGeneratedQuestionPayload = ({
@@ -609,7 +609,7 @@ interface AdminQuestionsSectionProps {
 
 /**
  * Lista operacional das questoes no admin seguindo o padrao de tabela WordPress.
- * A secao centraliza busca, paginacao, acoes de linha e geracao editorial por IA.
+ * A seção centraliza busca, paginação, ações de linha e geração editorial por IA.
  *
  * @since 1.0.0
  */

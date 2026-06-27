@@ -24,12 +24,12 @@ export const shouldHideCheckoutForExistingSubscription = ({
   checkoutCompletionInProgress,
   step,
 }: CheckoutVisibilityInput): boolean => {
-  if (isAuthLoading) {
-    return true;
-  }
-
   if (checkoutCompletionInProgress || step === 'success') {
     return false;
+  }
+
+  if (isAuthLoading) {
+    return true;
   }
 
   return hasCurrentPlanMatch;

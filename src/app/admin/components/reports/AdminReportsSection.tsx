@@ -14,30 +14,25 @@ import { AlertTriangle, CheckCircle2, Image as ImageIcon, Shield } from 'lucide-
 import type { ErrorReport } from '@types';
 import { ADMIN_SURFACE_CLASS, ADMIN_SURFACE_HEADER_CLASS } from '../shared/adminPanelStyles';
 import AdminCollectionToolbar from '../shared/AdminCollectionToolbar';
+import type { GroupedReport } from './reportModeration';
 
 const REPORTS_PAGE_SIZE = 10;
 
-interface GroupedReport {
-  id: string;
-  targetId: string | number;
-  targetType: ErrorReport['targetType'];
-  reports: ErrorReport[];
-  lastReport: ErrorReport;
-}
-
 interface AdminReportsSectionProps {
   reports: GroupedReport[];
+  totalReportCount?: number;
   filter: string;
   onFilterChange: (value: string) => void;
   renderSortableHeader: (label: string, sortKey: string) => React.ReactNode;
   getReportTargetBadgeClass: (targetType: ErrorReport['targetType']) => string;
   getReportTargetLabel: (targetType: ErrorReport['targetType']) => string;
-  onInspect: (report: ErrorReport) => void;
-  onResolve: (report: ErrorReport) => void;
+  onInspect: (group: GroupedReport) => void;
+  onResolve: (group: GroupedReport) => void;
 }
 
 const AdminReportsSection = ({
   reports,
+  totalReportCount,
   filter,
   onFilterChange,
   renderSortableHeader,
@@ -47,6 +42,7 @@ const AdminReportsSection = ({
   onResolve,
 }: AdminReportsSectionProps) => {
   const [currentPage, setCurrentPage] = React.useState(1);
+  const totalDenuncias = Number(totalReportCount ?? reports.reduce((total, group) => total + group.reports.length, 0));
   const totalPages = Math.max(1, Math.ceil(reports.length / REPORTS_PAGE_SIZE));
   const visibleReports = React.useMemo(() => {
     const safePage = Math.min(currentPage, totalPages);
@@ -68,7 +64,7 @@ const AdminReportsSection = ({
         title="Denúncias"
         description="Fila de revisão e moderação de conteúdos sinalizados pelos usuários."
         itemCount={reports.length}
-        itemCountLabel="denúncias"
+        itemCountLabel={totalDenuncias === reports.length ? 'denúncias' : `grupo(s) · ${totalDenuncias} denúncia(s)`}
         searchValue={filter}
         onSearchChange={onFilterChange}
         searchPlaceholder="Buscar denúncias..."
@@ -146,14 +142,14 @@ const AdminReportsSection = ({
                     <div className="flex justify-center gap-2">
                       <button
                         type="button"
-                        onClick={() => onInspect(group.lastReport)}
+                        onClick={() => onInspect(group)}
                         className="flex items-center gap-1 rounded-lg bg-indigo-50 p-2 text-[9px] font-bold uppercase text-indigo-600 transition-colors hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50"
                       >
                         <Shield size={14} /> Moderar
                       </button>
                       <button
                         type="button"
-                        onClick={() => onResolve(group.lastReport)}
+                        onClick={() => onResolve(group)}
                         className="flex items-center gap-1 rounded-lg bg-emerald-50 p-2 text-[9px] font-bold uppercase text-emerald-600 transition-colors hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50"
                       >
                         <CheckCircle2 size={14} /> Resolver
@@ -176,7 +172,7 @@ const AdminReportsSection = ({
 
         {reports.length > REPORTS_PAGE_SIZE ? (
           <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-xs font-bold text-slate-500 dark:border-slate-800 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-            <span>Página {currentPage} de {totalPages} · {reports.length} denúncia(s)</span>
+            <span>Página {currentPage} de {totalPages} · {reports.length} alvo(s) · {totalDenuncias} denúncia(s)</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"

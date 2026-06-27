@@ -350,7 +350,7 @@ export const StudyTrackerBridge: React.FC = () => {
       resetStudyTrackerSession();
       addToast('Tempo de estudo registrado com sucesso.', 'success');
     } catch (error: unknown) {
-      addToast(error instanceof Error ? error.message : 'Nao foi possivel registrar o tempo de estudo.', 'error');
+      addToast(error instanceof Error ? error.message : 'Não foi possível registrar o tempo de estudo.', 'error');
     } finally {
       setStudyTrackerSaving(false);
       lastInteractionAtRef.current = Date.now();

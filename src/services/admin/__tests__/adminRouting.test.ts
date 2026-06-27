@@ -38,8 +38,9 @@ describe('admin routing', () => {
   });
 
   it('routes the support top-level click to the first actionable pending queue', () => {
-    expect(resolveSupportLandingSection({ comments: 2, reports: 1, feedback: 1, refunds: 1 })).toBe('comments');
-    expect(resolveSupportLandingSection({ reports: 1, feedback: 1, refunds: 1 })).toBe('reports');
+    expect(resolveSupportLandingSection({ comments: 2, reports: 1, threads: 1, feedback: 1, refunds: 1 })).toBe('comments');
+    expect(resolveSupportLandingSection({ reports: 1, threads: 1, feedback: 1, refunds: 1 })).toBe('reports');
+    expect(resolveSupportLandingSection({ threads: 1, feedback: 1, refunds: 1 })).toBe('threads');
     expect(resolveSupportLandingSection({ feedback: 1, refunds: 1 })).toBe('feedback');
     expect(resolveSupportLandingSection({ refunds: 1 })).toBe('refunds');
     expect(resolveSupportLandingSection()).toBe('feedback');

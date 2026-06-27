@@ -163,7 +163,7 @@ export const formatDateInSaoPaulo = (value?: string | number | Date | null, fall
  * Formata data e hora no horario de Sao Paulo para historicos e trilha operacional.
  * @since v1.0.0
  */
-export const formatDateTimeInSaoPaulo = (value?: string | number | Date | null, fallback = 'Data nao informada'): string => {
+export const formatDateTimeInSaoPaulo = (value?: string | number | Date | null, fallback = 'Data não informada'): string => {
   const parsedDate = parseSubscriptionDate(value);
   return parsedDate ? zonedDateTimeFormatter.format(parsedDate) : fallback;
 };

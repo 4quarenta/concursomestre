@@ -47,7 +47,10 @@ import { useTaxonomyActions } from '@/state/app-config/useTaxonomyActions';
 import { type LawSummary, type Material, type Question, type Transaction, type UserProfile } from '../../types';
 import AuthModal from '../../components/shared/overlays/AuthModal';
 import {
+    apiClient,
+    assertApiSuccess,
     readApiErrorMessage,
+    ENDPOINTS,
     buildMaterialDownloadEndpoint,
     downloadAuthenticatedFile,
     getAssetUrl,
@@ -62,7 +65,14 @@ import { readerService } from '@services/materials';
 import { cardsService, formatMaskedCardLabelAscii, type SavedCard } from '@services/billing';
 import { marketplaceService } from '@services/marketplace';
 import { profileService, type ReferralStats } from '@services/profile';
-import { supportService, type SupportReply, type SupportThread } from '@services/support';
+import {
+    getSupportThreadPreview,
+    getSupportThreadTitle,
+    getSupportTypeLabel,
+    supportService,
+    type SupportReply,
+    type SupportThread,
+} from '@services/support';
 import { questionService } from '@services/questions';
 import { transactionsService } from '@services/transactions';
 import { planService } from '@services/plans';
@@ -85,6 +95,7 @@ import {
 } from './components/subscriptionDateUtils';
 import { getEffectivePlanDisplayName, hasActivePlanAccess, isPlanAtLeast } from '@services/plans/planAccess';
 import { buildProfilePath, resolveProfileTab, type ProfileTab } from './profileNavigation';
+import { normalizeGoogleClientId } from '@/config/googleAuth';
 
 const StripeSetupCardForm = dynamic(() => import('./components/StripeSetupCardForm'), {
     ssr: false,
@@ -122,6 +133,97 @@ type ProfilePhotoCropDraft = {
     offsetX: number;
     offsetY: number;
 };
+
+type ProfileSocialProvider = 'google' | 'facebook';
+
+type ProfileSocialLinkResponse = {
+    user?: UserProfile;
+    linkedProvider?: ProfileSocialProvider | string;
+    isLinked?: boolean;
+};
+
+type ProfileGoogleCredentialResponse = {
+    credential?: string;
+};
+
+type ProfileFacebookLoginResponse = {
+    status?: string;
+    authResponse?: {
+        accessToken?: string;
+    };
+};
+
+type ProfileSocialWindow = Window & {
+    google?: {
+        accounts?: {
+            id?: {
+                initialize: (options: {
+                    client_id: string;
+                    callback: (response: ProfileGoogleCredentialResponse) => void;
+                    context?: 'signin' | 'signup' | 'use';
+                    ux_mode?: 'popup' | 'redirect';
+                    auto_select?: boolean;
+                }) => void;
+                renderButton: (element: HTMLElement, options: {
+                    theme?: 'outline' | 'filled_blue' | 'filled_black';
+                    size?: 'large' | 'medium' | 'small';
+                    type?: 'standard' | 'icon';
+                    shape?: 'rectangular' | 'pill' | 'circle' | 'square';
+                    text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
+                    logo_alignment?: 'left' | 'center';
+                    width?: number;
+                }) => void;
+                cancel?: () => void;
+            };
+        };
+    };
+    FB?: {
+        init: (params: {
+            appId: string;
+            cookie?: boolean;
+            xfbml?: boolean;
+            version?: string;
+        }) => void;
+        login: (
+            callback: (response: ProfileFacebookLoginResponse) => void,
+            options?: {
+                scope?: string;
+                return_scopes?: boolean;
+            }
+        ) => void;
+    };
+};
+
+const loadProfileExternalScript = (id: string, src: string): Promise<void> => new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+        resolve();
+        return;
+    }
+
+    const existingScript = document.getElementById(id) as HTMLScriptElement | null;
+    if (existingScript) {
+        if (existingScript.dataset.loaded === 'true') {
+            resolve();
+            return;
+        }
+
+        existingScript.addEventListener('load', () => resolve(), { once: true });
+        existingScript.addEventListener('error', () => reject(new Error('Não foi possível carregar o provedor social.')), { once: true });
+        return;
+    }
+
+    const script = document.createElement('script');
+    script.id = id;
+    script.src = src;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+        script.dataset.loaded = 'true';
+        resolve();
+    };
+    script.onerror = () => reject(new Error('Não foi possível carregar o provedor social.'));
+    document.body.appendChild(script);
+});
 
 const loadImageForCrop = (src: string): Promise<HTMLImageElement> => new Promise((resolve, reject) => {
     const image = new window.Image();
@@ -336,13 +438,6 @@ const PROFILE_SUPPORT_STATUS_META: Record<SupportThread['status'], { label: stri
     },
 };
 
-const PROFILE_SUPPORT_TYPE_LABELS: Record<string, string> = {
-    bug: 'Problema',
-    support: 'Ajuda',
-    suggestion: 'Sugestão',
-    feedback: 'Feedback',
-};
-
 const PROFILE_FALLBACK_FOCUS_AREAS = [
     'Policial',
     'Fiscal',
@@ -396,6 +491,21 @@ const Profile: React.FC = () => {
     const marketplaceEnabled = systemSettings?.features?.marketplaceEnabled === undefined
         ? true
         : parseFeatureFlag(systemSettings.features.marketplaceEnabled);
+    const profileGoogleClientId = React.useMemo(() => normalizeGoogleClientId(
+        process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+        systemSettings?.googleAuthClientId,
+    ), [systemSettings?.googleAuthClientId]);
+    const profileFacebookAppId = String(process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || systemSettings?.facebookAuthAppId || '').trim();
+    const isGoogleProviderAvailable = Boolean(
+        profileGoogleClientId
+        && (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || systemSettings?.hasGoogleAuthClientConfigured)
+    );
+    const isFacebookProviderAvailable = Boolean(
+        profileFacebookAppId
+        && (process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || systemSettings?.hasFacebookAuthConfigured)
+    );
+    const isGoogleConnected = Boolean(currentUser?.googleId);
+    const isFacebookConnected = Boolean(currentUser?.facebookId);
 
     const [activeTab, setActiveTab] = useState<ProfileTab>('personal');
     const [evolutionRange, setEvolutionRange] = useState<'today' | 'week' | 'month' | 'year' | 'all'>('month');
@@ -447,6 +557,9 @@ const Profile: React.FC = () => {
         defaultSimulationView: 'list' as 'focus' | 'list',
     });
     const [isSavingPrivacyPreferences, setIsSavingPrivacyPreferences] = useState(false);
+    const [googleProfileScriptReady, setGoogleProfileScriptReady] = useState(false);
+    const [facebookProfileScriptReady, setFacebookProfileScriptReady] = useState(false);
+    const [socialLinkLoading, setSocialLinkLoading] = useState<ProfileSocialProvider | null>(null);
     const [confirmOutstandingDebtCharge, setConfirmOutstandingDebtCharge] = useState(false);
     const [isCancelingSubscription, setIsCancelingSubscription] = useState(false);
     const [isUpdatingRenewal, setIsUpdatingRenewal] = useState(false);
@@ -472,6 +585,7 @@ const Profile: React.FC = () => {
     const pendingProfileTabScrollRef = React.useRef(false);
     const personalDetailsSectionRef = React.useRef<HTMLDivElement>(null);
     const pendingPersonalDetailsScrollRef = React.useRef(false);
+    const googleProfileButtonRef = React.useRef<HTMLDivElement>(null);
     const [hasSyncedBillingSnapshot, setHasSyncedBillingSnapshot] = useState(false);
     const [isSyncingBillingSnapshot, setIsSyncingBillingSnapshot] = useState(false);
     const [lawNotes, setLawNotes] = useState<LegalCommentaryStoredNote[]>([]);
@@ -1168,7 +1282,7 @@ const Profile: React.FC = () => {
             const uploadedPhotoUrl = res.photoUrl || '';
 
             if (!uploadedPhotoUrl) {
-                throw new Error('A foto foi enviada, mas o servidor nao retornou a URL da imagem.');
+                throw new Error('A foto foi enviada, mas o servidor não retornou a URL da imagem.');
             }
 
             await updateUser({ photoUrl: uploadedPhotoUrl });
@@ -1372,6 +1486,195 @@ const Profile: React.FC = () => {
         setShowCancelModal(false);
         setConfirmOutstandingDebtCharge(false);
     };
+
+    const linkSocialAccount = React.useCallback(async (
+        provider: ProfileSocialProvider,
+        payload: Record<string, unknown>,
+    ) => {
+        if (!currentUser?.id || socialLinkLoading) return;
+
+        setSocialLinkLoading(provider);
+        try {
+            const endpoint = provider === 'google' ? ENDPOINTS.auth.google : ENDPOINTS.auth.facebook;
+            const response = await apiClient.post(endpoint, {
+                ...payload,
+                createIfMissing: false,
+                linkCurrentUser: true,
+            });
+            const envelope = assertApiSuccess<ProfileSocialLinkResponse>(
+                response,
+                provider === 'google'
+                    ? 'Não foi possível conectar sua conta Google.'
+                    : 'Não foi possível conectar sua conta Facebook.',
+            );
+            const linkedUser = envelope.data?.user;
+
+            await updateUser({
+                ...(provider === 'google' ? { googleId: linkedUser?.googleId || currentUser.googleId || 'connected' } : {}),
+                ...(provider === 'facebook' ? { facebookId: linkedUser?.facebookId || currentUser.facebookId || 'connected' } : {}),
+                ...(linkedUser?.emailVerified !== undefined ? { emailVerified: linkedUser.emailVerified } : {}),
+                ...(linkedUser?.photoUrl ? { photoUrl: linkedUser.photoUrl } : {}),
+            });
+            await refreshUser();
+            addToast(envelope.message || (provider === 'google' ? 'Google conectado com sucesso.' : 'Facebook conectado com sucesso.'), 'success');
+        } catch (error: unknown) {
+            addToast(
+                readApiErrorMessage(
+                    error,
+                    provider === 'google'
+                        ? 'Não foi possível conectar sua conta Google.'
+                        : 'Não foi possível conectar sua conta Facebook.',
+                ),
+                'error',
+            );
+        } finally {
+            setSocialLinkLoading(null);
+        }
+    }, [addToast, currentUser, refreshUser, socialLinkLoading, updateUser]);
+
+    const handleGoogleProfileCredential = React.useCallback((response: ProfileGoogleCredentialResponse) => {
+        const credential = response.credential || '';
+        if (!credential) {
+            addToast('Não foi possível ler a resposta do Google.', 'error');
+            return;
+        }
+
+        void linkSocialAccount('google', { credential });
+    }, [addToast, linkSocialAccount]);
+
+    const handleFacebookProfileLink = React.useCallback(() => {
+        if (!isFacebookProviderAvailable || socialLinkLoading) {
+            return;
+        }
+
+        const socialWindow = window as ProfileSocialWindow;
+        if (!facebookProfileScriptReady || !socialWindow.FB) {
+            addToast('Facebook ainda está carregando. Tente novamente em alguns segundos.', 'warning');
+            return;
+        }
+
+        socialWindow.FB.login((response) => {
+            const accessToken = response.authResponse?.accessToken || '';
+            if (!accessToken) {
+                addToast('Não foi possível validar o Facebook.', 'error');
+                return;
+            }
+
+            void linkSocialAccount('facebook', { accessToken });
+        }, {
+            scope: 'email,public_profile',
+            return_scopes: true,
+        });
+    }, [addToast, facebookProfileScriptReady, isFacebookProviderAvailable, linkSocialAccount, socialLinkLoading]);
+
+    React.useEffect(() => {
+        if (activeTab !== 'security' || !isGoogleProviderAvailable || isGoogleConnected) {
+            return;
+        }
+
+        const socialWindow = window as ProfileSocialWindow;
+        if (socialWindow.google?.accounts?.id) {
+            setGoogleProfileScriptReady(true);
+            return;
+        }
+
+        let isMounted = true;
+        loadProfileExternalScript('google-identity-services', 'https://accounts.google.com/gsi/client')
+            .then(() => {
+                if (isMounted) setGoogleProfileScriptReady(true);
+            })
+            .catch(() => {
+                if (isMounted) addToast('Não foi possível carregar o Google para conexão da conta.', 'error');
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [activeTab, addToast, isGoogleConnected, isGoogleProviderAvailable]);
+
+    React.useEffect(() => {
+        if (
+            activeTab !== 'security'
+            || !isGoogleProviderAvailable
+            || isGoogleConnected
+            || !googleProfileScriptReady
+            || !googleProfileButtonRef.current
+        ) {
+            return;
+        }
+
+        const socialWindow = window as ProfileSocialWindow;
+        const googleIdentity = socialWindow.google?.accounts?.id;
+        if (!googleIdentity) {
+            return;
+        }
+
+        const buttonContainer = googleProfileButtonRef.current;
+        buttonContainer.innerHTML = '';
+        googleIdentity.initialize({
+            client_id: profileGoogleClientId,
+            callback: handleGoogleProfileCredential,
+            context: 'use',
+            ux_mode: 'popup',
+            auto_select: false,
+        });
+        googleIdentity.renderButton(buttonContainer, {
+            theme: 'outline',
+            size: 'large',
+            type: 'standard',
+            shape: 'pill',
+            text: 'continue_with',
+            logo_alignment: 'left',
+            width: 220,
+        });
+    }, [
+        activeTab,
+        googleProfileScriptReady,
+        handleGoogleProfileCredential,
+        isGoogleConnected,
+        isGoogleProviderAvailable,
+        profileGoogleClientId,
+    ]);
+
+    React.useEffect(() => {
+        if (activeTab !== 'security' || !isFacebookProviderAvailable || isFacebookConnected) {
+            return;
+        }
+
+        const socialWindow = window as ProfileSocialWindow;
+        if (socialWindow.FB) {
+            socialWindow.FB.init({
+                appId: profileFacebookAppId,
+                cookie: true,
+                xfbml: false,
+                version: 'v19.0',
+            });
+            setFacebookProfileScriptReady(true);
+            return;
+        }
+
+        let isMounted = true;
+        loadProfileExternalScript('facebook-jssdk', 'https://connect.facebook.net/pt_BR/sdk.js')
+            .then(() => {
+                if (!isMounted) return;
+
+                const loadedWindow = window as ProfileSocialWindow;
+                loadedWindow.FB?.init({
+                    appId: profileFacebookAppId,
+                    cookie: true,
+                    xfbml: false,
+                    version: 'v19.0',
+                });
+                setFacebookProfileScriptReady(true);
+            })
+            .catch(() => {
+                if (isMounted) addToast('Não foi possível carregar o Facebook para conexão da conta.', 'error');
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [activeTab, addToast, isFacebookConnected, isFacebookProviderAvailable, profileFacebookAppId]);
 
     const handleSavePrivacyPreferences = async () => {
         if (!currentUser?.id || isSavingPrivacyPreferences) return;
@@ -1625,7 +1928,7 @@ const Profile: React.FC = () => {
         if (
             explicitCycle
             && normalizedExplicitCycle !== 'não informado'
-            && normalizedExplicitCycle !== 'nao informado'
+            && normalizedExplicitCycle !== 'não informado'
             && normalizedExplicitCycle !== '-'
         ) {
             return explicitCycle;
@@ -1808,8 +2111,8 @@ const Profile: React.FC = () => {
                 ? 'Esta cobrança já passou da data prevista. Confira o financeiro, o cartão padrão e a sincronização da assinatura antes de considerar o ciclo regular.'
                 : `Ao manter a renovação ativa, a próxima cobrança seguirá o ${nextRenewalPriceSourceLabel}.`)
             : (termCommitmentRemaining
-                ? 'A renovação esta desligada. As cobrancas atuais seguem ate o fim do termo contratado e depois param automaticamente.'
-                : 'A renovação esta desligada e o acesso termina no fim deste ciclo.'))
+                ? 'A renovação está desligada. As cobranças atuais seguem até o fim do termo contratado e depois param automaticamente.'
+                : 'A renovação está desligada e o acesso termina no fim deste ciclo.'))
         : 'Ative um plano pago para controlar a renovação automática por aqui.';
     const normalizedSubscriptionStatus = String(activeSubscription?.status || '').toLowerCase();
     const hasBlockingPaymentIssue = Boolean(
@@ -1844,16 +2147,15 @@ const Profile: React.FC = () => {
                 ? 'Assinatura encerrada. Para voltar, ative um novo plano.'
                 : 'Sem assinatura ativa para cancelamento.');
     const billingStatusLabel = currentUser?.paymentIssue
-        ? 'Atencao no pagamento'
+        ? 'Atenção no pagamento'
         : isNextRenewalOverdue
             ? 'Pagamento em atraso'
         : hasActiveSubscription
-            ? 'Cobranca em dia'
-            : 'Sem cobranca ativa';
-    const shouldShowBillingSyncGate = activeTab === 'billing'
-        && isStripeBilling
-        && hasActiveSubscription
-        && !hasSyncedBillingSnapshot;
+            ? 'Cobrança em dia'
+            : 'Sem cobrança ativa';
+    // A aba de assinatura não deve ficar bloqueada por uma consulta remota da Stripe.
+    // O snapshot local aparece primeiro e a sincronizacao ajusta dados em background.
+    const shouldShowBillingSyncGate = false;
 
     React.useEffect(() => {
         const frameId = window.requestAnimationFrame(() => {
@@ -2002,9 +2304,9 @@ const Profile: React.FC = () => {
                                 <ShieldAlert size={16} />
                             </div>
                             <div className="space-y-1">
-                                <p className={`text-[9px] font-black uppercase tracking-[0.18em] ${currentUser.paymentIssue.type === 'expiring_card' ? 'text-amber-700 dark:text-amber-300' : 'text-rose-600 dark:text-rose-300'}`}>Atencao no pagamento</p>
+                                <p className={`text-[9px] font-black uppercase tracking-[0.18em] ${currentUser.paymentIssue.type === 'expiring_card' ? 'text-amber-700 dark:text-amber-300' : 'text-rose-600 dark:text-rose-300'}`}>Atenção no pagamento</p>
                                 <p className="text-xs font-semibold leading-5 text-slate-700 dark:text-slate-200">
-                                    {currentUser.paymentIssue.message || 'Atualize sua forma de pagamento para evitar interrupcoes no acesso.'}
+                                    {currentUser.paymentIssue.message || 'Atualize sua forma de pagamento para evitar interrupções no acesso.'}
                                 </p>
                             </div>
                         </div>
@@ -2078,8 +2380,8 @@ const Profile: React.FC = () => {
                                         : isNextRenewalOverdue
                                             ? 'Há uma cobrança prevista vencida. Verifique o financeiro e a sincronização do gateway.'
                                         : hasActiveSubscription
-                                        ? 'Seu acesso premium esta liberado e o ciclo atual segue normalmente.'
-                                        : 'Sua assinatura não esta ativa no momento.'}
+                                        ? 'Seu acesso premium está liberado e o ciclo atual segue normalmente.'
+                                        : 'Sua assinatura não está ativa no momento.'}
                             </p>
                         </div>
 
@@ -2089,7 +2391,7 @@ const Profile: React.FC = () => {
                                 {hasActiveSubscription ? formatDateTimeBR(subscriptionEndDate) : 'Indeterminado'}
                             </p>
                             <p className="mt-2 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                                {hasActiveSubscription ? `${subscriptionRemainingDays} dias restantes no ciclo atual.` : 'Sem ciclo de cobranca em andamento.'}
+                                {hasActiveSubscription ? `${subscriptionRemainingDays} dias restantes no ciclo atual.` : 'Sem ciclo de cobrança em andamento.'}
                             </p>
                         </div>
 
@@ -2149,7 +2451,7 @@ const Profile: React.FC = () => {
                             <div className="flex items-start justify-between gap-4">
                                 <div className="space-y-2.5">
                                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Renovação</p>
-                                    <h3 className="text-base font-black leading-tight text-slate-900 dark:text-slate-100">Renovação automatica</h3>
+                            <h3 className="text-base font-black leading-tight text-slate-900 dark:text-slate-100">Renovação automática</h3>
                                     <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
                                         {renewalCardDescription}
                                     </p>
@@ -2180,7 +2482,7 @@ const Profile: React.FC = () => {
                                         disabled={!hasActiveSubscription || isUpdatingRenewal}
                                         role="switch"
                                         aria-checked={resolvedAutoRenew}
-                                        aria-label={resolvedAutoRenew ? 'Desativar renovação automática' : 'Ativar renovação automática'}
+                                aria-label={resolvedAutoRenew ? 'Desativar renovação automática' : 'Ativar renovação automática'}
                                         className={`relative inline-flex h-7 w-12 items-center rounded-full border transition-all ${resolvedAutoRenew ? 'border-emerald-500 bg-emerald-500/90' : 'border-slate-200 bg-slate-200 dark:border-slate-700 dark:bg-slate-800'} ${(!hasActiveSubscription || isUpdatingRenewal) ? 'cursor-not-allowed opacity-60' : 'hover:scale-[1.02] active:scale-[0.98]'}`}
                                     >
                                         <span className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white shadow transition-transform ${resolvedAutoRenew ? 'translate-x-6' : 'translate-x-1'}`}>
@@ -2260,15 +2562,15 @@ const Profile: React.FC = () => {
                     <div className="flex items-start justify-between gap-4">
                         <div className="space-y-2.5">
                             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Pagamento</p>
-                            <h3 className="text-base font-black leading-tight text-slate-900 dark:text-slate-100">Cartoes e cobranca</h3>
+                            <h3 className="text-base font-black leading-tight text-slate-900 dark:text-slate-100">Cartões e cobrança</h3>
                             <p className="text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-                                Os cartoes salvos ficam em Dados pessoais para compras futuras e renovacoes.
+                                Os cartões salvos ficam em Dados pessoais para compras futuras e renovações.
                             </p>
                             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
                                 Provedor atual: {billingProviderLabel}
                             </p>
                             <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                                Status de cobranca: {billingStatusLabel}
+                                Status de cobrança: {billingStatusLabel}
                             </p>
                         </div>
 
@@ -2289,7 +2591,7 @@ const Profile: React.FC = () => {
                         <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                 <div>
-                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Cartao principal na Stripe</p>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Cartão principal na Stripe</p>
                                     <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">{formatSavedCardLabel(primarySavedCard)}</p>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
@@ -2331,7 +2633,7 @@ const Profile: React.FC = () => {
                         <div className={`${PLATFORM_SURFACE_CARD_CLASS} px-4 py-4 md:px-5 md:py-4 xl:col-span-6`}>
                             <div className="space-y-3">
                                 <div className="space-y-2">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Beneficios</p>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Benefícios</p>
                                     <h3 className="text-base font-black leading-tight text-slate-900 dark:text-slate-100">Plano atual x Plano premium</h3>
                                 </div>
 
@@ -2341,8 +2643,8 @@ const Profile: React.FC = () => {
                                         <ul className="mt-3 space-y-2">
                                             {[
                                                 { label: 'Acesso premium ativo', enabled: hasActiveSubscription },
-                                                { label: 'Renovação configuravel', enabled: hasActiveSubscription },
-                                                { label: 'Cartao salvo no cofre Stripe', enabled: userCards.length > 0 },
+                                                { label: 'Renovação configurável', enabled: hasActiveSubscription },
+                                                { label: 'Cartão salvo no cofre Stripe', enabled: userCards.length > 0 },
                                                 { label: 'Pacote completo Elite', enabled: isElitePlan },
                                             ].map((item) => (
                                                 <li key={`current-${item.label}`} className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
@@ -2360,8 +2662,8 @@ const Profile: React.FC = () => {
                                         <ul className="mt-3 space-y-2">
                                             {[
                                                 'Acesso premium ativo',
-                                                'Renovação configuravel',
-                                                'Cartao salvo no cofre Stripe',
+                                                'Renovação configurável',
+                                                'Cartão salvo no cofre Stripe',
                                                 'Pacote completo Elite',
                                             ].map((label) => (
                                                 <li key={`premium-${label}`} className="flex items-center gap-2 text-xs font-semibold text-indigo-700 dark:text-indigo-200">
@@ -2381,7 +2683,7 @@ const Profile: React.FC = () => {
                                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-indigo-100">Upgrade</p>
                                     <h3 className="text-lg font-black leading-tight">Suba para o Plano Elite</h3>
                                     <p className="text-xs font-medium leading-5 text-indigo-100/90">
-                                        Destrave o pacote premium completo para estudar com mais consistencia e direcao.
+                                        Destrave o pacote premium completo para estudar com mais consistência e direção.
                                     </p>
                                 </div>
 
@@ -2481,7 +2783,7 @@ const Profile: React.FC = () => {
                                 const statusMeta = PROFILE_SUPPORT_STATUS_META[thread.status] || PROFILE_SUPPORT_STATUS_META.new;
                                 const isExpanded = expandedSupportThreadId === thread.id;
                                 const threadReplies = supportReplies[thread.id] || [];
-                                const typeLabel = PROFILE_SUPPORT_TYPE_LABELS[String(thread.type || '').toLowerCase()] || 'Suporte';
+                                const typeLabel = getSupportTypeLabel(thread);
                                 const createdAt = thread.created_at ? new Date(thread.created_at).toLocaleString() : 'Sem data';
 
                                 return (
@@ -2502,8 +2804,8 @@ const Profile: React.FC = () => {
                                                         </span>
                                                         <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{createdAt}</span>
                                                     </div>
-                                                    <p className="mt-3 text-base font-black text-slate-900 dark:text-slate-100">{thread.reason || 'Sem resumo'}</p>
-                                                    <p className="mt-2 line-clamp-2 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">{thread.details}</p>
+                                                    <p className="mt-3 text-base font-black text-slate-900 dark:text-slate-100">{getSupportThreadTitle(thread) || 'Sem resumo'}</p>
+                                                    <p className="mt-2 line-clamp-2 text-sm font-medium leading-6 text-slate-500 dark:text-slate-400">{getSupportThreadPreview(thread)}</p>
                                                 </div>
                                                 <div className="shrink-0 text-left lg:text-right">
                                                     <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Respostas</p>
@@ -2522,14 +2824,38 @@ const Profile: React.FC = () => {
                                                         </div>
                                                     ) : threadReplies.length > 0 ? threadReplies.map((reply) => {
                                                         const isUserReply = String(reply.user_id) === String(currentUser?.id);
+                                                        const normalizedReplyRole = String(reply.user_role || '').toLowerCase();
+                                                        const isTeamReply = normalizedReplyRole === 'admin' || normalizedReplyRole === 'staff';
+                                                        const replyAuthorLabel = isUserReply
+                                                            ? 'Você'
+                                                            : isTeamReply
+                                                                ? 'ConcursoMestre'
+                                                                : reply.user_name || 'Participante';
 
                                                         return (
                                                             <div
                                                                 key={reply.id}
-                                                                className={`rounded-2xl border px-4 py-4 ${isUserReply ? 'ml-6 border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900' : 'mr-6 border-indigo-200 bg-indigo-50/80 dark:border-indigo-500/20 dark:bg-indigo-500/10'}`}
+                                                                className={`rounded-2xl border px-4 py-4 ${
+                                                                    isUserReply
+                                                                        ? 'ml-6 border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'
+                                                                        : isTeamReply
+                                                                            ? 'mr-6 border-indigo-300 bg-indigo-50 shadow-sm dark:border-indigo-500/30 dark:bg-indigo-500/10'
+                                                                            : 'mr-6 border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'
+                                                                }`}
                                                             >
                                                                 <div className="flex items-center justify-between gap-3">
-                                                                    <p className="text-sm font-black text-slate-900 dark:text-slate-100">{isUserReply ? 'Você' : 'Suporte'}</p>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <p className="text-sm font-black text-slate-900 dark:text-slate-100">{replyAuthorLabel}</p>
+                                                                        {isTeamReply ? (
+                                                                            <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${
+                                                                                normalizedReplyRole === 'admin'
+                                                                                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950'
+                                                                                    : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200'
+                                                                            }`}>
+                                                                                {normalizedReplyRole === 'admin' ? 'Admin' : 'Staff'}
+                                                                            </span>
+                                                                        ) : null}
+                                                                    </div>
                                                                     <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{new Date(reply.created_at).toLocaleString()}</p>
                                                                 </div>
                                                                 <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">{reply.details}</p>
@@ -2542,6 +2868,11 @@ const Profile: React.FC = () => {
                                                     )}
                                                 </div>
 
+                                                {thread.status === 'resolved' ? (
+                                                    <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+                                                        Esta solicitação foi resolvida e não aceita novas respostas.
+                                                    </div>
+                                                ) : (
                                                 <div className="mt-4 rounded-[1.6rem] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                                                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Responder conversa</p>
                                                     <div className="mt-3 flex flex-col gap-3 sm:flex-row">
@@ -2563,6 +2894,7 @@ const Profile: React.FC = () => {
                                                         </button>
                                                     </div>
                                                 </div>
+                                                )}
                                             </div>
                                         ) : null}
                                     </article>
@@ -2582,7 +2914,7 @@ const Profile: React.FC = () => {
                     <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Histórico</p>
                     <h2 className="text-2xl font-black leading-none text-slate-900 dark:text-slate-100">Transações</h2>
                     <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                        Acompanhe cobrancas aprovadas, parcelas futuras pre-aprovadas e faturas emitidas pelo gateway.
+                        Acompanhe cobranças aprovadas, parcelas futuras pré-aprovadas e faturas emitidas pelo gateway.
                     </p>
                 </div>
                 <button
@@ -3278,7 +3610,7 @@ const Profile: React.FC = () => {
             if (activeTab === 'billing' || activeTab === 'billing-history') {
                 void syncStripeSubscriptionState({
                     force: activeTab === 'billing' && !hasSyncedBillingSnapshot,
-                    showLoader: activeTab === 'billing',
+                    showLoader: false,
                 });
                 void fetchUserTransactions();
             }
@@ -4793,7 +5125,7 @@ const Profile: React.FC = () => {
                                             <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">Provider ativo</p>
                                             <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">{billingProviderLabel}</h4>
                                             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
-                                                Use o portal para trocar o cartão, acompanhar faturas, corrigir falhas de pagamento e manter a assinatura pronta para as renovacoes automaticas.
+                                                Use o portal para trocar o cartão, acompanhar faturas, corrigir falhas de pagamento e manter a assinatura pronta para as renovações automáticas.
                                             </p>
                                         </div>
                                         <button
@@ -4810,13 +5142,13 @@ const Profile: React.FC = () => {
                                         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Metodos de pagamento</p>
                                             <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
-                                                O cartão padrao fica salvo no cliente Stripe e pode ser atualizado a qualquer momento sem passar por armazenamento local na plataforma.
+                                                O cartão padrão fica salvo no cliente Stripe e pode ser atualizado a qualquer momento sem passar por armazenamento local na plataforma.
                                             </p>
                                         </div>
                                         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Falhas e cobrancas</p>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Falhas e cobranças</p>
                                             <p className="mt-2 text-[12px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
-                                                Quando uma renovação falhar, o aluno atualiza o metodo no portal e o backend sincroniza o estado da assinatura via webhook.
+                                                Quando uma renovação falhar, o aluno atualiza o método no portal e o backend sincroniza o estado da assinatura via webhook.
                                             </p>
                                         </div>
                                     </div>
@@ -5261,10 +5593,10 @@ const Profile: React.FC = () => {
                          </div>
                          <div className="divide-y divide-slate-100 dark:divide-slate-800">
                             {[
-                               { id: 'isPublic', label: 'Perfil publico no ranking de XP', desc: 'Permite que seu nome apareca no ranking de nivel, sem afetar rankings pos-prova.', checked: privacyPreferencesDraft.isPublic, icon: Users },
+                               { id: 'isPublic', label: 'Perfil público no ranking de XP', desc: 'Permite que seu nome apareça no ranking de nível, sem afetar rankings pós-prova.', checked: privacyPreferencesDraft.isPublic, icon: Users },
                                { id: 'showProfilePhoto', label: 'Mostrar foto no ranking de XP', desc: 'Quando desligado, o ranking usa apenas a inicial do seu nome.', checked: privacyPreferencesDraft.showProfilePhoto, icon: Camera },
-                               { id: 'notifications', label: 'Notificacoes por email', desc: 'Receba alertas sobre novidades, cobrancas e atividades importantes.', checked: privacyPreferencesDraft.notifications, icon: Bell },
-                               { id: 'shareData', label: 'Compartilhar dados de estudo', desc: 'Usa sua atividade para melhorar recomendacoes e estatisticas internas.', checked: privacyPreferencesDraft.shareData, icon: Zap }
+                               { id: 'notifications', label: 'Notificações por e-mail', desc: 'Receba alertas sobre novidades, cobranças e atividades importantes.', checked: privacyPreferencesDraft.notifications, icon: Bell },
+                               { id: 'shareData', label: 'Compartilhar dados de estudo', desc: 'Usa sua atividade para melhorar recomendações e estatísticas internas.', checked: privacyPreferencesDraft.shareData, icon: Zap }
                             ].map((item, i) => (
                                <div key={i} className="flex items-center justify-between py-5 group">
                                   <div className="flex items-start gap-4">
@@ -5286,7 +5618,7 @@ const Profile: React.FC = () => {
 
                          <div className="mt-6 grid gap-4 md:grid-cols-3">
                             <label className="space-y-2">
-                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Tema padrao</span>
+                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Tema padrão</span>
                                <select
                                   value={privacyPreferencesDraft.defaultTheme}
                                   onChange={(event) => setPrivacyPreferencesDraft((current) => ({ ...current, defaultTheme: event.target.value as 'system' | 'light' | 'dark' }))}
@@ -5298,18 +5630,18 @@ const Profile: React.FC = () => {
                                </select>
                             </label>
                             <label className="space-y-2">
-                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Questões por padrao</span>
+                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Questões por padrão</span>
                                <select
                                   value={privacyPreferencesDraft.defaultPracticeView}
                                   onChange={(event) => setPrivacyPreferencesDraft((current) => ({ ...current, defaultPracticeView: event.target.value as 'card' | 'list' }))}
                                   className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none transition-all focus:border-indigo-400 focus:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                                >
-                                  <option value="card">Cartao</option>
+                                  <option value="card">Cartão</option>
                                   <option value="list">Lista</option>
                                </select>
                             </label>
                             <label className="space-y-2">
-                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Simulado por padrao</span>
+                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Simulado por padrão</span>
                                <select
                                   value={privacyPreferencesDraft.defaultSimulationView}
                                   onChange={(event) => setPrivacyPreferencesDraft((current) => ({ ...current, defaultSimulationView: event.target.value as 'focus' | 'list' }))}
@@ -5319,6 +5651,142 @@ const Profile: React.FC = () => {
                                   <option value="focus">Foco</option>
                                </select>
                             </label>
+                         </div>
+
+                         <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-800 dark:bg-slate-950/30">
+                            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                               <div>
+                                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100">Contas conectadas</h3>
+                                  <p className="mt-1 max-w-2xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                                     Conecte Google ou Facebook para entrar com um clique sem trocar sua senha do ConcursoMestre.
+                                  </p>
+                               </div>
+                               <span className="inline-flex w-fit items-center gap-2 rounded-full border border-indigo-100 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:border-indigo-500/20 dark:bg-slate-900 dark:text-indigo-300">
+                                  <ShieldCheck size={13} />
+                                  Login seguro
+                               </span>
+                            </div>
+
+                            <div className="grid gap-4 lg:grid-cols-2">
+                               {[
+                                  {
+                                     provider: 'google' as ProfileSocialProvider,
+                                     label: 'Google',
+                                     description: 'Use sua conta Google verificada para acessar a plataforma rapidamente.',
+                                     isConnected: isGoogleConnected,
+                                     isAvailable: isGoogleProviderAvailable,
+                                  },
+                                  {
+                                     provider: 'facebook' as ProfileSocialProvider,
+                                     label: 'Facebook',
+                                     description: 'Vincule seu Facebook para ter mais uma forma de login na sua conta.',
+                                     isConnected: isFacebookConnected,
+                                     isAvailable: isFacebookProviderAvailable,
+                                  },
+                               ].map((socialAccount) => {
+                                  const isLoadingSocial = socialLinkLoading === socialAccount.provider;
+
+                                  return (
+                                     <div
+                                        key={socialAccount.provider}
+                                        className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors dark:border-slate-800 dark:bg-slate-900"
+                                     >
+                                        <div className="flex min-w-0 flex-col gap-4">
+                                           <div className="flex min-w-0 items-start gap-3">
+                                              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-black ${
+                                                 socialAccount.provider === 'google'
+                                                    ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300'
+                                                    : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300'
+                                              }`}>
+                                                 {socialAccount.provider === 'google' ? 'G' : 'f'}
+                                              </div>
+                                              <div className="min-w-0">
+                                                 <div className="flex flex-wrap items-center gap-2">
+                                                    <h4 className="text-sm font-black text-slate-900 dark:text-slate-100">{socialAccount.label}</h4>
+                                                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-widest ${
+                                                       socialAccount.isConnected
+                                                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                                          : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+                                                    }`}>
+                                                       {socialAccount.isConnected ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
+                                                       {socialAccount.isConnected ? 'Conectada' : 'Não conectada'}
+                                                    </span>
+                                                 </div>
+                                                 <p className="mt-1 max-w-[30rem] text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                                                    {socialAccount.description}
+                                                 </p>
+                                              </div>
+                                           </div>
+
+                                           <div className="flex w-full min-w-0 justify-stretch">
+                                              {socialAccount.isConnected ? (
+                                                 <button
+                                                    type="button"
+                                                    disabled
+                                                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                                 >
+                                                    <CheckCircle2 size={14} />
+                                                    Vinculada
+                                                 </button>
+                                              ) : socialAccount.provider === 'google' ? (
+                                                 socialAccount.isAvailable ? (
+                                                    <div className="relative min-h-[44px] w-full max-w-full overflow-hidden [&_*]:max-w-full">
+                                                       {!googleProfileScriptReady && (
+                                                          <button
+                                                             type="button"
+                                                             disabled
+                                                             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-700 dark:bg-slate-900"
+                                                          >
+                                                             <Loader2 size={14} className="animate-spin" />
+                                                             Carregando
+                                                          </button>
+                                                       )}
+                                                       <div
+                                                          ref={googleProfileButtonRef}
+                                                          className={`${googleProfileScriptReady ? 'flex min-h-[44px] w-full justify-start overflow-hidden' : 'hidden'} ${isLoadingSocial ? 'pointer-events-none opacity-50' : ''}`}
+                                                       />
+                                                       {isLoadingSocial && (
+                                                          <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/70 dark:bg-slate-900/70">
+                                                             <Loader2 size={16} className="animate-spin text-indigo-600" />
+                                                          </div>
+                                                       )}
+                                                    </div>
+                                                 ) : (
+                                                    <button
+                                                       type="button"
+                                                       disabled
+                                                       className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-100 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/60 sm:w-auto"
+                                                    >
+                                                       <AlertCircle size={14} />
+                                                       Indisponível
+                                                    </button>
+                                                 )
+                                              ) : socialAccount.isAvailable ? (
+                                                 <button
+                                                    type="button"
+                                                    onClick={handleFacebookProfileLink}
+                                                    disabled={Boolean(socialLinkLoading) || !facebookProfileScriptReady}
+                                                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                 >
+                                                    {isLoadingSocial || !facebookProfileScriptReady ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+                                                    Conectar Facebook
+                                                 </button>
+                                              ) : (
+                                                 <button
+                                                    type="button"
+                                                    disabled
+                                                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-100 px-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:border-slate-800 dark:bg-slate-800/60 sm:w-auto"
+                                                 >
+                                                    <AlertCircle size={14} />
+                                                    Indisponível
+                                                 </button>
+                                              )}
+                                           </div>
+                                        </div>
+                                     </div>
+                                  );
+                               })}
+                            </div>
                          </div>
                       </div>
 

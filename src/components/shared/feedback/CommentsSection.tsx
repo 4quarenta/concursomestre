@@ -21,10 +21,12 @@ import { getVersionedAssetUrl } from '@services/api';
 import { normalizeQuestionRichHtml } from '@services/questions/questionHtmlSanitizer';
 
 const COMMENT_REPORT_REASON_OPTIONS = [
+    'Informação incorreta',
+    'Conteúdo incompleto',
+    'Fora do contexto',
+    'Linguagem inadequada',
     'Spam ou publicidade',
-    'Conteúdo ofensivo',
-    'Informação enganosa',
-    'Fora do tema',
+    'Solicitar revisão do professor',
     'Outro',
 ] as const;
 
@@ -61,11 +63,20 @@ interface CommentItemProps {
     restrictedReplies?: boolean;
     ownerId?: string;
     pendingLikeIds?: Set<string>;
+    hasPendingReport?: boolean;
+    reportedCommentIds?: Set<string>;
+    pendingReportIds?: Set<string>;
 }
 
-const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onReport, onDelete, depth = 0, highlightedId, currentUserId, currentUserPhotoUrl, restrictedReplies, ownerId, pendingLikeIds }) => {
+const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onReport, onDelete, depth = 0, highlightedId, currentUserId, currentUserPhotoUrl, restrictedReplies, ownerId, pendingLikeIds, hasPendingReport, reportedCommentIds, pendingReportIds }) => {
     const isHighlighted = highlightedId === comment.id;
     const isLikePending = Boolean(pendingLikeIds?.has(comment.id));
+    const isReportBlocked = Boolean(
+        hasPendingReport
+        || comment.userHasPendingReport
+        || reportedCommentIds?.has(comment.id)
+        || pendingReportIds?.has(comment.id)
+    );
     const getBadge = (plan?: string) => {
         switch (plan) {
             case 'Elite': return <span title="Usuário Elite"><Crown size={12} className="text-amber-500 fill-amber-500" /></span>;
@@ -141,8 +152,17 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
                         </button>
                     )}
                     {comment.userId !== currentUserId && (
-                        <button onClick={() => onReport(comment.id)} className="flex items-center gap-1 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 text-[10px] font-bold transition-all">
-                            <Flag size={11} /> Reportar
+                        <button
+                            onClick={() => onReport(comment.id)}
+                            disabled={isReportBlocked}
+                            title={isReportBlocked ? 'Você já denunciou este comentário e a moderação ainda está analisando.' : 'Reportar comentário'}
+                            className={`flex items-center gap-1 text-[10px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                                isReportBlocked
+                                    ? 'text-slate-400 dark:text-slate-500'
+                                    : 'text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400'
+                            }`}
+                        >
+                            <Flag size={11} /> {isReportBlocked ? 'Denúncia enviada' : 'Reportar'}
                         </button>
                     )}
                     {onDelete && comment.userId === currentUserId && (
@@ -167,6 +187,9 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, onReply, onLike, onR
                     restrictedReplies={restrictedReplies}
                     ownerId={ownerId}
                     pendingLikeIds={pendingLikeIds}
+                    hasPendingReport={Boolean(reply.userHasPendingReport)}
+                    reportedCommentIds={reportedCommentIds}
+                    pendingReportIds={pendingReportIds}
                 />
             ))}
             {hasReplies && (
@@ -195,7 +218,10 @@ const MemoizedCommentItem = React.memo(CommentItem, (prev, next) => {
         prev.currentUserId === next.currentUserId &&
         prev.currentUserPhotoUrl === next.currentUserPhotoUrl &&
         prev.highlightedId === next.highlightedId &&
-        prev.pendingLikeIds === next.pendingLikeIds
+        prev.pendingLikeIds === next.pendingLikeIds &&
+        prev.hasPendingReport === next.hasPendingReport &&
+        prev.reportedCommentIds === next.reportedCommentIds &&
+        prev.pendingReportIds === next.pendingReportIds
     );
 });
 
@@ -204,7 +230,7 @@ interface CommentsSectionProps {
     comments: Comment[];
     onAddComment: (text: string, parentId?: string) => void;
     onLikeComment: (commentId: string) => void | Promise<void>;
-    onReportComment: (commentId: string, reason: string, details: string) => void;
+    onReportComment: (commentId: string, reason: string, details: string) => void | boolean | Promise<void | boolean>;
     onDeleteComment?: (commentId: string) => void;
     title?: string;
     isExpanded?: boolean;
@@ -235,8 +261,13 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
     const [reportDetails, setReportDetails] = useState('');
     const [pendingLikeIds, setPendingLikeIds] = useState<Set<string>>(() => new Set());
     const pendingLikeIdsRef = useRef<Set<string>>(new Set());
+    const [reportedCommentIds, setReportedCommentIds] = useState<Set<string>>(() => new Set());
+    const [pendingReportIds, setPendingReportIds] = useState<Set<string>>(() => new Set());
 
     const openReportModal = (commentId: string) => {
+        if (reportedCommentIds.has(commentId) || pendingReportIds.has(commentId)) {
+            return;
+        }
         setReportingCommentId(commentId);
         setReportReason(COMMENT_REPORT_REASON_OPTIONS[0]);
         setReportDetails('');
@@ -248,19 +279,51 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
         setReportDetails('');
     };
 
-    const submitCommentReport = () => {
+    const submitCommentReport = async () => {
         if (!reportingCommentId) {
             return;
         }
 
+        const commentId = reportingCommentId;
         const normalizedDetails = reportDetails.trim();
         const detailsPayload = normalizedDetails.length > 0
             ? normalizedDetails
             : `Reportado como: ${reportReason}.`;
 
-        onReportComment(reportingCommentId, reportReason, detailsPayload);
-        closeReportModal();
+        setPendingReportIds((previous) => new Set(previous).add(commentId));
+        try {
+            const result = await onReportComment(commentId, reportReason, detailsPayload);
+            if (result !== false) {
+                setReportedCommentIds((previous) => new Set(previous).add(commentId));
+                closeReportModal();
+            }
+        } finally {
+            setPendingReportIds((previous) => {
+                const next = new Set(previous);
+                next.delete(commentId);
+                return next;
+            });
+        }
     };
+
+    useEffect(() => {
+        const reportedIds = new Set<string>();
+        const collectReportedComments = (items: Comment[]) => {
+            items.forEach((comment) => {
+                if (comment.userHasPendingReport) {
+                    reportedIds.add(comment.id);
+                }
+                if (comment.replies?.length) {
+                    collectReportedComments(comment.replies);
+                }
+            });
+        };
+
+        collectReportedComments(comments);
+        if (reportedIds.size > 0) {
+            setReportedCommentIds((previous) => new Set([...previous, ...reportedIds]));
+        }
+    }, [comments]);
 
     // Check for URL hash parameter to highlight external deep link
     useEffect(() => {
@@ -447,6 +510,9 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                         restrictedReplies={restrictedReplies}
                         ownerId={ownerId}
                         pendingLikeIds={pendingLikeIds}
+                        hasPendingReport={Boolean(comment.userHasPendingReport)}
+                        reportedCommentIds={reportedCommentIds}
+                        pendingReportIds={pendingReportIds}
                     />
                 ))}
                 {comments.length === 0 && (
@@ -505,8 +571,9 @@ const CommentsSection: React.FC<CommentsSectionProps> = ({
                             </button>
                             <button
                                 type="button"
-                                onClick={submitCommentReport}
-                                className="rounded-xl bg-red-600 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-red-700"
+                                onClick={() => void submitCommentReport()}
+                                disabled={pendingReportIds.has(reportingCommentId)}
+                                className="rounded-xl bg-red-600 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
                             >
                                 Enviar denúncia
                             </button>

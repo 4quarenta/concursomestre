@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { ArrowUpCircle, Clock, Crown, DollarSign, Loader2, Mail, MessageCircle, MessageSquare, PlusCircle, RefreshCcw, Shield, User, X } from 'lucide-react';
 import { getAssetUrl } from '@services/api';
 import type { AdminUserActionResult, AdminUserDetailsPayload } from '@services/admin/adminService';
+import { getSupportReasonLabel } from '@services/support/supportReasonLabels';
 import AdminConfirmDialog from '../ui/AdminConfirmDialog';
 import { ADMIN_USER_ROLE_OPTIONS, ADMIN_USER_STATUS_OPTIONS, getAdminUserRoleBadgeClass, getAdminUserRoleLabel, getAdminUserStatusBadgeClass, getAdminUserStatusLabel } from './userAdminOptions';
 import type { EditUserForm } from './useAdminUserProfileWorkflow';
@@ -532,7 +533,7 @@ const UserProfileAdminModal = ({
                   ) : null}
                 </div>
                 <p className="text-sm font-black text-slate-900 dark:text-slate-100">
-                  {thread.reason || 'Sem assunto'}
+                  {getSupportReasonLabel(thread.reason) || 'Sem assunto'}
                 </p>
                 <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
                   {thread.details || 'Sem descricao'}

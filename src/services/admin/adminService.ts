@@ -116,6 +116,9 @@ export interface AdminUserReportRecord extends AdminLooseRecord {
   created_at?: string | null;
   resolved_at?: string | null;
   admin_reason?: string | null;
+  user_response?: string | null;
+  internal_note?: string | null;
+  moderation_action?: string | null;
 }
 
 export interface AdminFeedbackThread {
@@ -231,6 +234,7 @@ export interface AdminStatsPayload {
   held_balance: number;
   total_paid: number;
   feedback_count: number;
+  support_threads_count?: number;
   reports_count?: number;
   questions_count: number;
   users_count: number;
@@ -845,11 +849,24 @@ export const adminService = {
    * Executa a moderação final de uma denúncia com justificativa administrativa.
    * @since v1.0.0
    */
-  async moderateReport(id: string, action: ReportResolution, adminReason: string, evidenceUrl?: string): Promise<void> {
+  async moderateReport(
+    id: string,
+    action: ReportResolution,
+    adminReason: string,
+    evidenceUrl?: string,
+    options: {
+      userResponse?: string;
+      internalNote?: string;
+      moderationAction?: string;
+    } = {},
+  ): Promise<void> {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.reportActions, {
       id,
       action,
       admin_reason: adminReason,
+      user_response: options.userResponse || adminReason,
+      internal_note: options.internalNote || '',
+      moderation_action: options.moderationAction || '',
       evidence_url: evidenceUrl,
     }));
 
@@ -939,7 +956,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async getSystemLogPayload(): Promise<SystemLogsPayload> {
-    const response = await requestApi<SystemLogsPayload>(apiClient.get<ApiResponse<SystemLogsPayload>>(ENDPOINTS.admin.logs));
+    const response = await requestApi<SystemLogsPayload>(apiClient.get<ApiResponse<SystemLogsPayload>>(ENDPOINTS.system.logs));
     return readApiData(response, {
       lines: [],
       path: '',
@@ -962,7 +979,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async downloadSystemLogs(): Promise<void> {
-    await downloadAuthenticatedFile(`${ENDPOINTS.admin.logs}?action=download`, 'concurso-mestre-logs.log');
+    await downloadAuthenticatedFile(`${ENDPOINTS.system.logs}?action=download`, 'concurso-mestre-logs.log');
   },
 
   /**
@@ -970,7 +987,7 @@ export const adminService = {
    * @since v1.0.0
    */
   async clearSystemLogs(): Promise<SystemLogsPayload> {
-    const response = await requestApi<SystemLogsPayload>(apiClient.post<ApiResponse<SystemLogsPayload>>(`${ENDPOINTS.admin.logs}?action=clear`, {}));
+    const response = await requestApi<SystemLogsPayload>(apiClient.post<ApiResponse<SystemLogsPayload>>(`${ENDPOINTS.system.logs}?action=clear`, {}));
     assertApiSuccess(response, 'Não foi possível limpar os logs.');
     return readApiData(response, {
       lines: [],

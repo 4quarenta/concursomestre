@@ -33,6 +33,7 @@ const ROUTES_WITHOUT_PLATFORM_SHELL = [
   '/checkout',
   '/read',
   '/subscription',
+  '/promo',
 ];
 
 const isWithoutPlatformShell = (pathname: string) => (
@@ -79,7 +80,7 @@ type RoutePlanGate = {
 
 const planGateForPath = (pathname: string): RoutePlanGate | null => {
   if (pathname.startsWith('/dashboard')) return { keys: ['module.dashboard'], copyKey: 'module.dashboard', label: 'Dashboard premium' };
-  if (pathname.startsWith('/practice')) return { keys: ['module.practice'], copyKey: 'module.practice', label: 'Pratica de questoes' };
+  if (pathname.startsWith('/practice')) return { keys: ['module.practice'], copyKey: 'module.practice', label: 'Prática de questões' };
   if (pathname.startsWith('/lei-comentada')) return { keys: ['module.lei_comentada'], copyKey: 'module.lei_comentada', label: 'Lei comentada' };
   if (pathname.startsWith('/flashcards')) return { keys: ['module.flashcards'], copyKey: 'module.flashcards', label: 'Flashcards' };
   if (pathname.startsWith('/simulation')) return { keys: ['module.simulations'], copyKey: 'module.simulations', label: 'Simulados' };
@@ -107,28 +108,28 @@ const MODULE_UPGRADE_COPY: Partial<Record<PlanBenefitKey, ModuleUpgradeCopy>> = 
     ],
   },
   'module.practice': {
-    title: 'Desbloqueie a pratica de questoes',
-    description: 'Resolva questoes com filtros, gabarito, estatisticas e ferramentas de estudo de acordo com o seu plano.',
+    title: 'Desbloqueie a prática de questões',
+    description: 'Resolva questões com filtros, gabarito, estatísticas e ferramentas de estudo de acordo com o seu plano.',
     benefits: [
-      'Filtros avancados de questoes',
-      'Gabarito e explicacao no card',
-      'Questoes salvas e anotacoes',
+      'Filtros avançados de questões',
+      'Gabarito e explicação no card',
+      'Questões salvas e anotações',
       'Recortes de acertos e erros',
     ],
   },
   'module.lei_comentada': {
     title: 'Desbloqueie a Lei Comentada',
-    description: 'Estude a lei por artigo com comentarios, jurisprudencia, questoes relacionadas e recursos de revisao vinculados ao texto legal.',
+    description: 'Estude a lei por artigo com comentários, jurisprudência, questões relacionadas e recursos de revisão vinculados ao texto legal.',
     benefits: [
-      'Comentarios por artigo',
-      'Jurisprudencia e como cai',
-      'Questoes relacionadas',
-      'Anotacoes e conexoes da lei',
+      'Comentários por artigo',
+      'Jurisprudência e como cai',
+      'Questões relacionadas',
+      'Anotações e conexões da lei',
     ],
   },
   'module.flashcards': {
     title: 'Desbloqueie os flashcards',
-    description: 'Revise pontos importantes com cartoes organizados para memorizacao e revisao rapida.',
+    description: 'Revise pontos importantes com cartões organizados para memorização e revisão rápida.',
     benefits: [
       'Flashcards por materia',
       'Revisao guiada',
@@ -411,8 +412,8 @@ export default function NextRouteFrame({ children }: { children: React.ReactNode
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
               {isPastDueSubscription
-                ? 'A renovacao da sua assinatura falhou e seu acesso ficou pendente. Atualize ou troque o cartao salvo para regularizar a cobranca.'
-                : 'Sua assinatura ativa precisa de um cartao salvo para sustentar as proximas faturas da Stripe. Cadastre o cartao antes de continuar usando a plataforma.'}
+                ? 'A renovação da sua assinatura falhou e seu acesso ficou pendente. Atualize ou troque o cartão salvo para regularizar a cobrança.'
+                : 'Sua assinatura ativa precisa de um cartão salvo para sustentar as próximas faturas da Stripe. Cadastre o cartão antes de continuar usando a plataforma.'}
             </p>
           </div>
           <div className="flex flex-col gap-3">

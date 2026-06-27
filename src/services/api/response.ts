@@ -88,6 +88,20 @@ export const assertApiSuccess = <T = unknown>(response: unknown, fallbackMessage
  */
 export const readApiErrorMessage = (error: unknown, fallbackMessage: string): string => {
   if (error && typeof error === 'object') {
+    const message = 'message' in error && typeof error.message === 'string' ? error.message.trim() : '';
+    const code = 'code' in error && typeof error.code === 'string' ? error.code.trim() : '';
+    const hasRequestWithoutResponse = 'request' in error && !('response' in error);
+
+    if (
+      code === 'ERR_NETWORK'
+      || message === 'Network Error'
+      || message.includes('ERR_INTERNET_DISCONNECTED')
+      || message.includes('ERR_NAME_NOT_RESOLVED')
+      || hasRequestWithoutResponse
+    ) {
+      return 'Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.';
+    }
+
     const response = 'response' in error ? error.response : undefined;
     const responseData = response && typeof response === 'object' && 'data' in response ? response.data : undefined;
 
@@ -101,8 +115,8 @@ export const readApiErrorMessage = (error: unknown, fallbackMessage: string): st
       }
     }
 
-    if ('message' in error && typeof error.message === 'string' && error.message.trim()) {
-      return error.message;
+    if (message) {
+      return message;
     }
   }
 

@@ -78,7 +78,7 @@ describe('supportService', () => {
   it('loads replies for a thread', async () => {
     mockGet.mockResolvedValueOnce({
       success: true,
-      replies: [{ id: 7, details: 'Resposta' }],
+      replies: [{ id: 7, details: 'Resposta', user_name: 'Administrador', user_role: 'admin' }],
     });
 
     const result = await supportService.listReplies(7);
@@ -86,6 +86,10 @@ describe('supportService', () => {
     expect(mockGet).toHaveBeenCalledWith('feedback/list.php?id=7');
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe(7);
+    expect(result[0]).toEqual(expect.objectContaining({
+      user_name: 'Administrador',
+      user_role: 'admin',
+    }));
   });
 
   it('creates a support thread through the official endpoint', async () => {
@@ -155,7 +159,7 @@ describe('supportService', () => {
     expect(mockPost).toHaveBeenCalledWith('feedback/create.php', {
       parent_id: 12,
       type: 'bug',
-      reason: 'Resposta do usuario',
+      reason: 'Resposta do usuário',
       details: 'Tenho mais contexto para esse caso.',
       gamification_event: 'support_thread_reply',
       notification_event: 'support_reply',

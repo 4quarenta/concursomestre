@@ -334,6 +334,7 @@ export interface LegalUserComment {
   createdAt: string;
   updatedAt?: string;
   reportedCount?: number;
+  userHasPendingReport?: boolean;
   likes?: number;
   dislikes?: number;
   userReaction?: 'like' | 'dislike' | null;

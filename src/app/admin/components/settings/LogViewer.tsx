@@ -176,7 +176,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
       setLogs(Array.isArray(nextPayload.lines) ? nextPayload.lines : []);
     } catch (error: unknown) {
       clientLog.warn('Erro ao buscar logs:', error);
-      addToast(getErrorMessage(error, 'Nao foi possivel carregar os logs.'), 'error');
+      addToast(getErrorMessage(error, 'Não foi possível carregar os logs.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -189,7 +189,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
       await adminService.downloadSystemLogs();
       addToast('Arquivo de logs baixado.', 'success');
     } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel baixar os logs.'), 'error');
+      addToast(getErrorMessage(error, 'Não foi possível baixar os logs.'), 'error');
     } finally {
       setDownloading(false);
     }
@@ -199,7 +199,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
     if (clearing) return;
     const confirmed = await confirm({
       title: 'Limpar logs do servidor',
-      description: 'Esta acao remove o historico atual do visualizador de logs. Deseja continuar?',
+      description: 'Esta ação remove o histórico atual do visualizador de logs. Deseja continuar?',
       confirmText: 'Limpar logs',
       cancelText: 'Cancelar',
       type: 'danger',
@@ -213,7 +213,7 @@ export const LogViewer: React.FC<LogViewerProps> = ({ isOpen, onClose, embedded 
       setLogs(Array.isArray(nextPayload.lines) ? nextPayload.lines : []);
       addToast('Logs limpos com sucesso.', 'success');
     } catch (error: unknown) {
-      addToast(getErrorMessage(error, 'Nao foi possivel limpar os logs.'), 'error');
+      addToast(getErrorMessage(error, 'Não foi possível limpar os logs.'), 'error');
     } finally {
       setClearing(false);
     }

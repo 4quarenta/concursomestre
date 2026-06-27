@@ -273,7 +273,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
     setActionLoading(`${item.id}:${status}`);
     try {
       await adminService.updateModerationComment(item.id, status);
-      addToast('Comentario atualizado.', 'success');
+      addToast('Comentário atualizado.', 'success');
       await queryClient.invalidateQueries({ queryKey: ['admin', 'comments-moderation'] });
     } catch (error) {
       clientLog.warn('Failed to update moderation item:', error);
@@ -297,7 +297,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
     setActionLoading(`bulk:${bulkAction}`);
     try {
       await adminService.bulkUpdateModerationComments(selectedIds, bulkAction);
-      addToast('Comentarios atualizados em lote.', 'success');
+      addToast('Comentários atualizados em lote.', 'success');
       setSelectedIds([]);
       await queryClient.invalidateQueries({ queryKey: ['admin', 'comments-moderation'] });
     } catch (error) {
@@ -336,7 +336,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h3 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-            Comentarios
+            Comentários
           </h3>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             Modere comentários de questões, materiais e Lei Comentada na mesma fila.
@@ -473,7 +473,7 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
                   />
                 </th>
                 <th className="px-4 py-3">Autor</th>
-                <th className="px-4 py-3">Comentario</th>
+                <th className="px-4 py-3">Comentário</th>
                 <th className="px-4 py-3">Em resposta a</th>
                 <th className="px-4 py-3">Enviado em</th>
                 <th className="px-4 py-3">Status</th>
@@ -520,11 +520,11 @@ const AdminCommentsModerationSection = ({ onCountsChange }: AdminCommentsModerat
                           href={buildAdminUserEditPath(item.authorId)}
                           className="font-semibold text-sky-700 hover:underline dark:text-sky-300"
                         >
-                          {item.authorName || 'Usuario'}
+                          {item.authorName || 'Usuário'}
                         </a>
                       ) : (
                         <span className="font-semibold text-slate-900 dark:text-slate-100">
-                          {item.authorName || 'Usuario'}
+                          {item.authorName || 'Usuário'}
                         </span>
                       )}
                       <p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">

@@ -171,7 +171,7 @@ const AdminDatabaseModals = ({
     <AdminConfirmDialog
       isOpen={pendingDeleteFilter !== null}
       title="Excluir filtro"
-      description={`O filtro "${pendingDeleteFilter?.name || ''}" sera removido permanentemente do cadastro oficial.`}
+      description={`O filtro "${pendingDeleteFilter?.name || ''}" será removido permanentemente do cadastro oficial.`}
       confirmLabel="Excluir filtro"
       loading={isDeletingFilter}
       onCancel={onCancelDeleteFilter}

@@ -328,7 +328,10 @@ const scheduleProactiveRefresh = (): void => {
 
     const waitMs = Math.max(5000, accessTokenExpMs - Date.now() - PROACTIVE_REFRESH_LEEWAY_MS);
     proactiveRefreshTimer = setTimeout(() => {
-        void refreshAuthSession({ reason: 'scheduled', allowAnonymousFailure: true });
+        void refreshAuthSession({ reason: 'scheduled', allowAnonymousFailure: true })
+            .catch((error) => {
+                clientLog.warn('Scheduled auth refresh failed:', error);
+            });
     }, waitMs);
 };
 
@@ -443,7 +446,7 @@ const updateSessionState = (
 
 /**
  * Inscreve um listener reativo para mudancas de sessão.
- * O retorno remove a inscrição, padrao usado por providers e hooks do app.
+ * O retorno remove a inscrição, padrão usado por providers e hooks do app.
  * @since 1.0.0
  */
 export const subscribeToAuthSession = (listener: SessionListener): (() => void) => {
@@ -708,8 +711,14 @@ export const establishAuthenticatedSession = async (token: string | null | undef
         broadcast: false,
     });
 
-    if (!user) {
+    try {
         await fetchAuthenticatedUser();
+    } catch (error) {
+        if (!user) {
+            throw error;
+        }
+
+        clientLog.warn('Failed to hydrate authenticated user after login. Keeping provided session payload.', error);
     }
 
     broadcastAuthEvent({
@@ -785,7 +794,7 @@ export const refreshAuthSession = async (options: RefreshOptions): Promise<AuthS
         }
 
         try {
-            const includeUser = options.reason === 'bootstrap' || !currentUser || !currentUser.photoUrl;
+            const includeUser = true;
             const response = await authHttp.post('auth/refresh.php', {
                 includeUser,
             }, {

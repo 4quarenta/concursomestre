@@ -45,8 +45,8 @@ const formatXp = (rule: GamificationRuleSettings) => {
 
 const formatReputation = (value?: number) => {
   const reputation = Number(value || 0);
-  if (reputation === 0) return 'Sem reputacao';
-  return reputation > 0 ? `+${reputation} reputacao` : `${reputation} reputacao`;
+  if (reputation === 0) return 'Sem reputação';
+  return reputation > 0 ? `+${reputation} reputação` : `${reputation} reputação`;
 };
 
 const normalizePositiveInteger = (value: string, fallback = 0) => {
@@ -117,10 +117,10 @@ const AdminGamificationSettingsSection = ({
           <div>
             <h3 className="flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100">
               <Trophy size={20} className="text-amber-600 dark:text-amber-300" />
-              Gamificacao e XP
+              Gamificação e XP
             </h3>
             <p className="mt-2 max-w-3xl text-xs font-medium text-slate-500 dark:text-slate-400">
-              Controle o que gera XP, reputacao e badges na plataforma. Regras desativadas deixam de aplicar novos eventos.
+              Controle o que gera XP, reputação e badges na plataforma. Regras desativadas deixam de aplicar novos eventos.
             </p>
           </div>
           <button
@@ -129,7 +129,7 @@ const AdminGamificationSettingsSection = ({
             className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em]`}
           >
             <SlidersHorizontal size={14} />
-            {normalizedSettings.enabled ? 'Desativar gamificacao' : 'Ativar gamificacao'}
+            {normalizedSettings.enabled ? 'Desativar gamificação' : 'Ativar gamificação'}
           </button>
         </div>
 

@@ -209,11 +209,11 @@ const normalizeXpLeaderboardEntry = (value: unknown, index: number): XpLeaderboa
  */
 export const profileService = {
   /**
-   * Carrega o resumo de indicacoes do usuario autenticado.
+   * Carrega o resumo de indicações do usuário autenticado.
    */
   async getReferralStats(): Promise<ReferralStats> {
     const response = await requestApi<ReferralStats>(apiClient.get<ApiResponse<ReferralStats>>(ENDPOINTS.users.referralStats));
-    assertApiSuccess(response, 'Nao foi possivel carregar os dados de indicacao.');
+    assertApiSuccess(response, 'Não foi possível carregar os dados de indicação.');
     return readApiData<ReferralStats>(response, {});
   },
 
@@ -227,7 +227,7 @@ export const profileService = {
     formData.append('notification_event', 'profile_updated');
 
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.users.uploadPhoto, formData));
-    const envelope = assertApiSuccess(response, 'Nao foi possivel atualizar a foto do perfil.');
+    const envelope = assertApiSuccess(response, 'Não foi possível atualizar a foto do perfil.');
     const payload = readApiData<Record<string, unknown>>(response, {});
     const photoUrl = readProfilePhotoUrl(payload, envelope.data, envelope.raw);
     const progress = readMutationProgress(payload, envelope.data, envelope.raw);
@@ -240,11 +240,11 @@ export const profileService = {
   },
 
   /**
-   * Remove a foto de perfil atual do usuario autenticado.
+   * Remove a foto de perfil atual do usuário autenticado.
    */
   async removeProfilePhoto(): Promise<MessageMutationResult> {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.users.removePhoto, {}));
-    const envelope = assertApiSuccess(response, 'Nao foi possivel remover a foto do perfil.');
+    const envelope = assertApiSuccess(response, 'Não foi possível remover a foto do perfil.');
 
     return {
       message: envelope.message || 'Foto de perfil removida com sucesso!',
@@ -252,7 +252,7 @@ export const profileService = {
   },
 
   /**
-   * Altera a senha do usuario autenticado.
+   * Altera a senha do usuário autenticado.
    */
   async changePassword(currentPassword: string, newPassword: string): Promise<MessageMutationResult> {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(
@@ -263,14 +263,14 @@ export const profileService = {
       },
     ));
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel alterar a senha.');
+    const envelope = assertApiSuccess(response, 'Não foi possível alterar a senha.');
     return {
       message: envelope.message || 'Senha alterada com sucesso!',
     };
   },
 
   /**
-   * Envia depoimento e avaliacao do aluno para a fila oficial de feedback.
+   * Envia depoimento e avaliação do aluno para a fila oficial de feedback.
    */
   async submitTestimonial(input: SubmitProfileTestimonialInput): Promise<MessageMutationResult & { id?: number }> {
     const rating = Math.max(1, Math.min(5, Math.round(Number(input.rating) || 0)));
@@ -293,25 +293,25 @@ export const profileService = {
       },
     ));
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel enviar o depoimento.');
+    const envelope = assertApiSuccess(response, 'Não foi possível enviar o depoimento.');
     const payload = readApiData<FeedbackSubmitPayload>(response, {});
     const progress = readMutationProgress(payload, envelope.data, envelope.raw);
 
     return {
-      message: envelope.message || 'Avaliacao enviada. Obrigado por compartilhar sua experiencia!',
+      message: envelope.message || 'Avaliação enviada. Obrigado por compartilhar sua experiência!',
       id: Number(payload.id || payload.feedback_id || payload.thread_id || 0) || undefined,
       ...progress,
     };
   },
 
   /**
-   * Lista o ranking publico de XP sem misturar com o ranking pos-prova.
+   * Lista o ranking público de XP sem misturar com o ranking pós-prova.
    */
   async listXpLeaderboard(): Promise<XpLeaderboardEntry[]> {
     const response = await requestApi<XpLeaderboardPayload | XpLeaderboardEntry[]>(
       apiClient.get<ApiResponse<XpLeaderboardPayload | XpLeaderboardEntry[]>>(ENDPOINTS.users.levelLeaderboard),
     );
-    assertApiSuccess(response, 'Nao foi possivel carregar o ranking de XP.');
+    assertApiSuccess(response, 'Não foi possível carregar o ranking de XP.');
     const payload = readApiData<XpLeaderboardPayload | XpLeaderboardEntry[]>(response, []);
 
     if (Array.isArray(payload)) {
@@ -330,7 +330,7 @@ export const profileService = {
   },
 
   /**
-   * Registra a solicitacao real de exclusao de conta do usuario autenticado.
+   * Registra a solicitação real de exclusão de conta do usuário autenticado.
    */
   async requestAccountDeletion(reason: string, captchaToken?: string | null): Promise<MessageMutationResult> {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(
@@ -340,10 +340,10 @@ export const profileService = {
         captchaToken: captchaToken || '',
       },
     ));
-    const envelope = assertApiSuccess(response, 'Nao foi possivel solicitar a exclusao da conta.');
+    const envelope = assertApiSuccess(response, 'Não foi possível solicitar a exclusão da conta.');
 
     return {
-      message: envelope.message || 'Solicitacao de exclusao registrada com sucesso.',
+      message: envelope.message || 'Solicitação de exclusão registrada com sucesso.',
     };
   },
 };

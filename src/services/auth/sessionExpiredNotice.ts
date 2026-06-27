@@ -27,6 +27,8 @@ export const isSessionExpiredMessage = (message: string) => {
 
   return normalized.includes('sessao invalida')
     || normalized.includes('sessao expirada')
+    || normalized.includes('sessao expirou')
+    || normalized.includes('entre novamente')
     || normalized.includes('faca login novamente');
 };
 

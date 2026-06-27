@@ -347,18 +347,18 @@ const LEGAL_COMMENTARY_CONFIGURABLE_KEYS = new Set<LegalCommentaryFeatureConfigu
 ]);
 
 const LEGAL_COMMENTARY_FEATURE_LABELS: Record<LegalCommentaryFeatureConfigurableKey, string> = {
-  'lei.comentario_basico': 'Comentario do professor',
+  'lei.comentario_basico': 'Comentário do professor',
   'lei.doutrina': 'Doutrina',
   'lei.macete': 'Macete',
   'lei.como_cai': 'Como cai em prova',
-  'lei.jurisprudencia': 'Jurisprudencia',
-  'lei.sumulas': 'Sumulas',
-  'lei.questoes': 'Questoes relacionadas',
-  'lei.raiox': 'Analise detalhada',
-  'lei.anotacoes': 'Anotacoes',
+  'lei.jurisprudencia': 'Jurisprudência',
+  'lei.sumulas': 'Súmulas',
+  'lei.questoes': 'Questões relacionadas',
+  'lei.raiox': 'Análise detalhada',
+  'lei.anotacoes': 'Anotações',
   'lei.modo_foco': 'Modo foco',
   'lei.favoritos': 'Favoritos',
-  'lei.solicitar_comentario': 'Solicitar comentario',
+  'lei.solicitar_comentario': 'Solicitar comentário',
 };
 
 const isConfigurableLegalFeatureKey = (
@@ -1420,6 +1420,7 @@ const mapLegalCommentToQuestionComment = (comment: LegalUserComment): QuestaoCom
   isLiked: comment.userReaction === 'like',
   parentId: getLegalCommentParentId(comment) || undefined,
   moderationStatus: comment.moderationStatus,
+  userHasPendingReport: Boolean(comment.userHasPendingReport),
   replies: [],
 });
 
@@ -3671,21 +3672,27 @@ const LawDetailPage: React.FC = () => {
   ]);
 
   const reportLegalComment = React.useCallback(async (commentId: string) => {
-    if (!userId) {
-      addToast('Entre na sua conta para reportar comentários.', 'warning');
-      return;
-    }
+      if (!userId) {
+        addToast('Entre na sua conta para reportar comentários.', 'warning');
+        return false;
+      }
 
     try {
       const result = await legalCommentaryApiService.reportUserComment(commentId);
       applyUserProgressMutation(result);
+      if (result.duplicate) {
+        addToast('Você já denunciou este comentário. A moderação ainda está analisando.', 'warning');
+        return true;
+      }
       addToast(
-        result.xpGain ? `Comentário reportado para moderação. +${result.xpGain} XP.` : 'Comentário reportado para moderação.',
-        'success',
-      );
-    } catch {
-      addToast('Não foi possível reportar o comentário agora.', 'error');
-    }
+          result.xpGain ? `Comentário reportado para moderação. +${result.xpGain} XP.` : 'Comentário reportado para moderação.',
+          'success',
+        );
+        return true;
+      } catch {
+        addToast('Não foi possível reportar o comentário agora.', 'error');
+        return false;
+      }
   }, [addToast, applyUserProgressMutation, userId]);
 
   const deleteLegalComment = React.useCallback(async (commentId: string) => {

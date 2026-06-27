@@ -263,7 +263,7 @@ const readExamFileAttachment = (value: unknown, fallbackKind: ExamFileKind): Exa
 
 /**
  * Fachada oficial do dominio de questoes.
- * Ela conecta pratica, historico, estatisticas e manutencao administrativa ao backend oficial.
+ * Ela conecta prática, histórico, estatísticas e manutenção administrativa ao backend oficial.
  * @since v1.0.0
  */
 export const questionService = {
@@ -389,11 +389,11 @@ export const questionService = {
     ) {
       return {
         success: true,
-        message: 'Resposta ja registrada.',
+        message: 'Resposta já registrada.',
       };
     }
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel salvar a resposta.');
+    const envelope = assertApiSuccess(response, 'Não foi possível salvar a resposta.');
     const payload = readApiData<SubmitAnswerApiResponse>(response, {});
     return {
       success: true,
@@ -404,7 +404,7 @@ export const questionService = {
   },
 
   /**
-   * Carrega o historico de respostas do usuario para uma questao especifica.
+   * Carrega o histórico de respostas do usuário para uma questão específica.
    * @since v1.0.0
    */
   async getQuestionHistory(questionId: string | number, userId?: string): Promise<UserAnswer[]> {
@@ -445,7 +445,7 @@ export const questionService = {
   },
 
   /**
-   * Carrega as estatisticas agregadas de uma questao.
+   * Carrega as estatísticas agregadas de uma questão.
    * @since v1.0.0
    */
   async getQuestionStats(questionId: string | number): Promise<QuestionStats> {
@@ -467,7 +467,7 @@ export const questionService = {
   },
 
   /**
-   * Carrega likes/dislikes editoriais do comentario do professor e da analise detalhada.
+   * Carrega likes/dislikes editoriais do comentário do professor e da análise detalhada.
    * @since v1.0.0
    */
   async getEditorialFeedback(questionId: string | number): Promise<QuestionEditorialFeedbackSnapshot> {
@@ -488,7 +488,7 @@ export const questionService = {
   },
 
   /**
-   * Persiste o like/dislike editorial do usuario autenticado.
+   * Persiste o like/dislike editorial do usuário autenticado.
    * @since v1.0.0
    */
   async setEditorialFeedback(
@@ -505,7 +505,7 @@ export const questionService = {
       },
     );
 
-    assertApiSuccess(response, 'Nao foi possivel registrar sua avaliacao.');
+    assertApiSuccess(response, 'Não foi possível registrar sua avaliação.');
     return normalizeEditorialFeedbackSnapshot(readApiData<QuestionEditorialFeedbackSnapshot>(response, EMPTY_EDITORIAL_FEEDBACK_SNAPSHOT));
   },
 
@@ -517,18 +517,18 @@ export const questionService = {
     try {
       const userId = getUserAnswerUserId(answer);
       if (!userId) {
-        return { success: false, message: 'User ID obrigatorio para salvar resposta.' };
+      return { success: false, message: 'ID do usuário obrigatório para salvar resposta.' };
       }
 
       const result = await this.submitUserAnswer(userId, answer);
       return { success: result.success, message: result.message };
     } catch (error: unknown) {
-      return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel salvar a resposta.') };
+      return { success: false, message: readApiErrorMessage(error, 'Não foi possível salvar a resposta.') };
     }
   },
 
   /**
-   * Cria uma unica questao usando o endpoint oficial de persistencia.
+   * Cria uma única questão usando o endpoint oficial de persistência.
    * @since v1.0.0
    */
   async createQuestion(questionData: Question): Promise<{ success: boolean; question?: Question }> {
@@ -539,7 +539,7 @@ export const questionService = {
         normalizedQuestion,
       );
 
-      const envelope = assertApiSuccess<QuestionCreateResponse>(response, 'Nao foi possivel criar a questao.');
+      const envelope = assertApiSuccess<QuestionCreateResponse>(response, 'Não foi possível criar a questão.');
       const payload = readApiData<QuestionCreateResponse>(response, {});
       const resolvedId = Number(payload.id ?? envelope.raw.id ?? normalizedQuestion.id) || Number(normalizedQuestion.id);
 
@@ -555,7 +555,7 @@ export const questionService = {
   },
 
   /**
-   * Cria varias questoes preservando o contrato antigo usado pelo app.
+   * Cria várias questões preservando o contrato antigo usado pelo app.
    * @since v1.0.0
    */
   async createQuestions(questions: Question[]): Promise<{ success: boolean; count?: number; created?: Question[] }> {
@@ -591,7 +591,7 @@ export const questionService = {
       formData,
       { timeout: 120000 },
     );
-    const envelope = assertApiSuccess<{ file?: ExamFileAttachment }>(response, 'Nao foi possivel enviar o arquivo da prova.');
+    const envelope = assertApiSuccess<{ file?: ExamFileAttachment }>(response, 'Não foi possível enviar o arquivo da prova.');
     const data = readApiData<{ file?: ExamFileAttachment } | ExamFileAttachment>(response, {});
     const uploaded = toRecord(data) && 'file' in (data as Record<string, unknown>)
       ? (data as { file?: ExamFileAttachment }).file
@@ -599,14 +599,14 @@ export const questionService = {
     const attachment = readExamFileAttachment(uploaded, kind);
 
     if (!attachment.url) {
-      throw new Error('O backend nao retornou a URL do arquivo.');
+      throw new Error('O backend não retornou a URL do arquivo.');
     }
 
     return attachment;
   },
 
   /**
-   * Persiste uma importacao oficial de PDF com prova, contextos e questoes vinculadas.
+   * Persiste uma importação oficial de PDF com prova, contextos e questões vinculadas.
    * @since v1.0.0
    */
   async createImportedExam(
@@ -619,7 +619,7 @@ export const questionService = {
         { timeout: 30000 },
       );
 
-      const envelope = assertApiSuccess<{ exam?: Record<string, unknown> }>(response, 'Nao foi possivel salvar a prova.');
+      const envelope = assertApiSuccess<{ exam?: Record<string, unknown> }>(response, 'Não foi possível salvar a prova.');
       const data = readApiData<{ exam?: Record<string, unknown>; prova?: Record<string, unknown> } | Record<string, unknown>>(response, {});
       const exam = readImportedExamRecord(data) || readImportedExamRecord(envelope.raw);
 
@@ -631,13 +631,13 @@ export const questionService = {
     } catch (error: unknown) {
       return {
         success: false,
-        message: readApiErrorMessage(error, 'Nao foi possivel salvar a prova.'),
+        message: readApiErrorMessage(error, 'Não foi possível salvar a prova.'),
       };
     }
   },
 
   /**
-   * Persiste uma importacao oficial de PDF com prova, contextos e questoes vinculadas.
+   * Persiste uma importação oficial de PDF com prova, contextos e questões vinculadas.
    * @since v1.0.0
    */
   async createImportedQuestionBatch(
@@ -666,7 +666,7 @@ export const questionService = {
         { timeout: 300000 },
       );
 
-      const envelope = assertApiSuccess<ImportedQuestionBatchResponse>(response, 'Nao foi possivel importar a prova.');
+      const envelope = assertApiSuccess<ImportedQuestionBatchResponse>(response, 'Não foi possível importar a prova.');
       const raw = envelope.raw as ImportedQuestionBatchResponse;
       const data = readApiData<ImportedQuestionBatchResponse>(response, {} as ImportedQuestionBatchResponse);
       const created = Array.isArray(data.created)
@@ -684,8 +684,8 @@ export const questionService = {
       };
     } catch (error: unknown) {
       const message = error instanceof Error && error.message === 'Network Error'
-        ? 'O servidor interrompeu a importacao antes de responder. Verifique o limite de upload/tempo do PHP ou reduza imagens muito grandes no lote.'
-        : readApiErrorMessage(error, 'Nao foi possivel importar a prova.');
+        ? 'O servidor interrompeu a importação antes de responder. Verifique o limite de upload/tempo do PHP ou reduza imagens muito grandes no lote.'
+        : readApiErrorMessage(error, 'Não foi possível importar a prova.');
 
       return {
         success: false,
@@ -701,7 +701,7 @@ export const questionService = {
   },
 
   /**
-   * Atualiza uma questao usando o endpoint oficial de update.
+   * Atualiza uma questão usando o endpoint oficial de update.
    * @since v1.0.0
    */
   async updateQuestion(id: string, questionData: Question): Promise<{ success: boolean; question?: Question }> {
@@ -712,7 +712,7 @@ export const questionService = {
         { ...normalizedQuestion, id },
       );
 
-      assertApiSuccess(response, 'Nao foi possivel atualizar a questao.');
+      assertApiSuccess(response, 'Não foi possível atualizar a questão.');
       return {
         success: true,
         question: { ...normalizedQuestion, id: Number(id) || Number(normalizedQuestion.id) } as Question,
@@ -723,7 +723,7 @@ export const questionService = {
   },
 
   /**
-   * Exclui uma questao usando o contrato real do backend.
+   * Exclui uma questão usando o contrato real do backend.
    * @since v1.0.0
    */
   async deleteQuestion(id: string | number): Promise<{ success: boolean; message?: string }> {
@@ -733,18 +733,18 @@ export const questionService = {
         { params: { id: String(id) } },
       );
 
-      const envelope = assertApiSuccess(response, 'Nao foi possivel excluir a questao.');
+      const envelope = assertApiSuccess(response, 'Não foi possível excluir a questão.');
       return {
         success: true,
         message: envelope.message,
       };
     } catch (error: unknown) {
-      return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel excluir a questao.') };
+      return { success: false, message: readApiErrorMessage(error, 'Não foi possível excluir a questão.') };
     }
   },
 
   /**
-   * Alterna o estado salvo de uma questao para o usuario atual.
+   * Alterna o estado salvo de uma questão para o usuário atual.
    * @since v1.0.0
    */
   async toggleSavedQuestion(userId: string, questionId: string | number): Promise<ToggleSavedQuestionResult> {
@@ -757,7 +757,7 @@ export const questionService = {
         },
       );
 
-      const envelope = assertApiSuccess<ToggleSavedQuestionResponse>(response, 'Nao foi possivel atualizar os salvos.');
+      const envelope = assertApiSuccess<ToggleSavedQuestionResponse>(response, 'Não foi possível atualizar os salvos.');
       const payload = readApiData<ToggleSavedQuestionResponse>(response, {});
       const raw = toRecord(envelope.raw) || {};
       const resolvedSaved = payload.isSaved ?? payload.is_saved ?? raw.isSaved ?? raw.is_saved;
@@ -774,12 +774,12 @@ export const questionService = {
         newLevel: Number.isFinite(newLevel) ? newLevel : undefined,
       };
     } catch (error: unknown) {
-      return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel atualizar os salvos.') };
+      return { success: false, message: readApiErrorMessage(error, 'Não foi possível atualizar os salvos.') };
     }
   },
 
   /**
-   * Limpa o progresso de respostas do usuario atual.
+   * Limpa o progresso de respostas do usuário atual.
    * @since v1.0.0
    */
   async resetAnswers(userId: string): Promise<{ success: boolean; message?: string }> {
@@ -789,14 +789,14 @@ export const questionService = {
         { user_id: userId },
       );
 
-      const envelope = assertApiSuccess(response, 'Nao foi possivel limpar as respostas.');
+      const envelope = assertApiSuccess(response, 'Não foi possível limpar as respostas.');
 
       return {
         success: true,
         message: envelope.message,
       };
     } catch (error: unknown) {
-      return { success: false, message: readApiErrorMessage(error, 'Nao foi possivel limpar as respostas.') };
+      return { success: false, message: readApiErrorMessage(error, 'Não foi possível limpar as respostas.') };
     }
   },
 };

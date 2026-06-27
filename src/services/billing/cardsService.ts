@@ -82,7 +82,7 @@ export const cardsService = {
   },
 
   /**
-   * Remove um cartao salvo.
+   * Remove um cartão salvo.
    * @since 1.0.0
    */
   async removeSavedCard(cardId: string, userId?: string): Promise<SavedCardMutationResult> {
@@ -94,15 +94,15 @@ export const cardsService = {
       },
     ));
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel remover o cartao.');
+    const envelope = assertApiSuccess(response, 'Não foi possível remover o cartão.');
     return {
       success: true,
-      message: envelope.message || 'Cartao removido com sucesso!',
+      message: envelope.message || 'Cartão removido com sucesso!',
     };
   },
 
   /**
-   * Define um cartao salvo como padrao.
+   * Define um cartão salvo como padrão.
    * @since 1.0.0
    */
   async setDefaultSavedCard(cardId: string, userId?: string): Promise<SavedCardMutationResult> {
@@ -114,28 +114,28 @@ export const cardsService = {
       },
     ));
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel definir o cartao padrao.');
+    const envelope = assertApiSuccess(response, 'Não foi possível definir o cartão padrão.');
     return {
       success: true,
-      message: envelope.message || 'Cartao padrao atualizado!',
+      message: envelope.message || 'Cartão padrão atualizado!',
     };
   },
 
   /**
-   * Salva um cartao no cofre legado/local.
+   * Salva um cartão no cofre legado/local.
    * @since 1.0.0
    */
   async saveLegacyCard(payload: Record<string, unknown>): Promise<SavedCardMutationResult> {
     const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.users.saveCard, payload));
-    const envelope = assertApiSuccess(response, 'Nao foi possivel salvar o cartao.');
+    const envelope = assertApiSuccess(response, 'Não foi possível salvar o cartão.');
     return {
       success: true,
-      message: envelope.message || 'Cartao salvo com sucesso!',
+      message: envelope.message || 'Cartão salvo com sucesso!',
     };
   },
 
   /**
-   * Prepara o setup intent do Stripe para salvar novo cartao.
+   * Prepara o setup intent do Stripe para salvar novo cartão.
    * @since 1.0.0
    */
   async createStripeSetupIntent(): Promise<{ success: true; client_secret: string }> {
@@ -143,13 +143,13 @@ export const cardsService = {
       ENDPOINTS.users.createStripeSetupIntent,
       {},
     ));
-    assertApiSuccess(response, 'Nao foi possivel preparar o formulario Stripe.');
+    assertApiSuccess(response, 'Não foi possível preparar o formulário Stripe.');
 
     const payload = readApiData<RawSetupIntentPayload>(response, {});
     const clientSecret = payload.client_secret;
 
     if (!clientSecret) {
-      throw new Error('Nao foi possivel preparar o formulario Stripe.');
+      throw new Error('Não foi possível preparar o formulário Stripe.');
     }
 
     return {
@@ -159,7 +159,7 @@ export const cardsService = {
   },
 
   /**
-   * Sincroniza o metodo de pagamento Stripe apos o setup intent.
+   * Sincroniza o método de pagamento Stripe após o setup intent.
    * @since 1.0.0
    */
   async syncStripeCard(paymentMethodId: string): Promise<SavedCardMutationResult> {
@@ -170,10 +170,10 @@ export const cardsService = {
       },
     ));
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel sincronizar o cartao Stripe.');
+    const envelope = assertApiSuccess(response, 'Não foi possível sincronizar o cartão Stripe.');
     return {
       success: true,
-      message: envelope.message || 'Cartao salvo com sucesso na Stripe!',
+      message: envelope.message || 'Cartão salvo com sucesso na Stripe!',
     };
   },
 };

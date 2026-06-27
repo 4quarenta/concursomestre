@@ -39,7 +39,7 @@ const StudyMetric = ({
 );
 
 /**
- * Widget flutuante discreto que resume a sessao ativa de estudo.
+ * Widget flutuante discreto que resume a sessão ativa de estudo.
  *
  * @since 1.0.0
  */
@@ -74,10 +74,10 @@ const StudySessionWidget: React.FC<StudySessionWidgetProps> = ({
     <aside className="fixed right-4 top-1/2 z-40 w-[min(20rem,calc(100vw-2rem))] -translate-y-1/2 rounded-2xl border border-slate-200 bg-white/96 p-4 shadow-2xl shadow-slate-200/60 backdrop-blur dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-none">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Sessao atual</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">Sessão atual</p>
           <h2 className="mt-1 text-base font-black text-slate-900 dark:text-slate-100">Tempo de estudos</h2>
           <p className="mt-1 text-xs font-medium leading-5 text-slate-500 dark:text-slate-400">
-            O tempo e contado automaticamente enquanto voce resolve questoes, faz simulado ou le conteudos. Use o botao abaixo para salvar a sessao atual no historico.
+            O tempo é contado automaticamente enquanto você resolve questões, faz simulado ou lê conteúdos. Use o botão abaixo para salvar a sessão atual no histórico.
           </p>
         </div>
 
@@ -94,7 +94,7 @@ const StudySessionWidget: React.FC<StudySessionWidgetProps> = ({
       <div className="mt-4 rounded-[1.6rem] bg-slate-50/80 p-4 dark:bg-slate-900/80">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Sessao em andamento</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">Sessão em andamento</p>
             <p className="mt-1 text-2xl font-black text-slate-900 dark:text-slate-100">
               {formatStudyClock(sessionTotals.totalSeconds)}
             </p>
@@ -107,7 +107,7 @@ const StudySessionWidget: React.FC<StudySessionWidgetProps> = ({
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2">
-        <StudyMetric label="Questoes" value={formatStudyDuration(sessionTotals.questionSeconds)} />
+        <StudyMetric label="Questões" value={formatStudyDuration(sessionTotals.questionSeconds)} />
         <StudyMetric label="Leitura" value={formatStudyDuration(sessionTotals.readingSeconds)} />
         <StudyMetric label="Total" value={formatStudyDuration(sessionTotals.totalSeconds)} />
       </div>
@@ -123,7 +123,7 @@ const StudySessionWidget: React.FC<StudySessionWidgetProps> = ({
           ) : null}
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2">
-          <StudyMetric label="Questoes" value={formatStudyDuration(persistedTotals.questionSeconds)} />
+          <StudyMetric label="Questões" value={formatStudyDuration(persistedTotals.questionSeconds)} />
           <StudyMetric label="Leitura" value={formatStudyDuration(persistedTotals.readingSeconds)} />
           <StudyMetric label="Total" value={formatStudyDuration(persistedTotals.totalSeconds)} />
         </div>
@@ -141,7 +141,7 @@ const StudySessionWidget: React.FC<StudySessionWidgetProps> = ({
 
       <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-medium text-slate-400 dark:text-slate-500">
         <TimerReset size={12} />
-        Ao salvar, a sessao e enviada para o seu historico e o contador recomeca do zero.
+        Ao salvar, a sessão é enviada para o seu histórico e o contador recomeça do zero.
       </div>
     </aside>
   );

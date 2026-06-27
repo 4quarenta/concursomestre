@@ -69,7 +69,7 @@ export const transactionsService = {
   },
 
   /**
-   * Cria a transacao local de compra de material no backend oficial.
+   * Cria a transação local de compra de material no backend oficial.
    * @since 1.0.0
    */
   async createMaterialPurchase(materialId: string | number, couponCode?: string): Promise<Transaction> {
@@ -78,13 +78,13 @@ export const transactionsService = {
       coupon_code: couponCode,
     });
 
-    assertApiSuccess(response, 'Nao foi possivel registrar a compra.');
+    assertApiSuccess(response, 'Não foi possível registrar a compra.');
     const payload = readApiData<PurchaseTransactionResponse>(response, { transaction: {} as Transaction });
     return payload.transaction;
   },
 
   /**
-   * Solicita estorno de uma transacao existente.
+   * Solicita estorno de uma transação existente.
    * @since 1.0.0
    */
   async requestRefund(transactionId: string, reason: string): Promise<RefundMutationResponse> {
@@ -93,7 +93,7 @@ export const transactionsService = {
       reason,
     });
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel solicitar o reembolso.');
+    const envelope = assertApiSuccess(response, 'Não foi possível solicitar o reembolso.');
     const payload = readApiData<RefundMutationPayload>(response, {});
 
     return {
@@ -102,7 +102,7 @@ export const transactionsService = {
   },
 
   /**
-   * Cancela uma solicitacao de estorno pendente.
+   * Cancela uma solicitação de estorno pendente.
    * @since 1.0.0
    */
   async cancelRefundRequest(transactionId: string | number): Promise<RefundMutationResponse> {
@@ -112,7 +112,7 @@ export const transactionsService = {
       },
     });
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel cancelar a solicitacao de reembolso.');
+    const envelope = assertApiSuccess(response, 'Não foi possível cancelar a solicitação de reembolso.');
     const payload = readApiData<RefundMutationPayload>(response, {});
 
     return {
@@ -138,7 +138,7 @@ export const transactionsService = {
       reason,
     });
 
-    const envelope = assertApiSuccess(response, 'Nao foi possivel atualizar o estorno.');
+    const envelope = assertApiSuccess(response, 'Não foi possível atualizar o estorno.');
     const payload = readApiData<RefundMutationPayload>(response, {});
 
     return {

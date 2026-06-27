@@ -23,6 +23,7 @@ import type { EmailTemplateModel, PlanBenefitKey, PlanUsageLimitKey, SeoSettings
 import apiClient from '@services/api/client';
 import { readApiErrorMessage } from '@services/api';
 import { adminService } from '@services/admin/adminService';
+import { validateAdsTxtContent } from '@services/ads/adsTxt';
 import { parseDailyMotivationMarkdown } from '@services/dashboard/dashboardInsightsService';
 import { normalizeEmailTemplates } from '@constants/email/defaultEmailTemplates';
 import { DEFAULT_SYSTEM_SETTINGS } from '@/state/app-config/systemSettings';
@@ -142,7 +143,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 };
 
 const featureItems = [
-  { id: 'practiceEnabled', label: 'Pratica', icon: BookOpen },
+  { id: 'practiceEnabled', label: 'Prática', icon: BookOpen },
   { id: 'simulationsEnabled', label: 'Simulados', icon: Clock },
   { id: 'studyScheduleEnabled', label: 'Cronograma', icon: CalendarDays },
   { id: 'marketplaceEnabled', label: 'Marketplace', icon: ShoppingCart },
@@ -151,15 +152,15 @@ const featureItems = [
   { id: 'xRayEnabled', label: 'Raio-X', icon: Zap },
   { id: 'landingPagePromoEnabled', label: 'Promo na home', icon: Megaphone },
   { id: 'communityEnabled', label: 'Comunidade', icon: MessageSquare },
-  { id: 'aiCommentsEnabled', label: 'Comentarios com IA', icon: Sparkles },
+  { id: 'aiCommentsEnabled', label: 'Comentários com IA', icon: Sparkles },
   { id: 'bulkImportEnabled', label: 'Importador', icon: Upload },
   { id: 'reportsEnabled', label: 'Denúncias', icon: Flag },
-  { id: 'notificationsEnabled', label: 'Notificacoes', icon: Bell },
-  { id: 'maintenanceMode', label: 'Manutencao', icon: ShieldAlert },
+  { id: 'notificationsEnabled', label: 'Notificações', icon: Bell },
+  { id: 'maintenanceMode', label: 'Manutenção', icon: ShieldAlert },
   { id: 'registrationEnabled', label: 'Novos cadastros', icon: Users },
-  { id: 'loginRequired', label: 'Login obrigatorio', icon: Lock },
-  { id: 'partnerRegistrationEnabled', label: 'Cadastro parceiro', icon: ShoppingBag },
-  { id: 'recurringEnabled', label: 'Recorrencia', icon: Repeat },
+  { id: 'loginRequired', label: 'Login obrigatório', icon: Lock },
+  { id: 'partnerRegistrationEnabled', label: 'Cadastro de parceiro', icon: ShoppingBag },
+  { id: 'recurringEnabled', label: 'Recorrência', icon: Repeat },
   { id: 'sameTierCycleChangeEnabled', label: 'Troca de ciclo no mesmo tier', icon: RefreshCcw },
   { id: 'autoRefundEnabled', label: 'Auto refund', icon: RefreshCcw },
 ];
@@ -691,6 +692,10 @@ const AdminSettings = ({
   const adsenseMetaTag = adsensePublisherId
     ? `<meta name="google-adsense-account" content="${adsensePublisherId}">`
     : '<meta name="google-adsense-account" content="ca-pub-0000000000000000">';
+  const adsTxtValidation = useMemo(
+    () => validateAdsTxtContent(localSettings.adsTxtContent),
+    [localSettings.adsTxtContent],
+  );
   const adPlacementCards = [
     {
       key: 'top',
@@ -869,7 +874,7 @@ const AdminSettings = ({
             <h3 className="mb-4 flex items-center gap-2 text-lg font-black text-slate-900 dark:text-slate-100"><ShieldCheck size={20} className="text-sky-700 dark:text-sky-300" /> 2FA</h3>
             <p className="mb-4 text-xs font-medium text-slate-500 dark:text-slate-400">Status atual: {currentUser?.twoFactorEnabled ? 'ativo' : 'inativo'}.</p>
             {twoFactorStep === 'status' && !currentUser?.twoFactorEnabled && <button type="button" onClick={initiate2FASetup} className={`${ADMIN_PRIMARY_BUTTON_CLASS} px-6 py-2 text-[10px] uppercase tracking-[0.18em]`}>Configurar 2FA</button>}
-            {twoFactorStep === 'setup' && twoFactorData && <div className="space-y-4"><Image src={twoFactorData.qrCodeUrl} alt="QR 2FA" width={160} height={160} unoptimized className="h-40 w-40 rounded-sm border border-slate-300 bg-white p-3" /><code className="block rounded-sm bg-slate-100 px-4 py-3 text-sm font-black dark:bg-slate-950 dark:text-slate-100">{twoFactorData.secret}</code><button type="button" onClick={() => setTwoFactorStep('verify')} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-6 py-2 text-[10px] uppercase tracking-[0.18em] dark:bg-sky-700 dark:text-white dark:hover:bg-sky-800`}>Ja escaneei</button></div>}
+            {twoFactorStep === 'setup' && twoFactorData && <div className="space-y-4"><Image src={twoFactorData.qrCodeUrl} alt="QR 2FA" width={160} height={160} unoptimized className="h-40 w-40 rounded-sm border border-slate-300 bg-white p-3" /><code className="block rounded-sm bg-slate-100 px-4 py-3 text-sm font-black dark:bg-slate-950 dark:text-slate-100">{twoFactorData.secret}</code><button type="button" onClick={() => setTwoFactorStep('verify')} className={`${ADMIN_SECONDARY_BUTTON_CLASS} px-6 py-2 text-[10px] uppercase tracking-[0.18em] dark:bg-sky-700 dark:text-white dark:hover:bg-sky-800`}>Já escaneei</button></div>}
             {twoFactorStep === 'verify' && <div className="space-y-4"><input type="text" maxLength={6} value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value)} placeholder="000000" className={`${inputClassName} text-center text-2xl font-black tracking-widest`} /><button type="button" onClick={verifyAndEnable2FA} className="rounded-sm border border-emerald-700 bg-emerald-700 px-6 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white">Ativar 2FA</button></div>}
           </div>
           <div className="rounded-sm border border-rose-200 bg-rose-50 p-4 sm:p-5 md:p-6 dark:border-rose-900/30 dark:bg-rose-900/10">
@@ -958,7 +963,7 @@ const AdminSettings = ({
                           <th className="px-3 py-2 font-black uppercase tracking-[0.16em] text-slate-500">IP</th>
                           <th className="px-3 py-2 font-black uppercase tracking-[0.16em] text-slate-500">Score</th>
                           <th className="px-3 py-2 font-black uppercase tracking-[0.16em] text-slate-500">Sinais</th>
-                          <th className="px-3 py-2 text-right font-black uppercase tracking-[0.16em] text-slate-500">Acao</th>
+                          <th className="px-3 py-2 text-right font-black uppercase tracking-[0.16em] text-slate-500">Ação</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1028,7 +1033,7 @@ const AdminSettings = ({
                         <tr>
                           <th className="px-3 py-2 font-black uppercase tracking-[0.16em] text-slate-500">IP</th>
                           <th className="px-3 py-2 font-black uppercase tracking-[0.16em] text-slate-500">Motivo</th>
-                          <th className="px-3 py-2 text-right font-black uppercase tracking-[0.16em] text-slate-500">Acao</th>
+                          <th className="px-3 py-2 text-right font-black uppercase tracking-[0.16em] text-slate-500">Ação</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1085,11 +1090,11 @@ const AdminSettings = ({
             <div className="space-y-2"><input value={localSettings.appleAuthRedirectUri || ''} onChange={(e) => setField('appleAuthRedirectUri', e.target.value)} className={inputClassName} placeholder="Apple Redirect URI (opcional)" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Se vazio, o login usa automaticamente a origem atual + /auth.</p></div>
             <input value={localSettings.googleAnalyticsId || ''} onChange={(e) => setField('googleAnalyticsId', e.target.value)} className={inputClassName} placeholder="Google Analytics ID" />
             <input value={localSettings.metaPixelId || ''} onChange={(e) => setField('metaPixelId', e.target.value)} className={inputClassName} placeholder="Meta Pixel ID" />
-            <div className="space-y-2 md:col-span-2"><span className={labelClassName}>Provedor padrao de IA</span><select value={localSettings.aiProvider || 'gemini'} onChange={(e) => setField('aiProvider', e.target.value)} className={inputClassName}><option value="gemini">Gemini</option><option value="openai">OpenAI / ChatGPT</option><option value="auto">Automatico: OpenAI se configurado, senao Gemini</option></select><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Todas as geracoes passam pelo backend. O frontend nunca recebe a chave do provedor.</p></div>
+            <div className="space-y-2 md:col-span-2"><span className={labelClassName}>Provedor padrão de IA</span><select value={localSettings.aiProvider || 'gemini'} onChange={(e) => setField('aiProvider', e.target.value)} className={inputClassName}><option value="gemini">Gemini</option><option value="openai">OpenAI / ChatGPT</option><option value="auto">Automático: OpenAI se configurado, senão Gemini</option></select><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Todas as gerações passam pelo backend. O frontend nunca recebe a chave do provedor.</p></div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>Gemini API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isGeminiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isGeminiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.geminiApiKey || ''} onChange={(e) => setField('geminiApiKey', e.target.value)} className={inputClassName} placeholder={isGeminiConfigured ? 'Digite uma nova chave para substituir a atual' : 'Gemini API key'} />{localSettings.hasGeminiApiKeyConfigured && !localSettings.geminiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend.</p>}</div>
             <div className="space-y-2"><div className="flex items-center justify-between"><span className={labelClassName}>OpenAI API key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isOpenAiConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isOpenAiConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.openaiApiKey || ''} onChange={(e) => setField('openaiApiKey', e.target.value)} className={inputClassName} placeholder={isOpenAiConfigured ? 'Digite uma nova chave para substituir a atual' : 'OpenAI API key'} />{localSettings.hasOpenAiApiKeyConfigured && !localSettings.openaiApiKey && <p className="text-xs font-medium text-slate-500 dark:text-slate-400">A chave atual fica oculta no frontend.</p>}</div>
             <div className="space-y-2 md:col-span-2"><span className={labelClassName}>Modelo OpenAI</span><input value={localSettings.openAiModel || 'gpt-4o-mini'} onChange={(e) => setField('openAiModel', e.target.value)} className={inputClassName} placeholder="gpt-4o-mini" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Usado quando o provedor escolhido for OpenAI/ChatGPT. Chamadas antigas que enviam modelo Gemini usam este valor automaticamente.</p></div>
-            <div className="space-y-2"><input value={localSettings.recaptchaSiteKey || ''} onChange={(e) => setField('recaptchaSiteKey', e.target.value)} className={inputClassName} placeholder="reCAPTCHA v3 site key" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use chaves do reCAPTCHA v3. O token agora e gerado automaticamente no envio de login, cadastro e reset.</p></div>
+            <div className="space-y-2"><input value={localSettings.recaptchaSiteKey || ''} onChange={(e) => setField('recaptchaSiteKey', e.target.value)} className={inputClassName} placeholder="reCAPTCHA v3 site key" /><p className="text-xs font-medium text-slate-500 dark:text-slate-400">Use chaves do reCAPTCHA v3. O token agora é gerado automaticamente no envio de login, cadastro e reset.</p></div>
             <div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><span className={labelClassName}>reCAPTCHA v3 secret key</span><span className={`text-[10px] font-black uppercase tracking-[0.18em] ${isRecaptchaSecretConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>{isRecaptchaSecretConfigured ? 'Configurada' : 'Ausente'}</span></div><input type="password" value={localSettings.recaptchaSecretKey || ''} onChange={(e) => setField('recaptchaSecretKey', e.target.value)} className={inputClassName} placeholder={isRecaptchaSecretConfigured ? 'Digite um novo segredo para substituir o atual' : 'reCAPTCHA v3 secret key'} /></div>
           </div>
           <div className="rounded-sm border border-sky-300 bg-sky-50 p-4 dark:border-sky-900/30 dark:bg-sky-900/10"><p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Webhook oficial</p><p className="mt-2 break-all text-xs font-mono text-sky-700 dark:text-sky-300">{stripeWebhookUrl}</p></div>
@@ -1165,7 +1170,7 @@ const AdminSettings = ({
             <input value={localSettings.smtpHost || ''} onChange={(e) => setField('smtpHost', e.target.value)} className={inputClassName} placeholder="Host SMTP" />
             <input type="number" value={String(localSettings.smtpPort || 587)} onChange={(e) => setField('smtpPort', Number(e.target.value))} className={inputClassName} placeholder="Porta" />
             <select value={localSettings.smtpSecure || 'tls'} onChange={(e) => setField('smtpSecure', e.target.value as 'tls' | 'ssl')} className={inputClassName}><option value="tls">TLS</option><option value="ssl">SSL</option></select>
-            <input value={localSettings.smtpUser || ''} onChange={(e) => setField('smtpUser', e.target.value)} className={inputClassName} placeholder="Usuario SMTP" />
+            <input value={localSettings.smtpUser || ''} onChange={(e) => setField('smtpUser', e.target.value)} className={inputClassName} placeholder="Usuário SMTP" />
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className={labelClassName}>Senha SMTP</span>
@@ -1268,7 +1273,7 @@ const AdminSettings = ({
           </div>
 
           <div className="rounded-sm border border-sky-200 bg-sky-50 p-4 text-sm font-semibold leading-relaxed text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-100">
-            Quando o publisher ou slot nao estiverem preenchidos, o site usa os IDs oficiais de teste do Google para validar renderização sem gerar tráfego real. O interstitial respeita o frequency cap do Google e também o intervalo configurado em Controle de Acesso por Plano.
+            Quando o publisher ou slot não estiverem preenchidos, o site usa os IDs oficiais de teste do Google para validar renderização sem gerar tráfego real. O interstitial respeita o frequency cap do Google e também o intervalo configurado em Controle de Acesso por Plano.
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -1339,6 +1344,56 @@ const AdminSettings = ({
                 {adsenseMetaTag}
               </pre>
             </div>
+          </div>
+
+          <div className={`${ADMIN_MUTED_SURFACE_CLASS} p-4`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-black text-slate-900 dark:text-slate-100">Arquivo ads.txt</p>
+                  <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                    adsTxtValidation.content
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300'
+                      : 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300'
+                  }`}>
+                    {adsTxtValidation.content ? 'Publicado' : 'Não configurado'}
+                  </span>
+                </div>
+                <p className="mt-1 max-w-3xl text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                  Autoriza o Google AdSense e outros vendedores digitais a comercializarem o inventário do domínio.
+                  Uma entrada por linha, conforme o conteúdo fornecido pela plataforma de anúncios.
+                </p>
+              </div>
+              <a
+                href="/ads.txt"
+                target="_blank"
+                rel="noreferrer"
+                className={ADMIN_SECONDARY_BUTTON_CLASS}
+              >
+                <FileText size={14} />
+                Abrir /ads.txt
+              </a>
+            </div>
+
+            <textarea
+              value={localSettings.adsTxtContent || ''}
+              onChange={(event) => setField('adsTxtContent', event.target.value)}
+              className={`${ADMIN_TEXTAREA_CLASS} mt-4 min-h-[120px] resize-y font-mono text-xs`}
+              placeholder="google.com, pub-7995648525529106, DIRECT, f08c47fec0942fa0"
+              spellCheck={false}
+            />
+
+            {adsTxtValidation.invalidLines.length > 0 ? (
+              <p className="mt-2 text-xs font-bold text-rose-600 dark:text-rose-400">
+                Revise {adsTxtValidation.invalidLines.length} linha(s) inválida(s):{' '}
+                {adsTxtValidation.invalidLines.map((line) => line.lineNumber).join(', ')}.
+                Linhas inválidas não serão publicadas.
+              </p>
+            ) : (
+              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                URL pública: https://concursomestre.com/ads.txt
+              </p>
+            )}
           </div>
 
           <div className="grid gap-4 xl:grid-cols-3">

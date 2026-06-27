@@ -28,9 +28,9 @@ const EMAIL_PREVIEW_VARIABLES: Record<string, string> = {
   app_url: 'https://concursomestre.com',
   billing_url: 'https://concursomestre.com/perfil/assinatura',
   confirm_url: 'https://concursomestre.com/confirmar-email',
-  content: 'Mensagem principal do modelo com as informacoes importantes para o aluno.',
+  content: 'Mensagem principal do modelo com as informações importantes para o aluno.',
   email: 'aluno@exemplo.com',
-  intro: 'Temos uma atualizacao sobre sua solicitacao.',
+  intro: 'Temos uma atualização sobre sua solicitação.',
   login_url: 'https://concursomestre.com/login',
   message: 'Mensagem da campanha.',
   message_html: 'Mensagem da campanha com detalhes importantes.',
@@ -41,7 +41,7 @@ const EMAIL_PREVIEW_VARIABLES: Record<string, string> = {
   status_line: 'Em atendimento',
   status_intro: 'Seu atendimento foi atualizado.',
   support_url: 'https://concursomestre.com/suporte',
-  title: 'Atualizacao ConcursoMestre',
+  title: 'Atualização ConcursoMestre',
   xp_bonus: '25',
 };
 
@@ -176,7 +176,7 @@ const buildEmailPreviewShell = (
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:28px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;">
                 <tr>
                   <td style="padding:14px 16px;font-size:12px;line-height:1.6;color:#64748b;">
-                    Se voce nao reconhece esta mensagem, ignore este e-mail ou fale com nosso suporte.
+                    Se você não reconhece esta mensagem, ignore este e-mail ou fale com nosso suporte.
                   </td>
                 </tr>
               </table>
@@ -198,7 +198,7 @@ const buildEmailPreviewShell = (
 const buildEmailPreviewHtml = (template: EmailTemplateModel, emailLogoUrl = ''): string => {
   const subject = applyEmailPreviewVariables(template.subject || 'ConcursoMestre');
   const htmlBody = applyEmailPreviewBranding(
-    applyEmailPreviewVariables(template.htmlBody || '<p>Conteudo do e-mail.</p>'),
+    applyEmailPreviewVariables(template.htmlBody || '<p>Conteúdo do e-mail.</p>'),
     emailLogoUrl,
   );
 
@@ -328,7 +328,7 @@ const AdminEmailTemplatesSection: React.FC<AdminEmailTemplatesSectionProps> = ({
     } catch (error) {
       setTestResult({
         ok: false,
-        message: error instanceof Error ? error.message : 'Nao foi possivel enviar o teste do modelo.',
+        message: error instanceof Error ? error.message : 'Não foi possível enviar o teste do modelo.',
       });
     } finally {
       setTestingKey(null);

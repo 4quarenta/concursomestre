@@ -248,6 +248,12 @@ const CheckoutPage: React.FC = () => {
     const [checkoutRequirementData, setCheckoutRequirementData] = useState(() => buildCheckoutRequirementSeed(currentUser));
     const [checkoutNowMs, setCheckoutNowMs] = useState(0);
     const recaptchaEnabled = !!systemSettings?.recaptchaEnabled && !!systemSettings?.recaptchaSiteKey;
+    const checkoutReturnSignal = useMemo(() => {
+        const status = String(routeSearchParams?.get('status') || routeSearchParams?.get('redirect_status') || '').toLowerCase();
+        return Boolean(routeSearchParams?.get('session_id'))
+            || Boolean(routeSearchParams?.get('payment_intent'))
+            || ['success', 'approved', 'paid', 'complete', 'completed', 'succeeded'].includes(status);
+    }, [routeSearchParams]);
     const {
         executeRecaptcha,
         isReady: isRecaptchaReady,
@@ -533,9 +539,9 @@ const CheckoutPage: React.FC = () => {
                 const targetPlanTier = getPlanTierScore(found.name);
                 const targetPlanTimeScore = getPlanTimeScore(found);
 
-                if (hasActivePlanAccess(currentUser) && !checkoutCompletionInProgressRef.current) {
+                if (hasActivePlanAccess(currentUser) && !checkoutCompletionInProgressRef.current && !checkoutReturnSignal) {
                     if (isSameActiveSubscriptionPlan(currentUser.subscription?.plan || currentPlanInList, found, currentUser.subscription?.plan_id)) {
-                        addToast(`Voce ja possui o plano ${currentUser.subscription?.plan?.name || 'Premium'} ativo.`, 'warning');
+                        addToast(`Você já possui o plano ${currentUser.subscription?.plan?.name || 'Premium'} ativo.`, 'warning');
                         router.push(buildProfilePath('billing'));
                         return;
                     }
@@ -568,7 +574,7 @@ const CheckoutPage: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [addToast, allowSameTierCycleChangeEnabled, currentUser, planId, router]);
+    }, [addToast, allowSameTierCycleChangeEnabled, checkoutReturnSignal, currentUser, planId, router]);
 
     useEffect(() => {
         if (isAuthLoading) {
@@ -601,17 +607,19 @@ const CheckoutPage: React.FC = () => {
         }
 
         const currentPlanName = currentActiveSubscription?.plan?.name || currentSubscriptionPlan?.name || currentComparablePlanName || 'seu plano atual';
-        return `Voce ja possui ${currentPlanName} ativo nesta conta. Para evitar cobranca repetida, essa compra foi bloqueada.`;
+        return `Você já possui ${currentPlanName} ativo nesta conta. Para evitar cobrança repetida, essa compra foi bloqueada.`;
     }, [currentActiveSubscription?.plan?.name, currentComparablePlanName, currentSubscriptionPlan?.name, hasRepeatedActivePlanPurchase]);
 
     const shouldBlockRepeatedActivePlanPurchase = hasRepeatedActivePlanPurchase
         && !checkoutCompletionInProgress
+        && !checkoutReturnSignal
+        && !confirmedCheckoutSummary
         && step !== 'success';
 
     const hasTriggeredRepeatedPurchaseRedirectRef = useRef(false);
 
     const ensurePlanPurchaseAllowed = React.useCallback(() => {
-        if (checkoutCompletionInProgressRef.current || step === 'success') {
+        if (checkoutCompletionInProgressRef.current || checkoutReturnSignal || step === 'success') {
             return true;
         }
 
@@ -622,31 +630,31 @@ const CheckoutPage: React.FC = () => {
 
         if (!hasTriggeredRepeatedPurchaseRedirectRef.current) {
             hasTriggeredRepeatedPurchaseRedirectRef.current = true;
-            addToast(repeatedPurchaseMessage || 'Esta assinatura ja esta ativa nesta conta.', 'warning');
+            addToast(repeatedPurchaseMessage || 'Esta assinatura já está ativa nesta conta.', 'warning');
         }
 
         router.replace(buildProfilePath('billing'));
         return false;
-    }, [addToast, hasRepeatedActivePlanPurchase, repeatedPurchaseMessage, router, step]);
+    }, [addToast, checkoutReturnSignal, hasRepeatedActivePlanPurchase, repeatedPurchaseMessage, router, step]);
 
     useEffect(() => {
         if (loading) return;
-        if (checkoutCompletionInProgressRef.current || step === 'success') return;
+        if (checkoutCompletionInProgressRef.current || checkoutReturnSignal || step === 'success') return;
         if (!hasRepeatedActivePlanPurchase) {
             hasTriggeredRepeatedPurchaseRedirectRef.current = false;
             return;
         }
 
         ensurePlanPurchaseAllowed();
-    }, [ensurePlanPurchaseAllowed, hasRepeatedActivePlanPurchase, loading, step]);
+    }, [checkoutReturnSignal, ensurePlanPurchaseAllowed, hasRepeatedActivePlanPurchase, loading, step]);
 
     useEffect(() => {
         if (isAuthLoading) return;
-        if (checkoutCompletionInProgressRef.current || step === 'success') return;
+        if (checkoutCompletionInProgressRef.current || checkoutReturnSignal || step === 'success') return;
         if (!hasExactCurrentPlanMatch && !hasBillingMirrorPlanMatch) return;
 
         ensurePlanPurchaseAllowed();
-    }, [ensurePlanPurchaseAllowed, hasBillingMirrorPlanMatch, hasExactCurrentPlanMatch, isAuthLoading, step]);
+    }, [checkoutReturnSignal, ensurePlanPurchaseAllowed, hasBillingMirrorPlanMatch, hasExactCurrentPlanMatch, isAuthLoading, step]);
 
     const checkoutBaseOffer = useMemo(() => {
         if (!plan) return null;
@@ -1284,19 +1292,22 @@ const CheckoutPage: React.FC = () => {
                 ? `${selectedStripeInstallmentCount}x de ${formatCurrency(confirmedChargeAmount)}`
                 : `1x de ${formatCurrency(confirmedChargeAmount)}`,
         });
+        setCountdown(10);
         setStep('success');
 
-        const [userRefreshResult, cardsRefreshResult] = await Promise.allSettled([
-            refreshUser(),
-            loadSavedCards(),
-        ]);
+        void (async () => {
+            const [userRefreshResult, cardsRefreshResult] = await Promise.allSettled([
+                refreshUser(),
+                loadSavedCards(),
+            ]);
 
-        if (userRefreshResult.status === 'rejected') {
-            clientLog.warn('Checkout completed, but user refresh failed:', userRefreshResult.reason);
-        }
-        if (cardsRefreshResult.status === 'rejected') {
-            clientLog.warn('Checkout completed, but saved cards refresh failed:', cardsRefreshResult.reason);
-        }
+            if (userRefreshResult.status === 'rejected') {
+                clientLog.warn('Checkout completed, but user refresh failed:', userRefreshResult.reason);
+            }
+            if (cardsRefreshResult.status === 'rejected') {
+                clientLog.warn('Checkout completed, but saved cards refresh failed:', cardsRefreshResult.reason);
+            }
+        })();
 
         setPendingStripeSubscriptionId(null);
         setPendingStripePaymentMethodId(null);
@@ -1331,7 +1342,7 @@ const CheckoutPage: React.FC = () => {
       throw new Error('Selecione um cartão salvo para continuar.');
         }
         if (!ensurePlanPurchaseAllowed()) {
-            throw new Error(repeatedPurchaseMessage || 'Esta assinatura ja esta ativa nesta conta.');
+            throw new Error(repeatedPurchaseMessage || 'Esta assinatura já está ativa nesta conta.');
         }
         if (!ensureCheckoutRequirements()) {
             throw new Error('Complete seu perfil e confirme o e-mail antes de concluir a compra.');
@@ -1698,7 +1709,28 @@ const CheckoutPage: React.FC = () => {
     });
 
     if (shouldHideCheckout) {
-        return null;
+        return (
+            <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-[#0f1020]">
+                <section
+                    aria-live="polite"
+                    className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-950"
+                >
+                    <Loader2 className="mx-auto mb-4 animate-spin text-indigo-600 dark:text-indigo-400" size={36} />
+                    <h1 className="text-xl font-black text-slate-950 dark:text-white">Assinatura identificada</h1>
+                    <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                        Estamos abrindo os dados da sua assinatura para evitar uma cobrança repetida.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => router.replace(buildProfilePath('billing'))}
+                        className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 text-xs font-black uppercase tracking-widest text-white transition hover:bg-indigo-700"
+                    >
+                        Ir para minha assinatura
+                        <ArrowRight size={16} />
+                    </button>
+                </section>
+            </main>
+        );
     }
 
     if (loading) return (
@@ -1869,7 +1901,7 @@ const CheckoutPage: React.FC = () => {
                                                         disabled={shouldBlockRepeatedActivePlanPurchase}
                                                         className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-500/20 transition-all hover:bg-indigo-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none dark:disabled:bg-slate-700"
                                                     >
-                                                        {shouldBlockRepeatedActivePlanPurchase ? 'Assinatura ja ativa' : 'Continuar para pagamento'}
+                                                        {shouldBlockRepeatedActivePlanPurchase ? 'Assinatura já ativa' : 'Continuar para pagamento'}
                                                         <ArrowRight size={18} />
                                                     </button>
                                                     {shouldBlockRepeatedActivePlanPurchase ? (
@@ -1996,7 +2028,7 @@ const CheckoutPage: React.FC = () => {
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">Compra repetida bloqueada</p>
-                                                <h3 className="mt-2 text-lg font-black text-slate-900 dark:text-slate-100">Esta assinatura ja esta ativa</h3>
+                                                <h3 className="mt-2 text-lg font-black text-slate-900 dark:text-slate-100">Esta assinatura já está ativa</h3>
                                                 <p className="mt-2 text-sm font-medium leading-6 text-slate-600 dark:text-slate-300">{repeatedPurchaseMessage}</p>
                                                 <div className="mt-5 flex flex-wrap gap-3">
                                                     <button

@@ -14,6 +14,17 @@ import Link from 'next/link';
 import { BookOpenCheck, CheckCircle2, Filter, Loader2, MessageSquare, Search, Send, Star } from 'lucide-react';
 import { adminService, type AdminFeedbackReply, type AdminFeedbackThread } from '@services/admin/adminService';
 import { clientLog } from '@services/monitoring/clientLog';
+import {
+  compactSupportText,
+  getSupportPresentationType,
+  getSupportThreadExpandedBlocks,
+  getSupportThreadPreview,
+  getSupportThreadTitle,
+  getSupportTypeLabel,
+  isFeedbackInboxThread,
+  isOperationalSupportThread,
+  parseEditorialRequestDetails,
+} from '@services/support';
 import { useToast } from '@providers/ToastProvider';
 import {
   ADMIN_FIELD_CLASS,
@@ -34,20 +45,6 @@ const STATUS_TONE: Record<AdminFeedbackThread['status'], string> = {
   new: 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300',
   read: 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-900/40 dark:bg-indigo-900/20 dark:text-indigo-300',
   resolved: 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-300',
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  support: 'Suporte',
-  'teacher-request': 'Comentário do professor',
-  'analysis-request': 'Análise detalhada',
-  report: 'Denúncia',
-  'platform-rating': 'Avaliação',
-  platform_rating: 'Avaliação',
-  testimonial: 'Avaliação',
-  rating: 'Avaliação',
-  suggestion: 'Sugestão',
-  bug: 'Bug',
-  other: 'Outro',
 };
 
 const FEEDBACK_REPLY_TEMPLATES: Record<string, Array<{ label: string; message: string }>> = {
@@ -96,13 +93,10 @@ interface AdminFeedbackProps {
   onPendingCountChange?: (count: number) => void;
 }
 
-const countPendingFeedback = (items: AdminFeedbackThread[]) => items.filter((item) => item.status !== 'resolved').length;
+export const countPendingFeedback = (items: AdminFeedbackThread[]) => items.filter((item) => item.status !== 'resolved').length;
 
 const compactText = (value: unknown, maxLength = 140) => {
-  const normalized = String(value || '').replace(/\s+/g, ' ').trim();
-  if (!normalized) return '-';
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 1).trim()}...`;
+  return compactSupportText(value, maxLength);
 };
 
 const formatExpandedSupportText = (value: unknown) => {
@@ -144,39 +138,30 @@ interface EditorialRequestContext {
 }
 
 export const parseEditorialRequestContext = (item: AdminFeedbackThread): EditorialRequestContext | null => {
-  const details = String(item.details || '');
-  const match = details.match(/C[oó]digo do pedido:\s*(teacher_request|analysis_request):([^:\s]+):([^:\s]+):([^\s]+)/i);
-  if (!match) return null;
+  const parsed = parseEditorialRequestDetails(item.details);
+  if (!parsed?.kind || !parsed.lawId || !parsed.sectionId || !parsed.targetId) return null;
 
   return {
-    kind: match[1].toLowerCase() === 'analysis_request' ? 'analysis-request' : 'teacher-request',
-    lawId: match[2],
-    sectionId: match[3],
-    targetId: match[4],
+    kind: parsed.kind,
+    lawId: parsed.lawId,
+    sectionId: parsed.sectionId,
+    targetId: parsed.targetId,
   };
 };
-
-const getEditorialRequestKind = (item: AdminFeedbackThread): EditorialRequestKind | null => {
-  const parsed = parseEditorialRequestContext(item);
-  if (parsed) return parsed.kind;
-
-  const reason = String(item.reason || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-  if (reason.includes('solicitar comentario')) return 'teacher-request';
-  if (reason.includes('solicitar analise')) return 'analysis-request';
-  return null;
-};
-
 export const getEffectiveFeedbackType = (item: AdminFeedbackThread) => (
-  isPlatformRatingFeedback(item)
-    ? 'platform-rating'
-    : getEditorialRequestKind(item) || String(item.type || 'other')
+  getSupportPresentationType(item)
+);
+
+export const isFeedbackInboxItem = (item: AdminFeedbackThread) => (
+  isFeedbackInboxThread(item)
+);
+
+export const isSupportThreadItem = (item: AdminFeedbackThread) => (
+  isOperationalSupportThread(item)
 );
 
 const getFeedbackTypeLabel = (item: AdminFeedbackThread) => (
-  TYPE_LABELS[getEffectiveFeedbackType(item)] || getEffectiveFeedbackType(item)
+  getSupportTypeLabel(item)
 );
 
 export const getEditorialAdminAction = (item: AdminFeedbackThread) => {
@@ -240,20 +225,23 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
   useEffect(() => {
     if (!loading) {
       const frameId = window.requestAnimationFrame(() => {
-        onPendingCountChange?.(countPendingFeedback(feedbacks));
+        const scopedItems = mode === 'threads'
+          ? feedbacks.filter(isSupportThreadItem)
+          : feedbacks.filter(isFeedbackInboxItem);
+        onPendingCountChange?.(countPendingFeedback(scopedItems));
       });
 
       return () => window.cancelAnimationFrame(frameId);
     }
 
     return undefined;
-  }, [feedbacks, loading, onPendingCountChange]);
+  }, [feedbacks, loading, mode, onPendingCountChange]);
 
   const dataset = useMemo(() => {
     if (mode === 'threads') {
-      return feedbacks.filter((item) => Number(item.reply_count || 0) > 0 || item.status !== 'new');
+      return feedbacks.filter(isSupportThreadItem);
     }
-    return feedbacks.filter((item) => getEffectiveFeedbackType(item) !== 'cancellation');
+    return feedbacks.filter(isFeedbackInboxItem);
   }, [feedbacks, mode]);
 
   const filteredFeedbacks = useMemo(() => {
@@ -389,12 +377,12 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
     <div className="space-y-4">
       <div>
         <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-          {mode === 'threads' ? 'Threads operacionais' : 'Feedback e suporte'}
+          {mode === 'threads' ? 'Solicitações' : 'Feedback e avaliações'}
         </h3>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           {mode === 'threads'
-            ? 'Fila com conversas já iniciadas para acompanhamento.'
-            : 'Central de avaliações da plataforma, bugs, sugestões e suporte.'}
+            ? 'Fila com chamados, pedidos editoriais e conversas em andamento.'
+            : 'Central de avaliações da plataforma e opiniões dos usuários.'}
         </p>
       </div>
 
@@ -432,12 +420,15 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
             >
               <option value="all">{mode === 'threads' ? 'Todos os contextos' : 'Todos os tipos'}</option>
               <option value="platform-rating">Avaliação</option>
-              <option value="bug">Bug</option>
-              <option value="suggestion">Sugestão</option>
-              <option value="support">Suporte</option>
-              <option value="teacher-request">Comentário do professor</option>
-              <option value="analysis-request">Análise detalhada</option>
-              <option value="report">Denúncia</option>
+              {mode === 'threads' ? (
+                <>
+                  <option value="support">Suporte</option>
+                  <option value="bug">Problema técnico</option>
+                  <option value="suggestion">Produto e sugestão</option>
+                  <option value="teacher-request">Comentário do professor</option>
+                  <option value="analysis-request">Análise detalhada</option>
+                </>
+              ) : null}
               <option value="other">Outro</option>
             </select>
           </div>
@@ -484,7 +475,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
                     {mode === 'threads'
-                      ? 'Nenhuma thread encontrada para os filtros atuais.'
+                      ? 'Nenhuma solicitação encontrada para os filtros atuais.'
                       : 'Nenhum feedback encontrado para os filtros atuais.'}
                   </td>
                 </tr>
@@ -499,6 +490,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                 const isHomePublished = Boolean(item.home_published_at);
                 const draft = replyDrafts[item.id] || '';
                 const editorialAdminAction = getEditorialAdminAction(item);
+                const expandedBlocks = getSupportThreadExpandedBlocks(item);
 
                 return (
                   <React.Fragment key={item.id}>
@@ -510,10 +502,10 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                       </td>
                       <td className="px-3 py-3">
                         <p className="font-semibold text-slate-900 dark:text-slate-100">
-                          {compactText(item.reason || getFeedbackTypeLabel(item) || 'Feedback', 78)}
+                          {compactText(getSupportThreadTitle(item), 78)}
                         </p>
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          {compactText(cleanFeedbackDetails(item), 140)}
+                          {getSupportThreadPreview({ ...item, details: cleanFeedbackDetails(item) }, 140)}
                         </p>
                         {isPlatformRating ? (
                           <div className="mt-2 flex items-center gap-1 text-amber-400">
@@ -607,15 +599,14 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                                   <div>
                                     <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Assunto completo</p>
                                     <p className="mt-1 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-slate-900 dark:text-slate-100">
-                                      {formatExpandedSupportText(item.reason || getFeedbackTypeLabel(item) || 'Feedback')}
+                                      {formatExpandedSupportText(getSupportThreadTitle(item))}
                                     </p>
                                   </div>
-                                  <div>
-                                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Conteúdo enviado</p>
-                                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                                      {formatExpandedSupportText(cleanFeedbackDetails(item))}
+                                  {expandedBlocks.length > 0 ? (
+                                    <p className="whitespace-pre-wrap text-sm leading-7 text-slate-600 dark:text-slate-300">
+                                      {getSupportThreadPreview({ ...item, details: cleanFeedbackDetails(item) }, 1200)}
                                     </p>
-                                  </div>
+                                  ) : null}
                                 </div>
                                 <div className="space-y-2 rounded-sm bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
                                   <p>
@@ -652,18 +643,39 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
 
                               <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
                                 {itemReplies.length > 0 ? itemReplies.map((reply) => {
-                                  const isUserReply = reply.user_id === item.user_id;
+                                  const isUserReply = String(reply.user_id) === String(item.user_id);
+                                  const normalizedReplyRole = String(reply.user_role || '').toLowerCase();
+                                  const isTeamReply = normalizedReplyRole === 'admin' || normalizedReplyRole === 'staff';
+                                  const replyAuthorLabel = isUserReply
+                                    ? reply.user_name || item.user_name || 'Usuário'
+                                    : isTeamReply
+                                      ? 'ConcursoMestre'
+                                      : reply.user_name || 'Participante';
+
                                   return (
                                     <div
                                       key={reply.id}
                                       className={`max-w-[88%] rounded-sm border px-3 py-2 ${
                                         isUserReply
                                           ? 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'
-                                          : 'ml-auto border-sky-200 bg-sky-50 dark:border-sky-900/40 dark:bg-sky-950/30'
+                                          : isTeamReply
+                                            ? 'ml-auto border-indigo-200 bg-indigo-50 dark:border-indigo-500/30 dark:bg-indigo-500/10'
+                                            : 'ml-auto border-sky-200 bg-sky-50 dark:border-sky-900/40 dark:bg-sky-950/30'
                                       }`}
                                     >
                                       <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                                        <span className="font-semibold text-slate-700 dark:text-slate-200">{reply.user_name}</span>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-semibold text-slate-700 dark:text-slate-200">{replyAuthorLabel}</span>
+                                          {isTeamReply ? (
+                                            <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${
+                                              normalizedReplyRole === 'admin'
+                                                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950'
+                                                : 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200'
+                                            }`}>
+                                              {normalizedReplyRole === 'admin' ? 'Admin' : 'Staff'}
+                                            </span>
+                                          ) : null}
+                                        </div>
                                         <span>{new Date(reply.created_at).toLocaleString('pt-BR')}</span>
                                       </div>
                                       <p className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-200">{reply.details}</p>
@@ -674,6 +686,11 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                                 )}
                               </div>
 
+                              {item.status === 'resolved' ? (
+                                <div className="rounded-sm border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+                                  Esta solicitação foi resolvida e não aceita novas respostas.
+                                </div>
+                              ) : (
                               <div className="space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
                                 <div className="flex flex-wrap gap-2">
                                   {(FEEDBACK_REPLY_TEMPLATES[getEffectiveFeedbackType(item)] || FEEDBACK_REPLY_TEMPLATES.support).map((template) => (
@@ -705,6 +722,7 @@ export const AdminFeedback: React.FC<AdminFeedbackProps> = ({
                                   </button>
                                 </div>
                               </div>
+                              )}
                             </div>
                           )}
                         </td>

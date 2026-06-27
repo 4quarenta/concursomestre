@@ -129,25 +129,43 @@ export const useAdminDataActions = () => {
     action: 'resolved' | 'ignored',
     adminReason: string,
     evidenceUrl?: string,
+    options: {
+      userResponse?: string;
+      internalNote?: string;
+      moderationAction?: string;
+    } = {},
   ) => {
     if (!adminReason || adminReason.trim() === '') {
-      addToast('A justificativa da decisao e obrigatoria.', 'warning');
+      addToast('A justificativa da decisão é obrigatória.', 'warning');
+      return;
+    }
+
+    if (!options.userResponse || options.userResponse.trim() === '') {
+      addToast('A resposta ao usuário é obrigatória.', 'warning');
       return;
     }
 
     try {
-      await adminService.moderateReport(reportId, action, adminReason, evidenceUrl);
+      await adminService.moderateReport(reportId, action, adminReason, evidenceUrl, options);
       const resolvedAt = Date.now();
       resolveLocalReport(reportId, action, resolvedAt);
       patchAdminReportsCache((current) => current.map((report) => (
         String(report.id) === String(reportId)
-          ? { ...report, status: action, resolvedAt }
+          ? {
+            ...report,
+            status: action,
+            resolvedAt,
+            resolution: adminReason,
+            userResponse: options.userResponse,
+            internalNote: options.internalNote,
+            moderationActionApplied: options.moderationAction,
+          }
           : report
       )));
-      addToast(`Denuncia ${action === 'resolved' ? 'resolvida' : 'ignorada'}.`, 'success');
+      addToast(`Denúncia ${action === 'resolved' ? 'resolvida' : 'ignorada'}.`, 'success');
     } catch (error) {
       clientLog.error('Failed to resolve report:', error);
-      addToast('Erro ao atualizar a denuncia.', 'error');
+      addToast('Erro ao atualizar a denúncia.', 'error');
       throw error;
     }
   }, [addToast, patchAdminReportsCache, resolveLocalReport]);

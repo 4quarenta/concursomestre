@@ -217,7 +217,7 @@ const AdminOriginalQuestionGenerationModal = ({
         <div className={ADMIN_MODAL_HEADER_CLASS}>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-              Geracao IA
+              Geração IA
             </p>
             <h2 className="mt-1 text-xl font-semibold text-slate-950 dark:text-white">Questões inéditas</h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
@@ -574,13 +574,13 @@ const AdminOriginalQuestionGenerationModal = ({
                         </div>
 
                         <div className="rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-200">
-                          Gabarito: {correctAlternative ? `${correctAlternative.rotulo} - ${correctAlternative.corpo_clean || correctAlternative.corpo}` : 'Nao identificado'}
+                          Gabarito: {correctAlternative ? `${correctAlternative.rotulo} - ${correctAlternative.corpo_clean || correctAlternative.corpo}` : 'Não identificado'}
                         </div>
 
                         <div className="grid gap-4 lg:grid-cols-2">
                           <div>
                             <p className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">
-                              <Sparkles size={13} /> Comentario do professor
+                              <Sparkles size={13} /> Comentário do professor
                             </p>
                             <MathRichText
                               content={question.teacherComment}
@@ -589,7 +589,7 @@ const AdminOriginalQuestionGenerationModal = ({
                           </div>
                           <div>
                             <p className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-700 dark:text-indigo-300">
-                              <BookOpen size={13} /> Analise detalhada
+                              <BookOpen size={13} /> Análise detalhada
                             </p>
                             <MathRichText
                               content={question.detailedComment}
@@ -607,7 +607,7 @@ const AdminOriginalQuestionGenerationModal = ({
                           </p>
                         ) : null}
                         <p className="line-clamp-3 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
-                          {item.preview || 'Aguardando geracao.'}
+                          {item.preview || 'Aguardando geração.'}
                         </p>
                       </div>
                     )}

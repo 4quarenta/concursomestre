@@ -106,7 +106,7 @@ const Page: React.FC = () => {
         setStatus('success');
         setMessage(result.message || pageCopy.successFallback);
         setXpGained(result.newXp > 0 ? result.newXp : 50);
-        addToast('Conta ativada! Voce ganhou bonus de XP.', 'success');
+        addToast('Conta ativada! Você ganhou bônus de XP.', 'success');
 
         if (currentUserRef.current) {
           await refreshUser();
@@ -172,7 +172,7 @@ const Page: React.FC = () => {
                     Bem-vindo(a) ao Time!
                   </h2>
                   <p className="mx-auto max-w-xs text-sm leading-relaxed text-slate-500 dark:text-slate-400">
-                    Enviamos um link de confirmacao para <strong>{currentUser.email}</strong>. Confirme para desbloquear questoes, simulados e rankings.
+                    Enviamos um link de confirmação para <strong>{currentUser.email}</strong>. Confirme para desbloquear questões, simulados e rankings.
                   </p>
                 </div>
                 <div className="w-full space-y-3 pt-2">
@@ -216,7 +216,7 @@ const Page: React.FC = () => {
             {xpGained > 0 && (
               <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-600 shadow-sm dark:border-amber-800 dark:bg-amber-900/10 dark:text-amber-400">
                 <Gift size={16} />
-                +{xpGained} XP de bonus recebido!
+                +{xpGained} XP de bônus recebido!
               </div>
             )}
 

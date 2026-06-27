@@ -208,6 +208,21 @@ describe('commentService', () => {
     expect(result.success).toBe(true);
   });
 
+  it('preserves the duplicate flag when the same user already reported the comment', async () => {
+    mockCreateReport.mockResolvedValueOnce({
+      id: 'rep-1',
+      message: 'Duplicate report',
+      duplicate: true,
+    });
+
+    const result = await commentService.reportComment('com-12', 'spam', 'Duplicate', 'user-3');
+
+    expect(result).toEqual(expect.objectContaining({
+      success: true,
+      duplicate: true,
+    }));
+  });
+
   it('reports a comment through the reports endpoint', async () => {
     mockCreateReport.mockResolvedValueOnce({
       id: 'rep-1',

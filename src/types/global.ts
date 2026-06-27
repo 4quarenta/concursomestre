@@ -104,6 +104,7 @@ export interface QuestaoComentario {
   date: string;
   likes: number;
   isLiked?: boolean;
+  userHasPendingReport?: boolean;
   parentId?: string;
   moderationStatus?: 'pending' | 'approved' | 'spam';
   replies: QuestaoComentario[];
@@ -139,6 +140,9 @@ export interface ErrorReport {
   targetContext?: string;
   targetUrl?: string;
   resolution?: string;
+  userResponse?: string;
+  internalNote?: string;
+  moderationActionApplied?: string;
   resolvedAt?: number;
 }
 
@@ -1093,6 +1097,7 @@ export interface SystemSettings {
   adsEnabled?: boolean;
   adsenseTestMode?: boolean;
   adsenseClientId?: string;
+  adsTxtContent?: string;
   adsenseTopSlotId?: string;
   adsenseSidebarSlotId?: string;
   adsenseBottomSlotId?: string;
