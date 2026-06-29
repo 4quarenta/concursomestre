@@ -182,6 +182,7 @@ export const ENDPOINTS = {
         plansCatalog: 'admin/plans.php',
         feedback: 'admin/feedback.php',
         reportActions: 'admin/report_actions.php',
+        reportWorkbench: 'admin/report_workbench.php',
         stats: 'admin/stats.php',
         analyticsFinance: 'admin/analytics_finance.php',
         analyticsDashboard: 'admin/analytics_dashboard.php',

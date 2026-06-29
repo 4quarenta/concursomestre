@@ -18,7 +18,7 @@ import type { ErrorReport, Question, Ranking, SystemSettings, UserProfile } from
 
 type FeedbackStatus = 'new' | 'read' | 'resolved';
 type ReportResolution = 'resolved' | 'ignored';
-type AdminLooseRecord = Record<string, unknown>;
+export type AdminLooseRecord = Record<string, unknown>;
 
 const requestApi = <T>(request: Promise<unknown>): Promise<ApiResponse<T>> => request as Promise<ApiResponse<T>>;
 const toLooseRecord = (value: unknown): AdminLooseRecord | undefined => (
@@ -119,6 +119,88 @@ export interface AdminUserReportRecord extends AdminLooseRecord {
   user_response?: string | null;
   internal_note?: string | null;
   moderation_action?: string | null;
+}
+
+export interface AdminReportWorkbenchAction {
+  slug: string;
+  label: string;
+  fields?: string[];
+  mutatesTarget?: boolean;
+  finalizes?: boolean;
+  destructive?: boolean;
+  reasonSlug?: string;
+}
+
+export interface AdminReportWorkbenchPayload {
+  report: {
+    id: string;
+    reportType: 'error' | 'request' | string;
+    reason: string;
+    reasonSlug: string;
+    details: string;
+    status: string;
+    workflowStatus?: string;
+    priority?: string;
+    targetType: ErrorReport['targetType'] | string;
+    targetId: string;
+    reporter?: {
+      id?: string;
+      name?: string;
+      email?: string | null;
+      role?: string | null;
+    };
+    evidenceUrl?: string | null;
+    createdAt?: string | null;
+  };
+  target: {
+    type: string;
+    id: string;
+    exists: boolean;
+    label?: string;
+    url?: string | null;
+    error?: string;
+    current?: AdminLooseRecord;
+  };
+  configuration: {
+    title: string;
+    reportType: 'error' | 'request' | string;
+    reasonSlug: string;
+    actions: AdminReportWorkbenchAction[];
+  };
+  draft?: {
+    id?: number;
+    action_slug?: string | null;
+    changes_json?: string | AdminLooseRecord | null;
+    user_response?: string | null;
+    internal_note?: string | null;
+  } | null;
+  history?: AdminLooseRecord[];
+}
+
+export interface AdminReportWorkbenchApplyPayload {
+  report_id: string;
+  report_ids?: string[];
+  action_slug: string;
+  changes?: AdminLooseRecord;
+  justification?: string;
+  user_response: string;
+  internal_note?: string;
+}
+
+export interface AdminReportWorkbenchApplyResult {
+  actionSlug: string;
+  status: string;
+  workflowStatus?: string;
+  target?: AdminLooseRecord;
+  historyIds?: Record<string, number>;
+  emailResults?: Record<string, AdminLooseRecord>;
+}
+
+export interface AdminReportWorkbenchSuggestion {
+  kind: string;
+  text: string;
+  generatedAt?: string;
+  moderatorId?: string;
 }
 
 export interface AdminFeedbackThread {
@@ -871,6 +953,101 @@ export const adminService = {
     }));
 
     assertApiSuccess(response, 'Não foi possível moderar a denúncia.');
+  },
+
+  /**
+   * Carrega o workbench contextual de uma denuncia/solicitacao.
+   * @since v1.0.0
+   */
+  async getReportWorkbench(reportId: string | number): Promise<AdminReportWorkbenchPayload> {
+    const response = await requestApi<AdminReportWorkbenchPayload>(apiClient.get<ApiResponse<AdminReportWorkbenchPayload>>(
+      ENDPOINTS.admin.reportWorkbench,
+      { params: { id: reportId } },
+    ));
+    return readApiData(response, {
+      report: {
+        id: String(reportId),
+        reportType: 'error',
+        reason: '',
+        reasonSlug: 'other',
+        details: '',
+        status: 'pending',
+        targetType: 'comment',
+        targetId: '',
+      },
+      target: {
+        type: 'comment',
+        id: '',
+        exists: false,
+      },
+      configuration: {
+        title: 'Moderação',
+        reportType: 'error',
+        reasonSlug: 'other',
+        actions: [],
+      },
+      draft: null,
+      history: [],
+    });
+  },
+
+  /**
+   * Salva rascunho do workbench contextual.
+   * @since v1.0.0
+   */
+  async saveReportModerationDraft(payload: {
+    report_id: string;
+    action_slug?: string;
+    changes?: AdminLooseRecord;
+    user_response?: string;
+    internal_note?: string;
+  }): Promise<void> {
+    const response = await requestApi<unknown>(apiClient.post<ApiResponse>(ENDPOINTS.admin.reportWorkbench, {
+      operation: 'save_draft',
+      ...payload,
+    }));
+    assertApiSuccess(response, 'Não foi possível salvar o rascunho da moderação.');
+  },
+
+  /**
+   * Solicita sugestao editorial por IA para a denuncia/solicitacao.
+   * @since v1.0.0
+   */
+  async generateReportModerationSuggestion(payload: {
+    report_id: string;
+    kind?: string;
+  }): Promise<AdminReportWorkbenchSuggestion> {
+    const response = await requestApi<AdminReportWorkbenchSuggestion>(apiClient.post<ApiResponse<AdminReportWorkbenchSuggestion>>(
+      ENDPOINTS.admin.reportWorkbench,
+      {
+        operation: 'generate_suggestion',
+        ...payload,
+      },
+    ));
+    const envelope = assertApiSuccess(response, 'Não foi possível gerar a sugestão.');
+    return readApiData(envelope.raw, {
+      kind: payload.kind || 'teacher_comment',
+      text: '',
+    });
+  },
+
+  /**
+   * Aplica a acao contextual e conclui o atendimento.
+   * @since v1.0.0
+   */
+  async applyReportModeration(payload: AdminReportWorkbenchApplyPayload): Promise<AdminReportWorkbenchApplyResult> {
+    const response = await requestApi<AdminReportWorkbenchApplyResult>(apiClient.post<ApiResponse<AdminReportWorkbenchApplyResult>>(
+      ENDPOINTS.admin.reportWorkbench,
+      {
+        operation: 'apply',
+        ...payload,
+      },
+    ));
+    const envelope = assertApiSuccess(response, 'Não foi possível concluir a moderação.');
+    return readApiData(envelope.raw, {
+      actionSlug: payload.action_slug,
+      status: 'pending',
+    });
   },
 
   /**

@@ -37,6 +37,7 @@ import { marketplaceService } from '@services/marketplace/marketplaceService';
 import { parseEditorialRequestDetails } from '@services/support';
 import { AdminFeedback } from './AdminFeedback';
 import AdminCommentsModerationSection from './AdminCommentsModerationSection';
+import ContextualReportModerationModal from './ContextualReportModerationModal';
 import {
   ADMIN_MODAL_FOOTER_CLASS,
   ADMIN_MODAL_HEADER_CLASS,
@@ -860,7 +861,20 @@ const AdminSupportSection = ({
         />
       )}
 
-      {moderatingReport && createPortal(
+      {moderatingReportGroup ? (
+        <ContextualReportModerationModal
+          group={moderatingReportGroup}
+          onClose={closeReportModerationModal}
+          onDone={async () => {
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['admin', 'reports'] }),
+              queryClient.invalidateQueries({ queryKey: ['admin-data', 'reports'] }),
+            ]);
+          }}
+        />
+      ) : null}
+
+      {false && moderatingReport && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-slate-950/75 p-2 backdrop-blur-sm sm:p-4">
           <div className={`${ADMIN_MODAL_PANEL_CLASS} my-2 flex max-h-[calc(100dvh-1rem)] w-full max-w-6xl flex-col shadow-2xl sm:my-4 sm:max-h-[calc(100dvh-2rem)]`}>
             <div className={`${ADMIN_MODAL_HEADER_CLASS} shrink-0`}>
