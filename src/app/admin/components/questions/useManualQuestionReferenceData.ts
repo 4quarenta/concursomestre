@@ -9,8 +9,9 @@
 *
 */
 
-import { useMemo } from 'react';
-import type { Question, SystemSettings, TaxonomyItem } from '@types';
+import { useEffect, useMemo, useState } from 'react';
+import type { Prova, Question, SystemSettings, TaxonomyItem } from '@types';
+import { examService } from '@services/exams/examService';
 import { mergeExamBankSources } from '../exams/examBankUtils';
 
 type TaxonomyItemWithSigla = TaxonomyItem & {
@@ -21,6 +22,31 @@ const getTaxonomyShortLabel = (taxonomy: TaxonomyItemWithSigla) => taxonomy.sigl
 
 export const useManualQuestionReferenceData = (systemSettings: SystemSettings, questions: Question[] = []) => {
   const taxonomies = systemSettings.taxonomies;
+  const [canonicalProvas, setCanonicalProvas] = useState<Prova[]>([]);
+  const [hasCanonicalProvasLoaded, setHasCanonicalProvasLoaded] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+
+    setHasCanonicalProvasLoaded(false);
+    void examService.list({ limit: 500 }).then((items) => {
+      if (!isActive) {
+        return;
+      }
+      setCanonicalProvas(items);
+      setHasCanonicalProvasLoaded(true);
+    }).catch(() => {
+      if (!isActive) {
+        return;
+      }
+      setCanonicalProvas([]);
+      setHasCanonicalProvasLoaded(true);
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const existingAgencies = useMemo(() => {
     return (taxonomies?.agencies || []).map(getTaxonomyShortLabel);
@@ -65,13 +91,17 @@ export const useManualQuestionReferenceData = (systemSettings: SystemSettings, q
   }, [taxonomies]);
 
   const existingProvas = useMemo(() => {
+    if (hasCanonicalProvasLoaded && canonicalProvas.length > 0) {
+      return mergeExamBankSources({ ...systemSettings, examBank: canonicalProvas }, []);
+    }
+
     const hasPersistedExamBank = Array.isArray(systemSettings.examBank) && systemSettings.examBank.length > 0;
     if (hasPersistedExamBank || questions.length === 0) {
       return mergeExamBankSources(systemSettings, []);
     }
 
     return mergeExamBankSources(systemSettings, questions);
-  }, [questions, systemSettings]);
+  }, [canonicalProvas, hasCanonicalProvasLoaded, questions, systemSettings]);
 
   return {
     existingAgencies,

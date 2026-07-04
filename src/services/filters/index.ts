@@ -9,8 +9,8 @@
 *
 */
 
-import { apiClient, ENDPOINTS, assertApiSuccess, readApiData } from '@services/api';
-import { buildRequestCacheKey, withRequestCoalescing } from '@services/api/requestCoalescer';
+import { apiClient, ENDPOINTS, assertApiSuccess, readApiData, readApiErrorMessage } from '@services/api';
+import { buildRequestCacheKey, clearRequestCoalescing, withRequestCoalescing } from '@services/api/requestCoalescer';
 import type { Question } from '@types';
 
 type RawFilterNode = Record<string, unknown>;
@@ -112,6 +112,18 @@ const normalizeFilterText = (value: unknown) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
+
+const normalizeFilterSlug = (value: unknown) => normalizeFilterText(value)
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const isFilterSlugConflict = (error: unknown) => {
+  const status = typeof error === 'object' && error && 'response' in error
+    ? Number((error as { response?: { status?: unknown } }).response?.status)
+    : 0;
+  const message = readApiErrorMessage(error, '').toLowerCase();
+  return status === 409 || (message.includes('slug') && (message.includes('uso') || message.includes('use')));
+};
 
 const ENEM_SUBJECT_AREA_KEYWORDS: Record<(typeof ENEM_SUBJECT_AREA_OPTIONS)[number], string[]> = {
   'Linguagens, Codigos e suas Tecnologias': [
@@ -379,9 +391,14 @@ export const normalizeFiltersToTaxonomies = (data: FiltersApiPayload) => {
 };
 
 export const filtersService = {
-  async list(): Promise<FiltersApiPayload> {
+  async list(force = false): Promise<FiltersApiPayload> {
+    const cacheKey = buildRequestCacheKey('filters:list');
+    if (force) {
+      clearRequestCoalescing(cacheKey);
+    }
+
     return withRequestCoalescing(
-      buildRequestCacheKey('filters:list'),
+      cacheKey,
       async () => {
         const response = await apiClient.get<FiltersApiPayload>(ENDPOINTS.filters.list);
         return readApiData<FiltersApiPayload>(response, {});
@@ -390,15 +407,60 @@ export const filtersService = {
     );
   },
 
-  async listTaxonomies() {
-    const payload = await this.list();
+  async listTaxonomies(force = false) {
+    const payload = await this.list(force);
     return normalizeFiltersToTaxonomies(payload);
   },
 
   async save(payload: FilterSavePayload): Promise<number> {
-    const response = await apiClient.post<FiltersSaveResponse>(ENDPOINTS.filters.save, payload);
+    let response;
+    try {
+      response = await apiClient.post<FiltersSaveResponse>(ENDPOINTS.filters.save, payload);
+    } catch (error) {
+      if (!payload.id && isFilterSlugConflict(error)) {
+        const taxonomies = await this.listTaxonomies(true);
+        const requestedType = normalizeFilterText(payload.type);
+        const requestedName = normalizeFilterText(payload.name);
+        const requestedSlug = normalizeFilterSlug(payload.slug || payload.name);
+        const matches = [
+          ...taxonomies.agencies,
+          ...taxonomies.organizations,
+          ...taxonomies.subjects,
+          ...taxonomies.topics,
+          ...taxonomies.roles,
+          ...taxonomies.careers,
+        ];
+        const existing = matches.find((item) => {
+          const itemType = normalizeFilterText(item.type);
+          const itemName = normalizeFilterText(item.name);
+          const itemSigla = normalizeFilterText(item.sigla);
+          const itemSlug = normalizeFilterSlug(item.slug || item.name);
+          const sameType = !requestedType
+            || itemType === requestedType
+            || (requestedType === 'bancas' && itemType === 'agency')
+            || (requestedType === 'orgaos' && itemType === 'organization')
+            || (requestedType === 'cargos' && itemType === 'role')
+            || (requestedType === 'carreiras' && itemType === 'career')
+            || (requestedType === 'assuntos' && ['subject', 'topic'].includes(itemType));
+          return sameType && (
+            itemSlug === requestedSlug
+            || itemName === requestedName
+            || Boolean(itemSigla && itemSigla === requestedName)
+          );
+        });
+
+        const existingId = Number(existing?.id || 0);
+        if (existingId > 0) {
+          return existingId;
+        }
+      }
+      throw error;
+    }
+
     const envelope = assertApiSuccess(response, 'Erro ao salvar filtro');
     const result = readApiData<FiltersSaveResponse>(response, {});
+
+    clearRequestCoalescing(buildRequestCacheKey('filters:list'));
 
     return Number(result.data?.id ?? result.id ?? envelope.raw.id ?? 0);
   },
@@ -406,6 +468,7 @@ export const filtersService = {
   async remove(id: number): Promise<void> {
     const response = await apiClient.get(ENDPOINTS.filters.delete, { params: { id: id.toString() } });
     assertApiSuccess(response, 'Erro ao deletar filtro');
+    clearRequestCoalescing(buildRequestCacheKey('filters:list'));
   },
 };
 

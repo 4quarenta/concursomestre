@@ -48,6 +48,40 @@ const dedupeTextList = (values: string[]) => {
   });
 };
 
+const normalizeTaxonomyKey = (value: unknown) => toText(value)
+  .toLocaleLowerCase('pt-BR')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '');
+
+const toRecordList = (...values: unknown[]) => values.flatMap((value) => (
+  Array.isArray(value) ? value : []
+)).map(toRecord).filter((item): item is Record<string, unknown> => Boolean(item));
+
+const readTaxonomyRecordLabel = (record: Record<string, unknown> | null) => toText(
+  record?.descricao
+  ?? record?.['descrição']
+  ?? record?.name
+  ?? record?.nome
+  ?? record?.sigla,
+);
+
+const findTaxonomyRecordByLabel = (
+  records: Record<string, unknown>[],
+  label: string,
+) => {
+  const key = normalizeTaxonomyKey(label);
+  return records.find((record) => {
+    const candidates = [
+      record.descricao,
+      record['descrição'],
+      record.name,
+      record.nome,
+      record.sigla,
+    ];
+    return candidates.some((candidate) => normalizeTaxonomyKey(candidate) === key);
+  }) || null;
+};
+
 const parseRecordJson = (value: unknown): Record<string, unknown> | null => {
   const directRecord = toRecord(value);
   if (directRecord) {
@@ -94,6 +128,7 @@ const EXAM_FILE_KIND_LABELS: Record<ExamFileKind, string> = {
   edital: 'Edital',
   gabarito: 'Gabarito',
   prova: 'Prova',
+  outro: 'Outro',
 };
 
 const normalizeExamFileKind = (value: unknown): ExamFileKind | '' => {
@@ -101,6 +136,7 @@ const normalizeExamFileKind = (value: unknown): ExamFileKind | '' => {
   if (raw === 'edital') return 'edital';
   if (raw === 'gabarito' || raw === 'answer-key' || raw === 'answer_key') return 'gabarito';
   if (raw === 'prova' || raw === 'proof' || raw === 'exam') return 'prova';
+  if (raw === 'outro' || raw === 'other') return 'outro';
   return '';
 };
 
@@ -132,13 +168,20 @@ const normalizeExamFileAttachment = (
     || readExamFileNameFromUrl(rawUrl, EXAM_FILE_KIND_LABELS[kind]);
 
   return {
+    id: toText(record?.id) || undefined,
     kind,
+    type: kind,
     label: toText(record?.label) || EXAM_FILE_KIND_LABELS[kind],
     name,
     url: rawUrl,
     mimeType: toText(record?.mimeType ?? record?.mime_type),
     size: toNumber(record?.size, 0) || undefined,
+    version: toNumber(record?.version ?? record?.versao, 0) || undefined,
+    versao: toNumber(record?.versao ?? record?.version, 0) || undefined,
+    visibilityStatus: toText(record?.visibilityStatus ?? record?.visibility_status),
+    uploadedByUserId: toText(record?.uploadedByUserId ?? record?.uploaded_by_user_id) || null,
     uploadedAt: toText(record?.uploadedAt ?? record?.uploaded_at),
+    archivedAt: toText(record?.archivedAt ?? record?.archived_at) || null,
   };
 };
 
@@ -208,6 +251,19 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
   const bancaRecord = toRecord(rawRecord.banca);
   const orgaoRecord = toRecord(rawRecord.orgao);
   const cargoRecord = toRecord(rawRecord.cargo);
+  const organizationRecords = toRecordList(rawRecord.orgaos, metadataRecord.orgaos);
+  const roleRecords = toRecordList(rawRecord.cargos, metadataRecord.cargos);
+  const focusRecords = toRecordList(rawRecord.focos, rawRecord.carreiras, metadataRecord.focos, metadataRecord.carreiras);
+  const focusRecord = toRecord(
+    rawRecord.foco
+    ?? rawRecord.carreira
+    ?? (Array.isArray(rawRecord.focos) ? rawRecord.focos[0] : null)
+    ?? (Array.isArray(rawRecord.carreiras) ? rawRecord.carreiras[0] : null)
+    ?? metadataRecord.foco
+    ?? metadataRecord.carreira
+    ?? (Array.isArray(metadataRecord.focos) ? metadataRecord.focos[0] : null)
+    ?? (Array.isArray(metadataRecord.carreiras) ? metadataRecord.carreiras[0] : null),
+  );
 
   const bancaNome = toText(bancaRecord?.nome ?? bancaRecord?.name);
   const bancaSigla = toText(bancaRecord?.sigla) || bancaNome;
@@ -250,11 +306,48 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
     ...toTextList(metadataRecord.remuneracoes),
     ...toTextList(metadataRecord.remunerations),
   ]);
+  const vagas = dedupeTextList([
+    ...toTextList(rawRecord.vagas),
+    ...toTextList(rawRecord.vacancies),
+    ...toTextList(metadataRecord.vagas),
+    ...toTextList(metadataRecord.vacancies),
+  ]);
   const conteudoProgramatico = dedupeTextList([
     ...toTextList(rawRecord.conteudoProgramatico),
     ...toTextList(rawRecord.programmaticContent),
     ...toTextList(metadataRecord.conteudoProgramatico),
     ...toTextList(metadataRecord.programmaticContent),
+  ]);
+  const requisitosDetalhados = toRecordList(
+    rawRecord.requisitosDetalhados,
+    rawRecord.requirementsDetailed,
+    metadataRecord.requisitosDetalhados,
+    metadataRecord.requirementsDetailed,
+  );
+  const remuneracoesDetalhadas = toRecordList(
+    rawRecord.remuneracoesDetalhadas,
+    rawRecord.remunerationsDetailed,
+    metadataRecord.remuneracoesDetalhadas,
+    metadataRecord.remunerationsDetailed,
+  );
+  const vagasDetalhadas = toRecordList(
+    rawRecord.vagasDetalhadas,
+    rawRecord.vacanciesDetailed,
+    metadataRecord.vagasDetalhadas,
+    metadataRecord.vacanciesDetailed,
+  );
+  const conteudoProgramaticoDetalhado = toRecordList(
+    rawRecord.conteudoProgramaticoDetalhado,
+    rawRecord.programmaticContentDetailed,
+    metadataRecord.conteudoProgramaticoDetalhado,
+    metadataRecord.programmaticContentDetailed,
+  );
+  const etapas = toRecordList(rawRecord.etapas, metadataRecord.etapas);
+  const questoesVinculadas = dedupeTextList([
+    ...toTextList(rawRecord.questoesVinculadas),
+    ...toTextList(rawRecord.platformQuestionIds),
+    ...toTextList(metadataRecord.questoesVinculadas),
+    ...toTextList(metadataRecord.platformQuestionIds),
   ]);
 
   const banca: Banca = {
@@ -274,13 +367,19 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
     slug: toText(orgaoRecord?.slug) || slugify(orgaoNome || orgaoSigla || `orgao-${id}`),
   };
   const orgaos = (organizationList.length > 0 ? organizationList : [orgaoNome || orgaoSigla].filter(Boolean))
-    .map((organization, index): Orgao => ({
-      id: index === 0 ? orgao.id : 0,
-      nome: organization,
-      name: organization,
-      sigla: organization,
-      slug: index === 0 && orgao.slug ? orgao.slug : slugify(organization || `orgao-${id}-${index + 1}`),
-    }));
+    .map((organization, index): Orgao => {
+      const source = findTaxonomyRecordByLabel(organizationRecords, organization)
+        || (index === 0 ? orgaoRecord : null);
+      const sourceName = toText(source?.nome ?? source?.name) || organization;
+      const sourceSigla = toText(source?.sigla) || sourceName;
+      return {
+        id: toNumber(source?.id, index === 0 ? orgao.id : 0),
+        nome: sourceName,
+        name: toText(source?.name) || sourceName,
+        sigla: sourceSigla,
+        slug: toText(source?.slug) || (index === 0 && orgao.slug ? orgao.slug : slugify(sourceName || `orgao-${id}-${index + 1}`)),
+      };
+    });
 
   const cargo: Cargo = {
     id: toNumber(cargoRecord?.id, 0),
@@ -288,15 +387,46 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
     ['descrição']: cargoDescricao,
     descricao: cargoDescricao,
     name: toText(cargoRecord?.name) || cargoDescricao,
+    parentId: (cargoRecord?.parentId ?? cargoRecord?.parent_id ?? focusRecord?.id) as string | number | undefined,
+    parent_id: (cargoRecord?.parent_id ?? cargoRecord?.parentId ?? focusRecord?.id) as string | number | undefined,
   };
   const cargos = (roleList.length > 0 ? roleList : [cargoDescricao].filter(Boolean))
-    .map((role, index): Cargo => ({
-      id: index === 0 ? cargo.id : 0,
-      slug: index === 0 && cargo.slug ? cargo.slug : slugify(role || `cargo-${id}-${index + 1}`),
-      ['descrição']: role,
-      descricao: role,
-      name: role,
-    }));
+    .map((role, index): Cargo => {
+      const source = findTaxonomyRecordByLabel(roleRecords, role)
+        || (index === 0 ? cargoRecord : null);
+      const sourceName = readTaxonomyRecordLabel(source) || role;
+      const parentId = source?.parentId ?? source?.parent_id ?? focusRecord?.id;
+      return {
+        id: toNumber(source?.id, index === 0 ? cargo.id : 0),
+        slug: toText(source?.slug) || (index === 0 && cargo.slug ? cargo.slug : slugify(sourceName || `cargo-${id}-${index + 1}`)),
+        ['descrição']: sourceName,
+        descricao: sourceName,
+        name: toText(source?.name) || sourceName,
+        parentId: parentId as string | number | undefined,
+        parent_id: parentId as string | number | undefined,
+      };
+    });
+
+  const focusName = readTaxonomyRecordLabel(focusRecord);
+  const focus = focusRecord && focusName ? {
+    ...focusRecord,
+    id: focusRecord.id as string | number | undefined,
+    nome: toText(focusRecord.nome ?? focusRecord.name) || focusName,
+    name: toText(focusRecord.name ?? focusRecord.nome) || focusName,
+    slug: toText(focusRecord.slug) || slugify(focusName),
+  } : undefined;
+  const focuses = (focusRecords.length > 0 ? focusRecords : focus ? [focus] : [])
+    .map((record, index) => {
+      const name = readTaxonomyRecordLabel(record) || (index === 0 ? focusName : '');
+      return name ? {
+        ...record,
+        id: record.id as string | number | undefined,
+        nome: toText(record.nome ?? record.name) || name,
+        name: toText(record.name ?? record.nome) || name,
+        slug: toText(record.slug) || slugify(name),
+      } : null;
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
   return {
     id,
@@ -311,6 +441,14 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
     corCaderno,
     bookletType: tipoCaderno,
     bookletColor: corCaderno,
+    dataInscricaoInicio: toText(pickRecordValue(rawRecord, metadataRecord, ['dataInscricaoInicio', 'registrationStartDate', 'inscricaoInicio'])),
+    dataInscricaoFim: toText(pickRecordValue(rawRecord, metadataRecord, ['dataInscricaoFim', 'registrationEndDate', 'inscricaoFim'])),
+    dataProva: toText(pickRecordValue(rawRecord, metadataRecord, ['dataProva', 'examDate', 'provaData'])),
+    valorInscricao: toText(pickRecordValue(rawRecord, metadataRecord, ['valorInscricao', 'registrationFee', 'taxaInscricao'])),
+    totalQuestoes: toText(pickRecordValue(rawRecord, metadataRecord, ['totalQuestoes', 'totalQuestions', 'questionCount'])),
+    etapas: etapas as Prova['etapas'],
+    questoesVinculadas,
+    platformQuestionIds: questoesVinculadas,
     examType: toText(pickRecordValue(rawRecord, metadataRecord, ['examType', 'exam_type', 'tipoProva'])),
     publishStatus: (toText(rawRecord.publishStatus) as Prova['publishStatus']) || 'published',
     visibilityStatus: (toText(rawRecord.visibilityStatus) as Prova['visibilityStatus']) || 'public',
@@ -327,13 +465,27 @@ export const normalizeProvaRecord = (raw: unknown): Prova | null => {
     orgaos,
     cargo,
     cargos,
+    foco: focus,
+    focos: focuses,
+    carreira: focus,
+    carreiras: focuses,
     roles: cargos.map((item) => item.descricao || item.name || item['descrição']).filter(Boolean),
     requisitos,
     requirements: requisitos,
+    requisitosDetalhados: requisitosDetalhados as Prova['requisitosDetalhados'],
+    requirementsDetailed: requisitosDetalhados as Prova['requirementsDetailed'],
     remuneracoes,
     remunerations: remuneracoes,
+    remuneracoesDetalhadas: remuneracoesDetalhadas as Prova['remuneracoesDetalhadas'],
+    remunerationsDetailed: remuneracoesDetalhadas as Prova['remunerationsDetailed'],
+    vagas,
+    vacancies: vagas,
+    vagasDetalhadas: vagasDetalhadas as Prova['vagasDetalhadas'],
+    vacanciesDetailed: vagasDetalhadas as Prova['vacanciesDetailed'],
     conteudoProgramatico,
     programmaticContent: conteudoProgramatico,
+    conteudoProgramaticoDetalhado: conteudoProgramaticoDetalhado as Prova['conteudoProgramaticoDetalhado'],
+    programmaticContentDetailed: conteudoProgramaticoDetalhado as Prova['programmaticContentDetailed'],
   };
 };
 

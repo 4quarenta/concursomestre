@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import {
-  AlertTriangle,
   CheckCircle2,
   ExternalLink,
   Loader2,
@@ -51,6 +50,15 @@ type WorkbenchChanges = AdminLooseRecord & {
   commentResolution?: 'keep' | 'replace' | 'remove';
 };
 
+const ACTIONS_REQUIRING_DECISION_NOTE = new Set([
+  'change_question_answer',
+  'annul_question',
+  'reject_report',
+  'reject_request',
+  'request_more_information',
+  'remove_comment',
+]);
+
 const getReportDate = (report: ErrorReport) => {
   const raw = Number(report.timestamp || 0);
   const date = raw > 10_000_000_000 ? new Date(raw) : new Date(raw * 1000);
@@ -64,6 +72,33 @@ const getNestedRecord = (value: unknown): AdminLooseRecord => (
   value && typeof value === 'object' && !Array.isArray(value) ? value as AdminLooseRecord : {}
 );
 
+const stripHtml = (value: string) => value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+const getOptionText = (option: unknown) => {
+  if (typeof option === 'string' || typeof option === 'number') {
+    return asString(option);
+  }
+
+  const record = getNestedRecord(option);
+  const raw = record.corpo
+    ?? record.corpo_clean
+    ?? record.text
+    ?? record.label
+    ?? record.content
+    ?? record.html
+    ?? record.value
+    ?? record.body
+    ?? record.statement
+    ?? '';
+
+  return stripHtml(asString(raw));
+};
+
+const getOptionLabel = (option: unknown, index: number) => {
+  const record = getNestedRecord(option);
+  return asString(record.rotulo ?? record.labelKey ?? record.letter ?? record.optionLabel) || String.fromCharCode(65 + index);
+};
+
 const renderTextBlock = (content: unknown, fallback = 'Conteúdo não informado.') => {
   const text = asString(content);
   return (
@@ -74,7 +109,8 @@ const renderTextBlock = (content: unknown, fallback = 'Conteúdo não informado.
 };
 
 const decodeDraftChanges = (draft?: AdminReportWorkbenchPayload['draft']): WorkbenchChanges => {
-  const raw = draft?.changes_json;
+  const draftRecord = getNestedRecord(draft);
+  const raw = draftRecord.changes_json ?? draftRecord.changes ?? draftRecord.payload_json;
   if (!raw) return {};
   if (typeof raw === 'string') {
     try {
@@ -85,6 +121,11 @@ const decodeDraftChanges = (draft?: AdminReportWorkbenchPayload['draft']): Workb
     }
   }
   return getNestedRecord(raw) as WorkbenchChanges;
+};
+
+const getDraftString = (draft: AdminReportWorkbenchPayload['draft'] | undefined, snakeKey: string, camelKey: string) => {
+  const draftRecord = getNestedRecord(draft);
+  return asString(draftRecord[snakeKey] ?? draftRecord[camelKey]);
 };
 
 const getActionTone = (action: AdminReportWorkbenchAction) => {
@@ -220,23 +261,34 @@ const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualR
 
   useEffect(() => {
     if (!workbench || selectedActionSlug) return;
-    const draftChanges = decodeDraftChanges(workbench.draft);
-    const initialAction = asString(workbench.draft?.action_slug) || workbench.configuration.actions[0]?.slug || '';
-    setSelectedActionSlug(initialAction);
-    setChanges({
-      ...draftChanges,
-      statement: draftChanges.statement ?? asString(getNestedRecord(workbench.target.current).statement),
-      officialText: draftChanges.officialText ?? asString(getNestedRecord(getNestedRecord(workbench.target.current).article).officialText),
-      content: draftChanges.content ?? asString(getNestedRecord(workbench.target.current).content),
-      teacherCommentId: Number(draftChanges.teacherCommentId || getFirstTeacherCommentId(workbench) || 0),
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const draftChanges = decodeDraftChanges(workbench.draft);
+      const initialAction = getDraftString(workbench.draft, 'action_slug', 'actionSlug') || workbench.configuration.actions[0]?.slug || '';
+      setSelectedActionSlug(initialAction);
+      setChanges({
+        ...draftChanges,
+        statement: draftChanges.statement ?? asString(getNestedRecord(workbench.target.current).statement),
+        officialText: draftChanges.officialText ?? asString(getNestedRecord(getNestedRecord(workbench.target.current).article).officialText),
+        content: draftChanges.content ?? asString(getNestedRecord(workbench.target.current).content),
+        teacherCommentId: Number(draftChanges.teacherCommentId || getFirstTeacherCommentId(workbench) || 0),
+      });
+      setUserResponse(getDraftString(workbench.draft, 'user_response', 'userResponse'));
+      setInternalNote(getDraftString(workbench.draft, 'internal_note', 'internalNote'));
     });
-    setUserResponse(asString(workbench.draft?.user_response));
-    setInternalNote(asString(workbench.draft?.internal_note));
+    return () => { cancelled = true; };
   }, [selectedActionSlug, workbench]);
 
   useEffect(() => {
     if (!workbench || !selectedAction || userResponse.trim()) return;
-    setUserResponse(buildDefaultResponse(workbench, selectedAction));
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setUserResponse(buildDefaultResponse(workbench, selectedAction));
+      }
+    });
+    return () => { cancelled = true; };
   }, [selectedAction, userResponse, workbench]);
 
   const saveDraftMutation = useMutation({
@@ -289,7 +341,12 @@ const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualR
         queryClient.invalidateQueries({ queryKey: ['admin', 'comments-moderation'] }),
         queryClient.invalidateQueries({ queryKey: ['admin', 'comments-moderation-counts'] }),
       ]);
-      addToast('Moderação concluída e resposta preparada para o usuário.', 'success');
+      addToast(
+        selectedAction?.finalizes === false
+          ? 'Moderação encaminhada e resposta enviada ao usuário.'
+          : 'Moderação concluída, caso resolvido e resposta enviada ao usuário.',
+        'success',
+      );
       await onDone();
       onClose();
     },
@@ -317,7 +374,7 @@ const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualR
             >
               {(content.options || []).map((option: unknown, index: number) => (
                 <option key={index} value={index}>
-                  Alternativa {String.fromCharCode(65 + index)}
+                  Alternativa {getOptionLabel(option, index)}{getOptionText(option) ? ` - ${getOptionText(option).slice(0, 90)}` : ''}
                 </option>
               ))}
             </select>
@@ -373,6 +430,18 @@ const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualR
           <label className="block">
             <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Comentário que será publicado</span>
             <textarea value={asString(changes.teacherComment)} onChange={(event) => updateChange('teacherComment', event.target.value)} rows={7} className={`${ADMIN_TEXTAREA_CLASS} mt-2 w-full`} />
+          </label>
+        ) : null}
+
+        {ACTIONS_REQUIRING_DECISION_NOTE.has(selectedAction.slug) ? (
+          <label className="block">
+            <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Motivo da decisão</span>
+            <input
+              value={justification}
+              onChange={(event) => setJustification(event.target.value)}
+              className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none dark:border-slate-800 dark:bg-slate-950"
+              placeholder="Ex.: gabarito conferido e corrigido com base no espelho oficial."
+            />
           </label>
         ) : null}
       </div>
@@ -464,12 +533,12 @@ const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualR
                   {content.options?.length ? (
                     <div className="mt-4 space-y-2">
                       {content.options.map((option: unknown, index: number) => {
-                        const record = typeof option === 'object' && option !== null ? option as AdminLooseRecord : {};
-                        const text = asString(record.text || record.label || option);
+                        const label = getOptionLabel(option, index);
+                        const text = getOptionText(option);
                         const correct = Number(content.answerIndex || 0) === index;
                         return (
                           <div key={index} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${correct ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-700'}`}>
-                            {String.fromCharCode(65 + index)}. {text}
+                            {label}. {text || 'Alternativa sem texto cadastrado.'}
                           </div>
                         );
                       })}
@@ -539,6 +608,11 @@ const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualR
                     </button>
                   </div>
                   <div className="mt-4">{renderActionFields()}</div>
+                  {!selectedAction?.fields?.length && !ACTIONS_REQUIRING_DECISION_NOTE.has(selectedAction?.slug || '') ? (
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                      Esta decisão não precisa de edição de conteúdo. Ao concluir, o atendimento será atualizado e o usuário receberá a resposta abaixo.
+                    </div>
+                  ) : null}
                 </div>
               </section>
 
@@ -551,21 +625,22 @@ const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualR
                 <textarea value={userResponse} onChange={(event) => setUserResponse(event.target.value)} rows={6} className={`${ADMIN_TEXTAREA_CLASS} mt-4 w-full`} />
               </section>
 
-              <section className={`${ADMIN_MUTED_SURFACE_CLASS} bg-white p-5 dark:bg-slate-950`}>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">7. Nota interna da equipe</p>
-                <p className="mt-2 text-xs font-semibold text-slate-500">Opcional. Essa anotação fica só no histórico administrativo e não será enviada ao usuário.</p>
-                <textarea value={internalNote} onChange={(event) => setInternalNote(event.target.value)} rows={4} className={`${ADMIN_TEXTAREA_CLASS} mt-4 w-full`} />
-                <label className="mt-4 block">
-                  <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Resumo da decisão</span>
-                  <input value={justification} onChange={(event) => setJustification(event.target.value)} className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold outline-none dark:border-slate-800 dark:bg-slate-950" placeholder="Ex.: comentário criado e publicado no item solicitado." />
-                </label>
-              </section>
             </div>
           )}
         </div>
 
         <div className={`${ADMIN_MODAL_FOOTER_CLASS} flex shrink-0 flex-col gap-3 sm:flex-row sm:justify-end`}>
           <button type="button" onClick={onClose} className={ADMIN_SECONDARY_BUTTON_CLASS}>Fechar</button>
+          {canOpenTarget ? (
+            <button
+              type="button"
+              onClick={() => router.push(canOpenTarget)}
+              className={ADMIN_SECONDARY_BUTTON_CLASS}
+            >
+              <ExternalLink size={14} />
+              Editar conteúdo
+            </button>
+          ) : null}
           <button type="button" onClick={() => saveDraftMutation.mutate()} disabled={isBusy || !workbench} className={ADMIN_SECONDARY_BUTTON_CLASS}>
             {saveDraftMutation.isPending ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
             Salvar rascunho
@@ -577,7 +652,7 @@ const ContextualReportModerationModal = ({ group, onClose, onDone }: ContextualR
             className={ADMIN_PRIMARY_BUTTON_CLASS}
           >
             {applyMutation.isPending ? <Loader2 className="animate-spin" size={14} /> : <CheckCircle2 size={14} />}
-            Concluir e enviar resposta
+            {selectedAction?.finalizes === false ? 'Encaminhar e enviar resposta' : 'Concluir e enviar resposta'}
           </button>
         </div>
       </div>

@@ -50,7 +50,7 @@ export const useTaxonomyActions = () => {
     }
 
     taxonomyLoadPromise = (async () => {
-      const taxonomies = await withTaxonomyLoadTimeout(filtersService.listTaxonomies());
+      const taxonomies = await withTaxonomyLoadTimeout(filtersService.listTaxonomies(force));
       const latestSettings = useAppConfigStore.getState().systemSettings;
       replaceSystemSettings(mergeSystemSettings(latestSettings, { taxonomies }));
     })().finally(() => {

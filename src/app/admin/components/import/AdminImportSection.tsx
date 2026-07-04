@@ -11,7 +11,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import type { Question, SystemSettings } from '@types';
+import type { Prova, Question, SystemSettings } from '@types';
 import MathRichText from '@/components/shared/math/MathRichText';
 import RichTextEditor from '@/components/shared/ui/RichTextEditor';
 import {
@@ -72,12 +72,53 @@ type ExtractedQuestionPreview = Question & {
   needsImportReview?: boolean;
   contextKey?: string;
   grupoQuestaoTempId?: string | number;
+  hasFigure?: boolean;
+  figureBox?: {
+    x?: number | string;
+    y?: number | string;
+    width?: number | string;
+    height?: number | string;
+  };
+  supportFigureBox?: {
+    x?: number | string;
+    y?: number | string;
+    width?: number | string;
+    height?: number | string;
+  };
+  optionFigureBox?: {
+    x?: number | string;
+    y?: number | string;
+    width?: number | string;
+    height?: number | string;
+  };
   figureDescription?: string;
   referenceText?: string;
   reference_text?: string;
   supportImages?: ExtractedQuestionImagePreview[];
   role?: string;
   year?: string | number;
+  status?: 'ok' | 'incompleta' | 'revisar';
+  extractionStatus?: 'ok' | 'incompleta' | 'revisar';
+  statusReasons?: string[];
+  probablePages?: number[];
+  qualityReport?: {
+    origin?: 'mechanical' | 'ai' | 'hybrid' | 'manual' | 'placeholder';
+    confidence?: number;
+    localized?: boolean;
+    complete?: boolean;
+    needsReview?: boolean;
+    reasons?: string[];
+    probablePages?: number[];
+  };
+  extractionQuality?: {
+    origin?: 'mechanical' | 'ai' | 'hybrid' | 'manual' | 'placeholder';
+    confidence?: number;
+    localized?: boolean;
+    complete?: boolean;
+    needsReview?: boolean;
+    reasons?: string[];
+    probablePages?: number[];
+  };
 };
 
 type ExtractedQuestionImagePreview = {
@@ -111,6 +152,8 @@ type ExtractedContextPreview = {
   tempId: string;
   title: string;
   text: string;
+  referenceText?: string;
+  richText?: string;
   questionNumbers: number[];
   hasFigure: boolean;
   figureDescription: string;
@@ -144,7 +187,38 @@ type ExtractedContextPreview = {
 type ImportDiagnosticsPreview = {
   expectedQuestionNumbers: number[];
   extractedQuestionNumbers: number[];
+  localizedQuestionNumbers?: number[];
+  completeQuestionNumbers?: number[];
+  incompleteQuestionNumbers?: number[];
   missingQuestionNumbers: number[];
+  placeholderQuestionNumbers?: number[];
+  visualPendingQuestionNumbers?: number[];
+  duplicateQuestionNumbers?: number[];
+  suspiciousQuestionNumbers?: number[];
+  cardsCreatedCount?: number;
+  completeCardsCount?: number;
+  incompleteCardsCount?: number;
+  placeholderCardsCount?: number;
+  aiLimitReached?: boolean;
+  aiTokenLimitReached?: boolean;
+  aiQuotaLimitReached?: boolean;
+  aiCallCount?: number;
+  aiCallLimit?: number;
+  aiCallsSkipped?: number;
+  aiCallsSavedEstimate?: number;
+  aiLimitedPages?: number[];
+  aiTokenLimitPages?: number[];
+  aiQuotaLimitPages?: number[];
+  pagesWithoutNativeText?: number[];
+  orphanContentBlocks?: Array<{
+    id: string;
+    pageNumber: number;
+    text: string;
+    type: string;
+  }>;
+  aiLimitMessage?: string;
+  aiTokenLimitMessage?: string;
+  aiQuotaLimitMessage?: string;
 };
 
 type CropDraft = { x: string; y: string; width: string; height: string };
@@ -159,6 +233,28 @@ type CropDragState = {
 type ImportReviewTab = 'proof' | 'contexts' | 'questions' | 'pending';
 
 const asText = (value: unknown) => String(value ?? '').trim();
+
+const getExplicitContextQuestionNumbers = (...values: unknown[]) => {
+  const text = values
+    .map((value) => asText(value))
+    .filter(Boolean)
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+  const scope = text.match(/\b(?:quest(?:ao|oes)|itens?)\b.{0,180}/i)?.[0] || '';
+  const range = scope.match(/(\d{1,3})\s*(?:a|ate|-)\s*(\d{1,3})/i);
+  if (range) {
+    const start = Number(range[1]);
+    const end = Number(range[2]);
+    if (start > 0 && end >= start && end - start <= 120) {
+      return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+    }
+  }
+  return Array.from(scope.matchAll(/\d{1,3}/g))
+    .map((match) => Number(match[0]))
+    .filter((number, index, list) => number > 0 && list.indexOf(number) === index);
+};
 
 const asTextList = (value: unknown) => (
   Array.isArray(value)
@@ -276,13 +372,6 @@ const getQuestionExpectedOptionsCount = (question: Question) => {
     bancas?: unknown[];
     banca?: unknown;
   };
-  const agencySignal = [
-    ...(Array.isArray(record.bancas) ? record.bancas : []),
-    record.banca,
-  ].map(getTaxonomyLabel).join(' ');
-  if (/\bIBFC\b/i.test(agencySignal)) {
-    return 4;
-  }
   const explicitCount = Number(asText(record.expectedOptionsCount ?? record.expected_options_count).match(/[2-5]/)?.[0] || 0);
   if (Number.isFinite(explicitCount) && explicitCount >= 2 && explicitCount <= 5) {
     return explicitCount;
@@ -291,7 +380,7 @@ const getQuestionExpectedOptionsCount = (question: Question) => {
   if (modalityText.includes('certo')) {
     return 2;
   }
-  return Number(modalityText.match(/[2-5]/)?.[0] || 0) || 5;
+  return Number(modalityText.match(/[2-5]/)?.[0] || 0) || getQuestionOptions(question).length;
 };
 
 const getCorrectOptionIndex = (question: ExtractedQuestionPreview) => {
@@ -301,6 +390,46 @@ const getCorrectOptionIndex = (question: ExtractedQuestionPreview) => {
   const options = getQuestionOptions(question);
   const answerIndex = options.findIndex((item) => Number(item.id) === Number(question.resposta));
   return answerIndex >= 0 ? answerIndex : Math.max(0, Number(question.resposta || 1) - 1);
+};
+
+const getQuestionQuality = (question: ExtractedQuestionPreview) => (
+  question.qualityReport || question.extractionQuality
+);
+
+const isPlaceholderQuestionPreview = (question: ExtractedQuestionPreview) => (
+  getQuestionQuality(question)?.origin === 'placeholder'
+  || (question.statusReasons || []).includes('questao_placeholder_criada')
+);
+
+const getQuestionProbablePages = (question: ExtractedQuestionPreview) => (
+  Array.from(new Set([
+    ...(question.probablePages || []),
+    ...(getQuestionQuality(question)?.probablePages || []),
+    Number(question.sourcePage || 0),
+  ].filter((page) => Number.isFinite(page) && Number(page) > 0).map(Number)))
+    .sort((left, right) => left - right)
+);
+
+const isQuestionReadyForPublicationPreview = (question: ExtractedQuestionPreview) => {
+  const statement = asText(question.enunciado).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const optionsCount = getFilledQuestionOptionsCount(question);
+  const expectedOptionsCount = getQuestionExpectedOptionsCount(question);
+  const type = asText(question.tipo).toLowerCase();
+  const answer = Number(question.resposta);
+  const correctOptionIndex = Number(question.correctOptionIndex);
+  const discursive = ['discursiva', 'redacao', 'estudo de caso'].includes(type);
+  const hasAnswer = discursive
+    || (Number.isInteger(correctOptionIndex) && correctOptionIndex >= 0 && correctOptionIndex < optionsCount)
+    || (Number.isInteger(answer) && answer > 0 && answer <= optionsCount)
+    || Boolean(question.anulada || question.isCanceled);
+
+  return statement.length >= 12
+    && Boolean(type && type !== 'desconhecido')
+    && (discursive || (
+      optionsCount >= 2
+      && (expectedOptionsCount <= 0 || optionsCount >= expectedOptionsCount)
+      && hasAnswer
+    ));
 };
 
 const getImageDataUri = (imageData?: string) => {
@@ -677,6 +806,13 @@ interface AdminImportSectionProps {
   onQFileChange: (file: File | null) => void;
   kFile: File | null;
   onKFileChange: (file: File | null) => void;
+  examBank: Prova[];
+  isLoadingExamBank: boolean;
+  selectedExamId: string;
+  onSelectedExamIdChange: (value: string) => void;
+  selectedExamFocusLabel: string;
+  inheritedProofFileName: string;
+  inheritedAnswerKeyFileName: string;
   selectedFocusId: string;
   onSelectedFocusIdChange: (value: string) => void;
   manualFocusName: string;
@@ -716,6 +852,7 @@ interface AdminImportSectionProps {
   onExtractedQuestionIntroTextChange: (index: number, value: string) => void;
   onExtractedQuestionReferenceTextChange: (index: number, value: string) => void;
   onExtractedQuestionOptionChange: (questionIndex: number, optionIndex: number, value: string) => void;
+  onExtractedQuestionCorrectOptionChange: (questionIndex: number, optionIndex: number) => void;
   onExtractedQuestionOptionAdd: (questionIndex: number) => void;
   onExtractedQuestionOptionRemove: (questionIndex: number, optionIndex: number) => void;
   onExtractedQuestionSupportImageAdd: (questionIndex: number, imageData: string, fileName?: string) => void;
@@ -724,7 +861,11 @@ interface AdminImportSectionProps {
   onExtractedContextAdd: () => void;
   onExtractedContextRemove: (tempId: string) => void;
   onExtractedContextContentChange: (tempId: string, value: string) => void;
-  onExtractedContextFieldChange: (tempId: string, field: 'title' | 'text' | 'figureDescription', value: string) => void;
+  onExtractedContextFieldChange: (
+    tempId: string,
+    field: 'title' | 'text' | 'referenceText' | 'figureDescription',
+    value: string,
+  ) => void;
   onExtractedContextQuestionNumbersChange: (tempId: string, questionNumbers: number[]) => void;
   onExtractedContextImageChange: (tempId: string, imageData: string, fileName?: string) => void;
   onExtractedQuestionSupportImageCropChange: (
@@ -751,6 +892,13 @@ const AdminImportSection = ({
   onQFileChange,
   kFile,
   onKFileChange,
+  examBank,
+  isLoadingExamBank,
+  selectedExamId,
+  onSelectedExamIdChange,
+  selectedExamFocusLabel,
+  inheritedProofFileName,
+  inheritedAnswerKeyFileName,
   selectedFocusId,
   onSelectedFocusIdChange,
   manualFocusName,
@@ -790,6 +938,7 @@ const AdminImportSection = ({
   onExtractedQuestionIntroTextChange,
   onExtractedQuestionReferenceTextChange,
   onExtractedQuestionOptionChange,
+  onExtractedQuestionCorrectOptionChange,
   onExtractedQuestionOptionAdd,
   onExtractedQuestionOptionRemove,
   onExtractedQuestionSupportImageAdd,
@@ -807,6 +956,12 @@ const AdminImportSection = ({
   generatingSpecific,
   onGenerateSpecific,
 }: AdminImportSectionProps) => {
+  const configuredAiProvider = String(systemSettings.aiProvider || 'auto').toLowerCase();
+  const configuredAiLabel = configuredAiProvider === 'gemini'
+    ? `Gemini / ${systemSettings.geminiModel || 'gemini-3.5-flash'}`
+    : configuredAiProvider === 'openai'
+      ? `OpenAI / ${systemSettings.openAiModel || 'gpt-4o-mini'}`
+      : `Automático: OpenAI ${systemSettings.openAiModel || 'gpt-4o-mini'} → Gemini ${systemSettings.geminiModel || 'gemini-3.5-flash'}`;
   const [activeReviewTab, setActiveReviewTab] = React.useState<ImportReviewTab>('questions');
   const [contextCropDrafts, setContextCropDrafts] = React.useState<Record<string, CropDraft>>({});
   const [supportImageCropDrafts, setSupportImageCropDrafts] = React.useState<Record<string, CropDraft>>({});
@@ -833,23 +988,57 @@ const AdminImportSection = ({
     ? asText(metadata.title)
     : asText(metadata.examTitle);
   const examTitlePreview = buildExamTitlePreview(metadata);
-  const missingAlternativesCount = extractedQuestions.filter((question) => getFilledQuestionOptionsCount(question) < getQuestionExpectedOptionsCount(question)).length;
-  const effectiveReviewTab = activeReviewTab === 'pending' && missingAlternativesCount === 0 ? 'questions' : activeReviewTab;
+  const placeholderQuestionNumbers = importDiagnostics.placeholderQuestionNumbers || [];
+  const placeholderQuestionSet = React.useMemo(
+    () => new Set(placeholderQuestionNumbers),
+    [placeholderQuestionNumbers],
+  );
+  const incompleteQuestionNumbers = importDiagnostics.incompleteQuestionNumbers || [];
+  const incompleteQuestionSet = React.useMemo(
+    () => new Set(incompleteQuestionNumbers),
+    [incompleteQuestionNumbers],
+  );
   const pendingAlternativeQuestions = React.useMemo(() => (
     (extractedQuestions as ExtractedQuestionPreview[])
       .map((question, index) => ({ question, index }))
-      .filter(({ question }) => getFilledQuestionOptionsCount(question) < getQuestionExpectedOptionsCount(question))
-  ), [extractedQuestions]);
+      .filter(({ question, index }) => {
+        const number = getQuestionNumber(question, index + 1);
+        return placeholderQuestionSet.has(number)
+          || incompleteQuestionSet.has(number)
+          || !isQuestionReadyForPublicationPreview(question);
+      })
+  ), [extractedQuestions, incompleteQuestionSet, placeholderQuestionSet]);
+  const effectiveReviewTab = activeReviewTab === 'pending' && pendingAlternativeQuestions.length === 0 ? 'questions' : activeReviewTab;
   const questionsForReview = effectiveReviewTab === 'pending'
     ? pendingAlternativeQuestions
     : (extractedQuestions as ExtractedQuestionPreview[]).map((question, index) => ({ question, index }));
   const missingQuestionNumbers = importDiagnostics.missingQuestionNumbers || [];
+  const localizedQuestionNumbers = importDiagnostics.localizedQuestionNumbers || importDiagnostics.extractedQuestionNumbers || [];
+  const completeQuestionNumbers = importDiagnostics.completeQuestionNumbers || [];
+  const visualPendingQuestionNumbers = importDiagnostics.visualPendingQuestionNumbers || [];
+  const duplicateQuestionNumbers = importDiagnostics.duplicateQuestionNumbers || [];
   const expectedTotal = importDiagnostics.expectedQuestionNumbers?.length || 0;
-  const extractedUniqueTotal = importDiagnostics.extractedQuestionNumbers?.length || extractedQuestions.length;
+  const cardsCreatedCount = importDiagnostics.cardsCreatedCount ?? extractedQuestions.length;
+  const completeCardsCount = importDiagnostics.completeCardsCount ?? completeQuestionNumbers.length;
+  const incompleteCardsCount = importDiagnostics.incompleteCardsCount
+    ?? incompleteQuestionNumbers.filter((number) => !placeholderQuestionSet.has(number)).length;
+  const placeholderCardsCount = importDiagnostics.placeholderCardsCount ?? placeholderQuestionNumbers.length;
+  const orphanContentBlocks = importDiagnostics.orphanContentBlocks || [];
+  const extractedUniqueTotal = localizedQuestionNumbers.length;
   const missingByQuantity = missingQuestionNumbers.length;
+  const aiLimitedPages = importDiagnostics.aiLimitedPages || [];
+  const aiTokenLimitPages = importDiagnostics.aiTokenLimitPages || [];
+  const aiQuotaLimitPages = importDiagnostics.aiQuotaLimitPages || [];
+  const pagesWithoutNativeText = importDiagnostics.pagesWithoutNativeText || [];
+  const aiLimitReached = Boolean(importDiagnostics.aiLimitReached);
+  const aiTokenLimitReached = Boolean(importDiagnostics.aiTokenLimitReached);
+  const aiQuotaLimitReached = Boolean(importDiagnostics.aiQuotaLimitReached);
+  const aiCallCount = importDiagnostics.aiCallCount ?? 0;
+  const aiCallLimit = importDiagnostics.aiCallLimit ?? 0;
   const publishedQuestionSet = React.useMemo(() => new Set(publishedQuestionNumbers), [publishedQuestionNumbers]);
-  const unpublishedQuestionCount = extractedQuestions.filter((question, index) => (
-    !publishedQuestionSet.has(getQuestionNumber(question as ExtractedQuestionPreview, index + 1))
+  const publishableUnpublishedQuestionCount = (extractedQuestions as ExtractedQuestionPreview[]).filter((question, index) => (
+    !publishedQuestionSet.has(getQuestionNumber(question, index + 1))
+    && isQuestionReadyForPublicationPreview(question)
   )).length;
   const figureContexts = extractedContexts.filter((context) => context.hasFigure || context.figureDescription || context.imageData);
   const questionLinkOptions = React.useMemo(() => (
@@ -868,7 +1057,7 @@ const AdminImportSection = ({
     || (!selectedFocusId && !manualFocusName.trim());
   const retryMissingBlocked = isProcessing || importActionBusy || missingByQuantity === 0 || !qFile;
   const examPublishBlocked = isProcessing || importActionBusy || isPublishing || !metadataAgency || !metadataYear || !metadataSource || !metadataRole || (!selectedFocusId && !manualFocusName.trim());
-  const questionsPublishBlocked = isProcessing || importActionBusy || isPublishing || !publishedExam || missingAlternativesCount > 0 || unpublishedQuestionCount === 0;
+  const questionsPublishBlocked = isProcessing || importActionBusy || isPublishing || !publishedExam || publishableUnpublishedQuestionCount === 0;
   const metadataSubjects = Array.isArray(metadata.subjects)
     ? metadata.subjects.map((subject) => asText(subject)).filter(Boolean)
     : asText(metadata.subjects).split(/[,;\n]/).map((subject) => subject.trim()).filter(Boolean);
@@ -1098,6 +1287,33 @@ const AdminImportSection = ({
 
             <div className={`space-y-3 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
               <label className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                <Database size={12} className="text-sky-700 dark:text-sky-300" />
+                Prova do Banco de Provas
+              </label>
+              <select
+                value={selectedExamId}
+                onChange={(event) => onSelectedExamIdChange(event.target.value)}
+                disabled={isLoadingExamBank || isProcessing}
+                className={`h-10 w-full min-w-0 max-w-full truncate text-xs font-bold ${ADMIN_FIELD_CLASS}`}
+              >
+                <option value="">Criar uma nova prova após a extração</option>
+                {examBank.map((exam) => (
+                  <option key={exam.id} value={String(exam.id)}>
+                    {exam.nome} {exam.ano ? `(${exam.ano})` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+                {isLoadingExamBank
+                  ? 'Carregando provas cadastradas...'
+                  : selectedExamId
+                    ? 'As questões publicadas serão vinculadas a esta prova, sem criar duplicata.'
+                    : 'Opcional. Deixe em branco para cadastrar uma nova prova com os metadados extraídos.'}
+              </p>
+            </div>
+
+            <div className={`space-y-3 p-4 ${ADMIN_MUTED_SURFACE_CLASS}`}>
+              <label className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
                 <Target size={12} className="text-sky-700 dark:text-sky-300" />
                 Foco da prova <span className="font-black text-red-500">*</span>
               </label>
@@ -1107,7 +1323,8 @@ const AdminImportSection = ({
                   onSelectedFocusIdChange(event.target.value);
                   if (event.target.value) onManualFocusNameChange('');
                 }}
-                className={`h-10 w-full min-w-0 max-w-full truncate text-xs font-bold ${ADMIN_FIELD_CLASS}`}
+                disabled={Boolean(selectedExamFocusLabel)}
+                className={`h-10 w-full min-w-0 max-w-full truncate text-xs font-bold disabled:cursor-not-allowed disabled:opacity-70 ${ADMIN_FIELD_CLASS}`}
               >
                 <option value="">Selecionar foco existente</option>
                 {focusOptions.map((focus) => {
@@ -1127,11 +1344,14 @@ const AdminImportSection = ({
                   onManualFocusNameChange(event.target.value);
                   if (event.target.value.trim()) onSelectedFocusIdChange('');
                 }}
-                placeholder="Ou adicionar novo foco. Ex.: ENEM, Policial, Tribunais"
-                className={`h-10 text-xs font-bold ${ADMIN_FIELD_CLASS}`}
+                disabled={Boolean(selectedExamFocusLabel)}
+                placeholder={selectedExamFocusLabel || 'Ou adicionar novo foco. Ex.: ENEM, Policial, Tribunais'}
+                className={`h-10 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-70 ${ADMIN_FIELD_CLASS}`}
               />
               <p className="text-[10px] font-medium leading-relaxed text-slate-500 dark:text-slate-400">
-                O foco escolhido sera aplicado a prova e a todas as questoes importadas.
+                {selectedExamFocusLabel
+                  ? `Foco herdado da prova: ${selectedExamFocusLabel}.`
+                  : 'O foco escolhido será aplicado à prova e a todas as questões importadas.'}
               </p>
             </div>
 
@@ -1140,26 +1360,38 @@ const AdminImportSection = ({
                 <label className="ml-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
                   Arquivo da Prova <span className="font-black text-red-500">*</span>
                 </label>
-                <label className={`flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-sm border-2 border-dashed transition-all ${qFile ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'border-slate-300 bg-slate-50 hover:border-sky-700 dark:border-slate-700 dark:bg-slate-950/40'}`}>
+                {inheritedProofFileName ? (
+                  <div className="flex h-20 w-full flex-col items-center justify-center rounded-sm border border-emerald-300 bg-emerald-50 px-4 text-center dark:border-emerald-900/40 dark:bg-emerald-900/10">
+                    <FileCheck size={20} className="text-emerald-600" />
+                    <span className="mt-2 line-clamp-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{inheritedProofFileName}</span>
+                    <span className="text-[8px] font-black uppercase tracking-wide text-emerald-600/80">Arquivo do Banco de Provas</span>
+                  </div>
+                ) : <label className={`flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-sm border-2 border-dashed transition-all ${qFile ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'border-slate-300 bg-slate-50 hover:border-sky-700 dark:border-slate-700 dark:bg-slate-950/40'}`}>
                   <input type="file" accept=".pdf" className="hidden" onChange={(event) => onQFileChange(event.target.files?.[0] || null)} />
                   <UploadCloud size={24} className={qFile ? 'text-emerald-500' : 'text-slate-400'} />
                   <span className="mt-2 line-clamp-1 px-4 text-center text-[10px] font-bold text-slate-600 dark:text-slate-400">
                     {qFile ? qFile.name : 'Selecionar Prova (PDF)'}
                   </span>
-                </label>
+                </label>}
               </div>
 
               <div className="space-y-2">
                 <label className="ml-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
                   Gabarito Oficial <span className="font-black text-red-500">*</span>
                 </label>
-                <label className={`flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-sm border-2 border-dashed transition-all ${kFile ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'border-slate-300 bg-slate-50 hover:border-sky-700 dark:border-slate-700 dark:bg-slate-950/40'}`}>
+                {inheritedAnswerKeyFileName ? (
+                  <div className="flex h-20 w-full flex-col items-center justify-center rounded-sm border border-emerald-300 bg-emerald-50 px-4 text-center dark:border-emerald-900/40 dark:bg-emerald-900/10">
+                    <FileCheck size={20} className="text-emerald-600" />
+                    <span className="mt-2 line-clamp-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{inheritedAnswerKeyFileName}</span>
+                    <span className="text-[8px] font-black uppercase tracking-wide text-emerald-600/80">Arquivo do Banco de Provas</span>
+                  </div>
+                ) : <label className={`flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-sm border-2 border-dashed transition-all ${kFile ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10' : 'border-slate-300 bg-slate-50 hover:border-sky-700 dark:border-slate-700 dark:bg-slate-950/40'}`}>
                   <input type="file" accept=".pdf" className="hidden" onChange={(event) => onKFileChange(event.target.files?.[0] || null)} />
                   <FileCheck size={24} className={kFile ? 'text-emerald-500' : 'text-slate-400'} />
                   <span className="mt-2 line-clamp-1 px-4 text-center text-[10px] font-bold text-slate-600 dark:text-slate-400">
                     {kFile ? kFile.name : 'Selecionar Gabarito (PDF)'}
                   </span>
-                </label>
+                </label>}
               </div>
 
               <div className="flex items-center gap-2 rounded-sm border border-amber-300 bg-amber-50 p-3 dark:border-amber-900/30 dark:bg-amber-900/10">
@@ -1267,12 +1499,17 @@ const AdminImportSection = ({
             )}
           </div>
 
-          <div className="flex h-48 flex-col-reverse overflow-y-auto rounded-md border border-slate-800 bg-slate-900 p-6 font-mono text-[10px] text-emerald-400 shadow-inner transition-colors dark:border-slate-800 dark:bg-slate-950">
-            <div className="space-y-1">
+          <div className="flex h-48 flex-col overflow-hidden rounded-md border border-slate-800 bg-slate-900 font-mono text-[10px] text-emerald-400 shadow-inner transition-colors dark:border-slate-800 dark:bg-slate-950">
+            <div className="shrink-0 border-b border-slate-800 px-4 py-2 text-[9px] font-bold uppercase tracking-wide text-sky-300">
+              IA configurada: {configuredAiLabel}
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto p-6">
+              <div className="space-y-1">
               {logs.map((log, index) => (
                 <div key={index} className="animate-fade-in opacity-80">{log}</div>
               ))}
               {isProcessing && <div className="animate-pulse">_</div>}
+              </div>
             </div>
           </div>
         </div>
@@ -1282,23 +1519,32 @@ const AdminImportSection = ({
             <div className="flex flex-1 flex-col space-y-4 animate-slide-up">
               <div className={`${ADMIN_PAGE_PANEL_CLASS} space-y-4 p-5`}>
                 <div className="flex flex-wrap items-start gap-4">
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    <div className="flex min-h-14 min-w-[13rem] items-center gap-3 rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
-                      <CheckCircle2 size={17} className="shrink-0" />
-                      <span className="flex min-w-0 items-baseline gap-2 leading-tight">
-                        <span className="shrink-0 text-base font-black">{expectedTotal > 0 ? `${extractedUniqueTotal}/${expectedTotal}` : extractedQuestions.length}</span>
-                        <span className="whitespace-nowrap text-[10px] font-black uppercase tracking-wide">Questoes extraidas</span>
-                      </span>
-                    </div>
-                    {missingByQuantity > 0 && (
-                      <div className="flex min-h-14 min-w-[10rem] items-center gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300">
-                        <AlertTriangle size={17} className="shrink-0" />
-                        <span className="flex min-w-0 items-baseline gap-2 leading-tight">
-                          <span className="shrink-0 text-base font-black">{missingByQuantity}</span>
-                          <span className="whitespace-nowrap text-[10px] font-black uppercase tracking-wide">Faltantes</span>
-                        </span>
+                  <div className="grid min-w-[min(100%,42rem)] flex-1 grid-cols-2 gap-2 md:grid-cols-5">
+                    {([
+                      ['Esperadas', expectedTotal || cardsCreatedCount, 'slate'],
+                      ['Cards criados', cardsCreatedCount, 'sky'],
+                      ['Completas', completeCardsCount, 'emerald'],
+                      ['Incompletas', incompleteCardsCount, 'amber'],
+                      ['Pendentes', placeholderCardsCount, 'rose'],
+                    ] as const).map(([label, value, tone]) => (
+                      <div
+                        key={label}
+                        className={`min-w-0 rounded-md border px-3 py-2.5 ${
+                          tone === 'emerald'
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300'
+                            : tone === 'amber'
+                              ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300'
+                              : tone === 'rose'
+                                ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900/30 dark:bg-rose-900/20 dark:text-rose-300'
+                                : tone === 'sky'
+                                  ? 'border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-900/30 dark:bg-sky-900/20 dark:text-sky-300'
+                                  : 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        }`}
+                      >
+                        <p className="text-base font-black leading-none">{value}</p>
+                        <p className="mt-1 truncate text-[8px] font-black uppercase tracking-wide">{label}</p>
                       </div>
-                    )}
+                    ))}
                   </div>
                   <div className={`grid min-w-[min(100%,34rem)] flex-1 gap-2 sm:grid-cols-2 ${missingByQuantity > 0 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
                     <button
@@ -1337,7 +1583,7 @@ const AdminImportSection = ({
                       className="flex min-h-14 min-w-0 items-center justify-center gap-2 rounded-md border border-sky-700 bg-sky-700 px-3 py-3 text-center text-[10px] font-black uppercase leading-tight tracking-wide text-white transition-colors hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-700/60 disabled:opacity-60"
                     >
                       {publishingAction === 'exam' ? <Loader2 className="shrink-0 animate-spin" size={15} /> : <FileCheck className="shrink-0" size={15} />}
-                      <span className="min-w-0">{publishedExam ? 'Atualizar Prova' : 'Publicar Prova'}</span>
+                      <span className="min-w-0">{selectedExamId ? 'Prova Vinculada' : publishedExam ? 'Atualizar Prova' : 'Publicar Prova'}</span>
                     </button>
                     <button
                       type="button"
@@ -1350,17 +1596,17 @@ const AdminImportSection = ({
                     </button>
                   </div>
                 </div>
-                {(!metadataAgency || !metadataYear || !metadataSource || !metadataRole || !publishedExam || missingAlternativesCount > 0 || missingByQuantity > 0) && (
+                {(!metadataAgency || !metadataYear || !metadataSource || !metadataRole || !publishedExam || pendingAlternativeQuestions.length > 0) && (
                   <div className="flex w-full items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] font-semibold leading-relaxed text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
                     <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                     <span>
                       {!metadataAgency || !metadataYear || !metadataSource || !metadataRole
-                        ? 'Para publicar, preencha Banca, Ano, Orgao e Cargo/Prova para formar o titulo Banca - Ano - Orgao - Cargo/Prova.'
+                        ? 'Para publicar, preencha Banca, Ano, Órgão e Cargo/Prova para formar o título Banca - Ano - Órgão - Cargo/Prova.'
                         : !publishedExam
-                          ? 'Publique a prova primeiro. Depois publique todas as questoes ou apenas uma questao especifica.'
-                          : missingAlternativesCount > 0
-                            ? `${missingAlternativesCount} questao(oes) precisam de alternativas antes da publicacao.`
-                            : `${missingByQuantity} questao(oes) ainda nao apareceram pela quantidade esperada do gabarito. Voce pode publicar apenas o lote revisado ou tentar reprocessar o PDF.`}
+                          ? 'Publique a prova primeiro. Depois publique todas as questões ou apenas uma questão específica.'
+                          : pendingAlternativeQuestions.length > 0
+                            ? `${pendingAlternativeQuestions.length} card(s) permanecem incompletos. Publicar todas enviará somente as questões completas e manterá as pendentes na revisão.`
+                            : ''}
                     </span>
                   </div>
                 )}
@@ -1368,12 +1614,12 @@ const AdminImportSection = ({
 
               <div className={`${ADMIN_PAGE_PANEL_CLASS} flex flex-wrap gap-2 p-2`}>
                 {([
-                  ['proof', 'Prova', `${subjectsForDisplay.length} materias`, Database],
+                  ['proof', 'Prova', `${subjectsForDisplay.length} matérias`, Database],
                   ['contexts', 'Contextos', `${extractedContexts.length} ctx · ${figureContexts.length} fig`, BookOpen],
-                  ...(missingAlternativesCount > 0
-                    ? [['pending', 'Pendentes', `${missingAlternativesCount} sem alt.`, AlertTriangle] as const]
+                  ...(pendingAlternativeQuestions.length > 0
+                    ? [['pending', 'Pendentes', `${pendingAlternativeQuestions.length} revisar`, AlertTriangle] as const]
                     : []),
-                  ['questions', 'Questoes', `${extractedQuestions.length} itens`, FileQuestion],
+                  ['questions', 'Questões', `${extractedQuestions.length} itens`, FileQuestion],
                 ] as const).map(([tab, label, count, Icon]) => {
                   const isActive = effectiveReviewTab === tab;
                   return (
@@ -1504,7 +1750,19 @@ const AdminImportSection = ({
                     </div>
                   </div>
                   <div className="grid gap-3">
-                    {extractedContexts.map((context) => (
+                    {extractedContexts.map((context) => {
+                      const explicitQuestionNumbers = getExplicitContextQuestionNumbers(
+                        context.title,
+                        context.text,
+                        context.referenceText,
+                      );
+                      const linkedQuestionNumbers = [...context.questionNumbers].sort((left, right) => left - right);
+                      const explicitLinkMismatch = explicitQuestionNumbers.length > 0 && (
+                        explicitQuestionNumbers.length !== linkedQuestionNumbers.length
+                        || explicitQuestionNumbers.some((number, index) => linkedQuestionNumbers[index] !== number)
+                      );
+
+                      return (
                       <div key={context.tempId} className="rounded-sm border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/30">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1 space-y-2">
@@ -1560,6 +1818,33 @@ const AdminImportSection = ({
                             contentClassName="min-h-36 max-h-96 text-[11px] font-medium leading-relaxed"
                           />
                         </label>
+                        <label className="mt-3 block space-y-1">
+                          <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Fonte / referência</span>
+                          <textarea
+                            value={context.referenceText || ''}
+                            onChange={(event) => onExtractedContextFieldChange(context.tempId, 'referenceText', event.target.value)}
+                            rows={2}
+                            placeholder="Fonte, autor, obra, URL, adaptação ou data de acesso."
+                            className={`${ADMIN_FIELD_CLASS} resize-y text-[11px] font-medium leading-relaxed`}
+                          />
+                        </label>
+                        {explicitLinkMismatch && (
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-sm border border-amber-200 bg-amber-50 p-3 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+                            <div className="flex min-w-0 items-start gap-2">
+                              <AlertTriangle className="mt-0.5 shrink-0" size={15} />
+                              <p className="text-[10px] font-bold leading-relaxed">
+                                O próprio contexto indica as questões {explicitQuestionNumbers.join(', ')}, mas o vínculo atual está diferente.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => onExtractedContextQuestionNumbersChange(context.tempId, explicitQuestionNumbers)}
+                              className="inline-flex h-8 shrink-0 items-center justify-center rounded-sm border border-amber-300 bg-white px-3 text-[9px] font-black uppercase tracking-widest text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-slate-900 dark:text-amber-200 dark:hover:bg-amber-950"
+                            >
+                              Aplicar vínculo indicado
+                            </button>
+                          </div>
+                        )}
                         <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
                           <div className="mb-2 flex items-center justify-between gap-2">
                             <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Vincular a questoes</p>
@@ -1689,7 +1974,8 @@ const AdminImportSection = ({
                           </details>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                     {extractedContexts.length === 0 && (
                       <div className="rounded-sm border border-dashed border-slate-300 p-4 text-center text-xs font-semibold text-slate-400 dark:border-slate-700">
                         Nenhum item extraido para este filtro.
@@ -1699,14 +1985,137 @@ const AdminImportSection = ({
                 </div>
               )}
 
+              {aiLimitReached && (
+                <div className="rounded-sm border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+                    <div className="min-w-0 space-y-1">
+                      <p className="font-black uppercase tracking-widest">Limite de chamadas de IA atingido</p>
+                      <p className="font-semibold">
+                        {importDiagnostics.aiLimitMessage || `Foram usadas ${aiCallCount}/${aiCallLimit || aiCallCount} chamada(s) de IA. Algumas páginas precisavam de leitura visual/OCR e ficaram pendentes.`}
+                      </p>
+                      {aiLimitedPages.length > 0 && (
+                        <p className="break-words text-[11px] font-medium">
+                          Páginas com fallback visual bloqueado pelo limite: {aiLimitedPages.join(', ')}.
+                        </p>
+                      )}
+                      {pagesWithoutNativeText.length > 0 && (
+                        <p className="break-words text-[11px] font-medium">
+                          Páginas sem texto nativo suficiente: {pagesWithoutNativeText.join(', ')}. Nesses casos, o parser mecânico só consegue extrair algo se houver OCR/texto legível disponível.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {aiQuotaLimitReached && (
+                <div className="rounded-sm border border-orange-200 bg-orange-50 p-3 text-xs text-orange-800 dark:border-orange-900/40 dark:bg-orange-950/20 dark:text-orange-200">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+                    <div className="min-w-0 space-y-1">
+                      <p className="font-black uppercase tracking-widest">Cota da IA excedida</p>
+                      <p className="font-semibold">
+                        {importDiagnostics.aiQuotaLimitMessage || 'O provedor de IA retornou limite de cota. O importador pausou novas chamadas e continuou com PDF.js/parser mecânico.'}
+                      </p>
+                      {aiQuotaLimitPages.length > 0 && (
+                        <p className="break-words text-[11px] font-medium">
+                          Páginas afetadas pela cota da IA: {aiQuotaLimitPages.join(', ')}.
+                        </p>
+                      )}
+                      {pagesWithoutNativeText.length > 0 && (
+                        <p className="break-words text-[11px] font-medium">
+                          Páginas sem texto nativo suficiente: {pagesWithoutNativeText.join(', ')}. Se o PDF for escaneado e a cota estiver esgotada, essas páginas ficam pendentes para nova tentativa com OCR/IA visual.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {aiTokenLimitReached && (
+                <div className="rounded-sm border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+                    <div className="min-w-0 space-y-1">
+                      <p className="font-black uppercase tracking-widest">Limite de tokens/contexto da IA</p>
+                      <p className="font-semibold">
+                        {importDiagnostics.aiTokenLimitMessage || 'A IA recusou parte da leitura por limite de tokens/contexto. O importador manteve a extração mecânica e sinalizou o que precisa de revisão.'}
+                      </p>
+                      {aiTokenLimitPages.length > 0 && (
+                        <p className="break-words text-[11px] font-medium">
+                          Páginas afetadas pelo limite de tokens/contexto: {aiTokenLimitPages.join(', ')}.
+                        </p>
+                      )}
+                      {pagesWithoutNativeText.length > 0 && (
+                        <p className="break-words text-[11px] font-medium">
+                          Páginas sem texto nativo suficiente: {pagesWithoutNativeText.join(', ')}. Se uma página escaneada não tiver OCR, o parser mecânico não tem texto para recuperar sozinho.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {incompleteQuestionNumbers.length > 0 && (
+                <div className="rounded-sm border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/20 dark:text-sky-100">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="mt-0.5 shrink-0" size={16} />
+                    <div className="min-w-0 space-y-1">
+                      <p className="font-black uppercase tracking-widest">Questões localizadas, mas incompletas</p>
+                      <p className="break-words font-semibold">
+                        {incompleteQuestionNumbers.slice(0, 80).join(', ')}{incompleteQuestionNumbers.length > 80 ? '...' : ''}
+                      </p>
+                      <p className="text-[11px] font-medium">
+                        O número e parte real dessas questões foram encontrados. Elas permanecem na revisão e não são contabilizadas como faltantes.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {duplicateQuestionNumbers.length > 0 && (
+                <div className="rounded-sm border border-violet-200 bg-violet-50 p-3 text-xs text-violet-900 dark:border-violet-900/40 dark:bg-violet-950/20 dark:text-violet-100">
+                  <p className="font-black uppercase tracking-widest">Numeração duplicada para revisão</p>
+                  <p className="mt-1 break-words font-semibold">{duplicateQuestionNumbers.join(', ')}</p>
+                </div>
+              )}
+
+              {visualPendingQuestionNumbers.length > 0 && (
+                <div className="rounded-sm border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs text-fuchsia-900 dark:border-fuchsia-900/40 dark:bg-fuchsia-950/20 dark:text-fuchsia-100">
+                  <p className="font-black uppercase tracking-widest">Pendências visuais</p>
+                  <p className="mt-1 break-words font-semibold">{visualPendingQuestionNumbers.join(', ')}</p>
+                  <p className="mt-1 text-[11px] font-medium">Essas questões foram localizadas, mas ainda exigem figura, recorte ou validação visual.</p>
+                </div>
+              )}
+
+              {orphanContentBlocks.length > 0 && (
+                <div className="rounded-sm border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+                  <p className="font-black uppercase tracking-widest">Blocos ainda sem classificação</p>
+                  <p className="mt-1 text-[11px] font-medium">
+                    {orphanContentBlocks.length} bloco(s) foram preservados para diagnóstico; nenhum conteúdo órfão foi descartado automaticamente.
+                  </p>
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[10px] font-black uppercase text-sky-700 dark:text-sky-300">Ver blocos</summary>
+                    <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+                      {orphanContentBlocks.slice(0, 30).map((block) => (
+                        <p key={block.id} className="rounded-sm border border-slate-200 bg-white px-2 py-1 text-[10px] dark:border-slate-700 dark:bg-slate-950">
+                          Pág. {block.pageNumber}: {block.text}
+                        </p>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+              )}
+
               {missingQuestionNumbers.length > 0 && (
                 <div className="rounded-sm border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/30 dark:bg-amber-900/10 dark:text-amber-200">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
-                      <p className="font-black uppercase tracking-widest">Numeros do gabarito sem correspondencia exata</p>
+                      <p className="font-black uppercase tracking-widest">Questões realmente não localizadas</p>
                       <p className="mt-1 break-words font-semibold">{missingQuestionNumbers.slice(0, 80).join(', ')}{missingQuestionNumbers.length > 80 ? '...' : ''}</p>
                       <p className="mt-2 text-[11px] font-medium">
-                        Este aviso pode incluir questoes extraidas sem numeracao original confiavel. A contagem de falta usada no botao e baseada em {extractedQuestions.length}/{expectedTotal || extractedQuestions.length}.
+                        Esses números ainda não possuem conteúdo suficiente para publicação, mas todos têm card editável na revisão. Cobertura localizada: {extractedUniqueTotal}/{expectedTotal || extractedUniqueTotal}.
                       </p>
                     </div>
                     <button
@@ -1750,18 +2159,54 @@ const AdminImportSection = ({
                   const options = getQuestionOptions(question);
                   const correctIndex = getCorrectOptionIndex(question);
                   const hasMissingOptions = getFilledQuestionOptionsCount(question) < getQuestionExpectedOptionsCount(question);
+                  const placeholder = isPlaceholderQuestionPreview(question);
+                  const questionReadyForPublication = isQuestionReadyForPublicationPreview(question);
+                  const probablePages = getQuestionProbablePages(question);
+                  const qualityReasons = getQuestionQuality(question)?.reasons || question.statusReasons || [];
+                  const hasStoredAnswer = Number.isInteger(Number(question.correctOptionIndex))
+                    || Number(question.resposta || 0) > 0;
                   const isQuestionPublished = publishedQuestionSet.has(questionNumber);
                   const publishQuestionAction = `question:${questionNumber}` as const;
-                  const singlePublishBlocked = isPublishing || !publishedExam || hasMissingOptions || isQuestionPublished;
+                  const singlePublishBlocked = isPublishing || !publishedExam || !questionReadyForPublication || isQuestionPublished;
                   const introText = getQuestionIntroText(question);
                   const referenceText = getQuestionReferenceText(question);
                   const supportImages = getQuestionSupportImages(question);
                   const showIntroBlock = Boolean(introText) || supportImages.length > 0 || editingIntroTextIndex === index;
                   const showReferenceBlock = Boolean(referenceText) || editingReferenceTextIndex === index;
+                  const hasSharedContext = linkedContexts.length > 0;
+                  const hasIndividualSupport = Boolean(introText || supportImages.length > 0);
+                  const hasFigureResource = Boolean(
+                    question.hasFigure
+                    || question.figureBox
+                    || question.supportFigureBox
+                    || question.optionFigureBox
+                    || supportImages.length > 0
+                    || linkedContexts.some((context) => context.hasFigure || context.imageData || context.figureBox),
+                  );
+                  const missingResourceReasons = qualityReasons.filter((reason) => [
+                    'contexto_referenciado_nao_encontrado',
+                    'texto_apoio_referenciado_nao_encontrado',
+                    'figura_referenciada_nao_encontrada',
+                    'tabela_referenciada_nao_encontrada',
+                    'figura_sem_recorte',
+                    'tabela_visual_sem_recorte',
+                    'contexto_vinculo_ambiguo',
+                  ].includes(reason));
 
                   return (
-                  <div key={index} className="group relative overflow-hidden rounded-sm border border-slate-300 bg-white p-6 transition-colors hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-sky-700">
-                    <div className="absolute left-0 top-0 h-full w-1 bg-slate-200 transition-colors group-hover:bg-sky-700 dark:bg-slate-800 dark:group-hover:bg-sky-500" />
+                  <div
+                    key={index}
+                    className={`group relative overflow-hidden rounded-sm border p-6 transition-colors ${
+                      placeholder
+                        ? 'border-amber-300 bg-amber-50/40 hover:border-amber-500 dark:border-amber-900/50 dark:bg-amber-950/10'
+                        : 'border-slate-300 bg-white hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-sky-700'
+                    }`}
+                  >
+                    <div className={`absolute left-0 top-0 h-full w-1 transition-colors ${
+                      placeholder
+                        ? 'bg-amber-500'
+                        : 'bg-slate-200 group-hover:bg-sky-700 dark:bg-slate-800 dark:group-hover:bg-sky-500'
+                    }`} />
                     <div className="mb-4 flex items-start justify-between">
                       <div className="flex items-center gap-3">
                         <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-slate-900 text-xs font-black text-white dark:bg-sky-700">
@@ -1783,8 +2228,14 @@ const AdminImportSection = ({
                         {(question.anulada || question.isCanceled) && <span className="rounded bg-red-100 px-2 py-0.5 text-[8px] font-black uppercase text-red-700 dark:bg-red-900/40 dark:text-red-400">Anulada</span>}
                         {(question.desatualizada || question.isOutdated) && <span className="rounded bg-amber-100 px-2 py-0.5 text-[8px] font-black uppercase text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">Desat.</span>}
                         {isQuestionPublished && <span className="rounded-sm border border-emerald-300 bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-300">Publicado</span>}
-                        <div className="rounded-sm border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400">
-                          Gabarito: {String.fromCharCode(65 + correctIndex)}
+                        {placeholder && <span className="rounded-sm border border-amber-400 bg-amber-100 px-2 py-1 text-[9px] font-black uppercase text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">Pendente · não localizada</span>}
+                        {!placeholder && !questionReadyForPublication && <span className="rounded-sm border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300">Incompleta</span>}
+                        <div className={`rounded-sm border px-2 py-1 text-[10px] font-black uppercase ${
+                          hasStoredAnswer
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/30 dark:bg-emerald-900/20 dark:text-emerald-400'
+                            : 'border-slate-300 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                        }`}>
+                          {hasStoredAnswer ? `Gabarito: ${String.fromCharCode(65 + correctIndex)}` : 'Gabarito pendente'}
                         </div>
                         {hasMissingOptions && (
                           <span className="rounded-sm border border-amber-300 bg-amber-50 px-2 py-1 text-[9px] font-black uppercase text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-300">
@@ -1829,6 +2280,51 @@ const AdminImportSection = ({
                       </div>
                     </div>
 
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      {hasSharedContext && (
+                        <span className="rounded-sm border border-sky-200 bg-sky-50 px-2 py-1 text-[8px] font-black uppercase tracking-widest text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-300">
+                          Contexto compartilhado
+                        </span>
+                      )}
+                      {hasIndividualSupport && (
+                        <span className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1 text-[8px] font-black uppercase tracking-widest text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                          Texto de apoio individual
+                        </span>
+                      )}
+                      {hasFigureResource && (
+                        <span className="rounded-sm border border-violet-200 bg-violet-50 px-2 py-1 text-[8px] font-black uppercase tracking-widest text-violet-700 dark:border-violet-900/40 dark:bg-violet-900/20 dark:text-violet-300">
+                          Figura/recurso visual
+                        </span>
+                      )}
+                    </div>
+
+                    {missingResourceReasons.length > 0 && (
+                      <div className="mb-3 flex items-start gap-2 rounded-sm border border-amber-300 bg-amber-50 p-3 text-[11px] font-semibold text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                        <AlertTriangle className="mt-0.5 shrink-0" size={14} />
+                        <div>
+                          <p className="font-black uppercase tracking-widest">Recurso necessário não localizado</p>
+                          <p className="mt-1">
+                            A questão menciona texto, contexto, figura ou tabela sem material associado. Vincule um contexto, adicione texto de apoio ou insira/recorte a figura antes de publicar.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {placeholder && (
+                      <div className="mb-4 rounded-sm border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-100">
+                        <p className="text-[10px] font-black uppercase tracking-widest">Completar manualmente</p>
+                        <p className="mt-1 text-xs font-semibold">A questão {questionNumber} existe na numeração esperada, mas seu conteúdo não foi localizado automaticamente.</p>
+                        {probablePages.length > 0 && (
+                          <p className="mt-2 text-[10px] font-bold">Página provável: {probablePages.join('–')}</p>
+                        )}
+                        {qualityReasons.length > 0 && (
+                          <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
+                            Pendências: {qualityReasons.map((reason) => reason.replace(/_/g, ' ')).join(', ')}.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     <div className="mb-4 rounded-sm border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/30">
                       <p className="mb-2 text-[9px] font-black uppercase tracking-widest text-slate-400">Filtros da questao</p>
                       <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-4">
@@ -1848,10 +2344,17 @@ const AdminImportSection = ({
                               <label key={field} className="space-y-1">
                                 <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">{label}</span>
                                 <select
-                                  value={asText(value).toLowerCase().includes('certo') ? 'certo ou errado' : 'multipla escolha'}
+                                  value={
+                                    asText(value).toLowerCase().includes('certo')
+                                      ? 'certo ou errado'
+                                      : asText(value).toLowerCase().includes('multipla')
+                                        ? 'multipla escolha'
+                                        : 'desconhecido'
+                                  }
                                   onChange={(event) => onExtractedQuestionFieldChange(index, field, event.target.value)}
                                   className={`h-9 text-[11px] font-bold ${ADMIN_FIELD_CLASS}`}
                                 >
+                                  <option value="desconhecido">Selecionar modalidade</option>
                                   <option value="multipla escolha">Multipla escolha</option>
                                   <option value="certo ou errado">Certo ou errado</option>
                                 </select>
@@ -2150,7 +2653,7 @@ const AdminImportSection = ({
                         />
                       ) : (
                         <h4 className="rounded-sm border border-slate-200 bg-white p-3 text-sm font-bold leading-relaxed text-slate-800 dark:border-slate-800 dark:bg-slate-950/30 dark:text-slate-200">
-                          {question.enunciado}
+                          {question.enunciado || 'Enunciado ainda não preenchido. Clique em “Editar enunciado” para completar.'}
                         </h4>
                       )}
                     </div>
@@ -2210,6 +2713,18 @@ const AdminImportSection = ({
                                     )
                                   )}
                                   <div className="flex shrink-0 items-start gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => onExtractedQuestionCorrectOptionChange(index, optionIndex)}
+                                      className={`rounded-sm border px-2 py-1 text-[8px] font-black uppercase tracking-widest ${
+                                        optionIndex === correctIndex && hasStoredAnswer
+                                          ? 'border-emerald-400 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200'
+                                          : 'border-slate-200 bg-white text-slate-500 hover:border-emerald-300 hover:text-emerald-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400'
+                                      }`}
+                                      title="Definir como alternativa correta"
+                                    >
+                                      {optionIndex === correctIndex && hasStoredAnswer ? 'Correta' : 'Marcar correta'}
+                                    </button>
                                     <label
                                       className="cursor-pointer rounded-sm border border-violet-200 bg-white px-2 py-1 text-[8px] font-black uppercase tracking-widest text-violet-600 hover:bg-violet-50 dark:border-violet-900/40 dark:bg-slate-950 dark:text-violet-300"
                                       title="Inserir figura nesta alternativa"
@@ -2365,12 +2880,16 @@ const AdminImportSection = ({
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center space-y-4 rounded-md border-2 border-dashed border-slate-200 bg-white p-20 text-center transition-colors dark:border-slate-800 dark:bg-slate-900">
               <div className="rounded-full bg-slate-50 p-8 text-slate-300 dark:bg-slate-800 dark:text-slate-700">
-                <FileText size={80} />
+                {isProcessing ? <Loader2 size={64} className="animate-spin text-sky-600 dark:text-sky-400" /> : <FileText size={80} />}
               </div>
               <div>
-                <h3 className="text-xl font-black uppercase tracking-widest text-slate-400 dark:text-slate-600">Aguardando Arquivos</h3>
+                <h3 className="text-xl font-black uppercase tracking-widest text-slate-400 dark:text-slate-600">
+                  {isProcessing ? 'Revisao em tempo real' : 'Aguardando Arquivos'}
+                </h3>
                 <p className="mx-auto max-w-xs text-sm font-medium text-slate-400 dark:text-slate-500">
-                  Faca o upload da Prova e do Gabarito para iniciar a extracao em massa com IA.
+                  {isProcessing
+                    ? 'As questoes aparecerao aqui assim que cada uma for extraida e validada.'
+                    : 'Faca o upload da Prova e do Gabarito para iniciar a extracao em massa.'}
                 </p>
               </div>
             </div>

@@ -109,6 +109,79 @@ describe('examBankUtils', () => {
     expect(prova?.conteudoProgramatico).toEqual(['Direito Constitucional', 'Direito Administrativo']);
   });
 
+  it('preserves structured requirements, stages, vacancies and linked question ids', () => {
+    const prova = normalizeProvaRecord({
+      id: 84,
+      nome: 'IBFC - 2026 - PM-PB - Soldado',
+      ano: 2026,
+      banca: { id: 1, nome: 'IBFC', sigla: 'IBFC' },
+      orgao: { id: 2, nome: 'Polícia Militar da Paraíba', sigla: 'PM-PB' },
+      cargo: { id: 3, descricao: 'Soldado', parent_id: 9 },
+      vagas: ['900 vagas', 'Cadastro reserva'],
+      requisitosDetalhados: [{
+        id: 'req-1',
+        scopeType: 'cargo',
+        scope: 'Soldado',
+        chave: 'Escolaridade',
+        texto: 'Ensino médio completo',
+      }],
+      etapas: [{
+        id: 'stage-1',
+        nome: 'Prova objetiva',
+        criterio: 'eliminatorio_classificatorio',
+        data: '2026-09-20',
+      }],
+      totalQuestoes: 80,
+      questoesVinculadas: [101, 102],
+    });
+
+    expect(prova?.vagas).toEqual(['900 vagas', 'Cadastro reserva']);
+    expect(prova?.requirementsDetailed).toEqual([
+      expect.objectContaining({
+        chave: 'Escolaridade',
+        texto: 'Ensino médio completo',
+        scope: 'Soldado',
+      }),
+    ]);
+    expect(prova?.etapas).toEqual([
+      expect.objectContaining({
+        nome: 'Prova objetiva',
+        criterio: 'eliminatorio_classificatorio',
+      }),
+    ]);
+    expect(prova?.totalQuestoes).toBe('80');
+    expect(prova?.platformQuestionIds).toEqual(['101', '102']);
+  });
+
+  it('preserves taxonomy ids and role parent focus from canonical exam records', () => {
+    const prova = normalizeProvaRecord({
+      id: 83,
+      nome: 'FGV - 2026 - PC-SP - Agente',
+      ano: 2026,
+      banca: { id: 10, nome: 'Fundacao Getulio Vargas', sigla: 'FGV' },
+      orgao: { id: 20, nome: 'Policia Civil de Sao Paulo', sigla: 'PC-SP' },
+      orgaos: [
+        { id: 20, nome: 'Policia Civil de Sao Paulo', sigla: 'PC-SP', slug: 'pc-sp' },
+        { id: 21, nome: 'Secretaria de Seguranca Publica', sigla: 'SSP-SP', slug: 'ssp-sp' },
+      ],
+      foco: { id: 30, nome: 'Policial', slug: 'policial' },
+      cargo: { id: 40, descricao: 'Agente de Seguranca', parent_id: 30, slug: 'agente-de-seguranca' },
+      cargos: [
+        { id: 40, descricao: 'Agente de Seguranca', parent_id: 30, slug: 'agente-de-seguranca' },
+        { id: 41, descricao: 'Investigador', parent_id: 30, slug: 'investigador' },
+      ],
+    });
+
+    expect(prova?.orgaos?.map((orgao) => orgao.id)).toEqual([20, 21]);
+    expect(prova?.foco).toEqual(expect.objectContaining({ id: 30, nome: 'Policial' }));
+    expect(prova?.carreira).toEqual(expect.objectContaining({ id: 30, nome: 'Policial' }));
+    expect(prova?.cargo).toEqual(expect.objectContaining({ id: 40, parent_id: 30 }));
+    expect(prova?.cargos?.map((cargo) => ({ id: cargo.id, parent_id: cargo.parent_id }))).toEqual([
+      { id: 40, parent_id: 30 },
+      { id: 41, parent_id: 30 },
+    ]);
+  });
+
   it('does not append the year again when the exam name already includes it', () => {
     const prova = normalizeProvaRecord({
       id: 81,

@@ -59,6 +59,8 @@ export interface Cargo {
   descrição: string;
   descricao?: string;
   name?: string;
+  parentId?: number | string;
+  parent_id?: number | string;
 }
 
 export interface Assunto {
@@ -175,25 +177,138 @@ export interface Prova {
   orgaos?: Orgao[];
   cargo: Cargo;
   cargos?: Cargo[];
+  foco?: QuestionTaxonomyLabel;
+  focos?: QuestionTaxonomyLabel[];
+  carreira?: QuestionTaxonomyLabel;
+  carreiras?: QuestionTaxonomyLabel[];
   roles?: string[];
+  dataInscricaoInicio?: string;
+  dataInscricaoFim?: string;
+  dataProva?: string;
+  valorInscricao?: string | number;
+  totalQuestoes?: string | number;
+  etapas?: ExamStage[];
+  requisitosDetalhados?: ExamScopedTextItem[];
+  requirementsDetailed?: ExamScopedTextItem[];
+  remuneracoesDetalhadas?: ExamScopedTextItem[];
+  remunerationsDetailed?: ExamScopedTextItem[];
+  vagasDetalhadas?: ExamScopedTextItem[];
+  vacanciesDetailed?: ExamScopedTextItem[];
+  conteudoProgramaticoDetalhado?: ExamProgrammaticContentItem[];
+  programmaticContentDetailed?: ExamProgrammaticContentItem[];
+  questoesVinculadas?: Array<string | number>;
+  platformQuestionIds?: Array<string | number>;
+  vagas?: Array<string | {
+    descricao?: string;
+    description?: string;
+    ampla?: number;
+    pcd?: number;
+    cotas?: number;
+    cadastroReserva?: number;
+    cadastro_reserva?: number;
+  }>;
+  vacancies?: Array<string | {
+    descricao?: string;
+    description?: string;
+    ampla?: number;
+    pcd?: number;
+    cotas?: number;
+    cadastroReserva?: number;
+    cadastro_reserva?: number;
+  }>;
   requisitos?: string[];
   requirements?: string[];
   remuneracoes?: string[];
   remunerations?: string[];
   conteudoProgramatico?: string[];
   programmaticContent?: string[];
+  cadernos?: ExamBooklet[];
 }
 
-export type ExamFileKind = 'prova' | 'gabarito' | 'edital';
+export interface ExamScopedTextItem {
+  id?: string | number;
+  scopeType?: 'geral' | 'orgao' | 'cargo' | 'foco';
+  scope?: string;
+  orgao?: string;
+  cargo?: string;
+  foco?: string;
+  chave?: string;
+  key?: string;
+  texto?: string;
+  text?: string;
+  value?: string;
+  description?: string;
+}
+
+export interface ExamProgrammaticContentItem {
+  id?: string | number;
+  materia?: string;
+  subject?: string;
+  topico?: string;
+  topic?: string;
+  assunto?: string;
+  specificSubject?: string;
+  questoes?: string | number;
+  questions?: string | number;
+  orgao?: string;
+  cargo?: string;
+  foco?: string;
+}
+
+export interface ExamStage {
+  id?: string | number;
+  nome?: string;
+  name?: string;
+  criterio?: 'eliminatorio' | 'classificatorio' | 'eliminatorio_classificatorio' | string;
+  criterion?: string;
+  data?: string;
+  date?: string;
+  descricao?: string;
+  description?: string;
+}
+
+export type ExamFileKind = 'prova' | 'gabarito' | 'edital' | 'outro';
+
+export interface ExamBookletContent {
+  id?: number;
+  nome?: string;
+  name?: string;
+  slug?: string;
+  type?: string;
+  role?: string;
+  ordem?: number;
+  parentId?: number | null;
+  taxonomyLevel?: string | null;
+}
+
+export interface ExamBooklet {
+  id?: number;
+  nome?: string;
+  name?: string;
+  tipo?: string | null;
+  type?: string | null;
+  cor?: string | null;
+  color?: string | null;
+  ordem?: number;
+  conteudoProgramatico?: ExamBookletContent[];
+  programmaticContent?: ExamBookletContent[];
+}
 
 export interface ExamFileAttachment {
+  id?: string | number;
   kind: ExamFileKind;
+  type?: ExamFileKind;
   label?: string;
   name: string;
   url: string;
   mimeType?: string;
   size?: number;
+  version?: number;
+  versao?: number;
+  visibilityStatus?: string;
+  uploadedByUserId?: string | null;
   uploadedAt?: string;
+  archivedAt?: string | null;
 }
 
 export interface GrupoQuestao {
@@ -1114,6 +1229,7 @@ export interface SystemSettings {
   adNavigationPopUrl?: string;
   aiProvider?: 'gemini' | 'openai' | 'auto' | string;
   geminiApiKey?: string;
+  geminiModel?: string;
   hasGeminiApiKeyConfigured?: boolean;
   openaiApiKey?: string;
   openAiModel?: string;

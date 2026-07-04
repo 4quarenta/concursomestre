@@ -203,6 +203,14 @@ export interface AdminReportWorkbenchSuggestion {
   moderatorId?: string;
 }
 
+const NON_FINAL_REPORT_WORKBENCH_ACTIONS = new Set([
+  'request_more_information',
+  'forward_to_teacher',
+  'forward_to_legal_review',
+  'forward_to_manual_review',
+  'forward_to_technical_team',
+]);
+
 export interface AdminFeedbackThread {
   id: number;
   user_id: string;
@@ -1046,7 +1054,11 @@ export const adminService = {
     const envelope = assertApiSuccess(response, 'Não foi possível concluir a moderação.');
     return readApiData(envelope.raw, {
       actionSlug: payload.action_slug,
-      status: 'pending',
+      status: NON_FINAL_REPORT_WORKBENCH_ACTIONS.has(payload.action_slug)
+        ? 'pending'
+        : payload.action_slug === 'keep_current_content' || payload.action_slug.startsWith('reject_')
+          ? 'ignored'
+          : 'resolved',
     });
   },
 

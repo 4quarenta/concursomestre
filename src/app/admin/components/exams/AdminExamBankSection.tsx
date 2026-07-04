@@ -33,8 +33,8 @@ interface AdminExamBankSectionProps {
 }
 
 /**
- * Lista e edita o banco de provas da operacao.
- * A secao centraliza os vinculos usados no modal de questoes.
+ * Lista e edita o banco de provas da operação.
+ * A seção centraliza os vínculos usados no modal de questões.
  *
  * @since 1.0.0
  */
@@ -56,7 +56,7 @@ const AdminExamBankSection = ({
     <div className="space-y-5">
       <AdminCollectionToolbar
         title="Banco de provas"
-        description="Cadastro global de provas para vinculo, busca e manutencao editorial."
+        description="Cadastro canônico de provas salvo no banco de dados, com vínculos, arquivos e metadados editoriais."
         itemCount={totalExams}
         itemCountLabel="provas"
         searchValue={filter}
@@ -72,12 +72,12 @@ const AdminExamBankSection = ({
           <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{totalExams}</p>
         </div>
         <div className={ADMIN_PAGE_PANEL_CLASS}>
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Questoes vinculadas</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Questões vinculadas</p>
           <p className="mt-3 text-3xl font-black text-slate-900 dark:text-slate-100">{totalLinkedQuestions}</p>
         </div>
         <div className={ADMIN_PAGE_PANEL_CLASS}>
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Uso principal</p>
-          <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Vinculo rapido no editar questao</p>
+          <p className="mt-3 text-sm font-black text-slate-900 dark:text-slate-100">Vínculo rápido no editor de questões</p>
           <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">A busca de prova usa este mesmo cadastro.</p>
         </div>
       </div>
@@ -85,7 +85,7 @@ const AdminExamBankSection = ({
       <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
         <div className={ADMIN_SURFACE_HEADER_CLASS}>
           <p className="text-sm font-black text-slate-900 dark:text-slate-100">Lista de provas cadastradas</p>
-          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Use editar para ajustar o cadastro e deletar para remover o vinculo do banco global.</p>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">Use editar para ajustar o cadastro. Arquivar remove a prova da listagem sem apagar o histórico.</p>
         </div>
 
         <div className="overflow-x-auto">
@@ -94,7 +94,7 @@ const AdminExamBankSection = ({
               <tr>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Prova</th>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Banca</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Orgao</th>
+                <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Órgão</th>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Cargo</th>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Vinculos</th>
                 <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Visibilidade</th>
@@ -127,7 +127,7 @@ const AdminExamBankSection = ({
                           onClick={() => onRequestDelete(exam)}
                           className="font-medium text-red-600 hover:text-red-800 hover:underline dark:text-red-400 dark:hover:text-red-300"
                         >
-                          Lixeira
+                          Arquivar
                         </button>
                       </div>
                     </div>
@@ -153,7 +153,7 @@ const AdminExamBankSection = ({
                     <div className="flex flex-col items-center gap-3 text-slate-400 dark:text-slate-500">
                       <FileText size={20} />
                       <p className="text-sm font-black">Nenhuma prova encontrada</p>
-                      <p className="text-xs font-medium">As provas vinculadas nas questoes passarao a aparecer aqui.</p>
+                      <p className="text-xs font-medium">Cadastre uma prova para vincular questões, arquivos e taxonomias oficiais.</p>
                     </div>
                   </td>
                 </tr>
@@ -165,9 +165,9 @@ const AdminExamBankSection = ({
 
       <AdminConfirmDialog
         isOpen={Boolean(deletingExam)}
-        title="Remover prova do banco"
-        description={`A prova "${deletingExam?.nome || ''}" sera removida do cadastro global e o vinculo sera limpo das questoes que usam este ID.`}
-        confirmLabel="Remover prova"
+        title="Arquivar prova"
+        description={`A prova "${deletingExam?.nome || ''}" será removida da listagem principal, mas o histórico continuará preservado no banco.`}
+        confirmLabel="Arquivar prova"
         loading={actionLoading === 'delete'}
         onConfirm={onConfirmDelete}
         onCancel={onCancelDelete}

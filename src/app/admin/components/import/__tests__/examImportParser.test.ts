@@ -13,23 +13,137 @@ vi.mock('@services/filters', () => ({
 }));
 
 const {
+  auditQuestionCoverage,
+  buildAdaptiveExamParserProfile,
   buildExamTitle,
   buildImportExamTaxonomyMetadata,
+  buildPageContentInventory,
   createMechanicalExtractionFromText,
+  decideAiExtractionForPage,
+  estimatePdfQuestionRegionBox,
+  estimatePdfResourceRegionBox,
+  enrichMechanicalExtractionFromInventory,
+  extractContextsFromPageInventory,
+  extractExplicitContextQuestionNumbers,
   extractionLikelyNeedsSupportContextFallback,
   extractionNeedsAi,
   extractQuestionNumbersFromText,
   findCarryoverTextContextForQuestion,
   formatStructuredSupportHtml,
   getExtractedQuestionNumber,
+  ensureExpectedQuestionDrafts,
   inferExpectedOptionsCountFromText,
+  inferProbablePagesForMissingQuestion,
+  isQuestionReadyForImportPublication,
+  mergeExtractionContextList,
   parseAnswerKeyFromText,
   resolveExamParserProfile,
   textNeedsExternalSupportContext,
 } = __examImportParserTestApi;
 
+const buildImportDiagnostics = (expectedQuestionNumbers: number[]) => ({
+  expectedQuestionNumbers,
+  extractedQuestionNumbers: [],
+  localizedQuestionNumbers: [],
+  completeQuestionNumbers: [],
+  incompleteQuestionNumbers: [],
+  missingQuestionNumbers: expectedQuestionNumbers,
+  placeholderQuestionNumbers: [],
+  visualPendingQuestionNumbers: [],
+  duplicateQuestionNumbers: [],
+  suspiciousQuestionNumbers: [],
+  cardsCreatedCount: 0,
+  completeCardsCount: 0,
+  incompleteCardsCount: 0,
+  placeholderCardsCount: 0,
+});
+
+const buildImportedQuestionDraft = (
+  number: number,
+  {
+    statement = `Enunciado suficientemente completo da questao ${number}.`,
+    options = ['A', 'B', 'C', 'D'],
+    status = 'ok',
+    sourcePage = 1,
+  }: {
+    statement?: string;
+    options?: string[];
+    status?: 'ok' | 'incompleta' | 'revisar';
+    sourcePage?: number;
+  } = {},
+) => ({
+  questionNumber: number,
+  number,
+  sourcePage,
+  enunciado: statement,
+  text: statement,
+  tipo: 'multipla escolha',
+  expectedOptionsCount: 4,
+  itens: options.map((option, index) => ({
+    id: index + 1,
+    ordem: index + 1,
+    rotulo: String.fromCharCode(65 + index),
+    corpo: option,
+  })),
+  options,
+  resposta: 1,
+  correctOptionIndex: 0,
+  status,
+  extractionStatus: status,
+  bancas: [],
+  orgaos: [],
+  cargos: [],
+  assuntos: [],
+  anos: [2026],
+  dificuldade: 2,
+});
+
+const buildPdfLine = (text: string, normalizedX: number, normalizedY: number, index: number, columnIndex = 0) => ({
+  text,
+  richText: text,
+  pageNumber: 1,
+  index,
+  items: [],
+  x: normalizedX,
+  y: normalizedY,
+  width: 200,
+  height: 14,
+  normalizedX,
+  normalizedY,
+  normalizedWidth: 220,
+  normalizedHeight: 18,
+  columnIndex,
+});
+
+const buildPdfBlock = (
+  text: string,
+  normalizedY: number,
+  index: number,
+  {
+    normalizedX = 80,
+    normalizedWidth = 840,
+    normalizedHeight = 55,
+    columnIndex = 0,
+  } = {},
+) => ({
+  text,
+  richText: text,
+  pageNumber: 1,
+  index,
+  lines: [buildPdfLine(text, normalizedX, normalizedY, index, columnIndex)],
+  x: normalizedX,
+  y: normalizedY,
+  width: normalizedWidth,
+  height: normalizedHeight,
+  normalizedX,
+  normalizedY,
+  normalizedWidth,
+  normalizedHeight,
+  columnIndex,
+});
+
 const buildQuestion = (number: number, optionsCount = 4) => {
-  const labels = ['a', 'b', 'c', 'd', 'e'].slice(0, optionsCount);
+  const labels = ['a', 'b', 'c', 'd', 'e', 'f'].slice(0, optionsCount);
   return [
     `${number}) Enunciado da questao ${number}, assinale a alternativa correta.`,
     ...labels.map((label) => `${label}) Alternativa ${label.toUpperCase()} da questao ${number}.`),
@@ -248,7 +362,53 @@ describe('exam import parser profiles', () => {
       .toBe(5);
   });
 
-  it('detects common multi-bank profiles and keeps their expected option counts', () => {
+  it('builds an adaptive profile from the PDF text instead of forcing bank defaults', () => {
+    const text = [
+      'BANCA DESCONHECIDA',
+      '1) Primeira questao com quatro alternativas.',
+      'a) Alfa. b) Beta. c) Gama. d) Delta.',
+      '2) Segunda questao com quatro alternativas.',
+      'a) Alfa. b) Beta. c) Gama. d) Delta.',
+      '3) Terceira questao com quatro alternativas.',
+      'a) Alfa. b) Beta. c) Gama. d) Delta.',
+    ].join(' ');
+
+    const profile = buildAdaptiveExamParserProfile(text, resolveExamParserProfile(text));
+    expect(profile.id).toBe('adaptive');
+    expect(profile.defaultMultipleChoiceOptions).toBe(4);
+    expect(profile.adaptiveEvidence?.observedOptionCounts).toContain(4);
+
+    const result = createMechanicalExtractionFromText(text, 1, 'banca-desconhecida.pdf');
+    expect(result.questions).toHaveLength(3);
+    expect(result.questions.every((question) => question.options?.length === 4)).toBe(true);
+    expect(result.questions.every((question) => Number(question.expectedOptionsCount) === 4)).toBe(true);
+  });
+
+  it('infers six-option unknown exams without forcing the generic A-E default', () => {
+    const text = [
+      'BANCA MUNICIPAL DESCONHECIDA',
+      '1) Questao com seis alternativas.',
+      'A) Alfa. B) Beta. C) Gama. D) Delta. E) Epsilon. F) Zeta.',
+      '2) Segunda questao com seis alternativas.',
+      'A) Alfa. B) Beta. C) Gama. D) Delta. E) Epsilon. F) Zeta.',
+      '3) Terceira questao com seis alternativas.',
+      'A) Alfa. B) Beta. C) Gama. D) Delta. E) Epsilon. F) Zeta.',
+    ].join(' ');
+
+    const profile = buildAdaptiveExamParserProfile(text, resolveExamParserProfile(text));
+    expect(profile.id).toBe('adaptive');
+    expect(profile.defaultMultipleChoiceOptions).toBe(6);
+    expect(profile.adaptiveEvidence?.observedOptionCounts).toContain(6);
+    expect(profile.adaptiveEvidence?.observedOptionMarkers.length).toBeGreaterThan(0);
+    expect(profile.adaptiveEvidence?.probableModalities).toContain('multipla escolha');
+
+    const result = createMechanicalExtractionFromText(text, 1, 'banca-desconhecida.pdf');
+    expect(result.questions).toHaveLength(3);
+    expect(result.questions.every((question) => question.options?.length === 6)).toBe(true);
+    expect(result.questions.every((question) => Number(question.expectedOptionsCount) === 6)).toBe(true);
+  });
+
+  it('detects common bank profiles but infers option counts from the actual questions', () => {
     [
       ['fgv-prova.pdf', 'FGV Questao 1 Assinale a alternativa correta. A) Alfa. B) Beta. C) Gama. D) Delta. E) Epsilon.', 'fgv', 5],
       ['fcc-prova.pdf', 'FCC QUESTAO 01 Assinale a alternativa correta. A. Alfa. B. Beta. C. Gama. D. Delta. E. Epsilon.', 'fcc', 5],
@@ -263,6 +423,58 @@ describe('exam import parser profiles', () => {
       expect(result.questions).toHaveLength(1);
       expect(result.questions[0].options).toHaveLength(Number(optionsCount));
       expect(Number(result.questions[0].expectedOptionsCount)).toBe(Number(optionsCount));
+    });
+  });
+
+  it('does not force option count or modality from the bank name alone', () => {
+    const ibfcText = 'IBFC Caderno de prova sem questoes ou alternativas visiveis nesta pagina.';
+    const cebraspeText = 'CEBRASPE Caderno de prova sem comando de julgamento nesta pagina.';
+
+    expect(inferExpectedOptionsCountFromText(ibfcText)).toBe(0);
+
+    const ibfcProfile = buildAdaptiveExamParserProfile(ibfcText, resolveExamParserProfile(ibfcText));
+    const cebraspeProfile = buildAdaptiveExamParserProfile(cebraspeText, resolveExamParserProfile(cebraspeText));
+
+    expect(ibfcProfile.defaultMultipleChoiceOptions).toBe(0);
+    expect(cebraspeProfile.defaultMultipleChoiceOptions).toBe(0);
+    expect(cebraspeProfile.trueFalseMode).toBe(false);
+    expect(cebraspeProfile.certoErradoMode).toBe(false);
+    expect(cebraspeProfile.adaptiveEvidence?.probableModalities || []).not.toContain('certo ou errado');
+  });
+
+  it('separates localized incomplete questions while missing tracks every number without sufficient content', () => {
+    const completeQuestion = {
+      questionNumber: 1,
+      text: 'Enunciado completo da primeira questao para publicacao.',
+      options: ['Alternativa A', 'Alternativa B', 'Alternativa C', 'Alternativa D'],
+      expectedOptionsCount: 4,
+      extractionStatus: 'ok',
+      extractionOrigin: 'mechanical',
+    };
+    const incompleteQuestion = {
+      questionNumber: 2,
+      text: 'Enunciado localizado da segunda questao, ainda com alternativas ausentes.',
+      options: ['Alternativa A', 'Alternativa B'],
+      expectedOptionsCount: 4,
+      extractionStatus: 'incompleta',
+      statusReasons: ['alternativas_incompletas'],
+      extractionOrigin: 'mechanical',
+    };
+
+    const coverage = auditQuestionCoverage(
+      [completeQuestion, incompleteQuestion] as never[],
+      [1, 2, 3],
+    );
+
+    expect(coverage.localizedQuestionNumbers).toEqual([1, 2]);
+    expect(coverage.completeQuestionNumbers).toEqual([1]);
+    expect(coverage.incompleteQuestionNumbers).toEqual([2]);
+    expect(coverage.missingQuestionNumbers).toEqual([2, 3]);
+    expect(coverage.questions[1].qualityReport).toMatchObject({
+      origin: 'mechanical',
+      localized: true,
+      complete: false,
+      needsReview: true,
     });
   });
 
@@ -803,6 +1015,152 @@ describe('exam import parser profiles', () => {
     expect(result.questions.find((question) => Number(question.questionNumber) === 6)?.contextKey).toBe('');
   });
 
+  it('parses explicit context lists and intervals without expanding the scope', () => {
+    expect(extractExplicitContextQuestionNumbers('Leia os textos para as questões 79 e 80.')).toEqual([79, 80]);
+    expect(extractExplicitContextQuestionNumbers('Texto para os itens 1/2/3.')).toEqual([1, 2, 3]);
+    expect(extractExplicitContextQuestionNumbers('Considere a tabela nas questões 10 até 13.')).toEqual([10, 11, 12, 13]);
+  });
+
+  it('creates a shared context inventory for Textos I e II linked only to questions 79 and 80', () => {
+    const inventory = buildPageContentInventory({
+      pageNumber: 1,
+      pageType: 'context_page',
+      blocks: [
+        buildPdfBlock('Leia os Textos I e II abaixo para, em seguida, responder às questões 79 e 80.', 90, 0),
+        buildPdfBlock('Texto I\nPrimeiro texto-base com conteúdo suficiente para interpretação.', 170, 1),
+        buildPdfBlock('Texto II\nSegundo texto-base com conteúdo suficiente para comparação.', 280, 2),
+        buildPdfBlock('Fonte: Revista Exemplo. Disponível em: https://example.com.', 390, 3),
+        buildPdfBlock('79) Com base nos textos, assinale a alternativa correta.', 470, 4),
+        buildPdfBlock('80) A relação entre os Textos I e II permite concluir que:', 650, 5),
+      ],
+    });
+    const contexts = extractContextsFromPageInventory(inventory, 1);
+
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0].title).toMatch(/Textos I e II/i);
+    expect(contexts[0].appliesToQuestionNumbers).toEqual([79, 80]);
+    expect(contexts[0].text).toContain('Primeiro texto-base');
+    expect(contexts[0].text).toContain('Segundo texto-base');
+    expect(contexts[0].referenceText).toContain('Revista Exemplo');
+  });
+
+  it('keeps an individual support block in the question instead of creating a shared context', () => {
+    const inventory = buildPageContentInventory({
+      pageNumber: 1,
+      pageType: 'question_page',
+      blocks: [
+        buildPdfBlock('Considere a seguinte situação hipotética: uma servidora praticou o ato descrito.', 100, 0),
+        buildPdfBlock('15) À luz da situação apresentada, assinale a alternativa correta.', 230, 1),
+      ],
+    });
+    const extraction = enrichMechanicalExtractionFromInventory({
+      metadata: {},
+      pageContexts: [],
+      questions: [{
+        number: '15',
+        questionNumber: 15,
+        text: 'À luz da situação apresentada, assinale a alternativa correta.',
+        options: ['A', 'B', 'C', 'D'],
+      }],
+    }, inventory, 1);
+
+    expect(extraction.pageContexts).toEqual([]);
+    expect(extraction.questions[0].supportText).toContain('situação hipotética');
+    expect(extraction.questions[0].contextKey || '').toBe('');
+  });
+
+  it('associates a shared visual region to the explicit context scope', () => {
+    const inventory = buildPageContentInventory({
+      pageNumber: 1,
+      pageType: 'context_page',
+      blocks: [
+        buildPdfBlock('Observe a figura para responder às questões 20 a 22.', 80, 0, { normalizedHeight: 35 }),
+        buildPdfBlock('20) Com base na figura, assinale a alternativa correta.', 430, 1),
+        buildPdfBlock('21) O elemento visual indica que:', 610, 2),
+        buildPdfBlock('22) A leitura do gráfico permite concluir:', 790, 3),
+      ],
+    });
+    const contexts = extractContextsFromPageInventory(inventory, 1);
+
+    expect(contexts[0].appliesToQuestionNumbers).toEqual([20, 21, 22]);
+    expect(contexts[0].hasFigure).toBe(true);
+    expect(contexts[0].figureBox).toEqual(expect.objectContaining({
+      x: expect.any(Number),
+      y: expect.any(Number),
+      width: expect.any(Number),
+      height: expect.any(Number),
+    }));
+  });
+
+  it('preserves a textual table as structured context instead of flattening it into a visual-only figure', () => {
+    const inventory = buildPageContentInventory({
+      pageNumber: 1,
+      pageType: 'context_page',
+      blocks: [
+        buildPdfBlock('Analise a tabela para responder às questões 1 e 2.', 70, 0),
+        buildPdfBlock('Ano | Receita | Despesa\n2024 | 100 | 80\n2025 | 120 | 90', 150, 1),
+        buildPdfBlock('1) Conforme a tabela, assinale a alternativa correta.', 350, 2),
+        buildPdfBlock('2) A comparação dos dados demonstra que:', 540, 3),
+      ],
+    });
+    const contexts = extractContextsFromPageInventory(inventory, 1);
+
+    expect(contexts[0].text).toContain('Ano | Receita | Despesa');
+    expect(contexts[0].hasFigure).toBe(false);
+    expect(formatStructuredSupportHtml(contexts[0].text || '')).toContain('<table>');
+  });
+
+  it('deduplicates equivalent contexts while preserving the most complete text, references and scope', () => {
+    const contexts = mergeExtractionContextList([
+      {
+        contextKey: 'ctx-a',
+        title: 'Texto I',
+        text: 'Texto-base compartilhado com conteúdo suficientemente longo para comparação.',
+        appliesToQuestionNumbers: [1, 2],
+        sourcePage: 1,
+      },
+      {
+        contextKey: 'ctx-b',
+        title: 'Texto I',
+        text: 'Texto-base compartilhado com conteúdo suficientemente longo para comparação. Parágrafo complementar.',
+        referenceText: 'Fonte: Exemplo.',
+        appliesToQuestionNumbers: [1, 2],
+        sourcePage: 1,
+      },
+    ]);
+
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0].text).toContain('Parágrafo complementar');
+    expect(contexts[0].referenceText).toContain('Fonte: Exemplo');
+  });
+
+  it('focuses context repair crops on resource blocks rather than the whole page', () => {
+    const pageData = {
+      plainText: '',
+      richText: '',
+      highlights: [],
+      hasHighlights: false,
+      lines: [],
+      contentBlocks: [
+        {
+          id: 'ctx',
+          pageNumber: 1,
+          type: 'shared_context',
+          text: 'Texto para as questões 3 e 4.',
+          boundingBox: { x: 80, y: 100, width: 840, height: 250 },
+          confidence: 0.9,
+          linkedQuestionNumbers: [3, 4],
+          reasons: [],
+        },
+      ],
+    };
+
+    const cropBox = estimatePdfResourceRegionBox(pageData, [3, 4]);
+    expect(cropBox).toEqual(expect.objectContaining({ x: 62, y: 82 }));
+    expect((cropBox?.width || 0)).toBeLessThanOrEqual(1000);
+    expect((cropBox?.height || 0)).toBeLessThan(400);
+  });
+
   it('uses AI fallback when a page has support context signals but no context was linked', () => {
     const pageText = [
       'Considere as duas passagens destacadas abaixo para responder as questoes 3, 4 e 5 seguintes.',
@@ -822,6 +1180,115 @@ describe('exam import parser profiles', () => {
         { number: '5', questionNumber: 5, text: 'Em relacao ao texto, assinale a correta.', options: ['A', 'B', 'C', 'D'] },
       ],
     }, false, false)).toBe(true);
+  });
+
+  it('does not use AI only because teacher comments or PDF highlights are enabled', () => {
+    const pageText = [
+      buildQuestion(1, 4),
+      buildQuestion(2, 4),
+    ].join('\n');
+    const result = createMechanicalExtractionFromText(pageText, 1, 'prova-generica.pdf');
+
+    expect(result.questions).toHaveLength(2);
+    expect(extractionNeedsAi(pageText, result, true, false)).toBe(false);
+    expect(extractionNeedsAi(pageText, result, false, true)).toBe(false);
+    expect(extractionNeedsAi(pageText, result, true, true)).toBe(false);
+  });
+
+  it('keeps the AI decision disabled when the mechanical extraction is already complete', () => {
+    const pageText = [
+      buildQuestion(1, 4),
+      buildQuestion(2, 4),
+    ].join('\n');
+    const result = createMechanicalExtractionFromText(pageText, 1, 'prova-generica.pdf');
+
+    const decision = decideAiExtractionForPage(pageText, result, {
+      pageNumber: 1,
+      includeTeacherComment: true,
+      hasPageHighlights: true,
+    });
+
+    expect(decision.useAi).toBe(false);
+    expect(decision.purpose).toBe('none');
+  });
+
+  it('routes scanned pages to visual AI extraction when text extraction is empty', () => {
+    const decision = decideAiExtractionForPage('', {
+      metadata: {},
+      pageContexts: [],
+      questions: [],
+    }, {
+      pageNumber: 3,
+    });
+
+    expect(decision.useAi).toBe(true);
+    expect(decision.purpose).toBe('scanned_page');
+    expect(decision.targetPages).toEqual([3]);
+  });
+
+  it('targets only missing mechanical questions when page markers are present', () => {
+    const pageText = [
+      buildQuestion(1, 4),
+      buildQuestion(2, 4),
+    ].join('\n');
+    const partialExtraction = {
+      metadata: {},
+      pageContexts: [],
+      questions: [
+        { number: '1', questionNumber: 1, text: 'Enunciado da questao 1.', options: ['A', 'B', 'C', 'D'] },
+      ],
+    };
+
+    const decision = decideAiExtractionForPage(pageText, partialExtraction, {
+      pageNumber: 1,
+      expectedQuestionNumbers: [1, 2],
+      alreadyExtractedQuestionNumbers: [1],
+    });
+
+    expect(decision.useAi).toBe(true);
+    expect(decision.purpose).toBe('missing_question');
+    expect(decision.targetQuestionNumbers).toEqual([2]);
+  });
+
+  it('estimates a focused crop box from positioned PDF lines for missing questions', () => {
+    const pageData = {
+      plainText: '',
+      richText: '',
+      highlights: [],
+      hasHighlights: false,
+      lines: [
+        buildPdfLine('1) Questao um', 80, 120, 0),
+        buildPdfLine('a) alternativa A', 100, 150, 1),
+        buildPdfLine('2) Questao dois', 80, 240, 2),
+        buildPdfLine('a) alternativa A', 100, 270, 3),
+        buildPdfLine('b) alternativa B', 100, 300, 4),
+        buildPdfLine('3) Questao tres', 80, 410, 5),
+      ],
+    };
+
+    const cropBox = estimatePdfQuestionRegionBox(pageData, [2]);
+    expect(cropBox).toEqual(expect.objectContaining({
+      x: expect.any(Number),
+      y: expect.any(Number),
+      width: expect.any(Number),
+      height: expect.any(Number),
+    }));
+    expect(cropBox?.y).toBeLessThanOrEqual(240);
+    expect((cropBox?.y || 0) + (cropBox?.height || 0)).toBeLessThan(410);
+
+    const decision = decideAiExtractionForPage(buildQuestion(1, 4) + '\n' + buildQuestion(2, 4), {
+      metadata: {},
+      pageContexts: [],
+      questions: [
+        { number: '1', questionNumber: 1, text: 'Enunciado da questao 1.', options: ['A', 'B', 'C', 'D'] },
+      ],
+    }, {
+      pageNumber: 1,
+      expectedQuestionNumbers: [1, 2],
+      alreadyExtractedQuestionNumbers: [1],
+      pageData,
+    });
+    expect(decision.cropBox).toEqual(cropBox);
   });
 
   it('does not use context fallback when explicit support context is already linked', () => {
@@ -872,5 +1339,209 @@ describe('exam import parser profiles', () => {
     expect(getExtractedQuestionNumber({ number: '64' } as never, 1)).toBe(64);
     expect(getExtractedQuestionNumber({ question_number: '65' } as never, 1)).toBe(65);
     expect(getExtractedQuestionNumber({ questionNumber: 66 } as never, 1)).toBe(66);
+  });
+
+  it('creates 17 editable placeholders when 80 questions are expected and 63 were extracted', () => {
+    const expected = Array.from({ length: 80 }, (_, index) => index + 1);
+    const extracted = expected.slice(0, 63).map((number) => buildImportedQuestionDraft(number));
+    const result = ensureExpectedQuestionDrafts({
+      questions: extracted as never,
+      expectedQuestionNumbers: expected,
+      diagnostics: buildImportDiagnostics(expected),
+      totalPages: 10,
+    });
+
+    expect(result.questions).toHaveLength(80);
+    expect(result.createdPlaceholders).toHaveLength(17);
+    expect(result.diagnostics.cardsCreatedCount).toBe(80);
+    expect(result.diagnostics.completeCardsCount).toBe(63);
+    expect(result.diagnostics.placeholderCardsCount).toBe(17);
+    expect(result.diagnostics.placeholderQuestionNumbers).toEqual(expected.slice(63));
+    expect(result.diagnostics.missingQuestionNumbers).toEqual(expected.slice(63));
+  });
+
+  it('keeps a partially localized question as incomplete instead of replacing it with a placeholder', () => {
+    const expected = [1, 2];
+    const result = ensureExpectedQuestionDrafts({
+      questions: [
+        buildImportedQuestionDraft(1),
+        buildImportedQuestionDraft(2, {
+          statement: 'Trecho real localizado para a questao dois.',
+          options: [],
+          status: 'incompleta',
+          sourcePage: 3,
+        }),
+      ] as never,
+      expectedQuestionNumbers: expected,
+      diagnostics: buildImportDiagnostics(expected),
+      totalPages: 5,
+    });
+
+    expect(result.createdPlaceholders).toHaveLength(0);
+    expect(result.diagnostics.localizedQuestionNumbers).toContain(2);
+    expect(result.diagnostics.incompleteQuestionNumbers).toContain(2);
+    expect(result.diagnostics.placeholderQuestionNumbers).not.toContain(2);
+  });
+
+  it('preserves the answer key in a placeholder without inventing statement or alternatives', () => {
+    const result = ensureExpectedQuestionDrafts({
+      questions: [] as never,
+      expectedQuestionNumbers: [17],
+      diagnostics: buildImportDiagnostics([17]),
+      answerKeyMap: { 17: 2 },
+      totalPages: 8,
+    });
+    const placeholder = result.questions[0] as never as {
+      enunciado: string;
+      itens: unknown[];
+      correctOptionIndex: number;
+      statusReasons: string[];
+    };
+
+    expect(placeholder.enunciado).toBe('');
+    expect(placeholder.itens).toEqual([]);
+    expect(placeholder.correctOptionIndex).toBe(2);
+    expect(placeholder.statusReasons).toContain('gabarito_indica_existencia');
+  });
+
+  it('keeps a localized visual question for manual figure review', () => {
+    const visualQuestion = {
+      ...buildImportedQuestionDraft(9, { options: [], status: 'revisar' }),
+      hasFigure: true,
+      statusReasons: ['figura_sem_recorte'],
+    };
+    const result = ensureExpectedQuestionDrafts({
+      questions: [visualQuestion] as never,
+      expectedQuestionNumbers: [9],
+      diagnostics: buildImportDiagnostics([9]),
+      totalPages: 3,
+    });
+
+    expect(result.createdPlaceholders).toHaveLength(0);
+    expect(result.diagnostics.localizedQuestionNumbers).toEqual([9]);
+    expect(result.diagnostics.visualPendingQuestionNumbers).toEqual([9]);
+  });
+
+  it('keeps placeholders when AI quota is unavailable', () => {
+    const expected = [1, 2, 3];
+    const result = ensureExpectedQuestionDrafts({
+      questions: [buildImportedQuestionDraft(1)] as never,
+      expectedQuestionNumbers: expected,
+      diagnostics: {
+        ...buildImportDiagnostics(expected),
+        aiQuotaLimitReached: true,
+      },
+      totalPages: 3,
+    });
+
+    expect(result.questions).toHaveLength(3);
+    expect(result.diagnostics.aiQuotaLimitReached).toBe(true);
+    expect(result.diagnostics.placeholderQuestionNumbers).toEqual([2, 3]);
+  });
+
+  it('deduplicates by keeping the most complete version and does not create a duplicate placeholder', () => {
+    const partial = buildImportedQuestionDraft(4, {
+      statement: 'Questao quatro parcialmente localizada.',
+      options: [],
+      status: 'incompleta',
+    });
+    const complete = buildImportedQuestionDraft(4);
+    const result = ensureExpectedQuestionDrafts({
+      questions: [partial, complete] as never,
+      expectedQuestionNumbers: [4],
+      diagnostics: buildImportDiagnostics([4]),
+      totalPages: 2,
+    });
+
+    expect(result.questions).toHaveLength(1);
+    expect(result.createdPlaceholders).toHaveLength(0);
+    expect(result.diagnostics.completeQuestionNumbers).toEqual([4]);
+    expect(result.diagnostics.duplicateQuestionNumbers).toEqual([4]);
+  });
+
+  it('infers at most three probable pages from neighboring localized questions', () => {
+    const pages = inferProbablePagesForMissingQuestion({
+      questionNumber: 17,
+      extractedQuestions: [
+        buildImportedQuestionDraft(16, { sourcePage: 4 }),
+        buildImportedQuestionDraft(18, { sourcePage: 5 }),
+      ] as never,
+      pageQuestionRanges: [
+        { pageNumber: 4, minQuestion: 14, maxQuestion: 16 },
+        { pageNumber: 5, minQuestion: 18, maxQuestion: 21 },
+      ],
+      totalPages: 10,
+      expectedQuestionCount: 80,
+    });
+
+    expect(pages).toEqual([4, 5]);
+    expect(pages.length).toBeLessThanOrEqual(3);
+  });
+
+  it('blocks publication of placeholders and allows a complete manually filled question', () => {
+    const placeholderResult = ensureExpectedQuestionDrafts({
+      questions: [] as never,
+      expectedQuestionNumbers: [1],
+      diagnostics: buildImportDiagnostics([1]),
+      totalPages: 1,
+    });
+
+    expect(isQuestionReadyForImportPublication(placeholderResult.questions[0] as never)).toBe(false);
+    expect(isQuestionReadyForImportPublication(buildImportedQuestionDraft(1) as never)).toBe(true);
+  });
+
+  it('preserves a shared context restricted to questions 79 and 80', () => {
+    const expected = Array.from({ length: 80 }, (_, index) => index + 1);
+    const contextKey = 'ctx-textos-i-ii';
+    const result = ensureExpectedQuestionDrafts({
+      questions: [
+        {
+          ...buildImportedQuestionDraft(79, { sourcePage: 9 }),
+          contextKey,
+          contextTitle: 'Textos I e II',
+        },
+        {
+          ...buildImportedQuestionDraft(80, { sourcePage: 9 }),
+          contextKey,
+          contextTitle: 'Textos I e II',
+        },
+      ] as never,
+      expectedQuestionNumbers: expected,
+      diagnostics: buildImportDiagnostics(expected),
+      totalPages: 9,
+    });
+
+    const byNumber = new Map(result.questions.map((question) => [
+      Number((question as never as { questionNumber?: number }).questionNumber),
+      question as never as { contextKey?: string; contextTitle?: string },
+    ]));
+
+    expect(byNumber.get(79)).toEqual(expect.objectContaining({
+      contextKey,
+      contextTitle: 'Textos I e II',
+    }));
+    expect(byNumber.get(80)).toEqual(expect.objectContaining({
+      contextKey,
+      contextTitle: 'Textos I e II',
+    }));
+    expect(Array.from(byNumber.entries())
+      .filter(([number]) => number !== 79 && number !== 80)
+      .every(([, question]) => !question.contextKey)).toBe(true);
+  });
+
+  it('creates the declared expected sequence even when there is no answer key', () => {
+    const expected = Array.from({ length: 5 }, (_, index) => index + 1);
+    const result = ensureExpectedQuestionDrafts({
+      questions: [] as never,
+      expectedQuestionNumbers: expected,
+      diagnostics: buildImportDiagnostics(expected),
+      totalPages: 2,
+    });
+
+    expect(result.questions.map((question) => (
+      question as never as { questionNumber: number }
+    ).questionNumber)).toEqual(expected);
+    expect(result.diagnostics.cardsCreatedCount).toBe(5);
+    expect(result.diagnostics.placeholderQuestionNumbers).toEqual(expected);
   });
 });

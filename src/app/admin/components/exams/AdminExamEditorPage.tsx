@@ -10,9 +10,14 @@
 */
 
 import React from 'react';
-import { ArrowLeft, CalendarClock, Check, Download, FileCheck2, FileText, Link2, Loader2, Plus, Save, Search, Sparkles, Trash2, Upload, X } from 'lucide-react';
-import type { ExamFileAttachment, ExamFileKind, Prova } from '@types';
+import { CalendarClock, ChevronDown, ChevronRight, Download, FileCheck2, FileText, Link2, Loader2, Pencil, PlusCircle, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import type { ExamFileAttachment, ExamFileKind, Prova, Question } from '@types';
 import { resolveApiResourceUrl } from '@services/api';
+import { adminService } from '@services/admin/adminService';
+import { examService } from '@services/exams/examService';
+import { clientLog } from '@services/monitoring/clientLog';
+import { aiService } from '@services/questions/aiService';
+import { questionService } from '@services/questions/questionService';
 import type { ExamDraftState } from './useAdminExamBankWorkflow';
 import { extractExamNoticeMetadata } from './examNoticeExtractor';
 import {
@@ -23,6 +28,7 @@ import {
   ADMIN_SURFACE_HEADER_CLASS,
 } from '../shared/adminPanelStyles';
 import AdminPublishStateBadge, { resolveAdminPublishState } from '../shared/AdminPublishStateBadge';
+import { SmartTagSelector } from '../database/SmartTagSelector';
 
 interface AdminExamEditorPageProps {
   draft: ExamDraftState;
@@ -31,15 +37,19 @@ interface AdminExamEditorPageProps {
   examPreview: Prova | null;
   agencyOptions?: ExamTaxonomyOption[];
   organizationOptions?: ExamTaxonomyOption[];
+  roleOptions?: ExamTaxonomyOption[];
+  focusOptions?: ExamTaxonomyOption[];
+  subjectOptions?: ExamTaxonomyOption[];
+  topicOptions?: ExamTaxonomyOption[];
+  specificSubjectOptions?: ExamTaxonomyOption[];
+  yearOptions?: Array<string | number>;
+  levelOptions?: string[];
   isNew: boolean;
   isSaving: boolean;
   isDeleting?: boolean;
-  onCreateAgency?: (payload: { name: string; sigla: string }) => Promise<ExamTaxonomyOption | null>;
-  onCreateOrganization?: (payload: { name: string; sigla: string }) => Promise<ExamTaxonomyOption | null>;
   onUploadExamFile?: (file: File, kind: ExamFileKind) => Promise<ExamFileAttachment>;
   onSave: () => void;
   onDelete?: () => void;
-  onClose: () => void;
 }
 
 interface ExamTaxonomyOption {
@@ -48,6 +58,8 @@ interface ExamTaxonomyOption {
   nome?: string;
   sigla?: string;
   slug?: string;
+  parentId?: string | number;
+  parent_id?: string | number;
 }
 
 const EditorPanel = ({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) => (
@@ -113,7 +125,7 @@ const TextAreaInput = ({
     rows={rows}
     onChange={(event) => onChange(event.target.value)}
     placeholder={placeholder}
-    className={`min-h-24 w-full resize-y py-2 ${ADMIN_FIELD_CLASS}`}
+    className={`box-border min-h-24 w-full max-w-full resize-y py-2 ${ADMIN_FIELD_CLASS}`}
   />
 );
 
@@ -136,9 +148,9 @@ const SelectInput = ({
 );
 
 const EXAM_FILE_CONFIG: Array<{ kind: ExamFileKind; label: string; description: string }> = [
-  { kind: 'prova', label: 'Prova', description: 'Arquivo principal do caderno de questoes.' },
+  { kind: 'prova', label: 'Prova', description: 'Arquivo principal do caderno de questões.' },
   { kind: 'gabarito', label: 'Gabarito', description: 'Gabarito oficial, definitivo ou preliminar.' },
-  { kind: 'edital', label: 'Edital', description: 'Edital, retificacao ou documento do certame.' },
+  { kind: 'edital', label: 'Edital', description: 'Edital, retificação ou documento do certame.' },
 ];
 
 const formatFileSize = (size?: number) => {
@@ -166,130 +178,44 @@ const normalizeSearchText = (value: string) => value
   .toLowerCase()
   .trim();
 
-const SearchableTaxonomySelect = ({
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  options: ExamTaxonomyOption[];
-  placeholder: string;
-}) => {
-  const [isOpen, setIsOpen] = React.useState(false);
-  const [searchTerm, setSearchTerm] = React.useState('');
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const selectedOption = React.useMemo(
-    () => options.find((item) => String(item.id || '') === value) || null,
-    [options, value],
-  );
-  const selectedLabel = selectedOption ? getTaxonomyLabel(selectedOption) : '';
-  const displayValue = isOpen ? searchTerm : selectedLabel;
-  const filteredOptions = React.useMemo(() => {
-    const needle = normalizeSearchText(searchTerm);
-    if (!needle) {
-      return options.slice(0, 80);
-    }
+const splitTaxonomyValues = (value: string) => Array.from(new Set(
+  String(value || '')
+    .split(/\n|;/)
+    .map((item) => item.trim())
+    .filter(Boolean),
+));
 
-    return options
-      .filter((option) => normalizeSearchText(getTaxonomyLabel(option)).includes(needle))
-      .slice(0, 80);
-  }, [options, searchTerm]);
-
-  React.useEffect(() => {
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
-        setSearchTerm('');
-      }
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, []);
-
-  const handleSelect = (optionId: string) => {
-    onChange(optionId);
-    setSearchTerm('');
-    setIsOpen(false);
-  };
-
-  const clearSelection = () => {
-    onChange('');
-    setSearchTerm('');
-    setIsOpen(false);
-  };
-
-  return (
-    <div ref={containerRef} className="relative">
-      <Search
-        size={15}
-        className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-slate-400"
-      />
-      <input
-        type="search"
-        value={displayValue}
-        onFocus={() => {
-          setIsOpen(true);
-          setSearchTerm('');
-        }}
-        onChange={(event) => {
-          setSearchTerm(event.target.value);
-          setIsOpen(true);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            setIsOpen(false);
-            setSearchTerm('');
-          }
-          if (event.key === 'Enter' && filteredOptions[0]) {
-            event.preventDefault();
-            handleSelect(String(filteredOptions[0].id || ''));
-          }
-        }}
-        placeholder={placeholder}
-        className={`h-10 w-full ${ADMIN_FIELD_CLASS} pl-9 pr-10`}
-      />
-      {value ? (
-        <button
-          type="button"
-          onClick={clearSelection}
-          className="absolute right-2 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-          aria-label="Limpar banca"
-        >
-          <X size={14} />
-        </button>
-      ) : null}
-      {isOpen ? (
-        <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-sm border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
-          {filteredOptions.length > 0 ? (
-            filteredOptions.map((option) => {
-              const optionId = String(option.id || '');
-              const isSelected = optionId === value;
-
-              return (
-                <button
-                  key={String(option.id || getTaxonomyLabel(option))}
-                  type="button"
-                  onClick={() => handleSelect(optionId)}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                >
-                  <span className="min-w-0 truncate">{getTaxonomyLabel(option)}</span>
-                  {isSelected ? <Check size={14} className="shrink-0 text-sky-700" /> : null}
-                </button>
-              );
-            })
-          ) : (
-            <div className="px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-400">
-              Nenhuma banca encontrada.
-            </div>
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
+const normalizeOrganizationCandidate = (value: string) => {
+  const cleanValue = String(value || '').replace(/\s+/g, ' ').trim();
+  const normalized = normalizeSearchText(cleanValue).replace(/[^a-z0-9-]/g, '');
+  if (normalized === 'pmpb') return 'PM-PB';
+  if (normalized === 'cbmpb') return 'CBM-PB';
+  return cleanValue;
 };
+
+const isLikelyExamOrganization = (value: string) => {
+  const label = normalizeOrganizationCandidate(value);
+  const normalized = normalizeSearchText(label);
+  if (!normalized || normalized.length < 3 || normalized.length > 120) {
+    return false;
+  }
+  if (/\b(aditivo|edital|candidato|candidatos|comissao|comissoes|coordenadoras|diario oficial|enderecos|eletronicos|www|http|lei|artigo|inciso|constituicao|constitucional|cumprimento|disposto|harmonia|publique-se|vaga|vagas|cargo|cargos|requisito|requisitos|inscricao|inscricoes|remuneracao|anexo|conteudo programatico|defesa social|seguranca)\b/.test(normalized)) {
+    return false;
+  }
+
+  return /\b(policia|corpo de bombeiros|bombeiros militar|tribunal|ministerio publico|defensoria|secretaria de estado|prefeitura|camara municipal|assembleia legislativa)\b/.test(normalized)
+    || /\b(pm-?[a-z]{2}|cbm-?[a-z]{2}|pc-?[a-z]{2}|tj-?[a-z]{2}|trt-?\d{1,2}|tre-?[a-z]{2}|tce-?[a-z]{2}|mp-?[a-z]{2}|dpe-?[a-z]{2}|sefaz-?[a-z]{2}|seduc-?[a-z]{2}|see-?[a-z]{2}|seap-?[a-z]{2}|sejusp-?[a-z]{2}|prf|pf|pcdf|pmdf)\b/.test(normalized);
+};
+
+const sanitizeExtractedOrganizations = (values: string[]) => Array.from(new Set(
+  values
+    .map(normalizeOrganizationCandidate)
+    .filter(isLikelyExamOrganization),
+));
+
+const getTaxonomyParentId = (item?: ExamTaxonomyOption | null) => String(
+  item?.parentId || item?.parent_id || '',
+);
 
 const findSelectedTaxonomyId = (options: ExamTaxonomyOption[], id: string, sigla: string, name: string) => {
   const normalizedId = String(id || '');
@@ -311,6 +237,1638 @@ const findSelectedTaxonomyId = (options: ExamTaxonomyOption[], id: string, sigla
   return selected?.id ? String(selected.id) : '';
 };
 
+type ExamScopedDraftItem = {
+  id: string;
+  scopeType: 'geral' | 'orgao' | 'cargo' | 'foco';
+  scope: string;
+  orgao?: string;
+  chave: string;
+  texto: string;
+};
+
+const fileToBase64 = async (file: File): Promise<string> => {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+};
+
+type ExamProgrammaticDraftItem = {
+  id: string;
+  materiaId?: string;
+  materia: string;
+  topicoId?: string;
+  topico: string;
+  assuntoId?: string;
+  assunto: string;
+  questoes: string;
+  orgao: string;
+  cargo: string;
+  foco: string;
+};
+
+type ExamStageDraftItem = {
+  id: string;
+  nome: string;
+  criterio: 'eliminatorio' | 'classificatorio' | 'eliminatorio_classificatorio';
+  data: string;
+  descricao: string;
+};
+
+type ExamRoleFocusDraftItem = {
+  id: string;
+  foco: string;
+  cargos: string[];
+};
+
+const newDraftRowId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const safeParseArray = <T,>(value: string): T[] => {
+  if (!String(value || '').trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
+  }
+};
+
+const serializeDraftArray = (items: unknown[]) => JSON.stringify(items, null, 2);
+
+const createEmptyScopedItem = (): ExamScopedDraftItem => ({
+  id: newDraftRowId(),
+  scopeType: 'geral',
+  scope: 'Todos',
+  chave: '',
+  texto: '',
+});
+
+const isScopedItemFilled = (item: ExamScopedDraftItem) => Boolean(
+  item.chave.trim() || item.texto.trim(),
+);
+
+const getScopeTypeLabel = (scopeType: ExamScopedDraftItem['scopeType']) => {
+  if (scopeType === 'orgao') return 'Órgão';
+  if (scopeType === 'cargo') return 'Cargo';
+  if (scopeType === 'foco') return 'Foco';
+  return 'Todos';
+};
+
+const createEmptyProgrammaticItem = (): ExamProgrammaticDraftItem => ({
+  id: newDraftRowId(),
+  materiaId: '',
+  materia: '',
+  topicoId: '',
+  topico: '',
+  assuntoId: '',
+  assunto: '',
+  questoes: '',
+  orgao: '',
+  cargo: '',
+  foco: '',
+});
+
+const isProgrammaticItemFilled = (item: ExamProgrammaticDraftItem) => Boolean(
+  item.materia.trim()
+  || item.topico.trim()
+  || item.assunto.trim()
+  || item.questoes.trim()
+  || item.orgao.trim()
+  || item.cargo.trim()
+  || item.foco.trim(),
+);
+
+const cleanupProgrammaticSubjectText = (value: string) => String(value || '')
+  .replace(/^\s*assunto\s*:\s*/i, '')
+  .replace(/\s+/g, ' ')
+  .replace(/[.;]\s*$/, '')
+  .trim();
+
+const splitProgrammaticSubjectText = (value: string): string[] => {
+  const cleanValue = cleanupProgrammaticSubjectText(value);
+  if (!cleanValue) {
+    return [];
+  }
+
+  const semicolonParts = cleanValue.includes(';')
+    ? cleanValue.split(/\s*;\s*/).map(cleanupProgrammaticSubjectText).filter((item) => item.length >= 3)
+    : [];
+
+  if (semicolonParts.length > 1) {
+    return semicolonParts;
+  }
+
+  const numberedMarkers = Array.from(cleanValue.matchAll(/(?:^|\s)(\d{1,3})\.\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ])/g));
+  if (numberedMarkers.length > 1) {
+    return cleanValue
+      .split(/(?=(?:^|\s)\d{1,3}\.\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ]))/g)
+      .map((item) => cleanupProgrammaticSubjectText(item.trim().replace(/^\d{1,3}\.\s*/, '')))
+      .filter((item) => item.length >= 3);
+  }
+
+  return [cleanValue];
+};
+
+const expandProgrammaticSubjectItems = (items: ExamProgrammaticDraftItem[]) => {
+  const seen = new Set<string>();
+  return items.flatMap((item) => {
+    const subjects = splitProgrammaticSubjectText(item.assunto);
+    const expanded = subjects.length > 1
+      ? subjects.map((subject, index) => ({
+        ...item,
+        id: index === 0 ? item.id : newDraftRowId(),
+        assunto: subject,
+        assuntoId: index === 0 ? item.assuntoId : '',
+        questoes: index === 0 ? item.questoes : '',
+      }))
+      : [{ ...item, assunto: cleanupProgrammaticSubjectText(item.assunto) }];
+
+    return expanded.filter((entry) => {
+      const key = normalizeSearchText([
+        entry.materia,
+        entry.topico,
+        entry.assunto,
+        entry.orgao,
+        entry.cargo,
+        entry.foco,
+      ].join('|'));
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  });
+};
+
+const createEmptyStageItem = (): ExamStageDraftItem => ({
+  id: newDraftRowId(),
+  nome: '',
+  criterio: 'classificatorio',
+  data: '',
+  descricao: '',
+});
+
+const isStageItemFilled = (item: ExamStageDraftItem) => Boolean(
+  item.nome.trim() || item.data.trim() || item.descricao.trim(),
+);
+
+const parseQuestionIdsText = (value: string) => Array.from(new Set(
+  String(value || '')
+    .split(/[\s,;]+/)
+    .map((item) => item.trim())
+    .filter((item) => /^\d+$/.test(item)),
+));
+
+const legacyTextToScopedItems = (value: string): ExamScopedDraftItem[] => (
+  String(value || '')
+    .split(/\n/)
+    .map((texto) => texto.trim())
+    .filter(Boolean)
+    .map((texto) => {
+      const keyValueMatch = texto.match(/^([^:]{2,80}):\s*(.+)$/);
+      return {
+        id: newDraftRowId(),
+        scopeType: 'geral' as const,
+        scope: 'Todos',
+        chave: keyValueMatch ? keyValueMatch[1].trim() : '',
+        texto: keyValueMatch ? keyValueMatch[2].trim() : texto,
+      };
+    })
+);
+
+const normalizeScopedItems = (jsonText: string, legacyText = ''): ExamScopedDraftItem[] => {
+  const hasStructuredDraft = String(jsonText || '').trim().startsWith('[');
+  const parsed = safeParseArray<Partial<ExamScopedDraftItem> & Record<string, unknown>>(jsonText)
+    .map((item) => ({
+      id: String(item.id || newDraftRowId()),
+      scopeType: (['geral', 'orgao', 'cargo', 'foco'].includes(String(item.scopeType)) ? item.scopeType : 'geral') as ExamScopedDraftItem['scopeType'],
+      scope: String(item.scope || item.orgao || item.cargo || item.foco || 'Todos'),
+      orgao: String(item.orgao || item.organization || ''),
+      chave: String(item.chave || item.key || item.label || item.titulo || item.title || ''),
+      texto: String(item.texto || item.text || item.value || item.description || ''),
+    }));
+
+  if (hasStructuredDraft) {
+    return parsed;
+  }
+
+  return parsed.some((item) => item.chave.trim() || item.texto.trim()) ? parsed : legacyTextToScopedItems(legacyText);
+};
+
+const normalizeProgrammaticItems = (jsonText: string, legacyText = ''): ExamProgrammaticDraftItem[] => {
+  const hasStructuredDraft = String(jsonText || '').trim().startsWith('[');
+  const parsed = safeParseArray<Partial<ExamProgrammaticDraftItem> & Record<string, unknown>>(jsonText)
+    .map((item) => ({
+      id: String(item.id || newDraftRowId()),
+      materiaId: String(item.materiaId || item.subjectId || ''),
+      materia: String(item.materia || item.subject || ''),
+      topicoId: String(item.topicoId || item.topicId || ''),
+      topico: String(item.topico || item.topic || ''),
+      assuntoId: String(item.assuntoId || item.specificSubjectId || ''),
+      assunto: String(item.assunto || item.specificSubject || ''),
+      questoes: String(item.questoes || item.questions || ''),
+      orgao: String(item.orgao || ''),
+      cargo: String(item.cargo || ''),
+      foco: String(item.foco || ''),
+    }));
+
+  if (hasStructuredDraft || parsed.some((item) => item.materia || item.topico || item.assunto || item.questoes)) {
+    return expandProgrammaticSubjectItems(parsed);
+  }
+
+  return expandProgrammaticSubjectItems(String(legacyText || '')
+    .split(/\n/)
+    .map((materia) => materia.trim())
+    .filter(Boolean)
+    .map((materia) => ({
+      id: newDraftRowId(),
+      materia,
+      topico: '',
+      assunto: '',
+      questoes: '',
+      orgao: '',
+      cargo: '',
+      foco: '',
+    })));
+};
+
+const normalizeStageItems = (jsonText: string): ExamStageDraftItem[] => {
+  const hasStructuredDraft = String(jsonText || '').trim().startsWith('[');
+  const parsed = safeParseArray<Partial<ExamStageDraftItem> & Record<string, unknown>>(jsonText)
+    .map((item) => ({
+    id: String(item.id || newDraftRowId()),
+    nome: String(item.nome || item.name || ''),
+    criterio: (['eliminatorio', 'classificatorio', 'eliminatorio_classificatorio'].includes(String(item.criterio || item.criterion))
+      ? String(item.criterio || item.criterion)
+      : 'classificatorio') as ExamStageDraftItem['criterio'],
+    data: String(item.data || item.date || ''),
+    descricao: String(item.descricao || item.description || ''),
+  }));
+
+  return hasStructuredDraft ? parsed : parsed.filter((item) => item.nome || item.descricao);
+};
+
+const normalizeRoleFocusItems = (
+  jsonText: string,
+  legacyFocusText = '',
+  legacyRoleText = '',
+): ExamRoleFocusDraftItem[] => {
+  const parsed = safeParseArray<Record<string, unknown>>(jsonText)
+    .map((item) => {
+      const rawRoles = Array.isArray(item.cargos)
+        ? item.cargos
+        : [item.cargo ?? item.role].filter(Boolean);
+
+      return {
+        id: String(item.id || newDraftRowId()),
+        foco: String(item.foco || item.focus || ''),
+        cargos: Array.from(new Set(rawRoles.map((role) => String(role || '').trim()).filter(Boolean))),
+      };
+    })
+    .filter((item) => item.foco || item.cargos.length > 0);
+
+  if (parsed.length > 0) {
+    const grouped = new Map<string, ExamRoleFocusDraftItem>();
+    parsed.forEach((item) => {
+      const key = normalizeSearchText(item.foco) || item.id;
+      const current = grouped.get(key);
+      if (current) {
+        current.cargos = Array.from(new Set([...current.cargos, ...item.cargos]));
+      } else {
+        grouped.set(key, { ...item });
+      }
+    });
+    return Array.from(grouped.values());
+  }
+
+  const focuses = splitTaxonomyValues(legacyFocusText);
+  const roles = splitTaxonomyValues(legacyRoleText);
+  if (focuses.length === 0 && roles.length === 0) {
+    return [];
+  }
+
+  return focuses.map((foco, index) => ({
+    id: newDraftRowId(),
+    foco,
+    cargos: index === 0 ? roles : [],
+  }));
+};
+
+const RoleFocusArrayEditor = ({
+  items,
+  focusOptions,
+  roleOptions,
+  onChange,
+}: {
+  items: ExamRoleFocusDraftItem[];
+  focusOptions: ExamTaxonomyOption[];
+  roleOptions: ExamTaxonomyOption[];
+  onChange: (items: ExamRoleFocusDraftItem[]) => void;
+}) => {
+  const rows = items.length > 0
+    ? items
+    : [{ id: newDraftRowId(), foco: '', cargos: [] }];
+
+  const rolesForFocus = (focusName: string) => {
+    const selectedFocus = focusOptions.find((item) => (
+      normalizeSearchText(getTaxonomyName(item)) === normalizeSearchText(focusName)
+    ));
+    const focusId = String(selectedFocus?.id || '');
+
+    return roleOptions.filter((item) => {
+      const parentId = getTaxonomyParentId(item);
+      return !parentId || !focusId || parentId === focusId;
+    });
+  };
+
+  return (
+    <div className="rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:col-span-2 xl:col-span-3">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <FieldLabel>Áreas, focos e cargos</FieldLabel>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Cada grupo representa uma área/foco. Os cargos selecionados serão vinculados como subitens dessa área.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange([...rows, { id: newDraftRowId(), foco: '', cargos: [] }])}
+          className={`${ADMIN_SECONDARY_BUTTON_CLASS} min-h-9 px-3 py-2 text-xs`}
+        >
+          <PlusCircle size={14} />
+          Adicionar área/cargos
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {rows.map((item, index) => (
+          <div
+            key={item.id}
+            className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-[minmax(220px,0.75fr)_minmax(320px,1.25fr)_auto]"
+          >
+            <SmartTagSelector
+              label="Área / foco"
+              options={focusOptions}
+              selected={item.foco ? [item.foco] : []}
+              onChange={(values) => {
+                const next = [...rows];
+                next[index] = { ...item, foco: values[0] || '', cargos: [] };
+                onChange(next);
+              }}
+              placeholder="Ex.: Policial"
+              multiple={false}
+            />
+            <SmartTagSelector
+              label="Cargos vinculados"
+              options={rolesForFocus(item.foco)}
+              selected={item.cargos}
+              onChange={(values) => {
+                const next = [...rows];
+                next[index] = { ...item, cargos: values };
+                onChange(next);
+              }}
+              placeholder={item.foco ? 'Selecione ou cadastre cargos' : 'Selecione primeiro a área / foco'}
+              disabled={!item.foco}
+            />
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => onChange(rows.filter((entry) => entry.id !== item.id))}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
+                aria-label="Remover grupo de área e cargos"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ScopedArrayEditor = ({
+  title,
+  description,
+  items,
+  organizationOptions,
+  roleOptions,
+  placeholder,
+  keyValue = false,
+  keyPlaceholder = 'Ex.: Escolaridade',
+  valueLabel = 'Informação',
+  onChange,
+}: {
+  title: string;
+  description: string;
+  items: ExamScopedDraftItem[];
+  organizationOptions: string[];
+  roleOptions: string[];
+  placeholder: string;
+  keyValue?: boolean;
+  keyPlaceholder?: string;
+  valueLabel?: string;
+  onChange: (items: ExamScopedDraftItem[]) => void;
+}) => {
+  const [draftItem, setDraftItem] = React.useState<ExamScopedDraftItem>(() => createEmptyScopedItem());
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const listItems = items.filter(isScopedItemFilled);
+  const rows = listItems;
+  const shouldRenderLegacyRows = false;
+  const formGridClass = 'md:grid-cols-2 lg:grid-cols-12';
+
+  const commit = (next: ExamScopedDraftItem[]) => onChange(next.filter(isScopedItemFilled));
+  const clearDraft = () => {
+    setDraftItem(createEmptyScopedItem());
+    setEditingId(null);
+  };
+  const normalizeDraftScope = (item: ExamScopedDraftItem): ExamScopedDraftItem => {
+    const hasRole = item.scope && item.scope !== 'Todos';
+    return {
+      ...item,
+      scopeType: hasRole ? 'cargo' : 'orgao',
+      scope: hasRole ? item.scope : 'Todos',
+    };
+  };
+  const saveDraftItem = () => {
+    if (!isScopedItemFilled(draftItem)) {
+      return;
+    }
+
+    const scopedItem = normalizeDraftScope(draftItem);
+    const normalizedItem: ExamScopedDraftItem = {
+      ...scopedItem,
+      id: editingId || scopedItem.id || newDraftRowId(),
+      scope: scopedItem.scope.trim() || 'Todos',
+      chave: scopedItem.chave.trim(),
+      texto: scopedItem.texto.trim(),
+    };
+
+    if (editingId) {
+      commit(listItems.map((item) => (item.id === editingId ? normalizedItem : item)));
+    } else {
+      commit([...listItems, { ...normalizedItem, id: newDraftRowId() }]);
+    }
+    clearDraft();
+  };
+
+  return (
+    <div className="w-full min-w-0 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <FieldLabel>{title}</FieldLabel>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{description}</p>
+        </div>
+      </div>
+      <div className="space-y-3">
+        <div
+          className={`grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 ${formGridClass}`}
+        >
+          <div className={keyValue ? 'min-w-0 lg:col-span-2' : 'min-w-0 lg:col-span-3'}>
+            <FieldLabel>Órgão</FieldLabel>
+            <SelectInput
+              value={draftItem.orgao || 'Todos'}
+              onChange={(value) => setDraftItem((current) => ({
+                ...current,
+                orgao: value === 'Todos' ? '' : value,
+              }))}
+            >
+              <option value="Todos">Todos</option>
+              {organizationOptions.map((option) => <option key={option} value={option}>{option}</option>) }
+            </SelectInput>
+          </div>
+          <div className={keyValue ? 'min-w-0 lg:col-span-2' : 'min-w-0 lg:col-span-3'}>
+            <FieldLabel>Cargo</FieldLabel>
+            <SelectInput
+              value={draftItem.scope || 'Todos'}
+              onChange={(value) => setDraftItem((current) => ({ ...current, scope: value }))}
+            >
+              <option value="Todos">Todos</option>
+              {roleOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+            </SelectInput>
+          </div>
+          {keyValue ? (
+            <div className="min-w-0 lg:col-span-2">
+              <FieldLabel>Chave</FieldLabel>
+              <TextInput
+                value={draftItem.chave}
+                onChange={(value) => setDraftItem((current) => ({ ...current, chave: value }))}
+                placeholder={keyPlaceholder}
+              />
+            </div>
+          ) : null}
+          <div className="min-w-0 lg:col-span-4">
+            <FieldLabel>{valueLabel}</FieldLabel>
+            <TextInput
+              value={draftItem.texto}
+              onChange={(value) => setDraftItem((current) => ({ ...current, texto: value }))}
+              placeholder={placeholder}
+            />
+          </div>
+          <div className="grid min-w-0 grid-cols-1 content-end gap-2 lg:col-span-2 lg:self-end">
+            {editingId ? (
+              <button
+                type="button"
+                onClick={clearDraft}
+                className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-10 w-full justify-center px-3 py-2 text-xs`}
+              >
+                Cancelar
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={saveDraftItem}
+              disabled={!isScopedItemFilled(draftItem)}
+              className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-10 w-full min-w-0 justify-center whitespace-nowrap px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              {editingId ? 'Salvar' : 'Adicionar'}
+            </button>
+          </div>
+        </div>
+
+        {listItems.length === 0 ? (
+          <div className="rounded-sm border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+            Nenhum item adicionado ainda.
+          </div>
+        ) : listItems.map((item) => (
+          <div key={item.id} className="flex flex-col gap-3 rounded-sm border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  Órgão: {item.orgao || 'Todos'}
+                </span>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  Cargo: {item.scope || 'Todos'}
+                </span>
+                {item.chave ? <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{item.chave}</span> : null}
+              </div>
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.texto || 'Sem descrição'}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftItem(item);
+                  setEditingId(item.id);
+                }}
+                className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-9 px-3 py-2 text-xs`}
+              >
+                Editar
+              </button>
+              <button
+                type="button"
+                onClick={() => commit(listItems.filter((entry) => entry.id !== item.id))}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
+                aria-label="Remover item"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {shouldRenderLegacyRows && rows.map((item, index) => (
+          <div
+            key={item.id}
+            className={`grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 ${
+              keyValue
+                ? 'lg:grid-cols-[150px_minmax(160px,220px)_minmax(180px,260px)_1fr_auto]'
+                : 'lg:grid-cols-[160px_minmax(180px,240px)_1fr_auto]'
+            }`}
+          >
+            <div>
+              <FieldLabel>Escopo</FieldLabel>
+              <SelectInput
+                value={item.scopeType}
+                onChange={(value) => {
+                  const next = [...rows];
+                  next[index] = { ...item, scopeType: value as ExamScopedDraftItem['scopeType'], scope: value === 'geral' ? 'Todos' : item.scope };
+                  commit(next);
+                }}
+              >
+                <option value="geral">Todos</option>
+                <option value="orgao">Órgão</option>
+                <option value="cargo">Cargo</option>
+                <option value="foco">Foco</option>
+              </SelectInput>
+            </div>
+            <div>
+              <FieldLabel>Aplicar a</FieldLabel>
+              <input
+                list={`scope-options-${title}-${index}`}
+                value={item.scope}
+                onChange={(event) => {
+                  const next = [...rows];
+                  next[index] = { ...item, scope: event.target.value };
+                  commit(next);
+                }}
+                placeholder="Todos"
+                className={`h-10 w-full ${ADMIN_FIELD_CLASS}`}
+              />
+              <datalist id={`scope-options-${title}-${index}`}>
+                {roleOptions.map((option) => <option key={option} value={option} />)}
+              </datalist>
+            </div>
+            {keyValue ? (
+              <div>
+                <FieldLabel>Chave</FieldLabel>
+                <TextInput
+                  value={item.chave}
+                  onChange={(value) => {
+                    const next = [...rows];
+                    next[index] = { ...item, chave: value };
+                    commit(next);
+                  }}
+                  placeholder={keyPlaceholder}
+                />
+              </div>
+            ) : null}
+            <div>
+              <FieldLabel>{valueLabel}</FieldLabel>
+              <TextAreaInput
+                value={item.texto}
+                onChange={(value) => {
+                  const next = [...rows];
+                  next[index] = { ...item, texto: value };
+                  commit(next);
+                }}
+                placeholder={placeholder}
+                rows={2}
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => commit(rows.filter((entry) => entry.id !== item.id))}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
+                aria-label="Remover linha"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ProgrammaticArrayEditor = ({
+  items,
+  subjectOptions,
+  topicOptions,
+  specificSubjectOptions,
+  organizationOptions,
+  roleOptions,
+  focusOptions,
+  onChange,
+}: {
+  items: ExamProgrammaticDraftItem[];
+  subjectOptions: ExamTaxonomyOption[];
+  topicOptions: ExamTaxonomyOption[];
+  specificSubjectOptions: ExamTaxonomyOption[];
+  organizationOptions: string[];
+  roleOptions: string[];
+  focusOptions: string[];
+  onChange: (items: ExamProgrammaticDraftItem[]) => void;
+}) => {
+  const [draftItem, setDraftItem] = React.useState<ExamProgrammaticDraftItem>(() => createEmptyProgrammaticItem());
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [collapsedMatters, setCollapsedMatters] = React.useState<Set<string>>(() => new Set());
+  const [collapsedTopics, setCollapsedTopics] = React.useState<Set<string>>(() => new Set());
+  const [editingMatterKey, setEditingMatterKey] = React.useState<string | null>(null);
+  const [editingMatterLabel, setEditingMatterLabel] = React.useState('');
+  const [editingTopicKey, setEditingTopicKey] = React.useState<string | null>(null);
+  const [editingTopicLabel, setEditingTopicLabel] = React.useState('');
+  const listItems = items.filter(isProgrammaticItemFilled);
+  const subjectLabels = React.useMemo(() => subjectOptions.map(getTaxonomyName).filter(Boolean), [subjectOptions]);
+  const topicLabels = React.useMemo(() => topicOptions.map(getTaxonomyName).filter(Boolean), [topicOptions]);
+  const specificSubjectLabels = React.useMemo(() => specificSubjectOptions.map(getTaxonomyName).filter(Boolean), [specificSubjectOptions]);
+  const resolveTaxonomyId = (options: ExamTaxonomyOption[], label: string) => {
+    const key = normalizeSearchText(label);
+    const match = options.find((option) => normalizeSearchText(getTaxonomyName(option)) === key);
+    return match?.id ? String(match.id) : '';
+  };
+  const mergeHierarchyOptions = (...groups: string[][]) => {
+    const unique = new Map<string, string>();
+    groups.flat().forEach((value) => {
+      const label = String(value || '').trim();
+      const key = normalizeSearchText(label);
+      if (key && !unique.has(key)) {
+        unique.set(key, label);
+      }
+    });
+    return Array.from(unique.values());
+  };
+  const selectedMatterKey = normalizeSearchText(draftItem.materia);
+  const selectedTopicKey = normalizeSearchText(draftItem.topico);
+  const hierarchyMatterOptions = mergeHierarchyOptions(
+    listItems.map((item) => item.materia),
+    subjectLabels,
+  );
+  const hierarchyTopicOptions = mergeHierarchyOptions(
+    listItems
+      .filter((item) => !selectedMatterKey || normalizeSearchText(item.materia) === selectedMatterKey)
+      .map((item) => item.topico),
+    topicLabels,
+  );
+  const hierarchySubjectOptions = mergeHierarchyOptions(
+    listItems
+      .filter((item) => (
+        (!selectedMatterKey || normalizeSearchText(item.materia) === selectedMatterKey)
+        && (!selectedTopicKey || normalizeSearchText(item.topico) === selectedTopicKey)
+      ))
+      .map((item) => item.assunto),
+    specificSubjectLabels,
+  );
+  const hierarchyItems = [...listItems].sort((left, right) => (
+    [left.materia, left.topico, left.assunto]
+      .map((value) => normalizeSearchText(value))
+      .join('\u0000')
+      .localeCompare(
+        [right.materia, right.topico, right.assunto]
+          .map((value) => normalizeSearchText(value))
+          .join('\u0000'),
+        'pt-BR',
+      )
+  ));
+  const hierarchyGroups = hierarchyItems.reduce((matters, item) => {
+    const matterKey = normalizeSearchText(item.materia) || 'sem-materia';
+    const topicKey = normalizeSearchText(item.topico) || 'sem-topico';
+    let matter = matters.find((entry) => entry.key === matterKey);
+
+    if (!matter) {
+      matter = {
+        key: matterKey,
+        label: item.materia || 'Sem matéria',
+        questoes: item.questoes || '',
+        topics: [],
+      };
+      matters.push(matter);
+    } else if (!matter.questoes && item.questoes) {
+      matter.questoes = item.questoes;
+    }
+
+    let topic = matter.topics.find((entry) => entry.key === topicKey);
+    if (!topic) {
+      topic = {
+        key: topicKey,
+        label: item.topico || 'Sem tópico',
+        items: [],
+      };
+      matter.topics.push(topic);
+    }
+
+    topic.items.push(item);
+    return matters;
+  }, [] as Array<{
+    key: string;
+    label: string;
+    questoes: string;
+    topics: Array<{
+      key: string;
+      label: string;
+      items: ExamProgrammaticDraftItem[];
+    }>;
+  }>);
+  const rows = listItems;
+  const shouldRenderLegacyRows = false;
+  const commit = (next: ExamProgrammaticDraftItem[]) => onChange(next.filter(isProgrammaticItemFilled));
+  const clearDraft = () => {
+    setDraftItem(createEmptyProgrammaticItem());
+    setEditingId(null);
+  };
+  const saveDraftItem = () => {
+    if (!isProgrammaticItemFilled(draftItem)) {
+      return;
+    }
+    const existingMatterQuestions = listItems.find((item) => (
+      normalizeSearchText(item.materia) === normalizeSearchText(draftItem.materia)
+      && String(item.questoes || '').trim()
+    ))?.questoes || '';
+    const normalizedItem = {
+      ...draftItem,
+      id: editingId || draftItem.id || newDraftRowId(),
+      materiaId: resolveTaxonomyId(subjectOptions, draftItem.materia),
+      topicoId: resolveTaxonomyId(topicOptions, draftItem.topico),
+      assuntoId: resolveTaxonomyId(specificSubjectOptions, draftItem.assunto),
+      questoes: draftItem.questoes || existingMatterQuestions,
+    };
+    const nextItems = editingId
+      ? listItems.map((item) => (item.id === editingId ? normalizedItem : item))
+      : [...listItems, { ...normalizedItem, id: newDraftRowId() }];
+    const normalizedMatterKey = normalizeSearchText(normalizedItem.materia);
+    const syncedItems = normalizedMatterKey && normalizedItem.questoes
+      ? nextItems.map((item) => (
+        normalizeSearchText(item.materia) === normalizedMatterKey
+          ? { ...item, questoes: normalizedItem.questoes }
+          : item
+      ))
+      : nextItems;
+    if (editingId) {
+      commit(syncedItems);
+    } else {
+      commit(syncedItems);
+    }
+    clearDraft();
+  };
+  const toggleSetKey = (
+    setter: React.Dispatch<React.SetStateAction<Set<string>>>,
+    key: string,
+  ) => setter((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
+  const renameMatter = (matterKey: string) => {
+    const label = editingMatterLabel.trim();
+    if (!label) return;
+    commit(listItems.map((item) => (
+      normalizeSearchText(item.materia) === matterKey
+        ? { ...item, materia: label, materiaId: resolveTaxonomyId(subjectOptions, label) }
+        : item
+    )));
+    setEditingMatterKey(null);
+    setEditingMatterLabel('');
+  };
+  const renameTopic = (matterKey: string, topicKey: string) => {
+    const label = editingTopicLabel.trim();
+    if (!label) return;
+    commit(listItems.map((item) => (
+      normalizeSearchText(item.materia) === matterKey && normalizeSearchText(item.topico) === topicKey
+        ? { ...item, topico: label, topicoId: resolveTaxonomyId(topicOptions, label) }
+        : item
+    )));
+    setEditingTopicKey(null);
+    setEditingTopicLabel('');
+  };
+
+  return (
+    <div className="w-full min-w-0 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <FieldLabel>Conteúdo programático</FieldLabel>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Use matéria, tópico e assunto reais das taxonomias. Informe também a quantidade de questões quando o edital trouxer a distribuição.
+          </p>
+        </div>
+      </div>
+      <div className="space-y-3">
+        <div className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 xl:grid-cols-[1fr_1fr_1fr_110px]">
+          {[
+            ['Matéria', 'materia', hierarchyMatterOptions],
+            ['Tópico', 'topico', hierarchyTopicOptions],
+            ['Assunto', 'assunto', hierarchySubjectOptions],
+          ].map(([label, key, options]) => (
+            <div key={String(key)}>
+              <FieldLabel>{String(label)}</FieldLabel>
+              <input
+                list={`programmatic-draft-${key}`}
+                value={String(draftItem[key as keyof ExamProgrammaticDraftItem] || '')}
+                onChange={(event) => setDraftItem((current) => ({ ...current, [key as string]: event.target.value }))}
+                className={`h-10 w-full ${ADMIN_FIELD_CLASS}`}
+              />
+              <datalist id={`programmatic-draft-${key}`}>
+                {(options as string[]).map((option) => <option key={option} value={option} />)}
+              </datalist>
+            </div>
+          ))}
+          <div>
+            <FieldLabel>Questões</FieldLabel>
+            <TextInput
+              type="number"
+              value={draftItem.questoes}
+              onChange={(value) => setDraftItem((current) => ({ ...current, questoes: value }))}
+              placeholder="10"
+            />
+          </div>
+          <div className="xl:col-span-4 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
+            {[
+              ['Órgão', 'orgao', organizationOptions],
+              ['Cargo', 'cargo', roleOptions],
+              ['Foco', 'foco', focusOptions],
+            ].map(([label, key, options]) => (
+              <div key={String(key)}>
+                <FieldLabel>{String(label)} opcional</FieldLabel>
+                <input
+                  list={`programmatic-draft-scope-${key}`}
+                  value={String(draftItem[key as keyof ExamProgrammaticDraftItem] || '')}
+                  onChange={(event) => setDraftItem((current) => ({ ...current, [key as string]: event.target.value }))}
+                  className={`h-10 w-full ${ADMIN_FIELD_CLASS}`}
+                  placeholder="Todos"
+                />
+                <datalist id={`programmatic-draft-scope-${key}`}>
+                  {(options as string[]).map((option) => <option key={option} value={option} />)}
+                </datalist>
+              </div>
+            ))}
+            <div className="flex items-end gap-2">
+              {editingId ? (
+                <button
+                  type="button"
+                  onClick={clearDraft}
+                  className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-10 px-3 py-2 text-xs`}
+                >
+                  Cancelar
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={saveDraftItem}
+                disabled={!isProgrammaticItemFilled(draftItem)}
+                className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-10 px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                {editingId ? 'Salvar' : 'Adicionar'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {listItems.length === 0 ? (
+          <div className="rounded-sm border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+            Nenhuma disciplina adicionada ainda.
+          </div>
+        ) : hierarchyGroups.map((matter) => {
+          const matterCollapsed = collapsedMatters.has(matter.key);
+          return (
+          <div key={matter.key} className="space-y-3 rounded-sm border border-indigo-100 bg-indigo-50/70 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/30">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggleSetKey(setCollapsedMatters, matter.key)}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-200"
+                  aria-label={matterCollapsed ? 'Expandir matéria' : 'Ocultar matéria'}
+                  title={matterCollapsed ? 'Expandir matéria' : 'Ocultar matéria'}
+                >
+                  {matterCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+                </button>
+                {editingMatterKey === matter.key ? (
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <input
+                      autoFocus
+                      value={editingMatterLabel}
+                      onChange={(event) => setEditingMatterLabel(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') renameMatter(matter.key);
+                        if (event.key === 'Escape') setEditingMatterKey(null);
+                      }}
+                      className={`h-9 min-w-0 flex-1 ${ADMIN_FIELD_CLASS}`}
+                      aria-label="Nome da matéria"
+                    />
+                    <button type="button" onClick={() => renameMatter(matter.key)} className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-9 px-3 py-2 text-xs`}>Salvar</button>
+                    <button type="button" onClick={() => setEditingMatterKey(null)} className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Cancelar edição"><X size={14} /></button>
+                  </div>
+                ) : (
+                  <div className="truncate text-xs font-black uppercase tracking-[0.2em] text-indigo-700 dark:text-indigo-200">
+                    Matéria: {matter.label}
+                  </div>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {matter.questoes ? (
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-700 shadow-sm dark:bg-slate-900 dark:text-indigo-200">
+                    {matter.questoes} questões esperadas
+                  </span>
+                ) : null}
+                {editingMatterKey !== matter.key ? (
+                  <button type="button" onClick={() => { setEditingMatterKey(matter.key); setEditingMatterLabel(matter.label); }} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300" aria-label="Editar matéria" title="Editar matéria"><Pencil size={14} /></button>
+                ) : null}
+                <button type="button" onClick={() => commit(listItems.filter((item) => normalizeSearchText(item.materia) !== matter.key))} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300" aria-label="Remover matéria" title="Remover matéria e seus tópicos"><Trash2 size={14} /></button>
+              </div>
+            </div>
+
+            {!matterCollapsed ? <div className="space-y-2">
+              {matter.topics.map((topic) => {
+                const compoundTopicKey = `${matter.key}:${topic.key}`;
+                const topicCollapsed = collapsedTopics.has(compoundTopicKey);
+                return (
+                <div key={`${matter.key}-${topic.key}`} className="rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                  <div className={`${topicCollapsed ? '' : 'mb-2'} flex flex-wrap items-center justify-between gap-2`}>
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <button type="button" onClick={() => toggleSetKey(setCollapsedTopics, compoundTopicKey)} className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label={topicCollapsed ? 'Expandir tópico' : 'Ocultar tópico'} title={topicCollapsed ? 'Expandir tópico' : 'Ocultar tópico'}>{topicCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}</button>
+                      {editingTopicKey === compoundTopicKey ? (
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <input autoFocus value={editingTopicLabel} onChange={(event) => setEditingTopicLabel(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') renameTopic(matter.key, topic.key); if (event.key === 'Escape') setEditingTopicKey(null); }} className={`h-8 min-w-0 flex-1 ${ADMIN_FIELD_CLASS}`} aria-label="Nome do tópico" />
+                          <button type="button" onClick={() => renameTopic(matter.key, topic.key)} className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-8 px-3 py-1.5 text-xs`}>Salvar</button>
+                          <button type="button" onClick={() => setEditingTopicKey(null)} className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label="Cancelar edição"><X size={14} /></button>
+                        </div>
+                      ) : (
+                        <span className="truncate rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          Tópico: {topic.label}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {editingTopicKey !== compoundTopicKey ? <button type="button" onClick={() => { setEditingTopicKey(compoundTopicKey); setEditingTopicLabel(topic.label); }} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300" aria-label="Editar tópico" title="Editar tópico"><Pencil size={13} /></button> : null}
+                      <button type="button" onClick={() => commit(listItems.filter((item) => !(normalizeSearchText(item.materia) === matter.key && normalizeSearchText(item.topico) === topic.key)))} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-950 dark:text-red-300" aria-label="Remover tópico" title="Remover tópico e seus assuntos"><Trash2 size={13} /></button>
+                    </div>
+                  </div>
+
+                  {!topicCollapsed ? <div className="space-y-2">
+                    {topic.items.map((item) => (
+                      <div key={item.id} className="flex flex-col gap-3 rounded-sm border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                            {item.assunto ? `Assunto: ${item.assunto}` : 'Sem assunto específico'}
+                          </div>
+                          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                            {[
+                              item.orgao ? `Órgão: ${item.orgao}` : '',
+                              item.cargo ? `Cargo: ${item.cargo}` : '',
+                              item.foco ? `Foco: ${item.foco}` : '',
+                            ].filter(Boolean).join(' · ') || 'Todos os escopos'}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraftItem(item);
+                              setEditingId(item.id);
+                            }}
+                            className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-9 px-3 py-2 text-xs`}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => commit(listItems.filter((entry) => entry.id !== item.id))}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
+                            aria-label="Remover disciplina"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div> : null}
+                </div>
+              );})}
+            </div> : null}
+          </div>
+        );})}
+
+        {shouldRenderLegacyRows && rows.map((item, index) => (
+          <div key={item.id} className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 xl:grid-cols-[1fr_1fr_1fr_110px]">
+            {[
+              ['Matéria', 'materia', subjectOptions],
+              ['Tópico', 'topico', topicOptions],
+              ['Assunto', 'assunto', specificSubjectOptions],
+            ].map(([label, key, options]) => (
+              <div key={String(key)}>
+                <FieldLabel>{String(label)}</FieldLabel>
+                <input
+                  list={`programmatic-${key}-${index}`}
+                  value={String(item[key as keyof ExamProgrammaticDraftItem] || '')}
+                  onChange={(event) => {
+                    const next = [...rows];
+                    next[index] = { ...item, [key as string]: event.target.value };
+                    commit(next);
+                  }}
+                  className={`h-10 w-full ${ADMIN_FIELD_CLASS}`}
+                />
+                <datalist id={`programmatic-${key}-${index}`}>
+                  {(options as string[]).map((option) => <option key={option} value={option} />)}
+                </datalist>
+              </div>
+            ))}
+            <div>
+              <FieldLabel>Questões</FieldLabel>
+              <TextInput
+                type="number"
+                value={item.questoes}
+                onChange={(value) => {
+                  const next = [...rows];
+                  next[index] = { ...item, questoes: value };
+                  commit(next);
+                }}
+                placeholder="10"
+              />
+            </div>
+            <div className="xl:col-span-4 grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
+              {[
+                ['Órgão', 'orgao', organizationOptions],
+                ['Cargo', 'cargo', roleOptions],
+                ['Foco', 'foco', focusOptions],
+              ].map(([label, key, options]) => (
+                <div key={String(key)}>
+                  <FieldLabel>{String(label)} opcional</FieldLabel>
+                  <input
+                    list={`programmatic-scope-${key}-${index}`}
+                    value={String(item[key as keyof ExamProgrammaticDraftItem] || '')}
+                    onChange={(event) => {
+                      const next = [...rows];
+                      next[index] = { ...item, [key as string]: event.target.value };
+                      commit(next);
+                    }}
+                    className={`h-10 w-full ${ADMIN_FIELD_CLASS}`}
+                    placeholder="Todos"
+                  />
+                  <datalist id={`programmatic-scope-${key}-${index}`}>
+                    {(options as string[]).map((option) => <option key={option} value={option} />)}
+                  </datalist>
+                </div>
+              ))}
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={() => commit(rows.filter((entry) => entry.id !== item.id))}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
+                  aria-label="Remover disciplina"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const StagesArrayEditor = ({
+  items,
+  onChange,
+}: {
+  items: ExamStageDraftItem[];
+  onChange: (items: ExamStageDraftItem[]) => void;
+}) => {
+  const [draftItem, setDraftItem] = React.useState<ExamStageDraftItem>(() => createEmptyStageItem());
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const listItems = items.filter(isStageItemFilled);
+  const rows = listItems;
+  const shouldRenderLegacyRows = false;
+  const commit = (next: ExamStageDraftItem[]) => onChange(next.filter(isStageItemFilled));
+  const clearDraft = () => {
+    setDraftItem(createEmptyStageItem());
+    setEditingId(null);
+  };
+  const saveDraftItem = () => {
+    if (!isStageItemFilled(draftItem)) {
+      return;
+    }
+    const normalizedItem = {
+      ...draftItem,
+      id: editingId || draftItem.id || newDraftRowId(),
+      nome: draftItem.nome.trim(),
+      descricao: draftItem.descricao.trim(),
+    };
+    if (editingId) {
+      commit(listItems.map((item) => (item.id === editingId ? normalizedItem : item)));
+    } else {
+      commit([...listItems, { ...normalizedItem, id: newDraftRowId() }]);
+    }
+    clearDraft();
+  };
+
+  return (
+    <div className="w-full min-w-0 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <FieldLabel>Etapas</FieldLabel>
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Cadastre cada etapa do edital e indique se ela é eliminatória, classificatória ou ambas.
+          </p>
+        </div>
+      </div>
+      <div className="space-y-3">
+        <div className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-[1fr_220px_180px_auto]">
+          <div>
+            <FieldLabel>Nome da etapa</FieldLabel>
+            <TextInput
+              value={draftItem.nome}
+              onChange={(value) => setDraftItem((current) => ({ ...current, nome: value }))}
+              placeholder="Prova objetiva"
+            />
+          </div>
+          <div>
+            <FieldLabel>Critério</FieldLabel>
+            <SelectInput
+              value={draftItem.criterio}
+              onChange={(value) => setDraftItem((current) => ({ ...current, criterio: value as ExamStageDraftItem['criterio'] }))}
+            >
+              <option value="eliminatorio">Eliminatório</option>
+              <option value="classificatorio">Classificatório</option>
+              <option value="eliminatorio_classificatorio">Eliminatório e classificatório</option>
+            </SelectInput>
+          </div>
+          <div>
+            <FieldLabel>Data</FieldLabel>
+            <TextInput
+              type="date"
+              value={draftItem.data}
+              onChange={(value) => setDraftItem((current) => ({ ...current, data: value }))}
+            />
+          </div>
+          <div className="flex items-end gap-2">
+            {editingId ? (
+              <button
+                type="button"
+                onClick={clearDraft}
+                className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-10 px-3 py-2 text-xs`}
+              >
+                Cancelar
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={saveDraftItem}
+              disabled={!isStageItemFilled(draftItem)}
+              className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-10 px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              {editingId ? 'Salvar' : 'Adicionar'}
+            </button>
+          </div>
+          <div className="lg:col-span-4">
+            <FieldLabel>Observação</FieldLabel>
+            <TextAreaInput
+              value={draftItem.descricao}
+              onChange={(value) => setDraftItem((current) => ({ ...current, descricao: value }))}
+              placeholder="Critérios, peso, nota mínima ou observações do edital."
+              rows={2}
+            />
+          </div>
+        </div>
+
+        {listItems.length === 0 ? (
+          <div className="rounded-sm border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+            Nenhuma etapa adicionada ainda.
+          </div>
+        ) : listItems.map((item) => (
+          <div key={item.id} className="flex flex-col gap-3 rounded-sm border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  {item.nome || 'Etapa'}
+                </span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                  {item.criterio.replaceAll('_', ' ')}
+                </span>
+                {item.data ? (
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{item.data}</span>
+                ) : null}
+              </div>
+              {item.descricao ? (
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.descricao}</p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftItem(item);
+                  setEditingId(item.id);
+                }}
+                className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-9 px-3 py-2 text-xs`}
+              >
+                Editar
+              </button>
+              <button
+                type="button"
+                onClick={() => commit(listItems.filter((entry) => entry.id !== item.id))}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
+                aria-label="Remover etapa"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {shouldRenderLegacyRows && rows.map((item, index) => (
+          <div key={item.id} className="grid gap-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-[1fr_220px_180px_auto]">
+            <div>
+              <FieldLabel>Nome da etapa</FieldLabel>
+              <TextInput
+                value={item.nome}
+                onChange={(value) => {
+                  const next = [...rows];
+                  next[index] = { ...item, nome: value };
+                  commit(next);
+                }}
+                placeholder="Prova objetiva"
+              />
+            </div>
+            <div>
+              <FieldLabel>Critério</FieldLabel>
+              <SelectInput
+                value={item.criterio}
+                onChange={(value) => {
+                  const next = [...rows];
+                  next[index] = { ...item, criterio: value as ExamStageDraftItem['criterio'] };
+                  commit(next);
+                }}
+              >
+                <option value="eliminatorio">Eliminatório</option>
+                <option value="classificatorio">Classificatório</option>
+                <option value="eliminatorio_classificatorio">Eliminatório e classificatório</option>
+              </SelectInput>
+            </div>
+            <div>
+              <FieldLabel>Data</FieldLabel>
+              <TextInput
+                type="date"
+                value={item.data}
+                onChange={(value) => {
+                  const next = [...rows];
+                  next[index] = { ...item, data: value };
+                  commit(next);
+                }}
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => commit(rows.filter((entry) => entry.id !== item.id))}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
+                aria-label="Remover etapa"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+            <div className="lg:col-span-4">
+              <FieldLabel>Observação</FieldLabel>
+              <TextAreaInput
+                value={item.descricao}
+                onChange={(value) => {
+                  const next = [...rows];
+                  next[index] = { ...item, descricao: value };
+                  commit(next);
+                }}
+                placeholder="Critérios, peso, nota mínima ou observações do edital."
+                rows={2}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const LinkedQuestionsEditor = ({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) => {
+  const selectedIds = parseQuestionIdsText(value);
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [manualId, setManualId] = React.useState('');
+  const [results, setResults] = React.useState<Question[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [knownLabels, setKnownLabels] = React.useState<Record<string, string>>({});
+  const requestedPreviewIdsRef = React.useRef<Set<string>>(new Set());
+  const [unavailablePreviewIds, setUnavailablePreviewIds] = React.useState<Record<string, boolean>>({});
+
+  const deferredSearchTerm = React.useDeferredValue(searchTerm);
+  const selectedIdsKey = selectedIds.join('|');
+
+  const getQuestionPreviewLabel = React.useCallback((question: Partial<Question>) => {
+    const questionRecord = question as Partial<Question> & Record<string, unknown>;
+
+    return String(
+      questionRecord.enunciado
+      || questionRecord.enunciado_clean
+      || questionRecord.text
+      || questionRecord.statement
+      || '',
+    )
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }, []);
+
+  React.useEffect(() => {
+    const keyword = deferredSearchTerm.trim();
+    if (keyword.length < 2) {
+      React.startTransition(() => {
+        setResults([]);
+        setLoading(false);
+      });
+      return;
+    }
+
+    let cancelled = false;
+    React.startTransition(() => {
+      setLoading(true);
+    });
+
+    adminService.getQuestions({ page: 1, keyword })
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        const nextRows = Array.isArray(payload.rows) ? payload.rows.slice(0, 8) : [];
+        setResults(nextRows);
+        setKnownLabels((current) => {
+          const next = { ...current };
+          nextRows.forEach((row) => {
+            const id = String(row.id || '');
+            const label = getQuestionPreviewLabel(row);
+            if (id && label) {
+              next[id] = label;
+            }
+          });
+          return next;
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setResults([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deferredSearchTerm, getQuestionPreviewLabel]);
+
+  React.useEffect(() => {
+    const missingIds = selectedIds.filter((id) => !knownLabels[id] && !requestedPreviewIdsRef.current.has(id));
+    if (missingIds.length === 0) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    missingIds.forEach((id) => {
+      requestedPreviewIdsRef.current.add(id);
+    });
+
+    Promise.allSettled(
+      missingIds.map(async (id) => {
+        const question = await questionService.getQuestionForAdminEdit(id);
+        return { id, label: getQuestionPreviewLabel(question) };
+      }),
+    )
+      .then((entries) => {
+        if (cancelled) {
+          return;
+        }
+
+        setKnownLabels((current) => {
+          const next = { ...current };
+          entries.forEach((entry) => {
+            if (entry.status === 'fulfilled' && entry.value.label) {
+              next[entry.value.id] = entry.value.label;
+            }
+          });
+          return next;
+        });
+
+        setUnavailablePreviewIds((current) => {
+          const next = { ...current };
+          entries.forEach((entry, index) => {
+            const id = missingIds[index];
+            if (entry.status === 'fulfilled' && entry.value.label) {
+              delete next[id];
+            } else {
+              next[id] = true;
+            }
+          });
+          return next;
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getQuestionPreviewLabel, knownLabels, selectedIds, selectedIdsKey]);
+
+  const commitIds = (ids: string[]) => onChange(ids.join(', '));
+  const addQuestionId = (id: string, label = '') => {
+    const normalizedId = String(id || '').trim();
+    if (!/^\d+$/.test(normalizedId)) {
+      return;
+    }
+    if (label.trim()) {
+      setKnownLabels((current) => ({ ...current, [normalizedId]: label.trim() }));
+    }
+    commitIds(Array.from(new Set([...selectedIds, normalizedId])));
+  };
+  const removeQuestionId = (id: string) => {
+    commitIds(selectedIds.filter((item) => item !== id));
+  };
+
+  return (
+    <div className="w-full min-w-0 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+      <div className="mb-3">
+        <FieldLabel>Questões da plataforma incluídas</FieldLabel>
+        <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+          Busque a questão pelo enunciado ou adicione direto pelo ID. Os itens entram na lista abaixo.
+        </p>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
+        <div>
+          <FieldLabel>Buscar questão</FieldLabel>
+          <TextInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Digite parte do enunciado"
+          />
+        </div>
+        <div>
+          <FieldLabel>Adicionar por ID</FieldLabel>
+          <div className="flex gap-2">
+            <TextInput
+              value={manualId}
+              onChange={setManualId}
+              placeholder="Ex.: 152"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                addQuestionId(manualId);
+                setManualId('');
+              }}
+              disabled={!/^\d+$/.test(manualId.trim())}
+              className={`${ADMIN_PRIMARY_BUTTON_CLASS} h-10 px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              Adicionar
+            </button>
+          </div>
+        </div>
+      </div>
+      {searchTerm.trim().length >= 2 ? (
+        <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+          <FieldLabel>Resultados da busca</FieldLabel>
+          <div className="mt-2 space-y-2">
+            {loading ? (
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Buscando questões...</p>
+            ) : results.length === 0 ? (
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Nenhuma questão encontrada.</p>
+            ) : results.map((question) => {
+              const questionId = String(question.id || '');
+              const label = getQuestionPreviewLabel(question);
+              const alreadySelected = selectedIds.includes(questionId);
+              return (
+                <div key={questionId} className="flex flex-col gap-2 rounded-sm border border-slate-200 px-3 py-2 dark:border-slate-800 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Questao #{questionId}</p>
+                    <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{label || 'Sem enunciado disponível'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addQuestionId(questionId, label)}
+                    disabled={alreadySelected}
+                    className={`${ADMIN_SECONDARY_BUTTON_CLASS} h-9 px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    {alreadySelected ? 'Adicionada' : 'Adicionar'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      <div className="mt-3">
+        <FieldLabel>Questões adicionadas</FieldLabel>
+        <div className="mt-2 space-y-2">
+          {selectedIds.length === 0 ? (
+            <div className="rounded-sm border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+              Nenhuma questão vinculada ainda.
+            </div>
+          ) : selectedIds.map((id) => (
+            <div key={id} className="flex flex-col gap-2 rounded-sm border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Questao #{id}</p>
+                <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                  {knownLabels[id] || (unavailablePreviewIds[id] ? 'Prévia do enunciado indisponível' : 'Carregando prévia do enunciado...')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeQuestionId(id)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-red-200 bg-white text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-900 dark:text-red-300"
+                aria-label={`Remover questão ${id}`}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AdminExamEditorPage = ({
   draft,
   setDraft,
@@ -318,17 +1876,20 @@ const AdminExamEditorPage = ({
   examPreview,
   agencyOptions = [],
   organizationOptions = [],
+  roleOptions = [],
+  focusOptions = [],
+  subjectOptions = [],
+  topicOptions = [],
+  specificSubjectOptions = [],
+  yearOptions = [],
+  levelOptions = [],
   isNew,
   isSaving,
   isDeleting = false,
-  onCreateAgency,
-  onCreateOrganization,
   onUploadExamFile,
   onSave,
   onDelete,
-  onClose,
 }: AdminExamEditorPageProps) => {
-  const [creatingTaxonomy, setCreatingTaxonomy] = React.useState<'agency' | 'organization' | null>(null);
   const [uploadingFileKind, setUploadingFileKind] = React.useState<ExamFileKind | null>(null);
   const [extractingNotice, setExtractingNotice] = React.useState(false);
   const [noticeExtractionMessage, setNoticeExtractionMessage] = React.useState('');
@@ -364,12 +1925,61 @@ const AdminExamEditorPage = ({
       .join('\n');
   };
 
+  const mergeDraftArrayText = (current: string, next: unknown[]) => {
+    if (!Array.isArray(next) || next.length === 0) {
+      return current;
+    }
+
+    const currentItems = safeParseArray<Record<string, unknown>>(current);
+    const seen = new Set<string>();
+    const normalizeItemKey = (item: Record<string, unknown>) => JSON.stringify({
+      scopeType: item.scopeType || '',
+      scope: item.scope || '',
+      chave: item.chave || '',
+      texto: item.texto || '',
+      materia: item.materia || '',
+      topico: item.topico || '',
+      assunto: item.assunto || '',
+      questoes: item.questoes || '',
+      orgao: item.orgao || '',
+      cargo: item.cargo || '',
+      foco: item.foco || '',
+      nome: item.nome || '',
+      criterio: item.criterio || '',
+      data: item.data || '',
+      descricao: item.descricao || '',
+    }).toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    const merged = [...currentItems, ...(next as Record<string, unknown>[])]
+      .filter((item) => {
+        const key = normalizeItemKey(item);
+        if (!key || seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
+
+    return serializeDraftArray(merged);
+  };
+
   const handlePersistWithPatch = (patch: Partial<ExamDraftState>) => {
     setDraft((current) => ({ ...current, ...patch }));
     requestAnimationFrame(() => {
       onSave();
     });
   };
+
+  const previewFocusLabels = splitTaxonomyValues(draft.focosText || draft.focoNome);
+  const previewQuestionIds = String(draft.questoesVinculadasText || '')
+    .split(/[\s,;]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const previewScopedRequirements = normalizeScopedItems(draft.requisitosDetalhadosText, draft.requisitosText);
+  const previewScopedRemunerations = normalizeScopedItems(draft.remuneracoesDetalhadasText, draft.remuneracaoText);
+  const previewScopedVacancies = normalizeScopedItems(draft.vagasDetalhadasText, draft.vagasText);
+  const previewProgrammaticContent = normalizeProgrammaticItems(draft.conteudoProgramaticoDetalhadoText, draft.conteudoProgramaticoText);
+  const previewStages = normalizeStageItems(draft.etapasText);
 
   const publishPreview = examPreview || ({
     id: Number(draft.id || 0),
@@ -395,15 +2005,51 @@ const AdminExamEditorPage = ({
       .split(/\n|;/)
       .map((value, index) => ({ id: index === 0 ? Number(draft.orgaoId || 0) : 0, nome: value.trim(), name: value.trim(), sigla: value.trim() }))
       .filter((item) => item.nome),
-    cargo: { id: 0, descricao: draft.cargoDescricao, name: draft.cargoDescricao },
+    foco: previewFocusLabels[0] ? { id: Number(draft.focoId || 0), nome: previewFocusLabels[0], name: previewFocusLabels[0] } : undefined,
+    focos: previewFocusLabels.map((value, index) => ({ id: index === 0 ? Number(draft.focoId || 0) : 0, nome: value, name: value })),
+    carreira: previewFocusLabels[0] ? { id: Number(draft.focoId || 0), nome: previewFocusLabels[0], name: previewFocusLabels[0] } : undefined,
+    carreiras: previewFocusLabels.map((value, index) => ({ id: index === 0 ? Number(draft.focoId || 0) : 0, nome: value, name: value })),
+    cargo: {
+      id: 0,
+      descricao: draft.cargoDescricao,
+      name: draft.cargoDescricao,
+      parentId: draft.focoId || undefined,
+      parent_id: draft.focoId || undefined,
+    },
     cargos: (draft.cargosText || '')
       .split(/\n|;/)
-      .map((value) => ({ id: 0, descricao: value.trim(), name: value.trim() }))
+      .map((value) => ({
+        id: 0,
+        descricao: value.trim(),
+        name: value.trim(),
+        parentId: draft.focoId || undefined,
+        parent_id: draft.focoId || undefined,
+      }))
       .filter((item) => item.descricao),
+    dataInscricaoInicio: draft.dataInscricaoInicio,
+    dataInscricaoFim: draft.dataInscricaoFim,
+    dataProva: draft.dataProva,
+    valorInscricao: draft.valorInscricao,
+    totalQuestoes: draft.totalQuestoes,
+    etapas: previewStages,
     requisitos: (draft.requisitosText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
+    requirements: (draft.requisitosText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
+    requisitosDetalhados: previewScopedRequirements,
+    requirementsDetailed: previewScopedRequirements,
     remuneracoes: (draft.remuneracaoText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
+    remunerations: (draft.remuneracaoText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
+    remuneracoesDetalhadas: previewScopedRemunerations,
+    remunerationsDetailed: previewScopedRemunerations,
+    vagas: (draft.vagasText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
+    vacancies: (draft.vagasText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
+    vagasDetalhadas: previewScopedVacancies,
+    vacanciesDetailed: previewScopedVacancies,
     conteudoProgramatico: (draft.conteudoProgramaticoText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
     programmaticContent: (draft.conteudoProgramaticoText || '').split(/\n/).map((value) => value.trim()).filter(Boolean),
+    conteudoProgramaticoDetalhado: previewProgrammaticContent,
+    programmaticContentDetailed: previewProgrammaticContent,
+    questoesVinculadas: previewQuestionIds,
+    platformQuestionIds: previewQuestionIds,
   } as unknown as Prova);
 
   const publishState = resolveAdminPublishState(publishPreview as unknown as Record<string, unknown>);
@@ -414,68 +2060,119 @@ const AdminExamEditorPage = ({
       : 'Atualizar prova';
 
   const selectedAgencyId = findSelectedTaxonomyId(agencyOptions, draft.bancaId, draft.bancaSigla, draft.bancaNome);
-  const selectedOrganizationId = findSelectedTaxonomyId(organizationOptions, draft.orgaoId, draft.orgaoSigla, draft.orgaoNome);
+  const selectedAgency = agencyOptions.find((item) => String(item.id || '') === selectedAgencyId) || null;
+  const selectedAgencyLabels = React.useMemo(() => {
+    if (selectedAgency) {
+      return [getTaxonomyLabel(selectedAgency)];
+    }
 
-  const selectAgency = (optionId: string) => {
-    const option = agencyOptions.find((item) => String(item.id || '') === optionId);
+    const sigla = String(draft.bancaSigla || '').trim();
+    const name = String(draft.bancaNome || '').trim();
+    if (sigla && name && normalizeSearchText(sigla) !== normalizeSearchText(name)) {
+      return [`${sigla} - ${name}`];
+    }
+    return splitTaxonomyValues(sigla || name);
+  }, [draft.bancaNome, draft.bancaSigla, selectedAgency]);
+  const selectedOrganizationLabels = React.useMemo(
+    () => splitTaxonomyValues(draft.orgaosText || draft.orgaoSigla || draft.orgaoNome),
+    [draft.orgaoNome, draft.orgaoSigla, draft.orgaosText],
+  );
+  const selectedRoleLabels = React.useMemo(
+    () => splitTaxonomyValues(draft.cargosText || draft.cargoDescricao),
+    [draft.cargoDescricao, draft.cargosText],
+  );
+  const selectedFocusLabels = React.useMemo(
+    () => splitTaxonomyValues(draft.focosText || draft.focoNome),
+    [draft.focoNome, draft.focosText],
+  );
+  const roleFocusItems = React.useMemo(
+    () => normalizeRoleFocusItems(
+      draft.cargosPorFocoText,
+      draft.focosText || draft.focoNome,
+      draft.cargosText || draft.cargoDescricao,
+    ),
+    [draft.cargoDescricao, draft.cargosPorFocoText, draft.cargosText, draft.focoNome, draft.focosText],
+  );
+  const normalizedYearOptions = React.useMemo(
+    () => Array.from(new Set((yearOptions || []).map(String).filter(Boolean))).sort((a, b) => Number(b) - Number(a)),
+    [yearOptions],
+  );
+  const normalizedLevelOptions = React.useMemo(
+    () => Array.from(new Set([
+      ...(levelOptions || []),
+      'Superior',
+      'Médio',
+      'Fundamental',
+    ].map(String).map((value) => value.trim()).filter(Boolean))),
+    [levelOptions],
+  );
+  const scopedOrganizationOptions = React.useMemo(
+    () => Array.from(new Set(selectedOrganizationLabels.filter(Boolean))),
+    [selectedOrganizationLabels],
+  );
+  const scopedRoleOptions = React.useMemo(
+    () => Array.from(new Set([
+      ...selectedRoleLabels,
+      ...roleFocusItems.flatMap((item) => item.cargos),
+    ].filter(Boolean))),
+    [roleFocusItems, selectedRoleLabels],
+  );
+  const organizationLabels = React.useMemo(() => organizationOptions.map(getTaxonomyLabel).filter(Boolean), [organizationOptions]);
+  const roleLabels = React.useMemo(() => roleOptions.map(getTaxonomyName).filter(Boolean), [roleOptions]);
+  const focusLabels = React.useMemo(() => focusOptions.map(getTaxonomyName).filter(Boolean), [focusOptions]);
+  const requisitoItems = React.useMemo(
+    () => normalizeScopedItems(draft.requisitosDetalhadosText, draft.requisitosText),
+    [draft.requisitosDetalhadosText, draft.requisitosText],
+  );
+  const remuneracaoItems = React.useMemo(
+    () => normalizeScopedItems(draft.remuneracoesDetalhadasText, draft.remuneracaoText),
+    [draft.remuneracaoText, draft.remuneracoesDetalhadasText],
+  );
+  const vagaItems = React.useMemo(
+    () => normalizeScopedItems(draft.vagasDetalhadasText, draft.vagasText),
+    [draft.vagasDetalhadasText, draft.vagasText],
+  );
+  const programmaticItems = React.useMemo(
+    () => normalizeProgrammaticItems(draft.conteudoProgramaticoDetalhadoText, draft.conteudoProgramaticoText),
+    [draft.conteudoProgramaticoDetalhadoText, draft.conteudoProgramaticoText],
+  );
+  const stageItems = React.useMemo(
+    () => normalizeStageItems(draft.etapasText),
+    [draft.etapasText],
+  );
+
+  const selectAgency = (labels: string[]) => {
+    const label = labels[0] || '';
+    const option = agencyOptions.find((item) => (
+      normalizeSearchText(getTaxonomyLabel(item)) === normalizeSearchText(label)
+      || normalizeSearchText(getTaxonomyName(item)) === normalizeSearchText(label)
+      || normalizeSearchText(getTaxonomySigla(item)) === normalizeSearchText(label)
+    ));
+    const [possibleSigla, ...nameParts] = label.split(/\s+-\s+/);
+    const parsedName = nameParts.join(' - ').trim();
+    const freeSigla = parsedName && /^[A-Z0-9./-]{2,16}$/.test(possibleSigla.trim())
+      ? possibleSigla.trim()
+      : '';
     updateDraft({
-      bancaId: optionId,
-      bancaSigla: option ? getTaxonomySigla(option) : '',
-      bancaNome: option ? getTaxonomyName(option) : '',
+      bancaId: option ? String(option.id || '') : '',
+      bancaSigla: option ? getTaxonomySigla(option) : freeSigla,
+      bancaNome: option ? getTaxonomyName(option) : (parsedName || label),
     });
   };
 
-  const selectOrganization = (optionId: string) => {
-    const option = organizationOptions.find((item) => String(item.id || '') === optionId);
-    const organizationLabel = option ? (getTaxonomySigla(option) || getTaxonomyName(option)) : '';
+  const selectOrganizations = (labels: string[]) => {
+    const firstLabel = labels[0] || '';
+    const firstOption = organizationOptions.find((item) => (
+      normalizeSearchText(getTaxonomyLabel(item)) === normalizeSearchText(firstLabel)
+      || normalizeSearchText(getTaxonomyName(item)) === normalizeSearchText(firstLabel)
+      || normalizeSearchText(getTaxonomySigla(item)) === normalizeSearchText(firstLabel)
+    ));
     updateDraft({
-      orgaoId: optionId,
-      orgaoSigla: option ? getTaxonomySigla(option) : '',
-      orgaoNome: option ? getTaxonomyName(option) : '',
-      orgaosText: organizationLabel ? mergeTextList(draft.orgaosText, [organizationLabel]) : draft.orgaosText,
+      orgaoId: firstOption ? String(firstOption.id || '') : '',
+      orgaoSigla: firstOption ? getTaxonomySigla(firstOption) : firstLabel,
+      orgaoNome: firstOption ? getTaxonomyName(firstOption) : firstLabel,
+      orgaosText: labels.join('\n'),
     });
-  };
-
-  const createAgency = async () => {
-    if (!onCreateAgency) return;
-    const name = (draft.bancaNome || draft.bancaSigla).trim();
-    if (!name) return;
-
-    setCreatingTaxonomy('agency');
-    try {
-      const created = await onCreateAgency({ name, sigla: draft.bancaSigla.trim() });
-      if (created) {
-        updateDraft({
-          bancaId: String(created.id || ''),
-          bancaSigla: getTaxonomySigla(created),
-          bancaNome: getTaxonomyName(created),
-        });
-      }
-    } finally {
-      setCreatingTaxonomy(null);
-    }
-  };
-
-  const createOrganization = async () => {
-    if (!onCreateOrganization) return;
-    const name = (draft.orgaoNome || draft.orgaoSigla).trim();
-    if (!name) return;
-
-    setCreatingTaxonomy('organization');
-    try {
-      const created = await onCreateOrganization({ name, sigla: draft.orgaoSigla.trim() });
-      if (created) {
-        const organizationLabel = getTaxonomySigla(created) || getTaxonomyName(created);
-        updateDraft({
-          orgaoId: String(created.id || ''),
-          orgaoSigla: getTaxonomySigla(created),
-          orgaoNome: getTaxonomyName(created),
-          orgaosText: organizationLabel ? mergeTextList(draft.orgaosText, [organizationLabel]) : draft.orgaosText,
-        });
-      }
-    } finally {
-      setCreatingTaxonomy(null);
-    }
   };
 
   const handleUploadExamFile = async (kind: ExamFileKind, file: File | null | undefined) => {
@@ -516,7 +2213,7 @@ const AdminExamEditorPage = ({
 
     const response = await fetch(resolveApiResourceUrl(attachedFile.url), { credentials: 'include' });
     if (!response.ok) {
-      throw new Error('Nao foi possivel abrir o edital anexado.');
+      throw new Error('Não foi possível abrir o edital anexado.');
     }
     const blob = await response.blob();
     return new File([blob], attachedFile.name || 'edital.pdf', {
@@ -534,7 +2231,104 @@ const AdminExamEditorPage = ({
     setNoticeExtractionMessage('');
     try {
       const file = await readNoticeFileForExtraction(attachedFile);
-      const metadata = await extractExamNoticeMetadata(file);
+      let metadata = await extractExamNoticeMetadata(file);
+      const localOrganizations = sanitizeExtractedOrganizations(metadata.organizations);
+      try {
+        const pdfBase64 = await fileToBase64(file);
+        const aiMetadata = await aiService.extractExamNoticeMetadataFromPdf(
+          pdfBase64,
+          metadata.rawText,
+          {
+            subjects: subjectOptions.map(getTaxonomyName).filter(Boolean),
+            topics: topicOptions.map(getTaxonomyName).filter(Boolean),
+            specificSubjects: specificSubjectOptions.map(getTaxonomyName).filter(Boolean),
+            focuses: focusOptions.map(getTaxonomyName).filter(Boolean),
+            organizations: organizationOptions.map(getTaxonomyLabel).filter(Boolean),
+            roles: roleOptions.map(getTaxonomyName).filter(Boolean),
+          },
+        );
+        const aiOrganizations = sanitizeExtractedOrganizations(aiMetadata.organizations || []);
+        const normalizeScopedAiItems = (items: typeof aiMetadata.requirementsDetailed) => (items || [])
+          .filter((item) => String(item.texto || '').trim())
+          .map((item) => ({
+            scopeType: ['orgao', 'cargo', 'foco'].includes(String(item.scopeType))
+              ? item.scopeType as 'orgao' | 'cargo' | 'foco'
+              : 'geral' as const,
+            scope: String(item.scope || 'Todos').trim() || 'Todos',
+            chave: String(item.chave || '').trim(),
+            texto: String(item.texto || '').trim(),
+          }));
+        const requirementsDetailed = normalizeScopedAiItems(aiMetadata.requirementsDetailed);
+        const remunerationsDetailed = normalizeScopedAiItems(aiMetadata.remunerationsDetailed);
+        const vacanciesDetailed = normalizeScopedAiItems(aiMetadata.vacanciesDetailed);
+        const programmaticContentDetailed = expandProgrammaticSubjectItems((aiMetadata.programmaticContentDetailed || [])
+          .map((item) => ({
+            id: newDraftRowId(),
+            materia: String(item.materia || '').trim(),
+            materiaId: '',
+            topico: String(item.topico || '').trim(),
+            topicoId: '',
+            assunto: String(item.assunto || '').trim(),
+            assuntoId: '',
+            questoes: String(item.questoes || '').trim(),
+            orgao: String(item.orgao || '').trim(),
+            cargo: String(item.cargo || '').trim(),
+            foco: String(item.foco || '').trim(),
+          }))
+          .filter((item) => item.materia || item.topico || item.assunto));
+        const stages = (aiMetadata.stages || [])
+          .filter((item) => String(item.nome || '').trim())
+          .map((item) => ({
+            nome: String(item.nome || '').trim(),
+            criterio: ['eliminatorio', 'classificatorio', 'eliminatorio_classificatorio'].includes(String(item.criterio))
+              ? item.criterio as 'eliminatorio' | 'classificatorio' | 'eliminatorio_classificatorio'
+              : 'eliminatorio',
+            data: String(item.data || '').trim(),
+            descricao: String(item.descricao || '').trim(),
+          }));
+        const summarizeScoped = (items: Array<{ chave?: string; texto: string }>) => items
+          .map((item) => [item.chave, item.texto].filter(Boolean).join(': '))
+          .filter(Boolean);
+        const programmaticContent = Array.from(new Set(programmaticContentDetailed
+          .map((item) => [item.materia, item.topico, item.assunto].filter(Boolean).join(' > '))
+          .filter(Boolean)));
+
+        metadata = {
+          ...metadata,
+          agency: aiMetadata.agency || metadata.agency,
+          agencyName: aiMetadata.agencyName || metadata.agencyName,
+          year: aiMetadata.year || metadata.year,
+          organizations: aiOrganizations.length > 0 ? aiOrganizations : localOrganizations,
+          roles: aiMetadata.roles?.filter(Boolean).length ? aiMetadata.roles.filter(Boolean) : metadata.roles,
+          requirements: requirementsDetailed.length ? summarizeScoped(requirementsDetailed) : metadata.requirements,
+          requirementsDetailed: requirementsDetailed.length ? requirementsDetailed : metadata.requirementsDetailed,
+          remunerations: remunerationsDetailed.length ? summarizeScoped(remunerationsDetailed) : metadata.remunerations,
+          remunerationsDetailed: remunerationsDetailed.length ? remunerationsDetailed : metadata.remunerationsDetailed,
+          vacancies: vacanciesDetailed.length ? summarizeScoped(vacanciesDetailed) : metadata.vacancies,
+          vacanciesDetailed: vacanciesDetailed.length ? vacanciesDetailed : metadata.vacanciesDetailed,
+          programmaticContent: programmaticContent.length ? programmaticContent : metadata.programmaticContent,
+          programmaticContentDetailed: programmaticContentDetailed.length ? programmaticContentDetailed : metadata.programmaticContentDetailed,
+          stages: stages.length ? stages : metadata.stages,
+          registrationStart: aiMetadata.registrationStart || metadata.registrationStart,
+          registrationEnd: aiMetadata.registrationEnd || metadata.registrationEnd,
+          examDate: aiMetadata.examDate || metadata.examDate,
+          registrationFee: aiMetadata.registrationFee || metadata.registrationFee,
+          totalQuestions: aiMetadata.totalQuestions || metadata.totalQuestions,
+        };
+      } catch (error) {
+        clientLog.warn('Error extracting exam notice with AI; using local parser:', error);
+        metadata.organizations = localOrganizations;
+      }
+
+      void examService.startExtraction({
+        exam_id: draft.id && /^\d+$/.test(String(draft.id)) ? Number(draft.id) : undefined,
+        file_id: attachedFile.id && /^\d+$/.test(String(attachedFile.id)) ? Number(attachedFile.id) : undefined,
+        origem: 'edital',
+        parserProfile: 'hybrid-ai-edital',
+        draft: metadata,
+      }).catch((error) => {
+        clientLog.warn('Error recording exam notice extraction:', error);
+      });
       setDraft((current) => {
         const organizationsText = mergeTextList(current.orgaosText || current.orgaoSigla || current.orgaoNome, metadata.organizations);
         const rolesText = mergeTextList(current.cargosText || current.cargoDescricao, metadata.roles);
@@ -554,13 +2348,24 @@ const AdminExamEditorPage = ({
           cargoDescricao: primaryRole || current.cargoDescricao,
           cargosText: rolesText,
           requisitosText: mergeTextList(current.requisitosText, metadata.requirements),
+          requisitosDetalhadosText: mergeDraftArrayText(current.requisitosDetalhadosText, metadata.requirementsDetailed),
           remuneracaoText: mergeTextList(current.remuneracaoText, metadata.remunerations),
+          remuneracoesDetalhadasText: mergeDraftArrayText(current.remuneracoesDetalhadasText, metadata.remunerationsDetailed),
+          vagasText: mergeTextList(current.vagasText, metadata.vacancies),
+          vagasDetalhadasText: mergeDraftArrayText(current.vagasDetalhadasText, metadata.vacanciesDetailed),
           conteudoProgramaticoText: mergeTextList(current.conteudoProgramaticoText, metadata.programmaticContent),
+          conteudoProgramaticoDetalhadoText: mergeDraftArrayText(current.conteudoProgramaticoDetalhadoText, metadata.programmaticContentDetailed),
+          etapasText: mergeDraftArrayText(current.etapasText, metadata.stages),
+          dataInscricaoInicio: current.dataInscricaoInicio || metadata.registrationStart || '',
+          dataInscricaoFim: current.dataInscricaoFim || metadata.registrationEnd || '',
+          dataProva: current.dataProva || metadata.examDate || '',
+          valorInscricao: current.valorInscricao || metadata.registrationFee || '',
+          totalQuestoes: current.totalQuestoes || metadata.totalQuestions || '',
         };
       });
-      setNoticeExtractionMessage('Dados do concurso extraidos do edital. Revise os campos antes de publicar.');
+      setNoticeExtractionMessage('Edital lido por IA e parser local. Revise os campos antes de publicar.');
     } catch {
-      setNoticeExtractionMessage('Nao foi possivel extrair os dados do edital.');
+      setNoticeExtractionMessage('Não foi possível extrair os dados do edital.');
     } finally {
       setExtractingNotice(false);
     }
@@ -569,55 +2374,34 @@ const AdminExamEditorPage = ({
   return (
     <div className="flex w-full flex-col gap-6 xl:flex-row xl:items-start">
         <main className="min-w-0 flex-1 space-y-6">
-          <div className={`${ADMIN_SURFACE_CLASS} overflow-hidden`}>
-            <div className={`${ADMIN_SURFACE_HEADER_CLASS} flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between`}>
-              <div className="flex items-start gap-3">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className={`${ADMIN_SECONDARY_BUTTON_CLASS} mt-0.5 h-9 w-9 justify-center p-0`}
-                >
-                  <ArrowLeft size={14} />
-                </button>
-                <div>
-                  <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                    {isNew ? 'Adicionar nova prova' : draft.nome || 'Editar prova'}
-                  </h1>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Cadastro global usado no banco de questoes, filtros editoriais e vinculos de prova.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <AdminPublishStateBadge state={publishState} />
-              </div>
-            </div>
-          </div>
-
           <EditorPanel
             title="Dados da prova"
-            description="Identificacao principal, banca, orgao e cargo usados pela plataforma."
+            description="Identificação principal, banca, órgão e cargo usados pela plataforma."
           >
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <div>
-                <FieldLabel>ID</FieldLabel>
-                <TextInput value={draft.id} onChange={(value) => updateDraft({ id: value })} placeholder="54321" />
-              </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 xl:col-span-3">
                 <FieldLabel>Nome</FieldLabel>
                 <TextInput value={draft.nome} onChange={(value) => updateDraft({ nome: value })} placeholder="Nome da prova" />
               </div>
               <div>
-                <FieldLabel>Ano</FieldLabel>
-                <TextInput value={draft.ano} onChange={(value) => updateDraft({ ano: value })} placeholder="2025" />
+                <SmartTagSelector
+                  label="Ano"
+                  options={normalizedYearOptions}
+                  selected={draft.ano ? [draft.ano] : []}
+                  onChange={(values) => updateDraft({ ano: values[0] || '' })}
+                  placeholder="2025"
+                  multiple={false}
+                />
               </div>
               <div>
-                <FieldLabel>Nivel</FieldLabel>
-                <TextInput value={draft.nivel} onChange={(value) => updateDraft({ nivel: value })} placeholder="Superior" />
-              </div>
-              <div>
-                <FieldLabel>Indice</FieldLabel>
-                <TextInput value={draft.index} onChange={(value) => updateDraft({ index: value })} placeholder="TJSP-2025-01" />
+                <SmartTagSelector
+                  label="Nível"
+                  options={normalizedLevelOptions}
+                  selected={draft.nivel ? [draft.nivel] : []}
+                  onChange={(values) => updateDraft({ nivel: values[0] || '' })}
+                  placeholder="Superior"
+                  multiple={false}
+                />
               </div>
               <div>
                 <FieldLabel>Tipo/Caderno</FieldLabel>
@@ -628,146 +2412,209 @@ const AdminExamEditorPage = ({
                 <TextInput value={draft.corCaderno} onChange={(value) => updateDraft({ corCaderno: value })} placeholder="Amarelo, Azul" />
               </div>
               <div>
-                <FieldLabel>Resumo do caderno</FieldLabel>
-                <TextInput value={draft.caderno} onChange={(value) => updateDraft({ caderno: value })} placeholder="Tipo B - Azul" />
+                <FieldLabel>Inscrição - início</FieldLabel>
+                <TextInput type="date" value={draft.dataInscricaoInicio} onChange={(value) => updateDraft({ dataInscricaoInicio: value })} />
               </div>
-              <div className="rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:col-span-2 xl:col-span-3">
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="md:col-span-3">
-                    <FieldLabel>Banca cadastrada</FieldLabel>
-                    <SearchableTaxonomySelect
-                      value={selectedAgencyId}
-                      onChange={selectAgency}
-                      options={agencyOptions}
-                      placeholder="Buscar banca da taxonomia"
-                    />
-                  </div>
+              <div>
+                <FieldLabel>Inscrição - fim</FieldLabel>
+                <TextInput type="date" value={draft.dataInscricaoFim} onChange={(value) => updateDraft({ dataInscricaoFim: value })} />
+              </div>
+              <div>
+                <FieldLabel>Data da prova</FieldLabel>
+                <TextInput type="date" value={draft.dataProva} onChange={(value) => updateDraft({ dataProva: value })} />
+              </div>
+              <div>
+                <FieldLabel>Valor da inscrição</FieldLabel>
+                <TextInput value={draft.valorInscricao} onChange={(value) => updateDraft({ valorInscricao: value })} placeholder="R$ 120,00" />
+              </div>
+              <div>
+                <FieldLabel>Total de questões</FieldLabel>
+                <TextInput type="number" value={draft.totalQuestoes} onChange={(value) => updateDraft({ totalQuestoes: value })} placeholder="80" />
+              </div>
+              <div id="exam-taxonomies" className="scroll-mt-24 rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:col-span-2 xl:col-span-3">
+                <div>
                   <div>
-                    <FieldLabel>Banca sigla</FieldLabel>
-                    <TextInput
-                      value={draft.bancaSigla}
-                      onChange={(value) => updateDraft({ bancaId: '', bancaSigla: value })}
-                      placeholder="FGV"
+                    <SmartTagSelector
+                      label="Banca vinculada"
+                      options={agencyOptions}
+                      selected={selectedAgencyLabels}
+                      onChange={selectAgency}
+                      placeholder="Selecione ou cadastre uma banca"
+                      multiple={false}
                     />
                   </div>
-                  <div className="md:col-span-2">
+                  <div className="hidden">
                     <FieldLabel>Banca nome</FieldLabel>
                     <TextInput
                       value={draft.bancaNome}
                       onChange={(value) => updateDraft({ bancaId: '', bancaNome: value })}
-                      placeholder="Fundacao Getulio Vargas"
+                      placeholder="Fundação Getulio Vargas"
                     />
                   </div>
                 </div>
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="mt-3">
                   <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     Use uma banca existente ou cadastre a nova banca na taxonomia global.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => void createAgency()}
-                    disabled={creatingTaxonomy === 'agency' || !(draft.bancaNome || draft.bancaSigla).trim()}
-                    className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center`}
-                  >
-                    {creatingTaxonomy === 'agency' ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
-                    Adicionar banca
-                  </button>
                 </div>
               </div>
               <div className="rounded-sm border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 md:col-span-2 xl:col-span-3">
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="md:col-span-3">
-                    <FieldLabel>Orgao cadastrado</FieldLabel>
-                    <SelectInput value={selectedOrganizationId} onChange={selectOrganization}>
-                      <option value="">Selecionar orgao da taxonomia</option>
-                      {organizationOptions.map((organization) => (
-                        <option key={String(organization.id || getTaxonomyLabel(organization))} value={String(organization.id || '')}>
-                          {getTaxonomyLabel(organization)}
-                        </option>
-                      ))}
-                    </SelectInput>
-                  </div>
-                  <div>
-                    <FieldLabel>Orgao sigla</FieldLabel>
-                    <TextInput
-                      value={draft.orgaoSigla}
-                      onChange={(value) => updateDraft({ orgaoId: '', orgaoSigla: value })}
-                      placeholder="TJ-SP"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <FieldLabel>Orgao nome</FieldLabel>
-                    <TextInput
-                      value={draft.orgaoNome}
-                      onChange={(value) => updateDraft({ orgaoId: '', orgaoNome: value })}
-                      placeholder="Tribunal de Justica de Sao Paulo"
-                    />
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Orgao selecionado aqui tambem alimenta filtros e vinculos das questoes.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void createOrganization()}
-                    disabled={creatingTaxonomy === 'organization' || !(draft.orgaoNome || draft.orgaoSigla).trim()}
-                    className={`${ADMIN_SECONDARY_BUTTON_CLASS} justify-center`}
-                  >
-                    {creatingTaxonomy === 'organization' ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
-                    Adicionar orgao
-                  </button>
-                </div>
-              </div>
-              <div className="md:col-span-2 xl:col-span-3">
-                <FieldLabel>Cargo</FieldLabel>
-                <TextInput value={draft.cargoDescricao} onChange={(value) => updateDraft({ cargoDescricao: value })} placeholder="Analista Judiciario" />
-              </div>
-              <div className="md:col-span-2 xl:col-span-3">
-                <FieldLabel>Orgaos vinculados</FieldLabel>
-                <TextAreaInput
-                  value={draft.orgaosText}
-                  onChange={(value) => updateDraft({ orgaosText: value })}
-                  placeholder={'PM-PB\nCBM-PB'}
+                <SmartTagSelector
+                  label="Órgãos vinculados"
+                  options={organizationOptions}
+                  selected={selectedOrganizationLabels}
+                  onChange={selectOrganizations}
+                  placeholder="Selecione ou cadastre um órgão"
                 />
-                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Informe um orgao por linha quando a mesma prova servir para mais de um orgao.
+                <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Os órgãos existentes serão vinculados. Novos órgãos serão criados automaticamente na taxonomia global ao salvar.
                 </p>
               </div>
-              <div className="md:col-span-2 xl:col-span-3">
-                <FieldLabel>Cargos vinculados</FieldLabel>
-                <TextAreaInput
-                  value={draft.cargosText}
-                  onChange={(value) => updateDraft({ cargosText: value })}
-                  placeholder={'Soldado PM - Combatentes - QPC\nSoldado BM - Combatentes - QBMP'}
+              <div id="exam-roles" className="scroll-mt-24 md:col-span-2 xl:col-span-3">
+                <RoleFocusArrayEditor
+                  items={roleFocusItems}
+                  focusOptions={focusOptions}
+                  roleOptions={roleOptions}
+                  onChange={(items) => {
+                    const focusNames = Array.from(new Set(items.map((item) => item.foco.trim()).filter(Boolean)));
+                    const roleNames = Array.from(new Set(items.flatMap((item) => item.cargos).map((item) => item.trim()).filter(Boolean)));
+                    updateDraft({
+                      cargosPorFocoText: serializeDraftArray(items),
+                      focoId: '',
+                      focoNome: focusNames[0] || '',
+                      focosText: focusNames.join('\n'),
+                      cargoDescricao: roleNames[0] || '',
+                      cargosText: roleNames.join('\n'),
+                    });
+                  }}
                 />
-                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Informe um cargo por linha quando o edital listar mais de uma aplicacao para a prova.
-                </p>
               </div>
-              <div className="md:col-span-2">
-                <FieldLabel>Requisitos extraidos do edital</FieldLabel>
+              <div className="hidden md:col-span-2">
+                <FieldLabel>Requisitos extraídos do edital</FieldLabel>
                 <TextAreaInput
                   value={draft.requisitosText}
                   onChange={(value) => updateDraft({ requisitosText: value })}
                   placeholder="Escolaridade, CNH, idade minima, registro profissional..."
                 />
               </div>
-              <div>
-                <FieldLabel>Remuneracao</FieldLabel>
+              <div className="hidden">
+                <FieldLabel>Remuneração</FieldLabel>
                 <TextAreaInput
                   value={draft.remuneracaoText}
                   onChange={(value) => updateDraft({ remuneracaoText: value })}
                   placeholder={'R$ 3.500,00\nR$ 5.200,00'}
                 />
               </div>
-              <div className="md:col-span-2 xl:col-span-3">
-                <FieldLabel>Conteudo programatico</FieldLabel>
+              <div className="hidden">
+                <FieldLabel>Vagas / cadastro reserva</FieldLabel>
+                <TextAreaInput
+                  value={draft.vagasText}
+                  onChange={(value) => updateDraft({ vagasText: value })}
+                  placeholder={'Soldado PM: 900 vagas + CR\nSoldado BM: 100 vagas'}
+                />
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Use uma linha por cargo quando o edital separar vagas por cargo ou órgão.
+                </p>
+              </div>
+              <div className="hidden md:col-span-2 xl:col-span-3">
+                <FieldLabel>Conteúdo programático</FieldLabel>
                 <TextAreaInput
                   value={draft.conteudoProgramaticoText}
                   onChange={(value) => updateDraft({ conteudoProgramaticoText: value })}
-                  placeholder="Disciplinas, topicos e assuntos previstos no edital."
+                  placeholder="Disciplinas, tópicos e assuntos previstos no edital."
                   rows={6}
+                />
+              </div>
+              <div className="hidden">
+                <div className="flex min-w-0 flex-col justify-end gap-1">
+                  <FieldLabel>Inscrição - início</FieldLabel>
+                  <TextInput type="date" value={draft.dataInscricaoInicio} onChange={(value) => updateDraft({ dataInscricaoInicio: value })} />
+                </div>
+                <div className="flex min-w-0 flex-col justify-end gap-1">
+                  <FieldLabel>Inscrição - fim</FieldLabel>
+                  <TextInput type="date" value={draft.dataInscricaoFim} onChange={(value) => updateDraft({ dataInscricaoFim: value })} />
+                </div>
+                <div className="flex min-w-0 flex-col justify-end gap-1">
+                  <FieldLabel>Data da prova</FieldLabel>
+                  <TextInput type="date" value={draft.dataProva} onChange={(value) => updateDraft({ dataProva: value })} />
+                </div>
+                <div className="flex min-w-0 flex-col justify-end gap-1">
+                  <FieldLabel>Valor da inscrição</FieldLabel>
+                  <TextInput value={draft.valorInscricao} onChange={(value) => updateDraft({ valorInscricao: value })} placeholder="R$ 120,00" />
+                </div>
+                <div className="flex min-w-0 flex-col justify-end gap-1">
+                  <FieldLabel>Total de questões</FieldLabel>
+                  <TextInput type="number" value={draft.totalQuestoes} onChange={(value) => updateDraft({ totalQuestoes: value })} placeholder="80" />
+                </div>
+              </div>
+              <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
+                <LinkedQuestionsEditor
+                  value={draft.questoesVinculadasText}
+                  onChange={(value) => updateDraft({ questoesVinculadasText: value })}
+                />
+              </div>
+              <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
+                <StagesArrayEditor items={stageItems} onChange={(items) => updateDraft({ etapasText: serializeDraftArray(items) })} />
+              </div>
+              <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
+                <ScopedArrayEditor
+                  title="Requisitos"
+                  description="Adicione requisitos por órgão, cargo, foco ou para todos os cargos do edital."
+                  items={requisitoItems}
+                  organizationOptions={scopedOrganizationOptions}
+                  roleOptions={scopedRoleOptions}
+                  placeholder="Escolaridade, CNH, idade mínima, registro profissional..."
+                  keyValue
+                  keyPlaceholder="Ex.: Escolaridade"
+                  valueLabel="Valor / descrição"
+                  onChange={(items) => updateDraft({
+                    requisitosDetalhadosText: serializeDraftArray(items),
+                    requisitosText: items
+                      .map((item) => {
+                        const chave = item.chave.trim();
+                        const texto = item.texto.trim();
+                        return chave && texto ? `${chave}: ${texto}` : texto || chave;
+                      })
+                      .filter(Boolean)
+                      .join('\n'),
+                  })}
+                />
+              </div>
+              <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
+                <ScopedArrayEditor
+                  title="Remuneração"
+                  description="Informe salários, adicionais e benefícios separados por órgão, cargo ou foco quando o edital trouxer diferenças."
+                  items={remuneracaoItems}
+                  organizationOptions={scopedOrganizationOptions}
+                  roleOptions={scopedRoleOptions}
+                  placeholder="R$ 3.500,00 + benefícios"
+                  onChange={(items) => updateDraft({ remuneracoesDetalhadasText: serializeDraftArray(items), remuneracaoText: items.map((item) => item.texto).filter(Boolean).join('\n') })}
+                />
+              </div>
+              <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
+                <ScopedArrayEditor
+                  title="Vagas"
+                  description="Cadastre vagas por órgão, cargo ou foco. Use linhas diferentes para ampla concorrência, cotas ou cadastro reserva."
+                  items={vagaItems}
+                  organizationOptions={scopedOrganizationOptions}
+                  roleOptions={scopedRoleOptions}
+                  placeholder="900 vagas + cadastro reserva"
+                  onChange={(items) => updateDraft({ vagasDetalhadasText: serializeDraftArray(items), vagasText: items.map((item) => item.texto).filter(Boolean).join('\n') })}
+                />
+              </div>
+              <div className="w-full min-w-0" style={{ gridColumn: '1 / -1' }}>
+                <ProgrammaticArrayEditor
+                  items={programmaticItems}
+                  subjectOptions={subjectOptions}
+                  topicOptions={topicOptions}
+                  specificSubjectOptions={specificSubjectOptions}
+                  organizationOptions={organizationLabels}
+                  roleOptions={roleLabels}
+                  focusOptions={focusLabels}
+                  onChange={(items) => updateDraft({
+                    conteudoProgramaticoDetalhadoText: serializeDraftArray(items),
+                    conteudoProgramaticoText: items.map((item) => [item.materia, item.topico, item.assunto].filter(Boolean).join(' > ')).filter(Boolean).join('\n'),
+                  })}
                 />
               </div>
             </div>
@@ -913,7 +2760,7 @@ const AdminExamEditorPage = ({
 
               <div className="space-y-2 border-t border-slate-200 pt-4 text-sm dark:border-slate-700">
                 <div className="flex items-start justify-between gap-3">
-                  <span className="font-medium text-slate-500 dark:text-slate-400">Questoes vinculadas</span>
+                  <span className="font-medium text-slate-500 dark:text-slate-400">Questões vinculadas</span>
                   <span className="inline-flex items-center gap-1 font-semibold text-slate-900 dark:text-slate-100">
                     <Link2 size={13} />
                     {linkedQuestionsCount}
@@ -962,7 +2809,7 @@ const AdminExamEditorPage = ({
               </div>
               <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
                 Banca: {draft.bancaSigla || draft.bancaNome || '-'}<br />
-                Orgao: {draft.orgaoSigla || draft.orgaoNome || '-'}<br />
+                Órgão: {draft.orgaoSigla || draft.orgaoNome || '-'}<br />
                 Cargo: {draft.cargoDescricao || '-'}<br />
                 Caderno: {draft.caderno || [draft.tipoCaderno, draft.corCaderno].filter(Boolean).join(' - ') || '-'}<br />
                 Arquivos: {(draft.files || []).length}/3

@@ -111,6 +111,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   },
   aiProvider: 'gemini',
   geminiApiKey: '',
+  geminiModel: 'gemini-3.5-flash',
   hasGeminiApiKeyConfigured: false,
   openaiApiKey: '',
   openAiModel: 'gpt-4o-mini',
@@ -377,6 +378,9 @@ export const sanitizePersistedSystemSettings = (settings: SystemSettings): Syste
 
   const aiProvider = typeof nextSettings.aiProvider === 'string' ? nextSettings.aiProvider.trim().toLowerCase() : 'gemini';
   nextSettings.aiProvider = ['gemini', 'openai', 'auto'].includes(aiProvider) ? aiProvider : 'gemini';
+  if (!nextSettings.geminiModel) {
+    nextSettings.geminiModel = 'gemini-3.5-flash';
+  }
   if (!nextSettings.openAiModel) {
     nextSettings.openAiModel = 'gpt-4o-mini';
   }

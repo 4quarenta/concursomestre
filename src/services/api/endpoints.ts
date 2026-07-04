@@ -64,6 +64,19 @@ export const ENDPOINTS = {
         editorialFeedback: 'questions/editorial-feedback.php',
     },
 
+    exams: {
+        list: 'exams/list.php',
+        show: 'exams/show.php',
+        save: 'exams/save.php',
+        delete: 'exams/delete.php',
+        fileUpload: 'exams/file_upload.php',
+        files: 'exams/files.php',
+        fileDelete: 'exams/file_delete.php',
+        extractionStart: 'exams/extraction_start.php',
+        extractionShow: 'exams/extraction_show.php',
+        extractionReview: 'exams/extraction_review.php',
+    },
+
     comments: {
         list: 'commentsList',
         create: 'commentsHandle',
