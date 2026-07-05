@@ -21,6 +21,7 @@ import {
 } from '@services/filters';
 import { normalizeProvaRecord } from '../exams/examBankUtils';
 import { useAppConfigStore } from '@/state/app-config/appConfigStore';
+import { runPythonExtractor } from './pythonExtractorClient';
 
 type PdfJsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 type PdfDocumentProxy = Awaited<ReturnType<PdfJsModule['getDocument']>['promise']>;
@@ -9116,6 +9117,114 @@ export const useAdminImportWorkflow = ({
     return { questions: mappedQuestions, metadata: nextMetadata };
   };
 
+  const runPythonImportBridge = async (
+    selectedFocus: QuestionTaxonomyLabel,
+    selectedExamMetadata: ImportMetadata,
+  ) => {
+    if (!qFile) return false;
+
+    const metadataPayload = {
+      ...(selectedExam ? selectedExamMetadata : {}),
+      selectedExamId: selectedExam?.id || selectedExamId || undefined,
+      selectedExamTitle: selectedExam?.nome || selectedExamMetadata.examTitle || selectedExamMetadata.title,
+      focus: selectedFocus,
+      focusName: getTaxonomyText(selectedFocus),
+      totalQuestions: selectedExamMetadata.totalQuestions
+        || selectedExamRecord?.totalQuestions
+        || selectedExamRecord?.totalQuestoes
+        || selectedExam?.totalQuestoes,
+      source: selectedExamMetadata.source,
+      sources: selectedExamMetadata.sources,
+      roles: selectedExamMetadata.roles || selectedExamMetadata.cargos,
+      agency: selectedExamMetadata.agency,
+      year: selectedExamMetadata.year || selectedExamMetadata.ano,
+      level: selectedExamMetadata.level,
+    } as Record<string, unknown>;
+
+    let pythonResult: Awaited<ReturnType<typeof runPythonExtractor>> = null;
+    try {
+      pythonResult = await runPythonExtractor({
+        examFile: qFile,
+        answerKeyFile: kFile,
+        metadata: metadataPayload,
+      });
+    } catch (error) {
+      addLog(`Extrator Python indisponivel (${readErrorMessage(error)}). Usando fluxo legado temporariamente.`);
+      return false;
+    }
+
+    if (!pythonResult) {
+      addLog('Extrator Python nao configurado. Defina NEXT_PUBLIC_IMPORT_EXTRACTOR_URL para ativar a nova arquitetura.');
+      return false;
+    }
+
+    (pythonResult.logs || []).forEach((message) => addLog(message));
+
+    const nextQuestions = Array.isArray(pythonResult.questions)
+      ? pythonResult.questions as unknown as Question[]
+      : [];
+    const nextContexts = Array.isArray(pythonResult.contexts)
+      ? pythonResult.contexts.map((context) => ({
+        tempId: context.tempId,
+        title: context.title || 'Contexto',
+        text: context.text || '',
+        referenceText: context.referenceText || '',
+        richText: context.richText || context.text || '',
+        questionNumbers: Array.isArray(context.questionNumbers) ? context.questionNumbers : [],
+        hasFigure: Boolean(context.hasFigure),
+        figureDescription: context.figureDescription || '',
+        page: Number(context.page || context.sourcePage || 0),
+        sourcePage: Number(context.sourcePage || context.page || 0) || undefined,
+      } as ImportedContextDraft))
+      : [];
+
+    const pythonDiagnostics = pythonResult.diagnostics || ({} as NonNullable<typeof pythonResult.diagnostics>);
+    const nextDiagnostics: ImportDiagnostics = {
+      expectedQuestionNumbers: pythonDiagnostics.expectedQuestionNumbers || [],
+      extractedQuestionNumbers: pythonDiagnostics.extractedQuestionNumbers || [],
+      localizedQuestionNumbers: pythonDiagnostics.localizedQuestionNumbers || [],
+      completeQuestionNumbers: pythonDiagnostics.completeQuestionNumbers || [],
+      incompleteQuestionNumbers: pythonDiagnostics.incompleteQuestionNumbers || [],
+      missingQuestionNumbers: pythonDiagnostics.missingQuestionNumbers || [],
+      placeholderQuestionNumbers: pythonDiagnostics.placeholderQuestionNumbers || [],
+      visualPendingQuestionNumbers: pythonDiagnostics.visualPendingQuestionNumbers || [],
+      duplicateQuestionNumbers: pythonDiagnostics.duplicateQuestionNumbers || [],
+      suspiciousQuestionNumbers: pythonDiagnostics.suspiciousQuestionNumbers || [],
+      cardsCreatedCount: pythonDiagnostics.cardsCreatedCount || nextQuestions.length,
+      completeCardsCount: pythonDiagnostics.completeCardsCount || 0,
+      incompleteCardsCount: pythonDiagnostics.incompleteCardsCount || 0,
+      placeholderCardsCount: pythonDiagnostics.placeholderCardsCount || 0,
+      pagesWithoutNativeText: pythonDiagnostics.pagesWithoutNativeText || [],
+      lowConfidencePages: pythonDiagnostics.lowConfidencePages || [],
+      aiQuotaLimitReached: Boolean(pythonDiagnostics.aiQuotaLimitReached),
+      aiTokenLimitReached: Boolean(pythonDiagnostics.aiTokenLimitReached),
+      aiLimitReached: Boolean(pythonDiagnostics.aiLimitReached),
+      aiCallCount: Number(pythonDiagnostics.aiCallCount || 0),
+      aiCallLimit: Number(pythonDiagnostics.aiCallLimit || 0),
+      aiCallsSkipped: Number(pythonDiagnostics.aiCallsSkipped || 0),
+      aiCallsSavedEstimate: Number(pythonDiagnostics.aiCallsSavedEstimate || 0),
+    };
+
+    setExtractedQuestions(nextQuestions);
+    setExtractedContexts(nextContexts);
+    setImportDiagnostics(nextDiagnostics);
+    setImportMetadata({
+      ...(selectedExam ? selectedExamMetadata : {}),
+      ...(pythonResult.metadata || {}),
+      subjects: deriveQuestionSubjects(nextQuestions),
+    } as ImportMetadata);
+    setExamProgress(100);
+    setKeyProgress(100);
+
+    addLog(
+      `IMPORTACAO PYTHON CONCLUIDA! ${nextDiagnostics.cardsCreatedCount} card(s): `
+      + `${nextDiagnostics.completeCardsCount} completo(s), `
+      + `${nextDiagnostics.incompleteCardsCount} incompleto(s), `
+      + `${nextDiagnostics.placeholderCardsCount} pendente(s).`,
+    );
+    return true;
+  };
+
   const handleImportProcess = async () => {
     if (!qFile || !kFile) {
       addToast('Arquivos de prova e gabarito são obrigatórios para este processo.', 'error');
@@ -9166,6 +9275,12 @@ export const useAdminImportWorkflow = ({
     setImportMetadata(selectedExam ? selectedExamMetadata : null);
     setExamProgress(0);
     setKeyProgress(0);
+
+    const handledByPythonExtractor = await runPythonImportBridge(selectedFocus, selectedExamMetadata);
+    if (handledByPythonExtractor) {
+      setIsProcessing(false);
+      return;
+    }
 
     try {
       const pdfjs = await loadPdfJsModule();
