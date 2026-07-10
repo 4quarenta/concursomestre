@@ -1,0 +1,26 @@
+558:            $subscription = $stripe->subscriptions->create($subscriptionPayload, $subscriptionRequestOptions);
+701:        $subscription = $stripe->subscriptions->retrieve($payload['subscription_id'], [
+830:                $stripe->subscriptions->update($payload['subscription_id'], [
+1282:            $stripeSubscription = getStripeClient()->subscriptions->update((string) $subscription['provider_subscription_id'], [
+1418:        $stripeSubscription = $stripe->subscriptions->retrieve($providerSubscriptionId, [
+1491:            $stripe->subscriptions->update($providerSubscriptionId, [
+1569:                $stripeSubscription = $stripe->subscriptions->retrieve((string) $subscriptionRow['provider_subscription_id'], [
+1938:        $remoteSubscription = getStripeClient()->subscriptions->update($providerSubscriptionId, [
+2035:        $stripeSubscription = $stripe->subscriptions->retrieve(
+2199:            $stripe->subscriptions->update((string) $subscription['provider_subscription_id'], [
+2205:            $stripe->subscriptions->cancel((string) $subscription['provider_subscription_id'], []);
+2423:                    $remoteSubscription = $stripe->subscriptions->retrieve(
+2432:                        $remoteSubscription = $stripe->subscriptions->cancel(
+2899:                $remoteSubscription = $stripe->subscriptions->retrieve(
+3675:        $subscription = $stripe->subscriptions->retrieve((string) $session->subscription, [
+3682:            $stripe->subscriptions->update((string) $subscription->id, [
+3801:            : $stripe->subscriptions->retrieve($subscriptionId, [
+4016:                    $subscription = $stripe->subscriptions->retrieve((string) $localSubscription['provider_subscription_id'], [
+4755:                getStripeClient()->subscriptions->cancel($providerSubscriptionId, []);
+5308:                $stripe->subscriptions->update($providerSubscriptionId, [
+5316:                $stripe->subscriptions->update($providerSubscriptionId, [
+6317:            $subscriptions = $stripe->subscriptions->all([
+6328:        foreach (($subscriptions->data ?? []) as $candidateSubscription) {
+6462:        $stripeSubscription = $stripe->subscriptions->retrieve(
+6693:                getStripeClient()->subscriptions->cancel((string) $subscription['provider_subscription_id'], []);
+6720:        $stripeSubscription = getStripeClient()->subscriptions->retrieve(

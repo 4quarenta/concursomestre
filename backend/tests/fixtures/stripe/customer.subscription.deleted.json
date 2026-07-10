@@ -1,0 +1,15 @@
+{
+  "id": "evt_fixture_subscription_deleted",
+  "object": "event",
+  "type": "customer.subscription.deleted",
+  "created": 1700000000,
+  "data": {
+    "object": {
+      "id": "sub_fixture",
+      "object": "subscription",
+      "status": "canceled",
+      "customer": "cus_fixture",
+      "cancel_at_period_end": true
+    }
+  }
+}

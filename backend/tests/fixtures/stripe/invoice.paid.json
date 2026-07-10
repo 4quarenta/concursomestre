@@ -1,0 +1,16 @@
+{
+  "id": "evt_fixture_invoice_paid",
+  "object": "event",
+  "type": "invoice.paid",
+  "created": 1700000000,
+  "data": {
+    "object": {
+      "id": "in_fixture_paid",
+      "object": "invoice",
+      "status": "paid",
+      "customer": "cus_fixture",
+      "subscription": "sub_fixture",
+      "payment_intent": "pi_fixture_paid"
+    }
+  }
+}

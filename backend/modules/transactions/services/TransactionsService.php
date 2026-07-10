@@ -1,0 +1,1529 @@
+<?php
+
+/*
+* ----------------------------------------------------
+* @author: 4quarenta
+* @author URI: https://github.com/4quarenta
+* @copyright: (c) 2026 ConcursoMestre. All rights reserved
+* ----------------------------------------------------
+*
+* @since 1.0.0
+*
+*/
+
+require_once __DIR__ . '/../repositories/TransactionsRepository.php';
+require_once __DIR__ . '/../validators/TransactionsValidator.php';
+require_once __DIR__ . '/../../../shared/utils/Mailer.php';
+require_once __DIR__ . '/../../../shared/utils/EmailTemplateResolver.php';
+require_once __DIR__ . '/TransactionsRefundSupport.php';
+require_once __DIR__ . '/../../../config/stripe.php';
+require_once __DIR__ . '/../../../config/notification_helper.php';
+require_once __DIR__ . '/../../../config/gamification_helper.php';
+require_once __DIR__ . '/../../subscriptions/services/SubscriptionsBillingSupport.php';
+
+/**
+ * Servico do dominio de transacoes do marketplace.
+ * Centraliza compra direta de materiais e o ciclo de estorno.
+ */
+class TransactionsService
+{
+    private PDO $db;
+    private TransactionsRepository $repository;
+    private TransactionsValidator $validator;
+
+    /**
+     * @since 1.0.0
+     */
+    public function __construct(
+        PDO $db,
+        TransactionsRepository $repository,
+        TransactionsValidator $validator
+    ) {
+        $this->db = $db;
+        $this->repository = $repository;
+        $this->validator = $validator;
+    }
+
+    /**
+     * Lista transacoes com filtros, estatisticas e metadados para o admin.
+     *
+     * @since 1.0.0
+     */
+    public function listTransactions(array $query): array
+    {
+        backfillTransactionPlanMetadata($this->db);
+
+        $filters = $this->validator->validateListFilters($query);
+        $userId = $filters['user_id'];
+        $offset = ($filters['page'] - 1) * $filters['limit'];
+
+        $whereConditions = [];
+        $params = [];
+
+        if ($userId !== '') {
+            if ($filters['scope'] === 'seller') {
+                $whereConditions[] = 't.seller_id = ?';
+                $params[] = $userId;
+            } elseif ($filters['scope'] === 'all') {
+                $whereConditions[] = '(t.user_id = ? OR t.seller_id = ?)';
+                $params[] = $userId;
+                $params[] = $userId;
+            } else {
+                $whereConditions[] = 't.user_id = ?';
+                $params[] = $userId;
+            }
+        }
+
+        if ($filters['start_date'] !== '') {
+            $whereConditions[] = 'DATE(t.created_at) >= ?';
+            $params[] = $filters['start_date'];
+        }
+
+        if ($filters['end_date'] !== '') {
+            $whereConditions[] = 'DATE(t.created_at) <= ?';
+            $params[] = $filters['end_date'];
+        }
+
+        if ($filters['status'] !== '' && $filters['status'] !== 'All') {
+            $statusFilter = $this->buildStatusFilterCondition($filters['status']);
+            if ($statusFilter !== null) {
+                $whereConditions[] = $statusFilter['condition'];
+                $params = array_merge($params, $statusFilter['params']);
+            }
+        }
+
+        if ($filters['type'] !== '' && $filters['type'] !== 'All') {
+            $whereConditions[] = 't.type = ?';
+            $params[] = $filters['type'];
+        }
+
+        $whereConditions[] = "NOT (
+            t.type = 'plan'
+            AND COALESCE(t.payment_provider, '') = 'stripe'
+            AND COALESCE(t.amount, 0) <= 0
+            AND COALESCE(t.provider_invoice_id, '') = ''
+            AND COALESCE(t.provider_payment_intent_id, '') = ''
+        )";
+
+        $whereClause = $whereConditions ? 'WHERE ' . implode(' AND ', $whereConditions) : '';
+        $totals = $this->repository->fetchTransactionTotals($whereClause, $params);
+        $rows = $this->repository->fetchTransactionRows($whereClause, $params, $filters['limit'], $offset);
+
+        $transactions = [];
+        foreach ($rows as $row) {
+            $displayDate = $row['due_date'] ?: $row['created_at'];
+            $type = $row['type'] ?: ($row['material_id'] ? 'material' : 'plan');
+            $paymentProvider = normalizePaymentProvider($row['payment_provider'] ?? 'stripe');
+            $description = trim((string) (
+                $row['plan_name']
+                ?: $row['storedPlanName']
+                ?: $row['materialTitle']
+                ?: ($type === 'plan' ? 'Assinatura' : 'Transacao')
+            ));
+            $providerTransactionId = trim((string) (
+                $paymentProvider === 'stripe'
+                    ? ($row['provider_payment_intent_id'] ?: $row['provider_invoice_id'] ?: $row['external_id'])
+                    : ($row['external_id'] ?: $row['provider_payment_intent_id'] ?: $row['provider_invoice_id'])
+            ));
+            $referenceId = $providerTransactionId !== '' ? $providerTransactionId : (string) $row['id'];
+            $providerTransactionLabel = $paymentProvider === 'stripe'
+                ? (!empty($row['provider_payment_intent_id']) ? 'PaymentIntent' : (!empty($row['provider_invoice_id']) ? 'Invoice' : 'Stripe'))
+                : 'Pagamento';
+            $refundDetails = [];
+            if (!empty($row['provider_refund_details_json'])) {
+                $decodedRefundDetails = json_decode((string) $row['provider_refund_details_json'], true);
+                if (is_array($decodedRefundDetails)) {
+                    $refundDetails = $decodedRefundDetails;
+                }
+            }
+            $effectiveStatus = $this->normalizeTransactionStatus($row);
+            $revenueRecognized = $this->isRevenueRecognizedTransaction($row);
+            $amount = (float) $row['amount'];
+            $platformFee = $revenueRecognized ? (float) $row['platform_fee'] : 0.0;
+            $netAmount = $revenueRecognized ? ($amount - $platformFee) : 0.0;
+            $buyerEmail = trim((string) ($row['payer_email'] ?? ''));
+            if ($buyerEmail === '') {
+                $buyerEmail = trim((string) ($row['buyerEmail'] ?? ''));
+            }
+            $installmentNumber = null;
+            $installmentCount = null;
+            $subscriptionInstallmentCount = max(1, (int) ($row['subscriptionTotalInstallments'] ?? 1));
+            if (
+                $paymentProvider === 'stripe'
+                && $type === 'plan'
+                && $subscriptionInstallmentCount > 1
+            ) {
+                $installmentNumber = min(
+                    $subscriptionInstallmentCount,
+                    max(1, (int) ($row['installments'] ?? 1))
+                );
+                $installmentCount = $subscriptionInstallmentCount;
+            }
+
+            $transactions[] = [
+                'id' => (int) $row['id'],
+                'internalId' => (int) $row['id'],
+                'referenceId' => $referenceId,
+                'providerTransactionId' => $providerTransactionId,
+                'providerTransactionLabel' => $providerTransactionLabel,
+                'buyerId' => $row['user_id'],
+                'buyerName' => $row['buyerName'],
+                'buyerEmail' => $buyerEmail !== '' ? $buyerEmail : null,
+                'payerEmail' => $buyerEmail !== '' ? $buyerEmail : null,
+                'userSubscriptionId' => isset($row['user_subscription_id']) ? (int) $row['user_subscription_id'] : null,
+                'materialId' => $row['material_id'],
+                'materialTitle' => $row['materialTitle'],
+                'planId' => $row['plan_id'],
+                'planName' => $row['plan_name'] ?: $row['storedPlanName'],
+                'transactionName' => $description,
+                'description' => $description,
+                'sellerId' => $row['seller_id'],
+                'sellerName' => $row['sellerName'] ?: 'Plataforma',
+                'amount' => $amount,
+                'platformFee' => $platformFee,
+                'netAmount' => $netAmount,
+                'status' => $effectiveStatus ?: 'completed',
+                'type' => $type,
+                'externalId' => $row['external_id'],
+                'paymentMethod' => $row['payment_method'],
+                'paymentMethodLabel' => $this->formatTransactionPaymentMethodLabel($row['payment_method'] ?? null, $paymentProvider),
+                'paymentProvider' => $paymentProvider,
+                'providerInvoiceId' => $row['provider_invoice_id'],
+                'providerPaymentIntentId' => $row['provider_payment_intent_id'],
+                'providerRefundId' => $row['provider_refund_id'],
+                'providerRefundDetails' => $refundDetails,
+                'providerCustomerId' => $row['provider_customer_id'],
+                'refundReason' => $row['refund_reason'],
+                'refundRequestedAt' => $row['refund_requested_at'],
+                'timestamp' => strtotime($displayDate) * 1000,
+                'dateFormatted' => date('d/m/Y', strtotime($displayDate)),
+                'dateTimeFormatted' => date('d/m/Y H:i:s', strtotime($displayDate)),
+                'createdAt' => $row['created_at'],
+                'dueDate' => $row['due_date'],
+                'installmentNumber' => $installmentNumber,
+                'installmentCount' => $installmentCount,
+            ];
+        }
+
+        $transactions = $this->hydrateStripeInvoiceMetadata($transactions);
+
+        $relevantStripeInstallmentSubscription = null;
+        $projectedTransactions = [];
+        if (
+            $userId !== ''
+            && in_array($filters['scope'], ['buyer', 'all'], true)
+            && ($filters['type'] === '' || $filters['type'] === 'plan' || $filters['type'] === 'All')
+        ) {
+            $relevantStripeInstallmentSubscription = $this->repository->findRelevantStripeInstallmentSubscription($userId);
+            $transactions = $this->applyActiveStripeInstallmentMetadata($transactions, $relevantStripeInstallmentSubscription);
+            $projectedTransactions = $this->buildProjectedStripeInstallmentTransactions($userId, $transactions, $relevantStripeInstallmentSubscription);
+            if (!empty($projectedTransactions)) {
+                $transactions = array_merge($transactions, $projectedTransactions);
+            }
+        }
+
+        usort($transactions, static function (array $left, array $right): int {
+            return (int) $right['timestamp'] <=> (int) $left['timestamp'];
+        });
+
+        if (count($transactions) > $filters['limit']) {
+            $transactions = array_slice($transactions, 0, $filters['limit']);
+        }
+
+        $totalRecords = !empty($totals['total_count']) ? (int) $totals['total_count'] : 0;
+        $totalRecords += count($projectedTransactions);
+        $totalPages = (int) ceil($totalRecords / $filters['limit']);
+
+        return [
+            'rows' => $transactions,
+            'pagination' => [
+                'page' => $filters['page'],
+                'limit' => $filters['limit'],
+                'total' => $totalRecords,
+                'pages' => $totalPages,
+            ],
+            'stats' => [
+                'totalRevenue' => (float) ($totals['total_revenue'] ?? 0),
+                'totalFees' => (float) ($totals['total_fees'] ?? 0),
+                'netRevenue' => (float) ($totals['net_revenue'] ?? 0),
+                'totalHeld' => (float) ($totals['total_held'] ?? 0),
+                'count' => $totalRecords,
+            ],
+        ];
+    }
+
+    private function normalizeTransactionStatus(array $transaction): string
+    {
+        if (
+            trim((string) ($transaction['provider_refund_id'] ?? '')) !== ''
+            || trim((string) ($transaction['refunded_at'] ?? '')) !== ''
+        ) {
+            return 'refunded';
+        }
+
+        $status = strtolower(trim((string) ($transaction['status'] ?? '')));
+        if ($status === 'canceled') {
+            return 'cancelled';
+        }
+        if ($status === 'succeeded' || $status === 'paid') {
+            return 'approved';
+        }
+
+        return $status;
+    }
+
+    private function isRevenueRecognizedTransaction(array $transaction): bool
+    {
+        return in_array($this->normalizeTransactionStatus($transaction), ['approved', 'completed'], true);
+    }
+
+    private function buildStatusFilterCondition(string $status): ?array
+    {
+        $normalizedStatus = strtolower(trim($status));
+        if ($normalizedStatus === '' || $normalizedStatus === 'all') {
+            return null;
+        }
+
+        if (in_array($normalizedStatus, ['paid', 'approved', 'completed'], true)) {
+            return [
+                'condition' => "t.status IN ('approved', 'completed') AND COALESCE(t.provider_refund_id, '') = '' AND t.refunded_at IS NULL",
+                'params' => [],
+            ];
+        }
+
+        if ($normalizedStatus === 'refunded') {
+            return [
+                'condition' => "(t.status = 'refunded' OR COALESCE(t.provider_refund_id, '') <> '' OR t.refunded_at IS NOT NULL)",
+                'params' => [],
+            ];
+        }
+
+        if (in_array($normalizedStatus, ['cancelled', 'canceled'], true)) {
+            return [
+                'condition' => "t.status IN ('cancelled', 'canceled')",
+                'params' => [],
+            ];
+        }
+
+        if (in_array($normalizedStatus, ['failed', 'rejected'], true)) {
+            return [
+                'condition' => "t.status IN ('failed', 'rejected')",
+                'params' => [],
+            ];
+        }
+
+        return [
+            'condition' => 't.status = ?',
+            'params' => [$normalizedStatus],
+        ];
+    }
+
+    /**
+     * Registra a compra direta de material pelo usuario.
+     *
+     * @since 1.0.0
+     */
+    public function createMaterialPurchase(string $userId, array $data): array
+    {
+        $payload = $this->validator->validateMaterialPurchase($data);
+        $material = $this->repository->findMaterialById($payload['material_id']);
+        if (!$material) {
+            throw new OutOfBoundsException('Material não encontrado.');
+        }
+
+        $user = $this->repository->findUserById($userId);
+        if (!$user) {
+            throw new OutOfBoundsException('Usuário não encontrado.');
+        }
+
+        if ($this->repository->hasCompletedMaterialPurchase($userId, $payload['material_id'])) {
+            throw new RuntimeException('Você já possui este material.');
+        }
+
+        $amount = round((float) ($material['price'] ?? 0), 2);
+        $couponResult = validateCouponForAmount(
+            $this->db,
+            $payload['coupon_code'],
+            $amount,
+            [
+                'item_id' => (string) $material['id'],
+                'target_type' => 'item',
+                'target_id' => (string) $material['id'],
+            ]
+        );
+        $finalAmount = $couponResult['valid'] ? (float) $couponResult['final_amount'] : $amount;
+
+        if ($amount > 0 && $finalAmount > 0) {
+            throw new RuntimeException('Checkout de materiais pagos continua indisponível no fluxo atual.');
+        }
+
+        $platformFee = round($finalAmount * 0.20, 2);
+        $transactionId = $this->repository->createMaterialPurchaseTransaction(
+            $userId,
+            (string) $material['id'],
+            (string) $material['author_id'],
+            $finalAmount,
+            $platformFee
+        );
+        $this->repository->incrementMaterialSalesCount((string) $material['id']);
+
+        if (!empty($couponResult['valid']) && !empty($couponResult['coupon']['code'])) {
+            incrementCouponUsage($this->db, (string) $couponResult['coupon']['code']);
+        }
+
+        $this->notifyMaterialPurchaseCompleted($material, $user, (string) $transactionId, $finalAmount, $platformFee);
+
+        return [
+            'transaction' => [
+                'id' => $transactionId,
+                'buyerId' => $userId,
+                'buyerName' => $user['name'],
+                'materialId' => (string) $material['id'],
+                'materialTitle' => $material['title'],
+                'sellerId' => $material['author_id'],
+                'amount' => $finalAmount,
+                'platformFee' => $platformFee,
+                'status' => 'completed',
+                'timestamp' => time() * 1000,
+            ],
+            'coupon' => $couponResult['valid'] ? array_merge($couponResult['coupon'], [
+                'discount_amount' => $couponResult['discount_amount'],
+                'final_amount' => $couponResult['final_amount'],
+                'auto_applied' => !empty($couponResult['auto_applied']),
+            ]) : null,
+        ];
+    }
+
+    /**
+     * Recebe a solicitacao de reembolso do usuario.
+     *
+     * @since 1.0.0
+     */
+    public function requestRefund(string $userId, array $data): array
+    {
+        $payload = $this->validator->validateRefundRequest($data);
+        $transaction = $this->repository->findRefundableTransactionForUser(
+            $payload['transaction_id'],
+            $userId,
+            ['completed', 'approved']
+        );
+
+        if (!$transaction) {
+            throw new OutOfBoundsException('Transação elegível para reembolso não encontrada.');
+        }
+
+        $autoRefund = (bool) getSystemSettingValue($this->db, 'autoRefundEnabled', false);
+        if ($autoRefund) {
+            try {
+                $chainResults = $this->processRefundForTransactionChain($transaction, $payload['reason']);
+                $refundResult = $this->resolvePrimaryRefundResult($chainResults, $payload['transaction_id']);
+                $this->revokePlanAccessAfterRefund($transaction, $refundResult);
+                $chainNotice = $this->buildRefundChainEmailNotice($chainResults, $payload['transaction_id']);
+                $this->sendRefundEmail(
+                    (string) $transaction['user_id'],
+                    $payload['transaction_id'],
+                    $transaction,
+                    $refundResult,
+                    'Seu reembolso foi processado',
+                    'Reembolso processado',
+                    'Sua solicitação de reembolso para a transação <b>#' . $payload['transaction_id'] . '</b> foi processada com sucesso.<br><br>'
+                    . $chainNotice
+                    . 'O valor será devolvido para o mesmo método de pagamento utilizado na compra.<br><br>'
+                );
+                $this->notifyRefundProcessed((string) $transaction['user_id'], $transaction, $chainResults);
+
+                return [
+                    'message' => 'Reembolso processado automaticamente com sucesso.',
+                ];
+            } catch (Throwable $refundError) {
+                error_log('[transactions_service] auto refund failed for transaction '
+                    . $payload['transaction_id'] . ': ' . $refundError->getMessage());
+            }
+        }
+
+        markPlanRefundChainAsRequested($this->db, $transaction, $payload['reason']);
+        $this->notifyAdminAboutRefundRequest($payload['transaction_id'], $payload['reason'], $transaction);
+        $this->notifySellerAboutRefundRequest($transaction, $payload['reason']);
+
+        return [
+            'message' => 'Reembolso solicitado.',
+        ];
+    }
+
+    /**
+     * Processa a aprovacao administrativa do reembolso.
+     *
+     * @since 1.0.0
+     */
+    public function approveRefund(array $data): array
+    {
+        $payload = $this->validator->validateRefundResolution($data);
+        $refundReason = $payload['reason'] !== '' ? $payload['reason'] : 'Aprovado pelo administrador';
+        $this->db->beginTransaction();
+
+        try {
+            $transaction = $this->repository->findTransactionByIdForUpdate($payload['transaction_id']);
+            if (!$transaction) {
+                throw new OutOfBoundsException('Transação não encontrada.');
+            }
+
+            $currentStatus = strtolower(trim((string) ($transaction['status'] ?? '')));
+            $existingRefundId = trim((string) ($transaction['provider_refund_id'] ?? ''));
+
+            if ($currentStatus === 'refunded' || $existingRefundId !== '') {
+                throw new RuntimeException('Esta transação já foi reembolsada anteriormente.');
+            }
+
+            if ($currentStatus !== 'refund_requested') {
+                throw new InvalidArgumentException('Esta transação não possui solicitação de estorno pendente.');
+            }
+
+            $chainResults = $this->processRefundForTransactionChain($transaction, $refundReason);
+            $refundResult = $this->resolvePrimaryRefundResult($chainResults, $payload['transaction_id']);
+            $this->revokePlanAccessAfterRefund($transaction, $refundResult);
+            $this->db->commit();
+        } catch (Throwable $error) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+
+            throw $error;
+        }
+
+        $this->sendRefundEmail(
+            (string) $transaction['user_id'],
+            $payload['transaction_id'],
+            $transaction,
+            $refundResult,
+            'Seu reembolso foi aprovado',
+            'Reembolso aprovado',
+            'Sua solicitação de reembolso para a transação <b>#' . $payload['transaction_id'] . '</b> foi aprovada e processada com sucesso.<br><br>'
+            . $this->buildRefundChainEmailNotice($chainResults ?? [], $payload['transaction_id'])
+            . 'O valor será devolvido ao mesmo método de pagamento utilizado na compra.<br><br>'
+        );
+        $this->notifyRefundProcessed((string) $transaction['user_id'], $transaction, $chainResults ?? []);
+
+        return [
+            'transaction' => $transaction,
+            'message' => 'Estorno realizado com sucesso.',
+        ];
+    }
+
+    /**
+     * Envia uma proposta de retencao mantendo a solicitacao em analise.
+     *
+     * @since 1.0.0
+     */
+    public function sendRefundRetentionOffer(array $data): array
+    {
+        $payload = $this->validator->validateRefundResolution($data);
+        $transaction = $this->repository->findTransactionById($payload['transaction_id']);
+        if (!$transaction) {
+            throw new OutOfBoundsException('Transação não encontrada.');
+        }
+
+        if (($transaction['status'] ?? '') !== 'refund_requested') {
+            throw new InvalidArgumentException('Esta transação não possui solicitação de estorno pendente.');
+        }
+
+        $reason = trim((string) ($transaction['refund_reason'] ?? ''));
+        $reasonLabel = $this->formatRefundReasonLabel($reason);
+        $offer = $this->buildRefundRetentionOffer($reasonLabel !== '' ? $reasonLabel : $reason, $transaction);
+        $offer['reason_label'] = $reasonLabel !== '' ? $reasonLabel : $reason;
+        $this->sendRefundRetentionEmail((string) $transaction['user_id'], $transaction, $offer);
+
+        if (!empty($transaction['user_id'])) {
+            createNotification(
+                $this->db,
+                (string) $transaction['user_id'],
+                'Proposta para continuar com seu acesso',
+                'Enviamos uma proposta personalizada para o motivo informado: ' . ($offer['reason_label'] ?: 'cancelamento') . '.',
+                'info',
+                'marketplace',
+                '/profile?tab=billing'
+            );
+        }
+
+        return [
+            'transaction' => $transaction,
+            'message' => 'Proposta de permanência enviada ao usuário. A solicitação segue em análise.',
+        ];
+    }
+
+    /**
+     * Processa reembolso da transacao e de cobrancas ligadas por upgrade.
+     *
+     * @since 1.0.0
+     */
+    private function processRefundForTransactionChain(array $transaction, string $refundReason): array
+    {
+        $chainTransactions = findRefundablePlanTransactionChain($this->db, $transaction, true);
+        $results = [];
+
+        foreach ($chainTransactions as $chainTransaction) {
+            $status = strtolower(trim((string) ($chainTransaction['status'] ?? '')));
+            $transactionId = (string) ($chainTransaction['id'] ?? '');
+            if ($transactionId === '' || !in_array($status, ['approved', 'completed', 'refund_requested'], true)) {
+                continue;
+            }
+
+            $refundResult = processGatewayRefundForTransaction($this->db, $chainTransaction, $refundReason);
+            markTransactionAsRefunded($this->db, $transactionId, $refundReason, $refundResult);
+            $results[] = [
+                'transaction' => $chainTransaction,
+                'refund_result' => $refundResult,
+            ];
+        }
+
+        if (empty($results)) {
+            throw new RuntimeException('Nenhuma cobrança elegível foi localizada para processar o reembolso.');
+        }
+
+        return $results;
+    }
+
+    /**
+     * Seleciona o resultado primario usado por emails e cancelamento de assinatura.
+     *
+     * @since 1.0.0
+     */
+    private function resolvePrimaryRefundResult(array $chainResults, string $transactionId): array
+    {
+        foreach ($chainResults as $entry) {
+            $entryTransactionId = (string) ($entry['transaction']['id'] ?? '');
+            if ($entryTransactionId === $transactionId) {
+                return $entry['refund_result'] ?? [];
+            }
+        }
+
+        return $chainResults[0]['refund_result'] ?? [];
+    }
+
+    /**
+     * Monta aviso para o usuario quando o reembolso envolve upgrade.
+     *
+     * @since 1.0.0
+     */
+    private function buildRefundChainEmailNotice(array $chainResults, string $primaryTransactionId): string
+    {
+        if (count($chainResults) <= 1) {
+            return '';
+        }
+
+        $total = 0.0;
+        $lines = [];
+        foreach ($chainResults as $entry) {
+            $transaction = $entry['transaction'] ?? [];
+            $id = (string) ($transaction['id'] ?? '');
+            $amount = round((float) ($transaction['amount'] ?? 0), 2);
+            $planName = trim((string) ($transaction['plan_name'] ?? 'Plano'));
+            $total += $amount;
+            $lines[] = '#' . $id . ' - ' . htmlspecialchars($planName, ENT_QUOTES, 'UTF-8')
+                . ' (R$ ' . number_format($amount, 2, ',', '.') . ')';
+        }
+
+        return 'Como este pedido está ligado a uma troca de plano, também processamos as cobranças relacionadas da mesma cadeia de assinatura: '
+            . implode('; ', $lines)
+            . '.<br><b>Total estornado:</b> R$ ' . number_format($total, 2, ',', '.') . '.<br><br>';
+    }
+
+    /**
+     * Revoga acesso do plano quando o reembolso e concluido.
+     *
+     * @since 1.0.0
+     */
+    private function revokePlanAccessAfterRefund(array $transaction, ?array $refundResult = null): void
+    {
+        if (!isPlanTransactionRefundTarget($transaction) || empty($transaction['user_id'])) {
+            return;
+        }
+
+        $cancellationResult = cancelStripeSubscriptionImmediatelyAfterRefund($this->db, $transaction, $refundResult);
+        if (!empty($cancellationResult['warning'])) {
+            error_log('[transactions_service] refund cancellation warning: ' . $cancellationResult['warning']);
+        }
+    }
+
+    /**
+     * Envia email ao usuario com detalhes do reembolso.
+     *
+     * @since 1.0.0
+     */
+    private function sendRefundEmail(
+        string $userId,
+        string $transactionId,
+        ?array $transaction,
+        ?array $refundResult,
+        string $subject,
+        string $title,
+        string $content
+    ): void {
+        $user = $this->repository->findUserById($userId);
+        if (!$user) {
+            return;
+        }
+
+        $refundDetailsHtml = buildRefundEmailDetailsHtml($transaction, $refundResult);
+        if ($refundDetailsHtml !== '') {
+            $content .= $refundDetailsHtml;
+        }
+
+        $bodyHtml = Mailer::htmlTemplate(
+            $title,
+            'Olá ' . $user['name'] . ',<br><br>' . $content,
+            buildAppHashRoute('/profile', ['tab' => 'billing']),
+            'Ver historico'
+        );
+
+        $billingUrl = buildAppHashRoute('/profile', ['tab' => 'billing']);
+        $template = resolveSystemEmailTemplate(
+            'transaction_refund_completed',
+            [
+                'subject' => $subject,
+                'htmlBody' => $bodyHtml,
+                'textBody' => "Olá {$user['name']},\n\n{$subject}\nAcompanhe em: {$billingUrl}",
+            ],
+            [
+                'name' => (string) ($user['name'] ?? ''),
+                'email' => (string) ($user['email'] ?? ''),
+                'content' => Mailer::htmlToText($content),
+                'billing_url' => $billingUrl,
+                'app_url' => rtrim((string) (getenv('APP_URL') ?: 'http://localhost:3000'), '/'),
+            ],
+            $this->db
+        );
+
+        if ($template['enabled']) {
+            Mailer::send((string) $user['email'], (string) $user['name'], $template['subject'], $template['htmlBody'], $template['textBody']);
+        }
+    }
+
+    /**
+     * Envia email de retencao personalizado a partir do motivo do reembolso.
+     *
+     * @since 1.0.0
+     */
+    private function sendRefundRetentionEmail(string $userId, array $transaction, array $offer): void
+    {
+        $user = $this->repository->findUserById($userId);
+        if (!$user) {
+            return;
+        }
+
+        $reason = trim((string) ($offer['reason_label'] ?? $transaction['refund_reason'] ?? ''));
+        $highlightsHtml = '';
+        foreach (($offer['highlights'] ?? []) as $highlight) {
+            $highlightsHtml .= '<li>' . htmlspecialchars((string) $highlight, ENT_QUOTES, 'UTF-8') . '</li>';
+        }
+
+        $reasonHtml = $reason !== ''
+            ? '<p><b>Motivo informado:</b> ' . htmlspecialchars($reason, ENT_QUOTES, 'UTF-8') . '</p>'
+            : '';
+
+        $bodyHtml = Mailer::htmlTemplate(
+            (string) ($offer['title'] ?? 'Antes de encerrar seu acesso'),
+            'Olá ' . $user['name'] . ',<br><br>'
+                . '<p>Recebemos seu pedido de reembolso e, antes de concluir esse processo, queremos te apresentar uma alternativa melhor para o motivo informado.</p>'
+                . $reasonHtml
+                . '<p>' . htmlspecialchars((string) ($offer['intro'] ?? ''), ENT_QUOTES, 'UTF-8') . '</p>'
+                . ($highlightsHtml !== '' ? '<ul>' . $highlightsHtml . '</ul>' : '')
+                . '<p>' . htmlspecialchars((string) ($offer['closing'] ?? ''), ENT_QUOTES, 'UTF-8') . '</p>',
+            buildAppHashRoute('/profile', ['tab' => 'billing']),
+            'Quero analisar a proposta'
+        );
+
+        $billingUrl = buildAppHashRoute('/profile', ['tab' => 'billing']);
+        $template = resolveSystemEmailTemplate(
+            'transaction_refund_retention_offer',
+            [
+                'subject' => (string) ($offer['subject'] ?? 'Uma proposta para você continuar com seu acesso'),
+                'htmlBody' => $bodyHtml,
+                'textBody' => "Olá {$user['name']},\n\nRecebemos seu pedido de reembolso por {$reason} e temos uma proposta para você.\nAcesse: {$billingUrl}",
+            ],
+            [
+                'name' => (string) ($user['name'] ?? ''),
+                'email' => (string) ($user['email'] ?? ''),
+                'content' => strip_tags((string) ($offer['intro'] ?? '')),
+                'billing_url' => $billingUrl,
+                'app_url' => rtrim((string) (getenv('APP_URL') ?: 'http://localhost:3000'), '/'),
+            ],
+            $this->db
+        );
+
+        if ($template['enabled']) {
+            Mailer::send((string) $user['email'], (string) $user['name'], $template['subject'], $template['htmlBody'], $template['textBody']);
+        }
+    }
+
+    /**
+     * Envia notificacao ao usuario apos estorno concluido.
+     *
+     * @since 1.0.0
+     */
+    private function notifyMaterialPurchaseCompleted(
+        array $material,
+        array $buyer,
+        string $transactionId,
+        float $amount,
+        float $platformFee
+    ): void {
+        $materialTitle = trim((string) ($material['title'] ?? 'Material'));
+        $buyerId = trim((string) ($buyer['id'] ?? ''));
+        $buyerName = trim((string) ($buyer['name'] ?? 'Um aluno'));
+        $sellerId = trim((string) ($material['author_id'] ?? ''));
+
+        if ($buyerId !== '') {
+            $amountLabel = 'R$ ' . number_format($amount, 2, ',', '.');
+            createNotification(
+                $this->db,
+                $buyerId,
+                'Material liberado',
+                'Sua compra de "' . $materialTitle . '" foi confirmada por ' . $amountLabel . '. O material ja esta disponivel na sua biblioteca.',
+                'success',
+                'marketplace',
+                '/profile?tab=materials',
+                null,
+                $amount,
+                'Valor pago'
+            );
+        }
+
+        if ($sellerId !== '' && $sellerId !== $buyerId) {
+            $netAmount = max(0, round($amount - $platformFee, 2));
+            $amountLabel = 'R$ ' . number_format($netAmount, 2, ',', '.');
+            createNotification(
+                $this->db,
+                $sellerId,
+                'Nova venda no marketplace',
+                $buyerName . ' comprou "' . $materialTitle . '". Valor liquido estimado: ' . $amountLabel . '.',
+                'success',
+                'marketplace',
+                '/partner'
+            );
+        }
+
+        createFinancialAdminNotification(
+            $this->db,
+            'Compra de material confirmada',
+            'Transacao #' . $transactionId . ' liberou o material "' . $materialTitle . '" para ' . $buyerName . '.',
+            'success',
+            'finance',
+            '/admin/finance/transactions',
+            'finance_transaction_created',
+            $amount,
+            'Valor recebido'
+        );
+
+        applyMarketplaceSaleGamification(
+            $this->db,
+            $buyerId,
+            $sellerId,
+            (string) ($material['id'] ?? ''),
+            $materialTitle,
+            $transactionId
+        );
+    }
+
+    /**
+     * Envia notificacao ao usuario e vendedor apos estorno concluido.
+     *
+     * @since 1.0.0
+     */
+    private function notifyRefundProcessed(string $userId, ?array $transaction = null, array $chainResults = []): void
+    {
+        $transactionId = trim((string) ($transaction['id'] ?? ''));
+        $refundedAmount = 0.0;
+        foreach ($chainResults as $entry) {
+            $refundedAmount += round((float) ($entry['transaction']['amount'] ?? 0), 2);
+        }
+        if ($refundedAmount <= 0) {
+            $refundedAmount = round((float) ($transaction['amount'] ?? 0), 2);
+        }
+        $refundAmountLabel = 'R$ ' . number_format($refundedAmount, 2, ',', '.');
+        $material = $this->resolveTransactionMaterialSummary($transaction);
+        $materialTitle = trim((string) ($material['title'] ?? ''));
+        $buyerMessage = $materialTitle !== ''
+            ? 'O estorno da compra "' . $materialTitle . '" foi processado com sucesso. Valor reembolsado: ' . $refundAmountLabel . '.'
+            : 'Seu estorno foi processado com sucesso. Valor reembolsado: ' . $refundAmountLabel . '.';
+
+        createNotification(
+            $this->db,
+            $userId,
+            'Reembolso processado',
+            $buyerMessage,
+            'success',
+            'marketplace',
+            '/profile?tab=billing',
+            null,
+            $refundedAmount,
+            'Valor reembolsado'
+        );
+
+        $sellerId = trim((string) ($transaction['seller_id'] ?? ($material['author_id'] ?? '')));
+        if ($sellerId !== '' && $sellerId !== $userId && $materialTitle !== '') {
+            createNotification(
+                $this->db,
+                $sellerId,
+                'Reembolso concluído',
+                'A compra do material "' . $materialTitle . '" foi reembolsada. A venda deixou de contar como receita consolidada.',
+                'warning',
+                'marketplace',
+                '/partner',
+                null,
+                $refundedAmount,
+                'Valor reembolsado'
+            );
+        }
+
+        createFinancialAdminNotification(
+            $this->db,
+            'Reembolso processado',
+            'O reembolso' . ($transactionId !== '' ? ' da transação #' . $transactionId : '') . ' foi concluído no valor de ' . $refundAmountLabel . '.',
+            'success',
+            'finance',
+            '/admin/finance/transactions',
+            'finance_refund_completed',
+            $refundedAmount,
+            'Valor reembolsado'
+        );
+
+        applyMarketplaceRefundGamification(
+            $this->db,
+            $userId,
+            $sellerId,
+            $transactionId,
+            $materialTitle !== '' ? $materialTitle : 'Material'
+        );
+    }
+
+    /**
+     * Envia alerta ao admin quando um reembolso e solicitado.
+     *
+     * @since 1.0.0
+     */
+    private function notifyAdminAboutRefundRequest(string $transactionId, string $reason, ?array $transaction = null): void
+    {
+        try {
+            $material = $this->resolveTransactionMaterialSummary($transaction);
+            $materialTitle = trim((string) ($material['title'] ?? ''));
+            $requestedAmount = $this->resolveRefundRequestAmount($transaction);
+            $requestedAmountLabel = 'R$ ' . number_format($requestedAmount, 2, ',', '.');
+            $message = 'Foi registrada uma nova solicitação de reembolso para a transação #' . $transactionId . '.';
+            if ($materialTitle !== '') {
+                $message .= ' Material: "' . $materialTitle . '".';
+            }
+            if (trim($reason) !== '') {
+                $message .= ' Motivo: ' . trim($reason);
+            }
+            $message .= ' Valor solicitado: ' . $requestedAmountLabel . '.';
+
+            createFinancialAdminNotification(
+                $this->db,
+                'Reembolso aguardando análise',
+                $message,
+                'warning',
+                'finance',
+                '/admin/finance/refunds',
+                'finance_refund_requested',
+                $requestedAmount,
+                'Valor solicitado'
+            );
+
+            $admin = $this->repository->findFirstAdmin();
+            if (!$admin) {
+                return;
+            }
+
+            $subject = 'Nova solicitação de reembolso - #' . $transactionId;
+            $content = 'Olá ' . $admin['name'] . ',<br><br>'
+                . 'Uma nova solicitação de reembolso foi registrada no sistema.<br><br>'
+                . '<b>ID da transação:</b> ' . $transactionId . '<br>'
+                . '<b>Valor solicitado:</b> ' . $requestedAmountLabel . '<br>'
+                . '<b>Motivo:</b> ' . $reason . '<br><br>'
+                . 'Acesse o painel administrativo para revisar esta solicitação.';
+
+            $adminUrl = buildAppHashRoute('/admin');
+            $bodyHtml = Mailer::htmlTemplate('Solicitação de reembolso', $content, $adminUrl, 'Abrir painel');
+            $template = resolveSystemEmailTemplate(
+                'transaction_refund_request_admin',
+                [
+                    'subject' => $subject,
+                    'htmlBody' => $bodyHtml,
+                    'textBody' => "Olá {$admin['name']},\n\nNova solicitação de reembolso registrada para a transação #{$transactionId}.\nValor solicitado: {$requestedAmountLabel}\nMotivo: {$reason}\n\nAbrir painel: {$adminUrl}",
+                ],
+                [
+                    'name' => (string) ($admin['name'] ?? ''),
+                    'email' => (string) ($admin['email'] ?? ''),
+                    'content' => Mailer::htmlToText($content),
+                    'admin_url' => $adminUrl,
+                    'app_url' => rtrim((string) (getenv('APP_URL') ?: 'http://localhost:3000'), '/'),
+                ],
+                $this->db
+            );
+
+            if ($template['enabled']) {
+                Mailer::send((string) $admin['email'], (string) $admin['name'], $template['subject'], $template['htmlBody'], $template['textBody']);
+            }
+        } catch (Throwable $e) {
+            error_log('[transactions_service] admin refund request email error: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Notifica o vendedor quando uma venda de material entra em pedido de estorno.
+     *
+     * @since 1.0.0
+     */
+    private function notifySellerAboutRefundRequest(?array $transaction, string $reason): void
+    {
+        if (!$transaction) {
+            return;
+        }
+
+        $sellerId = trim((string) ($transaction['seller_id'] ?? ''));
+        $buyerId = trim((string) ($transaction['user_id'] ?? ''));
+        if ($sellerId === '' || $sellerId === $buyerId) {
+            return;
+        }
+
+        $material = $this->resolveTransactionMaterialSummary($transaction);
+        $materialTitle = trim((string) ($material['title'] ?? 'Material'));
+        $requestedAmount = round((float) ($transaction['amount'] ?? 0), 2);
+        $message = 'Uma compra do material "' . $materialTitle . '" recebeu pedido de reembolso no valor de R$ '
+            . number_format($requestedAmount, 2, ',', '.') . '.';
+        if (trim($reason) !== '') {
+            $message .= ' Motivo informado: ' . trim($reason);
+        }
+
+        createNotification(
+            $this->db,
+            $sellerId,
+            'Pedido de reembolso em análise',
+            $message,
+            'warning',
+            'marketplace',
+            '/partner',
+            null,
+            $requestedAmount,
+            'Valor solicitado'
+        );
+    }
+
+    /**
+     * Soma as cobrancas elegiveis ligadas a uma compra/upgrade para que a
+     * notificacao de reembolso informe o valor integral em analise.
+     *
+     * @since 1.0.0
+     */
+    private function resolveRefundRequestAmount(?array $transaction): float
+    {
+        if (!$transaction) {
+            return 0.0;
+        }
+
+        $fallbackAmount = round((float) ($transaction['amount'] ?? 0), 2);
+        if (!isPlanTransactionRefundTarget($transaction)) {
+            return $fallbackAmount;
+        }
+
+        try {
+            $total = 0.0;
+            foreach (findRefundablePlanTransactionChain($this->db, $transaction, false) as $chainTransaction) {
+                $status = strtolower(trim((string) ($chainTransaction['status'] ?? '')));
+                if (!in_array($status, ['approved', 'completed', 'refund_requested'], true)) {
+                    continue;
+                }
+                $total += round((float) ($chainTransaction['amount'] ?? 0), 2);
+            }
+
+            return $total > 0 ? round($total, 2) : $fallbackAmount;
+        } catch (Throwable $error) {
+            error_log('[transactions_service] refund notification amount warning: ' . $error->getMessage());
+            return $fallbackAmount;
+        }
+    }
+
+    /**
+     * Recupera titulo/autor do material quando a transacao representa marketplace.
+     *
+     * @since 1.0.0
+     */
+    private function resolveTransactionMaterialSummary(?array $transaction): ?array
+    {
+        if (!$transaction || empty($transaction['material_id'])) {
+            return null;
+        }
+
+        try {
+            return $this->repository->findMaterialById((string) $transaction['material_id']);
+        } catch (Throwable $e) {
+            error_log('[transactions_service] material summary lookup failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Traduz codigos internos de cancelamento/reembolso para texto claro.
+     *
+     * @since 1.0.0
+     */
+    private function formatRefundReasonLabel(string $reason): string
+    {
+        $normalized = $this->normalizeRefundReasonForMatching($reason);
+        $labels = [
+            'price' => 'Valor da assinatura',
+            'valor_da_assinatura' => 'Valor da assinatura',
+            'usage' => 'Não estou usando o suficiente',
+            'nao_estou_usando_o_suficiente' => 'Não estou usando o suficiente',
+            'technical' => 'Problemas técnicos',
+            'problemas_tecnicos' => 'Problemas técnicos',
+            'content' => 'Falta de conteúdos específicos',
+            'falta_de_conteudos_especificos' => 'Falta de conteúdos específicos',
+            'other' => 'Outros motivos',
+            'outros_motivos' => 'Outros motivos',
+            'arrependimento' => 'Arrependimento dentro do prazo de garantia',
+        ];
+
+        return $labels[$normalized] ?? trim($reason);
+    }
+
+    /**
+     * Normaliza texto para casar motivos escritos e codigos internos.
+     *
+     * @since 1.0.0
+     */
+    private function normalizeRefundReasonForMatching(string $reason): string
+    {
+        $value = trim($reason);
+        $value = strtr($value, [
+            'Á' => 'A', 'À' => 'A', 'Â' => 'A', 'Ã' => 'A', 'Ä' => 'A',
+            'á' => 'a', 'à' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a',
+            'É' => 'E', 'Ê' => 'E', 'Ë' => 'E', 'é' => 'e', 'ê' => 'e', 'ë' => 'e',
+            'Í' => 'I', 'Î' => 'I', 'Ï' => 'I', 'í' => 'i', 'î' => 'i', 'ï' => 'i',
+            'Ó' => 'O', 'Ô' => 'O', 'Õ' => 'O', 'Ö' => 'O', 'ó' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o',
+            'Ú' => 'U', 'Û' => 'U', 'Ü' => 'U', 'ú' => 'u', 'û' => 'u', 'ü' => 'u',
+            'Ç' => 'C', 'ç' => 'c',
+        ]);
+        $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+        $value = preg_replace('/[\s-]+/', '_', $value) ?: $value;
+
+        return trim($value, '_');
+    }
+
+    /**
+     * Monta a proposta de retencao com base no motivo informado pelo usuario.
+     *
+     * @since 1.0.0
+     */
+    private function buildRefundRetentionOffer(string $refundReason, array $transaction): array
+    {
+        $normalizedReason = $this->normalizeRefundReasonForMatching($refundReason);
+        $isPlan = strtolower(trim((string) ($transaction['type'] ?? ''))) === 'plan';
+        $productLabel = $isPlan ? 'assinatura' : 'compra';
+
+        if (
+            str_contains($normalizedReason, 'caro')
+            || str_contains($normalizedReason, 'preco')
+            || str_contains($normalizedReason, 'price')
+            || str_contains($normalizedReason, 'valor')
+            || str_contains($normalizedReason, 'custo')
+            || str_contains($normalizedReason, 'mensal')
+            || str_contains($normalizedReason, 'anual')
+        ) {
+            return [
+                'subject' => 'Podemos ajustar o custo do seu acesso',
+                'title' => 'Podemos ajustar o custo sem você perder seu acesso',
+                'intro' => 'Se o principal ponto foi investimento, podemos te ajudar a continuar com uma rota mais leve e sem quebrar sua continuidade.',
+                'highlights' => [
+                    'avaliar migração para um ciclo mais confortável no seu momento atual',
+                    'manter seu progresso e seu histórico de estudo sem reiniciar a jornada',
+                    'seguir com acesso ativo enquanto você decide a melhor configuração',
+                ],
+                'closing' => 'Se fizer sentido, responda este e-mail e nossa equipe te ajuda a encontrar a alternativa mais adequada para manter sua preparação.',
+            ];
+        }
+
+        if (
+            str_contains($normalizedReason, 'tempo')
+            || str_contains($normalizedReason, 'rotina')
+            || str_contains($normalizedReason, 'correria')
+            || str_contains($normalizedReason, 'sem estudar')
+            || str_contains($normalizedReason, 'nao consigo')
+        ) {
+            return [
+                'subject' => 'Podemos adaptar o ConcursoMestre à sua rotina',
+                'title' => 'Sua rotina pode ser reorganizada sem perder a ' . $productLabel,
+                'intro' => 'Quando o problema é falta de tempo, normalmente o melhor ajuste não é encerrar o acesso, e sim simplificar o plano de uso para manter constância.',
+                'highlights' => [
+                    'retomar com uma rotina mais enxuta e focada no que mais gera evolução',
+                    'preservar desempenho, histórico e configurações já construídas',
+                    'continuar avançando sem a pressão de recomeçar do zero depois',
+                ],
+                'closing' => 'Se quiser continuar, responda este e-mail e estruturamos um caminho mais viável para o seu momento.',
+            ];
+        }
+
+        if (
+            str_contains($normalizedReason, 'erro')
+            || str_contains($normalizedReason, 'bug')
+            || str_contains($normalizedReason, 'acesso')
+            || str_contains($normalizedReason, 'nao funciona')
+            || str_contains($normalizedReason, 'problema')
+            || str_contains($normalizedReason, 'pagamento')
+        ) {
+            return [
+                'subject' => 'Vamos resolver seu problema antes do cancelamento',
+                'title' => 'Antes de cancelar, podemos resolver o problema técnico',
+                'intro' => 'Se a solicitação nasceu de alguma falha operacional, faz mais sentido corrigirmos isso rapidamente do que interromper sua preparação.',
+                'highlights' => [
+                    'prioridade no tratamento do problema reportado',
+                    'apoio direto para normalizar acesso, cobrança ou recurso afetado',
+                    'continuidade do seu progresso sem perda de histórico',
+                ],
+                'closing' => 'Se topar, responda este e-mail com mais detalhes e nossa equipe segue com o atendimento prioritário.',
+            ];
+        }
+
+        return [
+            'subject' => 'Uma proposta para você continuar com seu acesso',
+            'title' => 'Antes de encerrar, queremos te oferecer uma alternativa melhor',
+            'intro' => 'Recebemos seu pedido e entendemos que algo não atendeu sua expectativa. Antes de concluir o reembolso, queremos te ajudar a manter seu acesso de um jeito que faça mais sentido para o seu momento.',
+            'highlights' => [
+                'preservar seu histórico, desempenho e configurações atuais',
+                'reavaliar a melhor forma de seguir com a plataforma sem perder continuidade',
+                'ter apoio humano para ajustar sua experiência de uso',
+            ],
+            'closing' => 'Se fizer sentido conversar antes de encerrar, basta responder este e-mail. A solicitação continua em análise até sua decisão final.',
+        ];
+    }
+
+    /**
+     * Gera o rotulo amigavel do metodo de pagamento.
+     *
+     * @since 1.0.0
+     */
+    private function formatTransactionPaymentMethodLabel(?string $paymentMethod, string $paymentProvider): string
+    {
+        $normalizedMethod = strtolower(trim((string) $paymentMethod));
+
+        if ($normalizedMethod === '') {
+            return $paymentProvider === 'stripe' ? 'Cartão' : 'Não informado';
+        }
+
+        return match ($normalizedMethod) {
+            'credit_card', 'debit_card', 'master', 'visa', 'amex', 'elo', 'hipercard' => 'Cartão',
+            'pix' => 'Pix',
+            'bolbradesco', 'boleto' => 'Boleto',
+            default => strtoupper($normalizedMethod),
+        };
+    }
+
+    /**
+     * Gera transacoes projetadas para parcelas Stripe futuras.
+     *
+     * @since 1.0.0
+     */
+    private function buildProjectedStripeInstallmentTransactions(string $userId, array $existingTransactions, ?array $activeSubscription = null): array
+    {
+        if ($userId === '') {
+            return [];
+        }
+
+        $subscription = $activeSubscription ?: $this->repository->findRelevantStripeInstallmentSubscription($userId);
+        if (!$subscription) {
+            return [];
+        }
+
+        if (normalizePaymentProvider($subscription['payment_provider'] ?? 'stripe') !== 'stripe') {
+            return [];
+        }
+
+        if (!in_array((string) ($subscription['status'] ?? ''), ['active', 'trialing'], true)) {
+            return [];
+        }
+
+        $totalInstallments = max(1, (int) ($subscription['total_installments'] ?? 1));
+        $paidInstallments = max(0, (int) ($subscription['paid_installments'] ?? 0));
+        $recurringAmount = round((float) ($subscription['recurring_amount'] ?? 0), 2);
+
+        if ($totalInstallments <= 1 || $paidInstallments >= $totalInstallments || $recurringAmount <= 0) {
+            return [];
+        }
+
+        $currentPeriodStartTimestamp = !empty($subscription['current_period_start'])
+            ? strtotime((string) $subscription['current_period_start'])
+            : 0;
+        if (!$currentPeriodStartTimestamp) {
+            return [];
+        }
+
+        $planContext = [
+            'name' => (string) ($subscription['plan_name'] ?? ''),
+            'interval_unit' => (string) ($subscription['interval_unit'] ?? 'month'),
+            'interval_count' => (int) ($subscription['interval_count'] ?? 1),
+        ];
+        $chargeIntervalDays = getStripeChargeIntervalDays($planContext, $totalInstallments);
+        $nextChargeTimestamp = strtotime('+' . ($chargeIntervalDays * $paidInstallments) . ' days', $currentPeriodStartTimestamp);
+        if (!$nextChargeTimestamp) {
+            return [];
+        }
+        $nextChargeAt = date('Y-m-d H:i:s', $nextChargeTimestamp);
+
+        $occupiedFutureSlotKeys = [];
+
+        foreach ($existingTransactions as $transaction) {
+            if (($transaction['paymentProvider'] ?? '') !== 'stripe') {
+                continue;
+            }
+
+            if (($transaction['type'] ?? '') !== 'plan') {
+                continue;
+            }
+
+            if ((int) ($transaction['planId'] ?? 0) !== (int) ($subscription['plan_id'] ?? 0)) {
+                continue;
+            }
+
+            $normalizedStatus = strtolower((string) ($transaction['status'] ?? ''));
+            if (in_array($normalizedStatus, ['approved', 'completed', 'refunded', 'refund_requested'], true)) {
+                continue;
+            }
+
+            $candidateTimestamp = 0;
+            if (!empty($transaction['dueDate'])) {
+                $candidateTimestamp = strtotime((string) $transaction['dueDate']);
+            }
+            if (!$candidateTimestamp && !empty($transaction['createdAt'])) {
+                $candidateTimestamp = strtotime((string) $transaction['createdAt']);
+            }
+
+            if ($currentPeriodStartTimestamp && $candidateTimestamp && $candidateTimestamp < $currentPeriodStartTimestamp) {
+                continue;
+            }
+
+            $slotKey = $candidateTimestamp > 0
+                ? date('Y-m-d H:i:s', $candidateTimestamp)
+                : (string) ($transaction['providerInvoiceId'] ?? $transaction['referenceId'] ?? $transaction['id'] ?? '');
+            if ($slotKey !== '') {
+                $occupiedFutureSlotKeys[$slotKey] = true;
+            }
+        }
+
+        $occupiedFutureSlots = count($occupiedFutureSlotKeys);
+        $remainingInstallments = max(0, $totalInstallments - $paidInstallments - $occupiedFutureSlots);
+        if ($remainingInstallments <= 0) {
+            return [];
+        }
+
+        $providerSubscriptionId = trim((string) ($subscription['provider_subscription_id'] ?? $subscription['external_subscription_id'] ?? ''));
+        $planName = trim((string) ($subscription['plan_name'] ?? 'Assinatura'));
+        $projectedUser = $this->repository->findUserById($userId);
+        $projectedBuyerName = $projectedUser['name'] ?? null;
+        $projectedBuyerEmail = $projectedUser['email'] ?? null;
+        $projectedTransactions = [];
+        $currentInstallmentNumber = $paidInstallments + $occupiedFutureSlots + 1;
+        $projectedIntervalDays = max(1, $chargeIntervalDays);
+        $scheduledChargeAt = date(
+            'Y-m-d H:i:s',
+            strtotime('+' . ($projectedIntervalDays * $occupiedFutureSlots) . ' days', strtotime($nextChargeAt))
+        );
+
+        for ($i = 0; $i < $remainingInstallments && $currentInstallmentNumber <= $totalInstallments; $i++, $currentInstallmentNumber++) {
+            $scheduledTimestamp = strtotime($scheduledChargeAt);
+            if (!$scheduledTimestamp) {
+                break;
+            }
+
+            $projectedTransactions[] = [
+                'id' => 'projected-stripe-' . (int) $subscription['id'] . '-' . $currentInstallmentNumber,
+                'internalId' => null,
+                'referenceId' => $providerSubscriptionId !== '' ? $providerSubscriptionId : ('stripe-term-' . (int) $subscription['id']),
+                'providerTransactionId' => $providerSubscriptionId !== '' ? $providerSubscriptionId : null,
+                'providerTransactionLabel' => 'Subscription ID',
+                'buyerId' => $userId,
+                'buyerName' => $projectedBuyerName,
+                'buyerEmail' => $projectedBuyerEmail,
+                'payerEmail' => $projectedBuyerEmail,
+                'userSubscriptionId' => (int) ($subscription['id'] ?? 0),
+                'materialId' => null,
+                'materialTitle' => null,
+                'planId' => (int) ($subscription['plan_id'] ?? 0),
+                'planName' => $planName,
+                'transactionName' => $planName,
+                'description' => $planName,
+                'sellerId' => null,
+                'sellerName' => 'Plataforma',
+                'amount' => $recurringAmount,
+                'platformFee' => 0.0,
+                'netAmount' => $recurringAmount,
+                'status' => 'pre-approved',
+                'type' => 'plan',
+                'externalId' => null,
+                'paymentMethod' => 'credit_card',
+                'paymentMethodLabel' => 'Cartao',
+                'paymentProvider' => 'stripe',
+                'providerInvoiceId' => null,
+                'providerPaymentIntentId' => null,
+                'providerRefundId' => null,
+                'providerRefundDetails' => [],
+                'providerCustomerId' => $subscription['provider_customer_id'] ?? null,
+                'refundReason' => null,
+                'refundRequestedAt' => null,
+                'timestamp' => $scheduledTimestamp * 1000,
+                'dateFormatted' => date('d/m/Y', $scheduledTimestamp),
+                'dateTimeFormatted' => date('d/m/Y H:i:s', $scheduledTimestamp),
+                'createdAt' => null,
+                'dueDate' => $scheduledChargeAt,
+                'isProjected' => true,
+                'installmentNumber' => $currentInstallmentNumber,
+                'installmentCount' => $totalInstallments,
+                'scheduleLabel' => 'Prevista para ' . date('d/m/Y H:i:s', $scheduledTimestamp),
+            ];
+
+            $scheduledChargeAt = calculateSubscriptionRenewalPeriodRange('day', $projectedIntervalDays, $scheduledChargeAt)['end'];
+        }
+
+        return $projectedTransactions;
+    }
+
+    /**
+     * Injeta metadata de parcelas em transacoes de assinaturas Stripe.
+     *
+     * @since 1.0.0
+     */
+    private function applyActiveStripeInstallmentMetadata(array $transactions, ?array $subscription): array
+    {
+        if (!$subscription) {
+            return $transactions;
+        }
+
+        if (normalizePaymentProvider($subscription['payment_provider'] ?? 'stripe') !== 'stripe') {
+            return $transactions;
+        }
+
+        $totalInstallments = max(1, (int) ($subscription['total_installments'] ?? 1));
+        $paidInstallments = max(0, (int) ($subscription['paid_installments'] ?? 0));
+        if ($totalInstallments <= 1 || $paidInstallments <= 0) {
+            return $transactions;
+        }
+
+        $currentPeriodStartTimestamp = !empty($subscription['current_period_start'])
+            ? strtotime((string) $subscription['current_period_start'])
+            : 0;
+        $eligibleIndexes = [];
+
+        foreach ($transactions as $index => $transaction) {
+            if (($transaction['paymentProvider'] ?? '') !== 'stripe') {
+                continue;
+            }
+
+            if (($transaction['type'] ?? '') !== 'plan') {
+                continue;
+            }
+
+            if ((int) ($transaction['planId'] ?? 0) !== (int) ($subscription['plan_id'] ?? 0)) {
+                continue;
+            }
+
+            $normalizedStatus = strtolower((string) ($transaction['status'] ?? ''));
+            if (!in_array($normalizedStatus, ['approved', 'completed', 'refunded', 'refund_requested'], true)) {
+                continue;
+            }
+
+            $candidateTimestamp = !empty($transaction['createdAt'])
+                ? strtotime((string) $transaction['createdAt'])
+                : 0;
+            if ($currentPeriodStartTimestamp && $candidateTimestamp && $candidateTimestamp < $currentPeriodStartTimestamp) {
+                continue;
+            }
+
+            $eligibleIndexes[] = [
+                'index' => $index,
+                'timestamp' => (int) ($transaction['timestamp'] ?? 0),
+            ];
+        }
+
+        if (empty($eligibleIndexes)) {
+            return $transactions;
+        }
+
+        usort($eligibleIndexes, static function (array $left, array $right): int {
+            return $left['timestamp'] <=> $right['timestamp'];
+        });
+
+        $visibleSuccessfulInstallments = count($eligibleIndexes);
+        $startingInstallmentNumber = max(1, $paidInstallments - $visibleSuccessfulInstallments + 1);
+
+        foreach ($eligibleIndexes as $offset => $item) {
+            $installmentNumber = min($totalInstallments, $startingInstallmentNumber + $offset);
+            $transactions[$item['index']]['installmentNumber'] = $installmentNumber;
+            $transactions[$item['index']]['installmentCount'] = $totalInstallments;
+        }
+
+        return $transactions;
+    }
+
+    /**
+     * Completa metadados de invoice Stripe no resultado final.
+     *
+     * @since 1.0.0
+     */
+    private function hydrateStripeInvoiceMetadata(array $transactions): array
+    {
+        if (!stripeIsConfigured()) {
+            return $transactions;
+        }
+
+        $invoiceIds = [];
+        foreach ($transactions as $transaction) {
+            if (($transaction['paymentProvider'] ?? '') !== 'stripe') {
+                continue;
+            }
+
+            $invoiceId = trim((string) ($transaction['providerInvoiceId'] ?? ''));
+            if ($invoiceId !== '') {
+                $invoiceIds[$invoiceId] = $invoiceId;
+            }
+        }
+
+        if (empty($invoiceIds)) {
+            return $transactions;
+        }
+
+        $stripe = getStripeClient();
+        $invoiceCache = [];
+
+        foreach ($invoiceIds as $invoiceId) {
+            try {
+                $invoice = $stripe->invoices->retrieve($invoiceId, []);
+                $invoiceCache[$invoiceId] = [
+                    'invoicePdfUrl' => trim((string) ($invoice->invoice_pdf ?? '')),
+                    'hostedInvoiceUrl' => trim((string) ($invoice->hosted_invoice_url ?? '')),
+                    'invoiceNumber' => trim((string) ($invoice->number ?? '')),
+                ];
+            } catch (Throwable $e) {
+                $invoiceCache[$invoiceId] = [
+                    'invoicePdfUrl' => '',
+                    'hostedInvoiceUrl' => '',
+                    'invoiceNumber' => '',
+                ];
+            }
+        }
+
+        foreach ($transactions as $index => $transaction) {
+            $invoiceId = trim((string) ($transaction['providerInvoiceId'] ?? ''));
+            if ($invoiceId === '' || empty($invoiceCache[$invoiceId])) {
+                $transactions[$index]['invoicePdfUrl'] = null;
+                $transactions[$index]['hostedInvoiceUrl'] = null;
+                $transactions[$index]['invoiceNumber'] = null;
+                continue;
+            }
+
+            $transactions[$index]['invoicePdfUrl'] = $invoiceCache[$invoiceId]['invoicePdfUrl'] !== '' ? $invoiceCache[$invoiceId]['invoicePdfUrl'] : null;
+            $transactions[$index]['hostedInvoiceUrl'] = $invoiceCache[$invoiceId]['hostedInvoiceUrl'] !== '' ? $invoiceCache[$invoiceId]['hostedInvoiceUrl'] : null;
+            $transactions[$index]['invoiceNumber'] = $invoiceCache[$invoiceId]['invoiceNumber'] !== '' ? $invoiceCache[$invoiceId]['invoiceNumber'] : null;
+        }
+
+        return $transactions;
+    }
+}

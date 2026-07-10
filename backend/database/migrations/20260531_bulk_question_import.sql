@@ -1,0 +1,24 @@
+CREATE TABLE IF NOT EXISTS provas (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nome VARCHAR(255) NOT NULL,
+  slug VARCHAR(255) NOT NULL,
+  ano INT NOT NULL,
+  banca_id INT NULL,
+  orgao_id INT NULL,
+  cargo_id INT NULL,
+  nivel_id INT NULL,
+  tipo_prova_id INT NULL,
+  carreira_id INT NULL,
+  pdf_url VARCHAR(500) NULL,
+  metadata_json LONGTEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_provas_slug_ano (slug, ano),
+  INDEX idx_provas_banca_ano (banca_id, ano)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+ALTER TABLE provas
+  ADD COLUMN IF NOT EXISTS carreira_id INT NULL AFTER tipo_prova_id,
+  ADD COLUMN IF NOT EXISTS pdf_url VARCHAR(500) NULL AFTER carreira_id,
+  ADD COLUMN IF NOT EXISTS metadata_json LONGTEXT NULL AFTER pdf_url,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at;
